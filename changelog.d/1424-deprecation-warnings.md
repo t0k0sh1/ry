@@ -1,3 +1,0 @@
-### Fixed
-
-- `@deprecated` warnings now reach stderr when running a file via `./build/ry`. Previously, the compiler collected `warning: 'X' is deprecated` messages in `CodeGen::warnings_` but no production code path called `getWarnings()`, so users saw nothing despite `docs/reference/directives.md` documenting the behavior. The flush is performed in `runRySource()` right after `compile()` succeeds, before both the `--emit-llvm-ir` early return and JIT setup, so warnings always reach stderr regardless of how compilation continues. CLI-side deduplication keeps repeated call sites of the same deprecated symbol from emitting the same warning multiple times. (#1424)

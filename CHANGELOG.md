@@ -6,6 +6,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.21] - 2026-05-06
+
+### Changed
+
+- Migrated 167 of 170 `tests/spec/*.test.ry` files from the deprecated
+  lambda form `describe("...", ():` / `it("...", ():` to the canonical
+  `@describe("...")` / `@it("...")` named-function form. Without this
+  migration, `./build/ry test -p` emitted 340 deprecation warnings
+  (newly visible after the warning-flush fix in #1424). Three files —
+  `numeric_literal_suffix.test.ry`, `numeric_underscore_separator.test.ry`,
+  and `operator_overload.test.ry` — could not be migrated because the
+  tests they contain expose a separate parser/codegen bug: `f64` literal
+  suffix and locally-declared `record` types fail to resolve inside any
+  named-function body (including module-level `fn`), while resolving
+  correctly inside a lambda body. These three files were retained in
+  the lambda form and tracked for migration under #1601; with #1601
+  shipped in this release, those files were migrated, and the lambda
+  parser/codegen path removal is captured under #1602. (#1599)
+
+### Removed
+
+- Removed the deprecated lambda call form of `describe("...", ():)` and
+  `it("...", ():)` from the parser and codegen. After #1599 (stdlib
+  migration) and #1601 (deferred-file migration), all `tests/spec/*.test.ry`
+  files use the canonical `@describe("...") fn name():` / `@it("...") fn name():`
+  named-function form, so the lambda form is no longer reachable from
+  any in-tree source. The trailing-block carve-out for `describe` / `it`
+  in the parser and the dedicated lambda-form codegen helpers
+  (`extractLambdaArg`, `emitDescribeCall`, `emitItCall`, the lambda
+  branches of `emitEachItCall` / `emitPropertyItCall`) were deleted
+  along with the `warned_call_deprecations_` warning-dedup state.
+  Source that still uses the lambda form now fails compilation with
+  `undefined function: describe` / `undefined function: it`. (#1602)
+
+### Fixed
+
+- `@deprecated` warnings now reach stderr when running a file via `./build/ry`. Previously, the compiler collected `warning: 'X' is deprecated` messages in `CodeGen::warnings_` but no production code path called `getWarnings()`, so users saw nothing despite `docs/reference/directives.md` documenting the behavior. The flush is performed in `runRySource()` right after `compile()` succeeds, before both the `--emit-llvm-ir` early return and JIT setup, so warnings always reach stderr regardless of how compilation continues. CLI-side deduplication keeps repeated call sites of the same deprecated symbol from emitting the same warning multiple times. (#1424)
+- Overloaded function calls with no matching argument types now produce a canonical diagnostic at the frontend instead of leaking through to the LLVM IR verifier. Previously `for x in range(1..n): ...` (where `1..n` has type List of int, not int) crashed with an LLVM "IR verify error: Both operands to a binary operator are not of the same type!"; it now reports a no-matching-overload error for `range` followed by the candidate signatures (one-, two-, and three-argument forms returning a list of int) and the actual call types (the supplied List of int argument). The same canonical format is now used across all three dispatch paths: the `range`, `len`, and `enumerate` inline custom emitters; `@native` table-driven calls (e.g. `pow` with mismatched int and float arguments); and user-defined function overload resolution (including ambiguous calls). (#1577)
+- `math.abs(INT_MIN)` now traps with `runtime error: integer overflow` and exits with status 1 instead of silently returning `INT_MIN`. The post-condition `abs(x) >= 0` is preserved by detecting the unrepresentable result before negation. (#1591, #1592)
+- `INT_MIN // -1` and `INT_MIN % -1` now trap with `runtime error: integer overflow` and exit with status 1 instead of returning poison from LLVM's `sdiv` / `srem`. The new check matches the existing trap behavior of `+` / `-` / `*` / unary `-`. (#1591, #1592)
+- `json.parse()` now enforces a hard cap of 256 on array/object nesting depth and returns `Err(Error{message: "json: maximum nesting depth exceeded"})` for inputs that exceed it. Previously, deeply nested input (depth ~90,000+ on macOS with the default 8 MB stack) would exhaust the C stack and abort the process with SIGABRT (exit 132). The depth counter is shared between `parse_array` and `parse_object`, so mixed array/object nesting also triggers the cap. **Behavior change**: inputs that previously parsed successfully at extreme depths (e.g. depth 80,000 in the issue's pre-fix table) will now return `Err`; well-formed real-world JSON is unaffected since 256 levels of nesting comfortably exceeds typical use. (#1593)
+- `base64.decode()` and the related `decodeUrlSafe` / `decodeBytes` / `decodeBytesUrlSafe` functions now reject inputs with malformed padding per RFC 4648 §3.2 strict mode, returning `Err(Error{message: "invalid base64: ..."})` instead of silently succeeding. Previously, `decode("====")` returned `Ok("")`, and trailing-padding overflows like `decode("TWFu=")` / `decode("TWFu==")` returned `Ok("Man")`. After the fix, any input that contains `=` padding must have a length that is a multiple of 4 and contain at most 2 trailing `=` characters; otherwise the call returns `Err`. The validation is shared with the URL-safe variants — `decodeUrlSafe("====")` / `decodeBytesUrlSafe("TWFu=")` are also rejected. URL-safe canonical no-padding inputs (e.g. `"SGVsbG8sIFdvcmxkIQ"`) remain accepted as before. **Behavior change**: any caller that relied on the silent acceptance of pure-padding (`"="`, `"=="`, `"==="`, `"===="`) or trailing-padding-overflow inputs now needs to handle `Err`. (#1594)
+- `f64` literal suffix now resolves correctly inside any named-function
+  body. Previously, `x = 3.14f64` or `1.5_0f64` inside a `fn`/`@it`/`@describe`
+  body (including module-level `fn`) raised `unknown type: f64`, even
+  though the same code worked at module top level and inside lambda
+  bodies. The root cause was a missing `f64` entry in `resolveType`'s
+  primitive type table; the `FloatExpr` lambda return-type inference
+  pre-pass then fell through to the `unknown type` error before any
+  body statement could emit. (#1601)
+- Locally-declared `record` types are now resolvable as `as`-cast
+  targets inside named-function bodies. Previously, declaring a
+  `record` inside a `fn` body and then using `value as <RecordName>`
+  raised `unknown type: <RecordName>` because the lambda return-type
+  inference pre-pass ran before the body emit loop registered the
+  record into `record_types_`. The pre-pass now uses a permissive
+  type lookup with a safe fallback; the strict fatal lookup at body
+  emit time is unchanged, so genuinely unknown cast targets are still
+  diagnosed. (#1601)
+- Migrated the three deferred test files from #1599
+  (`numeric_literal_suffix.test.ry`, `numeric_underscore_separator.test.ry`,
+  `operator_overload.test.ry`) from the deprecated lambda form
+  `describe("...", ():` / `it("...", ():` to the canonical
+  `@describe("...")` / `@it("...")` named-function form. (#1601)
+
 ## [0.0.20] - 2026-05-05
 
 ### Added
@@ -1307,7 +1372,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.20...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.21...HEAD
+[0.0.21]: https://github.com/t0k0sh1/ry/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/t0k0sh1/ry/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/t0k0sh1/ry/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/t0k0sh1/ry/compare/v0.0.17...v0.0.18
