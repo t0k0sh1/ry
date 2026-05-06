@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 fn safeGet(xs: List<int>, i: int) -> Option<int>:
   if i < 0 or i >= xs.len():

@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("leading-dot float literals")
 fn leadingDotFloatLiteralsTests():

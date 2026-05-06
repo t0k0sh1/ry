@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("closure capturing ARC values — destructor should release captures (#429)")
 fn closureCapturingArcValuesDestructorShouldReleaseCaptures429Tests():

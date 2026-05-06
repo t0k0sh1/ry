@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool, len, keys, jsonFree
 from str import contains, repeat

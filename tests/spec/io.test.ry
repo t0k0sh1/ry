@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes, bytesToStr
 

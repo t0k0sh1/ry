@@ -1,7 +1,7 @@
 # BUG #728: print()/toStr() coverage for union values and closure stringification
 
 
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("print — union")
 fn printUnionTests():

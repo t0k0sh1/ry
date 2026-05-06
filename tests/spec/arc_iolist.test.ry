@@ -13,7 +13,7 @@
 #   the number of containers still held (not N).  If release is broken (i.e.
 #   the old checked_malloc path) the delta grows linearly with N instead.
 
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 from runtime_internal import arcLiveCount
 from io import toBytes, readBytes, writeBytes, deleteFile
