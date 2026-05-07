@@ -305,23 +305,26 @@ Enables parameterized testing by running a test multiple times with different pa
 **Syntax:**
 
 ```ry
-from testing import it, each
+from testing import it, each, expect
 
-@each([(arg1, arg2, ...), ...])
-@it("should handle {0} and {1}")
-fn testHandle(param1: type, param2: type):
-    # test body
+@each([(1, 2), (3, 6), (5, 10)])
+@it("should double {0} as {1}")
+fn testDouble(input: int, expected: int):
+    expect(input * 2).toEq(expected)
 ```
 
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
 ```ry
-from testing import it, each
+from testing import it, each, expect
+
+fn makeInputs() -> List<(int, int)>:
+    return [(1, 1), (2, 4), (3, 9)]
 
 @each(makeInputs())
-@it("should handle {0}")
-fn testHandle(x: int):
-    # test body
+@it("should square {0} as {1}")
+fn testSquare(n: int, expected: int):
+    expect(n * n).toEq(expected)
 ```
 
 **Supported targets:** functions with the `@it` directive.
@@ -340,12 +343,12 @@ Enables property-based testing by generating random inputs for a test.
 **Syntax:**
 
 ```ry
-from testing import it, property
+from testing import it, property, expect
 
 @property(count=100)
-@it("should verify property name")
-fn testProperty(a: int, b: int):
-    # test body with random values
+@it("should verify multiplication is commutative")
+fn testCommutative(a: int, b: int):
+    expect(a * b).toEq(b * a)
 ```
 
 **Supported targets:** functions with the `@it` directive.
@@ -376,11 +379,11 @@ Declares a test case by attaching the directive to a named function. The functio
 **Syntax:**
 
 ```ry
-from testing import it
+from testing import it, expect
 
-@it("description")
-fn testName():
-    # assertions
+@it("should pass simple assertion")
+fn testCase():
+    expect(true).toBeTrue()
 ```
 
 **Basic example:**
@@ -426,13 +429,13 @@ Groups a set of related tests by attaching the directive to a named function. In
 **Syntax:**
 
 ```ry
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("group name")
 fn groupName():
-    @it("nested test")
+    @it("should pass nested test")
     fn testNested():
-        # assertions
+        expect(true).toBeTrue()
 ```
 
 **Basic example:**
