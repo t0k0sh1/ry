@@ -22,6 +22,13 @@ fn property(count: int = 100)
 @native("testing")
 fn _reportFail(line: int, message: str) -> Unit
 
+@native("testing")
+fn _mockGetCallCount(name: str) -> int
+
 @public
 fn fail(_line: int, message: str = "") -> Unit:
   _reportFail(_line, message)
+
+@public
+fn verify(name: str) -> int:
+  return _mockGetCallCount(name)

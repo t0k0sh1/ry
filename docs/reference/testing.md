@@ -36,10 +36,11 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). The two enforcement paths produce different error messages:
+Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `verify`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
 
 - `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
-- `expect`, `mock`, `verify`, `fail` are intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
+- `expect`, `mock`, `fail` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
+- `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic.
 
 ```ry
 from testing import it, describe, expect
@@ -249,9 +250,9 @@ fn mockingTests():
 - Mocks are automatically restored at the end of each `it` block
 - Requires `from testing import mock`
 
-### verify(fnName)
+### verify(name)
 
-Returns the number of times a mocked function was called (as `int`).
+Returns the number of times a mocked function was called (as `int`). The argument is the **string name** of the function — `verify` is an ordinary `@public fn` exported by the `testing` module, not a compiler intrinsic, so the bare-identifier sugar that `mock` accepts does not apply here.
 
 ```ry
 from testing import it, describe, mock, verify, expect
@@ -263,10 +264,11 @@ fn verifyTests():
         mock(fetchData, () => "fake")
         fetchData()
         fetchData()
-        expect(verify(fetchData)).toEq(2)
+        expect(verify("fetchData")).toEq(2)
 ```
 
 - Requires `from testing import verify`
+- Returns `0` when no call has been recorded for that name (including unknown function names) — there is no compile-time check that the string corresponds to a real function.
 
 ### Limitations
 

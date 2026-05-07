@@ -1387,11 +1387,12 @@ TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
 
 // ===== testing module intrinsic import allow-list (#712) =====
 //
-// `from testing import expect / mock / verify / fail` references compiler
-// intrinsics that have no AST declaration in `share/std/testing/testing.ry`
-// (only `it / describe / each / property` are declared there). The loader
+// `from testing import expect / mock / fail` references compiler intrinsics
+// that have no AST declaration in `share/std/testing/testing.ry`. The loader
 // must whitelist the intrinsic names for the testing module so the named
-// import does not fail at the "not found in module" check.
+// import does not fail at the "not found in module" check. As of #722,
+// `verify` is no longer an intrinsic — it is a regular `@public fn verify`
+// declared in `share/std/testing/testing.ry` and resolves via normal import.
 
 namespace {
 // Derive the repo's share/std path from the test source location so the
@@ -1427,9 +1428,12 @@ TEST_F(ImportTest, FromTestingImportExpectResolves) {
     EXPECT_EQ(directive_names.count("describe"), 1u);
 }
 
-// AC #2: all six testing intrinsics (`it`, `describe`, `expect`, `mock`,
-// `verify`, `fail`) are accepted as named imports.
-TEST_F(ImportTest, FromTestingImportAllSixIntrinsicsResolve) {
+// AC #2: all testing-module symbols (`it`, `describe`, `expect`, `mock`,
+// `verify`, `fail`) are accepted as named imports. Resolution differs by
+// kind: `expect` / `mock` / `fail` resolve via the intrinsic allow-list,
+// `it` / `describe` via their `@directive` declarations, and `verify`
+// (post-#722) via its `@public fn` declaration in testing.ry.
+TEST_F(ImportTest, FromTestingImportAllTestingSymbolsResolve) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
@@ -1511,15 +1515,18 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
         << "local testing.ry shadow should not record stdlib intrinsics";
 }
 
-TEST_F(ImportTest, FromTestingWildcardRecordsAllFourIntrinsics) {
+TEST_F(ImportTest, FromTestingWildcardRecordsAllThreeIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
         "from testing\n",
         tmp_dir_.string(),
         search_paths);
+    // Post-#722 `verify` is a regular `@public fn verify` in
+    // share/std/testing/testing.ry — it flows through the normal import
+    // path and is no longer recorded in the testing-intrinsic set.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "fail"};
+    EXPECT_EQ(intrinsics.size(), 3u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1550,10 +1557,10 @@ TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
 TEST_F(ImportTest, FromTestingImportMultipleIntrinsicsRecordsAll) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect, mock, verify, fail\n",
+        "from testing import expect, mock, fail\n",
         tmp_dir_.string(),
         search_paths);
-    std::unordered_set<std::string> expected = {"expect", "mock", "verify", "fail"};
+    std::unordered_set<std::string> expected = {"expect", "mock", "fail"};
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1583,9 +1590,11 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
         "from testing\n",
         tmp_dir_.string(),
         search_paths);
+    // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
+    // `@public fn` in share/std/testing/testing.ry).
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "fail"};
+    EXPECT_EQ(intrinsics.size(), 3u);
     EXPECT_EQ(intrinsics, expected);
 }
 

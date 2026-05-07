@@ -664,8 +664,6 @@ ExprPtr Parser::parsePrimary() {
             auto call = std::make_unique<CallExpr>();
             call->callee = t.value;
             call->args = parseArgList(&call->named_args);
-            if (call->callee == "verify")
-                coerceFirstArgToString(call->args);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
             node->loc = locFromToken(t);

@@ -13,4 +13,8 @@ extern "C" void __ry_testing__reportFail(int64_t line, const char *msg) {
     __ry_test_fail(static_cast<int>(line), msg);
 }
 
+extern "C" int64_t __ry_testing__mockGetCallCount(const char *name) {
+    return __ry_mock_get_call_count(name);
+}
+
 } // namespace ry

@@ -64,11 +64,18 @@ TEST_F(CodeGenTest, ExpectOutsideTestModeWinsOverImportCheck) {
 }
 
 // ============================================================
-// Testing intrinsics (expect / mock / verify / fail) require
-// the matching `from testing import <name>`. Without it codegen
-// must reject the use even when running in test mode (#715).
+// Testing intrinsics (expect / mock / fail) require the matching
+// `from testing import <name>`. Without it codegen must reject the
+// use even when running in test mode (#715).
 // `runTestSourceNoTestingImports` is the only fixture that does
 // not auto-inject the imports.
+//
+// Note: as of #722, `verify` is no longer a compiler-recognized
+// intrinsic — it lives as an ordinary `@public fn verify` in
+// `share/std/testing/testing.ry`. Calling `verify` without the
+// import now fails with the generic `undefined function: verify`
+// path rather than the import-enforcement diagnostic, so it is
+// not covered here.
 // ============================================================
 
 TEST_F(CodeGenTest, ExpectRequiresTestingImport) {
@@ -94,22 +101,6 @@ TEST_F(CodeGenTest, MockRequiresTestingImport) {
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("requires 'from testing import mock'"),
-                  std::string::npos)
-            << "got: " << msg;
-    }
-}
-
-TEST_F(CodeGenTest, VerifyRequiresTestingImport) {
-    try {
-        runTestSourceNoTestingImports(
-            "fn greet() -> str:\n"
-            "  return \"hi\"\n"
-            "x = verify(\"greet\")\n"
-        );
-        FAIL() << "Expected compile error";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import verify'"),
                   std::string::npos)
             << "got: " << msg;
     }

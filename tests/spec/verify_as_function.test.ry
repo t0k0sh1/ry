@@ -1,0 +1,18 @@
+from testing import it, describe, expect, mock, verify
+
+fn greet() -> str:
+  return "hello"
+
+@describe("verify as a regular function")
+fn verifyAsFunctionTests():
+  @it("accepts a string variable, not just a literal")
+  fn acceptsStringVariable():
+    mock("greet", () => "hi")
+    greet()
+    greet()
+    greet()
+    fnName = "greet"
+    expect(verify(fnName)).toEq(3)
+  @it("returns 0 for an unknown function name")
+  fn returnsZeroForUnknownName():
+    expect(verify("nonexistentFunction")).toEq(0)

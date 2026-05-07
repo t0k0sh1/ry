@@ -77,7 +77,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
         "        greet()\n"
         "        greet()\n"
         "        greet()\n"
-        "        expect(verify(greet)).toEq(3)\n"
+        "        expect(verify(\"greet\")).toEq(3)\n"
     )), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed\n");
 }
 
@@ -98,7 +98,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
         "        mock(getValue, () => 999)\n"
         "        x = getValue()\n"
         "        expect(x).toEq(999)\n"
-        "        expect(verify(getValue)).toEq(1)\n"
+        "        expect(verify(\"getValue\")).toEq(1)\n"
     )), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");
 }
 

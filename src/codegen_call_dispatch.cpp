@@ -59,32 +59,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
-    // verify(fn_name) → call count
-    if (e->callee == "verify") {
-        if (!test_mode_)
-            codegenError("'verify' is only allowed in test mode (use 'ry test')");
-        // CallExpr has no `loc` field; rely on `current_loc_`, which `emitExpr`
-        // (src/codegen_expr.cpp:71) sets from the enclosing ExprNode.loc before
-        // dispatching to emitExprVariant. The `verify` branch is reached only
-        // through that path, so `current_loc_` is valid here.
-        if (!testing_intrinsics_imported_.count("verify"))
-            codegenError("'verify' requires 'from testing import verify'");
-        if (e->args.size() != 1)
-            codegenError("verify() requires exactly 1 argument");
-        auto *strExpr = std::get_if<StringExpr>(&e->args[0]->data);
-        if (!strExpr)
-            codegenError("verify() argument must be a function name");
-        auto *vit = findFunction(strExpr->value);
-        if (!vit)
-            codegenError("verify(): unknown function '" + strExpr->value + "'");
-        if (vit->size() != 1)
-            codegenError("verify(): overloaded functions are not supported");
-        auto *getCountTy = fnTy_ptr_to_i64_;
-        llvm::FunctionCallee getCountFn = mod_->getOrInsertFunction("__ry_mock_get_call_count", getCountTy);
-        llvm::Value *nameStr = cachedGlobalString(strExpr->value, ".verify_name");
-        return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
-    }
-
     // Fast path: pre-emit args[0] once for callee names shared by multiple
     // dispatchers, then route through the same try-chain order to avoid
     // emitting dead IR from earlier dispatchers that don't match the type.
