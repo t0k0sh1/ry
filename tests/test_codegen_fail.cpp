@@ -41,6 +41,70 @@ TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
 }
 
 // ============================================================
+// Testing intrinsics (expect / mock / verify / fail) require
+// the matching `from testing import <name>`. Without it codegen
+// must reject the use even when running in test mode (#715).
+// `runTestSourceNoTestingImports` is the only fixture that does
+// not auto-inject the imports.
+// ============================================================
+
+TEST_F(CodeGenTest, ExpectRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports("expect(1).toEq(1)\n");
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import expect'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, MockRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports(
+            "fn greet() -> str:\n"
+            "  return \"hi\"\n"
+            "mock(greet, () => \"mocked\")\n"
+        );
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import mock'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, VerifyRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports(
+            "fn greet() -> str:\n"
+            "  return \"hi\"\n"
+            "x = verify(\"greet\")\n"
+        );
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import verify'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, FailRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports("fail(\"oops\")\n");
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import fail'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// ============================================================
 // Null coalescing (`??`) rejects non-Option/non-Result operands
 // ============================================================
 

@@ -63,6 +63,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (e->callee == "verify") {
         if (!test_mode_)
             codegenError("'verify' is only allowed in test mode (use 'ry test')");
+        // CallExpr has no `loc` field; rely on `current_loc_`, which `emitExpr`
+        // (src/codegen_expr.cpp:71) sets from the enclosing ExprNode.loc before
+        // dispatching to emitExprVariant. The `verify` branch is reached only
+        // through that path, so `current_loc_` is valid here.
+        if (!testing_intrinsics_imported_.count("verify"))
+            codegenError("'verify' requires 'from testing import verify'");
         if (e->args.size() != 1)
             codegenError("verify() requires exactly 1 argument");
         auto *strExpr = std::get_if<StringExpr>(&e->args[0]->data);
