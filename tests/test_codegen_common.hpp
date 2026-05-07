@@ -109,20 +109,19 @@ protected:
     // In production, jit_runner.cpp:165 calls
     // `cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics())`
     // so codegen knows which testing intrinsics the source imported. For the
-    // test harness we mimic the wildcard `from testing` import for the four
-    // names enforced by #715 (expect/mock/verify/fail), so existing tests that
-    // embed those intrinsics literally in their source strings continue to
-    // compile. `it` / `describe` are intentionally omitted: when #716 adds
-    // their enforcement, its negative tests must NOT be written via this
-    // helper (they would pass vacuously). Use `runTestSourceNoTestingImports`
-    // for tests that intentionally exercise the missing-import error.
+    // test harness we mimic the wildcard `from testing` import for the six
+    // enforced names (expect/mock/verify/fail from #715, plus it/describe
+    // from #716), so existing tests that embed those intrinsics or directives
+    // literally in their source strings continue to compile. Negative tests
+    // that intentionally exercise the missing-import error must use
+    // `runTestSourceNoTestingImports` instead.
     static std::string runTestSource(const std::string &src) {
         Lexer lex(src);
         Parser parser(lex);
         Program prog = parser.parseProgram();
 
         CodeGen cg(true);  // test_mode = true
-        cg.setTestingIntrinsicsImported({"expect", "mock", "verify", "fail"});
+        cg.setTestingIntrinsicsImported({"expect", "mock", "verify", "fail", "it", "describe"});
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
     }
