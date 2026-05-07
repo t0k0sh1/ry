@@ -86,5 +86,39 @@ installed. Enable tree-sitter-driven indentation per `.ry` buffer with:
 vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
 ```
 
+## Contributor workflow
+
+Whenever a PR touches one of these paths (paths are relative to the
+repo root), the local `ry.so` is no longer in sync with the grammar and
+must be rebuilt + reinstalled before the editor experience matches the
+language change:
+
+- `docs/grammar.ebnf` — canonical EBNF spec
+- `editor/tree-sitter/grammar.js` — tree-sitter grammar definition
+- `editor/tree-sitter/src/` — external scanner (`scanner.c`)
+
+The loop reuses the scripts documented in `## Build` and `## Install
+(Neovim)` above (run from `editor/tree-sitter/`):
+
+```bash
+./build.sh                                 # regenerate parser.c + build ry.so
+./install.sh --no-build                    # copy ry.so + queries to Neovim parser dir
+```
+
+If `tree-sitter generate` fails inside `build.sh`, the grammar has a
+syntax error — fix `grammar.js` (or `scanner.c`) and rerun. After
+`install.sh` succeeds, optionally open a `.ry` file in Neovim to
+eyeball the syntax highlighting and confirm no regressions.
+
+> Running `tree-sitter parse <file>.ry` against existing
+> `tests/spec/*.test.ry` will surface ERROR nodes today: the in-tree
+> grammar does not yet cover the full Ry surface. That's a known gap
+> and not what this loop is checking — corpus-based regression testing
+> is tracked in [#1633](https://github.com/t0k0sh1/ry/issues/1633).
+
+The pre-commit version of this loop, with the same trigger paths, lives
+in [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md)
+§3.6.5.
+
 Other editors are not yet supported in-tree; integrations may be added under
 `editor/<tool>/` as they appear.
