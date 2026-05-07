@@ -120,7 +120,7 @@ fn resultOptionArcReturn999Tests():
         expect(xs.len()).toEq(3)
         expect(xs[0]).toEq(10)
       Err(e):
-        fail("unexpected Err")
+        fail("unexpected Err: " + e.message)
 
   @it("Ok(xs) — inner list is alive after function returns (no use-after-free)")
   fn okXsInnerListIsAliveAfterFunctionReturnsNoUseAfterFree():
@@ -135,7 +135,7 @@ fn resultOptionArcReturn999Tests():
         expect(xs[0]).toEq(42)
         expect(xs[1]).toEq(43)
       Err(e):
-        fail("unexpected Err")
+        fail("unexpected Err: " + e.message)
 
   @it("Err(xs) — data survives scope cleanup")
   fn errXsDataSurvivesScopeCleanup():

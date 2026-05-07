@@ -19,49 +19,49 @@ fn fileIOTests():
           Ok(s):
             expect(s).toEq("hello world")
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case deleteFile("/tmp/ry_selftest_io.txt"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should append text")
   fn shouldAppendText():
     case writeText("/tmp/ry_selftest_io_append.txt", "hello"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case appendText("/tmp/ry_selftest_io_append.txt", " world"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case readText("/tmp/ry_selftest_io_append.txt"):
       Ok(s):
         expect(s).toEq("hello world")
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case deleteFile("/tmp/ry_selftest_io_append.txt"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should check exists")
   fn shouldCheckExists():
     case writeText("/tmp/ry_selftest_io_exists.txt", "test"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     expect(exists("/tmp/ry_selftest_io_exists.txt")).toEq(true)
     case deleteFile("/tmp/ry_selftest_io_exists.txt"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     expect(exists("/tmp/ry_selftest_io_exists.txt")).toEq(false)
   @it("should handle byte conversions")
   fn shouldHandleByteConversions():
@@ -71,7 +71,7 @@ fn fileIOTests():
       Ok(s):
         expect(s).toEq("ABC")
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should read/write bytes")
   fn shouldReadWriteBytes():
     data = toBytes("binary test")
@@ -79,7 +79,7 @@ fn fileIOTests():
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case readBytes("/tmp/ry_selftest_io_bytes.bin"):
       Ok(rb):
         expect(len(rb)).toEq(11)
@@ -87,14 +87,14 @@ fn fileIOTests():
           Ok(s):
             expect(s).toEq("binary test")
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     case deleteFile("/tmp/ry_selftest_io_bytes.bin"):
       Ok(_):
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should return Err from readText for missing file")
   fn shouldReturnErrFromReadtextForMissingFile():
     expect(readText("/tmp/ry_selftest_nonexistent_file.txt")).toBeErr()
@@ -112,9 +112,9 @@ fn fileIOTests():
           Ok(s):
             expect(s).toEq("")
           Err(e):
-            fail("unexpected read error")
+            fail("unexpected read error: " + e.message)
       Err(e):
-        fail("unexpected write error")
+        fail("unexpected write error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_empty.txt")
   @it("should write and read empty bytes")
   fn shouldWriteAndReadEmptyBytes():
@@ -125,9 +125,9 @@ fn fileIOTests():
           Ok(rb):
             expect(len(rb)).toEq(0)
           Err(e):
-            fail("unexpected read error")
+            fail("unexpected read error: " + e.message)
       Err(e):
-        fail("unexpected write error")
+        fail("unexpected write error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_empty.bin")
   @it("should return false from exists for missing file")
   fn shouldReturnFalseFromExistsForMissingFile():
@@ -140,7 +140,7 @@ fn fileIOTests():
       Ok(s):
         expect(s).toEq("second")
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_overwrite.txt")
   @it("should convert u8 list literal including embedded NUL to str")
   fn shouldConvertU8ListLiteralIncludingEmbeddedNulToStr():
@@ -148,7 +148,7 @@ fn fileIOTests():
       Ok(s):
         expect(s == "a\0b").toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should write and read back u8 list literal with embedded NUL")
   fn shouldWriteAndReadBackU8ListLiteralWithEmbeddedNul():
     case writeBytes("/tmp/ry_selftest_io_u8lit.bin", [97u8, 0u8, 98u8]):
@@ -160,11 +160,11 @@ fn fileIOTests():
               Ok(s):
                 expect(s == "a\0b").toEq(true)
               Err(e):
-                fail("unexpected decode error")
+                fail("unexpected decode error: " + e.message)
           Err(e):
-            fail("unexpected read error")
+            fail("unexpected read error: " + e.message)
       Err(e):
-        fail("unexpected write error")
+        fail("unexpected write error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_u8lit.bin")
   @it("should convert toBytes output back to str (regression guard)")
   fn shouldConvertTobytesOutputBackToStrRegressionGuard():
@@ -173,7 +173,7 @@ fn fileIOTests():
       Ok(s):
         expect(s).toEq("hello")
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should accept List<u8> annotation and route through byte stride (#1079)")
   fn shouldAcceptListU8AnnotationAndRouteThroughByteStride1079():
     bs: List<u8> = [97, 0, 98]
@@ -181,7 +181,7 @@ fn fileIOTests():
       Ok(s):
         expect(s == "a\0b").toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should accept List<u8> annotation for writeBytes (#1079)")
   fn shouldAcceptListU8AnnotationForWritebytes1079():
     bs: List<u8> = [72, 105]
@@ -189,9 +189,9 @@ fn fileIOTests():
       Ok(_):
         case readBytes("/tmp/ry_selftest_io_annot_u8.bin"):
           Ok(rb): expect(len(rb)).toEq(2)
-          Err(e): fail("unexpected read error")
+          Err(e): fail("unexpected read error: " + e.message)
       Err(e):
-        fail("unexpected write error")
+        fail("unexpected write error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_annot_u8.bin")
   @it("should accept List<u8> reassignment via bytesToStr (#1085)")
   fn shouldAcceptListU8ReassignmentViaBytestostr1085():
@@ -201,7 +201,7 @@ fn fileIOTests():
       Ok(s):
         expect(s == "cde").toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should accept List<u8> reassignment for writeBytes (#1085)")
   fn shouldAcceptListU8ReassignmentForWritebytes1085():
     bs: List<u8> = [72, 105]
@@ -210,9 +210,9 @@ fn fileIOTests():
       Ok(_):
         case readBytes("/tmp/ry_selftest_io_reassign_u8.bin"):
           Ok(rb): expect(len(rb)).toEq(3)
-          Err(e): fail("unexpected read error")
+          Err(e): fail("unexpected read error: " + e.message)
       Err(e):
-        fail("unexpected write error")
+        fail("unexpected write error: " + e.message)
     deleteFile("/tmp/ry_selftest_io_reassign_u8.bin")
   @it("should accept List<u8> module-global reassignment from function (#1085)")
   fn shouldAcceptListU8ModuleGlobalReassignmentFromFunction1085():
@@ -221,7 +221,7 @@ fn fileIOTests():
       Ok(s):
         expect(s == "cde").toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should accept List<u8> compound assignment (local, #1102)")
   fn shouldAcceptListU8CompoundAssignmentLocal1102():
     bs: List<u8> = [97]
@@ -231,4 +231,4 @@ fn fileIOTests():
       Ok(s):
         expect(s == "ac").toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)

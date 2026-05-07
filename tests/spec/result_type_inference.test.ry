@@ -131,7 +131,7 @@ fn resultTypeInferenceInUnannotatedLambdasTests():
     r: Result<int, int> = f(42, -1)
     case r:
       Ok(v): expect(v).toEq(42)
-      Err(e): fail("expected Ok but got Err")
+      Err(e): fail(f"expected Ok but got Err({e})")
     r2: Result<int, int> = f(-1, 99)
     case r2:
       Ok(v): fail("expected Err but got Ok")
@@ -145,4 +145,4 @@ fn resultTypeInferenceInUnannotatedLambdasTests():
       Err(e): expect(e).toEq(-5)
     case f(5):
       Ok(v): expect(v).toEq(100)
-      Err(e): fail("expected Ok but got Err")
+      Err(e): fail(f"expected Ok but got Err({e})")

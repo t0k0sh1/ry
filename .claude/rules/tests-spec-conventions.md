@@ -113,6 +113,27 @@ For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.
 
+### `Err(e):` formatting for non-Error Err slots: pick by Result<Ok, Err> shape
+
+**Source**: #1447 (2026-05-08, implementation); #1638 (companion bug)
+**Tags**: testing, case, Err binding, str, ARC, non-Error, f-string, blind-spot
+
+**Rule**: When formatting the bound `e` inside `fail(...)` of an `Err(e):` arm whose Err slot is **not** `Error`, the canonical pattern depends on the Result shape:
+
+| Result type | `"prefix: " + e` | `f"prefix: {e}"` | Canonical |
+|---|---|---|---|
+| `Result<int, str>` | works | works | either |
+| `Result<int, int>` | compile error (no int+str concat) | works | f-string |
+| `Result<List<int>, str>` (ARC Ok slot) | compile error | typechecks, crashes at runtime | see #1638 workaround |
+
+**Why**: `Result<int, str>` preserves the str typing of the Err slot through the binding, so both `+` (str concat) and f-string interpolation work. `Result<int, int>` cannot use `+ e` because there is no `str + int` operator, but f-string accepts int interpolation. `Result<ARC-type, str>` (where the Ok slot holds an ARC-managed type like `List`, `Map`, etc.) loses str typing on the Err side (#1638): `+ e` is rejected at compile time, and `f"{e}"` typechecks but the value is an invalid str representation that crashes when the Err arm actually executes.
+
+**How to apply**: For `Err(e):` arms in `tests/spec/`:
+
+- `Result<int, str>` and `Result<<primitive>, Error>` paths: use `+ e.message` (Error) or `+ e` (str) — most readable.
+- `Result<int, int>` paths: use `f"...({e})"` — f-string is the only way to interpolate an int into the message.
+- `Result<<ARC-type>, str>` paths: until #1638 lands, prefer `Err(_):` if the arm is **reachable** in the test. If the arm is **unreachable** (e.g. a defensive `Err(e): fail("expected Ok but got Err...")` against a fn that only ever returns Ok), `f"{e}"` is acceptable — it compiles and the latent runtime crash is hidden behind the dead code path. The fix in `pattern_arc.test.ry:81` (#1447) follows this convention.
+
 ### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`, and must cover module-global declarations
 
 **Source**: #1466 (2026-04-30, follow-up to #1450 / #1451); #1468 (2026-04-30, module-global blind spot)

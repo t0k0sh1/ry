@@ -98,7 +98,7 @@ fn semaphoreTests():
         threadJoin(t2)
         expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
-        fail("semaphoreNew failed")
+        fail("semaphoreNew failed: " + e.message)
 
 @describe("Barrier")
 fn barrierTests():
@@ -123,7 +123,7 @@ fn barrierTests():
         threadJoin(t2)
         expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
-        fail("barrierNew failed")
+        fail("barrierNew failed: " + e.message)
 
 @describe("AtomicInt")
 fn atomicintTests():
@@ -228,7 +228,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toEq(42)
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
   @it("should return float from an expression-bodied worker")
   fn shouldReturnFloatFromAnExpressionBodiedWorker():
@@ -237,7 +237,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toEq(3.14)
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
   @it("should return bool from an expression-bodied worker")
   fn shouldReturnBoolFromAnExpressionBodiedWorker():
@@ -246,7 +246,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toBeTrue()
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
   @it("should support captured variables in value-returning workers")
   fn shouldSupportCapturedVariablesInValueReturningWorkers():
@@ -256,7 +256,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toEq(100)
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
   @it("should propagate return-type metadata across variable assignment")
   fn shouldPropagateReturnTypeMetadataAcrossVariableAssignment():
@@ -269,7 +269,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toEq(7)
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
   @it("should preserve Thread resource metadata across helper returns")
   fn shouldPreserveThreadResourceMetadataAcrossHelperReturns():
@@ -280,7 +280,7 @@ fn threadspawnReturnValuesMvp828Tests():
       Ok(v):
         expect(v).toEq(7)
       Err(e):
-        fail("expected Ok but got Err")
+        fail("expected Ok but got Err: " + e.message)
 
 @describe("threadJoin error paths (MVP, #828)")
 fn threadjoinErrorPathsMvp828Tests():
