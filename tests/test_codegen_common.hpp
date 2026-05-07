@@ -105,6 +105,21 @@ protected:
         }
     }
 
+    // Appended after user source so that line numbers in the user source
+    // are not shifted (tests like FailWithMessage assert on specific line
+    // numbers in `fail()` output).  Mirrors share/std/testing/testing.ry's
+    // declarations of `fail` and the underlying `@native` runtime call.
+    static std::string withTestingFnDecls(const std::string &src) {
+        static const char *kDecls =
+            "\n"
+            "@native(\"testing\")\n"
+            "fn _reportFail(line: int, message: str) -> Unit\n"
+            "@public\n"
+            "fn fail(_line: int, message: str = \"\") -> Unit:\n"
+            "  _reportFail(_line, message)\n";
+        return src + kDecls;
+    }
+
     // The codegen test harness skips ModuleLoader (see CodeGenTest::compileSource).
     // In production, jit_runner.cpp:165 calls
     // `cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics())`
@@ -115,8 +130,14 @@ protected:
     // literally in their source strings continue to compile. Negative tests
     // that intentionally exercise the missing-import error must use
     // `runTestSourceNoTestingImports` instead.
+    //
+    // Since #718 made `fail` a Ry-level function (declared in
+    // share/std/testing/testing.ry, body emitted via emitUserFnCall), the
+    // harness also appends the `fail` and `_reportFail` declarations after
+    // the user source so codegen can find them in user_fns_.
     static std::string runTestSource(const std::string &src) {
-        Lexer lex(src);
+        std::string augmented = withTestingFnDecls(src);
+        Lexer lex(augmented);
         Parser parser(lex);
         Program prog = parser.parseProgram();
 
@@ -130,7 +151,8 @@ protected:
     // Use this when writing a negative test that asserts the
     // `'<name>' requires 'from testing import <name>'` enforcement fires.
     static std::string runTestSourceNoTestingImports(const std::string &src) {
-        Lexer lex(src);
+        std::string augmented = withTestingFnDecls(src);
+        Lexer lex(augmented);
         Parser parser(lex);
         Program prog = parser.parseProgram();
 

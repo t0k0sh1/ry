@@ -970,22 +970,28 @@ void CodeGen::emitFailCall(CallStmt &s) {
     if (s.args.size() > 1)
         codegenError("fail() expects 0 or 1 argument(s), but got " + std::to_string(s.args.size()));
 
-    llvm::FunctionType *failTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_}, false);
-    llvm::FunctionCallee failFn = mod_->getOrInsertFunction("__ry_test_fail", failTy);
+    // Inject the call-site line as the first argument and dispatch through the
+    // Ry-level `fail(line: int, message: str = "")` function declared in
+    // share/std/testing/testing.ry. The compiler still special-cases the
+    // callee name so it can synthesize the line number; the function body
+    // itself runs as ordinary Ry code that calls the @native _report_fail.
+    std::vector<ExprPtr> synthArgs;
 
-    llvm::Value *msg;
+    auto lineNode = std::make_unique<ExprNode>();
+    lineNode->data = NumberExpr{static_cast<int64_t>(s.loc.line), ""};
+    lineNode->loc = s.loc;
+    synthArgs.push_back(std::move(lineNode));
+
     if (s.args.size() == 1) {
-        msg = emitExpr(*s.args[0]);
-        if (msg->getType() != ptrTy_)
-            codegenError("fail() argument must be a string");
+        synthArgs.push_back(std::move(s.args[0]));
     } else {
-        if (!fail_empty_msg_)
-            fail_empty_msg_ = cachedGlobalString("", ".fail_empty");
-        msg = fail_empty_msg_;
+        auto msgNode = std::make_unique<ExprNode>();
+        msgNode->data = StringExpr{""};
+        msgNode->loc = s.loc;
+        synthArgs.push_back(std::move(msgNode));
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), msg});
+    emitUserFnCall("fail", synthArgs);
 }
 
 } // namespace ry

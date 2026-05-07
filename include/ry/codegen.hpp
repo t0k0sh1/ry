@@ -1213,7 +1213,6 @@ public:
     void emitFailCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
-    llvm::Constant *fail_empty_msg_ = nullptr;
     llvm::Value *toBool(llvm::Value *v);
 
     // Low-level type helpers
