@@ -324,8 +324,6 @@ static void stripDirectives(
 void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@it is only allowed in test mode (use 'ry test')");
-    if (!testing_intrinsics_imported_.count("it"))
-        codegenError(s->loc, "'@it' requires 'from testing import it'");
     if (s->is_async)
         codegenError("@it: fn '" + s->name + "' cannot be async");
     if (!s->type_params.empty())
@@ -454,8 +452,6 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
 void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@describe is only allowed in test mode (use 'ry test')");
-    if (!testing_intrinsics_imported_.count("describe"))
-        codegenError(s->loc, "'@describe' requires 'from testing import describe'");
     if (s->is_async)
         codegenError("@describe: fn '" + s->name + "' cannot be async");
     if (!s->type_params.empty())

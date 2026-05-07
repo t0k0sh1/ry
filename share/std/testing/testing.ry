@@ -1,5 +1,8 @@
 # Testing directives. Test files must explicitly
-# `from std/testing import it, describe`.
+# `from testing import it, describe`. The @directive declarations
+# below register `it` / `describe` in the importer's user-directive
+# registry; usage without the import is rejected by the general
+# `unknown directive '@<name>'` path (no separate enforcement set).
 @public
 @directive(target=["function"])
 fn it(description: str)

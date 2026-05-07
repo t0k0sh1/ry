@@ -56,22 +56,30 @@ static std::string makeImportError(int line, const std::string &detail) {
     return msg;
 }
 
-// Compiler intrinsics exposed by the testing module (#712). These are not
-// declared in `share/std/testing/testing.ry` because they are matched and
-// emitted directly by codegen (`expect <expr> <matcher>` is a parser-level
-// statement form; `mock` / `verify` / `fail` and the directives `it` /
-// `describe` are handled at codegen). Listing them here lets
-// `from testing import expect / mock / verify / fail / it / describe` resolve
-// without producing AST nodes — the allow-list bypass below skips the
+// Compiler intrinsics exposed by the testing module (#712). The names listed
+// here either produce no AST node (`expect <expr> <matcher>` is a parser-level
+// statement form; `mock` / `verify` are recognized at codegen) or are wrapped
+// by codegen synth (`fail` — `codegen_call_user.cpp:435` synthesizes the
+// __LINE__-equivalent argument before delegating to the user-fn `fail` defined
+// in `share/std/testing/testing.ry`). Listing them here lets
+// `from testing import expect / mock / verify / fail` resolve without
+// producing AST nodes — the allow-list bypass below skips the
 // `'<name>' not found` throw without altering anything else.
+//
+// Note: `it` / `describe` are NOT listed here. They are declared as regular
+// `@directive` statements in `share/std/testing/testing.ry` and flow through
+// the standard import mechanism into `CodeGen::user_directive_registry_`
+// (#721). Validation of unimported usage is handled by `validateDirectives`
+// in the general `@directive` machinery, which raises
+// `unknown directive '@it'` / `unknown directive '@describe'`.
 static const std::unordered_set<std::string> &testingIntrinsics() {
     static const std::unordered_set<std::string> kSet = {
-        "it", "describe", "expect", "mock", "verify", "fail"};
+        "expect", "mock", "verify", "fail"};
     return kSet;
 }
 
 // Gate the intrinsic bypass on `from_stdlib` so a project-local `testing.ry`
-// shadow (resolved via `referrer_dir`) does NOT silently absorb the six
+// shadow (resolved via `referrer_dir`) does NOT silently absorb the
 // intrinsic names. Only the stdlib testing module gets the bypass; a local
 // shadow continues to fail with the existing `'<name>' not found` diagnostic.
 static bool isTestingIntrinsic(bool from_stdlib,

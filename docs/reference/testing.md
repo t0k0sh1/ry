@@ -36,7 +36,10 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every directive and intrinsic a test file uses must appear in an explicit `from testing import ...` line at the top; codegen rejects unimported usage with `'<name>' requires 'from testing import <name>'`:
+Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). The two enforcement paths produce different error messages:
+
+- `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
+- `expect`, `mock`, `verify`, `fail` are intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
 
 ```ry
 from testing import it, describe, expect
