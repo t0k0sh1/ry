@@ -498,6 +498,8 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
 void CodeGen::emitMockCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'mock' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("mock"))
+        codegenError(s.loc, "'mock' requires 'from testing import mock'");
 
     if (s.args.size() != 2)
         codegenError("mock() requires exactly 2 arguments: function name and replacement");
@@ -563,6 +565,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     emitCoverage(s.loc);
     if (!test_mode_)
         codegenError("'expect' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("expect"))
+        codegenError(s.loc, "'expect' requires 'from testing import expect'");
 
     llvm::Value *actualVal = emitExpr(*s.actual);
     llvm::Type *actualTy = actualVal->getType();
@@ -956,6 +960,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 void CodeGen::emitFailCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'fail' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("fail"))
+        codegenError(s.loc, "'fail' requires 'from testing import fail'");
 
     if (s.args.size() > 1)
         codegenError("fail() expects 0 or 1 argument(s), but got " + std::to_string(s.args.size()));

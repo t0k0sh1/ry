@@ -855,8 +855,9 @@ public:
 
     // Testing intrinsics imported via `from testing import ...`. Set by
     // setTestingIntrinsicsImported() from ModuleLoader::importedTestingIntrinsics()
-    // before compile(). Reserved for future enforcement (#715/#716);
-    // currently unused by codegen.
+    // before compile(). Used by codegen to enforce that `expect`/`mock`/`verify`/
+    // `fail` require an explicit import (#715). `it`/`describe` enforcement is
+    // tracked separately under #716.
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
     // User-defined @directive declarations. Keyed by directive name.

@@ -36,10 +36,10 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Use the `@it` and `@describe` directives to define test cases as ordinary named functions. Both directives are exported from the `testing` module and must be imported at the top of every test file:
+Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every intrinsic a test file uses — `expect`, `mock`, `verify`, or `fail` — must appear in an explicit `from testing import ...` line at the top:
 
 ```ry
-from testing import it, describe
+from testing import it, describe, expect
 
 @it("test case name")
 fn testAdd():
@@ -49,7 +49,7 @@ fn testAdd():
 Group related tests using `@describe`:
 
 ```ry
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("Arithmetic")
 fn arithmeticTests():
@@ -73,6 +73,8 @@ fn arithmeticTests():
 Variables declared in the `@describe` function body are automatically captured by inner `@it` functions:
 
 ```ry
+from testing import it, describe, expect
+
 @describe("User validation")
 fn userValidationTests():
     minLength = 8
@@ -92,6 +94,8 @@ fn userValidationTests():
 `@describe` functions can be nested to create multi-level groupings. Output is indented to reflect the nesting depth:
 
 ```ry
+from testing import it, describe, expect
+
 @describe("API")
 fn apiTests():
     @describe("GET /users")
@@ -150,7 +154,9 @@ foo("arg", ():
 
 Immediately marks the current test as failed.
 
-```
+```ry
+from testing import it, fail
+
 @it("should not reach here")
 fn shouldNotReachHere():
     fail("unexpected error")
@@ -160,6 +166,7 @@ fn shouldNotReachHere():
 - `fail(msg)` — marks the test as failed with a custom message
 - Execution continues after `fail()` (does not abort the test)
 - Only available in `ry test` mode
+- Requires `from testing import fail`
 
 ---
 
@@ -182,8 +189,8 @@ Calculator
 
 ## Example
 
-```
-from testing import it, describe
+```ry
+from testing import it, describe, expect
 
 @describe("Arithmetic")
 fn arithmeticTests():
@@ -214,7 +221,9 @@ fn booleansTests():
 
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
-```
+```ry
+from testing import it, describe, mock, expect
+
 fn fetchData() -> str:
     return "real data"
 
@@ -235,12 +244,15 @@ fn mockingTests():
 - The replacement must have the same parameter types and return type as the original function
 - `require` and `ensure` contracts on the original function are still enforced when the mock is called
 - Mocks are automatically restored at the end of each `it` block
+- Requires `from testing import mock`
 
 ### verify(fnName)
 
 Returns the number of times a mocked function was called (as `int`).
 
-```
+```ry
+from testing import it, describe, mock, verify, expect
+
 @describe("verify")
 fn verifyTests():
     @it("should count calls")
@@ -250,6 +262,8 @@ fn verifyTests():
         fetchData()
         expect(verify(fetchData)).toEq(2)
 ```
+
+- Requires `from testing import verify`
 
 ### Limitations
 
@@ -266,6 +280,8 @@ fn verifyTests():
 **Syntax:**
 
 ```ry
+from testing import it, expect
+
 @each([
     (1, 2, 3),
     (0, 0, 0),
@@ -288,6 +304,8 @@ fn testAdd(a: int, b: int, expected: int):
 `@property` generates random inputs and runs the test multiple times.
 
 ```ry
+from testing import it, expect
+
 @property(count=100)
 @it("should verify addition is commutative")
 fn testCommutative(a: int, b: int):
