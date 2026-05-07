@@ -130,17 +130,18 @@ protected:
     // In production, jit_runner.cpp:165 calls
     // `cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics())`
     // so codegen knows which testing intrinsics the source imported. For the
-    // test harness we mimic the wildcard `from testing` import for the six
-    // enforced names (expect/mock/verify/fail from #715, plus it/describe
-    // from #716), so existing tests that embed those intrinsics or directives
-    // literally in their source strings continue to compile. Negative tests
-    // that intentionally exercise the missing-import error must use
+    // test harness we mimic the wildcard `from testing` import for the five
+    // enforced names (expect/mock/fail from #715, plus it/describe from #716),
+    // so existing tests that embed those intrinsics or directives literally
+    // in their source strings continue to compile. Negative tests that
+    // intentionally exercise the missing-import error must use
     // `runTestSourceNoTestingImports` instead.
     //
-    // Since #718 made `fail` a Ry-level function (declared in
-    // share/std/testing/testing.ry, body emitted via emitUserFnCall), the
-    // harness also appends the `fail` and `_reportFail` declarations after
-    // the user source so codegen can find them in user_fns_.
+    // Since #718 made `fail` and #722 made `verify` Ry-level functions
+    // (declared in share/std/testing/testing.ry, bodies emitted via
+    // emitUserFnCall), the harness also appends `fail` / `verify` and their
+    // `@native` backing declarations (`_reportFail`, `_mockGetCallCount`)
+    // after the user source so codegen can find them in user_fns_.
     static std::string runTestSource(const std::string &src) {
         std::string augmented = withTestingFnDecls(src);
         Lexer lex(augmented);
@@ -148,7 +149,7 @@ protected:
         Program prog = parser.parseProgram();
 
         CodeGen cg(true);  // test_mode = true
-        cg.setTestingIntrinsicsImported({"expect", "mock", "verify", "fail", "it", "describe"});
+        cg.setTestingIntrinsicsImported({"expect", "mock", "fail", "it", "describe"});
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
     }
