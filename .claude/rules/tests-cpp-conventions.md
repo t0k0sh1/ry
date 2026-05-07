@@ -49,6 +49,24 @@ The codegen test harness (`runSource`, `runSourceWithWarnings`, `runTestSource`,
 
 **Why a smoke test is still needed**: The helper bypasses the actual `ModuleLoader` → `builtins.ry` re-export chain, so all-green C++ tests prove the codegen logic but not the loader path. Always also run a smoke test through the real CLI (`./build/ry /tmp/<file>.ry`) when changing the directive declaration locations or the re-export wiring.
 
+### Stdlib `@native` fns reachable from `runTestSource` need APPENDED inline decls (not prepended)
+
+**Source**: #718 (2026-05-07, implementation)
+**Tags**: testing, codegen-test, stdlib, module-loader, harness, line-number, fail
+
+**Context**: After #718, `fail()` is no longer a compiler builtin — its body lives in `share/std/testing/testing.ry` as a Ry function that calls `_reportFail` (`@native("testing")`). For a normal `./build/ry test` invocation the loader resolves `from testing import fail` and codegen sees `fail` as a regular user function. The C++ codegen test harness (`runTestSource` / `runTestSourceNoTestingImports` in `tests/test_codegen_common.hpp`) skips `ModuleLoader` entirely and therefore never sees those declarations — `fail(…)` lookup at codegen time fails with `undefined function: fail`.
+
+**Rule**: When a stdlib `@native` fn (or a Ry fn that wraps a `@native` symbol) becomes reachable from C++ test sources after migration from compiler-magic, inject the inline declarations into the test harness via a helper analogous to `withStdlibDirectiveDecls`. For #718 the helper is `withTestingFnDecls` — it appends `_reportFail` and `fail` declarations to the user source and is applied **inside** `runTestSource` / `runTestSourceNoTestingImports` so existing call sites need no opt-in.
+
+**Why APPEND (not prepend)**: Some tests assert specific line numbers in the printed output (e.g. `CodeGenTest.FailWithMessage` expects the failure to report `line 21`). Prepending decls shifts every user-source line and breaks those assertions silently — the test still runs, but the diagnostic line number is off by the number of injected lines. Appending preserves user-source line numbers because all injected lines come after the user's last meaningful line.
+
+**How to apply**:
+- Adding a new test that uses `fail(...)` (or any future migrated stdlib fn): no opt-in needed — `runTestSource` already injects the decls. Just write the test as if `fail` were a builtin.
+- Adding a new stdlib-migrated fn that other tests must call: extend `withTestingFnDecls` (or add a parallel helper) with the new declaration and the `@native(...)` symbol decl it wraps. Apply via the relevant `runTestSource*` entry points.
+- Tests that assert specific source line numbers in output: keep using the APPEND pattern. A future "prepend" temptation (e.g. to make decls visible to a forward-reference analysis) must come with explicit accounting for the line-shift impact on every line-asserting test.
+
+**Smoke verification**: As with `withStdlibDirectiveDecls`, the helper bypasses the real `ModuleLoader` → `from testing import fail` chain. Run a smoke test through the real CLI (`./build/ry test /tmp/<file>.test.ry`) when changing the testing.ry declarations or the loader wiring for testing intrinsics.
+
 ### CodeGenTest::runSource cannot compile code that imports stdlib modules
 
 **Source**: #842 (2026-04-11, implementation)

@@ -272,6 +272,7 @@ add_ry_native_lib(path       src/runtime_path.cpp)
 add_ry_native_lib(convert    src/runtime_convert.cpp)
 add_ry_native_lib(filesystem src/runtime_filesystem.cpp)
 add_ry_native_lib(gc         src/runtime_gc.cpp)
+add_ry_native_lib(testing    src/runtime_testing.cpp)
 
 # All native libs are independent — no inter-library link dependencies.
 # __ry_set_last_error / __ry_get_last_error live in ry_lib (the main executable)
@@ -296,7 +297,7 @@ add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
                              src/runtime_tls.cpp src/runtime_hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
-set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_io ry_json ry_net ry_thread ry_http)
+set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 # Native shared libraries are NOT linked here — the JIT loads them on-demand
