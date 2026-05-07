@@ -108,7 +108,8 @@ protected:
     // Appended after user source so that line numbers in the user source
     // are not shifted (tests like FailWithMessage assert on specific line
     // numbers in `fail()` output).  Mirrors share/std/testing/testing.ry's
-    // declarations of `fail` and the underlying `@native` runtime call.
+    // declarations of `fail` / `verify` and the underlying `@native` runtime
+    // calls (`_reportFail`, `_mockGetCallCount`).
     static std::string withTestingFnDecls(const std::string &src) {
         static const char *kDecls =
             "\n"
@@ -116,7 +117,12 @@ protected:
             "fn _reportFail(line: int, message: str) -> Unit\n"
             "@public\n"
             "fn fail(_line: int, message: str = \"\") -> Unit:\n"
-            "  _reportFail(_line, message)\n";
+            "  _reportFail(_line, message)\n"
+            "@native(\"testing\")\n"
+            "fn _mockGetCallCount(name: str) -> int\n"
+            "@public\n"
+            "fn verify(name: str) -> int:\n"
+            "  return _mockGetCallCount(name)\n";
         return src + kDecls;
     }
 

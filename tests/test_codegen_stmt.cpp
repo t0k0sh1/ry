@@ -1511,15 +1511,18 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
         << "local testing.ry shadow should not record stdlib intrinsics";
 }
 
-TEST_F(ImportTest, FromTestingWildcardRecordsAllFourIntrinsics) {
+TEST_F(ImportTest, FromTestingWildcardRecordsAllThreeIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
         "from testing\n",
         tmp_dir_.string(),
         search_paths);
+    // Post-#722 `verify` is a regular `@public fn verify` in
+    // share/std/testing/testing.ry — it flows through the normal import
+    // path and is no longer recorded in the testing-intrinsic set.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "fail"};
+    EXPECT_EQ(intrinsics.size(), 3u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1550,10 +1553,10 @@ TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
 TEST_F(ImportTest, FromTestingImportMultipleIntrinsicsRecordsAll) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect, mock, verify, fail\n",
+        "from testing import expect, mock, fail\n",
         tmp_dir_.string(),
         search_paths);
-    std::unordered_set<std::string> expected = {"expect", "mock", "verify", "fail"};
+    std::unordered_set<std::string> expected = {"expect", "mock", "fail"};
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1583,9 +1586,11 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
         "from testing\n",
         tmp_dir_.string(),
         search_paths);
+    // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
+    // `@public fn` in share/std/testing/testing.ry).
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "fail"};
+    EXPECT_EQ(intrinsics.size(), 3u);
     EXPECT_EQ(intrinsics, expected);
 }
 
