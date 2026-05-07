@@ -305,6 +305,8 @@ Enables parameterized testing by running a test multiple times with different pa
 **Syntax:**
 
 ```ry
+from testing import it, each
+
 @each([(arg1, arg2, ...), ...])
 @it("should handle {0} and {1}")
 fn testHandle(param1: type, param2: type):
@@ -314,6 +316,8 @@ fn testHandle(param1: type, param2: type):
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
 ```ry
+from testing import it, each
+
 @each(makeInputs())
 @it("should handle {0}")
 fn testHandle(x: int):
@@ -336,6 +340,8 @@ Enables property-based testing by generating random inputs for a test.
 **Syntax:**
 
 ```ry
+from testing import it, property
+
 @property(count=100)
 @it("should verify property name")
 fn testProperty(a: int, b: int):
@@ -370,6 +376,8 @@ Declares a test case by attaching the directive to a named function. The functio
 **Syntax:**
 
 ```ry
+from testing import it
+
 @it("description")
 fn testName():
     # assertions
@@ -378,6 +386,8 @@ fn testName():
 **Basic example:**
 
 ```ry
+from testing import it, expect
+
 @it("should add 1 + 2 = 3")
 fn testAdd():
     expect(1 + 2).toEq(3)
@@ -386,6 +396,8 @@ fn testAdd():
 **Composed with `@each` or `@property`:**
 
 ```ry
+from testing import it, each, property, expect
+
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
 fn testAddEach(a: int, b: int, expected: int):
@@ -414,6 +426,8 @@ Groups a set of related tests by attaching the directive to a named function. In
 **Syntax:**
 
 ```ry
+from testing import it, describe
+
 @describe("group name")
 fn groupName():
     @it("nested test")
@@ -424,6 +438,8 @@ fn groupName():
 **Basic example:**
 
 ```ry
+from testing import it, describe, expect
+
 @describe("arithmetic")
 fn arithmeticTests():
     @it("should subtract")
@@ -440,6 +456,8 @@ fn arithmeticTests():
 Variables declared in the outer `@describe` body are automatically captured by every inner `@it` function.
 
 ```ry
+from testing import it, describe, expect
+
 @describe("shared setup")
 fn sharedSetupTests():
     base = 100
@@ -457,6 +475,8 @@ fn sharedSetupTests():
 **Nested groups:**
 
 ```ry
+from testing import it, describe, expect
+
 @describe("outer")
 fn outer():
     @describe("inner")
