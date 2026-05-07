@@ -105,9 +105,10 @@ The loop reuses the scripts documented in `## Build` and `## Install
 ./install.sh --no-build                    # copy ry.so + queries to Neovim parser dir
 ```
 
-If `tree-sitter generate` fails inside `build.sh`, the grammar has a
-syntax error — fix `grammar.js` (or `scanner.c`) and rerun. After
-`install.sh` succeeds, optionally open a `.ry` file in Neovim to
+If `tree-sitter generate` fails inside `build.sh`, the grammar
+definition has a syntax error — fix `grammar.js` and rerun. If the
+subsequent `tree-sitter build` step fails instead, inspect `scanner.c`.
+After `install.sh` succeeds, optionally open a `.ry` file in Neovim to
 eyeball the syntax highlighting and confirm no regressions.
 
 > Running `tree-sitter parse <file>.ry` against existing

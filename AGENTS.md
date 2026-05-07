@@ -25,7 +25,7 @@ cmake --build build                                     # Ninja が自動並列�
 - `editor/tree-sitter/src/` — external scanner (`scanner.c`)
 
 ```bash
-./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh
+./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh --no-build
 ```
 
 前提条件 (tree-sitter CLI / GNU gcc) と各スクリプトのフラグ詳細は `editor/tree-sitter/README.md` を参照。セルフ検証時の確認手順は `/pre-commit-checklist` §3.6.5 を参照。
