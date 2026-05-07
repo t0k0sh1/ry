@@ -36,7 +36,7 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every intrinsic a test file uses — `expect`, `mock`, `verify`, or `fail` — must appear in an explicit `from testing import ...` line at the top:
+Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every directive and intrinsic a test file uses must appear in an explicit `from testing import ...` line at the top; codegen rejects unimported usage with `'<name>' requires 'from testing import <name>'`:
 
 ```ry
 from testing import it, describe, expect

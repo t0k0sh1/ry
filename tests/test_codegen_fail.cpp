@@ -128,6 +128,48 @@ TEST_F(CodeGenTest, FailRequiresTestingImport) {
 }
 
 // ============================================================
+// `@it` / `@describe` directives also require their matching
+// `from testing import` (#716, sibling of #715 above). The
+// directives are stdlib-declared, so the source must be wrapped
+// with `withStdlibDirectiveDecls`. The fn omits a return type
+// annotation because `@it` / `@describe` reject one outright.
+// The body is a trivial assignment so the import check at the
+// top of the directive emitter is the only path that can throw.
+// ============================================================
+
+TEST_F(CodeGenTest, ItRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports(withStdlibDirectiveDecls(
+            "@it(\"sample\")\n"
+            "fn sample():\n"
+            "    x = 1\n"
+        ));
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import it'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, DescribeRequiresTestingImport) {
+    try {
+        runTestSourceNoTestingImports(withStdlibDirectiveDecls(
+            "@describe(\"sample group\")\n"
+            "fn sampleGroup():\n"
+            "    x = 1\n"
+        ));
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("requires 'from testing import describe'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// ============================================================
 // Null coalescing (`??`) rejects non-Option/non-Result operands
 // ============================================================
 
