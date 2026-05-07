@@ -28,7 +28,7 @@ cmake --build build                                     # Ninja が自動並列�
 ./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh --no-build
 ```
 
-前提条件 (tree-sitter CLI / GNU gcc) と各スクリプトのフラグ詳細は `editor/tree-sitter/README.md` を参照。セルフ検証時の確認手順は `/pre-commit-checklist` §3.6.5 を参照。
+前提条件 (tree-sitter CLI / GNU gcc) と各スクリプトのフラグ詳細は `editor/tree-sitter/README.md` を参照。セルフ検証時の確認手順は `/pre-commit-checklist` §3.6.5 を参照。グラマー編集時の落とし穴 (externals enum 順序、`mark_end` / `valid_symbols` セマンティクス、highlights.scm の named-node vs anonymous-literal) と検証レシピは `.claude/skills/tree-sitter-grammar-editing/SKILL.md`（または `/tree-sitter-grammar-editing`）を参照。`editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm` を編集する際は同 skill が path-scoped rule 経由で自動 load される。
 
 ## コンパイラ警告フラグ
 
