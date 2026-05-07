@@ -36,7 +36,7 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every name a test file uses — including `expect` and friends — must appear in an explicit `from testing import ...` line at the top:
+Test files use directives (`@it`, `@describe`) and intrinsics (`expect`, `mock`, `verify`, `fail`) from the `testing` module. Every intrinsic a test file uses — `expect`, `mock`, `verify`, or `fail` — must appear in an explicit `from testing import ...` line at the top:
 
 ```ry
 from testing import it, describe, expect
@@ -189,7 +189,7 @@ Calculator
 
 ## Example
 
-```
+```ry
 from testing import it, describe, expect
 
 @describe("Arithmetic")
@@ -221,7 +221,7 @@ fn booleansTests():
 
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
-```
+```ry
 from testing import it, describe, mock, expect
 
 fn fetchData() -> str:
@@ -250,7 +250,7 @@ fn mockingTests():
 
 Returns the number of times a mocked function was called (as `int`).
 
-```
+```ry
 from testing import it, describe, mock, verify, expect
 
 @describe("verify")

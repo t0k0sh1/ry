@@ -41,6 +41,29 @@ TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
 }
 
 // ============================================================
+// Diagnostic precedence: when a call is made outside test mode
+// AND without `from testing import ...`, the "only allowed in
+// test mode" error must win over the missing-import error
+// (#715). This pins the order of the two checks at every site:
+// the `!test_mode_` guard fires first, the import guard second.
+// Use `runSource` (test_mode = false, no import injection) so
+// both conditions are simultaneously violated.
+// ============================================================
+
+TEST_F(CodeGenTest, ExpectOutsideTestModeWinsOverImportCheck) {
+    try {
+        runSource("expect(1).toEq(1)\n");
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("only allowed in test mode"), std::string::npos)
+            << "got: " << msg;
+        EXPECT_EQ(msg.find("requires 'from testing import"), std::string::npos)
+            << "import check must NOT fire first; got: " << msg;
+    }
+}
+
+// ============================================================
 // Testing intrinsics (expect / mock / verify / fail) require
 // the matching `from testing import <name>`. Without it codegen
 // must reject the use even when running in test mode (#715).
