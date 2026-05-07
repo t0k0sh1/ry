@@ -121,5 +121,14 @@ The pre-commit version of this loop, with the same trigger paths, lives
 in [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md)
 §3.6.5.
 
+Recurring pitfalls in grammar / scanner / highlights editing — externals
+enum-order invariant, `mark_end` semantics for non-zero-width tokens, the
+`valid_symbols` early-return pattern, and highlights.scm named-node vs
+anonymous-literal traps — together with verification recipes
+(`tree-sitter parse -d`, `tree-sitter query`) live in
+[`/tree-sitter-grammar-editing`](../../.claude/skills/tree-sitter-grammar-editing/SKILL.md).
+The same paths listed above auto-load that skill via
+[`.claude/rules/tree-sitter-grammar-editing.md`](../../.claude/rules/tree-sitter-grammar-editing.md).
+
 Other editors are not yet supported in-tree; integrations may be added under
 `editor/<tool>/` as they appear.
