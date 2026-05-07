@@ -128,42 +128,43 @@ TEST_F(CodeGenTest, FailRequiresTestingImport) {
 }
 
 // ============================================================
-// `@it` / `@describe` directives also require their matching
-// `from testing import` (#716, sibling of #715 above). The
-// directives are stdlib-declared, so the source must be wrapped
-// with `withStdlibDirectiveDecls`. The fn omits a return type
-// annotation because `@it` / `@describe` reject one outright.
-// The body is a trivial assignment so the import check at the
-// top of the directive emitter is the only path that can throw.
+// `@it` / `@describe` directives are declared in
+// `share/std/testing/testing.ry`. Without `from testing import it,
+// describe`, the directive declarations never enter
+// `user_directive_registry_`, so codegen rejects them via the general
+// `@directive` mechanism with `unknown directive '@<name>'` (#721).
+// `withStdlibDirectiveDecls` is intentionally NOT applied so the
+// rejection path mirrors what real user code sees (the only legal way
+// to use `@it` / `@describe` is via the testing import).
 // ============================================================
 
-TEST_F(CodeGenTest, ItRequiresTestingImport) {
+TEST_F(CodeGenTest, ItRejectedAsUnknownDirectiveWithoutTestingImport) {
     try {
-        runTestSourceNoTestingImports(withStdlibDirectiveDecls(
+        runTestSourceNoTestingImports(
             "@it(\"sample\")\n"
             "fn sample():\n"
             "    x = 1\n"
-        ));
+        );
         FAIL() << "Expected compile error";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import it'"),
+        EXPECT_NE(msg.find("unknown directive '@it'"),
                   std::string::npos)
             << "got: " << msg;
     }
 }
 
-TEST_F(CodeGenTest, DescribeRequiresTestingImport) {
+TEST_F(CodeGenTest, DescribeRejectedAsUnknownDirectiveWithoutTestingImport) {
     try {
-        runTestSourceNoTestingImports(withStdlibDirectiveDecls(
+        runTestSourceNoTestingImports(
             "@describe(\"sample group\")\n"
             "fn sampleGroup():\n"
             "    x = 1\n"
-        ));
+        );
         FAIL() << "Expected compile error";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import describe'"),
+        EXPECT_NE(msg.find("unknown directive '@describe'"),
                   std::string::npos)
             << "got: " << msg;
     }

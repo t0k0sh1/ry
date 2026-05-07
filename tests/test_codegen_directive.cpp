@@ -1612,6 +1612,26 @@ TEST_F(DirectiveTest, BareItRejectedWithoutTestingImport) {
     );
 }
 
+// Symmetric to BareItRejectedWithoutTestingImport: source that uses @describe
+// without `from std/testing import describe` must also be rejected with an
+// unknown-directive error after the import-enforcement unification (#721).
+TEST_F(DirectiveTest, BareDescribeRejectedWithoutTestingImport) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@describe(\"my group\")\n"
+                "fn myGroup():\n"
+                "    pass\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);  // test_mode = true; @describe would otherwise also fail on test-mode check
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
 // ===== #1425: silent no-op when user-defined directive applied outside target=[...] =====
 //
 // Issue #1425 resolves user-defined directive target-mismatch behavior to

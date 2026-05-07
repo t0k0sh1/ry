@@ -1511,15 +1511,15 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
         << "local testing.ry shadow should not record stdlib intrinsics";
 }
 
-TEST_F(ImportTest, FromTestingWildcardRecordsAllSixIntrinsics) {
+TEST_F(ImportTest, FromTestingWildcardRecordsAllFourIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
         "from testing\n",
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {
-        "it", "describe", "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 6u);
+        "expect", "mock", "verify", "fail"};
+    EXPECT_EQ(intrinsics.size(), 4u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1531,6 +1531,10 @@ TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
         search_paths);
     EXPECT_EQ(intrinsics.count("each"), 0u);
     EXPECT_EQ(intrinsics.count("property"), 0u);
+    // Post-#721: `it` / `describe` are also `@directive` decls, not
+    // intrinsics. Lock that they never re-enter the intrinsic set.
+    EXPECT_EQ(intrinsics.count("it"), 0u);
+    EXPECT_EQ(intrinsics.count("describe"), 0u);
 }
 
 TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
@@ -1566,7 +1570,10 @@ TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
         "from testing import expect, it\n",
         tmp_dir_.string(),
         search_paths);
-    std::unordered_set<std::string> expected = {"expect", "it"};
+    // `it` is a `@directive` declaration in testing.ry, not a runtime
+    // intrinsic. Only `expect` (intrinsic) is recorded; `it` flows
+    // through the general directive-import mechanism (#721).
+    std::unordered_set<std::string> expected = {"expect"};
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1577,8 +1584,8 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {
-        "it", "describe", "expect", "mock", "verify", "fail"};
-    EXPECT_EQ(intrinsics.size(), 6u);
+        "expect", "mock", "verify", "fail"};
+    EXPECT_EQ(intrinsics.size(), 4u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1595,7 +1602,9 @@ TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
         "from testing import expect, fail, it\n",
         tmp_dir_.string(),
         search_paths);
-    std::unordered_set<std::string> expected = {"expect", "fail", "it"};
+    // `it` is a `@directive` declaration in testing.ry; only `expect`
+    // and `fail` are runtime intrinsics (#721).
+    std::unordered_set<std::string> expected = {"expect", "fail"};
     EXPECT_EQ(intrinsics, expected);
 }
 
