@@ -284,7 +284,7 @@ fn resultTypeTests():
       Ok(v):
         expect(v).toEq(5)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should return Err on failure")
   fn shouldReturnErrOnFailure():
     res = safeDivide(10, 0)

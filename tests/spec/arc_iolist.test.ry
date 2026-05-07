@@ -40,7 +40,7 @@ fn iolistheaderArcCorrectness1007Tests():
       Ok(_):
         ...
       Err(e):
-        fail("writeBytes failed")
+        fail("writeBytes failed: " + e.message)
     # seed counted before 'before', so only readBytes result appears as delta.
     before = arcLiveCount()
     case readBytes(path):
@@ -50,9 +50,9 @@ fn iolistheaderArcCorrectness1007Tests():
         expect(after - before).toEq(1)
         expect(rb.len()).toEq(9)
       Err(e):
-        fail("readBytes failed")
+        fail("readBytes failed: " + e.message)
     case deleteFile(path):
       Ok(_):
         ...
       Err(e):
-        fail("deleteFile failed")
+        fail("deleteFile failed: " + e.message)

@@ -12,7 +12,7 @@ fn tcpSocketApiTests():
         close(server)
         expect(true).toEq(true)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should return Ok on valid listener for listen")
   fn shouldReturnOkOnValidListenerForListen():
     case bind("127.0.0.1", 0):
@@ -21,10 +21,10 @@ fn tcpSocketApiTests():
           Ok(_):
             expect(true).toEq(true)
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
         close(server)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should return Err when tlsConnect to closed port")
   fn shouldReturnErrWhenTlsconnectToClosedPort():
     case tlsConnect("127.0.0.1", 19991):
@@ -51,7 +51,7 @@ fn tcpSocketApiTests():
         expect(listenerPort(server) > 0).toBeTrue()
         close(server)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should preserve TcpListener metadata through helper-returned Option")
   fn shouldPreserveTcplistenerMetadataThroughHelperReturnedOption():
     fn maybeListener() -> Option<TcpListener>:
@@ -94,12 +94,12 @@ fn tcpSocketApiTests():
                     expect(true).toEq(true)
                 close(conn)
               Err(e):
-                fail("unexpected error")
+                fail("unexpected error: " + e.message)
             blockOn(t)
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
   @it("should complete echo round-trip with async fn")
   fn shouldCompleteEchoRoundTripWithAsyncFn():
     async fn runServer(server: TcpListener) -> str:
@@ -155,9 +155,9 @@ fn tcpSocketApiTests():
             expect(respMsg).toEq("echo:hello")
             blockOn(t)
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)
 
   @it("should preserve Result<TcpStream, Error> resource metadata across helper returns")
   fn shouldPreserveResultTcpstreamErrorResourceMetadataAcrossHelperReturns():
@@ -186,9 +186,9 @@ fn tcpSocketApiTests():
                 close(conn)
                 expect(true).toEq(true)
               Err(e):
-                fail("unexpected error")
+                fail("unexpected error: " + e.message)
             blockOn(t)
           Err(e):
-            fail("unexpected error")
+            fail("unexpected error: " + e.message)
       Err(e):
-        fail("unexpected error")
+        fail("unexpected error: " + e.message)

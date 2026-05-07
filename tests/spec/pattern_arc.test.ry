@@ -78,7 +78,7 @@ fn patternBindingArcRetain997Tests():
         expect(xs[0]).toEq(1)
         expect(xs[2]).toEq(3)
       Err(e):
-        fail("expected Ok")
+        fail(f"expected Ok but got Err: {e}")
 
   @it("Err pattern retains str binding")
   fn errPatternRetainsStrBinding():

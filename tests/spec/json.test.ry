@@ -46,7 +46,7 @@ fn jsonParseTests():
         expect(kind(data)).toEq("object")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
   @it("should preserve JsonValue metadata through helper-returned Option")
   fn shouldPreserveJsonvalueMetadataThroughHelperReturnedOption():
     fn maybeObj() -> Option<JsonValue>:
@@ -72,7 +72,7 @@ fn jsonParseTests():
         expect(kind(data)).toEq("object")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should preserve JsonValue metadata through Result.andThen")
   fn shouldPreserveJsonvalueMetadataThroughResultAndthen():
@@ -139,7 +139,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should get int field")
   fn shouldGetIntField():
@@ -156,7 +156,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should get float field")
   fn shouldGetFloatField():
@@ -174,7 +174,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should get bool field")
   fn shouldGetBoolField():
@@ -191,7 +191,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should get null type")
   fn shouldGetNullType():
@@ -204,7 +204,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should access array by index")
   fn shouldAccessArrayByIndex():
@@ -230,7 +230,7 @@ fn jsonAccessTests():
             fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should return Err for missing key")
   fn shouldReturnErrForMissingKey():
@@ -239,7 +239,7 @@ fn jsonAccessTests():
         expect(get(data, "missing")).toBeErr()
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should return Err for out-of-bounds index")
   fn shouldReturnErrForOutOfBoundsIndex():
@@ -248,7 +248,7 @@ fn jsonAccessTests():
         expect(at(data, 5)).toBeErr()
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should return Err for type mismatch")
   fn shouldReturnErrForTypeMismatch():
@@ -261,7 +261,7 @@ fn jsonAccessTests():
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json nested")
 fn jsonNestedTests():
@@ -293,7 +293,7 @@ fn jsonNestedTests():
             fail("get(user) failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should access array of objects")
   fn shouldAccessArrayOfObjects():
@@ -314,7 +314,7 @@ fn jsonNestedTests():
             fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json keys and len")
 fn jsonKeysAndLenTests():
@@ -328,10 +328,10 @@ fn jsonKeysAndLenTests():
             expect(ks[0]).toEq("a")
             expect(ks[1]).toEq("b")
           Err(e):
-            fail("keys failed")
+            fail("keys failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should return Err for non-object keys")
   fn shouldReturnErrForNonObjectKeys():
@@ -344,7 +344,7 @@ fn jsonKeysAndLenTests():
             expect(e.message).toEq("json_keys: value is not an object")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should get object len")
   fn shouldGetObjectLen():
@@ -353,7 +353,7 @@ fn jsonKeysAndLenTests():
         expect(len(data)).toEq(3)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json stringify")
 fn jsonStringifyTests():
@@ -375,10 +375,10 @@ fn jsonStringifyTests():
                 fail("get failed: " + e.message)
             jsonFree(data2)
           Err(e):
-            fail("re-parse failed")
+            fail("re-parse failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should pretty print with indent")
   fn shouldPrettyPrintWithIndent():
@@ -388,7 +388,7 @@ fn jsonStringifyTests():
         expect(contains(text, "\n")).toBeTrue()
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json child value ownership")
 fn jsonChildValueOwnershipTests():
@@ -402,12 +402,12 @@ fn jsonChildValueOwnershipTests():
               Ok(name):
                 expect(name).toEq("Alice")
               Err(e):
-                fail("toStr failed")
+                fail("toStr failed: " + e.message)
           Err(e):
             fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should not cause double-free on scope exit for at() child")
   fn shouldNotCauseDoubleFreeOnScopeExitForAtChild():
@@ -419,12 +419,12 @@ fn jsonChildValueOwnershipTests():
               Ok(s):
                 expect(s).toEq("hello")
               Err(e):
-                fail("toStr failed")
+                fail("toStr failed: " + e.message)
           Err(e):
             fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should not cause double-free on scope exit for nested get() children")
   fn shouldNotCauseDoubleFreeOnScopeExitForNestedGetChildren():
@@ -438,14 +438,14 @@ fn jsonChildValueOwnershipTests():
                   Ok(name):
                     expect(name).toEq("Bob")
                   Err(e):
-                    fail("toStr failed")
+                    fail("toStr failed: " + e.message)
               Err(e):
                 fail("get(name) failed: " + e.message)
           Err(e):
             fail("get(user) failed: " + e.message)
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json type checks")
 fn jsonTypeChecksTests():
@@ -456,7 +456,7 @@ fn jsonTypeChecksTests():
         expect(kind(data)).toEq("string")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should identify number type")
   fn shouldIdentifyNumberType():
@@ -465,7 +465,7 @@ fn jsonTypeChecksTests():
         expect(kind(data)).toEq("number")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should identify boolean type")
   fn shouldIdentifyBooleanType():
@@ -474,7 +474,7 @@ fn jsonTypeChecksTests():
         expect(kind(data)).toEq("boolean")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
   @it("should identify null type")
   fn shouldIdentifyNullType():
@@ -483,7 +483,7 @@ fn jsonTypeChecksTests():
         expect(kind(data)).toEq("null")
         jsonFree(data)
       Err(e):
-        fail("parse failed")
+        fail("parse failed: " + e.message)
 
 @describe("json NUL round-trip")
 fn jsonNulRoundTripTests():
@@ -546,7 +546,7 @@ fn jsonNulRoundTripTests():
                   Ok(n):
                     expect(n).toEq(42)
                   Err(e):
-                    fail("toInt failed")
+                    fail("toInt failed: " + e.message)
               Err(e):
                 fail("get failed: " + e.message)
           Err(e):
@@ -577,7 +577,7 @@ fn jsonNulRoundTripTests():
                   Ok(n):
                     expect(n).toEq(1)
                   Err(e):
-                    fail("toInt ks[0] failed")
+                    fail("toInt ks[0] failed: " + e.message)
               Err(e):
                 fail("get ks[0] failed: " + e.message)
             case get(data, ks[1]):
@@ -586,7 +586,7 @@ fn jsonNulRoundTripTests():
                   Ok(n):
                     expect(n).toEq(2)
                   Err(e):
-                    fail("toInt ks[1] failed")
+                    fail("toInt ks[1] failed: " + e.message)
               Err(e):
                 fail("get ks[1] failed: " + e.message)
           Err(e):
