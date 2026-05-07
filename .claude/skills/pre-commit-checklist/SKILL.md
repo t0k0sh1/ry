@@ -38,7 +38,7 @@ git diff --name-only origin/main
 **補足**:
 
 - 複数行に該当する変更は **各列の最も厳しい要求を採用** する（= `✓` 優先 / 次点 `review` / 最後 `skip`）。
-- マトリクス対象外で **常時必須**: §2.5（rules/skills 更新, 該当時のみ） / §3.5.5（Static Analysis） / §3.7（background hygiene） / §4（Label Cleanup, no-op directive）。
+- マトリクス対象外で **常時必須**: §2.5（rules/skills 更新, 該当時のみ） / §3.5.5（Static Analysis） / §3.6.5（tree-sitter Grammar Regression Check, 該当時のみ） / §3.7（background hygiene） / §4（Label Cleanup, no-op directive）。
 - **`.md` / `docs/` のみの PR** では実質的に §4（Label Cleanup）が唯一の必須アクション。§1 は doc 編集自体で satisfied、§2-§3.6 は全てスキップ可、§3.7 は常時暗黙必須だが sanity check のみで実アクションを伴わない。
 - **`changelog.d/` のみの PR** も同様に §4 が唯一の必須アクション。§2 は fragment 編集自体で satisfied、§1 / §3-§3.6 は全てスキップ可。
 - マトリクスの `✓` のうち、自身を編集対象とするセクション（`.md`/`docs/` 行の §1、`changelog.d/` 行の §2）は **編集自体が satisfy 条件** であり、Skip if の bash も `skip` 判定を返す（自編集 = 完了）。
@@ -271,6 +271,27 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 
 - 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
 - crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは `/scope-out-issue` の判定フローに従って別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
+
+## 3.6.5. tree-sitter Grammar Regression Check
+
+> **Skip if** — 変更ファイルに tree-sitter グラマー / EBNF 仕様 / external scanner を **含まない**:
+>
+> ```bash
+> git diff --name-only origin/main | grep -E '^(docs/grammar\.ebnf$|editor/tree-sitter/(grammar\.js$|src/))' | head -1
+> ```
+>
+> 出力が **空ならスキップ可**。出力があれば再ビルド & 再インストールを実行する。スキップ時は PR description に `Skipped §3.6.5 — no tree-sitter grammar change` を記録。
+
+§0 マトリクスとは独立した常時評価ステップ。`.md` / `docs/` のみの PR でも `docs/grammar.ebnf` を変更していれば発火する（マトリクスの「`.md` / `docs/` のみ」row には載せない理由）。
+
+```bash
+./editor/tree-sitter/build.sh
+./editor/tree-sitter/install.sh --no-build
+```
+
+- `build.sh` 内部で `tree-sitter generate`（`grammar.js` から `parser.c` を再生成）と `tree-sitter build`（`parser.c` + `scanner.c` から `ry.so` をリンク）が両方成功し、`ry.so` が生成されることを確認する。`tree-sitter generate` が失敗すればグラマー側の構文ミスを意味する。
+- `install.sh --no-build` が `ry.so` と `queries/*.scm` を Neovim parser ディレクトリへコピーすることを確認する。
+- 現状 in-tree グラマーは Ry の全構文をまだカバーしていないため `tree-sitter parse` を実テストファイルに当てると ERROR ノードを含むことがある。これはグラマーの未完成部分であり、§3.6.5 のチェック対象ではない（コーパスベースの回帰テストは [#1633](https://github.com/t0k0sh1/ry/issues/1633) で追跡）。Neovim 等で `.ry` ファイルを開き、構文ハイライトに重大な regression が起きていないかを目視確認することは推奨。
 
 ## 3.7. Background Task Residual Check
 

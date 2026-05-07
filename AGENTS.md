@@ -16,6 +16,20 @@ cmake --build build                                     # Ninja が自動並列�
 
 > repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
 
+## tree-sitter グラマーのビルド & インストール
+
+以下のいずれかが変更された PR では、`ry.so` を再ビルドしてローカル Neovim parser ディレクトリへインストールすること:
+
+- `docs/grammar.ebnf` — 正準 EBNF 仕様
+- `editor/tree-sitter/grammar.js` — tree-sitter グラマー定義
+- `editor/tree-sitter/src/` — external scanner (`scanner.c`)
+
+```bash
+./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh --no-build
+```
+
+前提条件 (tree-sitter CLI / GNU gcc) と各スクリプトのフラグ詳細は `editor/tree-sitter/README.md` を参照。セルフ検証時の確認手順は `/pre-commit-checklist` §3.6.5 を参照。
+
 ## コンパイラ警告フラグ
 
 コンパイラ警告フラグの詳細は `.claude/rules/build-warning-flags.md` を参照。
