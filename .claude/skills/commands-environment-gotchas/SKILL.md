@@ -169,6 +169,36 @@ CI (Linux) では `/usr/local/llvm/bin/clang` が `cc` / `c++` symlink を介し
 
 ---
 
+### `printf "%s" "$big_var" | grep -q ...` silently misses matches under `set -o pipefail`
+
+**Source**: #1617 PR review (CodeRabbit, 2026-05-08)
+**Tags**: bash, pipefail, sigpipe, grep, large-output, masked-failure
+
+**Wrong**:
+
+```bash
+set -euo pipefail
+output="$(some_command)"           # output > pipe buffer (~64 KiB)
+if printf '%s' "$output" | grep -qE 'PATTERN'; then
+  has_match=1
+fi
+# has_match stays 0 even when $output clearly contains PATTERN
+```
+
+**Correct** (drop the upstream writer): use a here-string, or pure-bash `[[ =~ ]]`:
+
+```bash
+if grep -qE 'PATTERN' <<< "$output"; then has_match=1; fi
+# or
+if [[ "$output" =~ PATTERN ]]; then has_match=1; fi
+```
+
+**Why**: `grep -q` exits 0 on the first match and closes its end of the pipe. The upstream `printf` is still writing more bytes; the kernel delivers SIGPIPE → `printf` exits 141. Under `set -o pipefail` the pipeline's exit status is the **rightmost non-zero** exit code → the pipeline reports failure → the `if` branch never fires.
+
+The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux/macOS); small outputs short-circuit before SIGPIPE can be delivered, which is why this kind of detection logic looks correct in tests but masks failures on real-world large inputs. In #1617 it caused three `tests/spec/*.test.ry` files containing `ERROR` nodes to be silently classified as PASS by `editor/tree-sitter/check.sh`'s self-verification (`pass=138`) until the pattern was switched to a here-string. Here-strings and `[[ =~ ]]` have no upstream writer, so SIGPIPE cannot occur.
+
+---
+
 ### Subprocess GoogleTest: rebuild the `ry` executable, not just `ry_tests`
 
 **Source**: #1424 implementation (2026-05-05)

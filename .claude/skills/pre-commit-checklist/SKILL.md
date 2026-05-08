@@ -287,11 +287,13 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 ```bash
 ./editor/tree-sitter/build.sh
 ./editor/tree-sitter/install.sh --no-build
+./editor/tree-sitter/check.sh --no-build
 ```
 
 - `build.sh` 内部で `tree-sitter generate`（`grammar.js` から `parser.c` を再生成）と `tree-sitter build`（`parser.c` + `scanner.c` から `ry.so` をリンク）が両方成功し、`ry.so` が生成されることを確認する。`tree-sitter generate` が失敗すればグラマー側の構文ミスを意味する。
 - `install.sh --no-build` が `ry.so` と `queries/*.scm` を Neovim parser ディレクトリへコピーすることを確認する。
-- 現状 in-tree グラマーは Ry の全構文をまだカバーしていないため `tree-sitter parse` を実テストファイルに当てると ERROR ノードを含むことがある。これはグラマーの未完成部分であり、§3.6.5 のチェック対象ではない（コーパスベースの回帰テストは [#1633](https://github.com/t0k0sh1/ry/issues/1633) で追跡）。Neovim 等で `.ry` ファイルを開き、構文ハイライトに重大な regression が起きていないかを目視確認することは推奨。
+- `check.sh --no-build` が `tests/spec/**/*.test.ry` 全件を `tree-sitter parse` に通し、`expected-fail.txt` 外の file で ERROR/MISSING が出ていないことを確認する（**exit 0 が必須**）。`expected-fail.txt` に列挙された既知の grammar gap は SKIP として silent に扱われ、grammar の改修で parse できるようになると `WARN: ... now passes` が出るので、そのファイルを `expected-fail.txt` から削除する。
+- 現状 in-tree グラマーは Ry の全構文をまだカバーしていないため `tree-sitter parse` を実テストファイルに当てると ERROR ノードを含むことがある。これは `expected-fail.txt` で許容している既知の gap であり、`check.sh` の対象外（`expected-fail.txt` 外で出た場合のみ regression として扱う）。Phase 2 の hand-curated `tree-sitter test` corpus + S-expression assertion は [#1633](https://github.com/t0k0sh1/ry/issues/1633) で追跡。Neovim 等で `.ry` ファイルを開き、構文ハイライトに重大な regression が起きていないかを目視確認することは推奨。
 
 ## 3.7. Background Task Residual Check
 

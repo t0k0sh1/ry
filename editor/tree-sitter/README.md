@@ -23,6 +23,8 @@ editor/tree-sitter/
 ├── tree-sitter.json     # tree-sitter CLI configuration
 ├── build.sh             # tree-sitter generate + build -> ry.so
 ├── install.sh           # copy ry.so + queries to Neovim parser dirs
+├── check.sh             # smoke-check ry.so against tests/spec/**/*.test.ry
+├── expected-fail.txt    # files the grammar does not yet parse (allowlist)
 └── README.md            # this file
 ```
 
@@ -86,6 +88,31 @@ installed. Enable tree-sitter-driven indentation per `.ry` buffer with:
 vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
 ```
 
+## Smoke-check (corpus regression test)
+
+```bash
+./check.sh                # auto-builds ry.so if missing, then checks 176 spec files
+./check.sh --no-build     # use the existing ry.so as-is
+./check.sh --verbose      # also list expected-fail entries that still fail (SKIP)
+```
+
+`check.sh` runs `tree-sitter parse` against every `tests/spec/**/*.test.ry`
+and reports any file that surfaces an `ERROR` or `MISSING` node. Files
+listed in `expected-fail.txt` are tolerated — they document grammar gaps
+that have not yet been closed and are organised into named buckets
+(tuple member access, generic bounds, lambda-block bodies, numeric
+literal forms, …). Anything outside that list is treated as a grammar
+regression: the script prints `FAIL: <path>` and exits non-zero.
+
+If a previously failing file now parses cleanly (e.g. after a grammar
+improvement), `check.sh` prints `WARN: <path> now passes; remove from
+expected-fail.txt` but still exits 0 — the developer is expected to drop
+the entry in the same PR that closes the gap.
+
+`expected-fail.txt` is the **single** place where tolerated divergence is
+recorded; `check.sh` has no hard-coded skip list. Inline `# reason`
+comments after each path are stripped at read time and are advisory only.
+
 ## Contributor workflow
 
 Whenever a PR touches one of these paths (paths are relative to the
@@ -113,9 +140,11 @@ eyeball the syntax highlighting and confirm no regressions.
 
 > Running `tree-sitter parse <file>.ry` against existing
 > `tests/spec/*.test.ry` will surface ERROR nodes today: the in-tree
-> grammar does not yet cover the full Ry surface. That's a known gap
-> and not what this loop is checking — corpus-based regression testing
-> is tracked in [#1633](https://github.com/t0k0sh1/ry/issues/1633).
+> grammar does not yet cover the full Ry surface. The known-gap files
+> are listed in `expected-fail.txt` and the Phase 1 corpus smoke-check
+> (`./check.sh`, see above) treats them as silent SKIPs. Phase 2 — the
+> hand-curated `tree-sitter test` corpus with S-expression assertions
+> — is tracked separately in [#1633](https://github.com/t0k0sh1/ry/issues/1633).
 
 The pre-commit version of this loop, with the same trigger paths, lives
 in [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md)
