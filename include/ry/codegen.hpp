@@ -189,6 +189,14 @@ public:
     std::unordered_set<llvm::AllocaInst*> arc_str_managed_vars_; // allocas holding str handles
     std::unordered_set<llvm::Value*>      arc_str_owned_values_;  // str handles produced by makeString/runtime
 
+    // ARC-managed tagged-union (Result/Option) subject allocas: store the
+    // source type name (e.g. "Result<List<int>, str>", "Option<List<int>>")
+    // so the cleanup path can extract the active payload slot's ARC kind
+    // and release it. Populated by `case` subject materialization in
+    // src/codegen_match.cpp when at least one payload slot is ARC-managed.
+    // Released by emitScopeCleanupToDepth via emitTaggedUnionRelease (#1640).
+    std::unordered_map<llvm::AllocaInst*, std::string> arc_tagged_union_vars_;
+
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
     void emitArcRetain(llvm::Value *headerPtr, bool atomic = false);
@@ -333,6 +341,26 @@ public:
                                      CollectionKind elemKind,
                                      const std::string &elemTypeName,
                                      const llvm::Twine &label);
+
+    // Releases a tagged-union (Result/Option) subject alloca's active
+    // payload slot at scope exit (#1640). Loads the struct, extracts the
+    // tag, and branches to release either the Ok/Some payload or the Err
+    // payload via `emitArcReleaseLoadedElement`. `sourceTypeName` is the
+    // source-level type string ("Result<T, E>" / "Option<T>" / "T?") that
+    // determines which slot(s) are ARC-managed; non-ARC slots emit no IR.
+    void emitTaggedUnionRelease(llvm::AllocaInst *alloca,
+                                const std::string &sourceTypeName);
+
+    // Registers a `case` subject alloca for ARC release at scope exit
+    // when the Result/Option struct holds at least one ARC-managed payload
+    // slot (#1640). Reads the lossless `source_type_name` metadata stamped
+    // by `propagateTypeMeta` at the Result/Option construction site, then
+    // inserts the alloca into `arc_tagged_union_vars_` with the source type
+    // name and registers it in the current scope so the cleanup path visits
+    // it via `emitTaggedUnionRelease`.
+    void maybeRegisterTaggedUnionSubject(llvm::AllocaInst *subjectAlloca,
+                                         llvm::Type *subjectTy,
+                                         const std::string &subjectEnumName);
 
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
     llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
@@ -1049,6 +1077,7 @@ public:
         std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
         std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
+        std::unordered_map<llvm::AllocaInst*, std::string> savedArcTaggedUnion_;
         std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;

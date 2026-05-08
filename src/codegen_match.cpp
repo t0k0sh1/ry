@@ -485,6 +485,65 @@ static std::string extractGenericTypeArg(const std::string &typeStr,
     return CodeGen::trimTypeNameSpaces(parts[argIdx]);
 }
 
+void CodeGen::maybeRegisterTaggedUnionSubject(llvm::AllocaInst *subjectAlloca,
+                                                llvm::Type *subjectTy,
+                                                const std::string &subjectEnumName) {
+    // #1640: Tag-driven release at scope exit for `case` subject Result/Option
+    // struct allocas. Without this registration, payload retains in
+    // buildOkValue / buildErrValue / buildSomeValue go un-balanced and leak
+    // one ARC header per active payload slot per case evaluation.
+    if (!subjectAlloca || !subjectTy) return;
+    if (!isResultType(subjectTy) && !isOptionType(subjectTy)) return;
+
+    // Read the lossless source_type_name (#1638) stamped at the
+    // Result/Option/T? construction site. Without it, ARC classification
+    // would have to fall back to lossy reverseResolveTypeName which #1156
+    // forbids. If the channel is empty (e.g. unannotated complex literal
+    // shape that propagateTypeMeta did not stamp), skip registration to
+    // avoid heap corruption from misclassification.
+    std::string sourceTypeName;
+    if (auto *m = getMeta(subjectAlloca))
+        sourceTypeName = m->source_type_name;
+    if (sourceTypeName.empty() && !subjectEnumName.empty())
+        sourceTypeName = resolveTypeAlias(subjectEnumName);
+    if (sourceTypeName.empty()) return;
+
+    // Determine if any active slot is ARC-managed; if not, no IR cost path.
+    std::string resolvedSource = resolveTypeAlias(sourceTypeName);
+    std::string okName, errName;
+    const bool isOpt = isOptionType(subjectTy);
+    if (isOpt && resolvedSource.size() > 1 && resolvedSource.back() == '?') {
+        okName = trimTypeNameSpaces(
+            resolvedSource.substr(0, resolvedSource.size() - 1));
+    } else {
+        std::string head;
+        std::vector<std::string> innerArgs;
+        if (splitGenericTypeName(resolvedSource, head, innerArgs)) {
+            if (head == "Result") {
+                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+                if (innerArgs.size() >= 2) errName = trimTypeNameSpaces(innerArgs[1]);
+            } else if (head == "Option") {
+                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+            }
+        }
+    }
+
+    CollectionKind dummyKind = CollectionKind::List;
+    const bool okArc = !okName.empty() && fieldTypeIsArcManaged(okName, &dummyKind);
+    const bool errArc = !errName.empty() && fieldTypeIsArcManaged(errName, &dummyKind);
+    if (!okArc && !errArc) return;
+
+    // Register so emitScopeCleanupToDepth visits the alloca and dispatches
+    // to emitTaggedUnionRelease. The synthetic name guarantees no collision
+    // with any user-declared variable.
+    arc_tagged_union_vars_[subjectAlloca] = sourceTypeName;
+    static unsigned counter = 0;
+    std::string syntheticName =
+        "$match_subject_" + std::to_string(counter++);
+    if (!scope_stack_.empty())
+        scope_stack_.back()[syntheticName] = subjectAlloca;
+}
+
 void CodeGen::emitPatternBindings(const Pattern &pattern,
     llvm::AllocaInst *subjectAlloca, llvm::Type *subjectTy,
     const std::string &subjectEnumName, const std::string &subjectSourceTypeName) {
@@ -793,6 +852,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
         getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumName;
 
     propagateMetaWide(subject, subjectAlloca);
+    maybeRegisterTaggedUnionSubject(subjectAlloca, subjectTy, subjectEnumName);
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -868,6 +928,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     if (!subjectEnumName.empty())
         getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumName;
     propagateMetaWide(subject, subjectAlloca);
+    maybeRegisterTaggedUnionSubject(subjectAlloca, subjectTy, subjectEnumName);
 
     // If the scrutinee is Option<T>, seed the None() hint so that None() / bare
     // none in any arm value inherits the correct inner type (#1154). This avoids
