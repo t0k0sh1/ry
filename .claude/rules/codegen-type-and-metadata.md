@@ -635,8 +635,15 @@ invalidation gotcha documented in the entry above.
 
 **Canonical references**: `src/codegen_call_collection.cpp:1204-1208`
 (map merge, #961), `src/codegen_call_collection.cpp:555-558`
-(`emitListSlice`, #1205), and `src/codegen_expr.cpp:emitListConcat`
-(list `+` concat, #1648).
+(`emitListSlice`, #1205), `src/codegen_expr.cpp:emitListConcat`
+(list `+` concat, #1648), `src/codegen_call_higher_order.cpp:emitBuiltinHigherOrder`
+(`filter` `List<T>` → `List<T>`, #1651), `src/codegen_call_higher_order.cpp:emitSortCore`
+(`sort` `List<T>` → `List<T>`, #1651), `src/codegen_call_string.cpp:emitStrOp_reverse`
+(List branch `List<T>` → `List<T>`, #1651), and `src/codegen_call_set_ops.cpp`
+(`emitSetUnionCore`, `emitSetOp_intersection`, `emitSetOp_difference`,
+`emitSetOp_symmetric_difference` — all `Set<T>` × `Set<T>` → `Set<T>`, #1651;
+the redundant `set_elem_type_name` copy block at each set-op site was deleted because
+`propagateMeta` already copies that field — see `src/codegen_metadata.cpp:158`).
 
 **How to apply**: When adding or reviewing a collection helper that
 returns `List<SameT>` / `Map<SameK, SameV>` / `Set<SameT>`, confirm the

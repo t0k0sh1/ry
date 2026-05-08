@@ -100,6 +100,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateStore(finalLen, newLenPtr);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(listVal, newHeader);
         return newHeader;
     }
 
@@ -900,6 +901,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
 
     // Return sorted list
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(listVal, newHeader);
     return newHeader;
 }
 
