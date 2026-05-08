@@ -27,20 +27,32 @@ fn tcpSocketApiTests():
         fail("unexpected error: " + e.message)
   @it("should return Err when tlsConnect to closed port")
   fn shouldReturnErrWhenTlsconnectToClosedPort():
-    case tlsConnect("127.0.0.1", 19991):
-      Ok(conn):
-        close(conn)
-        fail("expected Err but got Ok")
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case tlsConnect("127.0.0.1", port):
+          Ok(conn):
+            close(conn)
+            fail("expected Err but got Ok")
+          Err(e):
+            expect(true).toEq(true)
       Err(e):
-        expect(true).toEq(true)
+        fail("unexpected error: " + e.message)
   @it("should return Err when connect to closed port")
   fn shouldReturnErrWhenConnectToClosedPort():
-    case connect("127.0.0.1", 19998):
-      Ok(conn):
-        close(conn)
-        fail("expected Err but got Ok")
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case connect("127.0.0.1", port):
+          Ok(conn):
+            close(conn)
+            fail("expected Err but got Ok")
+          Err(e):
+            expect(true).toEq(true)
       Err(e):
-        expect(true).toEq(true)
+        fail("unexpected error: " + e.message)
   @it("should preserve TcpListener metadata through helper-returned Result")
   fn shouldPreserveTcplistenerMetadataThroughHelperReturnedResult():
     fn mkListener() -> Result<TcpListener, Error>:
