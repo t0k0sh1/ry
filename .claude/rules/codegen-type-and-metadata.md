@@ -634,8 +634,9 @@ so no local snapshot is required at the call site — unlike
 invalidation gotcha documented in the entry above.
 
 **Canonical references**: `src/codegen_call_collection.cpp:1204-1208`
-(map merge, #961) and `src/codegen_call_collection.cpp:555-558`
-(`emitListSlice`, #1205).
+(map merge, #961), `src/codegen_call_collection.cpp:555-558`
+(`emitListSlice`, #1205), and `src/codegen_expr.cpp:emitListConcat`
+(list `+` concat, #1648).
 
 **How to apply**: When adding or reviewing a collection helper that
 returns `List<SameT>` / `Map<SameK, SameV>` / `Set<SameT>`, confirm the

@@ -39,7 +39,7 @@ fn listListArcRetain1236Tests():
   fn listMapStrIntConcatRetainsMapValuesAfterSourceDrop():
     a: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     b: List<Map<str, int>> = [{"c": 3}]
-    ys: List<Map<str, int>> = a + b
+    ys = a + b
     a = [{"z": 999}]
     b = [{"y": 888}]
     expect(len(ys)).toEq(3)
