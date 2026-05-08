@@ -506,10 +506,26 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
-                propagateMeta(subjectAlloca, varAlloca);
-                // Use narrow channel only — lossy reconstruction would misclassify nested types.
-                const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumName), "Option<", 0);
+                // #1638: when the lossless source_type_name channel is set
+                // (typically by an explicit annotation), prefer it so the
+                // binding's metadata is rebuilt from the binding's actual
+                // type — avoiding the wrong-side metadata leak that
+                // `propagateMeta(subject, var)` introduces for typed
+                // `Result<ARC-type, str>` Err bindings. When unset (e.g.
+                // `Some([1,2,3])` without annotation), the subject alloca
+                // only carries the Some-side metadata anyway, so a bulk
+                // copy is correct and preserves pre-#1638 behavior.
+                std::string subjectSourceName;
+                if (auto *sm = getMeta(subjectAlloca))
+                    subjectSourceName = sm->source_type_name;
+                const std::string lookupName = !subjectSourceName.empty()
+                    ? subjectSourceName
+                    : resolveTypeAlias(subjectEnumName);
+                const std::string innerSig = extractGenericTypeArg(lookupName, "Option<", 0);
+                if (!innerSig.empty())
+                    propagateTypeMeta(innerSig, varAlloca);
+                else
+                    propagateMeta(subjectAlloca, varAlloca);
                 emitPatternBindingArc(inner, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
@@ -518,10 +534,18 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                 builder_.CreateStore(okVal, varAlloca);
-                propagateMeta(subjectAlloca, varAlloca);
-                // Use narrow channel only — lossy reconstruction would misclassify nested types.
-                const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumName), "Result<", 0);
+                // #1638: see SomePattern arm above for the rationale.
+                std::string subjectSourceName;
+                if (auto *sm = getMeta(subjectAlloca))
+                    subjectSourceName = sm->source_type_name;
+                const std::string lookupName = !subjectSourceName.empty()
+                    ? subjectSourceName
+                    : resolveTypeAlias(subjectEnumName);
+                const std::string innerSig = extractGenericTypeArg(lookupName, "Result<", 0);
+                if (!innerSig.empty())
+                    propagateTypeMeta(innerSig, varAlloca);
+                else
+                    propagateMeta(subjectAlloca, varAlloca);
                 emitPatternBindingArc(okVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
@@ -530,10 +554,24 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
                 builder_.CreateStore(errVal, varAlloca);
-                propagateMeta(subjectAlloca, varAlloca);
-                // Use narrow channel only — lossy reconstruction would misclassify nested types.
-                const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumName), "Result<", 1);
+                // #1638: root cause for the typed `Result<List<int>, str>`
+                // case — the lossless `source_type_name = "Result<List<int>, str>"`
+                // lets us extract `innerSig = "str"` and rebuild only the
+                // Err side's metadata, so `isStringValue(e)` is true,
+                // `"got: " + e` typechecks, and `f"got: {e}"` reads a valid
+                // str representation. Falls back to the legacy
+                // `propagateMeta` bulk copy for unannotated subjects.
+                std::string subjectSourceName;
+                if (auto *sm = getMeta(subjectAlloca))
+                    subjectSourceName = sm->source_type_name;
+                const std::string lookupName = !subjectSourceName.empty()
+                    ? subjectSourceName
+                    : resolveTypeAlias(subjectEnumName);
+                const std::string innerSig = extractGenericTypeArg(lookupName, "Result<", 1);
+                if (!innerSig.empty())
+                    propagateTypeMeta(innerSig, varAlloca);
+                else
+                    propagateMeta(subjectAlloca, varAlloca);
                 emitPatternBindingArc(errVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {

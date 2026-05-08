@@ -115,8 +115,8 @@ For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d
 
 ### `Err(e):` formatting for non-Error Err slots: pick by Result<Ok, Err> shape
 
-**Source**: #1447 (2026-05-08, implementation); #1638 (companion bug)
-**Tags**: testing, case, Err binding, str, ARC, non-Error, f-string, blind-spot
+**Source**: #1447 (2026-05-08, original entry); #1638 (2026-05-08, ARC Ok slot row resolved)
+**Tags**: testing, case, Err binding, str, ARC, non-Error, f-string
 
 **Rule**: When formatting the bound `e` inside `fail(...)` of an `Err(e):` arm whose Err slot is **not** `Error`, the canonical pattern depends on the Result shape:
 
@@ -124,15 +124,15 @@ For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d
 |---|---|---|---|
 | `Result<int, str>` | works | works | either |
 | `Result<int, int>` | compile error (no int+str concat) | works | f-string |
-| `Result<List<int>, str>` (ARC Ok slot) | compile error | typechecks, crashes at runtime | see #1638 workaround |
+| `Result<List<int>, str>` (ARC Ok slot) | works (post #1638) | works (post #1638) | either |
 
-**Why**: `Result<int, str>` preserves the str typing of the Err slot through the binding, so both `+` (str concat) and f-string interpolation work. `Result<int, int>` cannot use `+ e` because there is no `str + int` operator, but f-string accepts int interpolation. `Result<ARC-type, str>` (where the Ok slot holds an ARC-managed type like `List`, `Map`, etc.) loses str typing on the Err side (#1638): `+ e` is rejected at compile time, and `f"{e}"` typechecks but the value is an invalid str representation that crashes when the Err arm actually executes.
+**Why**: `Result<int, str>` preserves the str typing of the Err slot through the binding, so both `+` (str concat) and f-string interpolation work. `Result<int, int>` cannot use `+ e` because there is no `str + int` operator, but f-string accepts int interpolation. `Result<ARC-type, str>` (where the Ok slot holds an ARC-managed type like `List`, `Map`, etc.) was previously broken (#1638): metadata from the Ok side leaked through `propagateMeta` and made the Err binding look like a collection — `+ e` was rejected at compile time, and `f"{e}"` typechecked but crashed at runtime. #1638's fix (typeSig-driven `propagateTypeMeta(innerSig, ...)` in the Err arm of `emitPatternBindings`) restores str typing on the Err binding, so both forms work as for `Result<int, str>`.
 
 **How to apply**: For `Err(e):` arms in `tests/spec/`:
 
 - `Result<int, str>` and `Result<<primitive>, Error>` paths: use `+ e.message` (Error) or `+ e` (str) — most readable.
 - `Result<int, int>` paths: use `f"...({e})"` — f-string is the only way to interpolate an int into the message.
-- `Result<<ARC-type>, str>` paths: until #1638 lands, prefer `Err(_):` if the arm is **reachable** in the test. If the arm is **unreachable** (e.g. a defensive `Err(e): fail("expected Ok but got Err...")` against a fn that only ever returns Ok), `f"{e}"` is acceptable — it compiles and the latent runtime crash is hidden behind the dead code path. The fix in `pattern_arc.test.ry:81` (#1447) follows this convention.
+- `Result<<ARC-type>, str>` paths (post #1638): both `+ e` and `f"{e}"` work. Prefer `+ e` for parity with `Result<int, str>`.
 
 ### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`, and must cover module-global declarations
 

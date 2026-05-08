@@ -49,9 +49,12 @@ compile-time-enforced distinction. The guard at VariablePattern binding
 remains necessary but is now purely defensive
 (subjectEnumName is already enum-only).
 
-**Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
-`Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
-generics (currently handled by Path 2b heuristic via `propagateMeta`).
+**Follow-up (resolved by #1638, 2026-05-08)**: A lossless
+`source_type_name` field on `ValueMetadata` (added in #1638) is now stamped
+by `propagateTypeMeta` at the Result/Option/T? branch entries
+(`src/codegen_builtin.cpp:75-193`). This is what `emitPatternBindings`'
+Ok/Err/Some arms now consult — see the supersede entry below — instead of
+relying on `propagateMeta`'s broad bulk-copy.
 - Pre-existing defect in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204) — tracked separately.
 
 ### Tuple pattern in `case`: per-element metadata via `splitTypeArgs`
@@ -78,16 +81,32 @@ Records don't set `enum_value_type` on constructed values anywhere in the compil
 
 **How to apply**: Mirrored in `emitPatternTest` too: passing the full field type string as `subjectEnumType` in recursive `emitPatternTest` calls is safe (LiteralPattern and WildcardPattern ignore it; RecordPattern uses `pat->name` for lookup, not `subjectEnumType`). The dangerous place is **only in `emitPatternBindings`** where `VariablePattern` stores `subjectEnumType` directly into `enum_value_type` metadata.
 
-### ErrPattern binding in codegen_match.cpp must propagateMeta to preserve collection element-type metadata
+### Ok/Err/Some pattern bindings: prefer typeSig-driven `propagateTypeMeta`, not bulk `propagateMeta` (supersedes #1001)
 
-**Source**: #1001 (2026-04-16, implementation)
-**Tags**: codegen_match, pattern, Result, Err, metadata, collection, propagateMeta
+**Source**: #1638 (2026-05-08, implementation; supersedes #1001)
+**Tags**: codegen_match, pattern, Result, Err, Ok, Some, metadata, propagateTypeMeta, source_type_name, ARC, str
 
-**Rule**: In `emitPatternBindings` (`codegen_match.cpp`), the `ErrPattern` arm must call `propagateMeta(subjectAlloca, varAlloca)` after storing the extracted Err payload — exactly like `OkPattern` (index 1) and `SomePattern` do. Without this call, the bound variable (e.g., `lst` in `Err(lst)`) loses the collection element-type metadata stored on the subject alloca. Any subsequent index access or collection-kind dispatch on the binding will then fail with "cannot determine list element type".
+**Rule**: In `emitPatternBindings` (`codegen_match.cpp`), the `OkPattern` / `ErrPattern` / `SomePattern` arms must derive the binding's metadata from the **inner type signature** (resolved via `subjectSourceTypeName` → `source_type_name` field on the subject alloca, with `subjectEnumName` as fallback) and call `propagateTypeMeta(innerSig, varAlloca)`. They MUST NOT bulk-copy with `propagateMeta(subjectAlloca, varAlloca)`, which leaks metadata from the *other* slot of the tagged union into the binding.
 
-**Why**: `CreateExtractValue` produces a new LLVM `Value *` that does not inherit the custom metadata stored in the compiler's `value_metadata_` side-table. `propagateMeta` is the mechanism to copy that metadata to the new binding alloca. The same pattern was already applied to `OkPattern` and `SomePattern`, but the `ErrPattern` arm was accidentally left without it — there was no test that could trigger the gap before #1001 made `Err(collection)` construction possible.
+**Why**: `propagateMeta` blindly copies all of `subjectAlloca`'s metadata. For `Result<List<int>, str>`, `buildOkValue` / `propagateTypeMeta` stamp the **Ok side**'s collection metadata (`list_elem`, `list_elem_type_name = "int"`) onto the subject alloca — even when the runtime value is the Err variant. A bulk `propagateMeta` then leaks `list_elem` onto an `Err(e)` binding whose actual type is `str`. Downstream:
 
-**How to apply**: Whenever a new `xyzPattern` is added that extracts a sub-value from a subject alloca and introduces a binding variable, always add `propagateMeta(subjectAlloca, varAlloca)` after `CreateStore`. Review the neighbouring arms as a checklist.
+- `isStringValue(e)` returns false (the str-detection heuristic is short-circuited by the leaked `list_elem` flag) → `"prefix: " + e` fails the str-vs-non-str type check at compile time.
+- `valueToString(e)` dispatches into the list path → reads invalid memory off the str-pointer payload → SIGSEGV under ASan.
+
+The mirror leak applies to `OkPattern` for `Result<str, List<int>>` (Err-side metadata leaks into the Ok binding) and `SomePattern` when subjects carry stale broad metadata.
+
+**How to apply**: For each Ok/Err/Some arm:
+
+1. Read `subjectSourceTypeName` from the subject alloca's `source_type_name` metadata (lossless field stamped by `propagateTypeMeta` at Result/Option/T? branch entries — `src/codegen_builtin.cpp:75-193`).
+2. Fall back to `resolveTypeAlias(subjectEnumName)` if `source_type_name` is empty (e.g., subject is a typedef'd enum without source-name annotation).
+3. Call `extractGenericTypeArg(lookupName, "Result<", N)` (N=0 for Ok, 1 for Err) or `extractGenericTypeArg(lookupName, "Option<", 0)` to get `innerSig`.
+4. If `innerSig` is non-empty, call `propagateTypeMeta(innerSig, varAlloca)`. **Do not** call `propagateMeta(subjectAlloca, varAlloca)` in addition.
+5. If `innerSig` is empty (rare; lookupName itself was empty), fall back to `propagateMeta(subjectAlloca, varAlloca)` as a safety net (preserves prior behaviour for cases that don't go through the new channel).
+6. ARC retain (`emitPatternBindingArc(extractedVal, varAlloca, innerSig)`) is unchanged — the Path 2a logic in `emitPatternBindingArc` is already typeSig-driven and correctly classifies the binding's ARC kind (`-16` collection vs `-24` str header).
+
+**Sibling: `VariablePattern` keeps `propagateMeta`**: For `case x: y => ...` (whole-subject binding), the binding *should* inherit all subject metadata — `propagateMeta` is correct there. Only the destructuring arms (Ok/Err/Some) need the narrow `propagateTypeMeta(innerSig, ...)` path.
+
+**Historical note (formerly #1001)**: The original #1001 rule said "ErrPattern must call `propagateMeta`" — that was correct for the test it was guarding (`Err(List<int>)` collection-payload preservation), but the bulk-copy approach silently broke `Result<List<int>, str>`'s Err binding because no test covered the str-Err-with-ARC-Ok shape until #1638. The fix in #1638 is the typeSig-driven channel above, which correctly handles both directions (collection-Err and str-Err) by routing each binding through the inner type's own metadata stamping.
 
 ### ADT enum constructor pattern: single TuplePattern binding must be "unwrapped"
 
