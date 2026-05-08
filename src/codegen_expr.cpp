@@ -2114,6 +2114,7 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     storeListHeaderFields(newHeader, newLen, newLen, newData);
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(lhs, newHeader);
 
     // Propagate nested-list metadata so flat() works on concatenated results
     if (elemTy == ptrTy_) {
