@@ -1,0 +1,101 @@
+# Spec for ARC release on scope exit when scope has both early-exit and
+# natural-exit paths (issue #1642).
+#
+# Pre-fix root cause: `CodeGen::emitScopeCleanupToDepth` (src/codegen.cpp)
+# emits release IR AND erase()s the alloca from the relevant ARC side-table
+# (`arc_managed_vars_`, `weak_managed_vars_`, `arc_field_record_vars_`,
+# `arc_tagged_union_vars_`).  When the same scope has both an early-exit
+# path (`return` / `break` / `continue` / `?`) and a natural-exit path
+# (closing `popScope()`), the early-exit's cleanup runs first and erases
+# the side-table entry.  The subsequent natural-exit `popScope()` finds
+# no entry and emits no IR on the fall-through path -- one-sided leak.
+#
+# This bug pre-dates #1640 and affects every ARC side-table, not just the
+# new tagged-union one (Case B below proves it on `arc_managed_vars_`).
+#
+# Tests assert the delta of `arcLiveCount()` across N=50 iterations is a
+# small constant (NOT proportional to N).  Per
+# .claude/rules/tests-arc-leak-pattern.md:
+#   - delta-not-absolute (background noise from collection element leaks)
+#   - heap-backed strings via concat (`prefix + "ps"`) -- not literals
+#     (ARC_IMMORTAL).
+
+from testing import it, describe, expect, fail
+
+from runtime_internal import arcLiveCount
+
+fn makeErrListIntStr() -> Result<List<int>, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
+# Repro 1 helper: case statement with arm-level `return`.  When the Err
+# arm is taken (natural continue), the subject alloca's payload retain
+# was leaked pre-fix.
+fn caseEarlyReturnHelper() -> int:
+  i = 0
+  while i < 50:
+    r = makeErrListIntStr()
+    case r:
+      Ok(_):
+        return -1
+      Err(_):
+        i = i + 1
+  return 0
+
+# Repro 2 helper: plain `List<int>` declared inside a `while` body with
+# a conditional `return`.  When `early = false`, the natural-exit path
+# of the while body was missing release IR pre-fix.
+fn plainListEarlyReturnHelper(early: bool) -> int:
+  i = 0
+  while i < 50:
+    x: List<int> = [1, 2, 3]
+    if early:
+      return -1
+    i = i + 1
+  return 0
+
+# Bonus: `break` early-exit path in a `while` loop.  Exercises a different
+# call site of `emitScopeCleanupToDepth` (codegen_stmt_loop.cpp) than
+# `return`.
+fn plainListBreakHelper() -> int:
+  i = 0
+  while i < 50:
+    x: List<int> = [1, 2, 3]
+    if i >= 25:
+      break
+    i = i + 1
+  return 0
+
+@describe("ARC release on scope exit with mixed early-exit / natural-exit (#1642)")
+fn arcScopeEarlyExitReleaseTests():
+  @it("case Result<List<int>, str> -- Err arm continues loop, Ok arm returns")
+  fn caseSubjectEarlyReturnNoLeak():
+    # Triggers `arc_tagged_union_vars_` side-table (#1640).  Pre-fix, the
+    # natural-exit (Err arm path) was missing release IR and the subject
+    # alloca's List<int> payload retain leaked once per iteration.
+    before = arcLiveCount()
+    rc = caseEarlyReturnHelper()
+    expect(rc).toEq(0)
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("plain List<int> in while loop with conditional return -- non-tagged-union side-table")
+  fn plainListEarlyReturnNoLeak():
+    # Triggers `arc_managed_vars_` side-table.  Demonstrates that the bug
+    # is not specific to `arc_tagged_union_vars_` (#1640) -- it affects
+    # every ARC side-table that `emitScopeCleanupToDepth` mutates.
+    before = arcLiveCount()
+    rc = plainListEarlyReturnHelper(false)
+    expect(rc).toEq(0)
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("plain List<int> in while loop with conditional break -- exercises loop early-exit path")
+  fn plainListBreakNoLeak():
+    # Hits codegen_stmt_loop.cpp's `break` cleanup site, a different
+    # call site of `emitScopeCleanupToDepth` than `return`.
+    before = arcLiveCount()
+    rc = plainListBreakHelper()
+    expect(rc).toEq(0)
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
