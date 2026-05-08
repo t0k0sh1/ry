@@ -31,15 +31,21 @@ fn listListArcRetain1236Tests():
     a = [[99]]
     b = [[88]]
     expect(ys).toHaveLen(3)
+    expect(ys[0][0]).toEq(1)
+    expect(ys[1][1]).toEq(4)
+    expect(ys[2][0]).toEq(5)
 
   @it("List<Map<str, int>> concat retains map values after source drop")
   fn listMapStrIntConcatRetainsMapValuesAfterSourceDrop():
     a: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     b: List<Map<str, int>> = [{"c": 3}]
-    ys = a + b
+    ys: List<Map<str, int>> = a + b
     a = [{"z": 999}]
     b = [{"y": 888}]
     expect(len(ys)).toEq(3)
+    expect(ys[0]["a"]).toEq(1)
+    expect(ys[1]["b"]).toEq(2)
+    expect(ys[2]["c"]).toEq(3)
 
   @it("empty + non-empty concat is safe in both directions")
   fn emptyNonEmptyConcatIsSafeInBothDirections():
