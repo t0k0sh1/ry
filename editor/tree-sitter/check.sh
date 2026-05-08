@@ -52,6 +52,11 @@ if [[ ! -d "$SPEC_DIR" ]]; then
   exit 1
 fi
 
+if ! command -v tree-sitter >/dev/null 2>&1; then
+  echo "ERROR: tree-sitter CLI not found in PATH" >&2
+  exit 1
+fi
+
 # expected-fail.txt を pipe-delimited 文字列に正規化する (bash 3.2 互換のため
 # associative array を使わない)。tests/spec/ の path は '|' を含まないので衝突しない。
 EXPECTED_FAIL_STR="|"
@@ -85,12 +90,23 @@ total_pass=0
 total_skip=0
 
 for f in "${test_files[@]}"; do
-  rel="${f#$REPO_ROOT/}"
+  rel="${f#"$REPO_ROOT"/}"
 
-  output="$(tree-sitter parse "$f" 2>&1 || true)"
+  parse_rc=0
+  output="$(tree-sitter parse "$f" 2>&1)" || parse_rc=$?
+  # `grep -q` exits as soon as it matches and closes the pipe, which gives
+  # the upstream `printf` a SIGPIPE (exit 141). Under `set -o pipefail` that
+  # makes the whole pipeline fail and the `if` branch never fires — even for
+  # huge outputs that obviously contain ERROR. Use a here-string instead so
+  # there is no upstream writer to kill.
   has_error=0
-  if printf '%s' "$output" | grep -qE 'ERROR|MISSING'; then
+  if grep -qE 'ERROR|MISSING' <<< "$output"; then
     has_error=1
+  fi
+  if (( parse_rc != 0 && has_error == 0 )); then
+    echo "ERROR: tree-sitter parse failed unexpectedly for $rel (exit $parse_rc)" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
   fi
 
   in_xfail=0

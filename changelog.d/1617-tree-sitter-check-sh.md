@@ -8,7 +8,7 @@
   single place where tolerated divergence is recorded. Files that move
   out of the gap list automatically surface a `WARN: ... now passes`
   on the next run so the entry can be retired in the same PR. The
-  initial `expected-fail.txt` clusters the 38 currently failing fixtures
+  initial `expected-fail.txt` clusters the 41 currently failing fixtures
   into six named buckets (tuple member access, generic syntax variants,
   lambda-block bodies, numeric literal forms, async / decorator /
   operator-overload declarations, and other surface gaps).
