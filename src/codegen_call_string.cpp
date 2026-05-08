@@ -647,6 +647,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         builder_.CreateStore(newData, newDataField);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(arg, newHeader);
         return newHeader;
     }
 

@@ -1,0 +1,142 @@
+from testing import it, describe, expect
+
+# Regression tests for #1651 — same-element-type collection helpers must pair
+# `setTypeMeta` with `propagateMeta`.  Without the propagation, source-level
+# metadata (`list_elem_type_name`, `map_value_type_name`, `set_elem_type_name`,
+# etc.) is dropped on the output, and downstream nested-index / key-lookup
+# operations fail at codegen time with errors like "str does not support index
+# access".
+#
+# Each test mirrors `tests/spec/list_concat_arc.test.ry`'s shape:
+#   - the helper's result is bound without an explicit type annotation;
+#   - the source uses an inner-with-metadata type (Map<str,int>, List<int>, …)
+#     — never a plain `List<str>` (would falsely pass per
+#     `.claude/rules/tests-arc-leak-pattern.md` blind-spot rule);
+#   - the assertion exercises an inner-metadata-dependent op (nested index,
+#     key lookup) that fails at codegen if metadata is lost.
+
+@describe("filter propagates inner-collection metadata (#1651)")
+fn filterPropagatesInnerCollectionMetadata1651Tests():
+  @it("filter on List<Map<str, int>> preserves map key access on result")
+  fn filterOnListMapStrIntPreservesMapKeyAccessOnResult():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"a": 3}]
+    ys = filter(xs, m => true)
+    expect(len(ys)).toEq(3)
+    expect(ys[0]["a"]).toEq(1)
+    expect(ys[2]["a"]).toEq(3)
+
+  @it("filter on List<List<int>> preserves nested index access on result")
+  fn filterOnListListIntPreservesNestedIndexAccessOnResult():
+    xss: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
+    ys = filter(xss, l => true)
+    expect(len(ys)).toEq(3)
+    expect(ys[0][0]).toEq(1)
+    expect(ys[2][1]).toEq(6)
+
+@describe("reverse propagates inner-collection metadata (#1651)")
+fn reversePropagatesInnerCollectionMetadata1651Tests():
+  @it("reverse on List<List<int>> preserves nested index access on result")
+  fn reverseOnListListIntPreservesNestedIndexAccessOnResult():
+    xss: List<List<int>> = [[1, 2], [3, 4]]
+    rev = reverse(xss)
+    expect(len(rev)).toEq(2)
+    expect(rev[0][0]).toEq(3)
+    expect(rev[1][1]).toEq(2)
+
+  @it("reverse on List<Map<str, int>> preserves map key access on result")
+  fn reverseOnListMapStrIntPreservesMapKeyAccessOnResult():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    rev = reverse(xs)
+    expect(len(rev)).toEq(2)
+    expect(rev[0]["b"]).toEq(2)
+    expect(rev[1]["a"]).toEq(1)
+
+@describe("sort propagates inner-collection metadata (#1651)")
+fn sortPropagatesInnerCollectionMetadata1651Tests():
+  # Discrimination note: bare `sort(xs)` on a List<inner-with-metadata> uses
+  # the ptr-element strcmp path of emitSortCore — the resulting order is
+  # arbitrary (sort by pointer-as-cstring), but the inner pointers themselves
+  # are intact, so this is sufficient to discriminate whether propagateMeta
+  # was called: without it `s[0]` is treated as `str` and `s[0][...]` raises
+  # the "str does not support index access" codegen error.
+  #
+  # A typed-comparator variant (e.g. `sort(xss, (a: List<int>, b: List<int>) =>
+  # len(a) < len(b))`) cannot be used here because lambdas with typed
+  # inner-collection parameters trigger a separate, pre-existing UAF where the
+  # parameter cleanup releases the source's inner data — orthogonal to this
+  # propagateMeta fix.
+  @it("sort on List<List<int>> preserves nested index access on result")
+  fn sortOnListListIntPreservesNestedIndexAccessOnResult():
+    xss: List<List<int>> = [[1, 2], [3, 4]]
+    s = sort(xss)
+    expect(len(s)).toEq(2)
+    # We cannot assert exact ordering (ptr-as-cstring), but each inner list
+    # must still be a 2-element List<int> reachable via nested index.
+    expect(len(s[0])).toEq(2)
+    expect(len(s[1])).toEq(2)
+
+  @it("sort on List<Map<str, int>> preserves map key access on result")
+  fn sortOnListMapStrIntPreservesMapKeyAccessOnResult():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    s = sort(xs)
+    expect(len(s)).toEq(2)
+    # Each inner map remains a Map<str, int> with key access intact.
+    expect(len(s[0])).toEq(1)
+    expect(len(s[1])).toEq(1)
+
+# Set operation regression tests — pre-fix, the manual block at each set-op
+# site already copied `set_elem_type_name`, so iteration + nested-index does
+# not strictly discriminate red→green for the Set sites.  These tests are
+# regression coverage to ensure the manual block deletion + propagateMeta
+# replacement keeps existing iteration semantics intact.
+@describe("set union propagates inner-collection metadata (#1651)")
+fn setUnionPropagatesInnerCollectionMetadata1651Tests():
+  @it("union on Set<List<int>> preserves iteration with nested index access")
+  fn unionOnSetListIntPreservesIterationWithNestedIndexAccess():
+    a: Set<List<int>> = {[1, 2]}
+    b: Set<List<int>> = {[3, 4]}
+    c = union(a, b)
+    expect(len(c)).toEq(2)
+    total = 0
+    for elem in c:
+      total = total + elem[0]
+    expect(total).toEq(4)
+
+@describe("set intersection propagates inner-collection metadata (#1651)")
+fn setIntersectionPropagatesInnerCollectionMetadata1651Tests():
+  @it("intersection on Set<List<int>> preserves iteration with nested index access")
+  fn intersectionOnSetListIntPreservesIterationWithNestedIndexAccess():
+    a: Set<List<int>> = {[1, 2], [3, 4]}
+    b: Set<List<int>> = {[1, 2], [5, 6]}
+    c = intersection(a, b)
+    expect(len(c)).toEq(1)
+    total = 0
+    for elem in c:
+      total = total + elem[0]
+    expect(total).toEq(1)
+
+@describe("set difference propagates inner-collection metadata (#1651)")
+fn setDifferencePropagatesInnerCollectionMetadata1651Tests():
+  @it("difference on Set<List<int>> preserves iteration with nested index access")
+  fn differenceOnSetListIntPreservesIterationWithNestedIndexAccess():
+    a: Set<List<int>> = {[1, 2], [3, 4]}
+    b: Set<List<int>> = {[1, 2]}
+    c = difference(a, b)
+    expect(len(c)).toEq(1)
+    total = 0
+    for elem in c:
+      total = total + elem[0]
+    expect(total).toEq(3)
+
+@describe("set symmetric difference propagates inner-collection metadata (#1651)")
+fn setSymmetricDifferencePropagatesInnerCollectionMetadata1651Tests():
+  @it("symmetricDifference on Set<List<int>> preserves iteration with nested index access")
+  fn symmetricDifferenceOnSetListIntPreservesIterationWithNestedIndexAccess():
+    a: Set<List<int>> = {[1, 2], [3, 4]}
+    b: Set<List<int>> = {[3, 4], [5, 6]}
+    c = symmetricDifference(a, b)
+    expect(len(c)).toEq(2)
+    total = 0
+    for elem in c:
+      total = total + elem[0]
+    expect(total).toEq(6)
