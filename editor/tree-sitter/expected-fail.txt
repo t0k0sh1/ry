@@ -1,0 +1,68 @@
+# tests/spec/**/*.test.ry の中で tree-sitter grammar (editor/tree-sitter/grammar.js)
+# がまだ parse できないファイルを列挙する。check.sh はこのリストにある file だけ
+# ERROR/MISSING ノードを許容し、リスト外は regression として失敗させる。
+#
+# Phase 1 (#1617) は既存 corpus を smoke fixture として使う最小実装。
+# Phase 2 — `tree-sitter test` の hand-curated corpus + S-expression assertion ベースは
+# 別 issue (#1633) で追跡する。
+#
+# === Format ===
+#   - 1 行 1 path (repo root 相対)。空行および `#` 始まりの行は無視される。
+#   - 行末の `# ...` はインラインコメント (任意、check.sh は剥がしてから使う)。
+#   - 既知の grammar gap は `# === ... ===` の section header でグルーピングする。
+#
+# === Known unsupported patterns (no test coverage today) ===
+#   - Nested f-strings: e.g. `f"a={f"b={42}"}"`。tests/spec/ には該当する spec が
+#     存在しないため file path 登録は無し。spec が追加されたら追記する。
+
+# === Tuple member access (`.0`, `.1`, ..., `.N`) ===
+tests/spec/combinatorial/collection_element_tuple_access.test.ry
+tests/spec/combinatorial/collection_element_tuple_iterate.test.ry
+tests/spec/combinatorial/fn_argument.test.ry
+tests/spec/combinatorial/fn_return.test.ry
+tests/spec/combinatorial/match_types.test.ry
+tests/spec/combinatorial/nested_types.test.ry
+tests/spec/combinatorial/syntax_combinations.test.ry
+tests/spec/generic_infer_container.test.ry
+tests/spec/tuple_destructure_assign_parens.test.ry
+tests/spec/tuple_single_element.test.ry
+tests/spec/types.test.ry
+
+# === Generic type syntax variants (`<T: Bound>`, `<T>::Variant` turbofish) ===
+tests/spec/enum_generic_param_type.test.ry
+tests/spec/generic_bounds.test.ry
+
+# === Lambda body with block expressions (`=> if ... :`, `=> if ... else ...`) ===
+tests/spec/lambda_paren_omit.test.ry
+tests/spec/nested_fn_return_fn.test.ry
+tests/spec/option_branch_merge_none.test.ry
+tests/spec/option_lambda_if.test.ry
+tests/spec/result_lambda_if.test.ry
+
+# === Numeric literal forms (leading dot, type suffix, underscore separator) ===
+tests/spec/leading_dot_float.test.ry
+tests/spec/numeric_literal_suffix.test.ry
+tests/spec/numeric_underscore_separator.test.ry
+
+# === Async / decorator / operator-overload / untyped-param declarations ===
+tests/spec/concurrency.test.ry
+tests/spec/concurrency_stress.test.ry
+tests/spec/functions.test.ry
+tests/spec/http.test.ry
+tests/spec/implicit_widening.test.ry
+tests/spec/list_destructure_assign.test.ry
+tests/spec/net.test.ry
+tests/spec/top_level_bindings.test.ry
+
+# === Other surface coverage gaps ===
+# (relative imports, trailing commas, records, case unification / arm bindings,
+#  ARC iolist patterns, Result type inference)
+tests/spec/arc_iolist.test.ry
+tests/spec/case_unification.test.ry
+tests/spec/nul_safety_http.test.ry
+tests/spec/record_subtyping.test.ry
+tests/spec/records.test.ry
+tests/spec/relative_import/mymath/mymath.test.ry
+tests/spec/relative_import/relative_import.test.ry
+tests/spec/result_type_inference.test.ry
+tests/spec/trailing_commas.test.ry
