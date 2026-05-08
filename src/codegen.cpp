@@ -426,6 +426,20 @@ void CodeGen::pushScope() {
 
 void CodeGen::popScope() {
     emitScopeCleanup();
+    // Side-table erase MUST happen here (not in emitScopeCleanupToDepth)
+    // so that early-exit cleanups (return/break/continue/?) leave the
+    // entries in place for the natural-exit popScope() to also emit a
+    // release IR on the fall-through path.  See #1642.
+    if (!scope_stack_.empty()) {
+        auto &scope = scope_stack_.back();
+        for (auto &[name, alloca] : scope) {
+            weak_managed_vars_.erase(alloca);
+            weak_inner_type_names_.erase(alloca);
+            arc_field_record_vars_.erase(alloca);
+            arc_tagged_union_vars_.erase(alloca);
+            arc_managed_vars_.erase(alloca);
+        }
+    }
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
     iterator_malloc_stack_.pop_back();
@@ -438,14 +452,17 @@ void CodeGen::emitScopeCleanup() {
     emitScopeCleanupToDepth(scope_stack_.size() - 1);
 }
 
+// Emits ARC release IR for every alloca in scope frames [targetDepth, top].
+// This function is "emit only" -- it does NOT mutate side-tables.  Side-table
+// erase happens in popScope() so that early-exit cleanups (which terminate
+// their BB with ret/br) do not desync the bookkeeping for a sibling
+// natural-exit popScope() emitting on a different BB (#1642).
 void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
     for (size_t i = scope_stack_.size(); i > targetDepth; --i) {
         auto &scope = scope_stack_[i - 1];
         for (auto &[name, alloca] : scope) {
             if (weak_managed_vars_.count(alloca)) {
                 emitWeakReleaseVar(name, alloca);
-                weak_managed_vars_.erase(alloca);
-                weak_inner_type_names_.erase(alloca);
                 continue;
             }
             // Records with ARC fields (#854 Layer 2): release each ARC
@@ -457,7 +474,6 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
                 llvm::Value *recVal = builder_.CreateLoad(
                     recSt, alloca, name + ".record_scope_cleanup");
                 emitRecordArcFieldsRelease(recVal, recSt);
-                arc_field_record_vars_.erase(alloca);
                 continue;
             }
             // case subject Result/Option struct allocas (#1640): release the
@@ -466,12 +482,10 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             if (auto tuIt = arc_tagged_union_vars_.find(alloca);
                 tuIt != arc_tagged_union_vars_.end()) {
                 emitTaggedUnionRelease(alloca, tuIt->second);
-                arc_tagged_union_vars_.erase(tuIt);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;
             emitArcReleaseVar(name, alloca);
-            arc_managed_vars_.erase(alloca);
         }
         auto &iterMallocs = iterator_malloc_stack_[i - 1];
         if (!iterMallocs.empty()) {
