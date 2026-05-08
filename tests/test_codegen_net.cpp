@@ -55,12 +55,21 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case connect("127.0.0.1", 19999):
-    Ok(conn):
-        print("connected")
-        close(conn)
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case connect("127.0.0.1", port):
+            Ok(conn):
+                print("connected")
+                close(conn)
+            Err(e):
+                print("err")
     Err(e):
-        print("err")
+        ...
 )"), "err\n");
 }
 
@@ -293,37 +302,64 @@ TEST(TcpRecv, ErrorReturnsNull) {
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case connect("127.0.0.1", 19997):
-    Ok(conn):
-        setTimeout(conn, 500)
-        print("ok")
-        close(conn)
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case connect("127.0.0.1", port):
+            Ok(conn):
+                setTimeout(conn, 500)
+                print("ok")
+                close(conn)
+            Err(e):
+                print("err")
     Err(e):
-        print("err")
+        ...
 )"), "err\n");
 }
 
 TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case connect("127.0.0.1", 19996):
-    Ok(conn):
-        setReceiveTimeout(conn, 500)
-        print("ok")
-        close(conn)
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case connect("127.0.0.1", port):
+            Ok(conn):
+                setReceiveTimeout(conn, 500)
+                print("ok")
+                close(conn)
+            Err(e):
+                print("err")
     Err(e):
-        print("err")
+        ...
 )"), "err\n");
 }
 
 TEST_F(CodeGenTest, NetSetSendTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case connect("127.0.0.1", 19995):
-    Ok(conn):
-        setSendTimeout(conn, 500)
-        print("ok")
-        close(conn)
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case connect("127.0.0.1", port):
+            Ok(conn):
+                setSendTimeout(conn, 500)
+                print("ok")
+                close(conn)
+            Err(e):
+                print("err")
     Err(e):
-        print("err")
+        ...
 )"), "err\n");
 }
 
@@ -400,12 +436,21 @@ TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
 
 TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case tlsConnect("127.0.0.1", 19993):
-    Ok(conn):
-        print("connected")
-        close(conn)
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case tlsConnect("127.0.0.1", port):
+            Ok(conn):
+                print("connected")
+                close(conn)
+            Err(e):
+                print("tls err")
     Err(e):
-        print("tls err")
+        ...
 )"), "tls err\n");
 }
 
@@ -415,21 +460,30 @@ case tlsConnect("127.0.0.1", 19993):
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case tlsConnect("127.0.0.1", 19992):
-    Ok(conn):
-        case send(conn, toBytes("hello")):
-            Ok(n):
-                print("sent")
+@native
+fn listenerPort(listener: TcpListener) -> int
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        port = listenerPort(server)
+        close(server)
+        case tlsConnect("127.0.0.1", port):
+            Ok(conn):
+                case send(conn, toBytes("hello")):
+                    Ok(n):
+                        print("sent")
+                    Err(e):
+                        print("send err")
+                case receive(conn, 4096):
+                    Ok(data):
+                        print("recv ok")
+                    Err(e):
+                        print("recv err")
+                close(conn)
             Err(e):
-                print("send err")
-        case receive(conn, 4096):
-            Ok(data):
-                print("recv ok")
-            Err(e):
-                print("recv err")
-        close(conn)
+                print("err")
     Err(e):
-        print("err")
+        ...
 )"), "err\n");
 }
 
