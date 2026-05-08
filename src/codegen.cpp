@@ -166,6 +166,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
     savedResourceManaged_ = std::move(cg_.resource_managed_vars_);
     savedClosureManaged_ = std::move(cg_.closure_managed_vars_);
+    savedArcTaggedUnion_ = std::move(cg_.arc_tagged_union_vars_);
     savedIteratorMallocs_ = std::move(cg_.iterator_malloc_stack_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
@@ -187,6 +188,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.weak_inner_type_names_.clear();
     cg_.resource_managed_vars_.clear();
     cg_.closure_managed_vars_.clear();
+    cg_.arc_tagged_union_vars_.clear();
     cg_.iterator_malloc_stack_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
@@ -206,6 +208,7 @@ CodeGen::FnScope::~FnScope() noexcept {
     cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
     cg_.resource_managed_vars_ = std::move(savedResourceManaged_);
     cg_.closure_managed_vars_ = std::move(savedClosureManaged_);
+    cg_.arc_tagged_union_vars_ = std::move(savedArcTaggedUnion_);
     cg_.iterator_malloc_stack_ = std::move(savedIteratorMallocs_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
@@ -455,6 +458,15 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
                     recSt, alloca, name + ".record_scope_cleanup");
                 emitRecordArcFieldsRelease(recVal, recSt);
                 arc_field_record_vars_.erase(alloca);
+                continue;
+            }
+            // case subject Result/Option struct allocas (#1640): release the
+            // active payload slot's ARC reference. The active slot is decided
+            // at runtime by reading the struct's tag field.
+            if (auto tuIt = arc_tagged_union_vars_.find(alloca);
+                tuIt != arc_tagged_union_vars_.end()) {
+                emitTaggedUnionRelease(alloca, tuIt->second);
+                arc_tagged_union_vars_.erase(tuIt);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;

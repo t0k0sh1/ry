@@ -1,0 +1,168 @@
+# Spec for ARC release on case subject Result/Option struct allocas (issue #1640)
+#
+# Pre-fix root cause: `case` expression / statement materializes the subject
+# value into a struct alloca (`{i1, T, E}` for Result, `{i1, T}` for Option)
+# in `codegen_match.cpp` (CaseStmt ~789-795 / CaseExpr ~865-870).  This
+# alloca is never registered with `scope_stack_` nor any ARC tracking set,
+# so `popScope` / `emitScopeCleanupToDepth` never visits it.  The
+# construction-time retain emitted by `buildOkValue` / `buildErrValue` /
+# `buildSomeValue` is therefore never balanced by a release at scope exit,
+# leaking exactly one ARC header per `case` evaluation per ARC-managed
+# active slot.
+#
+# Tests assert the delta of `arcLiveCount()` across N=50 iterations is a
+# small constant (NOT proportional to N).  Per .claude/rules/tests-arc-leak-pattern.md:
+#   - delta-not-absolute (background noise from collection element leaks)
+#   - prefer List<List<int>> over List<str> (#1235 blind spot)
+#   - heap-backed strings via concat (`prefix + "ps"`) — not literals (ARC_IMMORTAL)
+
+from testing import it, describe, expect, fail
+
+from runtime_internal import arcLiveCount
+
+fn makeErrStr() -> Result<int, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
+fn makeErrListIntStr() -> Result<List<int>, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
+fn makeOkListInt() -> Result<List<int>, str>:
+  return Ok([1, 2, 3])
+
+fn makeSomeListInt() -> Option<List<int>>:
+  return Some([10, 20, 30])
+
+fn makeNoneListInt() -> Option<List<int>>:
+  return None
+
+fn makeOkInt() -> Result<int, int>:
+  return Ok(42)
+
+fn makeErrInt() -> Result<int, int>:
+  return Err(7)
+
+@describe("ARC release on case subject struct allocas (#1640)")
+fn arcCaseSubjectReleaseTests():
+  @it("case Result<int, str> — Err(e) binding does not leak across iterations")
+  fn caseResultIntStrErrBindingNoLeak():
+    # Subject alloca holds {i1, int, str}; Err(e) arm extracts the str slot
+    # into a binding alloca.  Pre-fix: subject alloca's str payload retained
+    # at construction is never released — leak grows with iteration count.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      r = makeErrStr()
+      case r:
+        Ok(v):
+          fail("expected Err")
+        Err(e):
+          expect(e).toEq("oops")
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Result<int, str> — Err(_) wildcard does not leak")
+  fn caseResultIntStrErrWildcardNoLeak():
+    # Wildcard arm: no binding alloca is created (no balanced release),
+    # so the leak source is purely the subject alloca's payload retain.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      r = makeErrStr()
+      case r:
+        Ok(_):
+          fail("expected Err")
+        Err(_):
+          expect(true).toBeTrue()
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Result<List<int>, str> — Ok(_) wildcard does not leak")
+  fn caseResultListIntStrOkWildcardNoLeak():
+    # Subject alloca is {i1, List<int>, str}.  Ok side holds an ARC-managed
+    # collection.  Wildcard binding => no balanced release on the binding
+    # side; subject alloca's List<int> retain leaks pre-fix.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      r = makeOkListInt()
+      case r:
+        Ok(_):
+          expect(true).toBeTrue()
+        Err(_):
+          fail("expected Ok")
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Result<List<int>, str> — Err(_) wildcard does not leak")
+  fn caseResultListIntStrErrWildcardNoLeak():
+    # Same shape, but reach Err arm — verifies the str slot is also released
+    # when active (and the List slot is not double-released).
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      r = makeErrListIntStr()
+      case r:
+        Ok(_):
+          fail("expected Err")
+        Err(_):
+          expect(true).toBeTrue()
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Option<List<int>> — Some(xs) binding does not leak")
+  fn caseOptionListIntSomeBindingNoLeak():
+    # Subject alloca is {i1, List<int>}.  Binding alloca exists for xs;
+    # the binding side balances correctly per #997, but subject alloca's
+    # List<int> retain leaks pre-fix.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      opt = makeSomeListInt()
+      case opt:
+        Some(xs):
+          expect(xs.len()).toEq(3)
+        None:
+          fail("expected Some")
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Option<List<int>> — None arm does not leak (mixed Some/None)")
+  fn caseOptionListIntNoneArmNoLeak():
+    # When None active, no payload retain at construction (None has tag=0
+    # and the payload slot is undef).  Verifies no spurious release fires.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      opt = makeNoneListInt()
+      case opt:
+        Some(_):
+          fail("expected None")
+        None:
+          expect(true).toBeTrue()
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()
+
+  @it("case Result<int, int> — neither slot ARC, no extra cost")
+  fn caseResultIntIntNoExtraCost():
+    # Both slots are non-ARC primitives.  No subject alloca registration
+    # should happen (no extra release IR).  Functional correctness only.
+    before = arcLiveCount()
+    i = 0
+    while i < 50:
+      r = makeOkInt()
+      case r:
+        Ok(v):
+          expect(v).toEq(42)
+        Err(_):
+          fail("expected Ok")
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 5).toBeTrue()

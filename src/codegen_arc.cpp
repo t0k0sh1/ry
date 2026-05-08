@@ -601,6 +601,82 @@ void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
     }
 }
 
+// #1640: Releases the active payload slot of a tagged-union (Result/Option)
+// subject alloca at scope exit. Loads the struct, extracts the i1 tag, and
+// branches: tag=true picks Ok/Some (slot index 1), tag=false picks Err
+// (slot index 2 for Result; Option's None has no payload). Each active
+// slot is released via `emitArcReleaseLoadedElement` only when the
+// corresponding inner type is ARC-managed; non-ARC slots emit no IR in
+// their branch.
+void CodeGen::emitTaggedUnionRelease(llvm::AllocaInst *alloca,
+                                      const std::string &sourceTypeName) {
+    if (!alloca) return;
+    llvm::Type *ty = alloca->getAllocatedType();
+    auto *st = llvm::dyn_cast<llvm::StructType>(ty);
+    if (!st) return;
+
+    const bool isResult = isResultType(ty);
+    const bool isOption = isOptionType(ty);
+    if (!isResult && !isOption) return;
+
+    // Resolve inner Ok/Err (or Some) type names from the source type string.
+    // No fallback to reverseResolveTypeName: per #1156, that channel is lossy
+    // and would misclassify Option<List<int>> as Option<str> (wrong header
+    // offset, heap corruption).
+    std::string resolvedSource = resolveTypeAlias(sourceTypeName);
+    std::string okName, errName;
+    if (isOption && resolvedSource.size() > 1 && resolvedSource.back() == '?') {
+        // T? shorthand for Option<T>
+        okName = trimTypeNameSpaces(
+            resolvedSource.substr(0, resolvedSource.size() - 1));
+    } else {
+        std::string head;
+        std::vector<std::string> innerArgs;
+        if (splitGenericTypeName(resolvedSource, head, innerArgs)) {
+            if (isResult && head == "Result") {
+                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+                if (innerArgs.size() >= 2) errName = trimTypeNameSpaces(innerArgs[1]);
+            } else if (isOption && head == "Option") {
+                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+            }
+        }
+    }
+
+    CollectionKind okKind = CollectionKind::List;
+    CollectionKind errKind = CollectionKind::List;
+    const bool okArc = !okName.empty() && fieldTypeIsArcManaged(okName, &okKind);
+    const bool errArc = isResult && !errName.empty() &&
+                         fieldTypeIsArcManaged(errName, &errKind);
+    if (!okArc && !errArc) return;
+
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+    auto *okBB = llvm::BasicBlock::Create(*ctx_, "tu.ok", parentFn);
+    auto *errBB = llvm::BasicBlock::Create(*ctx_, "tu.err", parentFn);
+    auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "tu.merge", parentFn);
+
+    llvm::Value *loaded = builder_.CreateLoad(ty, alloca, "tu.load");
+    llvm::Value *tag = builder_.CreateExtractValue(loaded, 0, "tu.tag");
+    builder_.CreateCondBr(tag, okBB, errBB);
+
+    // Ok / Some path
+    builder_.SetInsertPoint(okBB);
+    if (okArc) {
+        llvm::Value *okVal = builder_.CreateExtractValue(loaded, 1, "tu.ok_val");
+        emitArcReleaseLoadedElement(okVal, okKind, okName, "tu.ok");
+    }
+    builder_.CreateBr(mergeBB);
+
+    // Err path (Result only; Option's None has no payload)
+    builder_.SetInsertPoint(errBB);
+    if (errArc) {
+        llvm::Value *errVal = builder_.CreateExtractValue(loaded, 2, "tu.err_val");
+        emitArcReleaseLoadedElement(errVal, errKind, errName, "tu.err");
+    }
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+}
+
 bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
                                        CollectionKind containerKind,
                                        CollectionKind *outElemKind) {
