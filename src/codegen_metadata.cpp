@@ -169,6 +169,8 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.union_value_type = srcMeta.union_value_type;
     if (!srcMeta.enum_value_type.empty())
         dstMeta.enum_value_type = srcMeta.enum_value_type;
+    if (!srcMeta.source_type_name.empty())
+        dstMeta.source_type_name = srcMeta.source_type_name;
 
     // FnTypeInfo
     if (srcMeta.fn_type_info)

@@ -908,6 +908,14 @@ public:
         std::string set_elem_type_name;     // Ry type name for set elements (e.g. "List<int>")
         std::string union_value_type;       // normalized union type name
         std::string enum_value_type;        // enum type name
+        // Lossless full Ry type name (e.g. "Result<List<int>, str>",
+        // "Option<List<int>>"). Stamped by propagateTypeMeta in the
+        // Result / Option / T? branches. Enables pattern bindings to
+        // recover the precise inner type for ARC retain dispatch and
+        // for str-vs-collection metadata reconstruction without going
+        // through the lossy reverseResolveTypeName path. (#1638, see
+        // codegen-pattern-and-match.md #1156 Follow-up)
+        std::string source_type_name;
 
         // Closure/function type info for collection elements
         std::optional<FnTypeInfo> list_elem_fn_type_info;

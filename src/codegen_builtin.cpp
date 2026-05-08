@@ -133,6 +133,13 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         if (isFunctionTypeName(inner))
             getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0 && resolved.back() == '>') {
+        // Stamp the lossless full type name so pattern bindings can recover
+        // the precise Ok/Err inner types for ARC retain dispatch and
+        // metadata reconstruction (#1638). This must be set before the
+        // recursive Ok/Err propagateTypeMeta calls below, since those
+        // calls reset the value's collection metadata for the active
+        // payload but leave source_type_name intact.
+        getOrCreateMeta(val).source_type_name = resolved;
         // Propagate the active payload's collection metadata onto this value so
         // buildTypeNameFromMeta() works for Result<Collection,E> call results
         // even when no explicit type annotation is present (#985).
@@ -170,13 +177,19 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
             }
         }
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
+        // Stamp the lossless full type name (#1638) — see Result branch above.
+        getOrCreateMeta(val).source_type_name = resolved;
         // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
         std::string inner = resolved.substr(7, resolved.size() - 8);
         propagateTypeMeta(inner, val);
         propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (resolved.size() > 1 && resolved.back() == '?') {
         // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
+        // Normalize to Option<inner> form before stamping source_type_name so
+        // downstream consumers see one canonical spelling regardless of which
+        // syntactic shape the user wrote (#1638).
         std::string inner = resolved.substr(0, resolved.size() - 1);
+        getOrCreateMeta(val).source_type_name = "Option<" + inner + ">";
         propagateTypeMeta(inner, val);
         propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (isLowLevelTypeName(resolved)) {

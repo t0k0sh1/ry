@@ -40,6 +40,21 @@ fn makeSomeStrShort() -> str?:
 fn makeSomeListShort() -> List<int>?:
   return Some([1, 2, 3])
 
+# Helpers for #1638: Result with ARC-typed Ok slot returning Err with a
+# heap-backed str payload.  The Err arm is **reachable**, which is what
+# triggers the wrong-side metadata leak from the Ok side onto the Err binding.
+fn makeErrListInt() -> Result<List<int>, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
+fn makeErrMapStrInt() -> Result<Map<str, int>, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
+fn makeErrSetInt() -> Result<Set<int>, str>:
+  prefix = "oo"
+  return Err(prefix + "ps")
+
 @describe("pattern binding ARC retain (#997)")
 fn patternBindingArcRetain997Tests():
   @it("Some pattern retains List<int> binding")
@@ -242,3 +257,77 @@ fn patternBindingArcRetain997Tests():
         expect(xs[0]).toEq(1)
       None:
         fail("expected Some")
+
+@describe("Err(e) str binding for Result<ARC-type, str> (#1638)")
+fn errStrBindingForResultArc1638Tests():
+  # Pre-fix root cause: emitPatternBindings' ErrPattern arm called
+  # propagateMeta(subjectAlloca, varAlloca), which bulk-copies the Ok-side
+  # metadata that propagateTypeMeta stamped onto the Result subject.  When
+  # the Ok slot is an ARC-typed collection (List/Map/Set/...), the `e`
+  # binding ends up with list_elem/map_elem/set_elem metadata, breaking
+  # str-shape detection: `+ e` is rejected at compile time, and `f"{e}"`
+  # typechecks but the value is mis-dispatched at runtime.
+  #
+  # Post-fix: emitPatternBindings reuses the inner Err type signature
+  # ("str") via propagateTypeMeta, so the binding has correct str metadata
+  # and both formatting paths work.
+
+  @it("Result<List<int>, str> Err(e) supports str concat")
+  fn resultListIntErrSupportsStrConcat():
+    # Pre-fix: compile error — operator '+' not supported between str and
+    # non-str types (because Ok side stamped list_elem on subject alloca,
+    # then propagateMeta leaked it onto e).
+    case makeErrListInt():
+      Ok(xs):
+        fail("expected Err")
+      Err(e):
+        expect("got: " + e).toEq("got: oops")
+
+  @it("Result<Map<str, int>, str> Err(e) supports str concat")
+  fn resultMapStrIntErrSupportsStrConcat():
+    # Same root cause as List variant — Map Ok slot leaks map_elem
+    # metadata to the Err binding via propagateMeta.
+    case makeErrMapStrInt():
+      Ok(m):
+        fail("expected Err")
+      Err(e):
+        expect("got: " + e).toEq("got: oops")
+
+  @it("Result<Set<int>, str> Err(e) supports str concat")
+  fn resultSetIntErrSupportsStrConcat():
+    # Set variant — covers the third common ARC collection kind.
+    case makeErrSetInt():
+      Ok(s):
+        fail("expected Err")
+      Err(e):
+        expect("got: " + e).toEq("got: oops")
+
+  @it("Result<List<int>, str> Err(e) supports f-string interpolation")
+  fn resultListIntErrSupportsFStringInterpolation():
+    # Pre-fix: f"got: {e}" typechecks (typecheck does not consult the
+    # leaked metadata) but at runtime valueToString dispatches via the
+    # leaked list metadata, treating the str payload as a List<int> — UAF
+    # / SIGSEGV under ASan.
+    # Post-fix: f-string sees str metadata and dispatches correctly.
+    case makeErrListInt():
+      Ok(xs):
+        fail("expected Err")
+      Err(e):
+        expect(f"got: {e}").toEq("got: oops")
+
+  @it("Some(v) Option<List<int>> retains list metadata after fix")
+  fn somePatternRetainsListMetaAfterFix():
+    # Regression guard for SomePattern arm — same propagateMeta site that
+    # ErrPattern uses.  After the fix replaces propagateMeta with
+    # propagateTypeMeta(innerSig), Some(v) on Option<List<int>> must still
+    # carry list_elem metadata so xs[i] indexing dispatches to the list
+    # element path.
+    opt = makeSomeList()
+    case opt:
+      Some(xs):
+        # If list metadata is missing, indexing falls back to a non-list
+        # path and either errors at compile time or crashes at runtime.
+        expect(xs[0] + xs[1] + xs[2]).toEq(60)
+      None:
+        fail("expected Some")
+
