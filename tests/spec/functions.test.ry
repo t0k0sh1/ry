@@ -99,7 +99,7 @@ fn higherOrderFunctionTests():
 fn ufcsTests():
   @it("should support method-style call")
   fn shouldSupportMethodStyleCall():
-    expect(double(5)).toEq(10)
+    expect(5.double()).toEq(10)
   @it("should support UFCS chaining")
   fn shouldSupportUfcsChaining():
     expect(5.double().addOne()).toEq(11)
