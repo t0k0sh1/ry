@@ -397,6 +397,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "enum_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "enum_elem");
+        // #1667: tuple-elem List<(int, T)> destructor now releases T per slot;
+        // retain the component to keep the symmetric refcount discipline.
+        // The retain helper itself recurses into nested tuple components, so
+        // T may be either a pointer type (str/List/Map/Set) or an inline
+        // tuple struct (e.g. enumerate(List<(List<int>, int)>)).
+        if (!srcElemName.empty())
+            emitTupleComponentRetain(elem, srcElemName);
         llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
         tupleVal = builder_.CreateInsertValue(tupleVal, i, 0);
         tupleVal = builder_.CreateInsertValue(tupleVal, elem, 1);
@@ -470,6 +477,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *ep2 = builder_.CreateGEP(elemTy2, data2, {i}, "zip_ep2");
         llvm::Value *e1 = builder_.CreateLoad(elemTy1, ep1, "zip_e1");
         llvm::Value *e2 = builder_.CreateLoad(elemTy2, ep2, "zip_e2");
+        // #1667: tuple-elem List<(T1, T2)> destructor now releases each
+        // component per slot; retain on store to keep refcount symmetric.
+        // The retain helper recurses into nested tuple components, so T1/T2
+        // may be either a pointer type or an inline tuple struct.
+        if (!n1.empty())
+            emitTupleComponentRetain(e1, n1);
+        if (!n2.empty())
+            emitTupleComponentRetain(e2, n2);
         llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
         tupleVal = builder_.CreateInsertValue(tupleVal, e1, 0);
         tupleVal = builder_.CreateInsertValue(tupleVal, e2, 1);

@@ -1,0 +1,260 @@
+from testing import it, describe, expect
+
+from runtime_internal import arcLiveCount
+
+# Issue #1667: ARC ownership gap for tuple fields in enumerate/zip/items.
+#
+# enumerate(list) / zip(list1, list2) / items(map) all return List<(K, V)>.
+# Pre-fix, neither retain (on tuple component) nor release (in collection
+# destructor) was emitted for inner ARC values inside tuple slots.  The two
+# omissions cancelled each other (no leak, no UAF) until the source container
+# was rebound — at which point the source destructor freed the inner ARC value
+# while the result list still held the raw pointer, producing a UAF on read.
+#
+# The fix lands two halves together (parallel to #1242):
+#   1. Collection destructor recurses into tuple components for List<(K, V)>,
+#      releasing each ARC-managed component (str / List / Map / Set).
+#   2. items / enumerate / zip retain each ARC-managed tuple component before
+#      InsertValue — so that named-variable usage `its = items(m); m = {...}`
+#      keeps the inner values alive once the source destructor releases them.
+#   3. By symmetry, slice / take / appended / concat (which propagate
+#      list_elem_type_name = "(K, V)" via propagateMeta and inherit the new
+#      tuple-aware destructor) also need tuple-aware retain on their memcpy /
+#      InsertValue paths — otherwise they reintroduce a UAF on derived results.
+
+@describe("ARC tuple-field ownership: items/enumerate/zip (#1667)")
+fn arcTupleFieldOwnership1667Tests():
+  @it("items(Map<str, List<int>>) survives source rebind")
+  fn itemsMapStrListIntSurvivesSourceRebind():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    its = items(m)
+    m = {"z": [99]}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(its[0].1[0]).toEq(1)
+    expect(its[0].1[2]).toEq(3)
+
+  @it("enumerate(List<List<int>>) survives source rebind")
+  fn enumerateListListIntSurvivesSourceRebind():
+    xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    e = enumerate(xs)
+    xs = [[99]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(e[0].1[0]).toEq(1)
+    expect(e[0].1[2]).toEq(3)
+    expect(e[1].1[0]).toEq(4)
+    expect(e[1].1[2]).toEq(6)
+
+  @it("zip(List<List<int>>, List<List<int>>) survives both source rebinds")
+  fn zipListListIntListListIntSurvivesBothSourceRebinds():
+    xs: List<List<int>> = [[1, 2, 3]]
+    ys: List<List<int>> = [[10, 20, 30]]
+    z = zip(xs, ys)
+    xs = [[99]]
+    ys = [[88]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(z[0].0[0]).toEq(1)
+    expect(z[0].0[2]).toEq(3)
+    expect(z[0].1[0]).toEq(10)
+    expect(z[0].1[2]).toEq(30)
+
+  @it("zip(List<int>, List<List<int>>) — mixed ARC dispatch survives rebind")
+  fn zipListIntListListIntMixedArcDispatchSurvivesRebind():
+    # First component (int) needs no retain; second (List<int>) does.
+    # Catches a per-component dispatch bug where retain is gated on the wrong
+    # component or applied unconditionally.
+    xs: List<int> = [10, 20]
+    ys: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    z = zip(xs, ys)
+    ys = [[99]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(z[0].0).toEq(10)
+    expect(z[0].1[0]).toEq(1)
+    expect(z[0].1[2]).toEq(3)
+    expect(z[1].0).toEq(20)
+    expect(z[1].1[0]).toEq(4)
+
+  @it("items(Map<str, str>) — str tuple component survives source rebind")
+  fn itemsMapStrStrStrTupleComponentSurvivesSourceRebind():
+    # Both tuple components are str (ARC header offset −24, distinct from
+    # collection offset −16). Verifies str dispatch in emitTupleComponentRetain
+    # and emitTupleElemReleaseLoop.
+    #
+    # Note: this case passes pre-fix as well — per tests-arc-leak-pattern.md
+    # ("List<str> ... UAF tests on retain paths are silently neutralized"),
+    # symmetric retain+release omission on str produces a leak (not UAF), so
+    # the churn loop alone cannot discriminate Red from Green. The str arm
+    # wiring (offset −24 via emitStrGetHeaderFromData on both retain and
+    # release sides) is verified by IR inspection of emitTupleComponentRetain
+    # (codegen_arc.cpp str branch) and emitTupleElemReleaseLoop (str isStr
+    # branch); the L<L<int>>/L<L<List<int>>> cases above are the actual
+    # discriminators for the broader retain/release symmetry.
+    m: Map<str, str> = {"key1": "value1", "key2": "value2"}
+    its = items(m)
+    m = {"z": "zz"}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    # Sort-independent assertion: both keys must still be readable.
+    found1 = false
+    found2 = false
+    k = 0
+    while k < len(its):
+      if its[k].0 == "key1":
+        if its[k].1 == "value1":
+          found1 = true
+      if its[k].0 == "key2":
+        if its[k].1 == "value2":
+          found2 = true
+      k = k + 1
+    expect(found1).toEq(true)
+    expect(found2).toEq(true)
+
+@describe("ARC tuple-field ownership: derived collections (#1667 slice/take/appended/concat)")
+fn arcTupleFieldOwnershipDerivedCollections1667Tests():
+  @it("slice(enumerate(List<List<int>>), 1, 3) survives source rebind")
+  fn sliceEnumerateListListIntSurvivesSourceRebind():
+    # enumerate stamps list_elem_type_name = "(int, List<int>)" on the result;
+    # propagateMeta from emitListSlice inherits it, so the slice's destructor
+    # releases the inner List<int>. memcpy must therefore retain.
+    xs: List<List<int>> = [[1], [2, 2], [3, 3, 3], [4, 4, 4, 4]]
+    e = enumerate(xs)
+    s = slice(e, 1, 3)
+    xs = [[99]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(s[0].0).toEq(1)
+    expect(s[0].1[0]).toEq(2)
+    expect(s[0].1[1]).toEq(2)
+    expect(s[1].0).toEq(2)
+    expect(s[1].1[0]).toEq(3)
+
+  @it("take(items(Map<str, List<int>>), 2) survives source rebind")
+  fn takeItemsMapStrListIntSurvivesSourceRebind():
+    # Use a single-key map so take(its, 2) deterministically picks that entry
+    # (avoids hashmap iteration-order dependence). take(its, 2) on a 1-entry
+    # list still tests the memcpy retain path because take's loop copies
+    # min(n, len) slots, exercising the tuple-aware retain branch.
+    m: Map<str, List<int>> = {"only": [1, 2, 3, 4, 5]}
+    its = items(m)
+    t = take(its, 2)
+    m = {"z": [99]}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(len(t)).toEq(1)
+    expect(t[0].0).toEq("only")
+    expect(t[0].1[0]).toEq(1)
+    expect(t[0].1[2]).toEq(3)
+    expect(t[0].1[4]).toEq(5)
+
+  @it("appended(zip(List<int>, List<List<int>>), (99, [9, 9])) survives rebind")
+  fn appendedZipListIntListListIntSurvivesRebind():
+    xs: List<int> = [10, 20]
+    ys: List<List<int>> = [[1, 2], [3, 4]]
+    z = zip(xs, ys)
+    a: List<int> = [9, 9]
+    z2 = appended(z, (99, a))
+    xs = [99]
+    ys = [[88]]
+    a = [77]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    # Original entries (memcpy path) must hold retains.
+    expect(z2[0].0).toEq(10)
+    expect(z2[0].1[0]).toEq(1)
+    expect(z2[1].0).toEq(20)
+    expect(z2[1].1[1]).toEq(4)
+    # Newly appended tuple's component (the rebound `a`) must hold retains.
+    expect(z2[2].0).toEq(99)
+    expect(z2[2].1[0]).toEq(9)
+    expect(z2[2].1[1]).toEq(9)
+
+  @it("enumerate(...) + enumerate(...) (concat) survives both source rebinds")
+  fn enumerateConcatEnumerateSurvivesBothSourceRebinds():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    ys: List<List<int>> = [[5, 6], [7, 8]]
+    e1 = enumerate(xs)
+    e2 = enumerate(ys)
+    cat = e1 + e2
+    xs = [[99]]
+    ys = [[88]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(cat[0].1[0]).toEq(1)
+    expect(cat[0].1[1]).toEq(2)
+    expect(cat[1].1[1]).toEq(4)
+    expect(cat[2].1[0]).toEq(5)
+    expect(cat[3].1[1]).toEq(8)
+
+  @it("enumerate(List<List<int>>) live count grows by O(1) not O(N)")
+  fn enumerateListListIntLiveCountGrowsByO1NotON():
+    # Retain/release symmetry check.  Without retain, destructor releases
+    # without prior retain and the counter underflows (or freed-pointer is
+    # double-released).  Without release (and without retain), enumerate
+    # leaks N inner List<int> per iteration.  Only paired retain+release
+    # gives O(1) delta.
+    before = arcLiveCount()
+    xs: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
+    i = 0
+    while i < 16:
+      e = enumerate(xs)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+
+@describe("ARC tuple-field ownership: alias resolution (#1667 CodeRabbit follow-up)")
+fn arcTupleFieldOwnershipAliasResolution1667Tests():
+  @it("slice(List<Pair>, ...) — type alias is resolved before retain dispatch")
+  fn sliceListPairTypeAliasResolvedBeforeRetainDispatch():
+    # Pre-CodeRabbit-fix: emitListSlice's tuple branch checked
+    # `front == '(' && back == ')'` directly on srcMeta->list_elem_type_name,
+    # so an alias name like "Pair" failed the check and the retain was skipped.
+    # The destructor side already called resolveTypeAlias, so the asymmetry
+    # produced a UAF.  Adding resolveTypeAlias on the retain side closes the gap.
+    type Pair = (int, List<int>)
+    xs: List<Pair> = [(1, [10, 20]), (2, [30, 40]), (3, [50, 60])]
+    s = slice(xs, 0, 2)
+    xs = [(99, [99])]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    # Use for-destructure (the only form Ry tracks fully through tuple aliases
+    # for collection-typed fields; see for_loop_destructure_meta.test.ry).
+    totalKeys: int = 0
+    totalVals: int = 0
+    for k, lst in s:
+      totalKeys = totalKeys + k
+      totalVals = totalVals + sum(lst)
+    expect(totalKeys).toEq(3)        # 1 + 2
+    expect(totalVals).toEq(100)      # 10+20 + 30+40
