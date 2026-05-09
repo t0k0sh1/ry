@@ -332,14 +332,11 @@ N-ary metadata through a single-value helper would require either a
 `ValueMetadata` for `Result` / `Option`, so reusing it for tuple sigs
 adds no new fields.
 
-**Scope note**: `enumerate` / `zip` work end-to-end with this fix
-because their codegen sites already stamp
-`list_elem_type_name = "(int, T)"` / `"(T, U)"`
-(`src/codegen_call.cpp`). The `items(m)` case requires PR #1665
-(issue #1659) to land first — its emitter does not stamp
-`list_elem_type_name` at all. Tests for `items()` are stubbed with
-`# FIXME(#1659):` in `tests/spec/collection_meta_propagation.test.ry`
-until that PR merges.
+**Scope note**: `enumerate` / `zip` / `items` all work end-to-end
+with this fix because their codegen sites stamp
+`list_elem_type_name = "(int, T)"` / `"(T, U)"` / `"(K, V)"`
+(`src/codegen_call.cpp` for enumerate/zip; #1659 added the
+`items(m)` stamp).
 
 ### Enum metadata propagation: list literals of enum values need a direct check
 

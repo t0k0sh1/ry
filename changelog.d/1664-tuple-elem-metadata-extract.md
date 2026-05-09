@@ -22,7 +22,8 @@
   component's name onto the extracted field at the FieldAccessExpr
   numeric-index arm in the same file. `enumerate(xs)` and
   `zip(xs, ys)` work end-to-end because their codegen sites already
-  stamp `list_elem_type_name = "(int, T)"` / `"(T, U)"`. The analogous
-  `items(m)` case is tracked separately as #1659 / PR #1665 because
-  the gap there is in the `items()` emitter (it does not stamp
-  `list_elem_type_name` at all). (#1664)
+  stamp `list_elem_type_name = "(int, T)"` / `"(T, U)"`. `items(m)`
+  also works end-to-end now that #1659 stamps `list_elem_type_name =
+  "(K, V)"` on its result — together the two fixes make direct
+  field access (`its[0].1[0]`) carry per-component metadata through
+  the chain. (#1664)

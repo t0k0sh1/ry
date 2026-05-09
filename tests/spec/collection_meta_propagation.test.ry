@@ -207,18 +207,58 @@ fn keysPropagatesInnerCollectionMetadata1655Tests():
     expect(ks[0][0]).toEq(1)
     expect(ks[0][2]).toEq(3)
 
+# Regression tests for #1659 — items() must populate `list_elem_type_name` on
+# the returned `List<(K, V)>` (mirroring enumerate / zip), not just the LLVM
+# tuple type slot. Pre-fix, the for-loop destructure `for k, v in items(m):`
+# strips the tuple via `splitTupleSig` then propagates per-component metadata
+# via `propagateTypeMeta` — but only if `list_elem_type_name = "(K, V)"` is
+# present on the result list. Without it, K/V components fall back to `str`
+# and codegen errors with "str does not support index access" (or analogous).
+#
+# Unlike #1655 (keys/values), no retain is needed because the destructor for
+# `List<(K, V)>` does not recurse into tuple fields — tuple
+# `list_elem_type_name` syntax does not match `fieldTypeIsArcManaged`.
+@describe("items() propagates inner-collection metadata (#1659)")
+fn itemsPropagatesInnerCollectionMetadata1659Tests():
+  @it("items on Map<str, List<int>> propagates V through for-loop destructure")
+  fn itemsOnMapStrListIntPropagatesVThroughForLoopDestructure():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    s = 0
+    for k, v in items(m):
+      s = s + v[0] + v[2]
+    expect(s).toEq(4)
+
+  @it("items on Map<List<int>, str> propagates K through for-loop destructure")
+  fn itemsOnMapListIntStrPropagatesKThroughForLoopDestructure():
+    m: Map<List<int>, str> = {[1, 2]: "a", [3, 4]: "b"}
+    total = 0
+    for k, v in items(m):
+      total = total + k[0] + k[1]
+    expect(total).toEq(10)
+
+  @it("items on Map<str, Map<str, int>> propagates V map through for-loop destructure")
+  fn itemsOnMapStrMapStrIntPropagatesVMapThroughForLoopDestructure():
+    m: Map<str, Map<str, int>> = {"outer": {"k": 7}}
+    total = 0
+    for k, v in items(m):
+      total = total + v["k"]
+    expect(total).toEq(7)
+
 # Regression tests for #1664 — FieldAccessExpr / IndexExpr drop tuple-element
-# metadata when accessing tuples loaded from List<(K, V)>.  enumerate(xs) and
-# zip(xs, ys) return List<(int, T)> / List<(T, U)> with list_elem_type_name
-# stamped as "(int, T)" / "(T, U)".  Pre-fix, indexing the result list
-# produced a fresh tuple SSA value with no metadata, and the FieldAccessExpr
-# numeric-index arm fell through to a bare ExtractValue.  Chained access
-# like `enumerate(xs)[0].1[0]` then treated `.1` as `str` and codegen
-# rejected the `[0]` subscript with "str does not support index access".
+# metadata when accessing tuples loaded from List<(K, V)>.  enumerate(xs),
+# zip(xs, ys), and items(m) (post #1659) return List<(...)> with
+# list_elem_type_name stamped as "(int, T)" / "(T, U)" / "(K, V)".  Pre-fix,
+# indexing the result list produced a fresh tuple SSA value with no metadata,
+# and the FieldAccessExpr numeric-index arm fell through to a bare
+# ExtractValue.  Chained access like `enumerate(xs)[0].1[0]` then treated `.1`
+# as `str` and codegen rejected the `[0]` subscript with "str does not
+# support index access".
 #
 # The fix stamps the tuple sig onto the loaded element via
 # `source_type_name` (the IndexExpr List path), and the FieldAccessExpr
 # numeric-index arm decomposes per-component metadata via splitTupleSig.
+# items() coverage is enabled now that #1659 stamps list_elem_type_name on
+# its result — together they make direct field access work end-to-end.
 @describe("enumerate's tuple field carries inner-collection metadata (#1664)")
 fn enumerateTupleFieldCarriesInnerCollectionMetadata1664Tests():
   @it("enumerate(List<List<int>>) preserves nested index access on .1")
@@ -268,24 +308,18 @@ fn zipTupleFieldsCarryInnerCollectionMetadata1664Tests():
     expect(z[0].0["k"]).toEq(7)
     expect(z[1].0["k"]).toEq(9)
 
-# items() returns List<(K, V)> for Map<K, V>, but at the time of #1664 the
-# items() emitter does not stamp list_elem_type_name with "(K, V)" — that
-# gap is tracked in #1659 / PR #1665.  Once that lands, enabling these
-# tests should pass with no further codegen change because the
-# IndexExpr/FieldAccessExpr decomposition added by #1664 is items()-agnostic.
-# FIXME(#1659): re-enable after PR #1665 merges.
-#  @describe("items's tuple fields carry inner-collection metadata (#1664)")
-#  fn itemsTupleFieldsCarryInnerCollectionMetadata1664Tests():
-#    @it("items(Map<str, List<int>>) preserves nested index access on .1")
-#    fn itemsMapStrListIntPreservesNestedIndexAccessOnSecond():
-#      m: Map<str, List<int>> = {"a": [1, 2, 3]}
-#      its = items(m)
-#      expect(its[0].1[0]).toEq(1)
-#      expect(its[0].1[2]).toEq(3)
-#
-#    @it("items(Map<List<int>, str>) preserves nested index access on .0")
-#    fn itemsMapListIntStrPreservesNestedIndexAccessOnFirst():
-#      m: Map<List<int>, str> = {[1, 2, 3]: "v"}
-#      its = items(m)
-#      expect(its[0].0[0]).toEq(1)
-#      expect(its[0].0[2]).toEq(3)
+@describe("items's tuple fields carry inner-collection metadata (#1664)")
+fn itemsTupleFieldsCarryInnerCollectionMetadata1664Tests():
+  @it("items(Map<str, List<int>>) preserves nested index access on .1")
+  fn itemsMapStrListIntPreservesNestedIndexAccessOnSecond():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    its = items(m)
+    expect(its[0].1[0]).toEq(1)
+    expect(its[0].1[2]).toEq(3)
+
+  @it("items(Map<List<int>, str>) preserves nested index access on .0")
+  fn itemsMapListIntStrPreservesNestedIndexAccessOnFirst():
+    m: Map<List<int>, str> = {[1, 2, 3]: "v"}
+    its = items(m)
+    expect(its[0].0[0]).toEq(1)
+    expect(its[0].0[2]).toEq(3)
