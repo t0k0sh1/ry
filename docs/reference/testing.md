@@ -36,11 +36,11 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `verify`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
+Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
 
 - `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
-- `expect`, `mock`, `fail` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
-- `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic.
+- `expect`, `mock`, `fail`, `verifyCalledWith` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
+- `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic. (`verifyCalledWith` is an intrinsic — not a `@public fn` — because it must inspect the mocked function's signature at compile time to validate argument types, which a regular Ry function cannot do.)
 
 ```ry
 from testing import it, describe, expect
@@ -272,11 +272,42 @@ fn verifyTests():
 - Requires `from testing import verify`
 - Returns `0` when no call has been recorded for that name (including unknown function names) — there is no compile-time check that the string corresponds to a real function.
 
+### verifyCalledWith(name, args...)
+
+Returns the number of times a mocked function was called with arguments that exactly match `args...` (as `int`). Unlike `verify`, the function name must be a **string literal** because `verifyCalledWith` is a compiler intrinsic that resolves the original function's signature at compile time to validate argument types.
+
+```ry
+from testing import it, describe, mock, verifyCalledWith, expect
+
+fn compute(x: int) -> int:
+    return x * 2
+
+@describe("verifyCalledWith")
+fn verifyCalledWithTests():
+    @it("should count calls matching argument")
+    fn shouldCountMatching():
+        mock(compute, (x: int) => x * 10)
+        compute(5)
+        compute(7)
+        compute(5)
+        expect(verifyCalledWith("compute", 5)).toEq(2)
+        expect(verifyCalledWith("compute", 7)).toEq(1)
+        expect(verifyCalledWith("compute", 999)).toEq(0)
+```
+
+- Requires `from testing import verifyCalledWith`
+- The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
+- The function must already be mocked via `mock(...)` before `verifyCalledWith` is called; calling on a non-mocked function is a compile error.
+- The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
+- Supported argument types in v1: `int`, `float`, `bool`, `str`. Other types (`List<T>`, `Map<K, V>`, `Set<T>`, records, tuples, function values) are rejected at compile time. Tracked for v0.0.x follow-up.
+- `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
+- Returns `0` when no recorded call matches the supplied arguments.
+
 ### Limitations
 
-- Overloaded functions cannot be mocked
-- Capture-based closures cannot be used as replacements (use plain lambdas)
-- `@native fn` declarations cannot be mocked
+- Overloaded functions cannot be mocked.
+- `@native fn` declarations cannot be mocked.
+- Capture-based closures **are supported as mock replacements** (since v0.0.22, #1678) — the closure can read or mutate variables from the enclosing scope. The captured environment is released automatically when the `it` block ends.
 
 ---
 

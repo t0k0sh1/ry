@@ -1515,7 +1515,7 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
         << "local testing.ry shadow should not record stdlib intrinsics";
 }
 
-TEST_F(ImportTest, FromTestingWildcardRecordsAllThreeIntrinsics) {
+TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
         "from testing\n",
@@ -1524,9 +1524,10 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllThreeIntrinsics) {
     // Post-#722 `verify` is a regular `@public fn verify` in
     // share/std/testing/testing.ry — it flows through the normal import
     // path and is no longer recorded in the testing-intrinsic set.
+    // #1677 adds `verifyCalledWith` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "fail"};
-    EXPECT_EQ(intrinsics.size(), 3u);
+        "expect", "mock", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 4u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1592,9 +1593,10 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
         search_paths);
     // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
     // `@public fn` in share/std/testing/testing.ry).
+    // #1677 adds `verifyCalledWith` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "fail"};
-    EXPECT_EQ(intrinsics.size(), 3u);
+        "expect", "mock", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 4u);
     EXPECT_EQ(intrinsics, expected);
 }
 

@@ -350,6 +350,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     if (test_mode_ && mocked_functions_.count(callee)) {
         llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
+        llvm::FunctionCallee mockGetEnvFn = mod_->getOrInsertFunction("__ry_mock_get_env", mockGetTy);
         llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
@@ -366,13 +367,79 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         builder_.CreateCondBr(isMocked, mockBB, origBB);
 
-        // Mock path
+        // Mock path: branch on env ptr to choose plain vs capture-closure ABI.
         builder_.SetInsertPoint(mockBB);
         emitMockRequireChecks();
         builder_.CreateCall(mockIncFn, {nameStr});
+
+        // Record call args for verifyCalledWith(name, ...). Kinds: 1=int,
+        // 2=float (bitcast f64->i64), 3=bool (zext i1->i64), 4=str (ptr->i64),
+        // 5=opaque (unsupported in v1; never matches a verifyCalledWith query).
+        llvm::FunctionType *mockBeginRecTy =
+            llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
+            "__ry_mock_begin_call_record", mockBeginRecTy);
+        llvm::FunctionType *mockStoreArgTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_),
+            {ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
+        llvm::FunctionCallee mockStoreArgFn = mod_->getOrInsertFunction(
+            "__ry_mock_store_arg", mockStoreArgTy);
+        llvm::Value *callRec = builder_.CreateCall(
+            mockBeginRecFn, {nameStr}, "mock_call_rec");
+
+        const size_t recordCount = matchedEntry
+            ? std::min(argVals.size(), matchedEntry->paramTypes.size())
+            : argVals.size();
+        for (size_t i = 0; i < recordCount; ++i) {
+            llvm::Value *argVal = argVals[i];
+            llvm::Type *argTy = argVal->getType();
+            int64_t kind = 5;
+            llvm::Value *valI64 = llvm::ConstantInt::get(i64Ty_, 0);
+            if (argTy == i64Ty_) {
+                kind = 1;
+                valI64 = argVal;
+            } else if (argTy == f64Ty_) {
+                kind = 2;
+                valI64 = builder_.CreateBitCast(argVal, i64Ty_, "mock_rec_f2i");
+            } else if (argTy == i1Ty_) {
+                kind = 3;
+                valI64 = builder_.CreateZExt(argVal, i64Ty_, "mock_rec_b2i");
+            } else if (argTy == ptrTy_ && isStringValue(argVal)) {
+                kind = 4;
+                valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "mock_rec_p2i");
+            }
+            builder_.CreateCall(
+                mockStoreArgFn,
+                {callRec,
+                 llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(kind),
+                                         true),
+                 valI64, nameStr});
+        }
+
+        llvm::Value *envPtr = builder_.CreateCall(mockGetEnvFn, {nameStr}, "mock_env");
+        llvm::Value *isCapture = builder_.CreateICmpNE(envPtr, nullPtr, "is_capture_mock");
+
+        llvm::BasicBlock *plainBB = llvm::BasicBlock::Create(*ctx_, "mock_plain_bb", fn_);
+        llvm::BasicBlock *captureBB = llvm::BasicBlock::Create(*ctx_, "mock_capture_bb", fn_);
+        builder_.CreateCondBr(isCapture, captureBB, plainBB);
+
         llvm::FunctionType *fnTy = fn->getFunctionType();
+        // Capture-thunk ABI matches getOrCreateCapturingThunk: (user_params..., env).
+        std::vector<llvm::Type *> captureParamTys;
+        for (llvm::Type *t : fnTy->params()) captureParamTys.push_back(t);
+        captureParamTys.push_back(ptrTy_);
+        llvm::FunctionType *captureFnTy = llvm::FunctionType::get(
+            fnTy->getReturnType(), captureParamTys, false);
+        std::vector<llvm::Value *> captureArgs(argVals.begin(), argVals.end());
+        captureArgs.push_back(envPtr);
+
         if (fn->getReturnType()->isVoidTy()) {
+            builder_.SetInsertPoint(plainBB);
             builder_.CreateCall(fnTy, mockPtr, argVals);
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(captureBB);
+            builder_.CreateCall(captureFnTy, mockPtr, captureArgs);
             builder_.CreateBr(mergeBB);
 
             // Original path (void case)
@@ -385,10 +452,16 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             return nullptr;
         }
 
-        llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
-        emitMockEnsureChecks(mockResult);
+        builder_.SetInsertPoint(plainBB);
+        llvm::Value *mockResultPlain = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result_plain");
         builder_.CreateBr(mergeBB);
-        llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
+        llvm::BasicBlock *plainEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(captureBB);
+        llvm::Value *mockResultCapture = builder_.CreateCall(
+            captureFnTy, mockPtr, captureArgs, "mock_result_capture");
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *captureEndBB = builder_.GetInsertBlock();
 
         // Original path
         builder_.SetInsertPoint(origBB);
@@ -398,9 +471,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         // Merge
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
-        phi->addIncoming(mockResult, mockEndBB);
+        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 3, "call_result");
+        phi->addIncoming(mockResultPlain, plainEndBB);
+        phi->addIncoming(mockResultCapture, captureEndBB);
         phi->addIncoming(origResult, origEndBB);
+        emitMockEnsureChecks(phi);
         propagateReturnTypeMeta(matchedEntry, phi);
         propagateReturnFnTypeMeta(matchedEntry, fn, phi);
         releaseUniformClosureTemps(uniformClosureTemps);

@@ -529,11 +529,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
 
     auto *fnInfo = lookupFnTypeInfo(replacement);
     if (!fnInfo)
-        codegenError("mock(): second argument must be a non-capturing lambda or function reference");
-
-    // Verify it's a function pointer (not a closure)
-    if (!fnInfo->capturedVars.empty())
-        codegenError("mock(): capture-based closures are not supported, use a plain lambda");
+        codegenError("mock(): second argument must be a lambda or function reference");
 
     // Verify type compatibility
     llvm::Type *origRetTy = origFn->getReturnType();
@@ -550,15 +546,161 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Track that this function is mocked (for selective dispatch in emitUserFnCall)
     mocked_functions_.insert(fnName);
 
-    // Call __ry_mock_set(name, fn_ptr)
-    llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
-
     // Cache global string per function name
     auto &nameStr = mock_name_strings_[fnName];
     if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
-    builder_.CreateCall(mockSetFn, {nameStr, replacement});
+
+    if (fnInfo->capturedVars.empty()) {
+        // Non-capturing: register plain function pointer.
+        llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+        builder_.CreateCall(mockSetFn, {nameStr, replacement});
+        return;
+    }
+
+    // Capturing closure (#1678): register {thunk, env, env_dtor}.
+    // The thunk takes (env_ptr, ...origArgs) and forwards via the captured
+    // closure body. The runtime dispatch site reads env via __ry_mock_get_env
+    // and routes to the matching ABI.
+    llvm::Function *realFn = fnInfo->sourceFn;
+    if (!realFn)
+        codegenError("mock(): cannot wrap capturing closure (missing sourceFn)");
+    llvm::Function *thunk = getOrCreateCapturingThunk(realFn, *fnInfo);
+    auto envDtorCallee = getOrCreateClosureDestructor(*fnInfo);
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    llvm::Value *envDtorVal = envDtorCallee
+        ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
+        : llvm::cast<llvm::Value>(nullPtr);
+
+    // Retain env so the registry owns a reference; mockReleaseClosureEnv
+    // performs the matching release at clear time.
+    auto *envHdr = emitArcGetHeaderFromData(replacement);
+    emitArcRetain(envHdr, false);
+
+    llvm::FunctionType *mockSetClosureTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee mockSetClosureFn =
+        mod_->getOrInsertFunction("__ry_mock_set_closure", mockSetClosureTy);
+    builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
+}
+
+// ===== Test: verifyCalledWith(name, args...) -> int =====
+
+llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
+    if (!test_mode_)
+        codegenError("'verifyCalledWith' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("verifyCalledWith"))
+        codegenError("'verifyCalledWith' requires 'from testing import verifyCalledWith'");
+
+    if (e.args.empty())
+        codegenError("verifyCalledWith() requires at least 1 argument: function name");
+
+    auto *strExpr = std::get_if<StringExpr>(&e.args[0]->data);
+    if (!strExpr)
+        codegenError("verifyCalledWith() first argument must be a function name string literal");
+    const std::string &fnName = strExpr->value;
+
+    if (!mocked_functions_.count(fnName))
+        codegenError("verifyCalledWith: '" + fnName + "' is not mocked");
+
+    auto *overloads = findFunction(fnName);
+    if (!overloads || overloads->empty())
+        codegenError("verifyCalledWith: unknown function '" + fnName + "'");
+    if (overloads->size() > 1)
+        codegenError("verifyCalledWith: overloaded functions are not supported");
+    auto &entry = (*overloads)[0];
+
+    const size_t expectedNumArgs = e.args.size() - 1;
+    if (expectedNumArgs != entry.paramTypes.size())
+        codegenError("verifyCalledWith: expected " +
+                     std::to_string(entry.paramTypes.size()) +
+                     " argument(s) for '" + fnName + "', got " +
+                     std::to_string(expectedNumArgs));
+
+    // Cache global string for the function name.
+    auto &nameStr = mock_name_strings_[fnName];
+    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+
+    // Allocate kinds[] and values[] arrays sized to expectedNumArgs.
+    llvm::Value *numArgsConst = llvm::ConstantInt::get(i64Ty_, expectedNumArgs);
+    llvm::ArrayType *arrTy = llvm::ArrayType::get(i64Ty_, expectedNumArgs);
+    llvm::Value *kindsArr = builder_.CreateAlloca(arrTy, nullptr, "vcw_kinds");
+    llvm::Value *valuesArr = builder_.CreateAlloca(arrTy, nullptr, "vcw_values");
+
+    for (size_t i = 0; i < expectedNumArgs; ++i) {
+        const std::string declaredParamName =
+            i < entry.paramTypeNames.size()
+                ? resolveTypeAlias(entry.paramTypeNames[i])
+                : std::string{};
+        if (!declaredParamName.empty() &&
+            declaredParamName != "int" && declaredParamName != "float" &&
+            declaredParamName != "bool" && declaredParamName != "str") {
+            std::string msg = "verifyCalledWith: parameter ";
+            msg += std::to_string(i);
+            msg += " of '";
+            msg += fnName;
+            msg += "' has type '";
+            msg += declaredParamName;
+            msg += "'; only int, float, bool, str are supported in v1";
+            codegenError(msg);
+        }
+
+        llvm::Value *argVal = emitExpr(*e.args[i + 1]);
+        llvm::Type *argTy = argVal->getType();
+        llvm::Type *expectedTy = entry.paramTypes[i];
+
+        // Allow widening int -> float when the original parameter is float.
+        if (argTy != expectedTy) {
+            if (argTy == i64Ty_ && expectedTy == f64Ty_) {
+                argVal = builder_.CreateSIToFP(argVal, f64Ty_, "vcw_int2f");
+                argTy = f64Ty_;
+            } else {
+                codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
+                             " type does not match '" + fnName + "' parameter " +
+                             std::to_string(i));
+            }
+        }
+
+        int64_t kind = 0;
+        llvm::Value *valI64 = nullptr;
+        if (argTy == i64Ty_) {
+            kind = 1;
+            valI64 = argVal;
+        } else if (argTy == f64Ty_) {
+            kind = 2;
+            valI64 = builder_.CreateBitCast(argVal, i64Ty_, "vcw_f2i");
+        } else if (argTy == i1Ty_) {
+            kind = 3;
+            valI64 = builder_.CreateZExt(argVal, i64Ty_, "vcw_b2i");
+        } else if (argTy == ptrTy_ && isStringValue(argVal)) {
+            kind = 4;
+            valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "vcw_p2i");
+        } else {
+            codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
+                         " has unsupported type; only int, float, bool, str are "
+                         "supported in v1");
+        }
+
+        llvm::Value *kindGEP = builder_.CreateInBoundsGEP(
+            arrTy, kindsArr,
+            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+            "vcw_kind_gep");
+        llvm::Value *valGEP = builder_.CreateInBoundsGEP(
+            arrTy, valuesArr,
+            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+            "vcw_val_gep");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, kind), kindGEP);
+        builder_.CreateStore(valI64, valGEP);
+    }
+
+    llvm::FunctionType *countFnTy = llvm::FunctionType::get(
+        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee countFn = mod_->getOrInsertFunction(
+        "__ry_mock_count_matching_calls", countFnTy);
+    return builder_.CreateCall(countFn, {nameStr, numArgsConst, kindsArr, valuesArr},
+                                "vcw_count");
 }
 
 // ===== Test: ExpectStmt =====
