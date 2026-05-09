@@ -113,6 +113,45 @@ the entry in the same PR that closes the gap.
 recorded; `check.sh` has no hard-coded skip list. Inline `# reason`
 comments after each path are stripped at read time and are advisory only.
 
+## Live-editing tolerance
+
+The tree-sitter grammar (`grammar.js`) is intentionally **more permissive**
+than the canonical EBNF spec ([`docs/grammar.ebnf`](../../docs/grammar.ebnf))
+for the specific block-introducing rules below. Their body content is
+wrapped in `optional(...)` so that **partial input** typed during
+incremental editing still produces a complete named node, allowing
+`indents.scm` `@indent.begin` captures to fire.
+
+| Grammar rule              | EBNF requirement                            | grammar.js tolerance                          |
+|---------------------------|---------------------------------------------|-----------------------------------------------|
+| `function_body`           | `:` then INDENT contracts? statement+ DEDENT | `:` followed by optional INDENT body          |
+| `if_statement`            | `:` then mandatory `block`                  | `:` followed by optional `block` (consequence / alt_consequence / alternative); trailing `else` allows `:` itself to be missing so that bare `else` typed on its own line is absorbed into the surrounding `if_statement` |
+| `while_statement`         | `:` then mandatory `block`                  | `:` followed by optional `block`              |
+| `for_statement`           | `:` then mandatory `block`                  | `:` followed by optional `block`              |
+| `case_match_statement`    | `:` then mandatory INDENT case_arm+ DEDENT  | `:` followed by optional INDENT arms          |
+| `case_cond_statement`     | `:` then mandatory INDENT case_cond_arm+ DEDENT | `:` followed by optional INDENT arms      |
+
+Each relaxed rule carries a `// Live-editing tolerance (#1623):` comment
+in `grammar.js` pointing back to this section. The Ry compiler enforces
+non-empty bodies at compile time — the tolerance is editor-level only.
+
+The `if_statement` rule is wrapped in `prec.right(...)` because making
+the trailing `else`'s `:` optional would otherwise create an ambiguity
+when the parser sees `else if`: it cannot decide whether to continue
+the current `if_statement`'s else-if chain or to end the `if_statement`
+(with bare `else`) and start a new top-level `if`. Right-precedence
+biases toward continuing the chain, which matches the expected
+interpretation.
+
+The `case_arm` and `case_cond_arm` rules **do not** receive the same
+relaxation: making their bodies optional introduces a parser ambiguity
+(the next-arm condition could begin with `(`, which is also a valid
+expression statement that an inline body would absorb). The outer
+`case_match_statement` / `case_cond_statement` relaxation is sufficient
+for the most common live-editing scenario (`case x:` typed and `<CR>`
+pressed); arm-level partial typing falls back to the existing block-level
+`@indent.begin` capture on the surrounding case statement.
+
 ## Contributor workflow
 
 Whenever a PR touches one of these paths (paths are relative to the

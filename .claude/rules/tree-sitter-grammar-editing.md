@@ -31,6 +31,26 @@ token is reinterpreted as a different token kind. Reproducer and full
 verification steps in `/tree-sitter-grammar-editing` §"Externals enum
 order in scanner.c MUST match the externals array in grammar.js".
 
+### Live-editing tolerance for body fields
+
+**Source**: issue #1623, `editor/tree-sitter/README.md` §"Live-editing tolerance",
+`editor/tree-sitter/grammar.js` (`function_body`, `if_statement`,
+`while_statement`, `for_statement`, `case_match_statement`,
+`case_cond_statement`)
+**Tags**: tree-sitter, grammar, live-editing, optional-body, indents.scm
+
+**Rule**: Block-introducing statement bodies are wrapped in `optional(...)`
+so partial input (`fn foo():` typed but body not yet started) still
+produces a complete named node. This is what allows `indents.scm`
+`@indent.begin` captures to fire during incremental editing and is the
+canonical (intentional) divergence from `docs/grammar.ebnf`. Each relaxed
+rule carries a `// Live-editing tolerance (#1623):` comment in
+`grammar.js`. Do **not** apply the same relaxation to `case_arm` /
+`case_cond_arm` — it introduces a parser conflict; the outer
+`case_*_statement` relaxation is sufficient. Detailed pattern, recipes,
+and ambiguity caveat live in `/tree-sitter-grammar-editing` §"Live-editing
+tolerance".
+
 ### Canonical edit-propagation order
 
 `docs/grammar.ebnf` (canonical EBNF) → `editor/tree-sitter/grammar.js`

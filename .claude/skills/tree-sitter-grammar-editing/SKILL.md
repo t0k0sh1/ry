@@ -243,6 +243,105 @@ or punctuation literal (see `highlights.scm:135-160`).
 
 ---
 
+### Live-editing tolerance: optional body to avoid ERROR nodes during typing
+
+**Source**: issue #1623, `editor/tree-sitter/grammar.js` `function_body` /
+`if_statement` / `while_statement` / `for_statement` /
+`case_match_statement` / `case_cond_statement`,
+`editor/tree-sitter/README.md` §"Live-editing tolerance"
+**Tags**: tree-sitter, grammar, live-editing, optional-body, indents.scm,
+error-recovery
+
+**Rule**: When `indents.scm` `@indent.begin` captures fail to fire during
+live editing (e.g. user types `fn foo():` and presses `<CR>` but the
+cursor stays at column 0), the cause is almost always that the
+block-introducing rule is not completing a named node on partial input —
+the parser wraps it in `(ERROR)` instead. Fix by wrapping the body in
+`optional(...)`:
+
+| Rule shape | Required relaxation |
+|------------|---------------------|
+| `seq(..., ':', field('body', $.block))` | `seq(..., ':', optional(field('body', $.block)))` |
+| `seq(..., ':', $._indent, repeat1($.X), $._dedent)` (named sub-rule) | Wrap the **inside** of the sub-rule's INDENT/DEDENT pair: `seq(':', optional(seq($._indent, repeat1($.X), $._dedent)))`. Do **not** make `field('body', $.named_sub_rule)` itself optional — that would break `indents.scm` field-predicate captures and disambiguation tokens. |
+| `seq(..., ':', $._indent, repeat1($.arm), $._dedent)` (inline) | `seq(..., ':', optional(seq($._indent, repeat1($.arm), $._dedent)))` |
+
+After the relaxation, verify the disambiguation tokens are still
+unambiguous. For Ry specifically, `function_declaration` uses
+`choice(field('body', $.function_body), $._newline)` to distinguish
+`@native fn foo() -> Unit` (no `:`, takes the `_newline` arm) from
+`fn foo():` (takes the `function_body` arm). Keep the `:` mandatory
+inside `function_body` and only optionalise the INDENT body — that
+preserves the disambiguator.
+
+**Trailing-clause `:` relaxation (e.g. `if`-`else`)**: When the
+acceptance criterion is "bare keyword on its own line dedents to the
+parent" (e.g. `else` typed alone after a complete `if cond:` body
+should dedent), making just the body optional is not enough — the
+parser must also accept the keyword without its trailing `:`. For Ry's
+`if_statement`, the trailing `else` clause was relaxed from
+`seq('else', ':', optional(field('alternative', $.block)))` to
+`seq('else', optional(seq(':', optional(field('alternative', $.block)))))`
+so that bare `else` is absorbed into `if_statement` and the existing
+`(if_statement "else" @indent.branch)` capture in `indents.scm`
+fires. This **introduces an ambiguity** with `else if` (continue this
+`if_statement`'s else-if chain vs. end this `if_statement` and start a
+new top-level `if`) that `tree-sitter generate` flags as
+"Unresolved conflict for symbol sequence". Resolve by wrapping the
+entire rule in `prec.right(...)`, which biases toward continuing the
+chain — the expected interpretation. Document the precedence with a
+comment so future maintainers understand why it is required.
+
+**Caveat — arm-level rules can cause genuine ambiguity**: For Ry's
+`case_arm` / `case_cond_arm`, making the body `optional(choice(...))`
+causes `tree-sitter generate` to fail with an unresolved conflict
+because the next-arm condition can begin with `(` (an expression), and
+an inline body can also begin with `(`. The outer
+`case_match_statement` / `case_cond_statement` relaxation is sufficient
+for the primary live-editing case (`case x:` typed and `<CR>` pressed);
+arm-level partial typing falls back to the surrounding statement-level
+`@indent.begin` capture. If you encounter "Unresolved conflict for
+symbol sequence" after a relaxation, this is the canonical failure
+mode — revert the arm-level optional and rely on the outer rule.
+
+**How to verify** (reproduce the live-editing scenarios after rebuild):
+
+```bash
+cd editor/tree-sitter
+./build.sh
+TS=tree-sitter
+$TS parse <(printf 'fn foo():\n')              # function_body now appears as a child; no surrounding (ERROR)
+$TS parse <(printf 'if cond:\n')                # if_statement node present; no (ERROR) wrap
+$TS parse <(printf 'while x:\n')                # while_statement
+$TS parse <(printf 'for x in xs:\n')            # for_statement
+$TS parse <(printf 'case c:\n')                 # case_match_statement
+$TS parse <(printf 'case:\n')                   # case_cond_statement
+$TS parse <(printf 'if cond:\n  body1\nelse\n')   # bare `else` is inside if_statement (not in ERROR)
+$TS parse <(printf '@native\nfn foo() -> Unit\n')  # @native fn unchanged (regression check)
+$TS parse <(printf 'fn foo():\n  return 1\n')   # complete fn parses identically (regression check)
+./check.sh                                       # full-corpus pass/skip/fail counts unchanged
+```
+
+The complete-program parse must be unchanged from baseline (Ry compiler
+will continue to enforce non-empty bodies at compile time — the tolerance
+is editor-only). If `check.sh` surfaces new `FAIL` entries, the
+relaxation introduced a regression in some other rule that depended on
+the body's presence; debug by examining the failing file's parse tree
+with `tree-sitter parse -d <path>`.
+
+**Why this works**: tree-sitter's incremental parser produces a CST even
+on incomplete input; with the body optional, the prefix `fn foo():` is a
+valid full sentence of the grammar, so the parser commits to
+`function_declaration` as soon as it sees the `:`. The
+`@indent.begin` capture in `indents.scm` then matches because its field
+predicate (`body: (function_body)` or similar) is satisfied by the
+empty-body `function_body` node. Without the relaxation the prefix
+cannot terminate any rule, so the parser falls back to error recovery
+and wraps everything in `(ERROR)` — which `indents.scm` cannot match
+because the query syntax has no ERROR-node escape hatch that doesn't
+make the whole indent strategy brittle.
+
+---
+
 ### Verification recipes for grammar / scanner / highlights edits
 
 **Source**: `editor/tree-sitter/README.md:89-122`,
