@@ -73,7 +73,7 @@ public:
     // only includes libraries for functions actually called during codegen).
     const std::unordered_set<std::string>& getRequiredLibraries() const;
 
-    // Testing intrinsics (`expect`, `mock`, `verify`, `fail`, `it`, `describe`)
+    // Testing intrinsics (`expect`, `mock`, `fail`)
     // that the program imported via `from testing import ...` (named or wildcard).
     // Populated by the caller (jit_runner) from ModuleLoader::importedTestingIntrinsics().
     void setTestingIntrinsicsImported(const std::unordered_set<std::string> &imported);
@@ -941,9 +941,8 @@ public:
 
     // Testing intrinsics imported via `from testing import ...`. Set by
     // setTestingIntrinsicsImported() from ModuleLoader::importedTestingIntrinsics()
-    // before compile(). Used by codegen to enforce that `expect`/`mock`/`verify`/
-    // `fail` require an explicit import (#715). `it`/`describe` enforcement is
-    // tracked separately under #716.
+    // before compile(). Used by codegen to enforce that `expect`/`mock`/`fail`
+    // require an explicit import (#715).
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
     // User-defined @directive declarations. Keyed by directive name.
