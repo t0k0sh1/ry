@@ -270,6 +270,26 @@ TEST_F(CodeGenTest, VerifyCalledWithMapArgUnsupportedError) {
     )), std::exception);
 }
 
+TEST_F(CodeGenTest, VerifyCalledWithListParameterRejectedWithPrimitiveArg) {
+    // A List<int> parameter must be rejected by the parameter-side gate
+    // even when the user supplies a primitive (str) argument that would
+    // otherwise pass the LLVM-level type check — both lower to ptrTy_
+    // and isStringValue would tag the str arg as kind=4, silently
+    // returning 0 instead of erroring.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesList(xs: List<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list param\")\n"
+        "fn vcwListParam():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesList, (xs: List<int>) => len(xs))\n"
+        "        takesList([1, 2])\n"
+        "        expect(verifyCalledWith(\"takesList\", \"x\")).toEq(0)\n"
+    )), std::exception);
+}
+
 TEST_F(CodeGenTest, VerifyCalledWithEmptyArgsError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "@describe(\"vcw empty\")\n"

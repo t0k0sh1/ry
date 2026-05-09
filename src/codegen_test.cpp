@@ -630,6 +630,18 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     llvm::Value *valuesArr = builder_.CreateAlloca(arrTy, nullptr, "vcw_values");
 
     for (size_t i = 0; i < expectedNumArgs; ++i) {
+        const std::string declaredParamName =
+            i < entry.paramTypeNames.size()
+                ? resolveTypeAlias(entry.paramTypeNames[i])
+                : std::string{};
+        if (!declaredParamName.empty() &&
+            declaredParamName != "int" && declaredParamName != "float" &&
+            declaredParamName != "bool" && declaredParamName != "str") {
+            codegenError("verifyCalledWith: parameter " + std::to_string(i) +
+                         " of '" + fnName + "' has type '" + declaredParamName +
+                         "'; only int, float, bool, str are supported in v1");
+        }
+
         llvm::Value *argVal = emitExpr(*e.args[i + 1]);
         llvm::Type *argTy = argVal->getType();
         llvm::Type *expectedTy = entry.paramTypes[i];
