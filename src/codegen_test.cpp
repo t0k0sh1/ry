@@ -637,9 +637,14 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         if (!declaredParamName.empty() &&
             declaredParamName != "int" && declaredParamName != "float" &&
             declaredParamName != "bool" && declaredParamName != "str") {
-            codegenError("verifyCalledWith: parameter " + std::to_string(i) +
-                         " of '" + fnName + "' has type '" + declaredParamName +
-                         "'; only int, float, bool, str are supported in v1");
+            std::string msg = "verifyCalledWith: parameter ";
+            msg += std::to_string(i);
+            msg += " of '";
+            msg += fnName;
+            msg += "' has type '";
+            msg += declaredParamName;
+            msg += "'; only int, float, bool, str are supported in v1";
+            codegenError(msg);
         }
 
         llvm::Value *argVal = emitExpr(*e.args[i + 1]);
