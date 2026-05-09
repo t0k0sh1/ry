@@ -26,6 +26,29 @@ case opt:
 expect(gotNone).toEq(true)
 ```
 
+### Ry has no `pass` — use `0` for no-op `case` arm bodies
+
+**Source**: #1607 (2026-05-09, implementation)
+**Tags**: testing, case, no-op, ry-syntax, coderabbit-translation
+
+**Rule**: Ry has no `pass` keyword. When a `case` arm needs a no-op body (e.g. an `Ok(_):` arm that intentionally discards the result of a verified setup call), use `0` as the canonical no-op statement.
+
+**Why**: Python-style `pass` is parsed as a bare identifier reference, producing a misleading "expected '=', '+=', ... after identifier" error pointing at the token after `pass`. CodeRabbit and other reviewers regularly suggest `pass` in Ry test snippets because their templates are language-agnostic; translating those suggestions to Ry requires substituting `0` (the convention already used in `nul_safety_io.test.ry`, `nul_safety_filesystem.test.ry`, etc.).
+
+```ry
+# ❌ Parser error — pass is not a Ry keyword
+case mkdirAll(parent):
+  Ok(_): pass                         # ← "expected '=' ... after identifier"
+  Err(e): fail("setup failed: " + e.message)
+
+# ✅ Use 0 as the no-op statement
+case mkdirAll(parent):
+  Ok(_): 0
+  Err(e): fail("setup failed: " + e.message)
+```
+
+**How to apply**: When porting a CodeRabbit suggestion or other external code snippet that uses `pass`, replace it with `0`. Empty body is also rejected (see the entry above), so the no-op cannot simply be omitted.
+
 ### `expect(str).toEq("literal")` is NUL-truncating — use `expect(str == "literal").toEq(true)` for NUL-containing strings
 
 **Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
