@@ -7,178 +7,30 @@ paths:
 
 # Codegen Pattern Matching
 
-### ## #1156: split match subject type into enum-only vs broad source name
+### Match subject types use two channels: subjectEnumName (narrow) vs subjectSourceTypeName (broad)
 
-**Source**: PR #1156 fix for `codegen_match.cpp` subjectEnumType wrong channel
-**Tags**: pattern, match, ARC, codegen, Option, Result, tuple, subjectEnumType
+`emitPatternTest` / `emitPatternBindings` / `checkMatchExhaustiveness` take both names. `subjectEnumName` is enum/ADT only (used for `EnumPattern`, `Some`/`Ok`/`Err` extraction, `VariablePattern` `enum_value_type` write). `subjectSourceTypeName` reconstructs `Option<T>` / `Result<T,E>` / tuple from LLVM types but is lossy (`reverseResolveTypeName(ptr)` returns `"str"`, unknown structs return `"any"`), so it is safe only for structural checks. Never re-feed it into `extractGenericTypeArg` for ARC payload classification — `Option<List<int>>` reconstructs as `Option<str>` and uses the wrong header offset (-24 instead of -16), corrupting the heap. Use the lossless `source_type_name` metadata field (stamped by `propagateTypeMeta` at Result/Option branch entries) for ARC routing. Keep TuplePattern's `!sTy || !isTupleStructType(sTy)` defense-in-depth check so empty source names cannot let Option's 2-element struct silently pass arity checks.
 
-**Rule**: `emitPatternTest`, `emitPatternBindings`, and `checkMatchExhaustiveness`
-take **two** source-name parameters:
+### TuplePattern: per-element metadata via splitTypeArgs
 
-- `subjectEnumName` — narrow channel (`ValueMetadata::enum_value_type`).
-  Only set for enum/ADT subjects (from `resolveEnumType()`). Used by
-  `EnumPattern`/`EnumConstructorPattern` generic-instantiated lookup, by
-  `Some`/`Ok`/`Err` binding `extractGenericTypeArg`, and by `VariablePattern`
-  binding's `enum_value_type` write (still guarded by
-  `enum_types_.count(resolveTypeAlias(name))`).
-- `subjectSourceTypeName` — broad channel (`resolveSubjectSourceTypeName()`).
-  Reconstructs `Option<T>` / `Result<T, E>` / `(T1, T2, ...)` from the LLVM
-  subject type when no enum annotation exists. Used by `TuplePattern` /
-  `RecordPattern` structural verification and by `emitPatternBindingArc`
-  Path 2a from `VariablePattern` only.
+In `emitPatternTest` / `emitPatternBindings`, when the subject's type signature is `"(T1, T2, ...)"`, strip outer parens, call `splitTypeArgs(inner)`, and recurse with each element's signature as `subjectEnumType`. Do NOT extend `propagateTypeMeta` to handle composite type strings — decomposition belongs in the pattern arm itself, mirroring `emitTupleDestructure`.
 
-**Reconstruction lossiness**: `reverseResolveTypeName(ptrTy_)` returns `"str"`;
-unknown structs return `"any"`. So `Option<List<int>>` reconstructs as
-`"Option<str>"`. The reconstructed string is therefore **only** safe for
-structural checks ("is this a tuple struct?" / "does this match record name X?").
-Do NOT re-feed it into `extractGenericTypeArg` for ARC payload classification —
-`Option<List<int>>` would be misclassified as `Option<str>` (wrong header
-offset: str uses -24, List uses -16), causing heap corruption under ASan.
+### RecordPattern bindings: do not pass primitive field type names as subjectEnumType
 
-**Defense-in-depth on TuplePattern**: the test arm rejects via
-`!sTy || !isTupleStructType(sTy)` regardless of any source name. This fires
-even when both names are empty — closing the path where Option's `{i1, T}`
-2-element struct silently passed the 2-arity check and crashed with ICmp
-type mismatch (original #1156 crash vector).
+In `emitPatternBindings` for `RecordPattern`, only pass a field's Ry type as `subjectEnumType` when it is an actual enum (`enum_types_.count(elemSig) > 0`). For primitives and collections, pass empty string. Otherwise `VariablePattern` writes `enum_value_type = "int"` into metadata, `valueToString` then looks up `enum_types_["int"]` (creates a zero-initialized default entry via `operator[]`), reads its null `nameArray`, and crashes in `CreateGEP`. The danger is only in `emitPatternBindings`; `emitPatternTest` is safe because Literal/Wildcard ignore the field name and Record uses `pat->name` for lookup.
 
-**Why split rather than unify**: the previous single `subjectEnumType`
-parameter was overloaded with non-enum names via the new broad helper
-would force every consumer to add an `enum_types_.count(name)` guard.
-The split signature makes "enum-only" vs "broader subject type" a
-compile-time-enforced distinction. The guard at VariablePattern binding
-remains necessary but is now purely defensive
-(subjectEnumName is already enum-only).
+### Ok/Err/Some bindings: typeSig-driven propagateTypeMeta, not bulk propagateMeta
 
-**Follow-up (resolved by #1638, 2026-05-08)**: A lossless
-`source_type_name` field on `ValueMetadata` (added in #1638) is now stamped
-by `propagateTypeMeta` at the Result/Option/T? branch entries
-(`src/codegen_builtin.cpp:75-193`). This is what `emitPatternBindings`'
-Ok/Err/Some arms now consult — see the supersede entry below — instead of
-relying on `propagateMeta`'s broad bulk-copy.
-- Pre-existing defect in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204) — tracked separately.
+In the `OkPattern` / `ErrPattern` / `SomePattern` arms of `emitPatternBindings`, derive `innerSig` from the subject's `source_type_name` metadata via `extractGenericTypeArg("Result<", N)` (N=0 for Ok, 1 for Err) or `extractGenericTypeArg("Option<", 0)`, then call `propagateTypeMeta(innerSig, varAlloca)`. Do NOT bulk-copy with `propagateMeta(subjectAlloca, varAlloca)` — that leaks metadata from the *other* slot of the tagged union, e.g. `Result<List<int>, str>`'s Ok-side `list_elem_type_name = "int"` leaks into an Err binding whose actual runtime type is `str`, breaking `isStringValue` (compile error on `"prefix:" + e`) and crashing `valueToString` (reads list metadata off a str pointer). VariablePattern (whole-subject binding) keeps `propagateMeta` — it should inherit all subject metadata.
 
-### Tuple pattern in `case`: per-element metadata via `splitTypeArgs`
+### ADT enum constructor pattern: unwrap single TuplePattern, gate payload tests by tag-match
 
-**Source**: #834 (2026-04-16, implementation)
-**Tags**: codegen, pattern, tuple, metadata, case, splitTypeArgs
+`Event::Click((0, 0))` parses as `EnumConstructorPattern{bindings:[TuplePattern{0,0}]}` (one binding). When `bindings.size() == 1` and that binding is a `TuplePattern` whose arity equals the variant's field count, redirect the loop in BOTH `emitPatternTest` and `emitPatternBindings` to iterate the TuplePattern's elements instead (one-sided fix produces wrong runtime behaviour). Separately, never combine the tag equality with payload sub-tests via `CreateAnd` — it does not short-circuit, so payload loads execute even when the tag mismatches and dereferencing a `str` pointer slot from an `int`-tagged variant crashes. Gate payload loads with `CreateCondBr` on the tag-equality result; run the GEP/load/test loop in a dedicated payload BB; merge with a PHI: false from the tag-match block, `fieldsMatch` from the payload-end block.
 
-**Rule**: When emitting a `TuplePattern` in `emitPatternTest` / `emitPatternBindings`, the subject's type signature arrives as a `"(T1, T2, ...)"` string in `subjectEnumType`. Strip the outer parentheses and call `splitTypeArgs(inner)` to obtain per-element signatures. Pass each element's signature as the `subjectEnumType` argument in the recursive `emitPatternTest` / `emitPatternBindings` calls so that nested Option/Result/generic patterns can resolve their metadata correctly.
+### sema_return: EnumConstructorPattern covers a variant only when its payload is irrefutable
 
-**Why**: `propagateTypeMeta` (see `codegen-type-and-metadata.md` → "propagateTypeMeta is single-value; callers decompose tuples") is deliberately single-purpose and does not decompose tuple type strings. The correct decomposition point is the `TuplePattern` codegen arm itself, mirroring the existing `emitTupleDestructure` helper in `codegen_stmt_loop.cpp`.
+In `collectPatternInfo` (`sema_return.cpp`), only call `coveredVariants.insert(variant_name)` for an `EnumConstructorPattern` when every binding is irrefutable (Wildcard / Variable / recursively-irrefutable Tuple). `Event::Click((0, 0))` matches a strict subset of `Click` values; treating it as full coverage makes `isExhaustiveMatch` unsound and lets non-returning `case`s pass return analysis. Update `isIrrefutable` whenever a new pattern type is introduced; Literal / Enum / Some / None are always refutable.
 
-**How to apply**: When a future pattern type (e.g., positional record `Point(a, b)`) also needs per-element metadata, use the same pattern: strip the outer delimiters, split with `splitTypeArgs`, and feed each component signature into the recursive call. Do NOT extend `propagateTypeMeta` to handle composite type strings.
+### Case subject Result/Option struct allocas need arc_tagged_union_vars_, not arc_managed_vars_
 
-### Record pattern in `case`: do NOT propagate primitive field type names as `subjectEnumType` in bindings
-
-**Source**: #989 (2026-04-16, implementation)
-**Tags**: codegen, pattern, record, metadata, case, enum_value_type, valueToString
-
-**Rule**: In `emitPatternBindings` for `RecordPattern`, each field's Ry type string (`info.fields[i].type->toString()`) must be passed to `propagateTypeMeta` for collection/type metadata, but must **not** be passed blindly as `subjectEnumType` to the recursive `emitPatternBindings` call. Only pass it as `subjectEnumType` if the field type is an actual enum (`enum_types_.count(elemSig) > 0`). For primitives ("int", "float", "str", "bool") and collection types, pass empty string.
-
-**Why**: The `VariablePattern` binding arm in `emitPatternBindings` does `getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType` whenever `subjectEnumType` is non-empty. If `subjectEnumType` is "int", this stores `enum_value_type = "int"`. Then `valueToString` checks `enum_value_type`, looks up `enum_types_["int"]` (creates a zero-initialized default entry via `std::unordered_map::operator[]`), reads `nameArray` (null), and passes it to `CreateGEP` → LLVM asserts/crashes.
-
-Records don't set `enum_value_type` on constructed values anywhere in the compiler (unlike enums which set it in `emitExprVariant(EnumExpr)` and `emitStructConstructor` in `codegen_call_dispatch.cpp`). So `subjectEnumType` for a record `case` subject is typically empty, and the per-field type from `struct_types_` is the authoritative source.
-
-**How to apply**: Mirrored in `emitPatternTest` too: passing the full field type string as `subjectEnumType` in recursive `emitPatternTest` calls is safe (LiteralPattern and WildcardPattern ignore it; RecordPattern uses `pat->name` for lookup, not `subjectEnumType`). The dangerous place is **only in `emitPatternBindings`** where `VariablePattern` stores `subjectEnumType` directly into `enum_value_type` metadata.
-
-### Ok/Err/Some pattern bindings: prefer typeSig-driven `propagateTypeMeta`, not bulk `propagateMeta` (supersedes #1001)
-
-**Source**: #1638 (2026-05-08, implementation; supersedes #1001)
-**Tags**: codegen_match, pattern, Result, Err, Ok, Some, metadata, propagateTypeMeta, source_type_name, ARC, str
-
-**Rule**: In `emitPatternBindings` (`codegen_match.cpp`), the `OkPattern` / `ErrPattern` / `SomePattern` arms must derive the binding's metadata from the **inner type signature** (resolved via `subjectSourceTypeName` → `source_type_name` field on the subject alloca, with `subjectEnumName` as fallback) and call `propagateTypeMeta(innerSig, varAlloca)`. They MUST NOT bulk-copy with `propagateMeta(subjectAlloca, varAlloca)`, which leaks metadata from the *other* slot of the tagged union into the binding.
-
-**Why**: `propagateMeta` blindly copies all of `subjectAlloca`'s metadata. For `Result<List<int>, str>`, `buildOkValue` / `propagateTypeMeta` stamp the **Ok side**'s collection metadata (`list_elem`, `list_elem_type_name = "int"`) onto the subject alloca — even when the runtime value is the Err variant. A bulk `propagateMeta` then leaks `list_elem` onto an `Err(e)` binding whose actual type is `str`. Downstream:
-
-- `isStringValue(e)` returns false (the str-detection heuristic is short-circuited by the leaked `list_elem` flag) → `"prefix: " + e` fails the str-vs-non-str type check at compile time.
-- `valueToString(e)` dispatches into the list path → reads invalid memory off the str-pointer payload → SIGSEGV under ASan.
-
-The mirror leak applies to `OkPattern` for `Result<str, List<int>>` (Err-side metadata leaks into the Ok binding) and `SomePattern` when subjects carry stale broad metadata.
-
-**How to apply**: For each Ok/Err/Some arm:
-
-1. Read `subjectSourceTypeName` from the subject alloca's `source_type_name` metadata (lossless field stamped by `propagateTypeMeta` at Result/Option/T? branch entries — `src/codegen_builtin.cpp:75-193`).
-2. Fall back to `resolveTypeAlias(subjectEnumName)` if `source_type_name` is empty (e.g., subject is a typedef'd enum without source-name annotation).
-3. Call `extractGenericTypeArg(lookupName, "Result<", N)` (N=0 for Ok, 1 for Err) or `extractGenericTypeArg(lookupName, "Option<", 0)` to get `innerSig`.
-4. If `innerSig` is non-empty, call `propagateTypeMeta(innerSig, varAlloca)`. **Do not** call `propagateMeta(subjectAlloca, varAlloca)` in addition.
-5. If `innerSig` is empty (rare; lookupName itself was empty), fall back to `propagateMeta(subjectAlloca, varAlloca)` as a safety net (preserves prior behaviour for cases that don't go through the new channel).
-6. ARC retain (`emitPatternBindingArc(extractedVal, varAlloca, innerSig)`) is unchanged — the Path 2a logic in `emitPatternBindingArc` is already typeSig-driven and correctly classifies the binding's ARC kind (`-16` collection vs `-24` str header).
-
-**Sibling: `VariablePattern` keeps `propagateMeta`**: For `case x: y => ...` (whole-subject binding), the binding *should* inherit all subject metadata — `propagateMeta` is correct there. Only the destructuring arms (Ok/Err/Some) need the narrow `propagateTypeMeta(innerSig, ...)` path.
-
-**Historical note (formerly #1001)**: The original #1001 rule said "ErrPattern must call `propagateMeta`" — that was correct for the test it was guarding (`Err(List<int>)` collection-payload preservation), but the bulk-copy approach silently broke `Result<List<int>, str>`'s Err binding because no test covered the str-Err-with-ARC-Ok shape until #1638. The fix in #1638 is the typeSig-driven channel above, which correctly handles both directions (collection-Err and str-Err) by routing each binding through the inner type's own metadata stamping.
-
-### ADT enum constructor pattern: single TuplePattern binding must be "unwrapped"
-
-**Source**: #990 (2026-04-16, implementation)
-**Tags**: codegen, pattern, enum, tuple, ADT, emitPatternTest, emitPatternBindings
-
-**Rule**: `Event::Click((0, 0))` is parsed as `EnumConstructorPattern` with **one** binding that is a `TuplePattern{elements: [0, 0]}`. If `emitPatternTest` / `emitPatternBindings` naively iterate `pat->bindings` (size 1) and try to match `fieldTypes[0]` ("int") against a `TuplePattern`, the recursive call to `emitPatternTest(TuplePattern{...}, int_val, "int")` will call `splitTupleSig("int")` → empty → crash ("tuple pattern applied to non-tuple subject").
-
-The fix: before the field loop in both `emitPatternTest` and `emitPatternBindings`, detect the "single TuplePattern whose arity == variant's field count" case and redirect the loop to iterate over the TuplePattern's **elements** instead:
-
-```cpp
-const std::vector<Pattern> *fieldPats = &pat->bindings;
-if (pat->bindings.size() == 1) {
-    if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&pat->bindings[0])) {
-        if ((*tp)->elements.size() == fit->second.fieldTypes.size())
-            fieldPats = &(*tp)->elements;
-    }
-}
-// Use (*fieldPats)[i] and fieldPats->size() in the loop.
-```
-
-**Why**: `(0, 0)` inside `Event::Click(...)` is grammatically a tuple pattern (two elements), not two separate arguments. The parser correctly emits one `TuplePattern`, but codegen must recognise this as syntactic sugar for "match the N fields individually". The unwrap only triggers when element count == field count; mismatched arities fall through to the normal path (which will produce a runtime type-check error, matching the behaviour of other arity mismatches).
-
-**How to apply**: Mirrored changes are required in **both** `emitPatternTest` (for the test-phase) and `emitPatternBindings` (for the binding-phase). Missing either half causes the other phase to use the wrong pattern → incorrect runtime behaviour.
-
-### ADT enum constructor pattern: payload tests must be gated by a tag-match branch
-
-**Source**: #990 (2026-04-16, CodeRabbit review)
-**Tags**: codegen, pattern, enum, ADT, emitPatternTest, PHI, LLVM, safety
-
-**Rule**: In `emitPatternTest` for `EnumConstructorPattern`, do **not** use `CreateAnd` to combine the tag equality with payload sub-tests. `CreateAnd` does not short-circuit in LLVM IR, so payload loads execute unconditionally even when the tag does not match. Loading a `str` pointer field from a variant that actually stores an `int` payload (or vice versa) and then passing it to `strcmp` / pointer tests will crash at runtime.
-
-**Fix**: Gate payload loads with a conditional branch (`CreateCondBr`) on the tag equality result, run the GEP/load/test loop in the `ecp.payload` basic block, then merge with a PHI node:
-
-```cpp
-llvm::BasicBlock *tagMatchBB = builder_.GetInsertBlock();
-auto *payloadBB = llvm::BasicBlock::Create(*ctx_, "ecp.payload", fn);
-auto *mergeBB   = llvm::BasicBlock::Create(*ctx_, "ecp.merge",   fn);
-builder_.CreateCondBr(testResult, payloadBB, mergeBB);
-
-builder_.SetInsertPoint(payloadBB);
-// ... GEP / load / emitPatternTest loop builds fieldsMatch ...
-llvm::BasicBlock *payloadEndBB = builder_.GetInsertBlock();
-builder_.CreateBr(mergeBB);
-
-builder_.SetInsertPoint(mergeBB);
-llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ecp.final");
-phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), tagMatchBB); // tag missed → false
-phi->addIncoming(fieldsMatch, payloadEndBB);                     // tag hit → payload result
-testResult = phi;
-```
-
-**Why**: Tagged-union variants can have entirely different payload types (int vs str). Loading the wrong type's bytes as a pointer and dereferencing it is undefined behaviour that manifests as a crash. The `emitPatternTest` for `TuplePattern` uses `CreateExtractValue` (safe, always valid), but `EnumConstructorPattern` uses `CreateLoad` from raw GEP — inherently unsafe when the tag doesn't match.
-
-**How to apply**: This pattern applies to any new pattern type that (1) lives inside a tagged union and (2) loads payload bytes via a GEP through the union's raw byte array. Always branch on the discriminant before loading.
-
-### sema_return exhaustiveness: EnumConstructorPattern covers a variant only when payload is irrefutable
-
-**Source**: #990 (2026-04-16, CodeRabbit review)
-**Tags**: sema_return, exhaustiveness, pattern, enum, irrefutable, return-analysis
-
-**Rule**: In `collectPatternInfo` (`sema_return.cpp`), only call `cov.coveredVariants.insert(variant_name)` for an `EnumConstructorPattern` when every binding in `pat->bindings` is irrefutable (i.e. `WildcardPattern`, `VariablePattern`, or recursively-irrefutable `TuplePattern`). An arm like `Event::Click((0, 0))` only matches a subset of `Click` values — adding `Click` to `coveredVariants` unconditionally would make `isExhaustiveMatch()` unsound and allow a non-returning `case` to pass return analysis.
-
-**How to apply**: Use a small `isIrrefutable(const Pattern &)` recursive helper (see `src/sema_return.cpp`). Pattern types that are always refutable: `LiteralPattern`, `EnumPattern` (always a specific tag), `SomePattern`, `NonePattern`, etc. When adding any new pattern type to the language, update `isIrrefutable` accordingly. Pre-existing `EnumPattern` arms (without payload) are always irrefutable for their specific variant (the tag check is the only condition), so they continue to insert unconditionally.
-
-### Case subject Result/Option struct allocas need ARC tracking via `arc_tagged_union_vars_` — not `arc_managed_vars_`
-
-**Source**: #1640 (2026-05-08, implementation)
-**Tags**: codegen, arc, case, match, tagged-union, scope_stack, side-table
-
-**Rule**: When `CaseStmt` / `CaseExpr` materializes its subject into a `{i1, T, E}` (Result) or `{i1, T}` (Option) struct alloca (`codegen_match.cpp` ~789-795 / ~865-870), and at least one slot's type is ARC-managed (per `fieldTypeIsArcManaged`), the alloca MUST be registered in the new `arc_tagged_union_vars_` side-table AND in the case-level `scope_stack_` frame (the one outside each arm's `pushScope`). The cleanup helper `emitTaggedUnionRelease` then loads the struct, extracts the i1 tag, and CondBr-dispatches to release only the active slot through `emitArcReleaseLoadedElement`. Do NOT register the subject alloca in `arc_managed_vars_` / `arc_str_managed_vars_` / `arc_field_record_vars_` — those expect a single ARC pointer at the alloca's address, not a struct.
-
-**Why**: `buildOkValue` / `buildErrValue` / `buildSomeValue` retain the payload at construction time. `ExtractValue` into a binding alloca only copies the bits; the source slot is still retained. Without scope-cleanup tracking, the struct alloca's payload retain leaks once per `case` evaluation per ARC-managed active slot. The naming convention `$match_subject_<counter>` is used for the synthetic key in `scope_stack_` because the alloca has no Ry-source-level name. The metadata pipeline path is: source `propagateMetaWide(subject, subjectAlloca)` → read `getOrCreateMeta(subjectAlloca).source_type_name` (the lossless channel from #1638) → `splitGenericTypeName` to extract `Result<T, E>` / `Option<T>` slot type names. `T?` shorthand must be handled explicitly because `splitGenericTypeName` only recognizes `Option<T>`. The scope-stack registration is what makes early-exit cleanup also fire (via `emitScopeCleanupToDepth`), so the side-table approach is correct for both natural- and early-exit paths. (Historical note: #1642 fixed a cleanup-erase regression that affected all ARC side-tables when a scope had both early- and natural-exit paths; the erase responsibility now lives in `popScope` rather than `emitScopeCleanupToDepth`.)
-
-**How to apply**: New tagged-union-shaped allocas (e.g. future `Either<L, R>`, multi-variant ADTs whose payload is materialized into a struct) follow the same template: define a slot-classifier, define a per-tag release helper that branches on the discriminant, register in a dedicated side-table whose entries store enough metadata (here: `source_type_name`) to reconstruct the per-slot release without re-reading the LLVM type. Sister `arc_managed_vars_` only handles single-pointer allocas because its release path uses `LoadInst` followed by `__ry_arc_release_counted` directly — incompatible with the slot-dispatch shape needed here.
+When `CaseStmt` / `CaseExpr` materializes its subject into a `{i1, T, E}` (Result) or `{i1, T}` (Option) struct alloca and at least one slot is ARC-managed, register the alloca in `arc_tagged_union_vars_` AND in the case-level `scope_stack_` frame (synthetic key `$match_subject_<counter>`). `emitTaggedUnionRelease` extracts the `i1` tag and CondBr-dispatches to release only the active slot via `emitArcReleaseLoadedElement`. Do NOT register in `arc_managed_vars_` / `arc_str_managed_vars_` / `arc_field_record_vars_` — those expect a single ARC pointer at the alloca's address, not a struct. Without this side-table the per-arm payload retain leaks once per `case` eval per ARC slot. `T?` shorthand must be handled explicitly because `splitGenericTypeName` only recognizes `Option<T>`. Scope-stack registration also makes early-exit cleanup fire via `emitScopeCleanupToDepth`.
