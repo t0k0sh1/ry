@@ -397,6 +397,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "enum_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "enum_elem");
+        // #1667: tuple-elem List<(int, T)> destructor now releases T per slot;
+        // retain the component to keep the symmetric refcount discipline.
+        if (elem->getType() == ptrTy_)
+            emitTupleComponentRetain(elem, srcElemName);
         llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
         tupleVal = builder_.CreateInsertValue(tupleVal, i, 0);
         tupleVal = builder_.CreateInsertValue(tupleVal, elem, 1);
@@ -470,6 +474,12 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *ep2 = builder_.CreateGEP(elemTy2, data2, {i}, "zip_ep2");
         llvm::Value *e1 = builder_.CreateLoad(elemTy1, ep1, "zip_e1");
         llvm::Value *e2 = builder_.CreateLoad(elemTy2, ep2, "zip_e2");
+        // #1667: tuple-elem List<(T1, T2)> destructor now releases each
+        // component per slot; retain on store to keep refcount symmetric.
+        if (e1->getType() == ptrTy_)
+            emitTupleComponentRetain(e1, n1);
+        if (e2->getType() == ptrTy_)
+            emitTupleComponentRetain(e2, n2);
         llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
         tupleVal = builder_.CreateInsertValue(tupleVal, e1, 0);
         tupleVal = builder_.CreateInsertValue(tupleVal, e2, 1);
