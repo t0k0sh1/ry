@@ -209,12 +209,20 @@ export default grammar({
       '>',
     ),
 
+    // Live-editing tolerance (#1623): the INDENT body is optional so that
+    // partial input (`fn foo():` typed but body not yet started) produces
+    // a complete `function_body` named node, allowing indents.scm
+    // `@indent.begin` captures to fire. The Ry compiler enforces a
+    // non-empty body at compile time. See editor/tree-sitter/README.md
+    // §"Live-editing tolerance".
     function_body: $ => seq(
       ':',
-      $._indent,
-      repeat($.contract_clause),
-      repeat1($._statement),
-      $._dedent,
+      optional(seq(
+        $._indent,
+        repeat($.contract_clause),
+        repeat1($._statement),
+        $._dedent,
+      )),
     ),
 
     contract_clause: $ => choice(
@@ -490,39 +498,60 @@ export default grammar({
       $.case_statement,
     ),
 
-    if_statement: $ => seq(
+    // Live-editing tolerance (#1623): the consequence / alt_consequence /
+    // alternative blocks are optional so that partial input (`if cond:` or
+    // `else if other:` or `else:` typed but body not yet started) produces
+    // a complete `if_statement` named node, allowing indents.scm
+    // `@indent.begin` captures to fire. The trailing `:` after the final
+    // `else` is also optional so that `else` typed on its own line is
+    // absorbed into the `if_statement` and the existing
+    // `(if_statement "else" @indent.branch)` capture in indents.scm
+    // dedents to the parent `if`'s column. The Ry compiler enforces a
+    // non-empty body at compile time. See editor/tree-sitter/README.md
+    // §"Live-editing tolerance".
+    // prec.right resolves the ambiguity introduced by relaxing the trailing
+    // `else` to allow `:` to be missing: when the parser sees `else if`, it
+    // could either continue this if_statement's else-if chain OR end this
+    // if_statement (with bare `else`) and start a new top-level `if`.
+    // Right-precedence biases toward continuing the chain, which is the
+    // expected interpretation.
+    if_statement: $ => prec.right(seq(
       'if',
       field('condition', $._expression),
       ':',
-      field('consequence', $.block),
+      optional(field('consequence', $.block)),
       repeat(seq(
         'else',
         'if',
         field('alt_condition', $._expression),
         ':',
-        field('alt_consequence', $.block),
+        optional(field('alt_consequence', $.block)),
       )),
       optional(seq(
         'else',
-        ':',
-        field('alternative', $.block),
+        optional(seq(
+          ':',
+          optional(field('alternative', $.block)),
+        )),
       )),
-    ),
+    )),
 
+    // Live-editing tolerance (#1623): see if_statement note above.
     while_statement: $ => seq(
       'while',
       field('condition', $._expression),
       ':',
-      field('body', $.block),
+      optional(field('body', $.block)),
     ),
 
+    // Live-editing tolerance (#1623): see if_statement note above.
     for_statement: $ => seq(
       'for',
       field('target', $._for_target),
       'in',
       field('iter', $._expression),
       ':',
-      field('body', $.block),
+      optional(field('body', $.block)),
     ),
 
     _for_target: $ => choice(
@@ -541,21 +570,29 @@ export default grammar({
       $.case_cond_statement,
     ),
 
+    // Live-editing tolerance (#1623): the INDENT arm list is optional so
+    // that `case x:` typed alone produces a complete case_match_statement
+    // named node. See editor/tree-sitter/README.md §"Live-editing tolerance".
     case_match_statement: $ => prec.dynamic(2, seq(
       'case',
       field('scrutinee', $._expression),
       ':',
-      $._indent,
-      repeat1($.case_arm),
-      $._dedent,
+      optional(seq(
+        $._indent,
+        repeat1($.case_arm),
+        $._dedent,
+      )),
     )),
 
+    // Live-editing tolerance (#1623): see case_match_statement note above.
     case_cond_statement: $ => prec.dynamic(2, seq(
       'case',
       ':',
-      $._indent,
-      repeat1($.case_cond_arm),
-      $._dedent,
+      optional(seq(
+        $._indent,
+        repeat1($.case_cond_arm),
+        $._dedent,
+      )),
     )),
 
     case_arm: $ => seq(
