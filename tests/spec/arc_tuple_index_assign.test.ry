@@ -109,3 +109,26 @@ fn arcTupleFieldOwnershipIndexAssignStmt1670Tests():
     expect(its[0].0).toEq("kkk")
     expect(its[0].1[0]).toEq(99)
     expect(its[0].1[1]).toEq(99)
+
+  @it("nested tuple slot overwrite (List<(int, (List<int>, int))>) does not leak fresh inner allocations")
+  fn nestedTupleSlotOverwriteNoLeak():
+    # CodeRabbit follow-up: when the new tuple has a nested tuple shape
+    # like `(0, ([1,2,3], 9))` whose inner ARC leaf is a freshly-built
+    # List<int> in arc_owned_values_, a single-step InsertValue trace
+    # only reaches the inner InsertValue (the nested tuple), not the leaf
+    # — the leaf check then misses and emits a redundant retain. The
+    # destructor releases each inner ARC component once on overwrite, so
+    # the redundant retain leaks the inner List<int> by +2 per iteration.
+    # The recursive trace in emitTupleComponentRetainTraced walks all the
+    # way down to the leaf and recognises arc_owned_values_ ownership,
+    # keeping the per-iteration delta O(1).
+    before = arcLiveCount()
+    xs: List<List<int>> = [[1, 2, 3]]
+    e = enumerate(xs)
+    nested: List<(int, (List<int>, int))> = [(0, ([0], 0))]
+    i = 0
+    while i < 16:
+      nested[0] = (i, ([i, i + 1, i + 2], i * 2))
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)

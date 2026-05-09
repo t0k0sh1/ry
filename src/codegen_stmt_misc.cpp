@@ -1212,44 +1212,42 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     // `elemIsArc` block above never fires here. Compound-op is N/A for
     // tuples — no arithmetic operator is defined on tuple types, so the
     // parser/typechecker rejects compound `IndexAssignStmt` upstream.
-    // Gate on non-empty `elemTypeName` (preserves pre-fix behaviour for
-    // literal-built `List<(K, V)>` whose `list_elem_type_name` is empty,
-    // matching the #1667 caveat for the destructor side).
-    const bool elemIsTuple = elemTypeName.size() >= 2 &&
-                              elemTypeName.front() == '(' &&
-                              elemTypeName.back() == ')';
+    //
+    // Resolve `elemTypeName` via `resolveTypeAlias` first so that user-
+    // defined aliases (`type Pair = (int, str)` → `Pair`) canonicalize to
+    // the literal tuple shape `"(int, str)"` before the shape gate. Without
+    // this, alias-typed `List<Pair>` would skip the gate entirely and leak
+    // tuple components on overwrite. Empty resolution (literal-built
+    // `List<(K, V)>` whose `list_elem_type_name` is empty) preserves
+    // pre-fix behaviour, matching the #1667 caveat on the destructor side.
+    const std::string resolvedElemTypeName = resolveTypeAlias(elemTypeName);
+    const bool elemIsTuple = resolvedElemTypeName.size() >= 2 &&
+                              resolvedElemTypeName.front() == '(' &&
+                              resolvedElemTypeName.back() == ')';
     if (elemIsTuple) {
         if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
-            std::vector<std::string> components = splitTupleSig(elemTypeName);
+            std::vector<std::string> components =
+                splitTupleSig(resolvedElemTypeName);
             const unsigned n = static_cast<unsigned>(
                 std::min<size_t>(components.size(),
                                   tupleTy->getNumElements()));
             // Retain new components from finalVal first (self-assignment
-            // safety: `xs[i] = xs[i]`). For tuple components built via
-            // InsertValue, ExtractValue does NOT fold back to the original
-            // operand — LLVM's ConstantFolder only folds constants. Trace
-            // the InsertValue chain to recover the original SSA value, then
-            // skip the retain when the source is in arc_owned_values_ /
-            // arc_str_owned_values_ (transfer semantics). Otherwise emit an
-            // unconditional retain via emitTupleComponentRetain.
+            // safety: `xs[i] = xs[i]`). `emitTupleComponentRetainTraced`
+            // walks the InsertValue chain on `finalVal` recursively so that
+            // nested tuple shapes like `xs[i] = (0, ([1], 2))` correctly
+            // detect ownership at each leaf (the fresh `[1]` allocation is
+            // in `arc_owned_values_` and must NOT be retained — the
+            // `+1` from its construction transfers to the slot).
             for (unsigned i = 0; i < n; ++i) {
-                const std::string fSig = resolveTypeAlias(components[i]);
-                if (fSig.empty() || isWeakTypeName(fSig)) continue;
                 llvm::Value *fieldVal = builder_.CreateExtractValue(
                     finalVal, {i},
                     "tup_new_f" + std::to_string(i));
-                llvm::Value *checkVal = fieldVal;
-                if (llvm::isa<llvm::InsertValueInst>(finalVal))
-                    if (auto *orig = traceInsertValueField(finalVal, i))
-                        checkVal = orig;
-                if (arc_owned_values_.count(checkVal) ||
-                    arc_str_owned_values_.count(checkVal))
-                    continue;
-                emitTupleComponentRetain(fieldVal, fSig);
+                emitTupleComponentRetainTraced(fieldVal, finalVal, i,
+                                                components[i]);
             }
             // Release old components from the existing slot.
-            emitTupleElemReleaseSlot(elemPtr, "list_tup_old", elemTypeName,
-                                      tupleTy);
+            emitTupleElemReleaseSlot(elemPtr, "list_tup_old",
+                                      resolvedElemTypeName, tupleTy);
         }
     }
 

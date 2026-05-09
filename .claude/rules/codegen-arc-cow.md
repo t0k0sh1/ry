@@ -847,30 +847,32 @@ if (elemIsTuple) {
 
 **Rule**: When `IndexAssignStmt` writes a tuple value into a slot of `List<(K, V)>` (`xs[i] = (a, b)`), the codegen path must (i) retain each ARC-managed component of the *new* tuple via `emitTupleComponentRetain`, then (ii) release each ARC-managed component of the *old* slot via `emitTupleElemReleaseSlot`, then store. Order matters: retain-before-release is required for self-assignment safety (`e[i] = e[i]` would otherwise transiently drop the refcount to zero).
 
-The block is added **alongside** (not as `else if` of) the existing `if (elemIsArc)` branch in `emitStmt(IndexAssignStmt &)`'s list path — `elementTypeIsArcManaged` returns `false` for tuples by design (tuples are inline structs, not ARC-managed pointer types), so the existing branch never fires. Gate on:
+The block is added **alongside** (not as `else if` of) the existing `if (elemIsArc)` branch in `emitStmt(IndexAssignStmt &)`'s list path — `elementTypeIsArcManaged` returns `false` for tuples by design (tuples are inline structs, not ARC-managed pointer types), so the existing branch never fires. Gate on `resolveTypeAlias(elemTypeName)`, NOT on `elemTypeName` directly:
 
 ```cpp
-const bool elemIsTuple = elemTypeName.size() >= 2 &&
-                          elemTypeName.front() == '(' &&
-                          elemTypeName.back() == ')';
+const std::string resolvedElemTypeName = resolveTypeAlias(elemTypeName);
+const bool elemIsTuple = resolvedElemTypeName.size() >= 2 &&
+                          resolvedElemTypeName.front() == '(' &&
+                          resolvedElemTypeName.back() == ')';
 ```
 
-**Why the gate matters**: `inferCollectionTypeName` returns `""` for tuple values, so a literal-built `xs: List<(int, str)> = [(1, "a")]` has `list_elem_type_name = ""`. The destructor branch added in #1667 is also gated on non-empty tuple sig — keeping the symmetry, IndexAssignStmt also skips for empty sigs (preserving pre-fix behavior, same blind spot as `List<str>` literals). Lists produced by `enumerate` / `items` / `zip` / `slice` / `take` / `appended` / `concat` all stamp a concrete tuple sig in `list_elem_type_name`, so they hit the new branch correctly.
+**Why resolve aliases first**: User-defined type aliases like `type Pair = (int, str)` propagate the alias name (`"Pair"`) into `list_elem_type_name`, not the canonical tuple shape. A naive gate on `elemTypeName.front() == '('` would skip alias-typed lists entirely, leaking the evicted tuple's components on every overwrite. `resolveTypeAlias` walks the alias chain to its canonical form (e.g. `"Pair"` → `"(int, str)"`), so the gate matches correctly. The resolved name must also be passed to `splitTupleSig` and `emitTupleElemReleaseSlot` so component decomposition uses the canonical form.
 
-**Trace InsertValue chains for ownership detection**: When the rhs is a freshly-constructed tuple (`InsertValue(InsertValue(undef, k, {0}), v, {1})`), `CreateExtractValue(finalVal, {i})` does NOT fold back to the original SSA value — LLVM's `IRBuilder<>` uses `ConstantFolder` by default which only folds constants, not non-constant InsertValue/ExtractValue chains. Use the `CodeGen::traceInsertValueField` helper (promoted from a static file-local in `codegen_arc.cpp` to a public `static` member in `include/ry/codegen.hpp` for #1670) to walk the chain and recover the original operand, then check `arc_owned_values_` / `arc_str_owned_values_` on the original — not on the fresh ExtractValue. This mirrors the canonical pattern in `emitRecordArcFieldsRetain` (`codegen_arc.cpp:559-562`):
+**Why the non-empty gate matters**: `inferCollectionTypeName` returns `""` for tuple values, so a literal-built `xs: List<(int, str)> = [(1, "a")]` has `list_elem_type_name = ""`. The destructor branch added in #1667 is also gated on non-empty tuple sig — keeping the symmetry, IndexAssignStmt also skips for empty sigs (preserving pre-fix behavior, same blind spot as `List<str>` literals). Lists produced by `enumerate` / `items` / `zip` / `slice` / `take` / `appended` / `concat` all stamp a concrete tuple sig in `list_elem_type_name`, so they hit the new branch correctly.
+
+**Trace InsertValue chains recursively for nested tuple ownership**: When the rhs is a freshly-constructed tuple (`InsertValue(InsertValue(undef, k, {0}), v, {1})`), `CreateExtractValue(finalVal, {i})` does NOT fold back to the original SSA value — LLVM's `IRBuilder<>` uses `ConstantFolder` by default which only folds constants, not non-constant InsertValue/ExtractValue chains. A single-step `traceInsertValueField` is **insufficient for nested tuple shapes** like `xs[i] = (0, ([1], 2))`: the trace recovers the inner InsertValue (the nested tuple `([1], 2)`), not the leaf `[1]`. The leaf-level ownership check (`arc_owned_values_.count(...)`) then misses, and the redundant retain leaks the inner allocation by +N per overwrite (post-#1667 the destructor releases each leaf once on overwrite, so the asymmetry shows up as a leak proportional to iteration count — `delta = +2` per iteration in the `nestedTupleSlotOverwriteNoLeak` test on the pre-recursive version).
+
+The fix is `emitTupleComponentRetainTraced(fieldVal, sourceAgg, topIdx, fSig)` (`codegen_arc.cpp` for #1670), which (a) traces `sourceAgg` at `topIdx` to find the original operand, (b) if `fSig` resolves to a tuple shape `"(...)"`, recurses over each sub-component using the **traced sub-aggregate** (not the outer `sourceAgg`) as the new source so the recursion can keep tracing into deeper levels, and (c) at leaves checks `arc_owned_values_` / `arc_str_owned_values_` on the traced value before falling through to `emitTupleComponentRetain`. The `IndexAssignStmt` callsite is one line per top-level component:
 
 ```cpp
-llvm::Value *checkVal = fieldVal;
-if (llvm::isa<llvm::InsertValueInst>(finalVal))
-    if (auto *orig = traceInsertValueField(finalVal, i))
-        checkVal = orig;
-if (arc_owned_values_.count(checkVal) ||
-    arc_str_owned_values_.count(checkVal))
-    continue;  // transfer semantics, no retain needed
-emitTupleComponentRetain(fieldVal, fSig);
+for (unsigned i = 0; i < n; ++i) {
+    llvm::Value *fieldVal = builder_.CreateExtractValue(
+        finalVal, {i}, "tup_new_f" + std::to_string(i));
+    emitTupleComponentRetainTraced(fieldVal, finalVal, i, components[i]);
+}
 ```
 
-Without the InsertValue trace, fresh `+1` allocations from arc_owned literals get double-retained, producing a leak proportional to the number of overwrites (the leak-delta test in `arc_tuple_index_assign.test.ry` grew by +2 per iteration before this fix).
+Without the recursive trace, fresh `+1` allocations from arc_owned literals embedded in nested tuple shapes get double-retained, producing a leak proportional to the number of overwrites (the leak-delta test grew by +2 per iteration before the recursive fix).
 
 **`emitTupleElemReleaseSlot` helper**: Factored from the per-slot body of `emitTupleElemReleaseLoop` (`codegen_arc.cpp`). The single-slot helper avoids emitting 4 throwaway basic blocks (header/body/latch/post) for a single slot, and is reused by `emitTupleElemReleaseLoop`'s body. Signature: `emitTupleElemReleaseSlot(slotPtr, tag, tupleSig, tupleTy)` — slot is loaded inside, components are extracted, ARC components are released by source-level type name (str at −24, List/Map/Set at −16, nested tuples recurse).
 

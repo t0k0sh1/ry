@@ -1254,6 +1254,54 @@ void CodeGen::emitTupleComponentRetain(llvm::Value *val,
     // int / bool / f64 / weak / record / unknown: no-op
 }
 
+void CodeGen::emitTupleComponentRetainTraced(llvm::Value *fieldVal,
+                                              llvm::Value *sourceAgg,
+                                              unsigned topIdx,
+                                              const std::string &fSig) {
+    if (fSig.empty() || !fieldVal) return;
+    const std::string resolved = resolveTypeAlias(fSig);
+    if (resolved.empty() || isWeakTypeName(resolved)) return;
+
+    // Recover the original SSA value at `topIdx` of `sourceAgg`. When
+    // sourceAgg is an InsertValueInst chain (the freshly-built tuple in
+    // `xs[i] = (a, b)`), `traceInsertValueField` returns the operand
+    // inserted at that index — which may itself be an InsertValue for a
+    // nested tuple shape like `(0, (a, b))`. Pass that traced value down
+    // as the new sourceAgg so the recursion can keep tracing into deeper
+    // levels until it reaches a non-InsertValue leaf.
+    llvm::Value *tracedField = nullptr;
+    if (sourceAgg && llvm::isa<llvm::InsertValueInst>(sourceAgg))
+        tracedField = traceInsertValueField(sourceAgg, topIdx);
+
+    if (resolved.size() >= 2 && resolved.front() == '(' &&
+        resolved.back() == ')') {
+        // Nested tuple component: recurse into each sub-component, carrying
+        // the traced sub-aggregate forward so leaf-level ownership checks
+        // see the original SSA value rather than the fresh ExtractValue.
+        auto *tupleTy = llvm::dyn_cast<llvm::StructType>(fieldVal->getType());
+        if (!tupleTy) return;
+        auto components = splitTupleSig(resolved);
+        const unsigned n = static_cast<unsigned>(
+            std::min<size_t>(components.size(), tupleTy->getNumElements()));
+        for (unsigned i = 0; i < n; ++i) {
+            llvm::Value *subVal = builder_.CreateExtractValue(fieldVal, {i});
+            emitTupleComponentRetainTraced(subVal, tracedField, i,
+                                            components[i]);
+        }
+        return;
+    }
+
+    // Leaf component (str / List / Map / Set / primitive). Check ownership
+    // on the traced source value — `arc_owned_values_` /
+    // `arc_str_owned_values_` are keyed by the original SSA value, not by
+    // an ExtractValue produced post-hoc.
+    llvm::Value *checkVal = tracedField ? tracedField : fieldVal;
+    if (arc_owned_values_.count(checkVal) ||
+        arc_str_owned_values_.count(checkVal))
+        return;
+    emitTupleComponentRetain(fieldVal, resolved);
+}
+
 namespace {
 // Build a counted loop over [0, len) inside `fn` that branches into
 // `bodyEmitter(iPhi)` for each iteration. The body emitter is responsible
