@@ -326,6 +326,7 @@ struct ExpectStmt {
     ExprPtr actual;
     std::string matcher;   // "toEq", "toBeTrue", "toBeFalse", "toBeNone"
     ExprPtr expected;      // for argument-taking matchers (e.g., toEq, toContain, toHaveLen)
+    std::vector<ExprPtr> extra_args;  // for matchers with multiple args (e.g., toBeCloseTo's optional decimals)
     SourceLocation loc;
 };
 
