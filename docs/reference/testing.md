@@ -153,6 +153,8 @@ foo("arg", ():
 | `toBeEmpty()` | Asserts length is 0 | List, Set, Map, str |
 | `toStartWith(prefix)` | Asserts string starts with prefix | str |
 | `toEndWith(suffix)` | Asserts string ends with suffix | str |
+| `toMatch(pattern)` | Asserts string matches the given regex pattern (unanchored; use `^` / `$` to anchor) | str |
+| `toBeCloseTo(value)` / `toBeCloseTo(value, decimals)` | Asserts approximate equality: `\|actual - value\| < 0.5 * 10^-decimals`. `decimals` defaults to `2` and must be a non-negative integer literal in `[0, 15]` | int, float |
 
 ### fail
 

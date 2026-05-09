@@ -1309,6 +1309,52 @@ TEST_F(CodeGenTest, ExpectToContainString) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
+// ===== test matcher: toMatch =====
+
+TEST_F(CodeGenTest, ExpectToMatchLiteral) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"matches literal\")\n"
+        "    fn matchesLiteral():\n"
+        "        expect(\"hello world\").toMatch(\"world\")\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToMatchAnchoredPattern) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"anchored\")\n"
+        "    fn anchored():\n"
+        "        expect(\"v1.2.3\").toMatch(\"^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+$\")\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToFloatSum) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"float sum\")\n"
+        "    fn floatSum():\n"
+        "        expect(0.1 + 0.2).toBeCloseTo(0.3)\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToCustomDecimals) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"decimals 4\")\n"
+        "    fn decimals4():\n"
+        "        expect(1.00001).toBeCloseTo(1.00002, 4)\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
 // ===== Field assignment subtype coercion (#359) =====
 
 TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {

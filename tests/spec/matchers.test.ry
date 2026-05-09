@@ -190,3 +190,63 @@ fn stringMatchersTests():
   @it("should pass toEndWith with full string")
   fn shouldPassToendwithWithFullString():
     expect("hello").toEndWith("hello")
+
+@describe("Regex matchers (toMatch)")
+fn regexMatchersTomatchTests():
+  @it("should pass toMatch with literal substring (unanchored)")
+  fn shouldPassTomatchWithLiteralSubstring():
+    expect("error at line 42: divide by zero").toMatch("divide by zero")
+  @it("should pass toMatch with anchored pattern")
+  fn shouldPassTomatchWithAnchoredPattern():
+    expect("v1.2.3").toMatch("^v\\d+\\.\\d+\\.\\d+$")
+  @it("should pass toMatch with character class")
+  fn shouldPassTomatchWithCharacterClass():
+    expect("error at line 42").toMatch("line \\d+")
+  @it("should pass toMatch with exact match")
+  fn shouldPassTomatchWithExactMatch():
+    expect("hello").toMatch("hello")
+  @it("should pass toMatch with escaped metacharacter")
+  fn shouldPassTomatchWithEscapedMetacharacter():
+    expect("a.b").toMatch("a\\.b")
+  @it("should pass toMatch when pattern matches anywhere in string")
+  fn shouldPassTomatchWhenPatternMatchesAnywhereInString():
+    expect("xxhelloxx").toMatch("hello")
+  @it("should pass toMatch with start anchor only")
+  fn shouldPassTomatchWithStartAnchorOnly():
+    expect("hello world").toMatch("^hello")
+  @it("should pass toMatch with end anchor only")
+  fn shouldPassTomatchWithEndAnchorOnly():
+    expect("hello world").toMatch("world$")
+
+@describe("Float approximate matchers (toBeCloseTo)")
+fn floatApproxMatchers():
+  @it("should pass toBeCloseTo for 0.1 + 0.2 vs 0.3 (default decimals=2)")
+  fn shouldPassToBeCloseToFloatSum():
+    expect(0.1 + 0.2).toBeCloseTo(0.3)
+  @it("should pass toBeCloseTo for exact match")
+  fn shouldPassToBeCloseToExact():
+    expect(1.0).toBeCloseTo(1.0)
+  @it("should pass toBeCloseTo with int actual and float expected")
+  fn shouldPassToBeCloseToIntActual():
+    expect(1).toBeCloseTo(1.0)
+  @it("should pass toBeCloseTo with float actual and int expected")
+  fn shouldPassToBeCloseToIntExpected():
+    expect(1.0).toBeCloseTo(1)
+  @it("should pass toBeCloseTo for zero values")
+  fn shouldPassToBeCloseToZero():
+    expect(0.0).toBeCloseTo(0.0)
+  @it("should pass toBeCloseTo with custom decimals=4")
+  fn shouldPassToBeCloseToCustomDecimals4():
+    expect(1.00001).toBeCloseTo(1.00002, 4)
+  @it("should pass toBeCloseTo with decimals=0 (within ±0.5)")
+  fn shouldPassToBeCloseToDecimalsZero():
+    expect(1.4).toBeCloseTo(1.0, 0)
+  @it("should pass toBeCloseTo for negative values")
+  fn shouldPassToBeCloseToNegative():
+    expect(-0.1 - 0.2).toBeCloseTo(-0.3)
+  @it("should pass toBeCloseTo just inside boundary (decimals=2, threshold=0.005)")
+  fn shouldPassToBeCloseToJustInsideBoundary():
+    expect(1.0).toBeCloseTo(1.004)
+  @it("should pass toBeCloseTo for very small differences with high decimals")
+  fn shouldPassToBeCloseToHighDecimals():
+    expect(1.000000001).toBeCloseTo(1.000000002, 8)
