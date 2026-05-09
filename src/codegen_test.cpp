@@ -1,7 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
@@ -699,6 +701,9 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     llvm::Value *cmpResult = nullptr;
     // Save expectedVal from comparison section to reuse in failure message
     llvm::Value *savedExpectedVal = nullptr;
+    // For toBeCloseTo: capture decimals so the failure formatter can print it.
+    int64_t savedDecimals = 0;
+    bool savedDecimalsValid = false;
 
     if (s.matcher == "toEq" || s.matcher == "toNotEq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
@@ -960,6 +965,76 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
         phi->addIncoming(match, checkBB);
         cmpResult = phi;
+    } else if (s.matcher == "toMatch") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        savedExpectedVal = expectedVal;
+        if (!isStringValue(actualVal) || !isStringValue(expectedVal))
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toMatch: requires str operands");
+        llvm::Value *patternLen = emitStringByteLen(expectedVal);
+        llvm::Value *textLen    = emitStringByteLen(actualVal);
+        auto isMatchTy = llvm::FunctionType::get(
+            i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+        auto isMatchFn = mod_->getOrInsertFunction("__ry_regex_is_match", isMatchTy);
+        llvm::Value *r = builder_.CreateCall(
+            isMatchFn, {expectedVal, patternLen, actualVal, textLen}, "regex_is_match");
+
+        // -1 sentinel (kRegexMatchError) → runtime panic via emitRegexI64Guard pattern.
+        llvm::Value *isErr = builder_.CreateICmpEQ(
+            r, llvm::ConstantInt::get(*ctx_, llvm::APInt(64, static_cast<uint64_t>(-1), true)),
+            "regex_match_is_err");
+        llvm::Function *curFnTM = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_match.err", curFnTM);
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "regex_match.ok",  curFnTM);
+        builder_.CreateCondBr(isErr, errBB, okBB);
+
+        builder_.SetInsertPoint(errBB);
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_runtime_err", {msgPtr});
+
+        builder_.SetInsertPoint(okBB);
+        cmpResult = builder_.CreateTrunc(r, i1Ty_, "to_match_bool");
+    } else if (s.matcher == "toBeCloseTo") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        savedExpectedVal = expectedVal;
+        llvm::Type *expectedTy = expectedVal->getType();
+        if ((actualTy != i64Ty_ && actualTy != f64Ty_) ||
+            (expectedTy != i64Ty_ && expectedTy != f64Ty_))
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeCloseTo: requires int or float operands");
+
+        // Resolve `decimals` argument (defaults to 2; must be a non-negative integer literal in [0, 15]).
+        int64_t decimals = 2;
+        if (!s.extra_args.empty()) {
+            auto *n = std::get_if<NumberExpr>(&s.extra_args[0]->data);
+            if (!n || !n->suffix.empty())
+                codegenError("line " + std::to_string(s.loc.line) +
+                    ": toBeCloseTo: 'decimals' must be a plain integer literal");
+            // NumberExpr.value stores the unsigned bit pattern of the literal as int64_t
+            // (see parser-conventions.md "NumberExpr.value holds a non-negative bit pattern").
+            // Compare via uint64_t so oversized literals (e.g. UINT64_MAX, which lands as
+            // int64_t(-1)) cannot wrap past the signed range and silently bypass the bound.
+            // Negative literals arrive as UnaryExpr-wrapped NumberExpr and fail the get_if
+            // check above, so we never see a true negative magnitude here.
+            uint64_t decimalsMag = static_cast<uint64_t>(n->value);
+            if (decimalsMag > 15)
+                codegenError("line " + std::to_string(s.loc.line) +
+                    ": toBeCloseTo: 'decimals' must be in [0, 15]");
+            decimals = static_cast<int64_t>(decimalsMag);
+        }
+        savedDecimals = decimals;
+        savedDecimalsValid = true;
+
+        auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
+        llvm::Value *diff = builder_.CreateFSub(lf, rf, "close_diff");
+        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+            mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
+        llvm::Value *absDiff = builder_.CreateCall(fabsDecl, {diff}, "close_abs");
+        double thresholdVal = 0.5 * std::pow(10.0, -static_cast<double>(decimals));
+        llvm::Value *threshold = llvm::ConstantFP::get(f64Ty_, thresholdVal);
+        cmpResult = builder_.CreateFCmpOLT(absDiff, threshold, "close_lt");
     } else {
         codegenError("line " + std::to_string(s.loc.line) +
                      ": unknown matcher '" + s.matcher + "'");
@@ -1068,6 +1143,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "ew_buf");
         llvm::Value *fmt = cachedGlobalString("end with \"%s\"", ".fmt_ew");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
+        expectedStr = buf;
+    } else if (s.matcher == "toMatch") {
+        llvm::Value *buf = builder_.CreateAlloca(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "tm_buf");
+        llvm::Value *fmt = cachedGlobalString("match \"%s\"", ".fmt_tm");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
+        expectedStr = buf;
+    } else if (s.matcher == "toBeCloseTo") {
+        llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
+        llvm::Value *buf = builder_.CreateAlloca(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "ctc_buf");
+        llvm::Value *fmt = cachedGlobalString("close to %s (decimals=%ld)", ".fmt_ctc");
+        llvm::Value *decimalsVal = llvm::ConstantInt::get(
+            i64Ty_, static_cast<uint64_t>(savedDecimalsValid ? savedDecimals : 2));
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, valStr, decimalsVal});
         expectedStr = buf;
     } else {
         expectedStr = cachedGlobalString("None", ".exp_none");

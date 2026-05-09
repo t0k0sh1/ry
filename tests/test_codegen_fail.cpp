@@ -963,3 +963,109 @@ TEST_F(CodeGenTest, UserFnOverloadAmbiguousCallEmitsCandidateList) {
          "foo(int | float) -> int",
          "but called with: foo(int)"});
 }
+
+// ============================================================
+// `toMatch` matcher requires str operands on both sides
+// (#1676). The rejection branch lives in `emitStmt(ExpectStmt&)`
+// so it is only reachable in test_mode; use `runTestSource` plus
+// a manual try/catch (the `expectCompileError` helper compiles
+// outside test mode and would fail earlier on the `expect()`
+// guard). See `.claude/rules/tests-rejection-tdd.md` P8.
+// ============================================================
+
+TEST_F(CodeGenTest, ExpectToMatchRejectsNonStrActual) {
+    try {
+        runTestSource("expect(42).toMatch(\"foo\")\n");
+        FAIL() << "Expected compile error for non-str actual";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("toMatch: requires str operands"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ExpectToMatchRejectsNonStrPattern) {
+    try {
+        runTestSource("expect(\"foo\").toMatch(42)\n");
+        FAIL() << "Expected compile error for non-str pattern";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("toMatch: requires str operands"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// ============================================================
+// `toBeCloseTo` matcher rejection branches (#1675).
+// Same harness pattern as the `toMatch` rejection tests above —
+// the checks live inside `emitStmt(ExpectStmt&)` so they only
+// fire under test_mode (`runTestSource`).
+// ============================================================
+
+TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNonNumericActual) {
+    try {
+        runTestSource("expect(\"foo\").toBeCloseTo(0.3)\n");
+        FAIL() << "Expected compile error for non-numeric actual";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("toBeCloseTo: requires int or float operands"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNonNumericExpected) {
+    try {
+        runTestSource("expect(0.3).toBeCloseTo(\"foo\")\n");
+        FAIL() << "Expected compile error for non-numeric expected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("toBeCloseTo: requires int or float operands"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNonLiteralDecimals) {
+    try {
+        runTestSource(
+            "n = 4\n"
+            "expect(0.1 + 0.2).toBeCloseTo(0.3, n)\n"
+        );
+        FAIL() << "Expected compile error for non-literal decimals";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'decimals' must be a plain integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToRejectsDecimalsOverflow) {
+    try {
+        runTestSource("expect(0.1 + 0.2).toBeCloseTo(0.3, 16)\n");
+        FAIL() << "Expected compile error for decimals > 15";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'decimals' must be in [0, 15]"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNegativeDecimals) {
+    try {
+        runTestSource("expect(0.1 + 0.2).toBeCloseTo(0.3, -1)\n");
+        FAIL() << "Expected compile error for negative decimals";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        // Negative literals arrive as UnaryExpr-wrapped NumberExpr
+        // and fail the std::get_if<NumberExpr> check, producing
+        // the "must be a plain integer literal" diagnostic.
+        EXPECT_NE(msg.find("'decimals' must be a plain integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}

@@ -982,13 +982,19 @@ StmtNode Parser::parseExpectStatement() {
         "toEq", "toNotEq", "toContain", "toNotContain",
         "toBeGreaterThan", "toBeLessThan",
         "toBeGreaterThanOrEq", "toBeLessThanOrEq",
-        "toHaveLen", "toStartWith", "toEndWith"
+        "toHaveLen", "toStartWith", "toEndWith", "toMatch"
     };
     static const std::unordered_set<std::string> matchers_no_arg = {
         "toBeTrue", "toBeFalse", "toBeNone", "toBeSome", "toBeOk", "toBeErr", "toBeEmpty"
     };
 
-    if (matchers_with_arg.count(matcher)) {
+    if (matcher == "toBeCloseTo") {
+        es.expected = parseConditional();
+        if (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            es.extra_args.push_back(parseConditional());
+        }
+    } else if (matchers_with_arg.count(matcher)) {
         es.expected = parseConditional();
     } else if (matchers_no_arg.count(matcher)) {
         // no argument
