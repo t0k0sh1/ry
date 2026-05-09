@@ -206,3 +206,46 @@ fn keysPropagatesInnerCollectionMetadata1655Tests():
       i = i + 1
     expect(ks[0][0]).toEq(1)
     expect(ks[0][2]).toEq(3)
+
+# Regression tests for #1659 — items() must populate `list_elem_type_name` on
+# the returned `List<(K, V)>` (mirroring enumerate / zip), not just the LLVM
+# tuple type slot. Pre-fix, the for-loop destructure `for k, v in items(m):`
+# strips the tuple via `splitTupleSig` then propagates per-component metadata
+# via `propagateTypeMeta` — but only if `list_elem_type_name = "(K, V)"` is
+# present on the result list. Without it, K/V components fall back to `str`
+# and codegen errors with "str does not support index access" (or analogous).
+#
+# Direct tuple field access (`its[0].1[0]`, `its[0].0["k"]`) does NOT
+# discriminate this fix in isolation because IndexExpr → propagateTypeMeta has
+# no tuple branch and FieldAccessExpr's numeric-index arm does not propagate
+# per-field metadata today (pre-existing gap, affects enumerate/zip/items
+# symmetrically — to be filed separately).
+#
+# Unlike #1655 (keys/values), no retain is needed because the destructor for
+# `List<(K, V)>` does not recurse into tuple fields — tuple
+# `list_elem_type_name` syntax does not match `fieldTypeIsArcManaged`.
+@describe("items() propagates inner-collection metadata (#1659)")
+fn itemsPropagatesInnerCollectionMetadata1659Tests():
+  @it("items on Map<str, List<int>> propagates V through for-loop destructure")
+  fn itemsOnMapStrListIntPropagatesVThroughForLoopDestructure():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    s = 0
+    for k, v in items(m):
+      s = s + v[0] + v[2]
+    expect(s).toEq(4)
+
+  @it("items on Map<List<int>, str> propagates K through for-loop destructure")
+  fn itemsOnMapListIntStrPropagatesKThroughForLoopDestructure():
+    m: Map<List<int>, str> = {[1, 2]: "a", [3, 4]: "b"}
+    total = 0
+    for k, v in items(m):
+      total = total + k[0] + k[1]
+    expect(total).toEq(10)
+
+  @it("items on Map<str, Map<str, int>> propagates V map through for-loop destructure")
+  fn itemsOnMapStrMapStrIntPropagatesVMapThroughForLoopDestructure():
+    m: Map<str, Map<str, int>> = {"outer": {"k": 7}}
+    total = 0
+    for k, v in items(m):
+      total = total + v["k"]
+    expect(total).toEq(7)
