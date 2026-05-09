@@ -276,6 +276,21 @@ public:
     // was extended to release tuple fields recursively (#1667).
     void emitTupleComponentRetain(llvm::Value *val, const std::string &fSig);
 
+    // Ownership-aware recursive variant of `emitTupleComponentRetain` for
+    // IndexAssignStmt slot overwrites on `List<(K, V)>` (#1670). Walks the
+    // InsertValue chain on `sourceAgg` at index `topIdx` to recover the
+    // original SSA value, recurses for nested tuple components (carrying the
+    // traced sub-aggregate forward as the new sourceAgg), and skips the leaf
+    // retain when the traced value is in `arc_owned_values_` /
+    // `arc_str_owned_values_` (transfer semantics). Without the recursive
+    // trace, a fresh `+1` allocation embedded inside a nested tuple shape
+    // such as `xs[i] = (0, ([1], 2))` is double-retained because
+    // `traceInsertValueField` returns the inner InsertValue (not a leaf).
+    void emitTupleComponentRetainTraced(llvm::Value *fieldVal,
+                                         llvm::Value *sourceAgg,
+                                         unsigned topIdx,
+                                         const std::string &fSig);
+
     // Counted loop that retains every ARC-managed tuple component in a
     // dense array of tuple struct values [0, len). Mirrors
     // `emitTupleElemReleaseLoop` and is used after memcpy at slice/take/
@@ -294,6 +309,23 @@ public:
                                    const char *tag,
                                    const std::string &tupleSig,
                                    llvm::StructType *tupleTy);
+
+    // Releases each ARC-managed component of a single tuple-struct slot
+    // pointed to by `slotPtr`. Used both by `emitTupleElemReleaseLoop`
+    // body and by `IndexAssignStmt` slot-overwrite on `List<(K, V)>`
+    // (#1670). Recurses for nested tuple components.
+    void emitTupleElemReleaseSlot(llvm::Value *slotPtr,
+                                   const char *tagPrefix,
+                                   const std::string &tupleSig,
+                                   llvm::StructType *tupleTy);
+
+    // Walks an InsertValue chain and recovers the original SSA value at the
+    // requested field index. LLVM's ConstantFolder does NOT fold
+    // ExtractValue(InsertValue(agg, v, {i}), {i}) → v for non-constant
+    // aggregates, so callers that need to check ownership of an insertvalue
+    // operand must trace the chain. Returns nullptr if no matching insert
+    // is found.
+    static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx);
 
     // Splits a generic type name like "List<str>" into head="List" and
     // inner=["str"].  Returns false for non-generic names (no '<').
