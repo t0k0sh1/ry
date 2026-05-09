@@ -491,8 +491,14 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         // inherits the tuple-aware destructor, so each tuple slot's ARC
         // components need symmetric retain.
         const ValueMetadata *apdSrcMeta = getMeta(listPtr);
+        // Resolve type aliases so `type Pair = (int, List<int>)` is recognized
+        // as a tuple here (#1667 follow-up). The destructor side already runs
+        // through resolveCollectionDestructor, so without this resolution
+        // alias-backed tuple lists would skip the retain path while the
+        // destructor still releases tuple fields — reintroducing the asymmetry.
         const std::string apdElemSigSnap =
-            apdSrcMeta ? apdSrcMeta->list_elem_type_name : std::string{};
+            apdSrcMeta ? resolveTypeAlias(apdSrcMeta->list_elem_type_name)
+                        : std::string{};
         const bool apdElemIsTuple =
             apdElemSigSnap.size() >= 2 &&
             apdElemSigSnap.front() == '(' && apdElemSigSnap.back() == ')';
@@ -631,8 +637,12 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     // new slice still points at (#1204).
     {
         const ValueMetadata *srcMeta = getMeta(listPtr);
+        // resolveTypeAlias so alias-backed tuple types take the tuple path
+        // (#1667 follow-up — destructor resolves aliases via
+        // resolveCollectionDestructor, retain side must mirror).
         const std::string elemSigSnap =
-            srcMeta ? srcMeta->list_elem_type_name : std::string{};
+            srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                     : std::string{};
         if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
             elemSigSnap.back() == ')') {
             // #1667: tuple-elem List<(K, V)> destructor releases inner ARC
@@ -698,8 +708,11 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         // class as #1204 for emitListSlice).
         {
             const ValueMetadata *srcMeta = getMeta(listPtr);
+            // resolveTypeAlias so alias-backed tuple types take the tuple path
+            // (#1667 follow-up — destructor resolves aliases, retain mirrors).
             const std::string elemSigSnap =
-                srcMeta ? srcMeta->list_elem_type_name : std::string{};
+                srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                         : std::string{};
             if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
                 elemSigSnap.back() == ')') {
                 // #1667: tuple-elem propagation extends the destructor to
@@ -1152,10 +1165,12 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         llvm::Value *v = builder_.CreateLoad(valTy, vp, "items_v");
         // #1667: tuple-elem List<(K, V)> destructor releases each component
         // per slot; retain on store keeps refcount symmetric (#1242 pattern,
-        // tuple-sig path).
-        if (k->getType() == ptrTy_)
+        // tuple-sig path). The retain helper recurses into nested tuple K/V
+        // (e.g. Map<str, (List<int>, int)>) so inline tuple-struct values
+        // are not skipped.
+        if (!keyName.empty())
             emitTupleComponentRetain(k, keyName);
-        if (v->getType() == ptrTy_)
+        if (!valName.empty())
             emitTupleComponentRetain(v, valName);
         llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
         tuple = builder_.CreateInsertValue(tuple, k, 0);

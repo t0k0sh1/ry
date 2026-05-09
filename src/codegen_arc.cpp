@@ -1234,6 +1234,22 @@ void CodeGen::emitTupleComponentRetain(llvm::Value *val,
     } else if (isListTypeName(resolved) || isMapTypeName(resolved) ||
                isSetTypeName(resolved)) {
         emitArcRetain(emitArcGetHeaderFromData(val), isArcAtomic(val));
+    } else if (resolved.size() >= 2 && resolved.front() == '(' &&
+                resolved.back() == ')') {
+        // Nested tuple component (#1667 follow-up): val is an inline struct
+        // value whose ARC children must be retained recursively, since the
+        // outer tuple destructor now recurses via emitTupleElemReleaseLoop.
+        // Skipping this would re-introduce the asymmetric leak/UAF for shapes
+        // like enumerate(List<(List<int>, int)>) or items(Map<str, (List<int>, int)>).
+        auto *tupleTy = llvm::dyn_cast<llvm::StructType>(val->getType());
+        if (!tupleTy) return;
+        auto components = splitTupleSig(resolved);
+        const unsigned n = static_cast<unsigned>(
+            std::min<size_t>(components.size(), tupleTy->getNumElements()));
+        for (unsigned i = 0; i < n; ++i) {
+            llvm::Value *subVal = builder_.CreateExtractValue(val, {i});
+            emitTupleComponentRetain(subVal, components[i]);
+        }
     }
     // int / bool / f64 / weak / record / unknown: no-op
 }

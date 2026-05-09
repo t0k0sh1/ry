@@ -2108,8 +2108,11 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     // rejects mismatched operands), so querying lhs suffices for both halves.
     {
         const ValueMetadata *srcMeta = getMeta(lhs);
+        // resolveTypeAlias so alias-backed tuple types take the tuple path
+        // (#1667 follow-up — destructor resolves aliases, retain mirrors).
         const std::string elemSigSnap =
-            srcMeta ? srcMeta->list_elem_type_name : std::string{};
+            srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                     : std::string{};
         if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
             elemSigSnap.back() == ')') {
             // #1667: tuple-elem List<(K, V)> destructor recurses into inner
