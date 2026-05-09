@@ -171,7 +171,7 @@ cmake --preset tsan && cmake --build build-tsan && \
   TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
 ```
 
-C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
+C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716、Linux 限定) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。LLVM ORC teardown family の crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) は両 OS で観測されうるが `src/jit_runner.cpp` の三段階 leak (#1187 + #1657) で suppress 済み — このパターンの再発は新規 issue として起票する。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry および ORC teardown entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
 ## 3.5.5. Static Analysis
 

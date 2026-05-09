@@ -209,8 +209,8 @@ site owns the basic-block split. See `emitIntZeroDivGuard`
 
 ### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate
-**Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate; #1657 (2026-05-09) macOS TSan `~OverloadEntry()` SEGV
+**Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test, tsan
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
 successfully, then crashes during JIT teardown.
@@ -220,6 +220,12 @@ successfully, then crashes during JIT teardown.
   ("corrupted size vs. prev_size while consolidating"). Same root cause; different destruction order.
 - **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
   exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
+- **macOS TSan**: SEGV in `~CodeGen()` → `~unordered_map(functions_)` → `~OverloadEntry()` →
+  `unique_ptr<unordered_map<size_t, FnTypeInfo>>::reset()` calling `free()` on a garbage pointer
+  (e.g. `0x4800000001135036`). Reliably reproduced with combinatorial spec tests that populate
+  `capturedClosureInfos` (`@describe` / `@it` nested fn). ASan + UBSan are both clean on the same
+  binary, confirming this is the same ORC teardown family — TSan exposes the disturbed-heap state
+  the existing Linux `~CodeGen()` variant also lives in.
 
 On Linux (`removeResourceTracker` variant):
 ```text
@@ -247,7 +253,7 @@ just glibc's `cfree` check), it is user-code OOB/UAF — not an ORC flake. In th
 [`~CodeGen() glibc heap-check crashes`](#codegen-glibc-heap-check-crashes-are-not-destructor-bugs)
 entry in the Runtime / Memory section for the diagnostic checklist.
 
-**Fix applied** (two-step suppression — both steps are required):
+**Fix applied** (three-step suppression — all three steps are required):
 
 1. `(void)jit.release()` — guarded by `#if defined(__linux__) || defined(__APPLE__)`. Leaks the
    LLJIT so `~LLJIT()` never runs. Extended from Linux-only to macOS in #1088 (suppressed the
@@ -259,11 +265,20 @@ entry in the Runtime / Memory section for the diagnostic checklist.
    `InProcessMemoryManager::deallocate` → `WrapperFunctionCall::runWithSPSRet` hits the same
    JITLink deallocation crash. Suppressing only the `~LLJIT()` frame left the
    `removeResourceTracker` frame, causing a residual ~16 % failure rate in `ry test -p`.
+3. `(void)cg.release()` — added after `jit.release()` in the same `#if` block (#1657). `CodeGen` is
+   heap-allocated via `std::make_unique<CodeGen>(...)` in `runRySource` so its destructor can be
+   suppressed alongside `~LLJIT()`. Without this, `~CodeGen()` walks
+   `functions_ (unordered_map<string, vector<OverloadEntry>>) → ~OverloadEntry() → unique_ptr<unordered_map<size_t, FnTypeInfo>>::reset()`
+   on a heap whose state has been disturbed by JIT teardown, and intermittently calls `free()` on a
+   garbage pointer under macOS TSan. Suppressing only the LLJIT frames left this `~CodeGen()` frame
+   exposed.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
 flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
-`removeResourceTracker`. On macOS, both workarounds together suppress the crash; if any failure
-rate reappears after the fix, the root cause is broader than these two frames and needs fresh
-investigation. Do not suppress the LLVM crash reporter or add `|| true` — a genuine double-free in
-user code would produce the same frame.
+`removeResourceTracker`. On macOS, all three workarounds together suppress the crash; if any
+failure rate reappears after the fix, the root cause is broader than these three frames and needs
+fresh investigation. **All three releases are still workarounds, not a true root-cause fix** — the
+underlying LLVM ORC / JITLink heap corruption pattern that propagates into the codegen heap is
+unidentified upstream. Do not suppress the LLVM crash reporter or add `|| true` — a genuine
+double-free in user code would produce the same frame.
 
