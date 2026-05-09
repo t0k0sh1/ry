@@ -2106,9 +2106,27 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     // concatenated result still points at (#1236, same defect class as #1204 /
     // #1235). lhs and rhs carry identical element-type metadata (typecheck
     // rejects mismatched operands), so querying lhs suffices for both halves.
-    CollectionKind elemArcKind = CollectionKind::List;
-    if (elementTypeIsArcManaged(lhs, CollectionKind::List, &elemArcKind)) {
-        emitCowRetainArcElements(newData, newLen, "cat_elem", elemArcKind);
+    {
+        const ValueMetadata *srcMeta = getMeta(lhs);
+        // resolveTypeAlias so alias-backed tuple types take the tuple path
+        // (#1667 follow-up — destructor resolves aliases, retain mirrors).
+        const std::string elemSigSnap =
+            srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                     : std::string{};
+        if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+            elemSigSnap.back() == ')') {
+            // #1667: tuple-elem List<(K, V)> destructor recurses into inner
+            // tuple components; mirror retain on the concatenated buffer.
+            if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                emitTupleElemRetainLoop(newData, newLen, "cat_telem",
+                                         elemSigSnap, tupleTy);
+            }
+        } else {
+            CollectionKind elemArcKind = CollectionKind::List;
+            if (elementTypeIsArcManaged(lhs, CollectionKind::List, &elemArcKind)) {
+                emitCowRetainArcElements(newData, newLen, "cat_elem", elemArcKind);
+            }
+        }
     }
 
     storeListHeaderFields(newHeader, newLen, newLen, newData);

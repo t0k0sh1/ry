@@ -799,3 +799,45 @@ The retain discipline is **symmetric** with the destructor:
 
 ---
 
+### Tuple-element collections need symmetric retain/release on tuple components, dispatched locally (not via `fieldTypeIsArcManaged`)
+
+**Source**: #1667 (2026-05-09). **Tags**: ARC, tuple, destructor, retain, items, enumerate, zip, slice, take, appended, concat, uaf
+
+**Rule**: For `List<(K, V)>` results returned by `items` / `enumerate` / `zip` (and any derivation thereof — `slice`, `take`, `appended`, `concat` — that propagates `list_elem_type_name = "(K, V)"` via `propagateMeta`), the collection destructor must walk the dense tuple-struct buffer and release each ARC-managed component (`str` / `List` / `Map` / `Set`), and every codegen site that produces such a result must retain those components symmetrically. Both halves land together; either alone produces a leak (no retain, no release was the pre-fix state) or a UAF (retain only) or a double-free (release only).
+
+This is a tuple-sig-keyed extension of #1242's destructor-recursion-implies-retain-on-store rule. The canonical sites:
+
+| Stage | Site | Helper |
+|---|---|---|
+| Per-component retain | `emitCollOp_items`, `enumerate`, `zip` (`InsertValue` setup) | `emitTupleComponentRetain(val, fSig)` |
+| Buffer-wide retain | `emitListSlice`, `emitCollOp_take_impl`, `emitCollOp_appended` (memcpy half), `emitListConcat` | `emitTupleElemRetainLoop(arrayPtr, len, tag, tupleSig, tupleTy)` |
+| Buffer-wide release | `getOrCreateCollectionDestructor` → `emitInnerReleaseLoop` lambda | `emitTupleElemReleaseLoop(arrayPtr, len, tag, tupleSig, tupleTy)` |
+
+**Why not extend `fieldTypeIsArcManaged`**: Making `fieldTypeIsArcManaged("(K, V)")` return `true` would short-circuit ~30 callers (`elementTypeIsArcManaged`, `emitCowRetainArcElements`, `emitListSlice`, `emitCollOp_take_impl`, `emitCollOp_appended`, `emitListConcat`, `emitCowClone`, ...) into pointer-array retain/release loops. But a `List<(K, V)>` data buffer holds **inline tuple struct values** (`sizeof(StructType)` bytes per slot), not pointers — those callers would read the struct as a pointer and apply a `−16` GEP, causing memory corruption. Tuple isn't a `Kind`-level entity (no `CollectionKind::Tuple`); it's a meta-concept where each field is independently ARC-managed. So the dispatch is added **locally at each site that handles tuple-element buffers**, ahead of any `elementTypeIsArcManaged` call:
+
+```cpp
+const std::string elemSig = srcMeta ? srcMeta->list_elem_type_name : std::string{};
+const bool elemIsTuple =
+    elemSig.size() >= 2 && elemSig.front() == '(' && elemSig.back() == ')';
+if (elemIsTuple) {
+    auto *tupleTy = llvm::cast<llvm::StructType>(elemTy);
+    emitTupleElemRetainLoop(newData, count, "<tag>_telem", elemSig, tupleTy);
+} else if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &kind)) {
+    emitCowRetainArcElements(newData, count, "<tag>_elem", kind);
+}
+```
+
+`emitTupleComponentRetain` does not call `fieldTypeIsArcManaged` either — it dispatches by the source-level type name (`"str"` → `StringHeader` offset −24, `List<...>` / `Map<...>` / `Set<...>` → `ArcHeader` offset −16) so the offset is selected from authoritative metadata, not from a heuristic that reads the value (which would conflate `str` and collection cases per the "`tryRetainArcSource` LoadInst cases must be metadata-gated" rule above).
+
+**Caching invariant**: The destructor cache key is `(CollectionKind, elemSig, valSig)`. Tuple sigs (`"(int, List<int>)"`, etc.) live in `elemSig`, so destructors for distinct tuple shapes are cached as distinct functions automatically — no manual disambiguation needed (#1046's caching rule extends transparently).
+
+**Caveat: literal-built `List<(K, V)>`**: `inferCollectionTypeName` returns empty for tuple values, so `xs: List<(int, str)> = [(1, "a")]` has `list_elem_type_name = ""`. The new destructor branch is gated on a non-empty tuple sig and so is **not dispatched** for literal-built lists — pre-fix behavior (no retain, no release) is preserved. Issue tracking the literal-path metadata gap is out of scope for #1667.
+
+**Caveat: `xs[i] = (a, b)` slot-overwrite on `List<(K, V)>`**: Post-#1667, the destructor releases inner ARC components, but the IndexAssignStmt path does not yet (i) release the overwritten tuple's components or (ii) retain the new tuple's components. This is a leak (safe direction) — UAF is not introduced because the new tuple is reachable through the overwritten slot — and is deferred to a follow-up issue.
+
+**How to apply**: When adding a new collection helper that constructs a `List<(K, V)>` (whether by tuple-aware `InsertValue` or by memcpy-then-mutate), use the dispatch pattern above. Per-component sites (single tuple insertion) call `emitTupleComponentRetain` per ARC-managed component; buffer sites (memcpy of the whole tuple-struct array) call `emitTupleElemRetainLoop`. Mirror the destructor's `emitTupleElemReleaseLoop` is automatic via metadata inheritance — but verify by writing a regression test that rebinds the source after the helper call and reads the result through a churn loop. Canonical: `tests/spec/arc_tuple_ownership.test.ry`.
+
+**Related**: #1242 (parent rule for destructor-recursion-implies-retain-on-store), #1659 (items() metadata stamping that exposed the gap), #1664 (tuple-field metadata propagation), #1204 (memcpy retain canonical), #1235 (take memcpy retain), #1046 (destructor caching).
+
+---
+

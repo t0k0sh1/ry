@@ -269,6 +269,32 @@ public:
                                                           const std::string &elemSig = "",
                                                           const std::string &valSig = "");
 
+    // Retain a single tuple component value by its source-level type name.
+    // Dispatches str (offset −24) / List/Map/Set (offset −16) by name and
+    // is a no-op for primitives, weak refs, and unknown names. Used at
+    // tuple-construction sites (items/enumerate/zip) after the destructor
+    // was extended to release tuple fields recursively (#1667).
+    void emitTupleComponentRetain(llvm::Value *val, const std::string &fSig);
+
+    // Counted loop that retains every ARC-managed tuple component in a
+    // dense array of tuple struct values [0, len). Mirrors
+    // `emitTupleElemReleaseLoop` and is used after memcpy at slice/take/
+    // appended/concat sites that propagate `list_elem_type_name = "(...)"`
+    // metadata (#1667).
+    void emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
+                                  const char *tag,
+                                  const std::string &tupleSig,
+                                  llvm::StructType *tupleTy);
+
+    // Counted loop that ARC-releases every tuple component in a dense
+    // array of tuple struct values [0, len). Called from the destructor
+    // path when `list_elem_type_name = "(...)"`. Recurses for nested
+    // tuple components (#1667).
+    void emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
+                                   const char *tag,
+                                   const std::string &tupleSig,
+                                   llvm::StructType *tupleTy);
+
     // Splits a generic type name like "List<str>" into head="List" and
     // inner=["str"].  Returns false for non-generic names (no '<').
     // Extracted from codegen_fn_generic.cpp so callers across translation

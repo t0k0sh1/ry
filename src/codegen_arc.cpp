@@ -1058,6 +1058,13 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
                                      const std::string &sig) -> bool {
         if (sig.empty()) return false;
         std::string resolved = resolveTypeAlias(sig);
+        if (resolved.size() >= 2 && resolved.front() == '(' &&
+            resolved.back() == ')') {
+            auto *tupleTy = llvm::dyn_cast<llvm::StructType>(resolveType(resolved));
+            if (!tupleTy) return false;
+            emitTupleElemReleaseLoop(arrayPtr, len, tag, resolved, tupleTy);
+            return true;
+        }
         CollectionKind innerKind;
         if (!fieldTypeIsArcManaged(resolved, &innerKind)) return false;
         if (innerKind == CollectionKind::Str) return false;  // str path handled by caller
@@ -1207,6 +1214,284 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     llvm::FunctionCallee callee(dtorTy, dtorFn);
     arc_destructors_cache_[cacheKey] = callee;
     return callee;
+}
+
+// ====== Tuple element ARC helpers (#1667) ======
+//
+// Tuple-element lists (`List<(K, V)>` produced by enumerate/zip/items)
+// hold an inline array of tuple struct values, NOT pointers. Per-component
+// retain/release dispatch happens by source-level type name so we never
+// route a non-ARC component through `fieldTypeIsArcManaged` (which would
+// pull in pointer-array predicates that mis-handle inline struct slots).
+
+void CodeGen::emitTupleComponentRetain(llvm::Value *val,
+                                        const std::string &fSig) {
+    if (fSig.empty() || !val) return;
+    const std::string resolved = resolveTypeAlias(fSig);
+    if (resolved.empty() || isWeakTypeName(resolved)) return;
+    if (resolved == "str") {
+        emitArcRetain(emitStrGetHeaderFromData(val), isArcAtomic(val));
+    } else if (isListTypeName(resolved) || isMapTypeName(resolved) ||
+               isSetTypeName(resolved)) {
+        emitArcRetain(emitArcGetHeaderFromData(val), isArcAtomic(val));
+    } else if (resolved.size() >= 2 && resolved.front() == '(' &&
+                resolved.back() == ')') {
+        // Nested tuple component (#1667 follow-up): val is an inline struct
+        // value whose ARC children must be retained recursively, since the
+        // outer tuple destructor now recurses via emitTupleElemReleaseLoop.
+        // Skipping this would re-introduce the asymmetric leak/UAF for shapes
+        // like enumerate(List<(List<int>, int)>) or items(Map<str, (List<int>, int)>).
+        auto *tupleTy = llvm::dyn_cast<llvm::StructType>(val->getType());
+        if (!tupleTy) return;
+        auto components = splitTupleSig(resolved);
+        const unsigned n = static_cast<unsigned>(
+            std::min<size_t>(components.size(), tupleTy->getNumElements()));
+        for (unsigned i = 0; i < n; ++i) {
+            llvm::Value *subVal = builder_.CreateExtractValue(val, {i});
+            emitTupleComponentRetain(subVal, components[i]);
+        }
+    }
+    // int / bool / f64 / weak / record / unknown: no-op
+}
+
+namespace {
+// Build a counted loop over [0, len) inside `fn` that branches into
+// `bodyEmitter(iPhi)` for each iteration. The body emitter is responsible
+// for branching back to the latch (the lambda receives the latch BB so it
+// can fall through naturally). Both `pre` and `post` BBs are returned via
+// the builder cursor (post is current after the call).
+struct CountedLoopBlocks {
+    llvm::BasicBlock *body;
+    llvm::BasicBlock *latch;
+    llvm::BasicBlock *post;
+    llvm::PHINode    *iPhi;
+};
+} // anonymous
+
+static CountedLoopBlocks emitCountedLoopShell(llvm::IRBuilder<> &b,
+                                               llvm::LLVMContext &ctx,
+                                               llvm::Function *fn,
+                                               llvm::Value *len,
+                                               llvm::Type *i64Ty,
+                                               const std::string &tagPrefix) {
+    auto *hdr   = llvm::BasicBlock::Create(ctx, tagPrefix + "_hdr",   fn);
+    auto *body  = llvm::BasicBlock::Create(ctx, tagPrefix + "_body",  fn);
+    auto *latch = llvm::BasicBlock::Create(ctx, tagPrefix + "_latch", fn);
+    auto *post  = llvm::BasicBlock::Create(ctx, tagPrefix + "_post",  fn);
+
+    auto *prevBB = b.GetInsertBlock();
+    b.CreateBr(hdr);
+
+    b.SetInsertPoint(hdr);
+    auto *iPhi = b.CreatePHI(i64Ty, 2, tagPrefix + "_i");
+    iPhi->addIncoming(llvm::ConstantInt::get(i64Ty, 0), prevBB);
+    auto *done = b.CreateICmpEQ(iPhi, len, tagPrefix + "_done");
+    b.CreateCondBr(done, post, body);
+
+    b.SetInsertPoint(latch);
+    auto *iNext = b.CreateAdd(iPhi, llvm::ConstantInt::get(i64Ty, 1),
+                               tagPrefix + "_inext");
+    iPhi->addIncoming(iNext, latch);
+    b.CreateBr(hdr);
+
+    b.SetInsertPoint(body);
+    return {body, latch, post, iPhi};
+}
+
+void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
+                                        const char *tag,
+                                        const std::string &tupleSig,
+                                        llvm::StructType *tupleTy) {
+    if (!arrayPtr || !len || !tupleTy) return;
+    std::vector<std::string> components = splitTupleSig(tupleSig);
+    if (components.empty()) return;
+
+    // Skip the loop entirely if no component needs ARC release.
+    bool anyArc = false;
+    for (const auto &c : components) {
+        const std::string r = resolveTypeAlias(c);
+        if (r.empty() || isWeakTypeName(r)) continue;
+        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
+            isSetTypeName(r) ||
+            (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
+            anyArc = true;
+            break;
+        }
+    }
+    if (!anyArc) return;
+
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    std::string tagPrefix = std::string("dtor_tup_") + tag;
+    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
+                                       tagPrefix);
+
+    // body: GEP into the i'th tuple slot, then release each component.
+    auto *slotPtr = builder_.CreateGEP(tupleTy, arrayPtr, {loop.iPhi},
+                                         tagPrefix + "_slot");
+    const unsigned n = static_cast<unsigned>(
+        std::min<size_t>(components.size(), tupleTy->getNumElements()));
+    for (unsigned i = 0; i < n; ++i) {
+        const std::string fSig = resolveTypeAlias(components[i]);
+        if (fSig.empty() || isWeakTypeName(fSig)) continue;
+
+        const bool isStr  = (fSig == "str");
+        const bool isColl = isListTypeName(fSig) || isMapTypeName(fSig) ||
+                            isSetTypeName(fSig);
+        const bool isTup  = (fSig.size() >= 2 && fSig.front() == '(' &&
+                              fSig.back() == ')');
+        if (!isStr && !isColl && !isTup) continue;
+
+        auto *fieldGEP = builder_.CreateStructGEP(tupleTy, slotPtr, i,
+            tagPrefix + "_f" + std::to_string(i));
+
+        if (isTup) {
+            // Recursive tuple component: load nothing (inline struct), recurse
+            // with the field's own StructType.
+            auto *nestedTy = llvm::dyn_cast<llvm::StructType>(
+                tupleTy->getElementType(i));
+            if (!nestedTy) continue;
+            // Treat a single nested tuple slot as a 1-element array.
+            llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+            std::string subTag = std::string(tag) + "_n" + std::to_string(i);
+            emitTupleElemReleaseLoop(fieldGEP, one, subTag.c_str(), fSig,
+                                       nestedTy);
+            continue;
+        }
+
+        // ARC pointer component (str / List / Map / Set): load, null-guard,
+        // release with the appropriate header offset.
+        auto *val = builder_.CreateLoad(ptrTy_, fieldGEP,
+            tagPrefix + "_v" + std::to_string(i));
+        auto *nullBB = llvm::BasicBlock::Create(*ctx_,
+            tagPrefix + "_skip" + std::to_string(i), fn);
+        auto *relBB  = llvm::BasicBlock::Create(*ctx_,
+            tagPrefix + "_rel"  + std::to_string(i), fn);
+        auto *isNull = builder_.CreateICmpEQ(val,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            tagPrefix + "_isnull" + std::to_string(i));
+        builder_.CreateCondBr(isNull, nullBB, relBB);
+
+        builder_.SetInsertPoint(relBB);
+        if (isStr) {
+            emitArcRelease(emitStrGetHeaderFromData(val),
+                            /*atomic=*/false, {}, nullptr);
+        } else {
+            // Resolve inner destructor for nested collection.
+            std::string head;
+            std::vector<std::string> innerArgs;
+            CollectionKind innerKind = CollectionKind::List;
+            std::string innerElemSig, innerValSig;
+            if (isListTypeName(fSig)) innerKind = CollectionKind::List;
+            else if (isMapTypeName(fSig)) innerKind = CollectionKind::Map;
+            else if (isSetTypeName(fSig)) innerKind = CollectionKind::Set;
+            if (splitGenericTypeName(fSig, head, innerArgs)) {
+                if ((innerKind == CollectionKind::List ||
+                     innerKind == CollectionKind::Set) &&
+                    !innerArgs.empty()) {
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
+                } else if (innerKind == CollectionKind::Map &&
+                            innerArgs.size() >= 2) {
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
+                    innerValSig  = resolveTypeAlias(innerArgs[1]);
+                }
+            }
+            auto innerDtor = getOrCreateCollectionDestructor(
+                innerKind, innerElemSig, innerValSig);
+            emitArcRelease(emitArcGetHeaderFromData(val),
+                            /*atomic=*/false, innerDtor, nullptr);
+        }
+        // emitArcRelease leaves cursor in its own done BB.
+        builder_.CreateBr(nullBB);
+
+        builder_.SetInsertPoint(nullBB);
+    }
+
+    // After all components, branch to the loop latch.
+    builder_.CreateBr(loop.latch);
+    builder_.SetInsertPoint(loop.post);
+}
+
+void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
+                                       const char *tag,
+                                       const std::string &tupleSig,
+                                       llvm::StructType *tupleTy) {
+    if (!arrayPtr || !len || !tupleTy) return;
+    std::vector<std::string> components = splitTupleSig(tupleSig);
+    if (components.empty()) return;
+
+    bool anyArc = false;
+    for (const auto &c : components) {
+        const std::string r = resolveTypeAlias(c);
+        if (r.empty() || isWeakTypeName(r)) continue;
+        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
+            isSetTypeName(r) ||
+            (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
+            anyArc = true;
+            break;
+        }
+    }
+    if (!anyArc) return;
+
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    std::string tagPrefix = std::string("ret_tup_") + tag;
+    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
+                                       tagPrefix);
+
+    auto *slotPtr = builder_.CreateGEP(tupleTy, arrayPtr, {loop.iPhi},
+                                         tagPrefix + "_slot");
+    const unsigned n = static_cast<unsigned>(
+        std::min<size_t>(components.size(), tupleTy->getNumElements()));
+    for (unsigned i = 0; i < n; ++i) {
+        const std::string fSig = resolveTypeAlias(components[i]);
+        if (fSig.empty() || isWeakTypeName(fSig)) continue;
+
+        const bool isStr  = (fSig == "str");
+        const bool isColl = isListTypeName(fSig) || isMapTypeName(fSig) ||
+                            isSetTypeName(fSig);
+        const bool isTup  = (fSig.size() >= 2 && fSig.front() == '(' &&
+                              fSig.back() == ')');
+        if (!isStr && !isColl && !isTup) continue;
+
+        auto *fieldGEP = builder_.CreateStructGEP(tupleTy, slotPtr, i,
+            tagPrefix + "_f" + std::to_string(i));
+
+        if (isTup) {
+            auto *nestedTy = llvm::dyn_cast<llvm::StructType>(
+                tupleTy->getElementType(i));
+            if (!nestedTy) continue;
+            llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+            std::string subTag = std::string(tag) + "_n" + std::to_string(i);
+            emitTupleElemRetainLoop(fieldGEP, one, subTag.c_str(), fSig,
+                                     nestedTy);
+            continue;
+        }
+
+        auto *val = builder_.CreateLoad(ptrTy_, fieldGEP,
+            tagPrefix + "_v" + std::to_string(i));
+        auto *nullBB = llvm::BasicBlock::Create(*ctx_,
+            tagPrefix + "_skip" + std::to_string(i), fn);
+        auto *retBB  = llvm::BasicBlock::Create(*ctx_,
+            tagPrefix + "_do"   + std::to_string(i), fn);
+        auto *isNull = builder_.CreateICmpEQ(val,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            tagPrefix + "_isnull" + std::to_string(i));
+        builder_.CreateCondBr(isNull, nullBB, retBB);
+
+        builder_.SetInsertPoint(retBB);
+        if (isStr) {
+            emitArcRetain(emitStrGetHeaderFromData(val), isArcAtomic(val));
+        } else {
+            emitArcRetain(emitArcGetHeaderFromData(val), isArcAtomic(val));
+        }
+        builder_.CreateBr(nullBB);
+
+        builder_.SetInsertPoint(nullBB);
+    }
+
+    builder_.CreateBr(loop.latch);
+    builder_.SetInsertPoint(loop.post);
 }
 
 } // namespace ry

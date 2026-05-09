@@ -486,17 +486,53 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         // The new list co-owns the memcpy'd range AND the appended value
         // with the source.  After #1242 the destructor recursively releases
         // inner ARC elements, so missing either retain would cause a UAF on
-        // rebind.  str excluded per #1266.
+        // rebind.  str excluded per #1266.  #1667: extends the same retain
+        // discipline to tuple-elem lists (List<(K, V)>) — propagateMeta
+        // inherits the tuple-aware destructor, so each tuple slot's ARC
+        // components need symmetric retain.
+        const ValueMetadata *apdSrcMeta = getMeta(listPtr);
+        // Resolve type aliases so `type Pair = (int, List<int>)` is recognized
+        // as a tuple here (#1667 follow-up). The destructor side already runs
+        // through resolveCollectionDestructor, so without this resolution
+        // alias-backed tuple lists would skip the retain path while the
+        // destructor still releases tuple fields — reintroducing the asymmetry.
+        const std::string apdElemSigSnap =
+            apdSrcMeta ? resolveTypeAlias(apdSrcMeta->list_elem_type_name)
+                        : std::string{};
+        const bool apdElemIsTuple =
+            apdElemSigSnap.size() >= 2 &&
+            apdElemSigSnap.front() == '(' && apdElemSigSnap.back() == ')';
         CollectionKind apdElemArcKind = CollectionKind::List;
         const bool apdElemIsArc =
+            !apdElemIsTuple &&
             elementTypeIsArcManaged(listPtr, CollectionKind::List, &apdElemArcKind) &&
             apdElemArcKind != CollectionKind::Str;
-        if (apdElemIsArc)
+        if (apdElemIsTuple) {
+            if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                emitTupleElemRetainLoop(newData, lf.len, "apd_telem",
+                                         apdElemSigSnap, tupleTy);
+            }
+        } else if (apdElemIsArc) {
             emitCowRetainArcElements(newData, lf.len, "apd_elem", apdElemArcKind);
+        }
 
         llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, lf.len, "apd_new_ep");
-        if (apdElemIsArc)
+        if (apdElemIsTuple) {
+            // Per-component retain on the tuple value being appended.
+            std::vector<std::string> comps = splitTupleSig(apdElemSigSnap);
+            auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy);
+            if (tupleTy && tupleTy->getNumElements() == comps.size()) {
+                for (unsigned i = 0; i < comps.size(); ++i) {
+                    if (tupleTy->getElementType(i) != ptrTy_) continue;
+                    llvm::Value *comp =
+                        builder_.CreateExtractValue(val, {i},
+                            "apd_tcomp_" + std::to_string(i));
+                    emitTupleComponentRetain(comp, comps[i]);
+                }
+            }
+        } else if (apdElemIsArc) {
             retainArcValue(val);
+        }
         builder_.CreateStore(val, newElemPtr);
 
         storeListHeaderFields(newHeader, newLen, newLen, newData);
@@ -599,9 +635,31 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     // duplicates raw pointers without bumping refcounts; without retention,
     // releasing the source (or a dropped alias) frees the elements that the
     // new slice still points at (#1204).
-    CollectionKind elemArcKind = CollectionKind::List;
-    if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
-        emitCowRetainArcElements(newData, count, "sl_elem", elemArcKind);
+    {
+        const ValueMetadata *srcMeta = getMeta(listPtr);
+        // resolveTypeAlias so alias-backed tuple types take the tuple path
+        // (#1667 follow-up — destructor resolves aliases via
+        // resolveCollectionDestructor, retain side must mirror).
+        const std::string elemSigSnap =
+            srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                     : std::string{};
+        if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+            elemSigSnap.back() == ')') {
+            // #1667: tuple-elem List<(K, V)> destructor releases inner ARC
+            // tuple components, so the memcpy'd buffer must retain each
+            // component (mirrors propagateMeta-induced destructor inheritance).
+            if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                emitTupleElemRetainLoop(newData, count, "sl_telem",
+                                         elemSigSnap, tupleTy);
+            }
+        } else {
+            CollectionKind elemArcKind = CollectionKind::List;
+            if (elementTypeIsArcManaged(listPtr, CollectionKind::List,
+                                         &elemArcKind)) {
+                emitCowRetainArcElements(newData, count, "sl_elem",
+                                          elemArcKind);
+            }
+        }
     }
 
     storeListHeaderFields(newHeader, count, count, newData);
@@ -648,9 +706,29 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         // retention, releasing the source (or a dropped alias) frees the
         // elements that the new prefix still points at (#1235, same defect
         // class as #1204 for emitListSlice).
-        CollectionKind elemArcKind = CollectionKind::List;
-        if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
-            emitCowRetainArcElements(newData, clampedN, "tk_elem", elemArcKind);
+        {
+            const ValueMetadata *srcMeta = getMeta(listPtr);
+            // resolveTypeAlias so alias-backed tuple types take the tuple path
+            // (#1667 follow-up — destructor resolves aliases, retain mirrors).
+            const std::string elemSigSnap =
+                srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                         : std::string{};
+            if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+                elemSigSnap.back() == ')') {
+                // #1667: tuple-elem propagation extends the destructor to
+                // inner tuple components; mirror retain on the memcpy'd buf.
+                if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                    emitTupleElemRetainLoop(newData, clampedN, "tk_telem",
+                                             elemSigSnap, tupleTy);
+                }
+            } else {
+                CollectionKind elemArcKind = CollectionKind::List;
+                if (elementTypeIsArcManaged(listPtr, CollectionKind::List,
+                                             &elemArcKind)) {
+                    emitCowRetainArcElements(newData, clampedN, "tk_elem",
+                                              elemArcKind);
+                }
+            }
         }
 
         // Set header fields
@@ -1085,6 +1163,15 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         llvm::Value *vp = builder_.CreateGEP(valTy, mf.vals, {i}, "items_vp");
         llvm::Value *k = builder_.CreateLoad(keyTy, kp, "items_k");
         llvm::Value *v = builder_.CreateLoad(valTy, vp, "items_v");
+        // #1667: tuple-elem List<(K, V)> destructor releases each component
+        // per slot; retain on store keeps refcount symmetric (#1242 pattern,
+        // tuple-sig path). The retain helper recurses into nested tuple K/V
+        // (e.g. Map<str, (List<int>, int)>) so inline tuple-struct values
+        // are not skipped.
+        if (!keyName.empty())
+            emitTupleComponentRetain(k, keyName);
+        if (!valName.empty())
+            emitTupleComponentRetain(v, valName);
         llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
         tuple = builder_.CreateInsertValue(tuple, k, 0);
         tuple = builder_.CreateInsertValue(tuple, v, 1);
@@ -1098,10 +1185,11 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         // Stamp the tuple type name so downstream tuple-field access can
         // dispatch nested index/key lookup (#1659). Mirrors enumerate / zip
-        // (codegen_call.cpp). No retain on inner ARC values: tuple
-        // list_elem_type_name "(K, V)" does not match fieldTypeIsArcManaged,
-        // so the destructor for List<(K, V)> never recurses into tuple fields
-        // (a retain here would leak).
+        // (codegen_call.cpp). The List<(K, V)> destructor now recurses into
+        // tuple fields and releases each ARC component (#1667 — extension of
+        // #1242 to the tuple-sig path), so the per-component
+        // emitTupleComponentRetain calls above are required to keep the
+        // retain/release symmetry.
         if (!keyName.empty() && !valName.empty())
             getOrCreateMeta(newHeader).list_elem_type_name =
                 "(" + keyName + ", " + valName + ")";
