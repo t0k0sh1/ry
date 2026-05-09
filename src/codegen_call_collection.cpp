@@ -1049,6 +1049,15 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
     llvm::Type *keyTy = getMapKeyType(mapPtr);
     llvm::Type *valTy = getMapValueType(mapPtr);
     if (keyTy && valTy) {
+        // Snapshot source-map element names before any getOrCreateMeta call
+        // (which may rehash value_metadata_ and invalidate the raw pointer
+        // returned by getMeta — see #858 / keys()/values() precedent).
+        std::string keyName, valName;
+        if (auto *srcMeta = getMeta(mapPtr)) {
+            keyName = srcMeta->map_key_type_name;
+            valName = srcMeta->map_value_type_name;
+        }
+
         auto mf = loadMapHeader(mapPtr, "items");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
@@ -1087,6 +1096,15 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
 
         storeListHeaderFields(newHeader, mf.len, mf.len, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
+        // Stamp the tuple type name so downstream tuple-field access can
+        // dispatch nested index/key lookup (#1659). Mirrors enumerate / zip
+        // (codegen_call.cpp). No retain on inner ARC values: tuple
+        // list_elem_type_name "(K, V)" does not match fieldTypeIsArcManaged,
+        // so the destructor for List<(K, V)> never recurses into tuple fields
+        // (a retain here would leak).
+        if (!keyName.empty() && !valName.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name =
+                "(" + keyName + ", " + valName + ")";
         return newHeader;
     }
     return nullptr;
