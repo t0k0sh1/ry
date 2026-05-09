@@ -109,7 +109,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
         auto idx = std::stoul(e->field);
         if (idx >= structTy->getNumElements())
             codegenError("tuple index " + e->field + " out of range");
-        return builder_.CreateExtractValue(obj, static_cast<unsigned>(idx), "tuple." + e->field);
+        llvm::Value *fieldVal = builder_.CreateExtractValue(
+            obj, static_cast<unsigned>(idx), "tuple." + e->field);
+        // #1664: When the tuple was loaded from List<(K, V)> (or similar),
+        // the IndexExpr List path stamps source_type_name on the loaded
+        // tuple value. Decompose per-component via splitTupleSig and
+        // propagate the matching component's name onto the extracted field
+        // so chained access like `xs[0].1[0]` carries List/Map/Set metadata
+        // through to the next subscript. Snapshot into a local std::string
+        // before propagateTypeMeta to dodge value_metadata_ rehash
+        // invalidation (#858).
+        std::string srcTupleSig;
+        if (auto *objMeta = getMeta(obj))
+            srcTupleSig = objMeta->source_type_name;
+        if (!srcTupleSig.empty() && srcTupleSig.size() >= 2 &&
+            srcTupleSig.front() == '(' && srcTupleSig.back() == ')') {
+            auto components = splitTupleSig(srcTupleSig);
+            if (idx < components.size() && !components[idx].empty())
+                propagateTypeMeta(components[idx], fieldVal);
+        }
+        return fieldVal;
     }
 
     std::string typeName = structTy->getName().str();
@@ -756,6 +775,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         }
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
+        // #1664: Stamp tuple sig (e.g. "(int, T)" from enumerate / zip /
+        // items) onto the loaded element via source_type_name so that
+        // FieldAccessExpr's numeric-index arm can decompose per-component
+        // metadata via splitTupleSig. propagateTypeMeta is single-value by
+        // design (see "propagateTypeMeta is single-value; callers decompose
+        // tuples"), so the decomposition must happen at the call site that
+        // owns the bound field, mirroring the for-loop destructure precedent
+        // in src/codegen_stmt_loop.cpp.
+        if (!elemTypeName.empty() && elemTypeName.size() >= 2 &&
+            elemTypeName.front() == '(' && elemTypeName.back() == ')')
+            getOrCreateMeta(elem).source_type_name = elemTypeName;
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
         // List<str>: read the list_elem_is_str side-channel set by the
