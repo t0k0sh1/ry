@@ -1,0 +1,133 @@
+==================
+integer literal assignment
+==================
+
+x = 42
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (integer_literal)))
+
+==================
+float literal assignment
+==================
+
+y = 3.14
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (float_literal)))
+
+==================
+string literal assignment
+==================
+
+s = "hello"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (string_literal)))
+
+==================
+boolean literals
+==================
+
+b = true
+c = false
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (boolean_literal))
+  (assignment_statement
+    left: (identifier)
+    right: (boolean_literal)))
+
+==================
+none literal
+==================
+
+n = none
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (none_literal)))
+
+==================
+list literal with integer elements
+==================
+
+xs = [1, 2, 3]
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (list_literal
+      (integer_literal)
+      (integer_literal)
+      (integer_literal))))
+
+==================
+map literal with string keys
+==================
+
+m = {"a": 1, "b": 2}
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (map_literal
+      key: (string_literal)
+      value: (integer_literal)
+      key: (string_literal)
+      value: (integer_literal))))
+
+==================
+set literal with integer elements
+==================
+
+s = {1, 2, 3}
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (set_literal
+      (integer_literal)
+      (integer_literal)
+      (integer_literal))))
+
+==================
+tuple literal with mixed element types
+==================
+
+t = (1, "a", true)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (tuple_literal
+      (integer_literal)
+      (string_literal)
+      (boolean_literal))))

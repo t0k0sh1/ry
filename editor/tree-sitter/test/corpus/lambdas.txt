@@ -1,0 +1,135 @@
+==================
+single-param lambda with arithmetic body
+==================
+
+f = (x) => x + 1
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params
+        (lambda_param
+          name: (identifier)))
+      body: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal)))))
+
+==================
+two-param lambda
+==================
+
+g = (a, b) => a + b
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params
+        (lambda_param
+          name: (identifier))
+        (lambda_param
+          name: (identifier)))
+      body: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (qualified_identifier
+          (identifier))))))
+
+==================
+nullary lambda
+==================
+
+h = () => 42
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params)
+      body: (integer_literal))))
+
+==================
+typed lambda parameter
+==================
+
+typed = (x: int) => x + 1
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params
+        (lambda_param
+          name: (identifier)
+          type: (union_type
+            (primitive_type))))
+      body: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal)))))
+
+==================
+lambda passed to higher-order map call
+==================
+
+result = map(xs, (x) => x * 2)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (qualified_identifier
+            (identifier)))
+        (argument
+          value: (lambda_expression
+            parameters: (lambda_params
+              (lambda_param
+                name: (identifier)))
+            body: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))))))))
+
+==================
+lambda predicate passed to filter
+==================
+
+c = filter(xs, (x) => x > 0)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (qualified_identifier
+            (identifier)))
+        (argument
+          value: (lambda_expression
+            parameters: (lambda_params
+              (lambda_param
+                name: (identifier)))
+            body: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))))))))
