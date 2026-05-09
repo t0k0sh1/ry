@@ -266,6 +266,81 @@ and call `propagateTypeMeta(component[i], boundVar[i])` for each
 bound variable. Do **not** extend `propagateTypeMeta` itself to write
 to a `tuple_elem_type_names` slot — keep the helper single-purpose.
 
+### IndexExpr → FieldAccessExpr tuple metadata uses `source_type_name` as the boundary channel
+
+**Source**: #1664 (2026-05-09, implementation)
+**Tags**: codegen, metadata, tuple, IndexExpr, FieldAccessExpr, source_type_name, splitTupleSig, enumerate, zip
+
+**Context**: `enumerate(xs)` / `zip(xs, ys)` / `items(m)` produce
+`List<(K, V)>` whose header carries `list_elem_type_name = "(K, V)"`.
+Reading an element with `xs[0]` already routed through
+`propagateTypeMeta(elemTypeName, elem)` in the IndexExpr List path
+(`src/codegen_expr_literal.cpp`), but per the
+"`propagateTypeMeta` is single-value; callers decompose tuples" rule
+(see entry above), `propagateTypeMeta` deliberately ignores tuple
+sigs. Without an additional channel the loaded tuple value reached
+the FieldAccessExpr numeric-index arm with no metadata; the arm
+emitted a bare `CreateExtractValue` and the field defaulted to `str`
+dispatch — `xs[0].1[0]` then raised "str does not support index
+access" at codegen.
+
+The for-loop destructure site solves the same shape via
+`emitForBindingPattern` calling `splitTupleSig` directly and
+propagating each component to its bound variable. The expression site
+needs the same decomposition, but it cannot bind components to named
+variables — there is no destructure boundary, just a tuple SSA value
+that flows through `.0` / `.1` access.
+
+**Rule**: When a tuple is loaded from a `List<(K, V)>` (the only
+non-destructure boundary fixed by #1664), stamp the full tuple sig
+onto the loaded value via
+`getOrCreateMeta(val).source_type_name = "(K, V)"`. The downstream
+FieldAccessExpr numeric-index arm reads `source_type_name`, calls
+`splitTupleSig` to decompose, and propagates the matching component's
+name onto the extracted field. This mirrors the `Result<T, E>` /
+`Option<T>` precedent (#1638) — `source_type_name` is the lossless
+channel for type names that `propagateTypeMeta` cannot carry. Other
+tuple-producing boundaries (function returns of `(K, V)` outside a
+`List`, tuple-typed record fields, etc.) are NOT covered by #1664;
+extending this pattern to them is a future follow-up — don't assume
+they already work.
+
+**How to apply**:
+
+1. At the **stamp side** (IndexExpr List path, function return, future
+   tuple-producing boundaries), guard with
+   `elemTypeName.size() >= 2 && elemTypeName.front() == '(' &&
+   elemTypeName.back() == ')'` and stamp
+   `source_type_name = elemTypeName`. Snapshot `elemTypeName` into a
+   local `std::string` *before* calling `propagateTypeMeta` (#858
+   rehash gotcha) — already required by the existing snapshot block,
+   so reusing the local is sufficient.
+
+2. At the **decompose side** (FieldAccessExpr numeric-index arm), after
+   `CreateExtractValue`, read `getMeta(obj)->source_type_name` into a
+   local `std::string`, guard with `front() == '(' && back() == ')'`,
+   call `splitTupleSig`, and call
+   `propagateTypeMeta(components[idx], fieldVal)` when
+   `idx < components.size()` and the component name is non-empty.
+
+**Why not extend `propagateTypeMeta` itself**: Same reasoning as the
+parent rule — tuples have N downstream targets, not one. Plumbing
+N-ary metadata through a single-value helper would require either a
+`tuple_elem_type_names: std::vector<std::string>` slot (rejected at
+#820) or duplicating the splitTypeArgs logic in every call site of
+`propagateTypeMeta`. The `source_type_name` channel is already in
+`ValueMetadata` for `Result` / `Option`, so reusing it for tuple sigs
+adds no new fields.
+
+**Scope note**: `enumerate` / `zip` work end-to-end with this fix
+because their codegen sites already stamp
+`list_elem_type_name = "(int, T)"` / `"(T, U)"`
+(`src/codegen_call.cpp`). The `items(m)` case requires PR #1665
+(issue #1659) to land first — its emitter does not stamp
+`list_elem_type_name` at all. Tests for `items()` are stubbed with
+`# FIXME(#1659):` in `tests/spec/collection_meta_propagation.test.ry`
+until that PR merges.
+
 ### Enum metadata propagation: list literals of enum values need a direct check
 
 **Source**: #820 sweep (2026-04-11, implementation)

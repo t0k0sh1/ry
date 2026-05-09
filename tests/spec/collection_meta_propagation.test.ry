@@ -206,3 +206,86 @@ fn keysPropagatesInnerCollectionMetadata1655Tests():
       i = i + 1
     expect(ks[0][0]).toEq(1)
     expect(ks[0][2]).toEq(3)
+
+# Regression tests for #1664 — FieldAccessExpr / IndexExpr drop tuple-element
+# metadata when accessing tuples loaded from List<(K, V)>.  enumerate(xs) and
+# zip(xs, ys) return List<(int, T)> / List<(T, U)> with list_elem_type_name
+# stamped as "(int, T)" / "(T, U)".  Pre-fix, indexing the result list
+# produced a fresh tuple SSA value with no metadata, and the FieldAccessExpr
+# numeric-index arm fell through to a bare ExtractValue.  Chained access
+# like `enumerate(xs)[0].1[0]` then treated `.1` as `str` and codegen
+# rejected the `[0]` subscript with "str does not support index access".
+#
+# The fix stamps the tuple sig onto the loaded element via
+# `source_type_name` (the IndexExpr List path), and the FieldAccessExpr
+# numeric-index arm decomposes per-component metadata via splitTupleSig.
+@describe("enumerate's tuple field carries inner-collection metadata (#1664)")
+fn enumerateTupleFieldCarriesInnerCollectionMetadata1664Tests():
+  @it("enumerate(List<List<int>>) preserves nested index access on .1")
+  fn enumerateListListIntPreservesNestedIndexAccessOnSecond():
+    xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    e = enumerate(xs)
+    expect(e[0].1[0]).toEq(1)
+    expect(e[0].1[2]).toEq(3)
+    expect(e[1].1[0]).toEq(4)
+    expect(e[1].1[2]).toEq(6)
+
+  @it("enumerate(List<Map<str, int>>) preserves map key access on .1")
+  fn enumerateListMapStrIntPreservesMapKeyAccessOnSecond():
+    xs: List<Map<str, int>> = [{"a": 1, "b": 2}, {"c": 3}]
+    e = enumerate(xs)
+    expect(e[0].1["a"]).toEq(1)
+    expect(e[0].1["b"]).toEq(2)
+    expect(e[1].1["c"]).toEq(3)
+
+@describe("zip's tuple fields carry inner-collection metadata (#1664)")
+fn zipTupleFieldsCarryInnerCollectionMetadata1664Tests():
+  @it("zip(List<int>, List<List<int>>) preserves nested index access on .1")
+  fn zipListIntListListIntPreservesNestedIndexAccessOnSecond():
+    xs: List<int> = [10, 20]
+    ys: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    z = zip(xs, ys)
+    expect(z[0].1[0]).toEq(1)
+    expect(z[0].1[2]).toEq(3)
+    expect(z[1].1[0]).toEq(4)
+    expect(z[1].1[2]).toEq(6)
+
+  @it("zip(List<List<int>>, List<List<int>>) preserves access on both .0 and .1")
+  fn zipListListIntListListIntPreservesAccessOnBothFields():
+    xs: List<List<int>> = [[1, 2, 3]]
+    ys: List<List<int>> = [[10, 20, 30]]
+    z = zip(xs, ys)
+    expect(z[0].0[0]).toEq(1)
+    expect(z[0].0[2]).toEq(3)
+    expect(z[0].1[0]).toEq(10)
+    expect(z[0].1[2]).toEq(30)
+
+  @it("zip(List<Map<str, int>>, List<int>) preserves map key access on .0")
+  fn zipListMapStrIntListIntPreservesMapKeyAccessOnFirst():
+    xs: List<Map<str, int>> = [{"k": 7}, {"k": 9}]
+    ys: List<int> = [1, 2]
+    z = zip(xs, ys)
+    expect(z[0].0["k"]).toEq(7)
+    expect(z[1].0["k"]).toEq(9)
+
+# items() returns List<(K, V)> for Map<K, V>, but at the time of #1664 the
+# items() emitter does not stamp list_elem_type_name with "(K, V)" — that
+# gap is tracked in #1659 / PR #1665.  Once that lands, enabling these
+# tests should pass with no further codegen change because the
+# IndexExpr/FieldAccessExpr decomposition added by #1664 is items()-agnostic.
+# FIXME(#1659): re-enable after PR #1665 merges.
+#  @describe("items's tuple fields carry inner-collection metadata (#1664)")
+#  fn itemsTupleFieldsCarryInnerCollectionMetadata1664Tests():
+#    @it("items(Map<str, List<int>>) preserves nested index access on .1")
+#    fn itemsMapStrListIntPreservesNestedIndexAccessOnSecond():
+#      m: Map<str, List<int>> = {"a": [1, 2, 3]}
+#      its = items(m)
+#      expect(its[0].1[0]).toEq(1)
+#      expect(its[0].1[2]).toEq(3)
+#
+#    @it("items(Map<List<int>, str>) preserves nested index access on .0")
+#    fn itemsMapListIntStrPreservesNestedIndexAccessOnFirst():
+#      m: Map<List<int>, str> = {[1, 2, 3]: "v"}
+#      its = items(m)
+#      expect(its[0].0[0]).toEq(1)
+#      expect(its[0].0[2]).toEq(3)
