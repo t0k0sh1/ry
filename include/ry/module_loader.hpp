@@ -24,7 +24,7 @@ public:
     // Names from `from testing import ...` (or wildcard `from testing`)
     // observed during import resolution (#712). Populated lazily as
     // `resolveImports` walks each `ImportStmt`, filtered to the testing
-    // intrinsic allow-list (`it / describe / expect / mock / verify / fail`)
+    // intrinsic allow-list (`expect / mock / fail`)
     // — declarations like `each / property` that live in `testing.ry`'s
     // AST are tracked through the regular export path and excluded here.
     // Consumers (#713/#715/#716) read this set to enforce that test
@@ -40,7 +40,7 @@ private:
         // True only when the module was found in `search_paths_` (the stdlib
         // search roots), not in `referrer_dir`. Used by the testing-intrinsic
         // allow-list (#712) to ensure a project-local `testing.ry` shadow does
-        // not silently bypass the `'<name>' not found` diagnostic for the six
+        // not silently bypass the `'<name>' not found` diagnostic for the three
         // intrinsic names.
         bool from_stdlib = false;
     };
