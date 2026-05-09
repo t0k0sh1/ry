@@ -1,0 +1,274 @@
+==================
+case match on integer literals with wildcard
+==================
+
+fn classify(x: int) -> str:
+    case x:
+        1:
+            return "one"
+        2:
+            return "two"
+        _:
+            return "other"
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (case_statement
+        (case_match_statement
+          scrutinee: (qualified_identifier
+            (identifier))
+          (case_arm
+            pattern: (literal_pattern
+              (integer_literal))
+            (return_statement
+              value: (string_literal)))
+          (case_arm
+            pattern: (literal_pattern
+              (integer_literal))
+            (return_statement
+              value: (string_literal)))
+          (case_arm
+            pattern: (wildcard_pattern)
+            (return_statement
+              value: (string_literal))))))))
+
+==================
+case match on boolean
+==================
+
+fn check(b: bool) -> int:
+    case b:
+        true:
+            return 1
+        false:
+            return 0
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (case_statement
+        (case_match_statement
+          scrutinee: (qualified_identifier
+            (identifier))
+          (case_arm
+            pattern: (literal_pattern)
+            (return_statement
+              value: (integer_literal)))
+          (case_arm
+            pattern: (literal_pattern)
+            (return_statement
+              value: (integer_literal))))))))
+
+==================
+case match with range patterns
+==================
+
+fn label(x: int) -> str:
+    case x:
+        0..10:
+            return "small"
+        10..100:
+            return "medium"
+        _:
+            return "large"
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (case_statement
+        (case_match_statement
+          scrutinee: (qualified_identifier
+            (identifier))
+          (case_arm
+            pattern: (range_pattern
+              (literal_pattern
+                (integer_literal))
+              (literal_pattern
+                (integer_literal)))
+            (return_statement
+              value: (string_literal)))
+          (case_arm
+            pattern: (range_pattern
+              (literal_pattern
+                (integer_literal))
+              (literal_pattern
+                (integer_literal)))
+            (return_statement
+              value: (string_literal)))
+          (case_arm
+            pattern: (wildcard_pattern)
+            (return_statement
+              value: (string_literal))))))))
+
+==================
+case cond with boolean expressions
+==================
+
+fn pick(x: int) -> str:
+    case:
+        x > 0:
+            return "positive"
+        x < 0:
+            return "negative"
+        _:
+            return "zero"
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (case_statement
+        (case_cond_statement
+          (case_cond_arm
+            condition: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))
+            (return_statement
+              value: (string_literal)))
+          (case_cond_arm
+            condition: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))
+            (return_statement
+              value: (string_literal)))
+          (case_cond_arm
+            condition: (wildcard_pattern)
+            (return_statement
+              value: (string_literal))))))))
+
+==================
+case used as expression in return position
+==================
+
+fn classify(x: int) -> str:
+    return case x:
+        1: "one"
+        _: "other"
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (case_expression
+          (case_match_expression
+            scrutinee: (qualified_identifier
+              (identifier))
+            (case_arm
+              pattern: (literal_pattern
+                (integer_literal))
+              body: (expression_statement
+                (string_literal)))
+            (case_arm
+              pattern: (wildcard_pattern)
+              body: (expression_statement
+                (string_literal)))))))))
+
+==================
+case match on Result with constructor patterns and binding
+==================
+
+fn handle(r: Result<int, str>) -> int:
+    case r:
+        Ok(v):
+            return v
+        Err(_):
+            return -1
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (named_type
+            (identifier)
+            (type_arguments
+              (union_type
+                (primitive_type))
+              (union_type
+                (primitive_type)))))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (case_statement
+        (case_match_statement
+          scrutinee: (qualified_identifier
+            (identifier))
+          (case_arm
+            pattern: (constructor_pattern
+              (qualified_identifier
+                (identifier))
+              (binding_pattern
+                (identifier)))
+            (return_statement
+              value: (qualified_identifier
+                (identifier))))
+          (case_arm
+            pattern: (constructor_pattern
+              (qualified_identifier
+                (identifier))
+              (wildcard_pattern))
+            (return_statement
+              value: (unary_expression
+                operand: (integer_literal)))))))))

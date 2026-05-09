@@ -1,0 +1,153 @@
+==================
+@describe decorator with single string argument
+==================
+
+@describe("math tests")
+fn mathTests():
+    return
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (return_statement))))
+
+==================
+@it decorator on test fn
+==================
+
+@it("adds two numbers")
+fn testAdd():
+    return
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (return_statement))))
+
+==================
+@public decorator with no arguments
+==================
+
+@public
+fn helper(x: int) -> int:
+    return x + 1
+
+---
+
+(source_file
+  (decorator
+    name: (identifier))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))))))
+
+==================
+@native decorator on declaration without body
+==================
+
+@native
+fn rawApi(x: int) -> int
+
+---
+
+(source_file
+  (decorator
+    name: (identifier))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))))
+
+==================
+decorator with multiple arguments
+==================
+
+@route("GET", "/api/v1")
+fn handler():
+    return
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (string_literal))
+      (decorator_argument
+        value: (string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (return_statement))))
+
+==================
+nested decorated fn (testing framework pattern)
+==================
+
+@describe("group")
+fn outer():
+    @it("inner test")
+    fn inner():
+        return
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (decorator
+        name: (identifier)
+        (decorator_arguments
+          (decorator_argument
+            value: (string_literal))))
+      (function_declaration
+        name: (function_name
+          (identifier))
+        body: (function_body
+          (return_statement))))))

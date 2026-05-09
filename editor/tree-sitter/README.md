@@ -20,6 +20,9 @@ editor/tree-sitter/
 ├── queries/
 │   ├── highlights.scm   # tree-sitter highlight queries (tracked)
 │   └── indents.scm      # tree-sitter indent queries (tracked)
+├── test/
+│   └── corpus/          # hand-curated `tree-sitter test` corpus
+│                        #   (snippet + expected S-expression)
 ├── tree-sitter.json     # tree-sitter CLI configuration
 ├── build.sh             # tree-sitter generate + build -> ry.so
 ├── install.sh           # copy ry.so + queries to Neovim parser dirs
@@ -86,6 +89,45 @@ installed. Enable tree-sitter-driven indentation per `.ry` buffer with:
 
 ```lua
 vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+```
+
+## Corpus tests (`tree-sitter test`)
+
+```bash
+tree-sitter test                # auto-discovers test/corpus/*.txt
+```
+
+`test/corpus/*.txt` holds hand-curated `(snippet, expected S-expression)`
+pairs in tree-sitter's standard corpus format. Unlike `check.sh` (which
+only flags ERROR/MISSING nodes — a binary parse pass/fail), corpus tests
+fail on **any divergence in parse-tree shape**, so grammar edits that
+silently change a tree's structure are caught.
+
+Format (per `tree-sitter` CLI docs):
+
+```text
+==================
+test name
+==================
+
+<ry source>
+
+---
+
+(<expected s-expression>)
+```
+
+Coverage scope: exercises grammar surface area that the in-tree spec
+files in `tests/spec/` already parse cleanly (i.e. **not** the gaps
+listed in `expected-fail.txt`). Treat the corpus as a regression seed:
+when the grammar is improved to close an `expected-fail.txt` entry, add
+a corpus entry that locks in the new shape in the same PR.
+
+To regenerate an expected S-expression after an intentional shape
+change:
+
+```bash
+tree-sitter parse <snippet>.ry | sed -E 's/ \[[0-9]+, [0-9]+\] - \[[0-9]+, [0-9]+\]//g'
 ```
 
 ## Smoke-check (corpus regression test)
@@ -181,9 +223,9 @@ eyeball the syntax highlighting and confirm no regressions.
 > `tests/spec/*.test.ry` will surface ERROR nodes today: the in-tree
 > grammar does not yet cover the full Ry surface. The known-gap files
 > are listed in `expected-fail.txt` and the Phase 1 corpus smoke-check
-> (`./check.sh`, see above) treats them as silent SKIPs. Phase 2 — the
+> (`./check.sh`, see above) treats them as silent SKIPs. The Phase 2
 > hand-curated `tree-sitter test` corpus with S-expression assertions
-> — is tracked separately in [#1633](https://github.com/t0k0sh1/ry/issues/1633).
+> lives at `test/corpus/*.txt` (see [Corpus tests](#corpus-tests-tree-sitter-test) above; #1633).
 
 The pre-commit version of this loop, with the same trigger paths, lives
 in [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md)
