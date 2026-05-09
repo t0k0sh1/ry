@@ -1,0 +1,75 @@
+==================
+import single name from std module
+==================
+
+from std.io import print
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)))))
+
+==================
+import multiple names from std module
+==================
+
+from std.io import print, println
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier)))))
+
+==================
+import with alias
+==================
+
+from std.io import print as p
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)
+        alias: (identifier)))))
+
+==================
+import from deeply nested module path
+==================
+
+from std.collections.list import filter, map, reduce
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier)))))

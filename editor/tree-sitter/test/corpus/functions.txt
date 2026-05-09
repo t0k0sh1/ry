@@ -1,0 +1,178 @@
+==================
+basic fn with typed params and return type
+==================
+
+fn add(a: int, b: int) -> int:
+    return a + b
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type)))
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (qualified_identifier
+            (identifier)))))))
+
+==================
+fn with single str param returning a string literal
+==================
+
+fn greet(name: str) -> str:
+    return "hello"
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (string_literal)))))
+
+==================
+fn with no params and no return type
+==================
+
+fn noop():
+    return
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (return_statement))))
+
+==================
+fn with default value parameter
+==================
+
+fn add(a: int, b: int = 1) -> int:
+    return a + b
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type)))
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))
+        default: (integer_literal)))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (qualified_identifier
+            (identifier)))))))
+
+==================
+generic fn with single type parameter
+==================
+
+fn identity<T>(x: T) -> T:
+    return x
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    generics: (generic_parameters
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (named_type
+            (identifier)))))
+    return_type: (union_type
+      (named_type
+        (identifier)))
+    body: (function_body
+      (return_statement
+        value: (qualified_identifier
+          (identifier))))))
+
+==================
+recursive fn with nested if statement
+==================
+
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (if_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        consequence: (block
+          (return_statement
+            value: (integer_literal))))
+      (return_statement
+        value: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (call_expression
+            function: (qualified_identifier
+              (identifier))
+            arguments: (argument_list
+              (argument
+                value: (binary_expression
+                  left: (qualified_identifier
+                    (identifier))
+                  right: (integer_literal))))))))))

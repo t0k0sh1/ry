@@ -1,0 +1,201 @@
+==================
+if/else statement
+==================
+
+fn main():
+    if x > 0:
+        y = 1
+    else:
+        y = 2
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (if_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        consequence: (block
+          (assignment_statement
+            left: (identifier)
+            right: (integer_literal)))
+        alternative: (block
+          (assignment_statement
+            left: (identifier)
+            right: (integer_literal)))))))
+
+==================
+if / else if / else chain
+==================
+
+fn main():
+    if x > 0:
+        y = 1
+    else if x < 0:
+        y = -1
+    else:
+        y = 0
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (if_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        consequence: (block
+          (assignment_statement
+            left: (identifier)
+            right: (integer_literal)))
+        alt_condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        alt_consequence: (block
+          (assignment_statement
+            left: (identifier)
+            right: (unary_expression
+              operand: (integer_literal))))
+        alternative: (block
+          (assignment_statement
+            left: (identifier)
+            right: (integer_literal)))))))
+
+==================
+while loop with body
+==================
+
+fn main():
+    while i < 10:
+        i = i + 1
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (while_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        body: (block
+          (assignment_statement
+            left: (identifier)
+            right: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))))))))
+
+==================
+for loop iterating an identifier
+==================
+
+fn main():
+    for x in xs:
+        print(x)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (for_statement
+        target: (identifier)
+        iter: (qualified_identifier
+          (identifier))
+        body: (block
+          (expression_statement
+            (call_expression
+              function: (qualified_identifier
+                (identifier))
+              arguments: (argument_list
+                (argument
+                  value: (qualified_identifier
+                    (identifier)))))))))))
+
+==================
+while loop with break statement
+==================
+
+fn main():
+    while running:
+        if done:
+            break
+        i = i + 1
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (while_statement
+        condition: (qualified_identifier
+          (identifier))
+        body: (block
+          (if_statement
+            condition: (qualified_identifier
+              (identifier))
+            consequence: (block
+              (break_statement)))
+          (assignment_statement
+            left: (identifier)
+            right: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))))))))
+
+==================
+for loop over range with continue statement
+==================
+
+fn main():
+    for i in 0..10:
+        if i == 5:
+            continue
+        print(i)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (for_statement
+        target: (identifier)
+        iter: (binary_expression
+          left: (integer_literal)
+          right: (integer_literal))
+        body: (block
+          (if_statement
+            condition: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))
+            consequence: (block
+              (continue_statement)))
+          (expression_statement
+            (call_expression
+              function: (qualified_identifier
+                (identifier))
+              arguments: (argument_list
+                (argument
+                  value: (qualified_identifier
+                    (identifier)))))))))))

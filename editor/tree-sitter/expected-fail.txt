@@ -4,7 +4,7 @@
 #
 # Phase 1 (#1617) は既存 corpus を smoke fixture として使う最小実装。
 # Phase 2 — `tree-sitter test` の hand-curated corpus + S-expression assertion ベースは
-# 別 issue (#1633) で追跡する。
+# editor/tree-sitter/test/corpus/ で管理 (#1633)。
 #
 # === Format ===
 #   - 1 行 1 path (repo root 相対)。空行および `#` 始まりの行は無視される。

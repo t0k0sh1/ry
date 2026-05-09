@@ -1,0 +1,176 @@
+==================
+arithmetic with operator precedence (mul binds tighter than add)
+==================
+
+x = 1 + 2 * 3
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (binary_expression
+      left: (integer_literal)
+      right: (binary_expression
+        left: (integer_literal)
+        right: (integer_literal)))))
+
+==================
+parens override precedence (add then mul)
+==================
+
+v = (a + b) * c
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (binary_expression
+      left: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (qualified_identifier
+          (identifier)))
+      right: (qualified_identifier
+        (identifier)))))
+
+==================
+logical and / comparison
+==================
+
+b = x > 0 and y < 10
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (binary_expression
+      left: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal))
+      right: (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal)))))
+
+==================
+equality comparison
+==================
+
+b = x == y
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (binary_expression
+      left: (qualified_identifier
+        (identifier))
+      right: (qualified_identifier
+        (identifier)))))
+
+==================
+unary minus
+==================
+
+n = -x
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (unary_expression
+      operand: (qualified_identifier
+        (identifier)))))
+
+==================
+unary not
+==================
+
+ok = not visible
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (unary_expression
+      operand: (qualified_identifier
+        (identifier)))))
+
+==================
+function call with single string argument
+==================
+
+r = greet("world")
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (string_literal))))))
+
+==================
+index expression on identifier
+==================
+
+v = xs[0]
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (index_expression
+      object: (qualified_identifier
+        (identifier))
+      (integer_literal))))
+
+==================
+field access on identifier
+==================
+
+v = obj.field
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (field_access
+      object: (qualified_identifier
+        (identifier))
+      field: (identifier))))
+
+==================
+method call on field access
+==================
+
+y = obj.method(1, 2)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (field_access
+        object: (qualified_identifier
+          (identifier))
+        field: (identifier))
+      arguments: (argument_list
+        (argument
+          value: (integer_literal))
+        (argument
+          value: (integer_literal))))))
