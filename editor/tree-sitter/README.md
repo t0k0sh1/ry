@@ -117,7 +117,7 @@ comments after each path are stripped at read time and are advisory only.
 
 The tree-sitter grammar (`grammar.js`) is intentionally **more permissive**
 than the canonical EBNF spec ([`docs/grammar.ebnf`](../../docs/grammar.ebnf))
-in the body of every block-introducing statement. The body content is
+for the specific block-introducing rules below. Their body content is
 wrapped in `optional(...)` so that **partial input** typed during
 incremental editing still produces a complete named node, allowing
 `indents.scm` `@indent.begin` captures to fire.
