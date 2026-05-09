@@ -41,7 +41,41 @@ is fixed: the self-test driver aborts inside TSan's
 ry code. Pinning `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28`
 were both tried. `./build-tsan/ry_tests` (which includes
 `ConcurrencySpecSuite`) runs cleanly on the same binary, so that
-is the required gate for #630's race fixes. macOS is unaffected.
+is the required gate for #630's race fixes. macOS is unaffected
+**by this specific upstream LargeMmapAllocator CHECK** — but the
+`continue-on-error` policy also protects against the orthogonal
+LLVM ORC teardown family (see next entry), which TSan exposes on
+both OSes.
+
+---
+
+### TSan exposes LLVM ORC teardown heap corruption (`~CodeGen()` / `~OverloadEntry()` SEGV on macOS)
+
+**Source**: #1657 (2026-05-09) macOS Darwin 25.3.0
+**Tags**: tsan, sanitizer, ci, macos, llvm, orc, jit, teardown, gotcha
+
+**Rule**: A SEGV inside `~CodeGen()` → `~unordered_map(functions_)`
+→ `~OverloadEntry()` → `unique_ptr<...>::reset()` on a garbage
+pointer (e.g. `0x4800000001135036`) under TSan on macOS is **not a
+real codegen UAF** — it is the same #1187 family LLVM ORC heap
+corruption that already forces `~LLJIT()` and `removeResourceTracker`
+to leak. Suppression is now a three-step `(void)jit.release()` +
+`rtCleanup.release()` + `(void)cg.release()` block in
+`src/jit_runner.cpp`. **Why:** ASan + UBSan are clean on the same
+binary and same test, indicating the heap corruption originates in
+the JIT teardown path and only the disturbed-heap sequel shows up
+in `~CodeGen()` under TSan's stricter free-list checking. **How to
+apply:** When a TSan crash report on macOS points at `~OverloadEntry()`
+or any other `~CodeGen()` member destructor, do not start hunting
+for codegen-side `unique_ptr` ownership bugs first — first check
+whether ASan is also clean. If yes, treat as ORC teardown family
+and follow the suppression pattern in `src/jit_runner.cpp`. The
+`LargeMmapAllocator` warn-only policy above continues to protect
+against this family on Linux as well; promotion of Ry self-test
+TSan to required is gated on the upstream LLVM ORC root cause, not
+just the LargeMmapAllocator fix. See full details in
+`.claude/rules/codegen-llvm-ir-conventions.md` "LLVM ORC JIT
+intermittent crash" entry.
 
 ---
 

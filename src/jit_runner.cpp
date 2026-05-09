@@ -157,15 +157,22 @@ int runRySource(const std::string &src, const std::string &source_name,
     }
 
     // CodeGen -> ThreadSafeModule
+    //
+    // CodeGen is heap-allocated (not stack) so its destructor can be
+    // suppressed alongside ~LLJIT() in the #1187 family workaround at the
+    // bottom of this function.  Without this, the ~CodeGen() frame walks
+    // its functions_ map -> vector<OverloadEntry> -> unique_ptr<...>::reset()
+    // chain on a heap whose state has been disturbed by JIT teardown, and
+    // crashes intermittently under TSan on macOS (#1657).
     int coverage_offset = cs ? cs->file_id_offset : 0;
     if (ry::traceEnabled())
         ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
                            {ry::TraceField("file", source_name)});
-    CodeGen cg(test_mode, &sm, coverage_mode, coverage_offset, outline_mode);
-    cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
+    auto cg = std::make_unique<CodeGen>(test_mode, &sm, coverage_mode, coverage_offset, outline_mode);
+    cg->setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
     ThreadSafeModule tsm = [&]() {
         try {
-            auto module = cg.compile(prog);
+            auto module = cg->compile(prog);
             if (ry::traceEnabled())
                 ry::emitTraceEvent("codegen.done", "compile", &sourceLoc,
                                    {ry::TraceField("file", source_name)});
@@ -179,7 +186,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     // Must precede the emit_llvm_ir early return below to avoid swallowing warnings.
     {
         std::vector<std::string> seen;
-        for (const auto &w : cg.getWarnings()) {
+        for (const auto &w : cg->getWarnings()) {
             if (std::find(seen.begin(), seen.end(), w) == seen.end()) {
                 seen.push_back(w);
                 errs() << w << "\n";
@@ -226,7 +233,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         // argv0 may be a bare name (e.g. "ry" from PATH), so resolve it first.
         std::string resolvedExe = ry::self_update::detail::get_executable_path();
         if (resolvedExe.empty()) resolvedExe = argv0;
-        auto requiredLibs = cg.getRequiredLibraries();
+        auto requiredLibs = cg->getRequiredLibraries();
         for (const auto &libName : requiredLibs) {
             auto libPath = ry::find_native_library(resolvedExe, libName);
             if (libPath.empty()) {
@@ -422,6 +429,19 @@ int runRySource(const std::string &src, const std::string &source_name,
     // invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
     (void)jit.release(); // NOLINT(bugprone-unused-return-value)
+
+    // Also leak the CodeGen.  Its destructor walks
+    //   functions_ (unordered_map<string, vector<OverloadEntry>>)
+    //     -> ~OverloadEntry()
+    //       -> unique_ptr<unordered_map<size_t, FnTypeInfo>>::reset()
+    // and on macOS under TSan that reset() intermittently calls free() on a
+    // garbage pointer (e.g. 0x4800000001135036) — symptom of the same #1187
+    // family heap corruption that already forces ~LLJIT() to leak above.
+    // Suppressing only ~LLJIT() leaves ~CodeGen() running on the disturbed
+    // heap; combined leak is the canonical workaround until the LLVM ORC /
+    // TSan upstream root cause is identified (#1657).  This is still a
+    // workaround, not a true root cause fix.
+    (void)cg.release(); // NOLINT(bugprone-unused-return-value)
 #endif
 
     return result > 0 ? 1 : 0;
