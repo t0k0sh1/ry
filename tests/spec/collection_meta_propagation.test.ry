@@ -140,3 +140,69 @@ fn setSymmetricDifferencePropagatesInnerCollectionMetadata1651Tests():
     for elem in c:
       total = total + elem[0]
     expect(total).toEq(6)
+
+# Regression tests for #1655 — Map.keys() / Map.values() must populate the
+# string-side metadata (`list_elem_type_name` and derived `nested_list_elem` /
+# `list_elem_fn_type_info`) on the returned List, not just the LLVM-type slot.
+# Pre-fix, `setTypeMeta(TypeMeta::ListElem, newHeader, keyTy/valTy)` left
+# `list_elem_type_name` empty and the indexer dispatched the loaded element as
+# `str`, so `len(vs[0])` read `weak_count` (= 0) and `vs[0]["k"]` raised
+# "str does not support index access".
+@describe("values() propagates inner-collection metadata (#1655)")
+fn valuesPropagatesInnerCollectionMetadata1655Tests():
+  @it("values on Map<str, List<int>> preserves nested len + index access")
+  fn valuesOnMapStrListIntPreservesNestedLenAndIndex():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    vs = values(m)
+    expect(len(vs)).toEq(1)
+    expect(len(vs[0])).toEq(3)
+    expect(vs[0][0]).toEq(1)
+    expect(vs[0][2]).toEq(3)
+
+  @it("values on Map<str, Map<str, int>> preserves nested map key access")
+  fn valuesOnMapStrMapStrIntPreservesNestedMapKeyAccess():
+    m: Map<str, Map<str, int>> = {"outer": {"k": 7}}
+    vs = values(m)
+    expect(len(vs)).toEq(1)
+    expect(vs[0]["k"]).toEq(7)
+
+  @it("values result's inner List<int> survives source map rebind")
+  fn valuesResultsInnerListIntSurvivesSourceMapRebind():
+    # Once values() stamps list_elem_type_name = "List<int>" on the result,
+    # its destructor recurses into the inner lists (#1242). The memcpy of
+    # the source values buffer must therefore be paired with an ARC retain
+    # (#1204) — without it, rebinding the source frees the same inner
+    # lists the result still references.
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    vs = values(m)
+    m = {"x": [99]}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(vs[0][0]).toEq(1)
+    expect(vs[0][2]).toEq(3)
+
+@describe("keys() propagates inner-collection metadata (#1655)")
+fn keysPropagatesInnerCollectionMetadata1655Tests():
+  @it("keys on Map<List<int>, str> preserves nested index access on result")
+  fn keysOnMapListIntStrPreservesNestedIndexAccessOnResult():
+    m: Map<List<int>, str> = {[1, 2]: "a", [3, 4]: "b"}
+    ks = keys(m)
+    expect(len(ks)).toEq(2)
+    expect(len(ks[0])).toEq(2)
+    expect(ks[0][0] + ks[0][1]).toEq(3)
+
+  @it("keys result's inner List<int> survives source map rebind")
+  fn keysResultsInnerListIntSurvivesSourceMapRebind():
+    m: Map<List<int>, str> = {[1, 2, 3]: "a"}
+    ks = keys(m)
+    m = {[99]: "x"}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(ks[0][0]).toEq(1)
+    expect(ks[0][2]).toEq(3)

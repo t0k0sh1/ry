@@ -178,6 +178,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = mf.len;
         llvm::Value *keysData = mf.keys;
 
+        // Snapshot key type name before any propagateTypeMeta call:
+        // getOrCreateMeta inside it may rehash value_metadata_ and
+        // invalidate a raw pointer from getMeta (mirrors the pattern in
+        // codegen_stmt_misc.cpp's IndexAssignStmt).
+        std::string keyName;
+        if (auto *containerMeta = getMeta(mapVal))
+            keyName = containerMeta->map_key_type_name;
+
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
@@ -187,8 +195,22 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
+        // memcpy duplicates raw pointers without bumping refcounts. Once
+        // propagateTypeMeta below stamps list_elem_type_name on the result,
+        // its destructor recurses into the inner ARC elements (#1242), so
+        // the duplicated pointers must be retained or rebinding the source
+        // map will free them out from under the result (#1204).
+        // elementTypeIsArcManaged inspects the value side of a Map, so
+        // re-derive ARC kind from the key type name directly via
+        // fieldTypeIsArcManaged (the shared name-based predicate).
+        CollectionKind keyArcKind;
+        if (!keyName.empty() && fieldTypeIsArcManaged(keyName, &keyArcKind))
+            emitCowRetainArcElements(newData, mapLen, "keys_elem", keyArcKind);
+
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, keyTy);
+        if (!keyName.empty())
+            propagateTypeMeta("List<" + keyName + ">", newHeader);
         return newHeader;
     }
 
@@ -203,6 +225,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = mf.len;
         llvm::Value *valsData = mf.vals;
 
+        // Snapshot value type name before any propagateTypeMeta call:
+        // getOrCreateMeta inside it may rehash value_metadata_ and
+        // invalidate a raw pointer from getMeta.
+        std::string valName;
+        if (auto *containerMeta = getMeta(mapVal))
+            valName = containerMeta->map_value_type_name;
+
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
@@ -212,8 +241,17 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
+        // memcpy of an ARC-managed value buffer must be paired with retain;
+        // see keys() above for the rationale (#1204 / #1242).
+        CollectionKind valArcKind = CollectionKind::List;
+        if (elementTypeIsArcManaged(mapVal, CollectionKind::Map, &valArcKind)) {
+            emitCowRetainArcElements(newData, mapLen, "vals_elem", valArcKind);
+        }
+
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, valTy);
+        if (!valName.empty())
+            propagateTypeMeta("List<" + valName + ">", newHeader);
         return newHeader;
     }
 
