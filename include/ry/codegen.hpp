@@ -295,6 +295,23 @@ public:
                                    const std::string &tupleSig,
                                    llvm::StructType *tupleTy);
 
+    // Releases each ARC-managed component of a single tuple-struct slot
+    // pointed to by `slotPtr`. Used both by `emitTupleElemReleaseLoop`
+    // body and by `IndexAssignStmt` slot-overwrite on `List<(K, V)>`
+    // (#1670). Recurses for nested tuple components.
+    void emitTupleElemReleaseSlot(llvm::Value *slotPtr,
+                                   const char *tagPrefix,
+                                   const std::string &tupleSig,
+                                   llvm::StructType *tupleTy);
+
+    // Walks an InsertValue chain and recovers the original SSA value at the
+    // requested field index. LLVM's ConstantFolder does NOT fold
+    // ExtractValue(InsertValue(agg, v, {i}), {i}) → v for non-constant
+    // aggregates, so callers that need to check ownership of an insertvalue
+    // operand must trace the chain. Returns nullptr if no matching insert
+    // is found.
+    static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx);
+
     // Splits a generic type name like "List<str>" into head="List" and
     // inner=["str"].  Returns false for non-generic names (no '<').
     // Extracted from codegen_fn_generic.cpp so callers across translation

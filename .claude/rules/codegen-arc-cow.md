@@ -833,11 +833,52 @@ if (elemIsTuple) {
 
 **Caveat: literal-built `List<(K, V)>`**: `inferCollectionTypeName` returns empty for tuple values, so `xs: List<(int, str)> = [(1, "a")]` has `list_elem_type_name = ""`. The new destructor branch is gated on a non-empty tuple sig and so is **not dispatched** for literal-built lists — pre-fix behavior (no retain, no release) is preserved. Issue tracking the literal-path metadata gap is out of scope for #1667.
 
-**Caveat: `xs[i] = (a, b)` slot-overwrite on `List<(K, V)>`**: Post-#1667, the destructor releases inner ARC components, but the IndexAssignStmt path does not yet (i) release the overwritten tuple's components or (ii) retain the new tuple's components. This is a leak (safe direction) — UAF is not introduced because the new tuple is reachable through the overwritten slot — and is deferred to a follow-up issue.
+**Caveat: `xs[i] = (a, b)` slot-overwrite on `List<(K, V)>`** (resolved by #1670): Post-#1667, the destructor released inner ARC components but the IndexAssignStmt path did neither — leaking the evicted tuple's components on every overwrite. #1670 closed this gap by emitting per-component retain on the new tuple before per-component release on the old slot (retain-before-release safe for self-assignment), gated on non-empty `list_elem_type_name` with tuple shape `"(...)"`. See "IndexAssignStmt slot overwrite on `List<(K, V)>` must retain new tuple components and release old, gated on `list_elem_type_name` non-empty + tuple shape" entry below.
 
 **How to apply**: When adding a new collection helper that constructs a `List<(K, V)>` (whether by tuple-aware `InsertValue` or by memcpy-then-mutate), use the dispatch pattern above. Per-component sites (single tuple insertion) call `emitTupleComponentRetain` per ARC-managed component; buffer sites (memcpy of the whole tuple-struct array) call `emitTupleElemRetainLoop`. Mirror the destructor's `emitTupleElemReleaseLoop` is automatic via metadata inheritance — but verify by writing a regression test that rebinds the source after the helper call and reads the result through a churn loop. Canonical: `tests/spec/arc_tuple_ownership.test.ry`.
 
-**Related**: #1242 (parent rule for destructor-recursion-implies-retain-on-store), #1659 (items() metadata stamping that exposed the gap), #1664 (tuple-field metadata propagation), #1204 (memcpy retain canonical), #1235 (take memcpy retain), #1046 (destructor caching).
+**Related**: #1242 (parent rule for destructor-recursion-implies-retain-on-store), #1659 (items() metadata stamping that exposed the gap), #1664 (tuple-field metadata propagation), #1204 (memcpy retain canonical), #1235 (take memcpy retain), #1046 (destructor caching), #1670 (IndexAssignStmt slot-overwrite symmetry follow-up).
+
+---
+
+### IndexAssignStmt slot overwrite on `List<(K, V)>` must retain new tuple components and release old, gated on `list_elem_type_name` non-empty + tuple shape
+
+**Source**: #1670 (2026-05-09). **Tags**: ARC, tuple, IndexAssignStmt, slot-overwrite, retain-before-release, list_elem_type_name, traceInsertValueField
+
+**Rule**: When `IndexAssignStmt` writes a tuple value into a slot of `List<(K, V)>` (`xs[i] = (a, b)`), the codegen path must (i) retain each ARC-managed component of the *new* tuple via `emitTupleComponentRetain`, then (ii) release each ARC-managed component of the *old* slot via `emitTupleElemReleaseSlot`, then store. Order matters: retain-before-release is required for self-assignment safety (`e[i] = e[i]` would otherwise transiently drop the refcount to zero).
+
+The block is added **alongside** (not as `else if` of) the existing `if (elemIsArc)` branch in `emitStmt(IndexAssignStmt &)`'s list path — `elementTypeIsArcManaged` returns `false` for tuples by design (tuples are inline structs, not ARC-managed pointer types), so the existing branch never fires. Gate on:
+
+```cpp
+const bool elemIsTuple = elemTypeName.size() >= 2 &&
+                          elemTypeName.front() == '(' &&
+                          elemTypeName.back() == ')';
+```
+
+**Why the gate matters**: `inferCollectionTypeName` returns `""` for tuple values, so a literal-built `xs: List<(int, str)> = [(1, "a")]` has `list_elem_type_name = ""`. The destructor branch added in #1667 is also gated on non-empty tuple sig — keeping the symmetry, IndexAssignStmt also skips for empty sigs (preserving pre-fix behavior, same blind spot as `List<str>` literals). Lists produced by `enumerate` / `items` / `zip` / `slice` / `take` / `appended` / `concat` all stamp a concrete tuple sig in `list_elem_type_name`, so they hit the new branch correctly.
+
+**Trace InsertValue chains for ownership detection**: When the rhs is a freshly-constructed tuple (`InsertValue(InsertValue(undef, k, {0}), v, {1})`), `CreateExtractValue(finalVal, {i})` does NOT fold back to the original SSA value — LLVM's `IRBuilder<>` uses `ConstantFolder` by default which only folds constants, not non-constant InsertValue/ExtractValue chains. Use the `CodeGen::traceInsertValueField` helper (promoted from a static file-local in `codegen_arc.cpp` to a public `static` member in `include/ry/codegen.hpp` for #1670) to walk the chain and recover the original operand, then check `arc_owned_values_` / `arc_str_owned_values_` on the original — not on the fresh ExtractValue. This mirrors the canonical pattern in `emitRecordArcFieldsRetain` (`codegen_arc.cpp:559-562`):
+
+```cpp
+llvm::Value *checkVal = fieldVal;
+if (llvm::isa<llvm::InsertValueInst>(finalVal))
+    if (auto *orig = traceInsertValueField(finalVal, i))
+        checkVal = orig;
+if (arc_owned_values_.count(checkVal) ||
+    arc_str_owned_values_.count(checkVal))
+    continue;  // transfer semantics, no retain needed
+emitTupleComponentRetain(fieldVal, fSig);
+```
+
+Without the InsertValue trace, fresh `+1` allocations from arc_owned literals get double-retained, producing a leak proportional to the number of overwrites (the leak-delta test in `arc_tuple_index_assign.test.ry` grew by +2 per iteration before this fix).
+
+**`emitTupleElemReleaseSlot` helper**: Factored from the per-slot body of `emitTupleElemReleaseLoop` (`codegen_arc.cpp`). The single-slot helper avoids emitting 4 throwaway basic blocks (header/body/latch/post) for a single slot, and is reused by `emitTupleElemReleaseLoop`'s body. Signature: `emitTupleElemReleaseSlot(slotPtr, tag, tupleSig, tupleTy)` — slot is loaded inside, components are extracted, ARC components are released by source-level type name (str at −24, List/Map/Set at −16, nested tuples recurse).
+
+**Compound op (`+=` etc.) is N/A**: Tuples have no arithmetic operators, so the parser/typechecker rejects compound-op `IndexAssignStmt` on `List<(K, V)>` upstream of codegen — no compound-op branch is needed.
+
+**Symmetry principle**: The retain-before-release pattern at slot-overwrite sites generalizes — when a destructor recursively releases ARC components of a typed slot (not just whole-pointer ARC objects), every codegen site that writes into that slot must (i) retain new components and (ii) release evicted components in retain-before-release order. The destructor side is the source of truth; the write-side discipline is mechanical from there. Future tuple-element collection mutators (`xs.append((a, b))`, `xs.insert(i, (a, b))`) need the same per-component retain — verified by the same delta-based regression pattern.
+
+**Related**: #1667 (parent — destructor recursion + tuple-component retain on construction), #855 (whole-pointer slot overwrite release discipline — ancestor), #1242 (destructor-recursion-implies-retain-on-store), #1108 (`emitArcReleaseLoadedElement` inner-sig propagation).
 
 ---
 

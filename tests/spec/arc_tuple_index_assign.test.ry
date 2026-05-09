@@ -1,0 +1,111 @@
+from testing import it, describe, expect
+
+from runtime_internal import arcLiveCount
+
+# Issue #1670: ARC ownership gap on the IndexAssignStmt slot-overwrite path
+# for List<(K, V)>.
+#
+# Background: #1667 (PR #1671, merged) closed the construction and
+# destruction halves of tuple-element ownership for List<(K, V)>:
+#   - items / enumerate / zip retain inner ARC components on InsertValue.
+#   - slice / take / appended / concat retain on memcpy.
+#   - The collection destructor walks the dense tuple-struct buffer and
+#     releases each ARC-managed component.
+#
+# The IndexAssignStmt path (`xs[i] = (a, b)` on List<(K, V)>) was not
+# updated by #1667. Pre-fix:
+#   1. Old slot's tuple ARC components are NOT released → leak per
+#      overwrite (the old inner List<int> is orphaned).
+#   2. New tuple's ARC components are NOT retained → UAF when the new
+#      component's source binding is later rebound.
+#
+# Post-fix: retain new components first (so self-assignment cannot
+# transiently drop refcount to zero), then release old components,
+# then store.
+#
+# Out of scope: literal-built List<(K, V)> whose `list_elem_type_name`
+# is empty. The fix gates on a non-empty tuple sig + tuple struct
+# element type, mirroring #1667's literal-build skip rule.
+
+@describe("ARC tuple-field ownership: IndexAssignStmt (#1670)")
+fn arcTupleFieldOwnershipIndexAssignStmt1670Tests():
+  @it("enumerate(List<List<int>>) overwrite live count grows by O(1) not O(N)")
+  fn enumerateOverwriteLiveCountGrowsByO1NotON():
+    # Each overwrite leaks the previous slot's inner List<int> pre-fix
+    # (no release fires on slot overwrite). Post-fix: O(1) delta
+    # regardless of iteration count.
+    before = arcLiveCount()
+    xs: List<List<int>> = [[1, 2, 3]]
+    e = enumerate(xs)
+    i = 0
+    while i < 16:
+      e[0] = (99, [i, i + 1, i + 2])
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+
+  @it("enumerate(List<List<int>>) e[0] = (k, a) survives a = [...] rebind")
+  fn enumerateIndexAssignSurvivesNewComponentRebind():
+    # Pre-fix: e[0] = (7, a) doesn't retain a's inner List<int>, so the
+    # subsequent a = [77] rebind drops [99, 99]'s refcount to zero and
+    # frees it. The churn loop reuses the freed memory; the read of
+    # e[0].1 then returns garbage / crashes under ASan.
+    # Post-fix: retain bumps [99, 99]'s refcount before the rebind, so
+    # the data survives.
+    xs: List<List<int>> = [[1, 2, 3]]
+    e = enumerate(xs)
+    a: List<int> = [99, 99]
+    e[0] = (7, a)
+    xs = [[88]]
+    a = [77]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(e[0].0).toEq(7)
+    expect(e[0].1[0]).toEq(99)
+    expect(e[0].1[1]).toEq(99)
+
+  @it("self-assignment e[i] = e[i] is safe (retain-before-release ordering)")
+  fn enumerateIndexAssignSelfAssignSafe():
+    # The fix must retain the new tuple's components BEFORE releasing
+    # the old slot's components. If the order were reversed, e[i] = e[i]
+    # would release the inner List (refcount 1 → 0 → freed), then retain
+    # on freed memory, then store the dangling pointer — UAF on read.
+    xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    e = enumerate(xs)
+    e[0] = e[0]
+    e[1] = e[1]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(e[0].0).toEq(0)
+    expect(e[0].1[0]).toEq(1)
+    expect(e[0].1[2]).toEq(3)
+    expect(e[1].0).toEq(1)
+    expect(e[1].1[0]).toEq(4)
+
+  @it("items(Map<str, List<int>>) overwrite survives source + new-component rebind")
+  fn itemsIndexAssignSurvivesSourceAndNewComponentRebind():
+    # Verify the fix is constructor-agnostic: items() and enumerate()
+    # both stamp list_elem_type_name = "(K, V)" and route through the
+    # same IndexAssignStmt path. Both ARC components (str + List<int>)
+    # exercise the per-component retain dispatch (str → −24 offset,
+    # List → −16 offset).
+    m: Map<str, List<int>> = {"key": [1, 2, 3]}
+    its = items(m)
+    newVal: List<int> = [99, 99]
+    its[0] = ("kkk", newVal)
+    m = {"z": [88]}
+    newVal = [77]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(its[0].0).toEq("kkk")
+    expect(its[0].1[0]).toEq(99)
+    expect(its[0].1[1]).toEq(99)

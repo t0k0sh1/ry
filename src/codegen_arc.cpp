@@ -523,7 +523,7 @@ bool CodeGen::recordHasArcFields(llvm::StructType *st) {
 // instruction that is never in arc_owned_values_ / arc_str_owned_values_.
 // This helper recovers the original inserted operand so that ownership
 // checks work correctly for record construction IR.
-static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx) {
+llvm::Value *CodeGen::traceInsertValueField(llvm::Value *agg, unsigned idx) {
     while (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(agg)) {
         if (iv->getIndices().size() == 1 && iv->getIndices()[0] == idx)
             return iv->getInsertedValueOperand();
@@ -1298,36 +1298,15 @@ static CountedLoopBlocks emitCountedLoopShell(llvm::IRBuilder<> &b,
     return {body, latch, post, iPhi};
 }
 
-void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
-                                        const char *tag,
+void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
+                                        const char *tagPrefix,
                                         const std::string &tupleSig,
                                         llvm::StructType *tupleTy) {
-    if (!arrayPtr || !len || !tupleTy) return;
+    if (!slotPtr || !tupleTy) return;
     std::vector<std::string> components = splitTupleSig(tupleSig);
     if (components.empty()) return;
 
-    // Skip the loop entirely if no component needs ARC release.
-    bool anyArc = false;
-    for (const auto &c : components) {
-        const std::string r = resolveTypeAlias(c);
-        if (r.empty() || isWeakTypeName(r)) continue;
-        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
-            isSetTypeName(r) ||
-            (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
-            anyArc = true;
-            break;
-        }
-    }
-    if (!anyArc) return;
-
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
-    std::string tagPrefix = std::string("dtor_tup_") + tag;
-    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
-                                       tagPrefix);
-
-    // body: GEP into the i'th tuple slot, then release each component.
-    auto *slotPtr = builder_.CreateGEP(tupleTy, arrayPtr, {loop.iPhi},
-                                         tagPrefix + "_slot");
     const unsigned n = static_cast<unsigned>(
         std::min<size_t>(components.size(), tupleTy->getNumElements()));
     for (unsigned i = 0; i < n; ++i) {
@@ -1342,7 +1321,7 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
         if (!isStr && !isColl && !isTup) continue;
 
         auto *fieldGEP = builder_.CreateStructGEP(tupleTy, slotPtr, i,
-            tagPrefix + "_f" + std::to_string(i));
+            std::string(tagPrefix) + "_f" + std::to_string(i));
 
         if (isTup) {
             // Recursive tuple component: load nothing (inline struct), recurse
@@ -1352,7 +1331,8 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
             if (!nestedTy) continue;
             // Treat a single nested tuple slot as a 1-element array.
             llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
-            std::string subTag = std::string(tag) + "_n" + std::to_string(i);
+            std::string subTag = std::string(tagPrefix) + "_n" +
+                                  std::to_string(i);
             emitTupleElemReleaseLoop(fieldGEP, one, subTag.c_str(), fSig,
                                        nestedTy);
             continue;
@@ -1361,15 +1341,15 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
         // ARC pointer component (str / List / Map / Set): load, null-guard,
         // release with the appropriate header offset.
         auto *val = builder_.CreateLoad(ptrTy_, fieldGEP,
-            tagPrefix + "_v" + std::to_string(i));
+            std::string(tagPrefix) + "_v" + std::to_string(i));
         auto *nullBB = llvm::BasicBlock::Create(*ctx_,
-            tagPrefix + "_skip" + std::to_string(i), fn);
+            std::string(tagPrefix) + "_skip" + std::to_string(i), fn);
         auto *relBB  = llvm::BasicBlock::Create(*ctx_,
-            tagPrefix + "_rel"  + std::to_string(i), fn);
+            std::string(tagPrefix) + "_rel"  + std::to_string(i), fn);
         auto *isNull = builder_.CreateICmpEQ(val,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
-            tagPrefix + "_isnull" + std::to_string(i));
+            std::string(tagPrefix) + "_isnull" + std::to_string(i));
         builder_.CreateCondBr(isNull, nullBB, relBB);
 
         builder_.SetInsertPoint(relBB);
@@ -1406,6 +1386,39 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
 
         builder_.SetInsertPoint(nullBB);
     }
+}
+
+void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
+                                        const char *tag,
+                                        const std::string &tupleSig,
+                                        llvm::StructType *tupleTy) {
+    if (!arrayPtr || !len || !tupleTy) return;
+    std::vector<std::string> components = splitTupleSig(tupleSig);
+    if (components.empty()) return;
+
+    // Skip the loop entirely if no component needs ARC release.
+    bool anyArc = false;
+    for (const auto &c : components) {
+        const std::string r = resolveTypeAlias(c);
+        if (r.empty() || isWeakTypeName(r)) continue;
+        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
+            isSetTypeName(r) ||
+            (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
+            anyArc = true;
+            break;
+        }
+    }
+    if (!anyArc) return;
+
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    std::string tagPrefix = std::string("dtor_tup_") + tag;
+    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
+                                       tagPrefix);
+
+    // body: GEP into the i'th tuple slot, then release each component.
+    auto *slotPtr = builder_.CreateGEP(tupleTy, arrayPtr, {loop.iPhi},
+                                         tagPrefix + "_slot");
+    emitTupleElemReleaseSlot(slotPtr, tagPrefix.c_str(), tupleSig, tupleTy);
 
     // After all components, branch to the loop latch.
     builder_.CreateBr(loop.latch);
