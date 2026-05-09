@@ -182,3 +182,126 @@ TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
     );
     EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
 }
+
+// ============================================================
+// verifyCalledWith() rejection tests (#1677)
+// ============================================================
+
+TEST_F(CodeGenTest, VerifyCalledWithUnmockedFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"vcw error\")\n"
+        "fn vcwError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        expect(verifyCalledWith(\"compute\", 5)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithUnknownFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"vcw error\")\n"
+        "fn vcwError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        expect(verifyCalledWith(\"no_such_fn\", 5)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithArityMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"vcw arity\")\n"
+        "fn vcwArity():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(compute, (x: int) => x)\n"
+        "        compute(5)\n"
+        "        expect(verifyCalledWith(\"compute\", 5, 6)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithTypeMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"vcw type\")\n"
+        "fn vcwType():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(compute, (x: int) => x)\n"
+        "        compute(5)\n"
+        "        expect(verifyCalledWith(\"compute\", \"five\")).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithListArgUnsupportedError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesList(xs: List<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list\")\n"
+        "fn vcwList():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesList, (xs: List<int>) => len(xs))\n"
+        "        takesList([1, 2])\n"
+        "        expect(verifyCalledWith(\"takesList\", [1, 2])).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapArgUnsupportedError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map\")\n"
+        "fn vcwMap():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
+        "        takesMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithEmptyArgsError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"vcw empty\")\n"
+        "fn vcwEmpty():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        expect(verifyCalledWith()).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithFirstArgNotStringLiteralError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"vcw first\")\n"
+        "fn vcwFirst():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(compute, (x: int) => x)\n"
+        "        compute(5)\n"
+        "        name = \"compute\"\n"
+        "        expect(verifyCalledWith(name, 5)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithOutsideTestModeError) {
+    // verifyCalledWith requires test mode. Without `from testing import`, the
+    // call resolves through normal name lookup and fails as undefined.
+    EXPECT_THROW(runSource(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "verifyCalledWith(\"compute\", 5)\n"
+    ), std::exception);
+}

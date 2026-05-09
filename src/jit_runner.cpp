@@ -279,12 +279,22 @@ int runRySource(const std::string &src, const std::string &source_name,
             {ExecutorAddr::fromPtr(&__ry_test_summary), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_set")] =
             {ExecutorAddr::fromPtr(&__ry_mock_set), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_set_closure")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_set_closure), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_get")] =
             {ExecutorAddr::fromPtr(&__ry_mock_get), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_get_env")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_get_env), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_get_call_count")] =
             {ExecutorAddr::fromPtr(&__ry_mock_get_call_count), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_increment_call")] =
             {ExecutorAddr::fromPtr(&__ry_mock_increment_call), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_begin_call_record")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_begin_call_record), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_store_arg")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_store_arg), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_count_matching_calls")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_count_matching_calls), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_clear_all")] =
             {ExecutorAddr::fromPtr(&__ry_mock_clear_all), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_test_prop_init_rng")] =

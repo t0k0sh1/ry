@@ -59,6 +59,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // Testing intrinsic: verifyCalledWith (#1677)
+    if (e->callee == "verifyCalledWith")
+        return emitVerifyCalledWithCall(*e);
+
     // Fast path: pre-emit args[0] once for callee names shared by multiple
     // dispatchers, then route through the same try-chain order to avoid
     // emitting dead IR from earlier dispatchers that don't match the type.

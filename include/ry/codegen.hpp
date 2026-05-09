@@ -1305,6 +1305,7 @@ public:
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
     void emitFailCall(CallStmt &s);
+    llvm::Value *emitVerifyCalledWithCall(const CallExpr &e);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Value *toBool(llvm::Value *v);

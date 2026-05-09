@@ -1,10 +1,25 @@
-from testing import it, describe, expect, mock, verify
+from testing import it, describe, expect, mock, verify, verifyCalledWith
 
 fn fetchData() -> str:
   return "real data"
 
 fn compute(x: int) -> int:
   return x * 2
+
+fn computeTwo(x: int, y: int) -> int:
+  return x + y
+
+fn mixedArgs(name: str, count: int, ratio: float, flag: bool) -> int:
+  return count
+
+fn floatPow(base: float) -> float:
+  return base * base
+
+fn boolFlip(b: bool) -> bool:
+  return not b
+
+fn lookup(key: str) -> str:
+  return key
 
 @describe("mock")
 fn mockTests():
@@ -32,3 +47,113 @@ fn verifyTests():
   fn shouldCountZeroCalls():
     mock("fetchData", () => "fake")
     expect(verify("fetchData")).toEq(0)
+
+@describe("mock with capturing closure")
+fn mockCapturingClosureTests():
+  @it("should record arguments via captured list")
+  fn shouldRecordArgumentsViaCapturedList():
+    seen: List<int> = []
+    recorder = (x: int):
+      seen.append(x)
+      return 0
+    mock("compute", recorder)
+    compute(5)
+    compute(10)
+    compute(15)
+    expect(len(seen)).toEq(3)
+    expect(seen[0]).toEq(5)
+    expect(seen[1]).toEq(10)
+    expect(seen[2]).toEq(15)
+  @it("should observe shared state across calls")
+  fn shouldObserveSharedStateAcrossCalls():
+    counter: List<int> = [0]
+    accumulate = (x: int):
+      counter[0] = counter[0] + x
+      return counter[0]
+    mock("compute", accumulate)
+    expect(compute(1)).toEq(1)
+    expect(compute(2)).toEq(3)
+    expect(compute(4)).toEq(7)
+
+@describe("verifyCalledWith")
+fn verifyCalledWithTests():
+  @it("should count calls matching int argument")
+  fn shouldCountIntArg():
+    mock("compute", (x: int) => x * 10)
+    compute(5)
+    compute(7)
+    compute(5)
+    expect(verifyCalledWith("compute", 5)).toEq(2)
+    expect(verifyCalledWith("compute", 7)).toEq(1)
+    expect(verifyCalledWith("compute", 999)).toEq(0)
+  @it("should count calls matching multiple int arguments")
+  fn shouldCountMultiInt():
+    mock("computeTwo", (a: int, b: int) => a + b)
+    computeTwo(1, 2)
+    computeTwo(1, 2)
+    computeTwo(3, 4)
+    expect(verifyCalledWith("computeTwo", 1, 2)).toEq(2)
+    expect(verifyCalledWith("computeTwo", 3, 4)).toEq(1)
+    expect(verifyCalledWith("computeTwo", 5, 6)).toEq(0)
+  @it("should count calls matching str argument")
+  fn shouldCountStrArg():
+    mock("lookup", (k: str) => k)
+    lookup("alpha")
+    lookup("beta")
+    lookup("alpha")
+    expect(verifyCalledWith("lookup", "alpha")).toEq(2)
+    expect(verifyCalledWith("lookup", "beta")).toEq(1)
+    expect(verifyCalledWith("lookup", "gamma")).toEq(0)
+  @it("should count calls matching float argument")
+  fn shouldCountFloatArg():
+    mock("floatPow", (x: float) => x)
+    floatPow(2.5)
+    floatPow(2.5)
+    floatPow(3.14)
+    expect(verifyCalledWith("floatPow", 2.5)).toEq(2)
+    expect(verifyCalledWith("floatPow", 3.14)).toEq(1)
+    expect(verifyCalledWith("floatPow", 0.0)).toEq(0)
+  @it("should count calls matching bool argument")
+  fn shouldCountBoolArg():
+    mock("boolFlip", (b: bool) => b)
+    boolFlip(true)
+    boolFlip(true)
+    boolFlip(false)
+    expect(verifyCalledWith("boolFlip", true)).toEq(2)
+    expect(verifyCalledWith("boolFlip", false)).toEq(1)
+  @it("should count calls matching mixed argument types")
+  fn shouldCountMixedArgs():
+    mock("mixedArgs", (name: str, count: int, ratio: float, flag: bool) => count)
+    mixedArgs("alpha", 3, 1.5, true)
+    mixedArgs("alpha", 3, 1.5, true)
+    mixedArgs("beta", 4, 2.0, false)
+    expect(verifyCalledWith("mixedArgs", "alpha", 3, 1.5, true)).toEq(2)
+    expect(verifyCalledWith("mixedArgs", "beta", 4, 2.0, false)).toEq(1)
+    expect(verifyCalledWith("mixedArgs", "alpha", 3, 1.5, false)).toEq(0)
+  @it("should return zero when no calls are made")
+  fn shouldReturnZeroWhenNotCalled():
+    mock("compute", (x: int) => x)
+    expect(verifyCalledWith("compute", 42)).toEq(0)
+  @it("should remain consistent with verify total")
+  fn shouldMatchVerifyTotal():
+    mock("compute", (x: int) => x)
+    compute(1)
+    compute(1)
+    compute(2)
+    expect(verify("compute")).toEq(3)
+    expect(verifyCalledWith("compute", 1)).toEq(2)
+    expect(verifyCalledWith("compute", 2)).toEq(1)
+  @it("should work with capturing closure mocks")
+  fn shouldWorkWithCapturingClosure():
+    seen: List<int> = []
+    recorder = (x: int):
+      seen.append(x)
+      return 0
+    mock("compute", recorder)
+    compute(11)
+    compute(22)
+    compute(11)
+    expect(len(seen)).toEq(3)
+    expect(verifyCalledWith("compute", 11)).toEq(2)
+    expect(verifyCalledWith("compute", 22)).toEq(1)
+    expect(verifyCalledWith("compute", 33)).toEq(0)
