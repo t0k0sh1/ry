@@ -430,8 +430,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         captureParamTys.push_back(ptrTy_);
         llvm::FunctionType *captureFnTy = llvm::FunctionType::get(
             fnTy->getReturnType(), captureParamTys, false);
-        std::vector<llvm::Value *> captureArgs;
-        for (llvm::Value *a : argVals) captureArgs.push_back(a);
+        std::vector<llvm::Value *> captureArgs(argVals.begin(), argVals.end());
         captureArgs.push_back(envPtr);
 
         if (fn->getReturnType()->isVoidTy()) {
