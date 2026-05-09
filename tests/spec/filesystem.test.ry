@@ -22,6 +22,11 @@ fn mkdirMkdirallTests():
   @it("should fail on existing directory")
   fn shouldFailOnExistingDirectory():
     d = "/tmp/ry_fs_test/single_dir"
+    mkdirAll("/tmp/ry_fs_test")
+    removeAll(d)
+    case mkdir(d):
+      Ok(_): 0
+      Err(e): fail("setup mkdir failed: " + e.message)
     result = mkdir(d)
     expect(result).toBeErr()
 
@@ -41,6 +46,7 @@ fn isfileIsdirIssymlinkTests():
   @it("should detect a regular file")
   fn shouldDetectARegularFile():
     f = "/tmp/ry_fs_test/test_file.txt"
+    mkdirAll("/tmp/ry_fs_test")
     case writeText(f, "hello"):
       Ok(_):
         case isFile(f):
@@ -57,6 +63,9 @@ fn isfileIsdirIssymlinkTests():
 
   @it("should detect a directory")
   fn shouldDetectADirectory():
+    case mkdirAll("/tmp/ry_fs_test"):
+      Ok(_): 0
+      Err(e): fail("setup mkdirAll failed: " + e.message)
     case isDir("/tmp/ry_fs_test"):
       Ok(v): expect(v).toBeTrue()
       Err(e): fail("isDir failed: " + e.message)
@@ -82,7 +91,7 @@ fn listdirTests():
   fn shouldListDirectoryEntries():
     d = "/tmp/ry_fs_test/listdir_test"
     removeAll(d)
-    mkdir(d)
+    mkdirAll(d)
     case join(d, "a.txt"):
       Ok(pa): writeText(pa, "a")
       Err(e): fail("join failed: " + e.message)
@@ -138,7 +147,7 @@ fn globTests():
   fn shouldMatchFilesByPattern():
     d = "/tmp/ry_fs_test/glob_test"
     removeAll(d)
-    mkdir(d)
+    mkdirAll(d)
     case join(d, "file1.log"):
       Ok(p): writeText(p, "1")
       Err(e): fail("join failed: " + e.message)
@@ -171,6 +180,7 @@ fn copyTests():
   fn shouldCopyFileContent():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(src, "copy me")
     case copy(src, dst):
       Ok(_):
@@ -193,6 +203,7 @@ fn moveTests():
   fn shouldMoveAFile():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(src, "move me")
     case move(src, dst):
       Ok(_):
@@ -210,6 +221,7 @@ fn removeRemoveallTests():
   @it("should remove a file")
   fn shouldRemoveAFile():
     f = "/tmp/ry_fs_test/remove_me.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(f, "bye")
     case remove(f):
       Ok(_):
@@ -220,7 +232,7 @@ fn removeRemoveallTests():
   @it("should fail to remove non-empty directory")
   fn shouldFailToRemoveNonEmptyDirectory():
     d = "/tmp/ry_fs_test/nonempty_dir"
-    mkdir(d)
+    mkdirAll(d)
     case join(d, "child.txt"):
       Ok(p): writeText(p, "x")
       Err(e): fail("join failed: " + e.message)
@@ -250,6 +262,7 @@ fn filesizeTests():
   @it("should return correct file size")
   fn shouldReturnCorrectFileSize():
     f = "/tmp/ry_fs_test/size_test.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(f, "12345")
     case fileSize(f):
       Ok(sz):
@@ -267,6 +280,7 @@ fn chmodTests():
   @it("should change file permissions")
   fn shouldChangeFilePermissions():
     f = "/tmp/ry_fs_test/chmod_test.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(f, "x")
     case chmod(f, 420):
       Ok(_):
@@ -282,6 +296,7 @@ fn symlinkReadlinkIssymlinkTests():
   fn shouldCreateAndReadASymbolicLink():
     target = "/tmp/ry_fs_test/symlink_target.txt"
     link = "/tmp/ry_fs_test/symlink_link.txt"
+    mkdirAll("/tmp/ry_fs_test")
     remove(link)
     writeText(target, "target content")
     case symlink(target, link):
@@ -303,6 +318,7 @@ fn symlinkReadlinkIssymlinkTests():
   @it("should fail readLink on non-symlink")
   fn shouldFailReadlinkOnNonSymlink():
     f = "/tmp/ry_fs_test/not_a_link.txt"
+    mkdirAll("/tmp/ry_fs_test")
     writeText(f, "x")
     result = readLink(f)
     expect(result).toBeErr()
