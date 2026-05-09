@@ -887,13 +887,17 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             if (!n || !n->suffix.empty())
                 codegenError("line " + std::to_string(s.loc.line) +
                     ": toBeCloseTo: 'decimals' must be a plain integer literal");
-            // NumberExpr.value is the unsigned bit pattern of a non-negative magnitude;
-            // negative literals arrive as UnaryExpr-wrapped NumberExpr and fail the
-            // get_if check above. So `n->value >= 0` is implied here.
-            if (n->value > 15)
+            // NumberExpr.value stores the unsigned bit pattern of the literal as int64_t
+            // (see parser-conventions.md "NumberExpr.value holds a non-negative bit pattern").
+            // Compare via uint64_t so oversized literals (e.g. UINT64_MAX, which lands as
+            // int64_t(-1)) cannot wrap past the signed range and silently bypass the bound.
+            // Negative literals arrive as UnaryExpr-wrapped NumberExpr and fail the get_if
+            // check above, so we never see a true negative magnitude here.
+            uint64_t decimalsMag = static_cast<uint64_t>(n->value);
+            if (decimalsMag > 15)
                 codegenError("line " + std::to_string(s.loc.line) +
                     ": toBeCloseTo: 'decimals' must be in [0, 15]");
-            decimals = static_cast<int64_t>(n->value);
+            decimals = static_cast<int64_t>(decimalsMag);
         }
         savedDecimals = decimals;
         savedDecimalsValid = true;
