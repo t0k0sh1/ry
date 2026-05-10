@@ -30,7 +30,8 @@ static std::string currentIndent(int extra = 0) {
 static char g_current_it_buf[256];
 const char *__ry_test_current_it_name() { return g_current_it_buf; }
 
-// Per-call argument record for argument-level mock verification (#1677, #1703, #1704, #1705).
+// Per-call argument record for argument-level mock verification
+// (#1677, #1703, #1704, #1705, #1706).
 // Mock kind tag space — keep in sync with codegen_call_user.cpp:
 //   1 = int      (raw i64)                                          — v1 (#1677)
 //   2 = float    (bitcast f64 -> i64)                               — v1 (#1677)
@@ -40,8 +41,8 @@ const char *__ry_test_current_it_name() { return g_current_it_buf; }
 //   6 = list     (ptr to MockListSnapshot)                          — #1703
 //   7 = set      (ptr to MockListSnapshot, unordered compare)       — #1704
 //   8 = map      (ptr to MockMapSnapshot, unordered key->value cmp) — #1705
-//   9 = record   (reserved for sibling sub-issue)
-//  10 = tuple    (reserved for sibling sub-issue)
+//   9 = record   (ptr to MockRecordSnapshot, per-slot compare)      — #1706
+//  10 = tuple    (ptr to MockTupleSnapshot, per-slot compare)       — #1706
 //  11 = fn       (reserved for sibling sub-issue)
 struct MockArg {
     int64_t kind;
@@ -106,6 +107,33 @@ struct MockMapSnapshot {
     void   *vals;
 };
 
+// Per-record argument snapshot for verifyCalledWith (#1706). type_name is a
+// non-owning pointer to a codegen-emitted global string (the record type name);
+// codegen caches one global per record name via cachedGlobalString, so the
+// pointer outlives every snapshot built from it. field_kinds and field_values
+// are deep-copied per-call into heap arrays so future mutations of the source
+// record cannot affect what verifyCalledWith later compares. Each kind=4 (str)
+// slot in field_values holds a retained Ry string handle. The fields-as-i64
+// per-slot layout (vs whole-struct memcmp) is required because LLVM struct
+// padding makes byte-level compare report false negatives on equal-by-value
+// records.
+struct MockRecordSnapshot {
+    const char *type_name;
+    int64_t     field_count;
+    int8_t     *field_kinds;
+    int64_t    *field_values;
+};
+
+// Per-tuple argument snapshot for verifyCalledWith (#1706). Tuples have no
+// declared name; identity is (arity + per-element kinds). element_kinds and
+// element_values are deep-copied per-call into heap arrays. Each kind=4 (str)
+// slot in element_values holds a retained Ry string handle.
+struct MockTupleSnapshot {
+    int64_t  arity;
+    int8_t  *element_kinds;
+    int64_t *element_values;
+};
+
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
 // or closure thunk). env_ptr / env_dtor are non-null only for capture-based
 // closures (#1678): the dispatch site reads env_ptr via __ry_mock_get_env
@@ -119,6 +147,8 @@ struct MockEntry {
     std::vector<char *> retained_str_args;
     std::vector<MockListSnapshot *> retained_list_snapshots;
     std::vector<MockMapSnapshot *> retained_map_snapshots;
+    std::vector<MockRecordSnapshot *> retained_record_snapshots;
+    std::vector<MockTupleSnapshot *> retained_tuple_snapshots;
 };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
 
@@ -296,6 +326,100 @@ static void freeMockMapSnapshot(MockMapSnapshot *snap) {
     delete snap;
 }
 
+// Build a deep-copy snapshot of a record argument (#1706). type_name is
+// non-owning (codegen-emitted global). field_kinds + field_values arrays are
+// duplicated with checked_malloc; each kind=4 (str) slot retains its handle.
+static MockRecordSnapshot *makeMockRecordSnapshot(const char *type_name,
+                                                    int64_t field_count,
+                                                    const int8_t *kinds,
+                                                    const int64_t *values) {
+    auto *snap = new MockRecordSnapshot{};
+    snap->type_name = type_name;
+    snap->field_count = field_count;
+    snap->field_kinds = nullptr;
+    snap->field_values = nullptr;
+    if (field_count > 0) {
+        snap->field_kinds = static_cast<int8_t *>(
+            checked_malloc(static_cast<size_t>(field_count) * sizeof(int8_t)));
+        snap->field_values = static_cast<int64_t *>(
+            checked_malloc(static_cast<size_t>(field_count) * sizeof(int64_t)));
+        std::memcpy(snap->field_kinds, kinds,
+                    static_cast<size_t>(field_count) * sizeof(int8_t));
+        std::memcpy(snap->field_values, values,
+                    static_cast<size_t>(field_count) * sizeof(int64_t));
+        for (int64_t i = 0; i < field_count; ++i) {
+            if (snap->field_kinds[i] == 4) {
+                auto *handle =
+                    reinterpret_cast<char *>(snap->field_values[i]);
+                mockRetainStr(handle);
+            }
+        }
+    }
+    return snap;
+}
+
+static void freeMockRecordSnapshot(MockRecordSnapshot *snap) {
+    if (!snap) return;
+    if (snap->field_values) {
+        for (int64_t i = 0; i < snap->field_count; ++i) {
+            if (snap->field_kinds && snap->field_kinds[i] == 4) {
+                auto *handle =
+                    reinterpret_cast<char *>(snap->field_values[i]);
+                mockReleaseStr(handle);
+            }
+        }
+        std::free(snap->field_values);
+    }
+    if (snap->field_kinds) std::free(snap->field_kinds);
+    delete snap;
+}
+
+// Build a deep-copy snapshot of a tuple argument (#1706). Identity is shape
+// only (arity + per-element kinds); no type_name. Same retain/release rules
+// for kind=4 slots as record/list snapshots.
+static MockTupleSnapshot *makeMockTupleSnapshot(int64_t arity,
+                                                  const int8_t *kinds,
+                                                  const int64_t *values) {
+    auto *snap = new MockTupleSnapshot{};
+    snap->arity = arity;
+    snap->element_kinds = nullptr;
+    snap->element_values = nullptr;
+    if (arity > 0) {
+        snap->element_kinds = static_cast<int8_t *>(
+            checked_malloc(static_cast<size_t>(arity) * sizeof(int8_t)));
+        snap->element_values = static_cast<int64_t *>(
+            checked_malloc(static_cast<size_t>(arity) * sizeof(int64_t)));
+        std::memcpy(snap->element_kinds, kinds,
+                    static_cast<size_t>(arity) * sizeof(int8_t));
+        std::memcpy(snap->element_values, values,
+                    static_cast<size_t>(arity) * sizeof(int64_t));
+        for (int64_t i = 0; i < arity; ++i) {
+            if (snap->element_kinds[i] == 4) {
+                auto *handle =
+                    reinterpret_cast<char *>(snap->element_values[i]);
+                mockRetainStr(handle);
+            }
+        }
+    }
+    return snap;
+}
+
+static void freeMockTupleSnapshot(MockTupleSnapshot *snap) {
+    if (!snap) return;
+    if (snap->element_values) {
+        for (int64_t i = 0; i < snap->arity; ++i) {
+            if (snap->element_kinds && snap->element_kinds[i] == 4) {
+                auto *handle =
+                    reinterpret_cast<char *>(snap->element_values[i]);
+                mockReleaseStr(handle);
+            }
+        }
+        std::free(snap->element_values);
+    }
+    if (snap->element_kinds) std::free(snap->element_kinds);
+    delete snap;
+}
+
 extern "C" {
 void __ry_arc_free_counted(void *header_ptr);
 }
@@ -394,6 +518,8 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
     for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
     for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
+    for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
+    for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = fn_ptr;
 }
@@ -405,6 +531,8 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
     for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
     for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
+    for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
+    for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
@@ -516,6 +644,53 @@ void *__ry_mock_make_map_snapshot(void *mapHeaderPtr,
                                     int64_t key_kind, int64_t key_size,
                                     int64_t val_kind, int64_t val_size) {
     return makeMockMapSnapshot(mapHeaderPtr, key_kind, key_size, val_kind, val_size);
+}
+
+// Recording side: store a record argument as a per-call snapshot (#1706).
+// type_name points to a codegen-emitted global string and outlives the
+// snapshot. kinds and values are caller-allocated buffers (typically stack
+// alloca'd in the call site); makeMockRecordSnapshot deep-copies both.
+void __ry_mock_store_arg_record(void *record, const char *type_name,
+                                 int64_t field_count, const int8_t *kinds,
+                                 const int64_t *values, const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockRecordSnapshot(type_name, field_count, kinds, values);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({9, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_record_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_record_snapshot(const char *type_name,
+                                      int64_t field_count,
+                                      const int8_t *kinds,
+                                      const int64_t *values) {
+    return makeMockRecordSnapshot(type_name, field_count, kinds, values);
+}
+
+// Recording side: store a tuple argument as a per-call snapshot (#1706).
+// kinds and values are caller-allocated buffers; makeMockTupleSnapshot
+// deep-copies both.
+void __ry_mock_store_arg_tuple(void *record, int64_t arity,
+                                const int8_t *kinds, const int64_t *values,
+                                const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockTupleSnapshot(arity, kinds, values);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({10, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_tuple_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_tuple_snapshot(int64_t arity, const int8_t *kinds,
+                                      const int64_t *values) {
+    return makeMockTupleSnapshot(arity, kinds, values);
 }
 
 static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
@@ -665,6 +840,70 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
         }
         return true;
     }
+    if (recorded.kind == 9) {
+        // Record: identity is type_name + per-slot kinds + per-slot values.
+        // Both type_name pointers come from cachedGlobalString and are stable
+        // for the run, but the same name can be emitted from two distinct
+        // compile units; compare via strcmp for safety. Per-slot compare
+        // mirrors the kind-tag space of scalar/str args.
+        auto *a = reinterpret_cast<MockRecordSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockRecordSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        if (a->field_count != b->field_count) return false;
+        if (a->type_name != b->type_name) {
+            if (!a->type_name || !b->type_name) return false;
+            if (std::strcmp(a->type_name, b->type_name) != 0) return false;
+        }
+        for (int64_t i = 0; i < a->field_count; ++i) {
+            if (a->field_kinds[i] != b->field_kinds[i]) return false;
+            if (a->field_kinds[i] == 4) {
+                const char *sa =
+                    reinterpret_cast<const char *>(a->field_values[i]);
+                const char *sb =
+                    reinterpret_cast<const char *>(b->field_values[i]);
+                if (sa == sb) continue;
+                if (!sa || !sb) return false;
+                int64_t la = stringByteLen(sa);
+                int64_t lb = stringByteLen(sb);
+                if (la != lb) return false;
+                if (std::memcmp(sa, sb, static_cast<size_t>(la)) != 0)
+                    return false;
+            } else {
+                if (a->field_values[i] != b->field_values[i]) return false;
+            }
+        }
+        return true;
+    }
+    if (recorded.kind == 10) {
+        // Tuple: identity is (arity + per-element kinds + per-element values).
+        // No declared name; arity mismatch is a compile-time reject (Stage 2)
+        // but we still defensively compare here.
+        auto *a = reinterpret_cast<MockTupleSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockTupleSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        if (a->arity != b->arity) return false;
+        for (int64_t i = 0; i < a->arity; ++i) {
+            if (a->element_kinds[i] != b->element_kinds[i]) return false;
+            if (a->element_kinds[i] == 4) {
+                const char *sa =
+                    reinterpret_cast<const char *>(a->element_values[i]);
+                const char *sb =
+                    reinterpret_cast<const char *>(b->element_values[i]);
+                if (sa == sb) continue;
+                if (!sa || !sb) return false;
+                int64_t la = stringByteLen(sa);
+                int64_t lb = stringByteLen(sb);
+                if (la != lb) return false;
+                if (std::memcmp(sa, sb, static_cast<size_t>(la)) != 0)
+                    return false;
+            } else {
+                if (a->element_values[i] != b->element_values[i]) return false;
+            }
+        }
+        return true;
+    }
     return recorded.value == expectedValue;
 }
 
@@ -690,7 +929,8 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     // Take ownership of caller-supplied snapshots regardless of whether the
     // mock is registered, so the verify path is leak-free even when the mock
     // was never set. kind 6 (list) and kind 7 (set) share MockListSnapshot;
-    // kind 8 (map) uses MockMapSnapshot — separate free path.
+    // kind 8 (map) uses MockMapSnapshot — separate free path. kind 9 (record)
+    // and kind 10 (tuple) each have their own free helper.
     for (int64_t i = 0; i < numArgs; ++i) {
         if (kinds[i] == 6 || kinds[i] == 7) {
             freeMockListSnapshot(
@@ -698,6 +938,12 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
         } else if (kinds[i] == 8) {
             freeMockMapSnapshot(
                 reinterpret_cast<MockMapSnapshot *>(values[i]));
+        } else if (kinds[i] == 9) {
+            freeMockRecordSnapshot(
+                reinterpret_cast<MockRecordSnapshot *>(values[i]));
+        } else if (kinds[i] == 10) {
+            freeMockTupleSnapshot(
+                reinterpret_cast<MockTupleSnapshot *>(values[i]));
         }
     }
     return matched;
@@ -710,6 +956,8 @@ void __ry_mock_clear_all() {
         for (char *s : entry.retained_str_args) mockReleaseStr(s);
         for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
         for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
+        for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
+        for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
     }
     g_mock_registry.clear();
 }
