@@ -240,18 +240,51 @@ TEST_F(CodeGenTest, VerifyCalledWithTypeMismatchError) {
     )), std::exception);
 }
 
-TEST_F(CodeGenTest, VerifyCalledWithListArgUnsupportedError) {
-    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+TEST_F(CodeGenTest, VerifyCalledWithListIntArgAccepted) {
+    // List<int> arg now accepted (#1703). 1 matching call -> count = 1.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn takesList(xs: List<int>) -> int:\n"
         "    return len(xs)\n"
         "\n"
         "@describe(\"vcw list\")\n"
         "fn vcwList():\n"
-        "    @it(\"errors\")\n"
-        "    fn errors():\n"
+        "    @it(\"counts list arg\")\n"
+        "    fn countsListArg():\n"
         "        mock(takesList, (xs: List<int>) => len(xs))\n"
         "        takesList([1, 2])\n"
-        "        expect(verifyCalledWith(\"takesList\", [1, 2])).toEq(0)\n"
+        "        expect(verifyCalledWith(\"takesList\", [1, 2])).toEq(1)\n"
+    )), "vcw list\n  \033[32m+ counts list arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithListStrArgAccepted) {
+    // List<str> arg exercises the ARC retain/release path on snapshot.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesList(xs: List<str>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list str\")\n"
+        "fn vcwListStr():\n"
+        "    @it(\"counts list str arg\")\n"
+        "    fn countsListStrArg():\n"
+        "        mock(takesList, (xs: List<str>) => len(xs))\n"
+        "        takesList([\"a\", \"b\"])\n"
+        "        expect(verifyCalledWith(\"takesList\", [\"a\", \"b\"])).toEq(1)\n"
+    )), "vcw list str\n  \033[32m+ counts list str arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithNestedListArgUnsupportedError) {
+    // List<List<int>> remains unsupported in v1; the parameter-side gate rejects.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesNested(xs: List<List<int>>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw nested list\")\n"
+        "fn vcwNestedList():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesNested, (xs: List<List<int>>) => len(xs))\n"
+        "        takesNested([[1, 2]])\n"
+        "        expect(verifyCalledWith(\"takesNested\", [[1, 2]])).toEq(0)\n"
     )), std::exception);
 }
 
@@ -271,11 +304,11 @@ TEST_F(CodeGenTest, VerifyCalledWithMapArgUnsupportedError) {
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithListParameterRejectedWithPrimitiveArg) {
-    // A List<int> parameter must be rejected by the parameter-side gate
-    // even when the user supplies a primitive (str) argument that would
-    // otherwise pass the LLVM-level type check — both lower to ptrTy_
-    // and isStringValue would tag the str arg as kind=4, silently
-    // returning 0 instead of erroring.
+    // A List<int> parameter must reject a primitive (str) argument. Both lower
+    // to ptrTy_ under opaque pointers and isStringValue would tag the str arg
+    // as kind=4, silently returning 0 instead of erroring. The explicit
+    // list-vs-scalar consistency check in emitVerifyCalledWithCall (#1703)
+    // catches this.
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "fn takesList(xs: List<int>) -> int:\n"
         "    return len(xs)\n"
@@ -287,6 +320,43 @@ TEST_F(CodeGenTest, VerifyCalledWithListParameterRejectedWithPrimitiveArg) {
         "        mock(takesList, (xs: List<int>) => len(xs))\n"
         "        takesList([1, 2])\n"
         "        expect(verifyCalledWith(\"takesList\", \"x\")).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithScalarParameterRejectedWithListArg) {
+    // A str parameter must reject a List<int> argument. Both lower to ptrTy_,
+    // so the LLVM type check passes; the explicit list-vs-scalar consistency
+    // check (#1703) must fire to reject "argument is a List but parameter has
+    // scalar type".
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesStr(s: str) -> int:\n"
+        "    return len(s)\n"
+        "\n"
+        "@describe(\"vcw scalar param list arg\")\n"
+        "fn vcwScalarParamListArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesStr, (s: str) => len(s))\n"
+        "        takesStr(\"hi\")\n"
+        "        expect(verifyCalledWith(\"takesStr\", [1, 2])).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithListParamRejectedWithListOfDifferentElementType) {
+    // List<int> parameter must reject a List<str> argument (element type
+    // mismatch). Both lower to a List ARC header (ptrTy_), so the LLVM type
+    // check passes; the explicit element-type comparison must fire.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntList(xs: List<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list elem mismatch\")\n"
+        "fn vcwListElemMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntList, (xs: List<int>) => len(xs))\n"
+        "        takesIntList([1, 2])\n"
+        "        expect(verifyCalledWith(\"takesIntList\", [\"a\", \"b\"])).toEq(0)\n"
     )), std::exception);
 }
 

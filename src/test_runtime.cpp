@@ -1,5 +1,6 @@
 #include "ry/ry_layout.hpp"
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_list.hpp"
 #include "ry/runtime_string.hpp"
 #include "ry/test_runtime.hpp"
 #include <cstdio>
@@ -29,16 +30,37 @@ static std::string currentIndent(int extra = 0) {
 static char g_current_it_buf[256];
 const char *__ry_test_current_it_name() { return g_current_it_buf; }
 
-// Per-call argument record for argument-level mock verification (#1677).
-// kind: 1=int, 2=float, 3=bool, 4=str, 5=opaque (unsupported in verifyCalledWith).
-// value: raw 64-bit payload — i64 bits for int/bool, bitcast(f64) for float,
-// pointer-as-i64 for str (the handle is retained at record time).
+// Per-call argument record for argument-level mock verification (#1677, #1703).
+// Mock kind tag space — keep in sync with codegen_call_user.cpp:
+//   1 = int      (raw i64)                                     — v1 (#1677)
+//   2 = float    (bitcast f64 -> i64)                          — v1 (#1677)
+//   3 = bool     (zext  i1  -> i64)                            — v1 (#1677)
+//   4 = str      (ptr   -> i64, retain handle)                 — v1 (#1677)
+//   5 = opaque   (placeholder, never matches a verify query)
+//   6 = list     (ptr to MockListSnapshot)                     — #1703
+//   7 = set      (reserved for sibling sub-issue)
+//   8 = map      (reserved for sibling sub-issue)
+//   9 = record   (reserved for sibling sub-issue)
+//  10 = tuple    (reserved for sibling sub-issue)
+//  11 = fn       (reserved for sibling sub-issue)
 struct MockArg {
     int64_t kind;
     int64_t value;
 };
 struct MockCallRecord {
     std::vector<MockArg> args;
+};
+
+// Per-list-arg snapshot for verifyCalledWith (#1703).
+// element_kind: 1=int, 2=float, 3=bool, 4=str (mock kind space).
+// element_size: per-element stride supplied by codegen via DataLayout.
+// data: deep-copied buffer of len * element_size bytes; for str elements,
+// each char* slot is a retained Ry string handle.
+struct MockListSnapshot {
+    int64_t len;
+    int64_t element_size;
+    int8_t  element_kind;
+    void   *data;
 };
 
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
@@ -52,6 +74,7 @@ struct MockEntry {
     int64_t call_count = 0;
     std::vector<MockCallRecord> calls;
     std::vector<char *> retained_str_args;
+    std::vector<MockListSnapshot *> retained_list_snapshots;
 };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
 
@@ -81,6 +104,51 @@ static void mockReleaseStr(char *handle) {
     if (cur == ARC_IMMORTAL) return;
     int64_t prev = __atomic_fetch_sub(strong, 1, __ATOMIC_SEQ_CST);
     if (prev == 1) freeStringSlot(handle);
+}
+
+// Build a deep-copy snapshot of a List<T> argument. The element buffer is
+// duplicated with checked_malloc so future mutations of the source list
+// (CoW or in-place) cannot affect what verifyCalledWith later compares.
+// For str elements, each char* slot is retained so the StringHeader stays
+// alive until the snapshot is released.
+static MockListSnapshot *makeMockListSnapshot(void *listHeaderPtr,
+                                                int64_t element_kind,
+                                                int64_t element_size) {
+    auto *snap = new MockListSnapshot{};
+    snap->element_size = element_size;
+    snap->element_kind = static_cast<int8_t>(element_kind);
+    snap->len = 0;
+    snap->data = nullptr;
+    if (!listHeaderPtr) return snap;
+    auto *header = static_cast<ListHeader *>(listHeaderPtr);
+    int64_t len = header->len;
+    snap->len = len;
+    if (len > 0 && element_size > 0) {
+        size_t totalBytes = static_cast<size_t>(len) *
+                            static_cast<size_t>(element_size);
+        snap->data = checked_malloc(totalBytes);
+        std::memcpy(snap->data, header->data, totalBytes);
+        if (element_kind == 4) {
+            // str: retain each element handle.
+            char **handles = reinterpret_cast<char **>(snap->data);
+            for (int64_t i = 0; i < len; ++i)
+                mockRetainStr(handles[i]);
+        }
+    }
+    return snap;
+}
+
+static void freeMockListSnapshot(MockListSnapshot *snap) {
+    if (!snap) return;
+    if (snap->data) {
+        if (snap->element_kind == 4) {
+            char **handles = reinterpret_cast<char **>(snap->data);
+            for (int64_t i = 0; i < snap->len; ++i)
+                mockReleaseStr(handles[i]);
+        }
+        std::free(snap->data);
+    }
+    delete snap;
 }
 
 extern "C" {
@@ -179,6 +247,7 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     auto &entry = g_mock_registry[name];
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
+    for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = fn_ptr;
 }
@@ -188,6 +257,7 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     auto &entry = g_mock_registry[name];
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
+    for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
@@ -241,6 +311,25 @@ void __ry_mock_store_arg(void *record, int64_t kind, int64_t value,
     }
 }
 
+void __ry_mock_store_arg_list(void *record, void *listHeaderPtr,
+                                int64_t element_kind, int64_t element_size,
+                                const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockListSnapshot(listHeaderPtr, element_kind, element_size);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({6, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_list_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_list_snapshot(void *listHeaderPtr, int64_t element_kind,
+                                     int64_t element_size) {
+    return makeMockListSnapshot(listHeaderPtr, element_kind, element_size);
+}
+
 static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
                           int64_t expectedValue) {
     if (recorded.kind != expectedKind) return false;
@@ -254,6 +343,35 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
         if (la != lb) return false;
         return memcmp(a, b, static_cast<size_t>(la)) == 0;
     }
+    if (recorded.kind == 6) {
+        auto *a = reinterpret_cast<MockListSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockListSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        if (a->len != b->len) return false;
+        if (a->element_kind != b->element_kind) return false;
+        if (a->len == 0) return true;
+        if (a->element_kind == 4) {
+            char **ha = reinterpret_cast<char **>(a->data);
+            char **hb = reinterpret_cast<char **>(b->data);
+            for (int64_t i = 0; i < a->len; ++i) {
+                const char *sa = ha[i];
+                const char *sb = hb[i];
+                if (sa == sb) continue;
+                if (!sa || !sb) return false;
+                int64_t la = stringByteLen(sa);
+                int64_t lb = stringByteLen(sb);
+                if (la != lb) return false;
+                if (std::memcmp(sa, sb, static_cast<size_t>(la)) != 0)
+                    return false;
+            }
+            return true;
+        }
+        if (a->element_size != b->element_size) return false;
+        return std::memcmp(a->data, b->data,
+                            static_cast<size_t>(a->len) *
+                                static_cast<size_t>(a->element_size)) == 0;
+    }
     return recorded.value == expectedValue;
 }
 
@@ -261,19 +379,29 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                         const int64_t *kinds,
                                         const int64_t *values) {
     auto it = g_mock_registry.find(name);
-    if (it == g_mock_registry.end()) return 0;
     int64_t matched = 0;
-    for (const auto &call : it->second.calls) {
-        if (static_cast<int64_t>(call.args.size()) != numArgs) continue;
-        bool ok = true;
-        for (int64_t i = 0; i < numArgs; ++i) {
-            if (!mockArgEqual(call.args[static_cast<size_t>(i)],
-                              kinds[i], values[i])) {
-                ok = false;
-                break;
+    if (it != g_mock_registry.end()) {
+        for (const auto &call : it->second.calls) {
+            if (static_cast<int64_t>(call.args.size()) != numArgs) continue;
+            bool ok = true;
+            for (int64_t i = 0; i < numArgs; ++i) {
+                if (!mockArgEqual(call.args[static_cast<size_t>(i)],
+                                  kinds[i], values[i])) {
+                    ok = false;
+                    break;
+                }
             }
+            if (ok) ++matched;
         }
-        if (ok) ++matched;
+    }
+    // Take ownership of caller-supplied snapshots regardless of whether the
+    // mock is registered, so the verify path is leak-free even when the mock
+    // was never set.
+    for (int64_t i = 0; i < numArgs; ++i) {
+        if (kinds[i] == 6) {
+            freeMockListSnapshot(
+                reinterpret_cast<MockListSnapshot *>(values[i]));
+        }
     }
     return matched;
 }
@@ -283,6 +411,7 @@ void __ry_mock_clear_all() {
         auto &entry = kv.second;
         mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
         for (char *s : entry.retained_str_args) mockReleaseStr(s);
+        for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
     }
     g_mock_registry.clear();
 }

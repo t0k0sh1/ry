@@ -21,6 +21,18 @@ fn boolFlip(b: bool) -> bool:
 fn lookup(key: str) -> str:
   return key
 
+fn takesIntList(xs: List<int>) -> int:
+  return len(xs)
+
+fn takesStrList(xs: List<str>) -> int:
+  return len(xs)
+
+fn takesFloatList(xs: List<float>) -> int:
+  return len(xs)
+
+fn takesBoolList(xs: List<bool>) -> int:
+  return len(xs)
+
 @describe("mock")
 fn mockTests():
   @it("should replace function")
@@ -157,3 +169,60 @@ fn verifyCalledWithTests():
     expect(verifyCalledWith("compute", 11)).toEq(2)
     expect(verifyCalledWith("compute", 22)).toEq(1)
     expect(verifyCalledWith("compute", 33)).toEq(0)
+  @it("should count calls matching List<int> argument")
+  fn shouldCountListIntArg():
+    mock("takesIntList", (xs: List<int>) => len(xs))
+    takesIntList([1, 2, 3])
+    takesIntList([1, 2, 3])
+    takesIntList([1, 2])
+    expect(verifyCalledWith("takesIntList", [1, 2, 3])).toEq(2)
+    expect(verifyCalledWith("takesIntList", [1, 2])).toEq(1)
+    expect(verifyCalledWith("takesIntList", [9, 9, 9])).toEq(0)
+  @it("should count calls matching List<str> argument")
+  fn shouldCountListStrArg():
+    mock("takesStrList", (xs: List<str>) => len(xs))
+    takesStrList(["a", "b"])
+    takesStrList(["a", "b"])
+    takesStrList(["c"])
+    expect(verifyCalledWith("takesStrList", ["a", "b"])).toEq(2)
+    expect(verifyCalledWith("takesStrList", ["c"])).toEq(1)
+    expect(verifyCalledWith("takesStrList", ["x"])).toEq(0)
+  @it("should count calls matching List<float> argument")
+  fn shouldCountListFloatArg():
+    mock("takesFloatList", (xs: List<float>) => len(xs))
+    takesFloatList([1.5, 2.5])
+    takesFloatList([1.5, 2.5])
+    takesFloatList([3.14])
+    expect(verifyCalledWith("takesFloatList", [1.5, 2.5])).toEq(2)
+    expect(verifyCalledWith("takesFloatList", [3.14])).toEq(1)
+    expect(verifyCalledWith("takesFloatList", [0.0])).toEq(0)
+  @it("should count calls matching List<bool> argument")
+  fn shouldCountListBoolArg():
+    mock("takesBoolList", (xs: List<bool>) => len(xs))
+    takesBoolList([true, false])
+    takesBoolList([true, false])
+    takesBoolList([true])
+    expect(verifyCalledWith("takesBoolList", [true, false])).toEq(2)
+    expect(verifyCalledWith("takesBoolList", [true])).toEq(1)
+    expect(verifyCalledWith("takesBoolList", [false])).toEq(0)
+  @it("should distinguish List arguments by length")
+  fn shouldDistinguishListByLength():
+    mock("takesIntList", (xs: List<int>) => len(xs))
+    takesIntList([1, 2])
+    takesIntList([1, 2, 3])
+    expect(verifyCalledWith("takesIntList", [1, 2])).toEq(1)
+    expect(verifyCalledWith("takesIntList", [1, 2, 3])).toEq(1)
+  @it("should distinguish List arguments by element value")
+  fn shouldDistinguishListByElement():
+    mock("takesIntList", (xs: List<int>) => len(xs))
+    takesIntList([1, 2])
+    takesIntList([1, 3])
+    expect(verifyCalledWith("takesIntList", [1, 2])).toEq(1)
+    expect(verifyCalledWith("takesIntList", [1, 3])).toEq(1)
+  @it("should match empty List argument")
+  fn shouldMatchEmptyListArg():
+    mock("takesIntList", (xs: List<int>) => len(xs))
+    empty1: List<int> = []
+    takesIntList(empty1)
+    expect(verifyCalledWith("takesIntList", empty1)).toEq(1)
+    expect(verifyCalledWith("takesIntList", [1])).toEq(0)
