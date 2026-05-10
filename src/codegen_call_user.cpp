@@ -381,7 +381,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         //   8=map  (snapshot ptr; #1705 — unordered key->value; key/val kind ∈ {1..4}),
         //   9=record (snapshot ptr; #1706 — per-slot compare; field kind ∈ {1..4}),
         //  10=tuple  (snapshot ptr; #1706 — per-slot compare; element kind ∈ {1..4}),
-        //  11=fn (reserved).
+        //  11=fn    (snapshot ptr; #1707 — pointer-equality on {thunk, env}).
         llvm::FunctionType *mockBeginRecTy =
             llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
@@ -735,6 +735,38 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                     }
                 }
                 if (emittedRecordOrTuple) continue;
+            }
+            // Fn-typed arg path (#1707): if the declared param type is a
+            // function type, argVals[i] is the post-wrapFnTypedArgs uniform
+            // closure pointer (`{thunk_ptr, env_ptr, env_dtor_ptr}`). Extract
+            // the {thunk_ptr, env_ptr} pair and record as kind=11. env_dtor is
+            // determined by thunk and omitted. Pointer-equality compare lives
+            // in mockArgEqual's kind-11 branch.
+            if (matchedEntry && i < matchedEntry->paramTypeNames.size()) {
+                std::string declared = resolveTypeAlias(
+                    matchedEntry->paramTypeNames[i]);
+                if (isFunctionTypeName(declared) && argTy == ptrTy_) {
+                    auto *ucTy = getUniformClosureTy();
+                    llvm::Value *thunkField = builder_.CreateStructGEP(
+                        ucTy, argVal, 0, "mock_fn.thunk_gep");
+                    llvm::Value *envField = builder_.CreateStructGEP(
+                        ucTy, argVal, 1, "mock_fn.env_gep");
+                    llvm::Value *thunkPtr = builder_.CreateLoad(
+                        ptrTy_, thunkField, "mock_fn.thunk");
+                    llvm::Value *envPtr = builder_.CreateLoad(
+                        ptrTy_, envField, "mock_fn.env");
+                    llvm::FunctionType *mockStoreArgFnTy =
+                        llvm::FunctionType::get(
+                            llvm::Type::getVoidTy(*ctx_),
+                            {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+                    llvm::FunctionCallee mockStoreArgFnFn =
+                        mod_->getOrInsertFunction(
+                            "__ry_mock_store_arg_fn", mockStoreArgFnTy);
+                    builder_.CreateCall(
+                        mockStoreArgFnFn,
+                        {callRec, thunkPtr, envPtr, nameStr});
+                    continue;
+                }
             }
             int64_t kind = 5;
             llvm::Value *valI64 = llvm::ConstantInt::get(i64Ty_, 0);

@@ -43,7 +43,8 @@ const char *__ry_test_current_it_name() { return g_current_it_buf; }
 //   8 = map      (ptr to MockMapSnapshot, unordered key->value cmp) — #1705
 //   9 = record   (ptr to MockRecordSnapshot, per-slot compare)      — #1706
 //  10 = tuple    (ptr to MockTupleSnapshot, per-slot compare)       — #1706
-//  11 = fn       (reserved for sibling sub-issue)
+//  11 = fn       (ptr to MockFnSnapshot; pointer-equality on        — #1707
+//                {thunk_ptr, env_ptr})
 struct MockArg {
     int64_t kind;
     int64_t value;
@@ -134,6 +135,19 @@ struct MockTupleSnapshot {
     int64_t *element_values;
 };
 
+// Per-fn argument snapshot for verifyCalledWith (#1707). Identity is the
+// pair {thunk_ptr, env_ptr} extracted from the uniform closure struct
+// `{thunk, env, env_dtor}` produced by wrapAsUniformClosure (env_dtor is
+// determined by thunk and omitted). Pointer equality only — no ARC retain
+// (issue #1707 explicit). Two source-level identical-but-independently-
+// constructed lambdas produce different forwarding/capturing thunks via
+// forwarding_thunk_cache_ / capturing_thunk_cache_ keyed on `realFn`, so
+// they compare not-equal as required by AC 2.
+struct MockFnSnapshot {
+    void *thunk_ptr;
+    void *env_ptr;
+};
+
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
 // or closure thunk). env_ptr / env_dtor are non-null only for capture-based
 // closures (#1678): the dispatch site reads env_ptr via __ry_mock_get_env
@@ -149,6 +163,7 @@ struct MockEntry {
     std::vector<MockMapSnapshot *> retained_map_snapshots;
     std::vector<MockRecordSnapshot *> retained_record_snapshots;
     std::vector<MockTupleSnapshot *> retained_tuple_snapshots;
+    std::vector<MockFnSnapshot *> retained_fn_snapshots;
 };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
 
@@ -420,6 +435,19 @@ static void freeMockTupleSnapshot(MockTupleSnapshot *snap) {
     delete snap;
 }
 
+// Build an fn-arg snapshot (#1707). thunk_ptr / env_ptr are extracted by the
+// caller from the uniform closure struct `{thunk, env, env_dtor}`. Pointer
+// equality only — no ARC retain on env (issue explicit; closure env lifetime
+// is owned by the caller's scope).
+static MockFnSnapshot *makeMockFnSnapshot(void *thunk_ptr, void *env_ptr) {
+    auto *snap = new MockFnSnapshot{};
+    snap->thunk_ptr = thunk_ptr;
+    snap->env_ptr = env_ptr;
+    return snap;
+}
+
+static void freeMockFnSnapshot(MockFnSnapshot *snap) { delete snap; }
+
 extern "C" {
 void __ry_arc_free_counted(void *header_ptr);
 }
@@ -520,6 +548,7 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
     for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
     for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
+    for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = fn_ptr;
 }
@@ -533,6 +562,7 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
     for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
     for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
+    for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
@@ -691,6 +721,27 @@ void __ry_mock_store_arg_tuple(void *record, int64_t arity,
 void *__ry_mock_make_tuple_snapshot(int64_t arity, const int8_t *kinds,
                                       const int64_t *values) {
     return makeMockTupleSnapshot(arity, kinds, values);
+}
+
+// Recording side: store an fn-typed argument as a per-call {thunk, env}
+// snapshot (#1707). thunk_ptr / env_ptr are extracted by codegen from the
+// uniform closure struct produced by wrapAsUniformClosure. Pointer equality
+// only; no retain.
+void __ry_mock_store_arg_fn(void *record, void *thunk_ptr, void *env_ptr,
+                              const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockFnSnapshot(thunk_ptr, env_ptr);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({11, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_fn_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_fn_snapshot(void *thunk_ptr, void *env_ptr) {
+    return makeMockFnSnapshot(thunk_ptr, env_ptr);
 }
 
 static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
@@ -875,6 +926,22 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
         }
         return true;
     }
+    if (recorded.kind == 11) {
+        // Fn: identity is the pair {thunk_ptr, env_ptr} extracted from the
+        // uniform closure struct (#1707). For non-capturing fns the env is
+        // null on both sides; for capturing closures the env pointer is the
+        // ARC-managed env data ptr, which is unique per `let g = makeAdder(5)`
+        // invocation. forwarding_thunk_cache_ / capturing_thunk_cache_ ensure
+        // that a single source-level lambda always maps to one thunk, so:
+        //   - same source-level fn passed twice → match
+        //   - different source-level fns → different thunks → no match
+        //   - same `makeAdder` invoked twice → same thunk + different envs → no match
+        auto *a = reinterpret_cast<MockFnSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockFnSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        return a->thunk_ptr == b->thunk_ptr && a->env_ptr == b->env_ptr;
+    }
     if (recorded.kind == 10) {
         // Tuple: identity is (arity + per-element kinds + per-element values).
         // No declared name; arity mismatch is a compile-time reject (Stage 2)
@@ -944,6 +1011,9 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
         } else if (kinds[i] == 10) {
             freeMockTupleSnapshot(
                 reinterpret_cast<MockTupleSnapshot *>(values[i]));
+        } else if (kinds[i] == 11) {
+            freeMockFnSnapshot(
+                reinterpret_cast<MockFnSnapshot *>(values[i]));
         }
     }
     return matched;
@@ -958,6 +1028,7 @@ void __ry_mock_clear_all() {
         for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
         for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
         for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
+        for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
     }
     g_mock_registry.clear();
 }

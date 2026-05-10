@@ -330,18 +330,32 @@ fn verifyCalledWithTests():
         expect(verifyCalledWith("takesStrIntMap", {"b": 2, "a": 1})).toEq(1)
         expect(verifyCalledWith("takesStrIntMap", {"c": 3})).toEq(1)
         expect(verifyCalledWith("takesStrIntMap", {"x": 9})).toEq(0)
+
+    @it("should match fn-typed argument by pointer equality")
+    fn shouldCountFnMatching():
+        mock("takesFn", (f: fn(int) -> int) => f(0))
+        lam = (x: int) => x + 1
+        takesFn(lam)
+        takesFn(lam)
+        # Same closure value → match.
+        expect(verifyCalledWith("takesFn", lam)).toEq(2)
+        # Independently constructed structurally identical lambda
+        # → no match (different thunk pointer).
+        other = (x: int) => x + 1
+        expect(verifyCalledWith("takesFn", other)).toEq(0)
 ```
 
 - Requires `from testing import verifyCalledWith`
 - The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
 - The function must already be mocked via `mock(...)` before `verifyCalledWith` is called; calling on a non-mocked function is a compile error.
 - The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
-- Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703), `Set<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1704), `Map<K, V>` where `K, V ∈ {int, float, bool, str}` (since v0.0.22, #1705), record types whose fields are all in `{int, float, bool, str}` (since v0.0.22, #1706), and tuple types whose elements are all in `{int, float, bool, str}` (since v0.0.22, #1706). Other types (nested `List<List<T>>`, records or tuples containing collections, function values) are rejected at compile time and are tracked for v0.0.x follow-up.
+- Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703), `Set<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1704), `Map<K, V>` where `K, V ∈ {int, float, bool, str}` (since v0.0.22, #1705), record types whose fields are all in `{int, float, bool, str}` (since v0.0.22, #1706), tuple types whose elements are all in `{int, float, bool, str}` (since v0.0.22, #1706), and `fn(...) -> R` (function-typed) arguments compared by pointer equality (since v0.0.22, #1707). Other types (nested `List<List<T>>`, records or tuples containing collections) are rejected at compile time and are tracked for v0.0.x follow-up.
 - `List<T>` arguments are compared by deep snapshot: the recorded call snapshot and the verify-side snapshot must agree on length and element-wise equality. Element comparison is byte-exact for `int` / `float` / `bool` and uses NUL-safe length+`memcmp` for `str`.
 - `Set<T>` arguments are compared by **unordered** deep snapshot: the recorded and verify-side snapshots must have the same length and the same elements as a set, but element order is irrelevant (e.g. recording `{1, 2, 3}` matches `verifyCalledWith("f", {3, 2, 1})`). Per-element comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
 - `Map<K, V>` arguments are compared by **unordered** deep snapshot of the {key → value} pairs: the recorded and verify-side snapshots must have the same length and the same key set, with each key mapping to the same value across the two maps. Insertion order is irrelevant (e.g. recording `{"a": 1, "b": 2}` matches `verifyCalledWith("f", {"b": 2, "a": 1})`). Per-key and per-value comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
 - Record arguments are compared by declared **type name** plus field-by-field equality. Two records with structurally identical fields but different declared names (e.g. `Point(1, 2)` vs `Vec(1, 2)`) do not match and are rejected at compile time when the parameter type is fixed. Per-field comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
 - Tuple arguments are compared by **arity** plus element-by-element equality. Tuples with different arity do not match and are rejected at compile time. Per-element comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
+- `fn(...) -> R` arguments are compared by **pointer equality** on the `{thunk_ptr, env_ptr}` pair extracted from the uniform closure struct, not by structural / behavioral equivalence. Two independently constructed lambdas that happen to be structurally identical (e.g. `(x: int) => x + 1` written twice on different source lines) do not match — only the same closure value (a single named `let f = ...` flowing into both the recorded call and the verify side, or two `let` aliases of the same bare `@public fn`) matches. Capture closures with different captured environments (e.g. `makeAdder(5)` vs `makeAdder(6)`) are distinguished by the per-instance `env_ptr` even though they share a single cached capturing thunk. The fn signature itself is opaque to `verifyCalledWith` — only the pointer pair matters.
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 
