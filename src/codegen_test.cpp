@@ -804,7 +804,12 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     else if (argSetElemTy == f64Ty_) argElemName = "float";
                     else if (argSetElemTy == i1Ty_ || argSetElemTy == i8Ty_)
                         argElemName = "bool";
-                    else if (argSetElemTy == ptrTy_) argElemName = "str";
+                    // Mirror the record-side gate (codegen_call_user.cpp):
+                    // do not infer str from a bare ptr element type so
+                    // unsupported pointer-backed sets surface as a clear
+                    // "Set<>" mismatch instead of being miscompared as
+                    // Set<str>. emitSetLiteral stamps set_elem_type_name
+                    // = "str" via anyElemIsStrLike for plain literals.
                 }
                 std::string argElemResolved = resolveTypeAlias(argElemName);
                 if (argElemResolved != paramSetInner) {

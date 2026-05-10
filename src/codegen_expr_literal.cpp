@@ -530,6 +530,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     // Retain fires inside insertBB so dedup-skipped iterations do not
     // double-retain.
     bool anyElemIsStr = false;
+    // Track str-typed elements (handles + immortal literal globals) so the
+    // post-loop set_elem_type_name = "str" stamp fires for plain literals
+    // like {"a", "b"} (#1704). isStrHandle excludes immortal globals from
+    // cachedGlobalString, so callers downstream (verifyCalledWith record
+    // path) need a wider signal — isStringValue rules out known-non-str
+    // pointers (collections, resources, closures) by inspecting metadata.
+    bool anyElemIsStrLike = false;
 
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
@@ -549,6 +556,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         const bool elemIsStr =
             elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
         anyElemIsStr = anyElemIsStr || elemIsStr;
+        if (elemTy == ptrTy_ && isStringValue(vals[static_cast<size_t>(i)]))
+            anyElemIsStrLike = true;
         if (setElemNeedsRetain || elemIsStr)
             retainArcValue(vals[static_cast<size_t>(i)]);
         builder_.CreateStore(vals[static_cast<size_t>(i)], ep);
@@ -562,7 +571,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         builder_.SetInsertPoint(nextBB);
     }
 
-    if (elemTy == ptrTy_ && setElemName.empty() && anyElemIsStr)
+    if (elemTy == ptrTy_ && setElemName.empty() && (anyElemIsStr || anyElemIsStrLike))
         getOrCreateMeta(headerPtr).set_elem_type_name = "str";
 
     return headerPtr;

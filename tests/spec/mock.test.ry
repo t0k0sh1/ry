@@ -256,6 +256,14 @@ fn verifyCalledWithTests():
     expect(verifyCalledWith("takesStrSet", {"a", "b"})).toEq(2)
     expect(verifyCalledWith("takesStrSet", {"c"})).toEq(1)
     expect(verifyCalledWith("takesStrSet", {"x"})).toEq(0)
+  @it("should match Set<str> with embedded NUL via length+memcmp")
+  fn shouldMatchSetStrEmbeddedNul():
+    mock("takesStrSet", (xs: Set<str>) => len(xs))
+    takesStrSet({"a\0b", "c"})
+    takesStrSet({"a", "b"})
+    expect(verifyCalledWith("takesStrSet", {"c", "a\0b"})).toEq(1)
+    expect(verifyCalledWith("takesStrSet", {"a", "c"})).toEq(0)
+    expect(verifyCalledWith("takesStrSet", {"a\0b"})).toEq(0)
   @it("should count calls matching Set<float> argument")
   fn shouldCountSetFloatArg():
     mock("takesFloatSet", (xs: Set<float>) => len(xs))

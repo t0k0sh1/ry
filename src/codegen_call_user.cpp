@@ -461,7 +461,13 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                         else if (setElemTy == f64Ty_) elemKind = 2;
                         else if (setElemTy == i1Ty_ || setElemTy == i8Ty_)
                             elemKind = 3;
-                        else if (setElemTy == ptrTy_) elemKind = 4;
+                        // Do not infer str from a bare ptr element type:
+                        // unknown pointer-backed elements stay opaque (kind
+                        // 5) so List/Map/Set/closure-backed sets cannot
+                        // sneak through the kind-4 path. emitSetLiteral
+                        // stamps set_elem_type_name = "str" via
+                        // anyElemIsStrLike for bare-literal Set<str>, so
+                        // the elemName == "str" branch above covers them.
                     }
                     if (elemKind != 0) {
                         const llvm::DataLayout &dl = mod_->getDataLayout();
