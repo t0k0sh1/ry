@@ -149,7 +149,8 @@ protected:
         Program prog = parser.parseProgram();
 
         CodeGen cg(true);  // test_mode = true
-        cg.setTestingIntrinsicsImported({"expect", "mock", "fail", "it", "describe"});
+        cg.setTestingIntrinsicsImported({"expect", "mock", "fail", "it", "describe",
+                                          "verifyCalledWith"});
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
     }

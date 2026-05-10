@@ -372,9 +372,12 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         emitMockRequireChecks();
         builder_.CreateCall(mockIncFn, {nameStr});
 
-        // Record call args for verifyCalledWith(name, ...). Kinds: 1=int,
-        // 2=float (bitcast f64->i64), 3=bool (zext i1->i64), 4=str (ptr->i64),
-        // 5=opaque (unsupported in v1; never matches a verifyCalledWith query).
+        // Record call args for verifyCalledWith(name, ...). Mock kind tags:
+        //   1=int (raw i64), 2=float (bitcast f64->i64), 3=bool (zext i1->i64),
+        //   4=str (ptr->i64, retain handle),
+        //   5=opaque (unsupported in v1; never matches a verifyCalledWith query),
+        //   6=list (snapshot ptr; #1703 — element kind ∈ {1..4}),
+        //   7=set, 8=map, 9=record, 10=tuple, 11=fn (reserved).
         llvm::FunctionType *mockBeginRecTy =
             llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
@@ -384,6 +387,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             {ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
         llvm::FunctionCallee mockStoreArgFn = mod_->getOrInsertFunction(
             "__ry_mock_store_arg", mockStoreArgTy);
+        llvm::FunctionType *mockStoreArgListTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_),
+            {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
+        llvm::FunctionCallee mockStoreArgListFn = mod_->getOrInsertFunction(
+            "__ry_mock_store_arg_list", mockStoreArgListTy);
         llvm::Value *callRec = builder_.CreateCall(
             mockBeginRecFn, {nameStr}, "mock_call_rec");
 
@@ -393,6 +401,44 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         for (size_t i = 0; i < recordCount; ++i) {
             llvm::Value *argVal = argVals[i];
             llvm::Type *argTy = argVal->getType();
+            // List<T> arg path (#1703): when T ∈ {int, float, bool, str},
+            // record via __ry_mock_store_arg_list which deep-copies the
+            // element buffer into a MockListSnapshot. Other element types
+            // (nested list, Map, record, …) fall through to kind=5 opaque.
+            if (argTy == ptrTy_) {
+                llvm::Type *listElemTy = getListElementType(argVal);
+                if (listElemTy != nullptr) {
+                    const auto *meta = getMeta(argVal);
+                    std::string elemName =
+                        meta ? meta->list_elem_type_name : std::string();
+                    int64_t elemKind = 0;
+                    if (elemName == "int") elemKind = 1;
+                    else if (elemName == "float") elemKind = 2;
+                    else if (elemName == "bool") elemKind = 3;
+                    else if (elemName == "str") elemKind = 4;
+                    else if (elemName.empty()) {
+                        // Fall back to LLVM type when the source-level name
+                        // was not stamped (literal `[1, 2, 3]` may not always
+                        // carry a name on every codepath).
+                        if (listElemTy == i64Ty_) elemKind = 1;
+                        else if (listElemTy == f64Ty_) elemKind = 2;
+                        else if (listElemTy == i1Ty_ || listElemTy == i8Ty_)
+                            elemKind = 3;
+                        else if (listElemTy == ptrTy_) elemKind = 4;
+                    }
+                    if (elemKind != 0) {
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
+                        builder_.CreateCall(
+                            mockStoreArgListFn,
+                            {callRec, argVal,
+                             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
+                             llvm::ConstantInt::get(i64Ty_, elemSize, false),
+                             nameStr});
+                        continue;
+                    }
+                }
+            }
             int64_t kind = 5;
             llvm::Value *valI64 = llvm::ConstantInt::get(i64Ty_, 0);
             if (argTy == i64Ty_) {

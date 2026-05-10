@@ -282,6 +282,9 @@ from testing import it, describe, mock, verifyCalledWith, expect
 fn compute(x: int) -> int:
     return x * 2
 
+fn takesIntList(xs: List<int>) -> int:
+    return len(xs)
+
 @describe("verifyCalledWith")
 fn verifyCalledWithTests():
     @it("should count calls matching argument")
@@ -293,13 +296,24 @@ fn verifyCalledWithTests():
         expect(verifyCalledWith("compute", 5)).toEq(2)
         expect(verifyCalledWith("compute", 7)).toEq(1)
         expect(verifyCalledWith("compute", 999)).toEq(0)
+
+    @it("should count calls matching List<int> argument")
+    fn shouldCountListIntMatching():
+        mock(takesIntList, (xs: List<int>) => len(xs))
+        takesIntList([1, 2, 3])
+        takesIntList([1, 2, 3])
+        takesIntList([1, 2])
+        expect(verifyCalledWith("takesIntList", [1, 2, 3])).toEq(2)
+        expect(verifyCalledWith("takesIntList", [1, 2])).toEq(1)
+        expect(verifyCalledWith("takesIntList", [9, 9, 9])).toEq(0)
 ```
 
 - Requires `from testing import verifyCalledWith`
 - The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
 - The function must already be mocked via `mock(...)` before `verifyCalledWith` is called; calling on a non-mocked function is a compile error.
 - The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
-- Supported argument types in v1: `int`, `float`, `bool`, `str`. Other types (`List<T>`, `Map<K, V>`, `Set<T>`, records, tuples, function values) are rejected at compile time. Tracked for v0.0.x follow-up.
+- Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), and `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703). Other types (`Set<T>`, `Map<K, V>`, nested `List<List<T>>`, records, tuples, function values) are rejected at compile time and are tracked for v0.0.x follow-up.
+- `List<T>` arguments are compared by deep snapshot: the recorded call snapshot and the verify-side snapshot must agree on length and element-wise equality. Element comparison is byte-exact for `int` / `float` / `bool` and uses NUL-safe length+`memcmp` for `str`.
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 

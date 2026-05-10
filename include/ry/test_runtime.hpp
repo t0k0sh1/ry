@@ -25,6 +25,17 @@ extern "C" {
     void   *__ry_mock_begin_call_record(const char *name);
     void    __ry_mock_store_arg(void *record, int64_t kind, int64_t value,
                                  const char *mockName);
+    // Record a List<T> argument by deep-copying the element buffer into a
+    // MockListSnapshot. element_kind ∈ {1=int, 2=float, 3=bool, 4=str}.
+    // element_size is the per-element stride supplied by codegen via DataLayout.
+    void    __ry_mock_store_arg_list(void *record, void *listHeaderPtr,
+                                      int64_t element_kind, int64_t element_size,
+                                      const char *mockName);
+    // Build an expected-value snapshot for verifyCalledWith. The returned
+    // pointer's ownership is transferred to __ry_mock_count_matching_calls,
+    // which frees it after comparison.
+    void   *__ry_mock_make_list_snapshot(void *listHeaderPtr, int64_t element_kind,
+                                          int64_t element_size);
     int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                             const int64_t *kinds,
                                             const int64_t *values);
