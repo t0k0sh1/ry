@@ -30,7 +30,7 @@ static std::string currentIndent(int extra = 0) {
 static char g_current_it_buf[256];
 const char *__ry_test_current_it_name() { return g_current_it_buf; }
 
-// Per-call argument record for argument-level mock verification (#1677, #1703).
+// Per-call argument record for argument-level mock verification (#1677, #1703, #1704).
 // Mock kind tag space — keep in sync with codegen_call_user.cpp:
 //   1 = int      (raw i64)                                     — v1 (#1677)
 //   2 = float    (bitcast f64 -> i64)                          — v1 (#1677)
@@ -38,7 +38,7 @@ const char *__ry_test_current_it_name() { return g_current_it_buf; }
 //   4 = str      (ptr   -> i64, retain handle)                 — v1 (#1677)
 //   5 = opaque   (placeholder, never matches a verify query)
 //   6 = list     (ptr to MockListSnapshot)                     — #1703
-//   7 = set      (reserved for sibling sub-issue)
+//   7 = set      (ptr to MockListSnapshot, unordered compare)  — #1704
 //   8 = map      (reserved for sibling sub-issue)
 //   9 = record   (reserved for sibling sub-issue)
 //  10 = tuple    (reserved for sibling sub-issue)
@@ -51,16 +51,30 @@ struct MockCallRecord {
     std::vector<MockArg> args;
 };
 
-// Per-list-arg snapshot for verifyCalledWith (#1703).
+// Per-collection-arg snapshot for verifyCalledWith (#1703, #1704).
 // element_kind: 1=int, 2=float, 3=bool, 4=str (mock kind space).
 // element_size: per-element stride supplied by codegen via DataLayout.
 // data: deep-copied buffer of len * element_size bytes; for str elements,
 // each char* slot is a retained Ry string handle.
+// Shape is shared between kind 6 (list) and kind 7 (set) — the kind tag
+// on the enclosing MockArg selects ordered vs unordered comparison.
 struct MockListSnapshot {
     int64_t len;
     int64_t element_size;
     int8_t  element_kind;
     void   *data;
+};
+
+// Mirror of the codegen-emitted SetHeader layout
+// (`{i64 len, i64 cap, ptr elems, i64 bucket_count, ptr buckets}`). Only
+// `len` and `elems` are read for snapshotting — `elems[0..len-1]` is the
+// dense, dedup'd element array.
+struct SetHeader {
+    int64_t len;
+    int64_t cap;
+    void   *elems;
+    int64_t bucket_count;
+    void   *buckets;
 };
 
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
@@ -130,6 +144,39 @@ static MockListSnapshot *makeMockListSnapshot(void *listHeaderPtr,
         std::memcpy(snap->data, header->data, totalBytes);
         if (element_kind == 4) {
             // str: retain each element handle.
+            char **handles = reinterpret_cast<char **>(snap->data);
+            for (int64_t i = 0; i < len; ++i)
+                mockRetainStr(handles[i]);
+        }
+    }
+    return snap;
+}
+
+// Build a deep-copy snapshot of a Set<T> argument. Reads the dense element
+// array (`SetHeader.elems[0..len-1]`) — already dedup'd by the runtime — so
+// we never iterate the bucket array. Layout-wise this is a parallel copy of
+// makeMockListSnapshot rather than a `void*` -> `ListHeader*` cast: List and
+// Set headers share the `len` offset by coincidence, but `data` for List
+// vs `elems` for Set sit at different offsets, and casting one as the other
+// would be strict-aliasing UB on the field that does differ.
+static MockListSnapshot *makeMockSetSnapshot(void *setHeaderPtr,
+                                              int64_t element_kind,
+                                              int64_t element_size) {
+    auto *snap = new MockListSnapshot{};
+    snap->element_size = element_size;
+    snap->element_kind = static_cast<int8_t>(element_kind);
+    snap->len = 0;
+    snap->data = nullptr;
+    if (!setHeaderPtr) return snap;
+    auto *header = static_cast<SetHeader *>(setHeaderPtr);
+    int64_t len = header->len;
+    snap->len = len;
+    if (len > 0 && element_size > 0) {
+        size_t totalBytes = static_cast<size_t>(len) *
+                            static_cast<size_t>(element_size);
+        snap->data = checked_malloc(totalBytes);
+        std::memcpy(snap->data, header->elems, totalBytes);
+        if (element_kind == 4) {
             char **handles = reinterpret_cast<char **>(snap->data);
             for (int64_t i = 0; i < len; ++i)
                 mockRetainStr(handles[i]);
@@ -330,6 +377,25 @@ void *__ry_mock_make_list_snapshot(void *listHeaderPtr, int64_t element_kind,
     return makeMockListSnapshot(listHeaderPtr, element_kind, element_size);
 }
 
+void __ry_mock_store_arg_set(void *record, void *setHeaderPtr,
+                              int64_t element_kind, int64_t element_size,
+                              const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockSetSnapshot(setHeaderPtr, element_kind, element_size);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({7, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_list_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_set_snapshot(void *setHeaderPtr, int64_t element_kind,
+                                    int64_t element_size) {
+    return makeMockSetSnapshot(setHeaderPtr, element_kind, element_size);
+}
+
 static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
                           int64_t expectedValue) {
     if (recorded.kind != expectedKind) return false;
@@ -372,6 +438,58 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
                             static_cast<size_t>(a->len) *
                                 static_cast<size_t>(a->element_size)) == 0;
     }
+    if (recorded.kind == 7) {
+        // Set: unordered membership comparison. Both sides are dedup'd by
+        // the runtime, so equal `len` + every element of `a` having a
+        // structurally-equal counterpart in `b` is sufficient. O(n^2) is
+        // fine for testing (no production hot path).
+        auto *a = reinterpret_cast<MockListSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockListSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        if (a->len != b->len) return false;
+        if (a->element_kind != b->element_kind) return false;
+        if (a->len == 0) return true;
+        if (a->element_kind == 4) {
+            char **ha = reinterpret_cast<char **>(a->data);
+            char **hb = reinterpret_cast<char **>(b->data);
+            for (int64_t i = 0; i < a->len; ++i) {
+                const char *sa = ha[i];
+                int64_t la = sa ? stringByteLen(sa) : 0;
+                bool found = false;
+                for (int64_t j = 0; j < b->len; ++j) {
+                    const char *sb = hb[j];
+                    if (sa == sb) { found = true; break; }
+                    if (!sa || !sb) continue;
+                    int64_t lb = stringByteLen(sb);
+                    if (la != lb) continue;
+                    if (std::memcmp(sa, sb, static_cast<size_t>(la)) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+            return true;
+        }
+        if (a->element_size != b->element_size) return false;
+        const auto stride = static_cast<size_t>(a->element_size);
+        const char *ad = static_cast<const char *>(a->data);
+        const char *bd = static_cast<const char *>(b->data);
+        for (int64_t i = 0; i < a->len; ++i) {
+            bool found = false;
+            for (int64_t j = 0; j < b->len; ++j) {
+                if (std::memcmp(ad + static_cast<size_t>(i) * stride,
+                                 bd + static_cast<size_t>(j) * stride,
+                                 stride) == 0) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
     return recorded.value == expectedValue;
 }
 
@@ -396,9 +514,10 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     }
     // Take ownership of caller-supplied snapshots regardless of whether the
     // mock is registered, so the verify path is leak-free even when the mock
-    // was never set.
+    // was never set. Both kind 6 (list) and kind 7 (set) snapshots are
+    // allocated as MockListSnapshot — freeMockListSnapshot is kind-agnostic.
     for (int64_t i = 0; i < numArgs; ++i) {
-        if (kinds[i] == 6) {
+        if (kinds[i] == 6 || kinds[i] == 7) {
             freeMockListSnapshot(
                 reinterpret_cast<MockListSnapshot *>(values[i]));
         }

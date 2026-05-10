@@ -633,8 +633,10 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
     llvm::FunctionCallee makeListSnapshotFn = mod_->getOrInsertFunction(
         "__ry_mock_make_list_snapshot", makeListSnapshotTy);
+    llvm::FunctionCallee makeSetSnapshotFn = mod_->getOrInsertFunction(
+        "__ry_mock_make_set_snapshot", makeListSnapshotTy);
 
-    auto isSupportedListElemName = [](const std::string &n) {
+    auto isSupportedCollElemName = [](const std::string &n) {
         return n == "int" || n == "float" || n == "bool" || n == "str";
     };
 
@@ -644,11 +646,13 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 ? resolveTypeAlias(entry.paramTypeNames[i])
                 : std::string{};
         const bool paramIsList = isListTypeName(declaredParamName);
+        const bool paramIsSet = !paramIsList && isSetTypeName(declaredParamName);
         std::string paramListInner;
+        std::string paramSetInner;
         if (paramIsList) {
             paramListInner = resolveTypeAlias(
                 declaredParamName.substr(5, declaredParamName.size() - 6));
-            if (!isSupportedListElemName(paramListInner)) {
+            if (!isSupportedCollElemName(paramListInner)) {
                 std::string msg = "verifyCalledWith: parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
@@ -656,6 +660,20 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 msg += "' has type '";
                 msg += declaredParamName;
                 msg += "'; only List<int>, List<float>, List<bool>, List<str> "
+                       "are supported";
+                codegenError(msg);
+            }
+        } else if (paramIsSet) {
+            paramSetInner = resolveTypeAlias(
+                declaredParamName.substr(4, declaredParamName.size() - 5));
+            if (!isSupportedCollElemName(paramSetInner)) {
+                std::string msg = "verifyCalledWith: parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'; only Set<int>, Set<float>, Set<bool>, Set<str> "
                        "are supported";
                 codegenError(msg);
             }
@@ -669,7 +687,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             msg += "' has type '";
             msg += declaredParamName;
             msg += "'; only int, float, bool, str, List<int>, List<float>, "
-                   "List<bool>, List<str> are supported";
+                   "List<bool>, List<str>, Set<int>, Set<float>, Set<bool>, "
+                   "Set<str> are supported";
             codegenError(msg);
         }
 
@@ -689,18 +708,21 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             }
         }
 
-        // Explicit list-vs-scalar consistency check: argTy != expectedTy
-        // above only compares LLVM types, but List<T> / str / Map / Set all
+        // Explicit collection-vs-scalar consistency check: argTy != expectedTy
+        // above only compares LLVM types, but List<T> / Set<T> / str / Map all
         // resolve to ptrTy_ under opaque pointers. Distinguish explicitly via
         // metadata so a List<int> parameter does not silently accept a str
         // argument (and vice versa).
         if (argTy == ptrTy_) {
             llvm::Type *argListElemTy = getListElementType(argVal);
+            llvm::Type *argSetElemTy = getSetElementType(argVal);
             const bool argIsList = (argListElemTy != nullptr);
+            const bool argIsSet = (argSetElemTy != nullptr);
             if (paramIsList && !argIsList) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
-                msg += " is not a List but parameter ";
+                msg += argIsSet ? " is a Set" : " is not a List";
+                msg += " but parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -709,10 +731,35 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 msg += "'";
                 codegenError(msg);
             }
-            if (!paramIsList && argIsList) {
+            if (!paramIsList && !paramIsSet && argIsList) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a List but parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'";
+                codegenError(msg);
+            }
+            if (paramIsSet && !argIsSet) {
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += argIsList ? " is a List" : " is not a Set";
+                msg += " but parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'";
+                codegenError(msg);
+            }
+            if (!paramIsSet && !paramIsList && argIsSet) {
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += " is a Set but parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -748,6 +795,33 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     codegenError(msg);
                 }
             }
+            if (paramIsSet && argIsSet) {
+                const auto *meta = getMeta(argVal);
+                std::string argElemName =
+                    meta ? meta->set_elem_type_name : std::string();
+                if (argElemName.empty()) {
+                    if (argSetElemTy == i64Ty_) argElemName = "int";
+                    else if (argSetElemTy == f64Ty_) argElemName = "float";
+                    else if (argSetElemTy == i1Ty_ || argSetElemTy == i8Ty_)
+                        argElemName = "bool";
+                    else if (argSetElemTy == ptrTy_) argElemName = "str";
+                }
+                std::string argElemResolved = resolveTypeAlias(argElemName);
+                if (argElemResolved != paramSetInner) {
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " is Set<";
+                    msg += argElemName;
+                    msg += "> but parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "' has type '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+            }
         }
 
         int64_t kind = 0;
@@ -769,6 +843,23 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 "vcw_list_snap");
             kind = 6;
             valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+        } else if (paramIsSet && argTy == ptrTy_ && getSetElementType(argVal)) {
+            int64_t elemKind = 0;
+            if (paramSetInner == "int") elemKind = 1;
+            else if (paramSetInner == "float") elemKind = 2;
+            else if (paramSetInner == "bool") elemKind = 3;
+            else if (paramSetInner == "str") elemKind = 4;
+            llvm::Type *elemTy = getSetElementType(argVal);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+            llvm::Value *snap = builder_.CreateCall(
+                makeSetSnapshotFn,
+                {argVal,
+                 llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
+                 llvm::ConstantInt::get(i64Ty_, elemSize, false)},
+                "vcw_set_snap");
+            kind = 7;
+            valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
         } else if (argTy == i64Ty_) {
             kind = 1;
             valI64 = argVal;
@@ -784,7 +875,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         } else {
             codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
                          " has unsupported type; only int, float, bool, str, "
-                         "List<int>, List<float>, List<bool>, List<str> are "
+                         "List<int>, List<float>, List<bool>, List<str>, "
+                         "Set<int>, Set<float>, Set<bool>, Set<str> are "
                          "supported");
         }
 

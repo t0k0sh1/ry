@@ -33,6 +33,18 @@ fn takesFloatList(xs: List<float>) -> int:
 fn takesBoolList(xs: List<bool>) -> int:
   return len(xs)
 
+fn takesIntSet(xs: Set<int>) -> int:
+  return len(xs)
+
+fn takesStrSet(xs: Set<str>) -> int:
+  return len(xs)
+
+fn takesFloatSet(xs: Set<float>) -> int:
+  return len(xs)
+
+fn takesBoolSet(xs: Set<bool>) -> int:
+  return len(xs)
+
 @describe("mock")
 fn mockTests():
   @it("should replace function")
@@ -226,3 +238,66 @@ fn verifyCalledWithTests():
     takesIntList(empty1)
     expect(verifyCalledWith("takesIntList", empty1)).toEq(1)
     expect(verifyCalledWith("takesIntList", [1])).toEq(0)
+  @it("should count calls matching Set<int> argument")
+  fn shouldCountSetIntArg():
+    mock("takesIntSet", (xs: Set<int>) => len(xs))
+    takesIntSet({1, 2, 3})
+    takesIntSet({1, 2, 3})
+    takesIntSet({1, 2})
+    expect(verifyCalledWith("takesIntSet", {1, 2, 3})).toEq(2)
+    expect(verifyCalledWith("takesIntSet", {1, 2})).toEq(1)
+    expect(verifyCalledWith("takesIntSet", {9, 9, 9})).toEq(0)
+  @it("should count calls matching Set<str> argument")
+  fn shouldCountSetStrArg():
+    mock("takesStrSet", (xs: Set<str>) => len(xs))
+    takesStrSet({"a", "b"})
+    takesStrSet({"a", "b"})
+    takesStrSet({"c"})
+    expect(verifyCalledWith("takesStrSet", {"a", "b"})).toEq(2)
+    expect(verifyCalledWith("takesStrSet", {"c"})).toEq(1)
+    expect(verifyCalledWith("takesStrSet", {"x"})).toEq(0)
+  @it("should count calls matching Set<float> argument")
+  fn shouldCountSetFloatArg():
+    mock("takesFloatSet", (xs: Set<float>) => len(xs))
+    takesFloatSet({1.5, 2.5})
+    takesFloatSet({1.5, 2.5})
+    takesFloatSet({3.14})
+    expect(verifyCalledWith("takesFloatSet", {1.5, 2.5})).toEq(2)
+    expect(verifyCalledWith("takesFloatSet", {3.14})).toEq(1)
+    expect(verifyCalledWith("takesFloatSet", {0.0})).toEq(0)
+  @it("should count calls matching Set<bool> argument")
+  fn shouldCountSetBoolArg():
+    mock("takesBoolSet", (xs: Set<bool>) => len(xs))
+    takesBoolSet({true, false})
+    takesBoolSet({true, false})
+    takesBoolSet({true})
+    expect(verifyCalledWith("takesBoolSet", {true, false})).toEq(2)
+    expect(verifyCalledWith("takesBoolSet", {true})).toEq(1)
+    expect(verifyCalledWith("takesBoolSet", {false})).toEq(0)
+  @it("should match Set arguments unordered")
+  fn shouldMatchSetUnordered():
+    mock("takesIntSet", (xs: Set<int>) => len(xs))
+    takesIntSet({1, 2, 3})
+    expect(verifyCalledWith("takesIntSet", {3, 2, 1})).toEq(1)
+    expect(verifyCalledWith("takesIntSet", {2, 1, 3})).toEq(1)
+  @it("should distinguish Set arguments by length")
+  fn shouldDistinguishSetByLength():
+    mock("takesIntSet", (xs: Set<int>) => len(xs))
+    takesIntSet({1, 2})
+    takesIntSet({1, 2, 3})
+    expect(verifyCalledWith("takesIntSet", {1, 2})).toEq(1)
+    expect(verifyCalledWith("takesIntSet", {1, 2, 3})).toEq(1)
+  @it("should distinguish Set arguments by element value")
+  fn shouldDistinguishSetByElement():
+    mock("takesIntSet", (xs: Set<int>) => len(xs))
+    takesIntSet({1, 2})
+    takesIntSet({1, 3})
+    expect(verifyCalledWith("takesIntSet", {1, 2})).toEq(1)
+    expect(verifyCalledWith("takesIntSet", {1, 3})).toEq(1)
+  @it("should match empty Set argument")
+  fn shouldMatchEmptySetArg():
+    mock("takesIntSet", (xs: Set<int>) => len(xs))
+    emptyS: Set<int> = {}
+    takesIntSet(emptyS)
+    expect(verifyCalledWith("takesIntSet", emptyS)).toEq(1)
+    expect(verifyCalledWith("takesIntSet", {1})).toEq(0)
