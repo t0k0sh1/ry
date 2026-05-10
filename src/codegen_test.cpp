@@ -849,20 +849,11 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             // that differ silently fail to match at runtime (closure pair
             // identity can never be equal across signatures), masking bugs
             // such as passing `(s: str) => s` to a `fn(int) -> int` slot.
+            // Use parsed return type (parseFnTypeAnnotation already handles
+            // nested fn types correctly via findMatchingCloseParen) rather
+            // than raw substring scanning for "->", which would mis-parse
+            // higher-order signatures like `fn(fn(int) -> int) -> int`.
             FnTypeInfo expectedInfo = parseFnTypeAnnotation(declaredParamName);
-            std::string declaredReturnName;
-            {
-                size_t arrowPos = declaredParamName.find("->");
-                if (arrowPos != std::string::npos) {
-                    declaredReturnName = declaredParamName.substr(arrowPos + 2);
-                    size_t s = declaredReturnName.find_first_not_of(' ');
-                    if (s != std::string::npos)
-                        declaredReturnName = declaredReturnName.substr(s);
-                    size_t e = declaredReturnName.find_last_not_of(' ');
-                    if (e != std::string::npos)
-                        declaredReturnName.resize(e + 1);
-                }
-            }
             bool sigMismatch = false;
             if (expectedInfo.paramTypeNames.size() != fnInfo->paramTypeNames.size()) {
                 sigMismatch = true;
@@ -875,7 +866,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     }
                 }
                 if (!sigMismatch &&
-                    resolveTypeAlias(declaredReturnName) !=
+                    resolveTypeAlias(expectedInfo.returnTypeName) !=
                         resolveTypeAlias(fnInfo->returnTypeName)) {
                     sigMismatch = true;
                 }
