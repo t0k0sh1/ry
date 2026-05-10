@@ -6,6 +6,555 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.22] - 2026-05-10
+
+### Added
+
+- Imported the tree-sitter grammar from the standalone `tree-sitter-ry`
+  repository into this repository under a new editor-agnostic layout:
+  `docs/grammar.ebnf` is now the canonical grammar specification (single
+  source of truth) and `editor/tree-sitter/` holds the tree-sitter
+  implementation (`grammar.js`, `src/scanner.c`, `queries/highlights.scm`,
+  `tree-sitter.json`, `build.sh`, `install.sh`). Generated artifacts
+  (`parser.c`, `grammar.json`, `node-types.json`, runtime headers,
+  `bindings/`) are reproducible via `editor/tree-sitter/build.sh` and are
+  excluded from version control. (#1614)
+- Added `editor/tree-sitter/check.sh` and `editor/tree-sitter/expected-fail.txt`
+  as a Phase 1 corpus smoke-check for the in-tree tree-sitter grammar.
+  `check.sh` runs `tree-sitter parse` against every
+  `tests/spec/**/*.test.ry` and treats any `ERROR` / `MISSING` node as
+  a regression unless the file is listed in `expected-fail.txt` — the
+  single place where tolerated divergence is recorded. Files that move
+  out of the gap list automatically surface a `WARN: ... now passes`
+  on the next run so the entry can be retired in the same PR. The
+  initial `expected-fail.txt` clusters the 41 currently failing fixtures
+  into six named buckets (tuple member access, generic syntax variants,
+  lambda-block bodies, numeric literal forms, async / decorator /
+  operator-overload declarations, and other surface gaps).
+  `pre-commit-checklist` §3.6.5 now invokes `./check.sh --no-build`
+  alongside the existing `build.sh` + `install.sh --no-build` gate.
+  Phase 2 (hand-curated `tree-sitter test` corpus with S-expression
+  assertions) remains tracked in #1633. (#1617)
+- Added `editor/tree-sitter/queries/indents.scm` with the
+  nvim-treesitter rewrite capture vocabulary (`@indent.begin` /
+  `@indent.branch`) so Neovim 0.12+ users get tree-sitter-driven
+  auto-indent / auto-dedent for `.ry` files: `<CR>` after `fn foo():`
+  / `if cond:` bumps +1 indent, `else` / `else if` on its own line
+  dedents to the parent `if`, and `]` / `}` / `)` on its own line
+  returns to the opener's column. Multi-element tuples, list / map /
+  set literals, and call / index argument lists are also handled.
+  Known limitation: a parenthesized single expression spanning multiple
+  lines (e.g. `s = (
+  1
+  + 2
+)`) is parsed via the hidden
+  `_parenthesized` grammar rule, which tree-sitter inlines into the
+  parent and cannot be matched by capture queries — contents are not
+  bumped and the closing `)` does not auto-dedent.
+  `editor/tree-sitter/install.sh` now also deploys `indents.scm` to
+  `$XDG_CONFIG_HOME/nvim/queries/ry/indents.scm`. Enable per-buffer with
+  `vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"`.
+  (#1620)
+- Added `editor/tree-sitter/test/corpus/` with the Phase 2 hand-curated
+  `tree-sitter test` corpus (53 cases across 8 files: imports, functions,
+  literals, expressions, control flow, case match, lambdas, decorators).
+  Each case pairs a Ry snippet with its expected S-expression so that
+  grammar edits which silently change parse-tree shape are caught — a
+  capability the Phase 1 ERROR/MISSING smoke-check (`check.sh`, #1617)
+  cannot provide. Run with `tree-sitter test` from
+  `editor/tree-sitter/`. Coverage scope is limited to grammar surface
+  area that already parses cleanly today; gaps listed in
+  `expected-fail.txt` are intentionally excluded so the harness stays
+  green and shape regressions are unambiguous. (#1633)
+- `expect(actual).toBeCloseTo(expected)` /
+  `expect(actual).toBeCloseTo(expected, decimals)` — new test matcher
+  for float approximate equality, modeled on Jest's `toBeCloseTo`.
+  Asserts `|actual - expected| < 0.5 * 10^-decimals`, which makes
+  `expect(0.1 + 0.2).toBeCloseTo(0.3)` pass even though strict
+  `toEq` (FCmpOEQ) does not. `decimals` defaults to `2` and must be
+  a non-negative integer literal in `[0, 15]` (the upper bound is
+  tied to practical `f64` precision; larger values no longer
+  provide meaningful decimal-place guarantees because adjacent
+  representable doubles differ by more than `0.5 * 10^-decimals`).
+  Both
+  `actual` and `expected` accept `int` or `float`, and mixed
+  combinations (e.g. `expect(1).toBeCloseTo(1.0)`) are promoted to
+  `f64` before comparison. Non-numeric operands and non-literal
+  `decimals` are rejected at compile time. (#1675)
+- `expect(actual: str).toMatch(pattern: str)` — new test matcher for
+  regex string matching, modeled on Jest's `toMatch`. Internally calls
+  `__ry_regex_is_match` (unanchored search), so `expect("hello world")
+  .toMatch("world")` and `expect("v1.2.3").toMatch("^v\d+\.\d+\.\d+$")`
+  both pass. Both `actual` and `pattern` must be `str`; passing any
+  other type to `actual` (e.g. `expect(42).toMatch(...)`) is rejected
+  at compile time. An invalid regex pattern (e.g. `toMatch("(")`) is
+  surfaced as a runtime panic with the regex engine's error message,
+  matching the behavior of other `regex` stdlib calls. (#1676)
+- `verifyCalledWith(name: str, args...) -> int` testing intrinsic.
+  Returns the number of recorded mock calls whose arguments exactly
+  match `args...`, complementing `verify()` which counts all calls
+  regardless of arguments. The function name must be a string literal
+  so that the compiler can validate the remaining argument types
+  against the original function's signature. v1 supports `int`,
+  `float`, `bool`, and `str` arguments; `List<T>` / `Map<K, V>` /
+  `Set<T>` / record / tuple / function-typed arguments are rejected
+  at compile time and tracked for follow-up. Requires
+  `from testing import verifyCalledWith`. (#1677)
+- Capture-based closures can now be used as the replacement passed to
+  `mock(target, replacement)`. The closure may read or mutate
+  variables from the enclosing scope, which is the canonical pattern
+  for recording call history (e.g. appending arguments to a captured
+  `List<int>`). The captured environment is retained when the mock is
+  registered and released automatically when the `it` block ends.
+  (#1678)
+- `verifyCalledWith(name, args...)` now accepts `List<T>` arguments
+  where `T ∈ {int, float, bool, str}`. The recorded call's list is
+  deep-snapshotted at call time and compared element-wise against the
+  verify-side snapshot, so `verifyCalledWith("f", [1, 2, 3])` matches
+  only calls where `f` was invoked with a list of identical length and
+  values. `str` elements are compared NUL-safely via length+`memcmp`.
+  Mismatched arity or element types (e.g. passing `List<str>` against
+  a `List<int>` parameter, or a scalar against a `List<T>` parameter)
+  are rejected at compile time. Internally this introduces a snapshot
+  ABI (kind tag 6 = list) reserved for future `Set<T>`, `Map<K, V>`,
+  record, tuple, and function-value extensions of `verifyCalledWith`.
+  (#1703)
+- `verifyCalledWith(name, args...)` now accepts `Set<T>` arguments
+  where `T ∈ {int, float, bool, str}`. The recorded call's set is
+  deep-snapshotted at call time and compared **unordered** against the
+  verify-side snapshot, so `verifyCalledWith("f", {1, 2, 3})` matches
+  any call where `f` was invoked with a set of the same length and the
+  same elements regardless of insertion order or hash-bucket layout
+  (e.g. `{3, 2, 1}` and `{1, 2, 3}` are equivalent). `str` elements are
+  compared NUL-safely via length+`memcmp`. Mismatched arity, container
+  kind (e.g. `Set<int>` against a `List<int>` parameter, or a scalar
+  against a `Set<T>` parameter), or element types (e.g. `Set<int>`
+  against a `Set<str>` parameter) are rejected at compile time. This
+  reuses the snapshot ABI introduced in #1703 (kind tag 7 = set;
+  storage layout shared with `List<T>`, only the comparison semantics
+  differ). (#1704)
+- `verifyCalledWith(name, args...)` now accepts `Map<K, V>` arguments
+  where `K, V ∈ {int, float, bool, str}`. The recorded call's map is
+  deep-snapshotted at call time (independent copies of every key and
+  value, with `str` slots ARC-retained) and compared **unordered** by
+  key→value pair against the verify-side snapshot, so
+  `verifyCalledWith("f", {"a": 1, "b": 2})` matches any call where `f`
+  was invoked with a map having the same key set and the same value at
+  each key, regardless of insertion order or hash-bucket layout (e.g.
+  `{"b": 2, "a": 1}` and `{"a": 1, "b": 2}` are equivalent). `str` keys
+  and `str` values are compared NUL-safely via length+`memcmp`.
+  Mismatched arity, container kind (e.g. `Map<str, int>` against a
+  `List<int>` / `Set<int>` / scalar parameter), key types, or value
+  types are rejected at compile time. This reuses the snapshot ABI
+  introduced in #1703 / #1704 (kind tag 8 = map; parallel keys and
+  values arrays mirror the existing `MockListSnapshot` / `MockSetSnapshot`
+  layouts). (#1705)
+- `verifyCalledWith(name, args...)` now accepts **record** and **tuple**
+  arguments whose fields / elements are all in `{int, float, bool, str}`.
+  - Records are compared by **declared type name** plus field-by-field
+    equality. Two records with structurally identical fields but
+    different declared names (e.g. `Point(1, 2)` vs `Vec(1, 2)`) do not
+    match and are rejected at compile time when the parameter type is
+    fixed.
+  - Tuples are compared by **arity** plus element-by-element equality.
+    Tuples with different arity do not match and are rejected at
+    compile time.
+  - Each field / element is per-slot deep-snapshotted at call time
+    (independent copies; `str` slots ARC-retained) and compared
+    byte-exactly for `int` / `float` / `bool` and via length+`memcmp`
+    for `str` (NUL-safe). LLVM struct padding is sidestepped by
+    serializing each slot to an i64 value array plus an i8 kind array
+    instead of memcmp'ing the raw struct.
+  - Records or tuples whose fields / elements include nested
+    collections (`List<T>` / `Set<T>` / `Map<K, V>`), nested records,
+    nested tuples, or function values are rejected at compile time and
+    are tracked for v0.0.x follow-up. (#1706)
+- `verifyCalledWith(name, args...)` now accepts **function-typed**
+  arguments (`fn(...) -> R` parameters and capture closures), compared
+  by **pointer equality** on the underlying `{thunk_ptr, env_ptr}` pair
+  extracted from the uniform closure struct.
+  - The same closure value passed twice matches (e.g. `let g = lambda;
+    f(g); f(g); verifyCalledWith("f", g)` returns `2`); two
+    independently-constructed but structurally identical lambdas do
+    not match.
+  - Bare `@public fn` references and `let g = f` aliases share the same
+    cached forwarding thunk, so passing `f` and `g` interchangeably
+    matches as expected.
+  - Capture closures with different captured environments (e.g.
+    `makeAdder(5)` vs `makeAdder(6)`) are distinguished by the
+    per-instance `env_ptr` even though they share a single cached
+    capturing thunk.
+  - The fn-snapshot side-table holds `{thunk_ptr, env_ptr}` pairs as
+    plain copies — closure environments are not ARC-retained because
+    the issue's contract is pointer equality only; the caller scope
+    keeps the underlying closure alive for the duration of the test
+    block. (#1707)
+- Allowed `from testing import expect / mock / verify / fail / it /
+  describe` by introducing a compiler-intrinsic allow-list in
+  `ModuleLoader` and permitting the `expect` keyword (the only
+  intrinsic that lexes as a reserved token, used elsewhere by the
+  matcher statement form) at the import-name position in the parser.
+  Wildcard `from testing` is also recognized as importing all six
+  intrinsics. Names imported this way are exposed via
+  `ModuleLoader::importedTestingIntrinsics()` for the forthcoming
+  codegen-side enforcement (#713 / #715 / #716). Non-intrinsic names
+  still fail with the existing `'<name>' not found in module
+  'testing'` diagnostic. (#712)
+
+### Changed
+
+- Aligned `include/ry/codegen.hpp` and
+  `include/ry/module_loader.hpp` testing-intrinsic header comments
+  with the current allow-list (`expect` / `mock` / `fail`). The
+  pre-existing 6-name listings (`expect` / `mock` / `verify` /
+  `fail` / `it` / `describe`) had drifted from the actual
+  enforcement set after #721 (`it` / `describe` → general
+  user-directive resolution) and #722 (`verify` → Ry function).
+  Documentation-only change; no behavior or ABI impact. (#1674)
+- `verifyCalledWith(name, args...)` now enforces **exact fn signature
+  match** for function-typed arguments (`fn(...) -> R` parameters
+  introduced in #1707). Mismatched parameter count, parameter types, or
+  return type are rejected at compile time with a diagnostic that
+  includes both the recorded parameter signature and the verify-side
+  value's signature (e.g. `verifyCalledWith: argument 1 of 'takesFn' is
+  declared as fn(int) -> int but expected value has type fn(str) -> int`).
+  Previously the signature was opaque to `verifyCalledWith`, so passing
+  a fn value with a different signature compiled but always returned
+  `0` (closure pair identity could never be equal across signatures) —
+  silently masking test bugs. v1 requires exact match; variance and
+  subtyping are not supported. (#1715)
+- **Breaking**: `expect` / `mock` / `verify` / `fail` now require an
+  explicit `from testing import <name>` declaration in the test file.
+  Previously, codegen tracked which testing intrinsics were imported
+  (#713) but did not enforce the import; any `*.test.ry` file run via
+  `ry test` could call these intrinsics without declaring them. The
+  compiler now rejects unimported usage with `'<name>' requires
+  'from testing import <name>'` at codegen time, after the existing
+  test-mode check so non-test-mode usage still wins the more useful
+  "only allowed in test mode" diagnostic. All 171 in-tree spec files
+  were migrated to declare these imports under #714, so the suite
+  remains green; downstream test files that omitted the imports must
+  add them. `it` / `describe` enforcement is tracked separately under
+  #716. (#715)
+- **Breaking**: `@it("...")` and `@describe("...")` directives now
+  require an explicit `from testing import it, describe` (or the
+  subset used) declaration in the test file. Codegen rejects
+  unimported usage with `'@it' requires 'from testing import it'`
+  or `'@describe' requires 'from testing import describe'` after
+  the existing test-mode check, so non-test-mode usage still wins
+  the more useful "only allowed in test mode" diagnostic. This
+  completes the enforcement story started in #715 (which covered
+  `expect` / `mock` / `verify` / `fail`). All `tests/spec/*.test.ry`
+  files already declare these imports after the #714 migration,
+  so the Ry self-test suite remains green; downstream test files
+  that omitted the imports must add them. (#716)
+- `docs/reference/directives.md` testing-related code examples now
+  declare an explicit `from testing import ...` line at the top of
+  each `@each` / `@property` / `@it` / `@describe` block, matching
+  the codegen enforcement introduced in #715 (`expect` / `mock` /
+  `verify` / `fail`) and #716 (`@it` / `@describe`). Previously the
+  prose stated the imports were required but the example bodies
+  omitted them, so the concrete examples (Basic / Composed / Shared
+  setup / Nested) would have been rejected by codegen for missing
+  imports. Each block lists only the names it actually uses
+  (per-block tailored, including non-codegen-enforced names like
+  `each` / `property` for pedagogical consistency), matching the
+  convention already in `docs/reference/testing.md`. The "Syntax:"
+  templates use placeholder bodies (`# test body`, `# assertions`)
+  that do not parse on their own; converting those templates to
+  runnable examples is tracked in #1629. (#717)
+- `fail()` is now implemented as a Ry function in
+  `share/std/testing/testing.ry` that delegates to a new
+  `@native("testing")` runtime call (`_reportFail`) backed by a new
+  `libry_testing.dylib` shared library. The compiler still
+  special-cases the `fail` callee to inject the call-site line
+  number as the first argument (the `__LINE__` intrinsic from #705
+  was closed as `NOT_PLANNED`, so a hybrid approach keeps
+  line-number injection in codegen), but the function body itself
+  runs as ordinary Ry code. User-facing behavior is unchanged:
+  `fail()` and `fail("message")` still report the call-site line
+  number and message exactly as before, and the
+  `'fail' requires 'from testing import fail'` import-gate from
+  #715 still fires for unimported usages. (#718)
+- `@it` and `@describe` directive declarations are now resolved entirely
+  through the general user-directive import mechanism. `share/std/testing/testing.ry`
+  has carried `@directive(target=["function"])` declarations for both since #710,
+  and #716 added a parallel set-based check (`testing_intrinsics_imported_`) that
+  produced `'@it' requires 'from testing import it'` / `'@describe' requires
+  'from testing import describe'` before the directive-resolution path ran. That
+  bespoke check has been removed: usage without the import is now rejected by the
+  same `unknown directive '@<name>'` path that handles every other unimported
+  user-defined directive. The intrinsic enforcement set now tracks only `expect`,
+  `mock`, `verify`, `fail`. Existing test files that already declare
+  `from testing import it, describe` (or use a wildcard `from testing`) are
+  unaffected; the only behavioural change is the diagnostic wording for the
+  unimported case, which now reads `unknown directive '@it'` /
+  `unknown directive '@describe'`. (#721)
+- `verify()` is now an ordinary `@public fn verify(name: str) -> int`
+  in `share/std/testing/testing.ry` that delegates to a new
+  `@native("testing")` runtime call (`_mockGetCallCount`). The
+  compiler-level special cases for `verify` were removed: the
+  string-coercion sugar in the parser, the dispatch arm in
+  `codegen_call_dispatch.cpp`, and the `verify` entry in
+  `module_loader.cpp`'s testing-intrinsic allow-list are all gone.
+  `verify` now flows through the ordinary import + user-fn
+  resolution machinery — the same path used by `fail` since #718.
+  (#722)
+
+### Removed
+
+- The bare-identifier form `verify(fnName)` is no longer accepted —
+  the argument must be a string literal or `str`-typed expression
+  (e.g. `verify("fnName")`). All in-tree call sites already used the
+  string form, so no spec migration was required, but external users
+  who relied on the identifier form must quote the function name.
+  (#722)
+- Compile-time validation that the function name passed to `verify`
+  refers to a real function has been removed alongside the dispatch
+  special case. `verify("nonexistent")` now compiles cleanly and
+  returns `0` at runtime — the same value `verify` returns for any
+  function that has not been mocked / called. (#722)
+
+### Fixed
+
+- `editor/tree-sitter/grammar.js` now produces complete named nodes for
+  partially-typed block-introducing statements, so `indents.scm`
+  `@indent.begin` captures fire during live editing in Neovim. Before this
+  change, typing `fn foo():` and pressing `<CR>` left the cursor at column
+  0 because the parser wrapped the incomplete statement in `(ERROR)`,
+  dropping the `function_body` field that the indent capture matches.
+  After this change, the body of `function_body`, `if_statement`,
+  `while_statement`, `for_statement`, `case_match_statement`, and
+  `case_cond_statement` is wrapped in `optional(...)` so the prefix
+  `fn foo():` / `if cond:` / `while x:` / `for x in xs:` / `case c:` /
+  `case:` is a valid full sentence of the grammar — the parser commits to
+  the surrounding statement node as soon as it sees the `:` and the
+  capture's field predicate is satisfied. The trailing `else` clause of
+  `if_statement` additionally allows its `:` to be missing, so a bare
+  `else` typed on its own line is absorbed into the surrounding
+  `if_statement` and the existing
+  `(if_statement "else" @indent.branch)` capture dedents to the parent
+  `if`'s column. The relaxation introduces a precedence ambiguity with
+  `else if` (continue the chain vs. end the statement and start a new
+  top-level `if`), resolved by wrapping `if_statement` in
+  `prec.right(...)`. The Ry compiler continues to enforce non-empty
+  bodies at compile time; the relaxation is editor-side only and
+  intentionally diverges from `docs/grammar.ebnf` (canonical EBNF spec).
+  `case_arm` / `case_cond_arm` were not relaxed because the next-arm
+  condition can begin with `(`, which would create a parser ambiguity
+  with an inline body; the outer `case_*_statement` relaxation is
+  sufficient for the primary live-editing scenario. See
+  `editor/tree-sitter/README.md` §"Live-editing tolerance" for the full
+  table. (#1623)
+- `docs/reference/directives.md` testing-related "Syntax:" templates
+  (`@each`, `@property`, `@it`, `@describe`) no longer use placeholder
+  bodies (`# test body`, `# assertions`), placeholder type names
+  (`param1: type`), placeholder argument tuples (`(arg1, arg2, ...)`),
+  or undefined function references (`makeInputs()`) that the parser
+  rejected. All five affected blocks are now runnable examples with
+  concrete types, values, and `expect(...)` bodies, matching the
+  convention already established in `docs/reference/testing.md`.
+  Each updated block also adds `expect` to its `from testing import`
+  line. The `@each` w/ function-call block now defines a small
+  `fn makeInputs() -> List<(int, int)>` helper inline so the
+  function-call-as-argument lesson stands on its own. Companion to
+  #717, which addressed the codegen-import side of the same drift.
+  (#1629)
+- `Err(e):` bindings on `Result<ARC-type, str>` (e.g.
+  `Result<List<int>, str>`, `Result<Map<str, int>, str>`,
+  `Result<Set<int>, str>`) now preserve `str` typing on `e`. Previously,
+  metadata from the Ok side (collection element-type) leaked through the
+  bulk `propagateMeta(subjectAlloca, varAlloca)` call in
+  `emitPatternBindings`, making `e` look like a collection: `"prefix: " + e`
+  failed compilation with `operator '+' not supported between str and
+  non-str types`, and `f"prefix: {e}"` typechecked but crashed at runtime
+  with a SIGSEGV when the `Err` arm executed (the str-pointer payload was
+  dispatched through the list `valueToString` path). The fix introduces a
+  lossless `source_type_name` field on `ValueMetadata`, stamped by
+  `propagateTypeMeta` at the `Result<...>` / `Option<...>` / `T?` branch
+  entries, and routes the Ok/Err/Some pattern arms through
+  `propagateTypeMeta(innerSig, varAlloca)` instead of bulk
+  `propagateMeta`. Each binding now receives only the metadata that
+  corresponds to its actual type. `Result<int, str>`, `Result<int, int>`,
+  and the Error-typed `Err(e)` paths are unaffected. (#1638)
+- `case` expressions and statements with `Result<T, E>` or `Option<T>`
+  subjects no longer leak ARC headers across iterations. The struct
+  alloca that materializes the subject value (`{i1, T, E}` for `Result`,
+  `{i1, T}` for `Option`) is now registered with the new
+  `arc_tagged_union_vars_` side-table so that scope cleanup releases
+  the active payload slot at scope exit. Previously, the
+  construction-time retain emitted by `buildOkValue` / `buildErrValue`
+  / `buildSomeValue` had no balancing release on the subject alloca,
+  so each `case` evaluation leaked one ARC header per ARC-managed
+  active slot. The release dispatches on the runtime tag and only
+  touches ARC-managed slots, so `Result<int, int>` and `Option<int>`
+  remain zero-cost. (#1640)
+- ARC release IR is now correctly emitted on every exit path of a scope
+  that has both an early-exit (`return` / `break` / `continue` / `?`)
+  and a natural-exit path. Previously, `CodeGen::emitScopeCleanupToDepth`
+  emitted the release IR and then erased the alloca from the relevant
+  ARC side-table (`arc_managed_vars_`, `weak_managed_vars_`,
+  `arc_field_record_vars_`, `arc_tagged_union_vars_`); when an early-exit
+  cleanup ran first, the natural-exit `popScope()` found no entry and
+  emitted no IR on the fall-through path, leaking one ARC header per
+  iteration in loops with conditional early returns. The side-table
+  erase responsibility has moved into `popScope` so each runtime path
+  through the scope releases exactly once. The bug pre-dated #1640 and
+  affected every ARC side-table, not just the new tagged-union one.
+  (#1642)
+- `emitListConcat` (the LLVM IR codegen for the list `+` operator)
+  now calls `propagateMeta(lhs, newHeader)` after `setTypeMeta`, so
+  element-type metadata such as `map_key_type_name` /
+  `map_value_type_name` propagates to the concatenated result. Before
+  this fix, an inferred binding like `ys = a + b` where
+  `a, b: List<Map<str, int>>` lost the Map-element metadata and was
+  treated as `List<str>`, causing subsequent `ys[i]["k"]` access to
+  fail at codegen with `str does not support index access`. This
+  brings `emitListConcat` in line with `emitListSlice` and
+  `emitMapMergeCore`, both of which already pair `setTypeMeta` with
+  `propagateMeta` per the existing rule. (#1648)
+- Seven additional same-element-type collection helpers that previously
+  called `setTypeMeta(TypeMeta::ListElem|SetElem, …)` without the
+  matching `propagateMeta(src, newHeader)` now propagate source-level
+  metadata correctly: `filter` and `emitSortCore` in
+  `codegen_call_higher_order.cpp`, `emitStrOp_reverse` (List branch)
+  in `codegen_call_string.cpp`, and the four set operations
+  `emitSetUnionCore` / `emitSetOp_intersection` /
+  `emitSetOp_difference` / `emitSetOp_symmetric_difference` in
+  `codegen_call_set_ops.cpp`. Before this fix, source-level metadata
+  such as `list_elem_type_name`, `map_value_type_name`,
+  `set_elem_fn_type_info`, `nested_list_elem`, and `resource_kinds`
+  was silently dropped on the output collection — for example
+  `filter(xs, p)` where `xs: List<Map<str, int>>` lost the inner
+  `Map<str, int>` metadata, so a subsequent `ys[0]["k"]` access
+  failed at codegen with `str does not support index access`. The
+  redundant manual `set_elem_type_name` copy at each set-op site is
+  also removed because `propagateMeta` already copies that field.
+  This completes the codegen sweep started in #1648 (`emitListConcat`)
+  and brings every same-element-type collection helper in line with
+  `emitListSlice` / `emitMapMergeCore`. (#1651)
+- `keys(map)` and `values(map)` now propagate the source map's key /
+  value type metadata onto the returned `List`. Before this fix,
+  `emitBuiltinKeys` and `emitBuiltinValues` (`src/codegen_call.cpp`)
+  stamped only the LLVM `TypeMeta::ListElem` slot via `setTypeMeta`,
+  leaving `list_elem_type_name` and the derived `nested_list_elem` /
+  `list_elem_fn_type_info` empty. The result list's elements were
+  therefore dispatched as `str` by downstream operations, so
+  `len(values(m)[0])` returned `0` (reading the List header's
+  `weak_count` as `byte_len`) and `keys(m)[0][0]` /
+  `values(m)[0]["k"]` raised `str does not support index access` at
+  codegen for nested-collection key / value types like
+  `Map<List<int>, str>` or `Map<str, List<int>>`. The fix snapshots
+  `map_key_type_name` / `map_value_type_name` from the source map's
+  metadata, calls `propagateTypeMeta("List<…>", newHeader)` after
+  `setTypeMeta` to populate every derived slot, and pairs the element
+  buffer `memcpy` with `emitCowRetainArcElements` when the element
+  type is ARC-managed (#1204 / #1242 — required because the newly
+  propagated `list_elem_type_name` flips the result's destructor to
+  recurse into the inner ARC elements). The analogous bug in
+  `items(map)` (`src/codegen_call_collection.cpp`) is tracked
+  separately as #1659 because its tuple element type requires a
+  different fix shape. (#1655)
+- TSan no longer SEGVs on macOS during `~CodeGen()` teardown after
+  combinatorial spec tests that nest `@describe` / `@it` (e.g.
+  `tests/spec/combinatorial/collection_element_option_iterate.test.ry`).
+  Previously `~CodeGen()` walked
+  `functions_ → vector<OverloadEntry> → ~OverloadEntry() → unique_ptr<unordered_map<size_t, FnTypeInfo>>::reset()`
+  on a heap whose state had already been disturbed by LLVM ORC JIT
+  teardown, and intermittently called `free()` on a garbage pointer
+  (e.g. `0x4800000001135036`). ASan + UBSan were both clean on the
+  same binary and test, confirming this was the same #1187 family
+  ORC teardown heap corruption — TSan exposed the disturbed-heap
+  sequel that the existing `(void)jit.release()` + `rtCleanup.release()`
+  block did not cover. `runRySource` (`src/jit_runner.cpp`) now
+  heap-allocates `CodeGen` via `std::make_unique<CodeGen>(...)` and
+  leaks it via `(void)cg.release()` alongside the existing LLJIT
+  releases under `#if defined(__linux__) || defined(__APPLE__)`. The
+  process exits immediately after `runRySource` returns, so the leak
+  is bounded by process lifetime. This is still a workaround — the
+  upstream LLVM ORC / JITLink heap corruption pattern that propagates
+  into the codegen heap is unidentified — but it suppresses the
+  `~CodeGen()` / `~OverloadEntry()` SEGV reliably under TSan, ASan,
+  UBSan, and default builds. (#1657)
+- `items(map)` now stamps the source map's key/value type names onto
+  the returned `List<(K, V)>` as `list_elem_type_name = "(K, V)"`.
+  Before this fix, `emitCollOp_items`
+  (`src/codegen_call_collection.cpp`) stamped only the LLVM tuple
+  `TypeMeta::ListElem` slot via `setTypeMeta`, leaving
+  `list_elem_type_name` empty. The for-loop destructure
+  `for k, v in items(m):` relies on `splitTupleSig` reading that
+  name to split the tuple into per-component metadata; without it,
+  K/V components fell back to `str` and operations like `v[0]` on
+  `Map<str, List<int>>` raised `str does not support index access`
+  at codegen. The fix snapshots `map_key_type_name` /
+  `map_value_type_name` before any `getOrCreateMeta` call (per the
+  #858 name-snapshot-before-rehash discipline) and writes
+  `list_elem_type_name = "(K, V)"` after `setTypeMeta`, mirroring
+  the format used by `enumerate` and `zip`. Unlike the sibling fix
+  for `keys()` / `values()` (#1655), no `emitCowRetainArcElements`
+  is needed because the destructor for `List<(K, V)>` does not
+  recurse into tuple fields — `fieldTypeIsArcManaged` returns false
+  for tuple-syntax `list_elem_type_name`, so adding a retain would
+  leak. (#1659)
+- Numeric tuple-field access (`xs[0].1`) and chained subscripts
+  (`xs[0].1[0]`) on `List<(K, V)>` results now carry per-component
+  metadata through the extraction. Before this fix, the IndexExpr List
+  path called `propagateTypeMeta(elemTypeName, elem)` with
+  `elemTypeName = "(K, V)"`, but `propagateTypeMeta` is single-value by
+  design (per `.claude/rules/codegen-type-and-metadata.md` —
+  *"propagateTypeMeta is single-value; callers decompose tuples"*),
+  so the tuple components received no metadata. The downstream
+  FieldAccessExpr numeric-index arm then emitted a bare
+  `CreateExtractValue` that fell through to the `str` dispatch, so
+  `print(enumerate(xs)[0].1[0])` (for `xs: List<List<int>>`) raised
+  `str does not support index access` at codegen — the same shape the
+  for-loop destructure path already handled correctly via
+  `splitTupleSig` (`src/codegen_stmt_loop.cpp`). The fix stamps the
+  tuple sig onto the loaded element via the
+  `ValueMetadata::source_type_name` channel (the same lossless slot
+  used for `Result<T, E>` / `Option<T>` since #1638) at the IndexExpr
+  List path in `src/codegen_expr_literal.cpp`, then decomposes
+  per-component via `splitTupleSig` and propagates the matching
+  component's name onto the extracted field at the FieldAccessExpr
+  numeric-index arm in the same file. `enumerate(xs)` and
+  `zip(xs, ys)` work end-to-end because their codegen sites already
+  stamp `list_elem_type_name = "(int, T)"` / `"(T, U)"`. `items(m)`
+  also works end-to-end now that #1659 stamps `list_elem_type_name =
+  "(K, V)"` on its result — together the two fixes make direct
+  field access (`its[0].1[0]`) carry per-component metadata through
+  the chain. (#1664)
+- `items()`, `enumerate()`, and `zip()` now correctly retain ARC-managed
+  tuple components when constructing their `List<(K, V)>` results, and
+  the collection destructor now releases inner ARC components for
+  tuple-element lists. Previously both halves were missing simultaneously,
+  so a rebind of the source container (e.g.
+  `m: Map<str, List<int>> = {"a": [1,2,3]}; its = items(m); m = {"z": [99]}`)
+  freed the inner `List<int>` while `its` still held the raw pointer,
+  producing a use-after-free on the next read. The fix lands the retain
+  and release sides symmetrically (parallel to #1242's whole-collection
+  rebind fix). The same retain symmetry is also applied to `slice`,
+  `take`, `appended`, and `concat` on tuple-element lists, since these
+  inherit the new tuple-aware destructor via `propagateMeta`. (#1667)
+- `xs[i] = (a, b)` slot overwrite on `List<(K, V)>` now retains the
+  ARC-managed components of the new tuple and releases the components
+  of the evicted tuple. Previously the IndexAssignStmt path was the
+  remaining symmetry gap from #1667: the destructor recursed into
+  inner tuple components, but slot overwrite did neither retain nor
+  release, leaking the evicted tuple's inner ARC values on every
+  reassignment. The fix mirrors #1667's per-component dispatch by
+  source-level type name (str at offset −24, List/Map/Set at −16,
+  nested tuples recurse), gates on a non-empty `list_elem_type_name`
+  with tuple shape `"(...)"` (preserving pre-fix behavior for
+  literal-built lists whose tuple sig is empty — same blind spot as
+  `List<str>` literals), and orders retain-before-release so
+  self-assignment `e[i] = e[i]` is safe. (#1670)
+- Without `from testing import verify`, calling `verify(...)` now
+  fails with the standard `undefined function: verify` diagnostic
+  instead of the bespoke `'verify' requires 'from testing import
+  verify'` message. The behavior is unchanged for legitimate users
+  (the import is still required), and the diagnostic is now
+  consistent with every other unimported function. (#722)
+
 ## [0.0.21] - 2026-05-06
 
 ### Changed
@@ -1372,7 +1921,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.21...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.22...HEAD
+[0.0.22]: https://github.com/t0k0sh1/ry/compare/v0.0.21...v0.0.22
 [0.0.21]: https://github.com/t0k0sh1/ry/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/t0k0sh1/ry/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/t0k0sh1/ry/compare/v0.0.18...v0.0.19
