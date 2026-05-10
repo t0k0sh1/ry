@@ -87,6 +87,15 @@ fn takesIntStrPair(p: (int, str)) -> int:
 fn takesStrBoolFloatTriple(t: (str, bool, float)) -> int:
   return 0
 
+fn takesFn(f: fn(int) -> int) -> int:
+  return f(0)
+
+fn makeAdder(n: int) -> fn(int) -> int:
+  return (x: int) => x + n
+
+fn addOne(x: int) -> int:
+  return x + 1
+
 @describe("mock")
 fn mockTests():
   @it("should replace function")
@@ -519,3 +528,43 @@ fn verifyCalledWithRecordTupleArgs():
     expect(verifyCalledWith("takesStrBoolFloatTriple", ("x", true, 1.5))).toEq(1)
     expect(verifyCalledWith("takesStrBoolFloatTriple", ("y", false, 2.5))).toEq(1)
     expect(verifyCalledWith("takesStrBoolFloatTriple", ("x", false, 1.5))).toEq(0)
+
+@describe("verifyCalledWith with function-typed args (#1707)")
+fn verifyCalledWithFnArgs():
+  @it("should match same fn value passed twice")
+  fn shouldMatchSameFnTwice():
+    mock("takesFn", (f: fn(int) -> int) => f(0))
+    lam = (x: int) => x + 1
+    takesFn(lam)
+    takesFn(lam)
+    expect(verifyCalledWith("takesFn", lam)).toEq(2)
+  @it("should not match a different fn value")
+  fn shouldNotMatchDifferentFn():
+    mock("takesFn", (f: fn(int) -> int) => f(0))
+    lamA = (x: int) => x + 1
+    lamB = (x: int) => x + 2
+    takesFn(lamA)
+    expect(verifyCalledWith("takesFn", lamA)).toEq(1)
+    expect(verifyCalledWith("takesFn", lamB)).toEq(0)
+  @it("should not match independently constructed structurally identical lambdas")
+  fn shouldNotMatchIndependentLambdas():
+    mock("takesFn", (f: fn(int) -> int) => f(0))
+    lam1 = (x: int) => x + 1
+    lam2 = (x: int) => x + 1
+    takesFn(lam1)
+    expect(verifyCalledWith("takesFn", lam1)).toEq(1)
+    expect(verifyCalledWith("takesFn", lam2)).toEq(0)
+  @it("should match bare function value passed as first-class")
+  fn shouldMatchBareFn():
+    mock("takesFn", (f: fn(int) -> int) => f(0))
+    takesFn(addOne)
+    takesFn(addOne)
+    expect(verifyCalledWith("takesFn", addOne)).toEq(2)
+  @it("should distinguish capture closures with different env")
+  fn shouldDistinguishCaptureClosures():
+    mock("takesFn", (f: fn(int) -> int) => f(0))
+    add5 = makeAdder(5)
+    add6 = makeAdder(6)
+    takesFn(add5)
+    expect(verifyCalledWith("takesFn", add5)).toEq(1)
+    expect(verifyCalledWith("takesFn", add6)).toEq(0)

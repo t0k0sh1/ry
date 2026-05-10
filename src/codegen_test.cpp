@@ -647,6 +647,10 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         ptrTy_, {i64Ty_, ptrTy_, ptrTy_}, false);
     llvm::FunctionCallee makeTupleSnapshotFn = mod_->getOrInsertFunction(
         "__ry_mock_make_tuple_snapshot", makeTupleSnapshotTy);
+    llvm::FunctionType *makeFnSnapshotTy = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee makeFnSnapshotFn = mod_->getOrInsertFunction(
+        "__ry_mock_make_fn_snapshot", makeFnSnapshotTy);
 
     auto isSupportedCollElemName = [](const std::string &n) {
         return n == "int" || n == "float" || n == "bool" || n == "str";
@@ -668,6 +672,9 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                                   declaredParamName.size() >= 2 &&
                                   declaredParamName.front() == '(' &&
                                   declaredParamName.back() == ')';
+        const bool paramIsFn = !paramIsList && !paramIsSet && !paramIsMap &&
+                               !paramIsRecord && !paramIsTuple &&
+                               isFunctionTypeName(declaredParamName);
         std::string paramListInner;
         std::string paramSetInner;
         std::string paramMapKeyInner;
@@ -788,6 +795,11 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 }
                 paramTupleKinds.push_back(k);
             }
+        } else if (paramIsFn) {
+            // #1707: fn-typed params accepted; identity is the {thunk_ptr, env_ptr}
+            // pair extracted from the uniform closure struct. The fn signature
+            // itself is opaque to verifyCalledWith — only pointer equality
+            // matters. No per-param validation needed here.
         } else if (!declaredParamName.empty() &&
                    declaredParamName != "int" && declaredParamName != "float" &&
                    declaredParamName != "bool" && declaredParamName != "str") {
@@ -797,9 +809,9 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             msg += fnName;
             msg += "' has type '";
             msg += declaredParamName;
-            msg += "'; only int, float, bool, str, List<T>, Set<T>, Map<K, V>, "
-                   "record types whose fields are primitives or str, and tuple "
-                   "types whose elements are primitives or str are supported";
+            msg += "'; only int, float, bool, str, fn(...) -> R, List<T>, Set<T>, "
+                   "Map<K, V>, record types whose fields are primitives or str, "
+                   "and tuple types whose elements are primitives or str are supported";
             codegenError(msg);
         }
 
@@ -807,8 +819,32 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         llvm::Type *argTy = argVal->getType();
         llvm::Type *expectedTy = entry.paramTypes[i];
 
-        // Allow widening int -> float when the original parameter is float.
-        if (argTy != expectedTy) {
+        // For fn params (#1707), normalize the expected value to a uniform
+        // closure (`{thunk, env, env_dtor}` ARC ptr) so {thunk, env} can be
+        // extracted in the kind=11 dispatch below. Bare fn refs and source-level
+        // lambda variables both flow through here; wrapFnTypedArgs only runs on
+        // the recording side (codegen_call_user.cpp:263), so the verify side
+        // must wrap explicitly. Skip the strict argTy/expectedTy compare —
+        // expectedTy is the post-wrap ptrTy_ in the caller's signature, but
+        // argVal at this point may still be a raw fn ptr (Function*) or a
+        // pre-wrap closure value, depending on the source expression.
+        bool fnWrapAllocated = false;
+        if (paramIsFn) {
+            auto *fnInfo = lookupFnTypeInfo(argVal);
+            if (!fnInfo) {
+                codegenError("verifyCalledWith: argument " +
+                             std::to_string(i + 1) +
+                             " of '" + fnName +
+                             "' is fn-typed but its FnTypeInfo could not be "
+                             "recovered; pass a named lambda or function "
+                             "reference (e.g. `let f = (...) => ...; "
+                             "verifyCalledWith(\"...\", f)`)");
+            }
+            fnWrapAllocated = !fnInfo->isUniformClosure;
+            argVal = wrapAsUniformClosure(argVal, *fnInfo);
+            argTy = argVal->getType();
+        } else if (argTy != expectedTy) {
+            // Allow widening int -> float when the original parameter is float.
             if (argTy == i64Ty_ && expectedTy == f64Ty_) {
                 argVal = builder_.CreateSIToFP(argVal, f64Ty_, "vcw_int2f");
                 argTy = f64Ty_;
@@ -1284,6 +1320,37 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 "vcw_tup_snap");
             kind = 10;
             valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+        } else if (paramIsFn) {
+            // #1707: extract {thunk_ptr, env_ptr} from the uniform closure
+            // struct; argVal was normalized to a uniform closure pointer above
+            // via lookupFnTypeInfo + wrapAsUniformClosure. The env_dtor slot
+            // is uniquely determined by thunk and is omitted from the snapshot.
+            auto *ucTy = getUniformClosureTy();
+            llvm::Value *thunkField = builder_.CreateStructGEP(
+                ucTy, argVal, 0, "vcw_fn_thunk_gep");
+            llvm::Value *envField = builder_.CreateStructGEP(
+                ucTy, argVal, 1, "vcw_fn_env_gep");
+            llvm::Value *thunkPtr = builder_.CreateLoad(
+                ptrTy_, thunkField, "vcw_fn_thunk");
+            llvm::Value *envPtr = builder_.CreateLoad(
+                ptrTy_, envField, "vcw_fn_env");
+            llvm::Value *snap = builder_.CreateCall(
+                makeFnSnapshotFn, {thunkPtr, envPtr}, "vcw_fn_snap");
+            kind = 11;
+            valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+            // Release the wrap struct allocated above by wrapAsUniformClosure.
+            // wrapAsUniformClosure passes through unchanged when input was
+            // already a uniform closure (no allocation), but for non-uniform
+            // inputs it allocates a fresh ARC struct and retains the captured
+            // env. The default scope-end ARC release uses the generic dtor,
+            // which doesn't know to release env — so we must explicitly
+            // release with the uniform-closure dtor. The snapshot stores raw
+            // {thunk, env} pointers per the issue's pointer-equality contract;
+            // the caller scope keeps the underlying closure alive for the
+            // duration of the test block.
+            if (fnWrapAllocated) {
+                releaseUniformClosureTemps({argVal});
+            }
         } else if (argTy == i64Ty_) {
             kind = 1;
             valI64 = argVal;
