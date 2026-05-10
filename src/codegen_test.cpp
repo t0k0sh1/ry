@@ -1048,6 +1048,60 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     msg += "'";
                     codegenError(msg);
                 }
+                // #1706: per-element type-signature check. Anonymous tuple
+                // StructType collapses str / List / Map / closure / record /
+                // nested tuple all to ptr, so arity alone is not enough —
+                // `(int, [1, 2])` would otherwise satisfy a `(int, str)` param
+                // and the kind=10 snapshot would copy a List header where the
+                // verifier expects a str (memcmp byte_len at -8 reads the
+                // List size_t and treats it as the string byte_len). Read the
+                // lossless source_type_name metadata stamped by
+                // emitExprVariant(TupleExpr) and reject any mismatch.
+                const auto *argMeta = getMeta(argVal);
+                std::string argTupleSig =
+                    argMeta ? argMeta->source_type_name : std::string();
+                std::vector<std::string> argElemNames;
+                if (!argTupleSig.empty())
+                    argElemNames = splitTupleSig(argTupleSig);
+                if (argElemNames.size() != paramTupleElemNames.size()) {
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " is a tuple whose element types could not be "
+                           "recovered from metadata; only literal tuple "
+                           "expressions whose elements are int, float, bool, "
+                           "or str are supported as arguments to '";
+                    msg += fnName;
+                    msg += "' parameter ";
+                    msg += std::to_string(i);
+                    msg += " of type '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+                for (size_t k = 0; k < paramTupleElemNames.size(); ++k) {
+                    std::string argElemResolved =
+                        resolveTypeAlias(argElemNames[k]);
+                    std::string paramElemResolved =
+                        resolveTypeAlias(paramTupleElemNames[k]);
+                    if (argElemResolved != paramElemResolved) {
+                        std::string msg = "verifyCalledWith: argument ";
+                        msg += std::to_string(i + 1);
+                        msg += " element ";
+                        msg += std::to_string(k);
+                        msg += " has type '";
+                        msg += argElemNames[k];
+                        msg += "' but parameter ";
+                        msg += std::to_string(i);
+                        msg += " of '";
+                        msg += fnName;
+                        msg += "' has type '";
+                        msg += declaredParamName;
+                        msg += "' (element '";
+                        msg += paramTupleElemNames[k];
+                        msg += "')";
+                        codegenError(msg);
+                    }
+                }
             } else {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);

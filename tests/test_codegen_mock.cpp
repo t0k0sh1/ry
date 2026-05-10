@@ -873,6 +873,27 @@ TEST_F(CodeGenTest, VerifyCalledWithTupleWithUnsupportedElementTypeRejected) {
     )), std::exception);
 }
 
+TEST_F(CodeGenTest, VerifyCalledWithTupleElementTypeMismatchRejected) {
+    // #1706 Stage 2 per-element check: a tuple parameter with element types
+    // (int, str) must reject a tuple argument whose second element has a
+    // different type (here List<int>) even though both ptr-backed types
+    // collapse to ptr at the LLVM struct level. The check reads the
+    // source_type_name metadata stamped on the tuple literal and rejects
+    // before Stage 3 builds the snapshot.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntStrPair(p: (int, str)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple elem mismatch\")\n"
+        "fn vcwTupleElemMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntStrPair, (p: (int, str)) => 0)\n"
+        "        takesIntStrPair((1, \"a\"))\n"
+        "        expect(verifyCalledWith(\"takesIntStrPair\", (1, [2]))).toEq(0)\n"
+    )), std::exception);
+}
+
 TEST_F(CodeGenTest, VerifyCalledWithTupleParamRejectedWithRecordArg) {
     // Tuple parameter must reject a record argument even if shape coincides.
     // Stage 2 cross-shape compile error.

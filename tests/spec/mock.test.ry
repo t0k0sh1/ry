@@ -466,17 +466,28 @@ fn verifyCalledWithRecordTupleArgs():
   @it("should match record with str field via NUL-safe comparison")
   fn shouldMatchRecordStrField():
     mock("takesPerson", (p: Person) => p.name)
-    takesPerson(Person("alice", 30, true))
-    takesPerson(Person("bob", 25, false))
+    takesPerson(Person("a\0b", 30, true))
+    takesPerson(Person("c\0d", 25, false))
+    expect(verifyCalledWith("takesPerson", Person("a\0b", 30, true))).toEq(1)
+    expect(verifyCalledWith("takesPerson", Person("c\0d", 25, false))).toEq(1)
+    # NUL-safe: prefix-equal "a" must NOT match "a\0b"
+    expect(verifyCalledWith("takesPerson", Person("a", 30, true))).toEq(0)
+    expect(verifyCalledWith("takesPerson", Person("a\0c", 30, true))).toEq(0)
+  @it("should retain heap-allocated str field through snapshot lifetime")
+  fn shouldRetainStrFieldLifecycle():
+    # `name1` and `name2` are heap-allocated via concat (not immortal
+    # globals), so the snapshot must keep its own retain on the str
+    # handle to remain valid for the verifyCalledWith reads below.
+    mock("takesPerson", (p: Person) => p.name)
+    name1 = "ali" + "ce"
+    name2 = "bo" + "b"
+    takesPerson(Person(name1, 30, true))
+    takesPerson(Person(name2, 25, false))
+    # Reassigning the locals must not affect the snapshot's retained copy.
+    name1 = "zzz"
+    name2 = "yyy"
     expect(verifyCalledWith("takesPerson", Person("alice", 30, true))).toEq(1)
     expect(verifyCalledWith("takesPerson", Person("bob", 25, false))).toEq(1)
-    expect(verifyCalledWith("takesPerson", Person("carol", 30, true))).toEq(0)
-  @it("should retain str field across mockClear")
-  fn shouldRetainStrFieldLifecycle():
-    mock("takesPerson", (p: Person) => p.name)
-    n1 = "alice"
-    takesPerson(Person(n1, 30, true))
-    expect(verifyCalledWith("takesPerson", Person("alice", 30, true))).toEq(1)
   @it("should match tuple argument with same arity and values")
   fn shouldMatchTupleByValues():
     mock("takesIntIntPair", (p: (int, int)) => p.0 + p.1)
@@ -493,11 +504,13 @@ fn verifyCalledWithRecordTupleArgs():
   @it("should match tuple with str element via NUL-safe comparison")
   fn shouldMatchTupleStrElement():
     mock("takesIntStrPair", (p: (int, str)) => p.0)
-    takesIntStrPair((1, "hello"))
-    takesIntStrPair((2, "world"))
-    expect(verifyCalledWith("takesIntStrPair", (1, "hello"))).toEq(1)
-    expect(verifyCalledWith("takesIntStrPair", (2, "world"))).toEq(1)
-    expect(verifyCalledWith("takesIntStrPair", (1, "world"))).toEq(0)
+    takesIntStrPair((1, "a\0b"))
+    takesIntStrPair((2, "c\0d"))
+    expect(verifyCalledWith("takesIntStrPair", (1, "a\0b"))).toEq(1)
+    expect(verifyCalledWith("takesIntStrPair", (2, "c\0d"))).toEq(1)
+    # NUL-safe: prefix-equal "a" must NOT match "a\0b"
+    expect(verifyCalledWith("takesIntStrPair", (1, "a"))).toEq(0)
+    expect(verifyCalledWith("takesIntStrPair", (1, "a\0c"))).toEq(0)
   @it("should match heterogeneous tuple (str, bool, float)")
   fn shouldMatchHeterogeneousTuple():
     mock("takesStrBoolFloatTriple", (t: (str, bool, float)) => 0)
