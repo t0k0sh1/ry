@@ -288,19 +288,22 @@ TEST_F(CodeGenTest, VerifyCalledWithNestedListArgUnsupportedError) {
     )), std::exception);
 }
 
-TEST_F(CodeGenTest, VerifyCalledWithMapArgUnsupportedError) {
-    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+TEST_F(CodeGenTest, VerifyCalledWithMapStrIntArgAccepted) {
+    // #1705: Map<str, int> arg matches a recorded call with the same {k -> v} pairs.
+    // Flipped from VerifyCalledWithMapArgUnsupportedError per
+    // .claude/rules/tests-rejection-tdd.md (relaxing rejection: flip THROW -> NO_THROW).
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn takesMap(m: Map<str, int>) -> int:\n"
         "    return len(m)\n"
         "\n"
         "@describe(\"vcw map\")\n"
         "fn vcwMap():\n"
-        "    @it(\"errors\")\n"
-        "    fn errors():\n"
+        "    @it(\"counts map arg\")\n"
+        "    fn countsMapArg():\n"
         "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
         "        takesMap({\"a\": 1})\n"
-        "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1})).toEq(0)\n"
-    )), std::exception);
+        "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1})).toEq(1)\n"
+    )), "vcw map\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithListParameterRejectedWithPrimitiveArg) {
@@ -497,6 +500,227 @@ TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithListArg) {
         "        mock(takesIntSet, (xs: Set<int>) => len(xs))\n"
         "        takesIntSet({1, 2})\n"
         "        expect(verifyCalledWith(\"takesIntSet\", [1, 2])).toEq(0)\n"
+    )), std::exception);
+}
+
+// ============================================================
+// verifyCalledWith(): Map<K, V> argument support (#1705)
+// ============================================================
+
+TEST_F(CodeGenTest, VerifyCalledWithMapIntIntArgAccepted) {
+    // Map<int, int>: integer key + integer value path (no ARC retain needed).
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<int, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map int int\")\n"
+        "fn vcwMapIntInt():\n"
+        "    @it(\"counts map arg\")\n"
+        "    fn countsMapArg():\n"
+        "        mock(takesMap, (m: Map<int, int>) => len(m))\n"
+        "        takesMap({1: 10, 2: 20})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {1: 10, 2: 20})).toEq(1)\n"
+    )), "vcw map int int\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapStrStrArgAccepted) {
+    // Map<str, str>: exercises ARC retain/release on BOTH keys and values.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, str>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map str str\")\n"
+        "fn vcwMapStrStr():\n"
+        "    @it(\"counts map arg\")\n"
+        "    fn countsMapArg():\n"
+        "        mock(takesMap, (m: Map<str, str>) => len(m))\n"
+        "        takesMap({\"a\": \"x\", \"b\": \"y\"})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {\"a\": \"x\", \"b\": \"y\"})).toEq(1)\n"
+    )), "vcw map str str\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapUnorderedMatch) {
+    // Maps compare unordered: insertion order must not affect the match.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map unordered\")\n"
+        "fn vcwMapUnordered():\n"
+        "    @it(\"matches unordered\")\n"
+        "    fn matchesUnordered():\n"
+        "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
+        "        takesMap({\"a\": 1, \"b\": 2, \"c\": 3})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {\"c\": 3, \"a\": 1, \"b\": 2})).toEq(1)\n"
+    )), "vcw map unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapStrFloatArgAccepted) {
+    // Map<str, float>: exercises value kind=2 (float) in mockArgEqual.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, float>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map str float\")\n"
+        "fn vcwMapStrFloat():\n"
+        "    @it(\"counts map arg\")\n"
+        "    fn countsMapArg():\n"
+        "        mock(takesMap, (m: Map<str, float>) => len(m))\n"
+        "        takesMap({\"a\": 1.5, \"b\": 2.5})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1.5, \"b\": 2.5})).toEq(1)\n"
+    )), "vcw map str float\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapStrBoolArgAccepted) {
+    // Map<str, bool>: exercises value kind=3 (bool) in mockArgEqual.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, bool>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map str bool\")\n"
+        "fn vcwMapStrBool():\n"
+        "    @it(\"counts map arg\")\n"
+        "    fn countsMapArg():\n"
+        "        mock(takesMap, (m: Map<str, bool>) => len(m))\n"
+        "        takesMap({\"a\": true, \"b\": false})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {\"a\": true, \"b\": false})).toEq(1)\n"
+    )), "vcw map str bool\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapParameterRejectedWithPrimitiveArg) {
+    // Map<str, int> parameter must reject a primitive (str) argument.
+    // Both lower to ptrTy_; the explicit map-vs-scalar consistency check
+    // must fire (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map param scalar arg\")\n"
+        "fn vcwMapParamScalarArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
+        "        takesMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesMap\", \"x\")).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithScalarParameterRejectedWithMapArg) {
+    // A str parameter must reject a Map<str, int> argument. Both lower to
+    // ptrTy_; the map-vs-scalar consistency check must fire (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesStr(s: str) -> int:\n"
+        "    return len(s)\n"
+        "\n"
+        "@describe(\"vcw scalar param map arg\")\n"
+        "fn vcwScalarParamMapArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesStr, (s: str) => len(s))\n"
+        "        takesStr(\"hi\")\n"
+        "        expect(verifyCalledWith(\"takesStr\", {\"a\": 1})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapParamRejectedWithDifferentKeyType) {
+    // Map<str, int> parameter must reject a Map<int, int> argument
+    // (key type mismatch). Element-type comparison must fire (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesStrIntMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map key mismatch\")\n"
+        "fn vcwMapKeyMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesStrIntMap, (m: Map<str, int>) => len(m))\n"
+        "        takesStrIntMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesStrIntMap\", {1: 1})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapParamRejectedWithDifferentValueType) {
+    // Map<str, int> parameter must reject a Map<str, str> argument
+    // (value type mismatch). Element-type comparison must fire (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesStrIntMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map val mismatch\")\n"
+        "fn vcwMapValMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesStrIntMap, (m: Map<str, int>) => len(m))\n"
+        "        takesStrIntMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesStrIntMap\", {\"a\": \"x\"})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapParamRejectedWithListArg) {
+    // Map<str, int> parameter must reject a List<int> argument.
+    // Even though both lower to ptrTy_, kind (Map vs List) must match (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map param list arg\")\n"
+        "fn vcwMapParamListArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
+        "        takesMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesMap\", [1, 2])).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithMapParamRejectedWithSetArg) {
+    // Map<str, int> parameter must reject a Set<int> argument.
+    // Kind (Map vs Set) must match (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesMap(m: Map<str, int>) -> int:\n"
+        "    return len(m)\n"
+        "\n"
+        "@describe(\"vcw map param set arg\")\n"
+        "fn vcwMapParamSetArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
+        "        takesMap({\"a\": 1})\n"
+        "        expect(verifyCalledWith(\"takesMap\", {1, 2})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithListParamRejectedWithMapArg) {
+    // List<int> parameter must reject a Map<str, int> argument.
+    // Kind (List vs Map) must match (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntList(xs: List<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list param map arg\")\n"
+        "fn vcwListParamMapArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntList, (xs: List<int>) => len(xs))\n"
+        "        takesIntList([1, 2])\n"
+        "        expect(verifyCalledWith(\"takesIntList\", {\"a\": 1})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithMapArg) {
+    // Set<int> parameter must reject a Map<str, int> argument.
+    // Kind (Set vs Map) must match (#1705).
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set param map arg\")\n"
+        "fn vcwSetParamMapArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntSet, (xs: Set<int>) => len(xs))\n"
+        "        takesIntSet({1, 2})\n"
+        "        expect(verifyCalledWith(\"takesIntSet\", {\"a\": 1})).toEq(0)\n"
     )), std::exception);
 }
 

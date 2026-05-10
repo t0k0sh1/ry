@@ -288,6 +288,9 @@ fn takesIntList(xs: List<int>) -> int:
 fn takesIntSet(xs: Set<int>) -> int:
     return len(xs)
 
+fn takesStrIntMap(m: Map<str, int>) -> int:
+    return len(m)
+
 @describe("verifyCalledWith")
 fn verifyCalledWithTests():
     @it("should count calls matching argument")
@@ -318,15 +321,25 @@ fn verifyCalledWithTests():
         expect(verifyCalledWith("takesIntSet", {3, 2, 1})).toEq(1)
         expect(verifyCalledWith("takesIntSet", {1, 2})).toEq(1)
         expect(verifyCalledWith("takesIntSet", {9, 9})).toEq(0)
+
+    @it("should count calls matching Map<str, int> argument unordered")
+    fn shouldCountMapStrIntMatching():
+        mock(takesStrIntMap, (m: Map<str, int>) => len(m))
+        takesStrIntMap({"a": 1, "b": 2})
+        takesStrIntMap({"c": 3})
+        expect(verifyCalledWith("takesStrIntMap", {"b": 2, "a": 1})).toEq(1)
+        expect(verifyCalledWith("takesStrIntMap", {"c": 3})).toEq(1)
+        expect(verifyCalledWith("takesStrIntMap", {"x": 9})).toEq(0)
 ```
 
 - Requires `from testing import verifyCalledWith`
 - The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
 - The function must already be mocked via `mock(...)` before `verifyCalledWith` is called; calling on a non-mocked function is a compile error.
 - The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
-- Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703), and `Set<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1704). Other types (`Map<K, V>`, nested `List<List<T>>`, records, tuples, function values) are rejected at compile time and are tracked for v0.0.x follow-up.
+- Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703), `Set<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1704), and `Map<K, V>` where `K, V ∈ {int, float, bool, str}` (since v0.0.22, #1705). Other types (nested `List<List<T>>`, records, tuples, function values) are rejected at compile time and are tracked for v0.0.x follow-up.
 - `List<T>` arguments are compared by deep snapshot: the recorded call snapshot and the verify-side snapshot must agree on length and element-wise equality. Element comparison is byte-exact for `int` / `float` / `bool` and uses NUL-safe length+`memcmp` for `str`.
 - `Set<T>` arguments are compared by **unordered** deep snapshot: the recorded and verify-side snapshots must have the same length and the same elements as a set, but element order is irrelevant (e.g. recording `{1, 2, 3}` matches `verifyCalledWith("f", {3, 2, 1})`). Per-element comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
+- `Map<K, V>` arguments are compared by **unordered** deep snapshot of the {key → value} pairs: the recorded and verify-side snapshots must have the same length and the same key set, with each key mapping to the same value across the two maps. Insertion order is irrelevant (e.g. recording `{"a": 1, "b": 2}` matches `verifyCalledWith("f", {"b": 2, "a": 1})`). Per-key and per-value comparison uses the same byte-exact / NUL-safe rules as `List<T>`.
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 

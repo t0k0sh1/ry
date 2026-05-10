@@ -379,6 +379,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     // entry 1+ tracked. Aggregate flags drive the post-loop metadata stamp.
     bool anyKeyIsStr = false;
     bool anyValIsStr = false;
+    // Wider signal that catches immortal literal globals (cachedGlobalString)
+    // which isStrHandle excludes. Required so verifyCalledWith record path
+    // sees Map<str, …> / Map<…, str> from plain literals like {"a": 1} (#1705,
+    // mirrors the Set<str> stamp fix in 2def9dc7 / #1707).
+    bool anyKeyIsStrLike = false;
+    bool anyValIsStrLike = false;
 
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
@@ -388,6 +394,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
             valTy == ptrTy_ && isStrHandle(valVals[static_cast<size_t>(i)]);
         anyKeyIsStr = anyKeyIsStr || keyIsStr;
         anyValIsStr = anyValIsStr || valIsStr;
+        if (keyTy == ptrTy_ && isStringValue(keyVals[static_cast<size_t>(i)]))
+            anyKeyIsStrLike = true;
+        if (valTy == ptrTy_ && isStringValue(valVals[static_cast<size_t>(i)]))
+            anyValIsStrLike = true;
 
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
@@ -434,11 +444,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     if (keyTy == ptrTy_ && !keyTypeName.empty())
         getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
-    else if (anyKeyIsStr)
+    else if (keyTy == ptrTy_ && (anyKeyIsStr || anyKeyIsStrLike))
         getOrCreateMeta(headerPtr).map_key_type_name = "str";
     if (valTy == ptrTy_ && !valTypeName.empty())
         getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
-    else if (anyValIsStr)
+    else if (valTy == ptrTy_ && (anyValIsStr || anyValIsStrLike))
         getOrCreateMeta(headerPtr).map_value_type_name = "str";
 
     return headerPtr;

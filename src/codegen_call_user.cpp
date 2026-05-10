@@ -378,7 +378,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         //   5=opaque (unsupported in v1; never matches a verifyCalledWith query),
         //   6=list (snapshot ptr; #1703 — element kind ∈ {1..4}),
         //   7=set  (snapshot ptr; #1704 — unordered compare; element kind ∈ {1..4}),
-        //   8=map, 9=record, 10=tuple, 11=fn (reserved).
+        //   8=map  (snapshot ptr; #1705 — unordered key->value; key/val kind ∈ {1..4}),
+        //   9=record, 10=tuple, 11=fn (reserved).
         llvm::FunctionType *mockBeginRecTy =
             llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
@@ -395,6 +396,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             "__ry_mock_store_arg_list", mockStoreArgListTy);
         llvm::FunctionCallee mockStoreArgSetFn = mod_->getOrInsertFunction(
             "__ry_mock_store_arg_set", mockStoreArgListTy);
+        llvm::FunctionType *mockStoreArgMapTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_),
+            {ptrTy_, ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_, ptrTy_}, false);
+        llvm::FunctionCallee mockStoreArgMapFn = mod_->getOrInsertFunction(
+            "__ry_mock_store_arg_map", mockStoreArgMapTy);
         llvm::Value *callRec = builder_.CreateCall(
             mockBeginRecFn, {nameStr}, "mock_call_rec");
 
@@ -477,6 +483,52 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                             {callRec, argVal,
                              llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
                              llvm::ConstantInt::get(i64Ty_, elemSize, false),
+                             nameStr});
+                        continue;
+                    }
+                }
+            }
+            // Map<K, V> arg path (#1705): K, V ∈ {int, float, bool, str}.
+            // Records via __ry_mock_store_arg_map which deep-copies both
+            // parallel buffers (keys + vals) into a MockMapSnapshot. Other
+            // K / V combinations fall through to kind=5 opaque.
+            if (argTy == ptrTy_) {
+                llvm::Type *mapKeyTy = getMapKeyType(argVal);
+                llvm::Type *mapValTy = getMapValueType(argVal);
+                if (mapKeyTy != nullptr && mapValTy != nullptr) {
+                    const auto *meta = getMeta(argVal);
+                    std::string keyName =
+                        meta ? meta->map_key_type_name : std::string();
+                    std::string valName =
+                        meta ? meta->map_value_type_name : std::string();
+                    auto resolveKind = [&](const std::string &name,
+                                            llvm::Type *ty) -> int64_t {
+                        if (name == "int") return 1;
+                        if (name == "float") return 2;
+                        if (name == "bool") return 3;
+                        if (name == "str") return 4;
+                        if (name.empty()) {
+                            if (ty == i64Ty_) return 1;
+                            if (ty == f64Ty_) return 2;
+                            if (ty == i1Ty_ || ty == i8Ty_) return 3;
+                            // Bare ptr without a stamped name is opaque —
+                            // do not infer str (mirrors the Set guard).
+                        }
+                        return 0;
+                    };
+                    int64_t keyKind = resolveKind(keyName, mapKeyTy);
+                    int64_t valKind = resolveKind(valName, mapValTy);
+                    if (keyKind != 0 && valKind != 0) {
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        uint64_t keySize = dl.getTypeAllocSize(mapKeyTy);
+                        uint64_t valSize = dl.getTypeAllocSize(mapValTy);
+                        builder_.CreateCall(
+                            mockStoreArgMapFn,
+                            {callRec, argVal,
+                             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(keyKind), true),
+                             llvm::ConstantInt::get(i64Ty_, keySize, false),
+                             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(valKind), true),
+                             llvm::ConstantInt::get(i64Ty_, valSize, false),
                              nameStr});
                         continue;
                     }
