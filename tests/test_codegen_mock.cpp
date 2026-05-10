@@ -724,6 +724,197 @@ TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithMapArg) {
     )), std::exception);
 }
 
+// =============================================================================
+// verifyCalledWith(): record argument support (#1706)
+// =============================================================================
+
+TEST_F(CodeGenTest, VerifyCalledWithRecordArgAccepted) {
+    // Record argument with primitive fields: kind=9 path with field-by-field compare.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "\n"
+        "fn takesPoint(p: Point) -> int:\n"
+        "    return p.x\n"
+        "\n"
+        "@describe(\"vcw record\")\n"
+        "fn vcwRecord():\n"
+        "    @it(\"counts record arg\")\n"
+        "    fn countsRecordArg():\n"
+        "        mock(takesPoint, (p: Point) => p.x)\n"
+        "        takesPoint(Point(1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPoint\", Point(1, 2))).toEq(1)\n"
+    )), "vcw record\n  \033[32m+ counts record arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithRecordParamDifferentRecordTypeRejected) {
+    // Two structurally identical records (Point, Vec): both (int, int).
+    // verifyCalledWith must reject cross-record-name calls at compile time
+    // because the parameter is declared `Point` but the argument is `Vec`.
+    // Stage 2 of emitVerifyCalledWithCall enforces declared-type identity.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "\n"
+        "record Vec:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "\n"
+        "fn takesPoint(p: Point) -> int:\n"
+        "    return p.x\n"
+        "\n"
+        "@describe(\"vcw record cross\")\n"
+        "fn vcwRecordCross():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesPoint, (p: Point) => p.x)\n"
+        "        takesPoint(Point(1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPoint\", Vec(1, 2))).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithRecordWithUnsupportedFieldTypeRejected) {
+    // A record whose fields include a non-primitive/non-str type (List<int>)
+    // must be rejected at compile time by Stage 1 (param-side validation).
+    // Initial #1706 supports only int/float/bool/str fields; nested collections
+    // are out of scope and tracked separately.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "record Bag:\n"
+        "    items: List<int>\n"
+        "\n"
+        "fn takesBag(b: Bag) -> int:\n"
+        "    return len(b.items)\n"
+        "\n"
+        "@describe(\"vcw record bad field\")\n"
+        "fn vcwRecordBadField():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesBag, (b: Bag) => len(b.items))\n"
+        "        takesBag(Bag([1, 2]))\n"
+        "        expect(verifyCalledWith(\"takesBag\", Bag([1, 2]))).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithRecordParamRejectedWithTupleArg) {
+    // Record parameter must reject a tuple argument even if shape coincides.
+    // Stage 2 cross-shape compile error.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "\n"
+        "fn takesPoint(p: Point) -> int:\n"
+        "    return p.x\n"
+        "\n"
+        "@describe(\"vcw record tuple\")\n"
+        "fn vcwRecordTuple():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesPoint, (p: Point) => p.x)\n"
+        "        takesPoint(Point(1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPoint\", (1, 2))).toEq(0)\n"
+    )), std::exception);
+}
+
+// =============================================================================
+// verifyCalledWith(): tuple argument support (#1706)
+// =============================================================================
+
+TEST_F(CodeGenTest, VerifyCalledWithTupleArgAccepted) {
+    // Tuple argument with primitive elements: kind=10 path with arity+kinds compare.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesPair(p: (int, int)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple\")\n"
+        "fn vcwTuple():\n"
+        "    @it(\"counts tuple arg\")\n"
+        "    fn countsTupleArg():\n"
+        "        mock(takesPair, (p: (int, int)) => 0)\n"
+        "        takesPair((1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPair\", (1, 2))).toEq(1)\n"
+    )), "vcw tuple\n  \033[32m+ counts tuple arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithTupleArityMismatchRejected) {
+    // Tuple parameter with arity=2 must reject a tuple argument with arity=3.
+    // Stage 2 of emitVerifyCalledWithCall checks that the arg's tuple shape
+    // matches the parameter's declared tuple sig.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesPair(p: (int, int)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple arity\")\n"
+        "fn vcwTupleArity():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesPair, (p: (int, int)) => 0)\n"
+        "        takesPair((1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPair\", (1, 2, 3))).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithTupleWithUnsupportedElementTypeRejected) {
+    // A tuple parameter whose element types include a non-primitive/non-str
+    // (List<int>) must be rejected at compile time by Stage 1.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesPair(p: (int, List<int>)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple bad elem\")\n"
+        "fn vcwTupleBadElem():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesPair, (p: (int, List<int>)) => 0)\n"
+        "        takesPair((1, [2]))\n"
+        "        expect(verifyCalledWith(\"takesPair\", (1, [2]))).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithTupleElementTypeMismatchRejected) {
+    // #1706 Stage 2 per-element check: a tuple parameter with element types
+    // (int, str) must reject a tuple argument whose second element has a
+    // different type (here List<int>) even though both ptr-backed types
+    // collapse to ptr at the LLVM struct level. The check reads the
+    // source_type_name metadata stamped on the tuple literal and rejects
+    // before Stage 3 builds the snapshot.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntStrPair(p: (int, str)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple elem mismatch\")\n"
+        "fn vcwTupleElemMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntStrPair, (p: (int, str)) => 0)\n"
+        "        takesIntStrPair((1, \"a\"))\n"
+        "        expect(verifyCalledWith(\"takesIntStrPair\", (1, [2]))).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithTupleParamRejectedWithRecordArg) {
+    // Tuple parameter must reject a record argument even if shape coincides.
+    // Stage 2 cross-shape compile error.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "\n"
+        "fn takesPair(p: (int, int)) -> int:\n"
+        "    return 0\n"
+        "\n"
+        "@describe(\"vcw tuple record\")\n"
+        "fn vcwTupleRecord():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesPair, (p: (int, int)) => 0)\n"
+        "        takesPair((1, 2))\n"
+        "        expect(verifyCalledWith(\"takesPair\", Point(1, 2))).toEq(0)\n"
+    )), std::exception);
+}
+
 TEST_F(CodeGenTest, VerifyCalledWithEmptyArgsError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "@describe(\"vcw empty\")\n"

@@ -166,6 +166,30 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
     llvm::Value *result = llvm::UndefValue::get(tupleType);
     for (unsigned i = 0; i < vals.size(); ++i)
         result = builder_.CreateInsertValue(result, vals[i], i);
+    // Stamp `source_type_name` on the tuple result so downstream consumers
+    // (notably `verifyCalledWith`'s record/tuple path, #1706) can recover the
+    // per-element type names — LLVM's anonymous StructType layout is lossy
+    // for ptr-backed elements (str / List / Map / ... all collapse to ptr).
+    // Best-effort: derive each element's source name via metadata; leave the
+    // stamp empty when any element name is unknown so consumers fall back to
+    // LLVM type inference rather than treating opaque ptrs as str.
+    bool allNamesKnown = !e->elements.empty();
+    std::string tupleSig = "(";
+    for (size_t i = 0; i < vals.size(); ++i) {
+        std::string elemName;
+        llvm::Type *t = types[i];
+        if (t == i64Ty_) elemName = "int";
+        else if (t == f64Ty_) elemName = "float";
+        else if (t == i1Ty_ || t == i8Ty_) elemName = "bool";
+        else if (t == ptrTy_ && isStringValue(vals[i])) elemName = "str";
+        else elemName = buildTypeNameFromMeta(vals[i]);
+        if (elemName.empty()) { allNamesKnown = false; break; }
+        if (i > 0) tupleSig += ", ";
+        tupleSig += elemName;
+    }
+    tupleSig += ")";
+    if (allNamesKnown)
+        getOrCreateMeta(result).source_type_name = tupleSig;
     return result;
 }
 

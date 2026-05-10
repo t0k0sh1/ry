@@ -379,7 +379,9 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         //   6=list (snapshot ptr; #1703 — element kind ∈ {1..4}),
         //   7=set  (snapshot ptr; #1704 — unordered compare; element kind ∈ {1..4}),
         //   8=map  (snapshot ptr; #1705 — unordered key->value; key/val kind ∈ {1..4}),
-        //   9=record, 10=tuple, 11=fn (reserved).
+        //   9=record (snapshot ptr; #1706 — per-slot compare; field kind ∈ {1..4}),
+        //  10=tuple  (snapshot ptr; #1706 — per-slot compare; element kind ∈ {1..4}),
+        //  11=fn (reserved).
         llvm::FunctionType *mockBeginRecTy =
             llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
@@ -533,6 +535,206 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                         continue;
                     }
                 }
+            }
+            // Record / tuple arg paths (#1706): when every field/element is
+            // primitive (int/float/bool) or str, build per-slot kinds[] and
+            // values[] stack alloca buffers and call the dedicated runtime
+            // helper. All-or-nothing — any unsupported field/element kind
+            // falls through to kind=5 opaque so cross-shape verifyCalledWith
+            // attempts still produce a clean error in Stage 1 of
+            // emitVerifyCalledWithCall.
+            if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
+                auto kindForFieldName =
+                    [](const std::string &n) -> int64_t {
+                        if (n == "int") return 1;
+                        if (n == "float") return 2;
+                        if (n == "bool") return 3;
+                        if (n == "str") return 4;
+                        return 0;
+                    };
+                bool emittedRecordOrTuple = false;
+                if (st->hasName()) {
+                    const std::string recName = st->getName().str();
+                    auto recIt = record_types_.find(recName);
+                    if (recIt != record_types_.end()) {
+                        const auto &info = recIt->second;
+                        std::vector<int64_t> kinds;
+                        kinds.reserve(info.fields.size());
+                        bool allOk = true;
+                        for (const auto &fld : info.fields) {
+                            std::string fldName =
+                                resolveTypeAlias(fld.type->toString());
+                            int64_t k = kindForFieldName(fldName);
+                            if (k == 0) { allOk = false; break; }
+                            kinds.push_back(k);
+                        }
+                        if (allOk && !info.fields.empty()) {
+                            llvm::FunctionType *mockStoreArgRecordTy =
+                                llvm::FunctionType::get(
+                                    llvm::Type::getVoidTy(*ctx_),
+                                    {ptrTy_, ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
+                                    false);
+                            llvm::FunctionCallee mockStoreArgRecordFn =
+                                mod_->getOrInsertFunction(
+                                    "__ry_mock_store_arg_record",
+                                    mockStoreArgRecordTy);
+                            llvm::Constant *typeNameStr = cachedGlobalString(
+                                recName, llvm::Twine(".mock.record_name.") + recName);
+                            int64_t fieldCount =
+                                static_cast<int64_t>(info.fields.size());
+                            llvm::Value *kindsAlloca =
+                                builder_.CreateAlloca(
+                                    i8Ty_,
+                                    llvm::ConstantInt::get(
+                                        i64Ty_,
+                                        static_cast<uint64_t>(fieldCount)),
+                                    "mock_rec_kinds");
+                            llvm::Value *valsAlloca =
+                                builder_.CreateAlloca(
+                                    i64Ty_,
+                                    llvm::ConstantInt::get(
+                                        i64Ty_,
+                                        static_cast<uint64_t>(fieldCount)),
+                                    "mock_rec_vals");
+                            for (size_t fi = 0; fi < info.fields.size(); ++fi) {
+                                int64_t k = kinds[fi];
+                                llvm::Value *fieldVal =
+                                    builder_.CreateExtractValue(
+                                        argVal, {static_cast<unsigned>(fi)},
+                                        "mock_rec_fld");
+                                llvm::Value *valI64;
+                                if (k == 1) valI64 = fieldVal;
+                                else if (k == 2)
+                                    valI64 = builder_.CreateBitCast(
+                                        fieldVal, i64Ty_, "mock_rec_f2i");
+                                else if (k == 3)
+                                    valI64 = builder_.CreateZExt(
+                                        fieldVal, i64Ty_, "mock_rec_b2i");
+                                else // k == 4 (str)
+                                    valI64 = builder_.CreatePtrToInt(
+                                        fieldVal, i64Ty_, "mock_rec_p2i");
+                                llvm::Value *kindGEP = builder_.CreateGEP(
+                                    i8Ty_, kindsAlloca,
+                                    llvm::ConstantInt::get(
+                                        i64Ty_, static_cast<uint64_t>(fi)));
+                                builder_.CreateStore(
+                                    llvm::ConstantInt::get(
+                                        i8Ty_, static_cast<uint64_t>(k), true),
+                                    kindGEP);
+                                llvm::Value *valGEP = builder_.CreateGEP(
+                                    i64Ty_, valsAlloca,
+                                    llvm::ConstantInt::get(
+                                        i64Ty_, static_cast<uint64_t>(fi)));
+                                builder_.CreateStore(valI64, valGEP);
+                            }
+                            builder_.CreateCall(
+                                mockStoreArgRecordFn,
+                                {callRec, typeNameStr,
+                                 llvm::ConstantInt::get(
+                                     i64Ty_,
+                                     static_cast<uint64_t>(fieldCount), true),
+                                 kindsAlloca, valsAlloca, nameStr});
+                            emittedRecordOrTuple = true;
+                        }
+                    }
+                }
+                if (!emittedRecordOrTuple && isTupleStructType(st)) {
+                    // Tuple kinds derived from per-element LLVM types only
+                    // when the source-level name is unavailable; if metadata
+                    // carries `source_type_name = "(T1, T2, ...)"`, prefer
+                    // that for str detection (LLVM type ptr alone is opaque).
+                    const auto *meta = getMeta(argVal);
+                    std::vector<std::string> elemNames;
+                    if (meta) {
+                        std::string tupleSig = !meta->source_type_name.empty()
+                            ? meta->source_type_name
+                            : std::string();
+                        if (!tupleSig.empty())
+                            elemNames = splitTupleSig(tupleSig);
+                    }
+                    unsigned arity = st->getNumElements();
+                    std::vector<int64_t> kinds;
+                    kinds.reserve(arity);
+                    bool allOk = arity > 0;
+                    for (unsigned ei = 0; ei < arity; ++ei) {
+                        llvm::Type *elemTy = st->getElementType(ei);
+                        int64_t k = 0;
+                        if (ei < elemNames.size()) {
+                            k = kindForFieldName(elemNames[ei]);
+                        }
+                        if (k == 0) {
+                            // Fall back to LLVM type when source name is missing.
+                            if (elemTy == i64Ty_) k = 1;
+                            else if (elemTy == f64Ty_) k = 2;
+                            else if (elemTy == i1Ty_ || elemTy == i8Ty_) k = 3;
+                            // Bare ptr without a stamped name is opaque —
+                            // do not infer str (mirrors the Set/Map guard).
+                        }
+                        if (k == 0) { allOk = false; break; }
+                        kinds.push_back(k);
+                    }
+                    if (allOk) {
+                        llvm::FunctionType *mockStoreArgTupleTy =
+                            llvm::FunctionType::get(
+                                llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
+                                false);
+                        llvm::FunctionCallee mockStoreArgTupleFn =
+                            mod_->getOrInsertFunction(
+                                "__ry_mock_store_arg_tuple",
+                                mockStoreArgTupleTy);
+                        llvm::Value *kindsAlloca =
+                            builder_.CreateAlloca(
+                                i8Ty_,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(arity)),
+                                "mock_tup_kinds");
+                        llvm::Value *valsAlloca =
+                            builder_.CreateAlloca(
+                                i64Ty_,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(arity)),
+                                "mock_tup_vals");
+                        for (unsigned ei = 0; ei < arity; ++ei) {
+                            int64_t k = kinds[ei];
+                            llvm::Value *elemVal =
+                                builder_.CreateExtractValue(
+                                    argVal, {ei}, "mock_tup_elem");
+                            llvm::Value *valI64;
+                            if (k == 1) valI64 = elemVal;
+                            else if (k == 2)
+                                valI64 = builder_.CreateBitCast(
+                                    elemVal, i64Ty_, "mock_tup_f2i");
+                            else if (k == 3)
+                                valI64 = builder_.CreateZExt(
+                                    elemVal, i64Ty_, "mock_tup_b2i");
+                            else // k == 4 (str)
+                                valI64 = builder_.CreatePtrToInt(
+                                    elemVal, i64Ty_, "mock_tup_p2i");
+                            llvm::Value *kindGEP = builder_.CreateGEP(
+                                i8Ty_, kindsAlloca,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(ei)));
+                            builder_.CreateStore(
+                                llvm::ConstantInt::get(
+                                    i8Ty_, static_cast<uint64_t>(k), true),
+                                kindGEP);
+                            llvm::Value *valGEP = builder_.CreateGEP(
+                                i64Ty_, valsAlloca,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(ei)));
+                            builder_.CreateStore(valI64, valGEP);
+                        }
+                        builder_.CreateCall(
+                            mockStoreArgTupleFn,
+                            {callRec,
+                             llvm::ConstantInt::get(
+                                 i64Ty_, static_cast<uint64_t>(arity), true),
+                             kindsAlloca, valsAlloca, nameStr});
+                        emittedRecordOrTuple = true;
+                    }
+                }
+                if (emittedRecordOrTuple) continue;
             }
             int64_t kind = 5;
             llvm::Value *valI64 = llvm::ConstantInt::get(i64Ty_, 0);

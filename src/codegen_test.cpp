@@ -639,6 +639,14 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
     llvm::FunctionCallee makeMapSnapshotFn = mod_->getOrInsertFunction(
         "__ry_mock_make_map_snapshot", makeMapSnapshotTy);
+    llvm::FunctionType *makeRecordSnapshotTy = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee makeRecordSnapshotFn = mod_->getOrInsertFunction(
+        "__ry_mock_make_record_snapshot", makeRecordSnapshotTy);
+    llvm::FunctionType *makeTupleSnapshotTy = llvm::FunctionType::get(
+        ptrTy_, {i64Ty_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee makeTupleSnapshotFn = mod_->getOrInsertFunction(
+        "__ry_mock_make_tuple_snapshot", makeTupleSnapshotTy);
 
     auto isSupportedCollElemName = [](const std::string &n) {
         return n == "int" || n == "float" || n == "bool" || n == "str";
@@ -653,10 +661,20 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         const bool paramIsSet = !paramIsList && isSetTypeName(declaredParamName);
         const bool paramIsMap = !paramIsList && !paramIsSet &&
                                 isMapTypeName(declaredParamName);
+        const bool paramIsRecord = !paramIsList && !paramIsSet && !paramIsMap &&
+                                   record_types_.count(declaredParamName) > 0;
+        const bool paramIsTuple = !paramIsList && !paramIsSet && !paramIsMap &&
+                                  !paramIsRecord &&
+                                  declaredParamName.size() >= 2 &&
+                                  declaredParamName.front() == '(' &&
+                                  declaredParamName.back() == ')';
         std::string paramListInner;
         std::string paramSetInner;
         std::string paramMapKeyInner;
         std::string paramMapValInner;
+        std::vector<int64_t> paramRecordKinds;
+        std::vector<int64_t> paramTupleKinds;
+        std::vector<std::string> paramTupleElemNames;
         if (paramIsList) {
             paramListInner = resolveTypeAlias(
                 declaredParamName.substr(5, declaredParamName.size() - 6));
@@ -706,6 +724,70 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                        "are supported";
                 codegenError(msg);
             }
+        } else if (paramIsRecord) {
+            // #1706: record params accepted iff every field is primitive or str.
+            const auto &info = record_types_.at(declaredParamName);
+            for (const auto &fld : info.fields) {
+                std::string fldName = resolveTypeAlias(fld.type->toString());
+                int64_t k = 0;
+                if (fldName == "int") k = 1;
+                else if (fldName == "float") k = 2;
+                else if (fldName == "bool") k = 3;
+                else if (fldName == "str") k = 4;
+                if (k == 0) {
+                    std::string msg = "verifyCalledWith: parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "' has type '";
+                    msg += declaredParamName;
+                    msg += "' whose field '";
+                    msg += fld.name;
+                    msg += "' has type '";
+                    msg += fldName;
+                    msg += "'; only records whose fields are int, float, bool, "
+                           "or str are supported";
+                    codegenError(msg);
+                }
+                paramRecordKinds.push_back(k);
+            }
+        } else if (paramIsTuple) {
+            // #1706: tuple params accepted iff every element is primitive or str.
+            paramTupleElemNames = splitTupleSig(declaredParamName);
+            if (paramTupleElemNames.empty()) {
+                std::string msg = "verifyCalledWith: parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has tuple type '";
+                msg += declaredParamName;
+                msg += "' that could not be parsed";
+                codegenError(msg);
+            }
+            for (const auto &elemName : paramTupleElemNames) {
+                std::string resolved = resolveTypeAlias(elemName);
+                int64_t k = 0;
+                if (resolved == "int") k = 1;
+                else if (resolved == "float") k = 2;
+                else if (resolved == "bool") k = 3;
+                else if (resolved == "str") k = 4;
+                if (k == 0) {
+                    std::string msg = "verifyCalledWith: parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "' has tuple type '";
+                    msg += declaredParamName;
+                    msg += "' whose element '";
+                    msg += elemName;
+                    msg += "' has type '";
+                    msg += resolved;
+                    msg += "'; only tuples whose elements are int, float, bool, "
+                           "or str are supported";
+                    codegenError(msg);
+                }
+                paramTupleKinds.push_back(k);
+            }
         } else if (!declaredParamName.empty() &&
                    declaredParamName != "int" && declaredParamName != "float" &&
                    declaredParamName != "bool" && declaredParamName != "str") {
@@ -715,8 +797,9 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             msg += fnName;
             msg += "' has type '";
             msg += declaredParamName;
-            msg += "'; only int, float, bool, str, List<T>, Set<T>, Map<K, V> "
-                   "with primitive element/key/value types are supported";
+            msg += "'; only int, float, bool, str, List<T>, Set<T>, Map<K, V>, "
+                   "record types whose fields are primitives or str, and tuple "
+                   "types whose elements are primitives or str are supported";
             codegenError(msg);
         }
 
@@ -924,6 +1007,113 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     codegenError(msg);
                 }
             }
+        } else if (auto *argSt = llvm::dyn_cast<llvm::StructType>(argTy)) {
+            // #1706: struct arg + record/tuple param. Verify shape match — both
+            // sides must agree on declared identity (named record vs anonymous
+            // tuple) and arity. The earlier `argTy != expectedTy` check already
+            // catches LLVM-type mismatches between struct args and record/tuple
+            // params, but cross-shape detection (e.g. record arg + tuple param,
+            // or two structurally-identical records with different names)
+            // requires explicit identity comparison.
+            if (paramIsRecord) {
+                if (!argSt->hasName() ||
+                    argSt->getName().str() != declaredParamName) {
+                    std::string argName =
+                        argSt->hasName() ? argSt->getName().str()
+                                          : std::string("<anonymous>");
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " is record '";
+                    msg += argName;
+                    msg += "' but parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "' has type '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+            } else if (paramIsTuple) {
+                if (!isTupleStructType(argSt) ||
+                    argSt->getNumElements() != paramTupleKinds.size()) {
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " has shape mismatch for tuple parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "': expected '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+                // #1706: per-element type-signature check. Anonymous tuple
+                // StructType collapses str / List / Map / closure / record /
+                // nested tuple all to ptr, so arity alone is not enough —
+                // `(int, [1, 2])` would otherwise satisfy a `(int, str)` param
+                // and the kind=10 snapshot would copy a List header where the
+                // verifier expects a str (memcmp byte_len at -8 reads the
+                // List size_t and treats it as the string byte_len). Read the
+                // lossless source_type_name metadata stamped by
+                // emitExprVariant(TupleExpr) and reject any mismatch.
+                const auto *argMeta = getMeta(argVal);
+                std::string argTupleSig =
+                    argMeta ? argMeta->source_type_name : std::string();
+                std::vector<std::string> argElemNames;
+                if (!argTupleSig.empty())
+                    argElemNames = splitTupleSig(argTupleSig);
+                if (argElemNames.size() != paramTupleElemNames.size()) {
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " is a tuple whose element types could not be "
+                           "recovered from metadata; only literal tuple "
+                           "expressions whose elements are int, float, bool, "
+                           "or str are supported as arguments to '";
+                    msg += fnName;
+                    msg += "' parameter ";
+                    msg += std::to_string(i);
+                    msg += " of type '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+                for (size_t k = 0; k < paramTupleElemNames.size(); ++k) {
+                    std::string argElemResolved =
+                        resolveTypeAlias(argElemNames[k]);
+                    std::string paramElemResolved =
+                        resolveTypeAlias(paramTupleElemNames[k]);
+                    if (argElemResolved != paramElemResolved) {
+                        std::string msg = "verifyCalledWith: argument ";
+                        msg += std::to_string(i + 1);
+                        msg += " element ";
+                        msg += std::to_string(k);
+                        msg += " has type '";
+                        msg += argElemNames[k];
+                        msg += "' but parameter ";
+                        msg += std::to_string(i);
+                        msg += " of '";
+                        msg += fnName;
+                        msg += "' has type '";
+                        msg += declaredParamName;
+                        msg += "' (element '";
+                        msg += paramTupleElemNames[k];
+                        msg += "')";
+                        codegenError(msg);
+                    }
+                }
+            } else {
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += " has struct type but parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'";
+                codegenError(msg);
+            }
         }
 
         int64_t kind = 0;
@@ -988,6 +1178,112 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 "vcw_map_snap");
             kind = 8;
             valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+        } else if (paramIsRecord && llvm::isa<llvm::StructType>(argTy)) {
+            // #1706: build per-slot kinds[] and values[] alloca buffers, then
+            // call __ry_mock_make_record_snapshot. paramRecordKinds was populated
+            // in Stage 1 (every kind ∈ {1..4}).
+            const int64_t fieldCount =
+                static_cast<int64_t>(paramRecordKinds.size());
+            llvm::Value *kindsAlloca = builder_.CreateAlloca(
+                i8Ty_,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(fieldCount)),
+                "vcw_rec_kinds");
+            llvm::Value *valsAlloca = builder_.CreateAlloca(
+                i64Ty_,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(fieldCount)),
+                "vcw_rec_vals");
+            for (size_t fi = 0; fi < paramRecordKinds.size(); ++fi) {
+                int64_t k = paramRecordKinds[fi];
+                llvm::Value *fieldVal = builder_.CreateExtractValue(
+                    argVal, {static_cast<unsigned>(fi)}, "vcw_rec_fld");
+                llvm::Value *fieldI64;
+                if (k == 1) fieldI64 = fieldVal;
+                else if (k == 2)
+                    fieldI64 = builder_.CreateBitCast(
+                        fieldVal, i64Ty_, "vcw_rec_f2i");
+                else if (k == 3)
+                    fieldI64 = builder_.CreateZExt(
+                        fieldVal, i64Ty_, "vcw_rec_b2i");
+                else // k == 4
+                    fieldI64 = builder_.CreatePtrToInt(
+                        fieldVal, i64Ty_, "vcw_rec_p2i");
+                llvm::Value *kindGEP = builder_.CreateGEP(
+                    i8Ty_, kindsAlloca,
+                    llvm::ConstantInt::get(
+                        i64Ty_, static_cast<uint64_t>(fi)));
+                builder_.CreateStore(
+                    llvm::ConstantInt::get(
+                        i8Ty_, static_cast<uint64_t>(k), true),
+                    kindGEP);
+                llvm::Value *valGEP = builder_.CreateGEP(
+                    i64Ty_, valsAlloca,
+                    llvm::ConstantInt::get(
+                        i64Ty_, static_cast<uint64_t>(fi)));
+                builder_.CreateStore(fieldI64, valGEP);
+            }
+            llvm::Constant *typeNameStr = cachedGlobalString(
+                declaredParamName,
+                llvm::Twine(".mock.record_name.") + declaredParamName);
+            llvm::Value *snap = builder_.CreateCall(
+                makeRecordSnapshotFn,
+                {typeNameStr,
+                 llvm::ConstantInt::get(
+                     i64Ty_, static_cast<uint64_t>(fieldCount), true),
+                 kindsAlloca, valsAlloca},
+                "vcw_rec_snap");
+            kind = 9;
+            valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+        } else if (paramIsTuple && llvm::isa<llvm::StructType>(argTy)) {
+            // #1706: same per-slot pattern as record, but no type_name and the
+            // shape is gated by arity + per-element kind alone. paramTupleKinds
+            // populated in Stage 1.
+            const int64_t arity =
+                static_cast<int64_t>(paramTupleKinds.size());
+            llvm::Value *kindsAlloca = builder_.CreateAlloca(
+                i8Ty_,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(arity)),
+                "vcw_tup_kinds");
+            llvm::Value *valsAlloca = builder_.CreateAlloca(
+                i64Ty_,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(arity)),
+                "vcw_tup_vals");
+            for (size_t ei = 0; ei < paramTupleKinds.size(); ++ei) {
+                int64_t k = paramTupleKinds[ei];
+                llvm::Value *elemVal = builder_.CreateExtractValue(
+                    argVal, {static_cast<unsigned>(ei)}, "vcw_tup_elem");
+                llvm::Value *elemI64;
+                if (k == 1) elemI64 = elemVal;
+                else if (k == 2)
+                    elemI64 = builder_.CreateBitCast(
+                        elemVal, i64Ty_, "vcw_tup_f2i");
+                else if (k == 3)
+                    elemI64 = builder_.CreateZExt(
+                        elemVal, i64Ty_, "vcw_tup_b2i");
+                else // k == 4
+                    elemI64 = builder_.CreatePtrToInt(
+                        elemVal, i64Ty_, "vcw_tup_p2i");
+                llvm::Value *kindGEP = builder_.CreateGEP(
+                    i8Ty_, kindsAlloca,
+                    llvm::ConstantInt::get(
+                        i64Ty_, static_cast<uint64_t>(ei)));
+                builder_.CreateStore(
+                    llvm::ConstantInt::get(
+                        i8Ty_, static_cast<uint64_t>(k), true),
+                    kindGEP);
+                llvm::Value *valGEP = builder_.CreateGEP(
+                    i64Ty_, valsAlloca,
+                    llvm::ConstantInt::get(
+                        i64Ty_, static_cast<uint64_t>(ei)));
+                builder_.CreateStore(elemI64, valGEP);
+            }
+            llvm::Value *snap = builder_.CreateCall(
+                makeTupleSnapshotFn,
+                {llvm::ConstantInt::get(
+                     i64Ty_, static_cast<uint64_t>(arity), true),
+                 kindsAlloca, valsAlloca},
+                "vcw_tup_snap");
+            kind = 10;
+            valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
         } else if (argTy == i64Ty_) {
             kind = 1;
             valI64 = argVal;
@@ -1003,8 +1299,9 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         } else {
             codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
                          " has unsupported type; only int, float, bool, str, "
-                         "List<T>, Set<T>, Map<K, V> with primitive "
-                         "element/key/value types are supported");
+                         "List<T>, Set<T>, Map<K, V>, record types whose fields "
+                         "are primitives or str, and tuple types whose elements "
+                         "are primitives or str are supported");
         }
 
         llvm::Value *kindGEP = builder_.CreateInBoundsGEP(

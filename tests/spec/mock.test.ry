@@ -63,6 +63,30 @@ fn takesStrFloatMap(m: Map<str, float>) -> int:
 fn takesStrBoolMap(m: Map<str, bool>) -> int:
   return len(m)
 
+record Point:
+  x: int
+  y: int
+
+record Person:
+  name: str
+  age: int
+  active: bool
+
+fn takesPoint(p: Point) -> int:
+  return p.x + p.y
+
+fn takesPerson(p: Person) -> str:
+  return p.name
+
+fn takesIntIntPair(p: (int, int)) -> int:
+  return p.0 + p.1
+
+fn takesIntStrPair(p: (int, str)) -> int:
+  return p.0
+
+fn takesStrBoolFloatTriple(t: (str, bool, float)) -> int:
+  return 0
+
 @describe("mock")
 fn mockTests():
   @it("should replace function")
@@ -422,3 +446,76 @@ fn verifyCalledWithTests():
     expect(verifyCalledWith("takesStrBoolMap", {"a": true, "b": false})).toEq(1)
     expect(verifyCalledWith("takesStrBoolMap", {"c": true})).toEq(1)
     expect(verifyCalledWith("takesStrBoolMap", {"a": false, "b": true})).toEq(0)
+
+@describe("verifyCalledWith with record / tuple args (#1706)")
+fn verifyCalledWithRecordTupleArgs():
+  @it("should match record argument by field-by-field equality")
+  fn shouldMatchRecordByFields():
+    mock("takesPoint", (p: Point) => p.x + p.y)
+    takesPoint(Point(1, 2))
+    takesPoint(Point(3, 4))
+    expect(verifyCalledWith("takesPoint", Point(1, 2))).toEq(1)
+    expect(verifyCalledWith("takesPoint", Point(3, 4))).toEq(1)
+  @it("should not match record arguments with different field values")
+  fn shouldNotMatchRecordDifferentFields():
+    mock("takesPoint", (p: Point) => p.x + p.y)
+    takesPoint(Point(1, 2))
+    expect(verifyCalledWith("takesPoint", Point(1, 2))).toEq(1)
+    expect(verifyCalledWith("takesPoint", Point(2, 1))).toEq(0)
+    expect(verifyCalledWith("takesPoint", Point(1, 3))).toEq(0)
+  @it("should match record with str field via NUL-safe comparison")
+  fn shouldMatchRecordStrField():
+    mock("takesPerson", (p: Person) => p.name)
+    takesPerson(Person("a\0b", 30, true))
+    takesPerson(Person("c\0d", 25, false))
+    expect(verifyCalledWith("takesPerson", Person("a\0b", 30, true))).toEq(1)
+    expect(verifyCalledWith("takesPerson", Person("c\0d", 25, false))).toEq(1)
+    # NUL-safe: prefix-equal "a" must NOT match "a\0b"
+    expect(verifyCalledWith("takesPerson", Person("a", 30, true))).toEq(0)
+    expect(verifyCalledWith("takesPerson", Person("a\0c", 30, true))).toEq(0)
+  @it("should retain heap-allocated str field through snapshot lifetime")
+  fn shouldRetainStrFieldLifecycle():
+    # `name1` and `name2` are heap-allocated via concat (not immortal
+    # globals), so the snapshot must keep its own retain on the str
+    # handle to remain valid for the verifyCalledWith reads below.
+    mock("takesPerson", (p: Person) => p.name)
+    name1 = "ali" + "ce"
+    name2 = "bo" + "b"
+    takesPerson(Person(name1, 30, true))
+    takesPerson(Person(name2, 25, false))
+    # Reassigning the locals must not affect the snapshot's retained copy.
+    name1 = "zzz"
+    name2 = "yyy"
+    expect(verifyCalledWith("takesPerson", Person("alice", 30, true))).toEq(1)
+    expect(verifyCalledWith("takesPerson", Person("bob", 25, false))).toEq(1)
+  @it("should match tuple argument with same arity and values")
+  fn shouldMatchTupleByValues():
+    mock("takesIntIntPair", (p: (int, int)) => p.0 + p.1)
+    takesIntIntPair((1, 2))
+    takesIntIntPair((3, 4))
+    expect(verifyCalledWith("takesIntIntPair", (1, 2))).toEq(1)
+    expect(verifyCalledWith("takesIntIntPair", (3, 4))).toEq(1)
+  @it("should not match tuple arguments with different values")
+  fn shouldNotMatchTupleDifferentValues():
+    mock("takesIntIntPair", (p: (int, int)) => p.0 + p.1)
+    takesIntIntPair((1, 2))
+    expect(verifyCalledWith("takesIntIntPair", (1, 2))).toEq(1)
+    expect(verifyCalledWith("takesIntIntPair", (2, 1))).toEq(0)
+  @it("should match tuple with str element via NUL-safe comparison")
+  fn shouldMatchTupleStrElement():
+    mock("takesIntStrPair", (p: (int, str)) => p.0)
+    takesIntStrPair((1, "a\0b"))
+    takesIntStrPair((2, "c\0d"))
+    expect(verifyCalledWith("takesIntStrPair", (1, "a\0b"))).toEq(1)
+    expect(verifyCalledWith("takesIntStrPair", (2, "c\0d"))).toEq(1)
+    # NUL-safe: prefix-equal "a" must NOT match "a\0b"
+    expect(verifyCalledWith("takesIntStrPair", (1, "a"))).toEq(0)
+    expect(verifyCalledWith("takesIntStrPair", (1, "a\0c"))).toEq(0)
+  @it("should match heterogeneous tuple (str, bool, float)")
+  fn shouldMatchHeterogeneousTuple():
+    mock("takesStrBoolFloatTriple", (t: (str, bool, float)) => 0)
+    takesStrBoolFloatTriple(("x", true, 1.5))
+    takesStrBoolFloatTriple(("y", false, 2.5))
+    expect(verifyCalledWith("takesStrBoolFloatTriple", ("x", true, 1.5))).toEq(1)
+    expect(verifyCalledWith("takesStrBoolFloatTriple", ("y", false, 2.5))).toEq(1)
+    expect(verifyCalledWith("takesStrBoolFloatTriple", ("x", false, 1.5))).toEq(0)
