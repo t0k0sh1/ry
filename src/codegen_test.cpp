@@ -797,9 +797,12 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             }
         } else if (paramIsFn) {
             // #1707: fn-typed params accepted; identity is the {thunk_ptr, env_ptr}
-            // pair extracted from the uniform closure struct. The fn signature
-            // itself is opaque to verifyCalledWith — only pointer equality
-            // matters. No per-param validation needed here.
+            // pair extracted from the uniform closure struct.
+            // #1715: signature compatibility is enforced after argVal is emitted
+            // (see post-emit block below) so we can read fnInfo->paramTypeNames /
+            // returnTypeName via lookupFnTypeInfo. Mismatched signatures could
+            // never produce equal closure pairs at runtime, so silent no-match
+            // would mask test bugs.
         } else if (!declaredParamName.empty() &&
                    declaredParamName != "int" && declaredParamName != "float" &&
                    declaredParamName != "bool" && declaredParamName != "str") {
@@ -840,6 +843,53 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                              "reference (e.g. `let f = (...) => ...; "
                              "verifyCalledWith(\"...\", f)`)");
             }
+
+            // #1715: enforce exact signature match between the recorded fn
+            // parameter and the verify-side value. Without this, signatures
+            // that differ silently fail to match at runtime (closure pair
+            // identity can never be equal across signatures), masking bugs
+            // such as passing `(s: str) => s` to a `fn(int) -> int` slot.
+            // Use parsed return type (parseFnTypeAnnotation already handles
+            // nested fn types correctly via findMatchingCloseParen) rather
+            // than raw substring scanning for "->", which would mis-parse
+            // higher-order signatures like `fn(fn(int) -> int) -> int`.
+            FnTypeInfo expectedInfo = parseFnTypeAnnotation(declaredParamName);
+            bool sigMismatch = false;
+            if (expectedInfo.paramTypeNames.size() != fnInfo->paramTypeNames.size()) {
+                sigMismatch = true;
+            } else {
+                for (size_t pi = 0; pi < expectedInfo.paramTypeNames.size(); ++pi) {
+                    if (resolveTypeAlias(expectedInfo.paramTypeNames[pi]) !=
+                        resolveTypeAlias(fnInfo->paramTypeNames[pi])) {
+                        sigMismatch = true;
+                        break;
+                    }
+                }
+                if (!sigMismatch &&
+                    resolveTypeAlias(expectedInfo.returnTypeName) !=
+                        resolveTypeAlias(fnInfo->returnTypeName)) {
+                    sigMismatch = true;
+                }
+            }
+            if (sigMismatch) {
+                std::string actualSig = "fn(";
+                for (size_t pi = 0; pi < fnInfo->paramTypeNames.size(); ++pi) {
+                    if (pi > 0) actualSig += ", ";
+                    actualSig += fnInfo->paramTypeNames[pi];
+                }
+                actualSig += ") -> ";
+                actualSig += fnInfo->returnTypeName;
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += " of '";
+                msg += fnName;
+                msg += "' is declared as ";
+                msg += declaredParamName;
+                msg += " but expected value has type ";
+                msg += actualSig;
+                codegenError(msg);
+            }
+
             fnWrapAllocated = !fnInfo->isUniformClosure;
             argVal = wrapAsUniformClosure(argVal, *fnInfo);
             argTy = argVal->getType();

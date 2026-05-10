@@ -504,6 +504,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
             if (rs != std::string::npos)
                 resolvedRetStr = resolvedRetStr.substr(rs, re - rs + 1);
         }
+        info.returnTypeName = resolvedRetStr;
         if (isFunctionTypeName(resolvedRetStr))
             info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetStr));
     } else {
