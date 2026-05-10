@@ -282,6 +282,9 @@ from testing import it, describe, mock, verifyCalledWith, expect
 fn compute(x: int) -> int:
     return x * 2
 
+fn takesIntList(xs: List<int>) -> int:
+    return len(xs)
+
 @describe("verifyCalledWith")
 fn verifyCalledWithTests():
     @it("should count calls matching argument")
