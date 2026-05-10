@@ -291,6 +291,9 @@ fn takesIntSet(xs: Set<int>) -> int:
 fn takesStrIntMap(m: Map<str, int>) -> int:
     return len(m)
 
+fn takesFn(f: fn(int) -> int) -> int:
+    return f(0)
+
 @describe("verifyCalledWith")
 fn verifyCalledWithTests():
     @it("should count calls matching argument")
