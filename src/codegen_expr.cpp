@@ -200,6 +200,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         info.paramTypes = entry.paramTypes;
         info.paramTypeNames = entry.paramTypeNames;
         info.returnType = func->getReturnType();
+        info.returnTypeName = entry.returnTypeName;
         {
             std::string resolved = resolveTypeAlias(entry.returnTypeName);
             if (isFunctionTypeName(resolved))

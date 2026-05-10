@@ -240,6 +240,57 @@ TEST_F(CodeGenTest, VerifyCalledWithTypeMismatchError) {
     )), std::exception);
 }
 
+// #1715: fn-typed verify args must match the recorded parameter signature
+// exactly. Mismatched signatures could never produce equal closure pairs at
+// runtime, so silent no-match would mask test bugs.
+TEST_F(CodeGenTest, VerifyCalledWithFnSigParamTypeMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesFn(f: fn(int) -> int) -> int:\n"
+        "    return f(0)\n"
+        "\n"
+        "@describe(\"vcw fn param\")\n"
+        "fn vcwFnParam():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesFn, (f: fn(int) -> int) => 0)\n"
+        "        takesFn((n: int) => n)\n"
+        "        bad = (s: str) => 0\n"
+        "        expect(verifyCalledWith(\"takesFn\", bad)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithFnSigReturnTypeMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesFn(f: fn(int) -> int) -> int:\n"
+        "    return f(0)\n"
+        "\n"
+        "@describe(\"vcw fn return\")\n"
+        "fn vcwFnReturn():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesFn, (f: fn(int) -> int) => 0)\n"
+        "        takesFn((n: int) => n)\n"
+        "        bad = (n: int) => \"x\"\n"
+        "        expect(verifyCalledWith(\"takesFn\", bad)).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithFnSigArityMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesFn(f: fn(int) -> int) -> int:\n"
+        "    return f(0)\n"
+        "\n"
+        "@describe(\"vcw fn arity\")\n"
+        "fn vcwFnArity():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesFn, (f: fn(int) -> int) => 0)\n"
+        "        takesFn((n: int) => n)\n"
+        "        bad = (a: int, b: int) => a\n"
+        "        expect(verifyCalledWith(\"takesFn\", bad)).toEq(0)\n"
+    )), std::exception);
+}
+
 TEST_F(CodeGenTest, VerifyCalledWithListIntArgAccepted) {
     // List<int> arg now accepted (#1703). 1 matching call -> count = 1.
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
