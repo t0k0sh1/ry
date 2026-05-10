@@ -31,11 +31,19 @@ extern "C" {
     void    __ry_mock_store_arg_list(void *record, void *listHeaderPtr,
                                       int64_t element_kind, int64_t element_size,
                                       const char *mockName);
+    // Record a Set<T> argument by deep-copying SetHeader.elems[0..len-1] into
+    // a MockListSnapshot (kind tag 7). The snapshot shape is shared with List;
+    // only the comparison semantics differ (unordered membership in mockArgEqual).
+    void    __ry_mock_store_arg_set(void *record, void *setHeaderPtr,
+                                     int64_t element_kind, int64_t element_size,
+                                     const char *mockName);
     // Build an expected-value snapshot for verifyCalledWith. The returned
     // pointer's ownership is transferred to __ry_mock_count_matching_calls,
     // which frees it after comparison.
     void   *__ry_mock_make_list_snapshot(void *listHeaderPtr, int64_t element_kind,
                                           int64_t element_size);
+    void   *__ry_mock_make_set_snapshot(void *setHeaderPtr, int64_t element_kind,
+                                         int64_t element_size);
     int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                             const int64_t *kinds,
                                             const int64_t *values);

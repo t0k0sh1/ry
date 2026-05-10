@@ -377,7 +377,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         //   4=str (ptr->i64, retain handle),
         //   5=opaque (unsupported in v1; never matches a verifyCalledWith query),
         //   6=list (snapshot ptr; #1703 — element kind ∈ {1..4}),
-        //   7=set, 8=map, 9=record, 10=tuple, 11=fn (reserved).
+        //   7=set  (snapshot ptr; #1704 — unordered compare; element kind ∈ {1..4}),
+        //   8=map, 9=record, 10=tuple, 11=fn (reserved).
         llvm::FunctionType *mockBeginRecTy =
             llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
@@ -392,6 +393,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
         llvm::FunctionCallee mockStoreArgListFn = mod_->getOrInsertFunction(
             "__ry_mock_store_arg_list", mockStoreArgListTy);
+        llvm::FunctionCallee mockStoreArgSetFn = mod_->getOrInsertFunction(
+            "__ry_mock_store_arg_set", mockStoreArgListTy);
         llvm::Value *callRec = builder_.CreateCall(
             mockBeginRecFn, {nameStr}, "mock_call_rec");
 
@@ -431,6 +434,46 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                         uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
                         builder_.CreateCall(
                             mockStoreArgListFn,
+                            {callRec, argVal,
+                             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
+                             llvm::ConstantInt::get(i64Ty_, elemSize, false),
+                             nameStr});
+                        continue;
+                    }
+                }
+            }
+            // Set<T> arg path (#1704): mirror of the List path. The only
+            // semantic difference (unordered comparison) is realized in
+            // mockArgEqual's kind-7 branch, not here.
+            if (argTy == ptrTy_) {
+                llvm::Type *setElemTy = getSetElementType(argVal);
+                if (setElemTy != nullptr) {
+                    const auto *meta = getMeta(argVal);
+                    std::string elemName =
+                        meta ? meta->set_elem_type_name : std::string();
+                    int64_t elemKind = 0;
+                    if (elemName == "int") elemKind = 1;
+                    else if (elemName == "float") elemKind = 2;
+                    else if (elemName == "bool") elemKind = 3;
+                    else if (elemName == "str") elemKind = 4;
+                    else if (elemName.empty()) {
+                        if (setElemTy == i64Ty_) elemKind = 1;
+                        else if (setElemTy == f64Ty_) elemKind = 2;
+                        else if (setElemTy == i1Ty_ || setElemTy == i8Ty_)
+                            elemKind = 3;
+                        // Do not infer str from a bare ptr element type:
+                        // unknown pointer-backed elements stay opaque (kind
+                        // 5) so List/Map/Set/closure-backed sets cannot
+                        // sneak through the kind-4 path. emitSetLiteral
+                        // stamps set_elem_type_name = "str" via
+                        // anyElemIsStrLike for bare-literal Set<str>, so
+                        // the elemName == "str" branch above covers them.
+                    }
+                    if (elemKind != 0) {
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        uint64_t elemSize = dl.getTypeAllocSize(setElemTy);
+                        builder_.CreateCall(
+                            mockStoreArgSetFn,
                             {callRec, argVal,
                              llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
                              llvm::ConstantInt::get(i64Ty_, elemSize, false),

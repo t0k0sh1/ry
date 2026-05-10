@@ -360,6 +360,146 @@ TEST_F(CodeGenTest, VerifyCalledWithListParamRejectedWithListOfDifferentElementT
     )), std::exception);
 }
 
+// ============================================================
+// verifyCalledWith(): Set<T> argument support (#1704)
+// ============================================================
+
+TEST_F(CodeGenTest, VerifyCalledWithSetIntArgAccepted) {
+    // Set<int> arg matches a recorded call with the same elements.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set\")\n"
+        "fn vcwSet():\n"
+        "    @it(\"counts set arg\")\n"
+        "    fn countsSetArg():\n"
+        "        mock(takesSet, (xs: Set<int>) => len(xs))\n"
+        "        takesSet({1, 2, 3})\n"
+        "        expect(verifyCalledWith(\"takesSet\", {1, 2, 3})).toEq(1)\n"
+    )), "vcw set\n  \033[32m+ counts set arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetStrArgAccepted) {
+    // Set<str> arg exercises the ARC retain/release path on the snapshot.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesSet(xs: Set<str>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set str\")\n"
+        "fn vcwSetStr():\n"
+        "    @it(\"counts set str arg\")\n"
+        "    fn countsSetStrArg():\n"
+        "        mock(takesSet, (xs: Set<str>) => len(xs))\n"
+        "        takesSet({\"a\", \"b\"})\n"
+        "        expect(verifyCalledWith(\"takesSet\", {\"a\", \"b\"})).toEq(1)\n"
+    )), "vcw set str\n  \033[32m+ counts set str arg\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetUnorderedMatch) {
+    // Sets compare unordered: recording {1, 2, 3} matches verifying {3, 2, 1}.
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn takesSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set unordered\")\n"
+        "fn vcwSetUnordered():\n"
+        "    @it(\"matches unordered\")\n"
+        "    fn matchesUnordered():\n"
+        "        mock(takesSet, (xs: Set<int>) => len(xs))\n"
+        "        takesSet({1, 2, 3})\n"
+        "        expect(verifyCalledWith(\"takesSet\", {3, 2, 1})).toEq(1)\n"
+    )), "vcw set unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed\n");
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetParameterRejectedWithPrimitiveArg) {
+    // Set<int> parameter must reject a primitive (str) argument. Both lower
+    // to ptrTy_ under opaque pointers; the explicit set-vs-scalar consistency
+    // check must fire.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set param scalar arg\")\n"
+        "fn vcwSetParamScalarArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesSet, (xs: Set<int>) => len(xs))\n"
+        "        takesSet({1, 2})\n"
+        "        expect(verifyCalledWith(\"takesSet\", \"x\")).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithScalarParameterRejectedWithSetArg) {
+    // A str parameter must reject a Set<int> argument. Both lower to ptrTy_,
+    // so the LLVM type check passes; the set-vs-scalar consistency check
+    // must fire.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesStr(s: str) -> int:\n"
+        "    return len(s)\n"
+        "\n"
+        "@describe(\"vcw scalar param set arg\")\n"
+        "fn vcwScalarParamSetArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesStr, (s: str) => len(s))\n"
+        "        takesStr(\"hi\")\n"
+        "        expect(verifyCalledWith(\"takesStr\", {1, 2})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithSetOfDifferentElementType) {
+    // Set<int> parameter must reject a Set<str> argument (element type
+    // mismatch). Both lower to a Set ARC header (ptrTy_), so the LLVM type
+    // check passes; the explicit element-type comparison must fire.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set elem mismatch\")\n"
+        "fn vcwSetElemMismatch():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntSet, (xs: Set<int>) => len(xs))\n"
+        "        takesIntSet({1, 2})\n"
+        "        expect(verifyCalledWith(\"takesIntSet\", {\"a\", \"b\"})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithListParamRejectedWithSetArg) {
+    // List<int> parameter must reject a Set<int> argument. Even with the same
+    // element type, kind (List vs Set) must match.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntList(xs: List<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw list param set arg\")\n"
+        "fn vcwListParamSetArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntList, (xs: List<int>) => len(xs))\n"
+        "        takesIntList([1, 2])\n"
+        "        expect(verifyCalledWith(\"takesIntList\", {1, 2})).toEq(0)\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithListArg) {
+    // Set<int> parameter must reject a List<int> argument. Even with the same
+    // element type, kind (Set vs List) must match.
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn takesIntSet(xs: Set<int>) -> int:\n"
+        "    return len(xs)\n"
+        "\n"
+        "@describe(\"vcw set param list arg\")\n"
+        "fn vcwSetParamListArg():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(takesIntSet, (xs: Set<int>) => len(xs))\n"
+        "        takesIntSet({1, 2})\n"
+        "        expect(verifyCalledWith(\"takesIntSet\", [1, 2])).toEq(0)\n"
+    )), std::exception);
+}
+
 TEST_F(CodeGenTest, VerifyCalledWithEmptyArgsError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "@describe(\"vcw empty\")\n"
