@@ -635,6 +635,10 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         "__ry_mock_make_list_snapshot", makeListSnapshotTy);
     llvm::FunctionCallee makeSetSnapshotFn = mod_->getOrInsertFunction(
         "__ry_mock_make_set_snapshot", makeListSnapshotTy);
+    llvm::FunctionType *makeMapSnapshotTy = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionCallee makeMapSnapshotFn = mod_->getOrInsertFunction(
+        "__ry_mock_make_map_snapshot", makeMapSnapshotTy);
 
     auto isSupportedCollElemName = [](const std::string &n) {
         return n == "int" || n == "float" || n == "bool" || n == "str";
@@ -647,8 +651,12 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 : std::string{};
         const bool paramIsList = isListTypeName(declaredParamName);
         const bool paramIsSet = !paramIsList && isSetTypeName(declaredParamName);
+        const bool paramIsMap = !paramIsList && !paramIsSet &&
+                                isMapTypeName(declaredParamName);
         std::string paramListInner;
         std::string paramSetInner;
+        std::string paramMapKeyInner;
+        std::string paramMapValInner;
         if (paramIsList) {
             paramListInner = resolveTypeAlias(
                 declaredParamName.substr(5, declaredParamName.size() - 6));
@@ -677,6 +685,27 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                        "are supported";
                 codegenError(msg);
             }
+        } else if (paramIsMap) {
+            // Strip the outer "Map<...>" then split "K, V" honouring nested
+            // angle brackets via splitTypeArgs.
+            auto parts = splitTypeArgs(
+                declaredParamName.substr(4, declaredParamName.size() - 5));
+            if (parts.size() == 2) {
+                paramMapKeyInner = resolveTypeAlias(trimTypeNameSpaces(parts[0]));
+                paramMapValInner = resolveTypeAlias(trimTypeNameSpaces(parts[1]));
+            }
+            if (!isSupportedCollElemName(paramMapKeyInner) ||
+                !isSupportedCollElemName(paramMapValInner)) {
+                std::string msg = "verifyCalledWith: parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'; only Map<K, V> with K, V ∈ {int, float, bool, str} "
+                       "are supported";
+                codegenError(msg);
+            }
         } else if (!declaredParamName.empty() &&
                    declaredParamName != "int" && declaredParamName != "float" &&
                    declaredParamName != "bool" && declaredParamName != "str") {
@@ -686,9 +715,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             msg += fnName;
             msg += "' has type '";
             msg += declaredParamName;
-            msg += "'; only int, float, bool, str, List<int>, List<float>, "
-                   "List<bool>, List<str>, Set<int>, Set<float>, Set<bool>, "
-                   "Set<str> are supported";
+            msg += "'; only int, float, bool, str, List<T>, Set<T>, Map<K, V> "
+                   "with primitive element/key/value types are supported";
             codegenError(msg);
         }
 
@@ -716,12 +744,21 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         if (argTy == ptrTy_) {
             llvm::Type *argListElemTy = getListElementType(argVal);
             llvm::Type *argSetElemTy = getSetElementType(argVal);
+            llvm::Type *argMapKeyTy = getMapKeyType(argVal);
+            llvm::Type *argMapValTy = getMapValueType(argVal);
             const bool argIsList = (argListElemTy != nullptr);
             const bool argIsSet = (argSetElemTy != nullptr);
+            const bool argIsMap = (argMapKeyTy != nullptr && argMapValTy != nullptr);
+            auto otherShapeStr = [&]() -> const char * {
+                if (argIsSet) return " is a Set";
+                if (argIsMap) return " is a Map";
+                if (argIsList) return " is a List";
+                return " has an unsupported type";
+            };
             if (paramIsList && !argIsList) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
-                msg += argIsSet ? " is a Set" : " is not a List";
+                msg += argIsSet || argIsMap ? otherShapeStr() : " is not a List";
                 msg += " but parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
@@ -731,7 +768,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 msg += "'";
                 codegenError(msg);
             }
-            if (!paramIsList && !paramIsSet && argIsList) {
+            if (!paramIsList && !paramIsSet && !paramIsMap && argIsList) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a List but parameter ";
@@ -746,7 +783,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             if (paramIsSet && !argIsSet) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
-                msg += argIsList ? " is a List" : " is not a Set";
+                msg += argIsList || argIsMap ? otherShapeStr() : " is not a Set";
                 msg += " but parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
@@ -756,10 +793,35 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 msg += "'";
                 codegenError(msg);
             }
-            if (!paramIsSet && !paramIsList && argIsSet) {
+            if (!paramIsSet && !paramIsList && !paramIsMap && argIsSet) {
                 std::string msg = "verifyCalledWith: argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a Set but parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'";
+                codegenError(msg);
+            }
+            if (paramIsMap && !argIsMap) {
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += argIsList || argIsSet ? otherShapeStr() : " is not a Map";
+                msg += " but parameter ";
+                msg += std::to_string(i);
+                msg += " of '";
+                msg += fnName;
+                msg += "' has type '";
+                msg += declaredParamName;
+                msg += "'";
+                codegenError(msg);
+            }
+            if (!paramIsSet && !paramIsList && !paramIsMap && argIsMap) {
+                std::string msg = "verifyCalledWith: argument ";
+                msg += std::to_string(i + 1);
+                msg += " is a Map but parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -827,6 +889,41 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     codegenError(msg);
                 }
             }
+            if (paramIsMap && argIsMap) {
+                const auto *meta = getMeta(argVal);
+                auto resolveCollName = [&](llvm::Type *ty,
+                                            const std::string &stamped) {
+                    if (!stamped.empty()) return stamped;
+                    if (ty == i64Ty_) return std::string("int");
+                    if (ty == f64Ty_) return std::string("float");
+                    if (ty == i1Ty_ || ty == i8Ty_) return std::string("bool");
+                    // Mirror the Set guard: never infer str from bare ptr.
+                    return std::string{};
+                };
+                std::string argKeyName = resolveCollName(
+                    argMapKeyTy, meta ? meta->map_key_type_name : std::string());
+                std::string argValName = resolveCollName(
+                    argMapValTy, meta ? meta->map_value_type_name : std::string());
+                std::string argKeyResolved = resolveTypeAlias(argKeyName);
+                std::string argValResolved = resolveTypeAlias(argValName);
+                if (argKeyResolved != paramMapKeyInner ||
+                    argValResolved != paramMapValInner) {
+                    std::string msg = "verifyCalledWith: argument ";
+                    msg += std::to_string(i + 1);
+                    msg += " is Map<";
+                    msg += argKeyName;
+                    msg += ", ";
+                    msg += argValName;
+                    msg += "> but parameter ";
+                    msg += std::to_string(i);
+                    msg += " of '";
+                    msg += fnName;
+                    msg += "' has type '";
+                    msg += declaredParamName;
+                    msg += "'";
+                    codegenError(msg);
+                }
+            }
         }
 
         int64_t kind = 0;
@@ -865,6 +962,32 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 "vcw_set_snap");
             kind = 7;
             valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
+        } else if (paramIsMap && argTy == ptrTy_ &&
+                   getMapKeyType(argVal) && getMapValueType(argVal)) {
+            auto kindOf = [](const std::string &n) -> int64_t {
+                if (n == "int") return 1;
+                if (n == "float") return 2;
+                if (n == "bool") return 3;
+                if (n == "str") return 4;
+                return 0;
+            };
+            int64_t keyKind = kindOf(paramMapKeyInner);
+            int64_t valKind = kindOf(paramMapValInner);
+            llvm::Type *keyTy = getMapKeyType(argVal);
+            llvm::Type *valTy = getMapValueType(argVal);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t keySize = dl.getTypeAllocSize(keyTy);
+            uint64_t valSize = dl.getTypeAllocSize(valTy);
+            llvm::Value *snap = builder_.CreateCall(
+                makeMapSnapshotFn,
+                {argVal,
+                 llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(keyKind), true),
+                 llvm::ConstantInt::get(i64Ty_, keySize, false),
+                 llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(valKind), true),
+                 llvm::ConstantInt::get(i64Ty_, valSize, false)},
+                "vcw_map_snap");
+            kind = 8;
+            valI64 = builder_.CreatePtrToInt(snap, i64Ty_, "vcw_snap2i");
         } else if (argTy == i64Ty_) {
             kind = 1;
             valI64 = argVal;
@@ -880,9 +1003,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         } else {
             codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
                          " has unsupported type; only int, float, bool, str, "
-                         "List<int>, List<float>, List<bool>, List<str>, "
-                         "Set<int>, Set<float>, Set<bool>, Set<str> are "
-                         "supported");
+                         "List<T>, Set<T>, Map<K, V> with primitive "
+                         "element/key/value types are supported");
         }
 
         llvm::Value *kindGEP = builder_.CreateInBoundsGEP(

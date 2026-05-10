@@ -30,16 +30,16 @@ static std::string currentIndent(int extra = 0) {
 static char g_current_it_buf[256];
 const char *__ry_test_current_it_name() { return g_current_it_buf; }
 
-// Per-call argument record for argument-level mock verification (#1677, #1703, #1704).
+// Per-call argument record for argument-level mock verification (#1677, #1703, #1704, #1705).
 // Mock kind tag space — keep in sync with codegen_call_user.cpp:
-//   1 = int      (raw i64)                                     — v1 (#1677)
-//   2 = float    (bitcast f64 -> i64)                          — v1 (#1677)
-//   3 = bool     (zext  i1  -> i64)                            — v1 (#1677)
-//   4 = str      (ptr   -> i64, retain handle)                 — v1 (#1677)
+//   1 = int      (raw i64)                                          — v1 (#1677)
+//   2 = float    (bitcast f64 -> i64)                               — v1 (#1677)
+//   3 = bool     (zext  i1  -> i64)                                 — v1 (#1677)
+//   4 = str      (ptr   -> i64, retain handle)                      — v1 (#1677)
 //   5 = opaque   (placeholder, never matches a verify query)
-//   6 = list     (ptr to MockListSnapshot)                     — #1703
-//   7 = set      (ptr to MockListSnapshot, unordered compare)  — #1704
-//   8 = map      (reserved for sibling sub-issue)
+//   6 = list     (ptr to MockListSnapshot)                          — #1703
+//   7 = set      (ptr to MockListSnapshot, unordered compare)       — #1704
+//   8 = map      (ptr to MockMapSnapshot, unordered key->value cmp) — #1705
 //   9 = record   (reserved for sibling sub-issue)
 //  10 = tuple    (reserved for sibling sub-issue)
 //  11 = fn       (reserved for sibling sub-issue)
@@ -77,6 +77,35 @@ struct SetHeader {
     void   *buckets;
 };
 
+// Mirror of the codegen-emitted MapHeader layout
+// (`{i64 len, i64 cap, ptr keys, ptr vals, i64 bucket_count, ptr buckets}`).
+// Only `len`, `keys`, and `vals` are read for snapshotting — both arrays are
+// the dense, dedup'd parallel storage indexed by the same i in `[0, len)`.
+struct MockMapHeaderView {
+    int64_t len;
+    int64_t cap;
+    void   *keys;
+    void   *vals;
+    int64_t bucket_count;
+    void   *buckets;
+};
+
+// Per-Map<K, V> argument snapshot for verifyCalledWith (#1705). Keys and vals
+// are deep-copied parallel buffers; the kind tag (1=int, 2=float, 3=bool,
+// 4=str, mock kind space) on each side selects retain/release and comparison
+// strategy in mockArgEqual's kind-8 branch. Stored separately from
+// MockListSnapshot because parallel keys+vals storage cannot be represented
+// by a single (data, len, element_size) tuple.
+struct MockMapSnapshot {
+    int64_t len;
+    int64_t key_size;
+    int64_t val_size;
+    int8_t  key_kind;
+    int8_t  val_kind;
+    void   *keys;
+    void   *vals;
+};
+
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
 // or closure thunk). env_ptr / env_dtor are non-null only for capture-based
 // closures (#1678): the dispatch site reads env_ptr via __ry_mock_get_env
@@ -89,6 +118,7 @@ struct MockEntry {
     std::vector<MockCallRecord> calls;
     std::vector<char *> retained_str_args;
     std::vector<MockListSnapshot *> retained_list_snapshots;
+    std::vector<MockMapSnapshot *> retained_map_snapshots;
 };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
 
@@ -198,6 +228,74 @@ static void freeMockListSnapshot(MockListSnapshot *snap) {
     delete snap;
 }
 
+// Build a deep-copy snapshot of a Map<K, V> argument. Reads MapHeader.{keys,vals}
+// in parallel for [0, len). For str slots on either side, each char* is retained
+// so the StringHeader stays alive until the snapshot is released. The map is
+// already dedup'd by the runtime, so each key appears exactly once — comparison
+// in mockArgEqual exploits that for an O(n^2) "find key, then check value" loop.
+static MockMapSnapshot *makeMockMapSnapshot(void *mapHeaderPtr,
+                                              int64_t key_kind, int64_t key_size,
+                                              int64_t val_kind, int64_t val_size) {
+    auto *snap = new MockMapSnapshot{};
+    snap->len = 0;
+    snap->key_size = key_size;
+    snap->val_size = val_size;
+    snap->key_kind = static_cast<int8_t>(key_kind);
+    snap->val_kind = static_cast<int8_t>(val_kind);
+    snap->keys = nullptr;
+    snap->vals = nullptr;
+    if (!mapHeaderPtr) return snap;
+    auto *header = static_cast<MockMapHeaderView *>(mapHeaderPtr);
+    int64_t len = header->len;
+    snap->len = len;
+    if (len > 0) {
+        if (key_size > 0) {
+            size_t keyBytes = static_cast<size_t>(len) *
+                              static_cast<size_t>(key_size);
+            snap->keys = checked_malloc(keyBytes);
+            std::memcpy(snap->keys, header->keys, keyBytes);
+            if (key_kind == 4) {
+                char **handles = reinterpret_cast<char **>(snap->keys);
+                for (int64_t i = 0; i < len; ++i)
+                    mockRetainStr(handles[i]);
+            }
+        }
+        if (val_size > 0) {
+            size_t valBytes = static_cast<size_t>(len) *
+                              static_cast<size_t>(val_size);
+            snap->vals = checked_malloc(valBytes);
+            std::memcpy(snap->vals, header->vals, valBytes);
+            if (val_kind == 4) {
+                char **handles = reinterpret_cast<char **>(snap->vals);
+                for (int64_t i = 0; i < len; ++i)
+                    mockRetainStr(handles[i]);
+            }
+        }
+    }
+    return snap;
+}
+
+static void freeMockMapSnapshot(MockMapSnapshot *snap) {
+    if (!snap) return;
+    if (snap->keys) {
+        if (snap->key_kind == 4) {
+            char **handles = reinterpret_cast<char **>(snap->keys);
+            for (int64_t i = 0; i < snap->len; ++i)
+                mockReleaseStr(handles[i]);
+        }
+        std::free(snap->keys);
+    }
+    if (snap->vals) {
+        if (snap->val_kind == 4) {
+            char **handles = reinterpret_cast<char **>(snap->vals);
+            for (int64_t i = 0; i < snap->len; ++i)
+                mockReleaseStr(handles[i]);
+        }
+        std::free(snap->vals);
+    }
+    delete snap;
+}
+
 extern "C" {
 void __ry_arc_free_counted(void *header_ptr);
 }
@@ -295,6 +393,7 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
     for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
+    for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = fn_ptr;
 }
@@ -305,6 +404,7 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
     for (char *s : entry.retained_str_args) mockReleaseStr(s);
     for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
+    for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
     entry = MockEntry{};
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
@@ -394,6 +494,28 @@ void __ry_mock_store_arg_set(void *record, void *setHeaderPtr,
 void *__ry_mock_make_set_snapshot(void *setHeaderPtr, int64_t element_kind,
                                     int64_t element_size) {
     return makeMockSetSnapshot(setHeaderPtr, element_kind, element_size);
+}
+
+void __ry_mock_store_arg_map(void *record, void *mapHeaderPtr,
+                              int64_t key_kind, int64_t key_size,
+                              int64_t val_kind, int64_t val_size,
+                              const char *mockName) {
+    if (!record) return;
+    auto *snap = makeMockMapSnapshot(mapHeaderPtr, key_kind, key_size,
+                                      val_kind, val_size);
+    auto *rec = static_cast<MockCallRecord *>(record);
+    rec->args.push_back({8, reinterpret_cast<int64_t>(snap)});
+    if (mockName) {
+        auto it = g_mock_registry.find(mockName);
+        if (it != g_mock_registry.end())
+            it->second.retained_map_snapshots.push_back(snap);
+    }
+}
+
+void *__ry_mock_make_map_snapshot(void *mapHeaderPtr,
+                                    int64_t key_kind, int64_t key_size,
+                                    int64_t val_kind, int64_t val_size) {
+    return makeMockMapSnapshot(mapHeaderPtr, key_kind, key_size, val_kind, val_size);
 }
 
 static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
@@ -490,6 +612,59 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
         }
         return true;
     }
+    if (recorded.kind == 8) {
+        // Map: unordered key->value comparison. Both sides are dedup'd by
+        // the runtime hash table, so each key appears exactly once. For
+        // every key in a we look it up in b (linear scan), then compare
+        // the corresponding value. O(n^2) total — fine for testing.
+        auto *a = reinterpret_cast<MockMapSnapshot *>(recorded.value);
+        auto *b = reinterpret_cast<MockMapSnapshot *>(expectedValue);
+        if (a == b) return true;
+        if (!a || !b) return false;
+        if (a->len != b->len) return false;
+        if (a->key_kind != b->key_kind) return false;
+        if (a->val_kind != b->val_kind) return false;
+        if (a->len == 0) return true;
+        // Non-str slots compare by raw bytes — sizes must match. Str slots
+        // compare via stringByteLen + memcmp regardless of element_size.
+        if (a->key_kind != 4 && a->key_size != b->key_size) return false;
+        if (a->val_kind != 4 && a->val_size != b->val_size) return false;
+
+        auto strSlotEq = [](void *base_a, void *base_b, int64_t i, int64_t j) {
+            const char *sa = reinterpret_cast<char **>(base_a)[i];
+            const char *sb = reinterpret_cast<char **>(base_b)[j];
+            if (sa == sb) return true;
+            if (!sa || !sb) return false;
+            int64_t la = stringByteLen(sa);
+            int64_t lb = stringByteLen(sb);
+            if (la != lb) return false;
+            return std::memcmp(sa, sb, static_cast<size_t>(la)) == 0;
+        };
+        auto byteSlotEq = [](void *base_a, void *base_b, int64_t i, int64_t j,
+                              int64_t stride_bytes) {
+            const auto stride = static_cast<size_t>(stride_bytes);
+            return std::memcmp(
+                static_cast<const char *>(base_a) + static_cast<size_t>(i) * stride,
+                static_cast<const char *>(base_b) + static_cast<size_t>(j) * stride,
+                stride) == 0;
+        };
+
+        for (int64_t i = 0; i < a->len; ++i) {
+            int64_t j = -1;
+            for (int64_t k = 0; k < b->len; ++k) {
+                bool keyMatch = a->key_kind == 4
+                    ? strSlotEq(a->keys, b->keys, i, k)
+                    : byteSlotEq(a->keys, b->keys, i, k, a->key_size);
+                if (keyMatch) { j = k; break; }
+            }
+            if (j < 0) return false;
+            bool valMatch = a->val_kind == 4
+                ? strSlotEq(a->vals, b->vals, i, j)
+                : byteSlotEq(a->vals, b->vals, i, j, a->val_size);
+            if (!valMatch) return false;
+        }
+        return true;
+    }
     return recorded.value == expectedValue;
 }
 
@@ -514,12 +689,15 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     }
     // Take ownership of caller-supplied snapshots regardless of whether the
     // mock is registered, so the verify path is leak-free even when the mock
-    // was never set. Both kind 6 (list) and kind 7 (set) snapshots are
-    // allocated as MockListSnapshot — freeMockListSnapshot is kind-agnostic.
+    // was never set. kind 6 (list) and kind 7 (set) share MockListSnapshot;
+    // kind 8 (map) uses MockMapSnapshot — separate free path.
     for (int64_t i = 0; i < numArgs; ++i) {
         if (kinds[i] == 6 || kinds[i] == 7) {
             freeMockListSnapshot(
                 reinterpret_cast<MockListSnapshot *>(values[i]));
+        } else if (kinds[i] == 8) {
+            freeMockMapSnapshot(
+                reinterpret_cast<MockMapSnapshot *>(values[i]));
         }
     }
     return matched;
@@ -531,6 +709,7 @@ void __ry_mock_clear_all() {
         mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
         for (char *s : entry.retained_str_args) mockReleaseStr(s);
         for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
+        for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
     }
     g_mock_registry.clear();
 }

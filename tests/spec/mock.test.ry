@@ -45,6 +45,24 @@ fn takesFloatSet(xs: Set<float>) -> int:
 fn takesBoolSet(xs: Set<bool>) -> int:
   return len(xs)
 
+fn takesStrIntMap(m: Map<str, int>) -> int:
+  return len(m)
+
+fn takesIntIntMap(m: Map<int, int>) -> int:
+  return len(m)
+
+fn takesStrStrMap(m: Map<str, str>) -> int:
+  return len(m)
+
+fn takesIntStrMap(m: Map<int, str>) -> int:
+  return len(m)
+
+fn takesStrFloatMap(m: Map<str, float>) -> int:
+  return len(m)
+
+fn takesStrBoolMap(m: Map<str, bool>) -> int:
+  return len(m)
+
 @describe("mock")
 fn mockTests():
   @it("should replace function")
@@ -309,3 +327,98 @@ fn verifyCalledWithTests():
     takesIntSet(emptyS)
     expect(verifyCalledWith("takesIntSet", emptyS)).toEq(1)
     expect(verifyCalledWith("takesIntSet", {1})).toEq(0)
+  @it("should count calls matching Map<str, int> argument")
+  fn shouldCountMapStrIntArg():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    takesStrIntMap({"a": 1, "b": 2})
+    takesStrIntMap({"a": 1, "b": 2})
+    takesStrIntMap({"c": 3})
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1, "b": 2})).toEq(2)
+    expect(verifyCalledWith("takesStrIntMap", {"c": 3})).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"x": 9})).toEq(0)
+  @it("should count calls matching Map<int, int> argument")
+  fn shouldCountMapIntIntArg():
+    mock("takesIntIntMap", (m: Map<int, int>) => len(m))
+    takesIntIntMap({1: 10, 2: 20})
+    takesIntIntMap({1: 10, 2: 20})
+    takesIntIntMap({3: 30})
+    expect(verifyCalledWith("takesIntIntMap", {1: 10, 2: 20})).toEq(2)
+    expect(verifyCalledWith("takesIntIntMap", {3: 30})).toEq(1)
+    expect(verifyCalledWith("takesIntIntMap", {9: 99})).toEq(0)
+  @it("should count calls matching Map<str, str> argument")
+  fn shouldCountMapStrStrArg():
+    mock("takesStrStrMap", (m: Map<str, str>) => len(m))
+    takesStrStrMap({"a": "x", "b": "y"})
+    takesStrStrMap({"a": "x", "b": "y"})
+    takesStrStrMap({"c": "z"})
+    expect(verifyCalledWith("takesStrStrMap", {"a": "x", "b": "y"})).toEq(2)
+    expect(verifyCalledWith("takesStrStrMap", {"c": "z"})).toEq(1)
+    expect(verifyCalledWith("takesStrStrMap", {"x": "y"})).toEq(0)
+  @it("should count calls matching Map<int, str> argument")
+  fn shouldCountMapIntStrArg():
+    mock("takesIntStrMap", (m: Map<int, str>) => len(m))
+    takesIntStrMap({1: "a", 2: "b"})
+    takesIntStrMap({1: "a", 2: "b"})
+    takesIntStrMap({3: "c"})
+    expect(verifyCalledWith("takesIntStrMap", {1: "a", 2: "b"})).toEq(2)
+    expect(verifyCalledWith("takesIntStrMap", {3: "c"})).toEq(1)
+    expect(verifyCalledWith("takesIntStrMap", {9: "z"})).toEq(0)
+  @it("should match Map arguments unordered")
+  fn shouldMatchMapUnordered():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    takesStrIntMap({"a": 1, "b": 2, "c": 3})
+    expect(verifyCalledWith("takesStrIntMap", {"c": 3, "a": 1, "b": 2})).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"b": 2, "c": 3, "a": 1})).toEq(1)
+  @it("should distinguish Map arguments by key set")
+  fn shouldDistinguishMapByKeys():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    takesStrIntMap({"a": 1, "b": 2})
+    takesStrIntMap({"a": 1, "c": 2})
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1, "b": 2})).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1, "c": 2})).toEq(1)
+  @it("should distinguish Map arguments by value")
+  fn shouldDistinguishMapByValue():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    takesStrIntMap({"a": 1})
+    takesStrIntMap({"a": 2})
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1})).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"a": 2})).toEq(1)
+  @it("should distinguish Map arguments by length")
+  fn shouldDistinguishMapByLength():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    takesStrIntMap({"a": 1})
+    takesStrIntMap({"a": 1, "b": 2})
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1})).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1, "b": 2})).toEq(1)
+  @it("should match empty Map argument")
+  fn shouldMatchEmptyMapArg():
+    mock("takesStrIntMap", (m: Map<str, int>) => len(m))
+    emptyM: Map<str, int> = {}
+    takesStrIntMap(emptyM)
+    expect(verifyCalledWith("takesStrIntMap", emptyM)).toEq(1)
+    expect(verifyCalledWith("takesStrIntMap", {"a": 1})).toEq(0)
+  @it("should match Map<str, str> with embedded NUL via length+memcmp")
+  fn shouldMatchMapStrStrEmbeddedNul():
+    mock("takesStrStrMap", (m: Map<str, str>) => len(m))
+    takesStrStrMap({"a\0b": "x\0y"})
+    takesStrStrMap({"a": "x"})
+    expect(verifyCalledWith("takesStrStrMap", {"a\0b": "x\0y"})).toEq(1)
+    expect(verifyCalledWith("takesStrStrMap", {"a": "x"})).toEq(1)
+    expect(verifyCalledWith("takesStrStrMap", {"a\0b": "x"})).toEq(0)
+    expect(verifyCalledWith("takesStrStrMap", {"a": "x\0y"})).toEq(0)
+  @it("should count calls matching Map<str, float> argument")
+  fn shouldCountMapStrFloatArg():
+    mock("takesStrFloatMap", (m: Map<str, float>) => len(m))
+    takesStrFloatMap({"a": 1.5, "b": 2.5})
+    takesStrFloatMap({"c": 3.5})
+    expect(verifyCalledWith("takesStrFloatMap", {"a": 1.5, "b": 2.5})).toEq(1)
+    expect(verifyCalledWith("takesStrFloatMap", {"c": 3.5})).toEq(1)
+    expect(verifyCalledWith("takesStrFloatMap", {"a": 9.9})).toEq(0)
+  @it("should count calls matching Map<str, bool> argument")
+  fn shouldCountMapStrBoolArg():
+    mock("takesStrBoolMap", (m: Map<str, bool>) => len(m))
+    takesStrBoolMap({"a": true, "b": false})
+    takesStrBoolMap({"c": true})
+    expect(verifyCalledWith("takesStrBoolMap", {"a": true, "b": false})).toEq(1)
+    expect(verifyCalledWith("takesStrBoolMap", {"c": true})).toEq(1)
+    expect(verifyCalledWith("takesStrBoolMap", {"a": false, "b": true})).toEq(0)

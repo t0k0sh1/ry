@@ -37,6 +37,13 @@ extern "C" {
     void    __ry_mock_store_arg_set(void *record, void *setHeaderPtr,
                                      int64_t element_kind, int64_t element_size,
                                      const char *mockName);
+    // Record a Map<K, V> argument by deep-copying MapHeader.{keys,vals}[0..len-1]
+    // into a MockMapSnapshot (kind tag 8). key_kind / val_kind ∈ {1=int, 2=float,
+    // 3=bool, 4=str}. Comparison is unordered key→value (mockArgEqual kind 8).
+    void    __ry_mock_store_arg_map(void *record, void *mapHeaderPtr,
+                                     int64_t key_kind, int64_t key_size,
+                                     int64_t val_kind, int64_t val_size,
+                                     const char *mockName);
     // Build an expected-value snapshot for verifyCalledWith. The returned
     // pointer's ownership is transferred to __ry_mock_count_matching_calls,
     // which frees it after comparison.
@@ -44,6 +51,9 @@ extern "C" {
                                           int64_t element_size);
     void   *__ry_mock_make_set_snapshot(void *setHeaderPtr, int64_t element_kind,
                                          int64_t element_size);
+    void   *__ry_mock_make_map_snapshot(void *mapHeaderPtr,
+                                         int64_t key_kind, int64_t key_size,
+                                         int64_t val_kind, int64_t val_size);
     int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                             const int64_t *kinds,
                                             const int64_t *values);
