@@ -40,7 +40,7 @@ These legacy identifiers are intentionally preserved (see `AGENTS.md:5`). Add th
 
 ### Step 1: Build the canonical + derivative word table
 
-Use the canonical pairs in `.claude/rules/docs-reference-conventions.md:375-389` as the reference table — do not duplicate it. Add project-specific derivatives only when they are absent from the canonical table. For approved Ry abbreviations consult `docs/reference/naming.md` "Approved abbreviations".
+Use the canonical pairs in the "Terminology sweeps must include lexical derivatives" entry of `.claude/rules/docs-reference-conventions.md` as the reference table — do not duplicate it. Add project-specific derivatives only when they are absent from the canonical table. For approved Ry abbreviations consult `docs/reference/naming.md` "Approved abbreviations".
 
 Worked example for `package` → `module`:
 
