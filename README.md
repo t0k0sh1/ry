@@ -88,8 +88,8 @@ c = Color::Red
 print(c)               # Red
 
 # Module import (with optional `as` alias)
-from math import sqrt, PI as TAU
-print(sqrt(TAU))
+from math import sqrt, PI as PI_CONST
+print(sqrt(PI_CONST))
 ```
 
 ## Installation

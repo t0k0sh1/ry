@@ -21,7 +21,8 @@ Program loadAndParse(const std::string &abs_path, SourceManager *sm = nullptr);
 // has a dedicated branch.
 enum class ExportableKind {
     Fn,
-    Const,
+    Const,    // module-level `AssignStmt` carrying the `@const` directive
+    Value,    // module-level `AssignStmt` without `@const` (treated as non-aliasable)
     Record,
     Enum,
     TypeAlias,

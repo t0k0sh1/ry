@@ -93,7 +93,11 @@ static bool isTestingIntrinsic(bool from_stdlib,
 
 static ExportableKind getExportableKind(const StmtNode &stmt) {
     if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt)) return ExportableKind::Fn;
-    if (std::holds_alternative<AssignStmt>(stmt)) return ExportableKind::Const;
+    if (std::holds_alternative<AssignStmt>(stmt)) {
+        const auto &a = std::get<AssignStmt>(stmt);
+        return hasDirective(a.directives, "const") ? ExportableKind::Const
+                                                   : ExportableKind::Value;
+    }
     if (std::holds_alternative<RecordStmt>(stmt)) return ExportableKind::Record;
     if (std::holds_alternative<EnumStmt>(stmt)) return ExportableKind::Enum;
     if (std::holds_alternative<TypeAliasStmt>(stmt)) return ExportableKind::TypeAlias;
@@ -135,11 +139,12 @@ static void rejectUnsupportedAlias(ExportableKind kind,
     if (kind == ExportableKind::Const) return;
     std::string detail = "alias not supported for ";
     switch (kind) {
-        case ExportableKind::Fn:        detail += "function";   break;
-        case ExportableKind::Record:    detail += "record";     break;
-        case ExportableKind::Enum:      detail += "enum";       break;
-        case ExportableKind::TypeAlias: detail += "type alias"; break;
-        case ExportableKind::Directive: detail += "directive";  break;
+        case ExportableKind::Fn:        detail += "function";              break;
+        case ExportableKind::Value:     detail += "non-@const assignment"; break;
+        case ExportableKind::Record:    detail += "record";                break;
+        case ExportableKind::Enum:      detail += "enum";                  break;
+        case ExportableKind::TypeAlias: detail += "type alias";            break;
+        case ExportableKind::Directive: detail += "directive";             break;
         case ExportableKind::Const:     return;
     }
     detail += " '";
@@ -224,7 +229,17 @@ static void extractDefinitions(Program &source, Program &dest,
         const std::string &name = item.name;
         auto it = found.find(name);
         if (it == found.end()) {
-            if (isTestingIntrinsic(from_stdlib, import_path, name)) continue;
+            if (isTestingIntrinsic(from_stdlib, import_path, name)) {
+                if (item.alias.has_value()) {
+                    std::string detail = "alias not supported for testing intrinsic '";
+                    detail += name;
+                    detail += "' from module '";
+                    detail += import_path;
+                    detail += "': intrinsics cannot be re-bound (tracked in #1725)";
+                    throw std::runtime_error(makeImportError(line, detail));
+                }
+                continue;
+            }
             std::string detail = "'";
             detail += name;
             detail += "' not found in module '";
@@ -567,7 +582,17 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                     const std::string &name = item.name;
                     auto it = exports.find(name);
                     if (it == exports.end()) {
-                        if (isTestingIntrinsic(rp.from_stdlib, imp.module_path, name)) continue;
+                        if (isTestingIntrinsic(rp.from_stdlib, imp.module_path, name)) {
+                            if (item.alias.has_value()) {
+                                std::string detail = "alias not supported for testing intrinsic '";
+                                detail += name;
+                                detail += "' from module '";
+                                detail += imp.module_path;
+                                detail += "': intrinsics cannot be re-bound (tracked in #1725)";
+                                throw std::runtime_error(makeImportError(imp.loc.line, detail));
+                            }
+                            continue;
+                        }
                         std::string detail = "'";
                         detail += name;
                         detail += "' not found in module '";

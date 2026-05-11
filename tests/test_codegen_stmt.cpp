@@ -841,16 +841,37 @@ TEST_F(ImportTest, ImportErrors) {
 // fallback that is not yet implemented, so `module_loader.cpp`
 // explicitly rejects them with a message pointing at follow-up #1725.
 TEST_F(ImportTest, ImportAliasConstWorks) {
-    // Use camelCase: SCREAMING_SNAKE_CASE requires @const, but the harness
-    // has no stdlib search path so directive lookup fails. A bare
-    // module-global AssignStmt is still classified as ExportableKind::Const
-    // by `getExportableKind`, which is what the alias logic keys on.
+    // Inline-declare the `@const` directive so the imported file can use it
+    // without relying on stdlib resolution (the harness loader is constructed
+    // with empty search_paths). With CodeRabbit's #1726 fix, only AssignStmts
+    // carrying `@const` qualify as `ExportableKind::Const` and are aliasable.
     writeFile("constmod.ry",
-        "originX: int = 42\n");
+        "@directive(target=[\"statement\"])\n"
+        "fn const()\n"
+        "@const\n"
+        "ORIGIN_X: int = 42\n");
     EXPECT_EQ(runWithImports(
-        "from constmod import originX as zeroX\n"
-        "print(zeroX)"),
+        "from constmod import ORIGIN_X as ZERO_X\n"
+        "print(ZERO_X)"),
         "42\n");
+}
+
+// Non-`@const` module-level assignments are classified as `ExportableKind::Value`
+// and the alias path rejects them. Regression for CodeRabbit's #1726 concern that
+// every AssignStmt was previously classified as Const, bypassing rejection.
+TEST_F(ImportTest, ImportAliasValueRejected) {
+    writeFile("valmod.ry",
+        "counter: int = 42\n");
+    try {
+        runWithImports("from valmod import counter as c\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for non-@const assignment 'counter'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
 }
 
 TEST_F(ImportTest, ImportAliasFunctionRejected) {
@@ -1560,6 +1581,45 @@ TEST_F(ImportTest, FromTestingImportExpectViaCacheHit) {
             tmp_dir_.string(),
             search_paths);
     });
+}
+
+// #1726 (CodeRabbit): testing intrinsics are looked up via the allow-list, not
+// via the AST. The alias path must reject `from testing import expect as e`
+// instead of silently dropping the alias. Both load and cache-hit branches
+// share this check.
+TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from testing import expect as e\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected alias on testing intrinsic to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for testing intrinsic 'expect'"),
+                  std::string::npos) << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, FromTestingImportRejectsAliasOnCacheHitPath) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        // First `from testing` warms the cache; the aliased lookup must then
+        // travel the cache-hit branch in resolveImports.
+        resolveImportsOnly(
+            "from testing\n"
+            "from testing import mock as m\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected alias on testing intrinsic to be rejected (cache-hit)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for testing intrinsic 'mock'"),
+                  std::string::npos) << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << msg;
+    }
 }
 
 // AC #4: a name that is neither a testing intrinsic nor a declared symbol
