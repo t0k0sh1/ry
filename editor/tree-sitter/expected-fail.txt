@@ -69,3 +69,22 @@ tests/spec/relative_import/relative_import.test.ry
 tests/spec/result_type_inference.test.ry
 tests/spec/trailing_commas.test.ry
 tests/spec/type_of.test.ry
+
+# === Brace-internal newline suppression (list / map / set / braced-import multi-line) ===
+# `editor/tree-sitter/src/scanner.c` does not track bracket depth, so NEWLINE /
+# INDENT / DEDENT tokens fire inside `{` / `[` / `(` and produce ERROR nodes for
+# multi-line brace-delimited expressions. Tracked in #1727.
+tests/spec/braced_import/braced_import.test.ry
+
+# === Housekeeping: pre-existing gaps not registered by earlier PRs ===
+# Discovered during #1722 self-verification; the parent PRs introduced these
+# fixtures but did not update expected-fail.txt. Each is an independent grammar
+# gap unrelated to braced selective import.
+#   - import_alias/*.ry: alias-aware selective import (#1721 leftover)
+#   - arc_tuple_*.ry, collection_meta_propagation.ry, mock.test.ry: feature-
+#     specific syntax surfaces not yet covered by editor/tree-sitter/grammar.js
+tests/spec/arc_tuple_index_assign.test.ry
+tests/spec/arc_tuple_ownership.test.ry
+tests/spec/collection_meta_propagation.test.ry
+tests/spec/import_alias/import_alias.test.ry
+tests/spec/mock.test.ry

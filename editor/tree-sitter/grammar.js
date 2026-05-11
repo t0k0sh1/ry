@@ -120,7 +120,10 @@ export default grammar({
 
     module_path: $ => sep1($.identifier, '.'),
 
-    import_list: $ => sep1($.import_item, ','),
+    import_list: $ => choice(
+      sep1($.import_item, ','),
+      seq('{', sep1($.import_item, ','), optional(','), '}'),
+    ),
 
     import_item: $ => seq(
       field('name', $.identifier),

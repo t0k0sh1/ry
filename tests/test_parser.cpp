@@ -897,6 +897,93 @@ TEST(ParserTest, ImportAsRequiresAliasNotKeyword) {
     EXPECT_THROW(parseStr("from math import add as fn"), std::runtime_error);
 }
 
+// ===== braced selective import tests (#1722) =====
+
+TEST(ParserTest, ImportBracedSingleItem) {
+    Program prog = parseStr("from math import { add }");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "math");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_FALSE(imp.names[0].alias.has_value());
+}
+
+TEST(ParserTest, ImportBracedMultipleItems) {
+    Program prog = parseStr("from math import { add, sub }");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_EQ(imp.names[1].name, "sub");
+}
+
+TEST(ParserTest, ImportBracedSingleTrailingComma) {
+    Program prog = parseStr("from math import { add, }");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "add");
+}
+
+TEST(ParserTest, ImportBracedTrailingComma) {
+    Program prog = parseStr("from math import { a, b, }");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0].name, "a");
+    EXPECT_EQ(imp.names[1].name, "b");
+}
+
+TEST(ParserTest, ImportBracedWithAlias) {
+    // Combines with #1721 symbol alias.
+    Program prog = parseStr("from math import { add as plus, sub }");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    ASSERT_TRUE(imp.names[0].alias.has_value());
+    EXPECT_EQ(*imp.names[0].alias, "plus");
+    EXPECT_EQ(imp.names[1].name, "sub");
+    EXPECT_FALSE(imp.names[1].alias.has_value());
+}
+
+TEST(ParserTest, ImportBracedMultiLine) {
+    Program prog = parseStr("from math import {\n  add,\n  sub,\n}\n");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_EQ(imp.names[1].name, "sub");
+}
+
+TEST(ParserTest, ImportBracedExpectKeyword) {
+    // `expect` keyword carve-out works inside braces as well (mirrors #712).
+    Program prog = parseStr("from testing import { expect }");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "expect");
+}
+
+TEST(ParserTest, ImportBracedRejectsEmpty) {
+    try {
+        parseStr("from math import {}");
+        FAIL() << "Expected parser to reject empty braced import list";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected import name after '{'"), std::string::npos)
+            << "Error message should match the braced empty diagnostic: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportBracedRejectsUnclosed) {
+    EXPECT_THROW(parseStr("from math import { add"), std::runtime_error);
+}
+
+TEST(ParserTest, ImportBracedRejectsMissingComma) {
+    EXPECT_THROW(parseStr("from math import { a b }"), std::runtime_error);
+}
+
+TEST(ParserTest, ImportBracedRejectsBadAlias) {
+    // Alias rule (#1721) applies inside braces too.
+    EXPECT_THROW(parseStr("from math import { add as 123 }"), std::runtime_error);
+}
+
 TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }

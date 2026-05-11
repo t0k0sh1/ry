@@ -57,6 +57,37 @@ parser but rejected by the module loader with a diagnostic pointing at
 follow-up issue [#1725](https://github.com/t0k0sh1/ry/issues/1725). Full
 alias support for those kinds is tracked there.
 
+### Braced Selective Import
+
+```ry
+from math import { PI, E }
+```
+
+The selective import list may be wrapped in braces. Single-line and
+multi-line forms are both accepted, with an optional trailing comma —
+useful for importing many symbols without losing readability:
+
+```ry
+from math import {
+  PI,
+  E,
+}
+```
+
+Braced form composes with `as <ident>` aliases exactly like the
+comma-separated form:
+
+```ry
+from math import { PI as p, E }
+```
+
+The empty form `from math import {}` is rejected as a parse error.
+Symbol resolution, visibility, and alias limitations are identical to
+the comma-separated form — the braces are purely syntactic. Editor
+support (tree-sitter): single-line braced imports are recognized; brace-
+internal newline suppression for the multi-line form is tracked in
+[#1727](https://github.com/t0k0sh1/ry/issues/1727).
+
 ### Relative Import
 
 ```ry

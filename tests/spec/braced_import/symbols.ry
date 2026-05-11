@@ -1,0 +1,15 @@
+@public
+@const
+ALPHA: int = 1
+
+@public
+@const
+BETA: int = 2
+
+@public
+@const
+GAMMA: int = 3
+
+@public
+@const
+DELTA: int = 4

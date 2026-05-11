@@ -416,21 +416,49 @@ StmtNode Parser::parseImportStatement() {
     names.reserve(4);
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
-        Token name = lex_.peek();
-        // `expect` is the only keyword (TokenKind::Expect) accepted as an
-        // import name; it names the testing intrinsic exposed via
-        // `from testing import expect` (#712). All other keywords remain
-        // rejected at this position.
-        if (name.kind != TokenKind::Ident && name.kind != TokenKind::Expect)
-            parseError(name.line, "expected function name after 'import'");
-        names.push_back(parseOneImportItem());
-
-        while (lex_.peek().kind == TokenKind::Comma) {
-            lex_.next(); // consume ','
-            Token next = lex_.peek();
-            if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
-                parseError(next.line, "expected function name after ','");
+        if (lex_.peek().kind == TokenKind::LBrace) {
+            // Braced selective import (#1722):
+            //   '{' import_item { ',' import_item } [ ',' ] '}'
+            // Multi-line is supported via skipStructuralTokens (newline/
+            // indent/dedent suppression mirrors the list_literal pattern).
+            lex_.next(); // consume '{'
+            skipStructuralTokens();
+            Token first = lex_.peek();
+            if (first.kind != TokenKind::Ident && first.kind != TokenKind::Expect)
+                parseError(first.line, "expected import name after '{'");
             names.push_back(parseOneImportItem());
+            skipStructuralTokens();
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                skipStructuralTokens();
+                if (lex_.peek().kind == TokenKind::RBrace)
+                    break; // trailing comma allowed
+                Token next = lex_.peek();
+                if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
+                    parseError(next.line, "expected import name after ','");
+                names.push_back(parseOneImportItem());
+                skipStructuralTokens();
+            }
+            if (lex_.peek().kind != TokenKind::RBrace)
+                parseError(lex_.peek().line, "expected '}' or ',' in import list");
+            lex_.next(); // consume '}'
+        } else {
+            Token name = lex_.peek();
+            // `expect` is the only keyword (TokenKind::Expect) accepted as an
+            // import name; it names the testing intrinsic exposed via
+            // `from testing import expect` (#712). All other keywords remain
+            // rejected at this position.
+            if (name.kind != TokenKind::Ident && name.kind != TokenKind::Expect)
+                parseError(name.line, "expected function name after 'import'");
+            names.push_back(parseOneImportItem());
+
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                Token next = lex_.peek();
+                if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
+                    parseError(next.line, "expected function name after ','");
+                names.push_back(parseOneImportItem());
+            }
         }
     }
 
