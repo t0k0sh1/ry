@@ -39,7 +39,11 @@ top_level_statement ::= import_statement
  * 2. Imports
  * ===================================================================*/
 
-import_statement ::= 'from' module_path 'import' import_list NEWLINE
+import_statement ::= selective_import | qualified_import
+
+selective_import ::= 'from' module_path 'import' import_list NEWLINE
+
+qualified_import ::= 'import' IDENT [ 'as' IDENT ] NEWLINE
 
 module_path      ::= IDENT { '.' IDENT }
 

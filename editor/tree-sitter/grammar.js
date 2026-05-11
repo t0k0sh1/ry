@@ -104,17 +104,30 @@ export default grammar({
 
     _top_level_statement: $ => choice(
       $.import_statement,
+      $.qualified_import_statement,
       $._statement,                          // _statement already includes _declaration
     ),
 
     /* =====================================================================
      * Imports
      * ===================================================================*/
+    // Selective import: `from xxx import name [as alias] [, ...]`
     import_statement: $ => seq(
       'from',
       field('source', $.module_path),
       'import',
       field('items', $.import_list),
+      $._newline,
+    ),
+
+    // Qualified import: `import xxx [as yyy]` (#1723).
+    // The `as` alias form is parsed but rejected by the Ry parser pending
+    // #1724; tree-sitter accepts it so the editor surface tolerates the
+    // syntax in flight.
+    qualified_import_statement: $ => seq(
+      'import',
+      field('module', $.identifier),
+      optional(seq('as', field('alias', $.identifier))),
       $._newline,
     ),
 

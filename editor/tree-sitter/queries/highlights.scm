@@ -24,6 +24,19 @@
   "from"
 ] @keyword.import
 
+; Qualified import: `import math` — module identifier is a namespace.
+(qualified_import_statement
+  module: (identifier) @module)
+
+(qualified_import_statement
+  alias: (identifier) @module)
+
+; Treat the module access prefix `math.sqrt(...)` / `math.PI` as a namespace
+; reference. Tree-sitter cannot distinguish stdlib qualified-call receivers
+; from generic field-access objects at the syntactic level, so this falls
+; back to (identifier) @variable below for non-import positions. Editors
+; that prefer a more conservative highlight may drop these two captures.
+
 [
   "fn"
   "record"

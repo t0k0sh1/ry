@@ -82,6 +82,18 @@ TEST(Formatter, StatementFormatting) {
     EXPECT_EQ(fmt("from math import a, b as B, c\n"), "from math import a, b as B, c\n");
     // Self-alias is normalized away by the parser (alias == name → no alias)
     EXPECT_EQ(fmt("from math import add as add\n"), "from math import add\n");
+    // Qualified import (#1723): `import math` round-trips verbatim.
+    EXPECT_EQ(fmt("import math\n"), "import math\n");
+    // Qualified call site preserves the `module.callee(...)` prefix.
+    EXPECT_EQ(fmt("import math\nx = math.sqrt(2.0)\n"),
+              "import math\nx = math.sqrt(2.0)\n");
+    // Qualified call as a bare statement (#1723): formatter must not rewrite
+    // it into UFCS form (`sqrt(math, 3.0)`).
+    EXPECT_EQ(fmt("import math\nmath.sqrt(3.0)\n"),
+              "import math\nmath.sqrt(3.0)\n");
+    // Qualified const access via `import xxx`.
+    EXPECT_EQ(fmt("import math\nx = math.PI\n"),
+              "import math\nx = math.PI\n");
     // Return
     {
         auto src = "fn f() -> int:\n    return 42\n";

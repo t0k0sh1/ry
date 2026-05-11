@@ -984,6 +984,354 @@ TEST(ParserTest, ImportBracedRejectsBadAlias) {
     EXPECT_THROW(parseStr("from math import { add as 123 }"), std::runtime_error);
 }
 
+// ===== qualified import tests (#1723) =====
+
+TEST(ParserTest, QualifiedImportSingleModule) {
+    Program prog = parseStr("import math");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
+    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    EXPECT_EQ(qi.module_name, "math");
+    EXPECT_FALSE(qi.alias.has_value());
+}
+
+TEST(ParserTest, QualifiedImportDottedPathRejected) {
+    // AC6: 'import a.b' (dot-separated) is rejected with clear error.
+    try {
+        parseStr("import a.b");
+        FAIL() << "Expected parser to reject dotted module path in qualified import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("dotted module paths"), std::string::npos)
+            << "Error should mention dotted module paths: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportDuplicateRejected) {
+    // AC7: duplicate 'import math' in same file is a compile error.
+    try {
+        parseStr("import math\nimport math");
+        FAIL() << "Expected parser to reject duplicate qualified import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("duplicate qualified import"), std::string::npos)
+            << "Error should mention duplicate qualified import: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportAsNotYetSupported) {
+    // 'import xxx as yyy' is reserved for #1724; reject for now with a
+    // pointer to the tracking issue.
+    try {
+        parseStr("import math as m");
+        FAIL() << "Expected parser to reject 'import ... as ...' (deferred to #1724)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("#1724"), std::string::npos)
+            << "Error should reference issue #1724: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportInBlockThrows) {
+    // 'import' is only allowed at top level, mirroring the existing 'from'
+    // block-context rejection.
+    EXPECT_THROW(parseStr("fn f() -> Unit:\n    import math\n    return"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportAsExpectsIdentifierAfterAs) {
+    // Sibling-branch test: when 'as' is present but the next token is not
+    // an identifier, the parser must reject with the dedicated message
+    // BEFORE the "not yet supported" diagnostic fires.
+    try {
+        parseStr("import math as 42");
+        FAIL() << "Expected parser to reject non-identifier after 'as'";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected identifier after 'as'"), std::string::npos)
+            << "Error should mention expected identifier after 'as': " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportExpectedModuleName) {
+    try {
+        parseStr("import 42");
+        FAIL() << "Expected parser to reject non-identifier after 'import'";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected module name after 'import'"), std::string::npos)
+            << "Error should mention expected module name: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportCoexistsWithSelectiveImport) {
+    // AC2: 'import math' and 'from math import PI' can coexist in the same
+    // file. The parser must not reject the combination.
+    Program prog = parseStr("import math\nfrom math import PI");
+    ASSERT_EQ(prog.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[1]));
+}
+
+TEST(ParserTest, QualifiedImportDotCallProducesQualifiedCallExpr) {
+    // AC1: 'math.sqrt(2.0)' after 'import math' becomes a CallExpr with
+    // qualified_module set and NO prepended receiver (unlike UFCS).
+    Program prog = parseStr("import math\nx = math.sqrt(2.0)");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &assign = std::get<AssignStmt>(prog[1]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(assign.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(assign.value->data);
+    EXPECT_EQ(call.callee, "sqrt");
+    ASSERT_TRUE(call.qualified_module.has_value());
+    EXPECT_EQ(*call.qualified_module, "math");
+    // Qualified call must NOT prepend the receiver; the only arg is 2.0.
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FloatExpr>(call.args[0]->data));
+}
+
+TEST(ParserTest, QualifiedImportDotFieldProducesQualifiedFieldAccess) {
+    // qualified const access: math.PI → FieldAccessExpr with qualified_module
+    Program prog = parseStr("import math\nx = math.PI");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &assign = std::get<AssignStmt>(prog[1]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(assign.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(assign.value->data);
+    EXPECT_EQ(fa.field, "PI");
+    ASSERT_TRUE(fa.qualified_module.has_value());
+    EXPECT_EQ(*fa.qualified_module, "math");
+}
+
+TEST(ParserTest, QualifiedImportDoesNotBreakUFCS) {
+    // AC4: when the LHS is NOT a qualified-imported module name, the dot
+    // still produces UFCS (CallExpr with receiver prepended, NO
+    // qualified_module). 'hello' is a local binding, not an imported module.
+    Program prog = parseStr("import math\nhello = \"x\"\nn = hello.length()");
+    ASSERT_EQ(prog.size(), 3u);
+    const auto &nAssign = std::get<AssignStmt>(prog[2]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(nAssign.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(nAssign.value->data);
+    EXPECT_EQ(call.callee, "length");
+    EXPECT_FALSE(call.qualified_module.has_value());
+    // UFCS prepends the receiver.
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(call.args[0]->data));
+}
+
+TEST(ParserTest, QualifiedImportShadowingByBareAssignRejected) {
+    // 'import math' makes 'math' a module namespace; binding 'math' to a
+    // value would create a confusing namespace conflict, so we reject it
+    // at parse time with a clear diagnostic. (Conservative v0.0.23 behavior
+    // per plan #1723; may be relaxed later.)
+    try {
+        parseStr("import math\nmath = 42");
+        FAIL() << "Expected parser to reject shadowing of imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByTypedAssignRejected) {
+    EXPECT_THROW(parseStr("import math\nmath: int = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByTupleDestructRejected) {
+    // First-position shadowing in tuple destructure.
+    EXPECT_THROW(parseStr("import math\nmath, y = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByTupleDestructRestRejected) {
+    // Rest-position shadowing in tuple destructure (mirrors the bare/first
+    // position; both sites must be guarded).
+    EXPECT_THROW(parseStr("import math\nx, math = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByCompoundAssignRejected) {
+    EXPECT_THROW(parseStr("import math\nmath += 1"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByIncrementRejected) {
+    EXPECT_THROW(parseStr("import math\nmath++"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByDecrementRejected) {
+    // Mirror of the increment test — both ++ and -- bind a name locally
+    // and must be guarded the same way.
+    EXPECT_THROW(parseStr("import math\nmath--"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopVarRejected) {
+    // 'for math in ...' shadows the imported module inside the loop body,
+    // which then routes 'math.sqrt(...)' to the qualified call rather than
+    // to the loop variable — silently the wrong result. Reject at parse time.
+    try {
+        parseStr("import math\nfor math in [1, 2]:\n    print(math)\n");
+        FAIL() << "Expected parser to reject for-loop binding that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopTupleElementRejected) {
+    // Rest-position shadowing in for-loop tuple destructure. Both first and
+    // rest positions must be guarded, mirroring the regular tuple-destruct
+    // tests above.
+    EXPECT_THROW(
+        parseStr("import math\nfor i, math in [(1, 2)]:\n    print(math)\n"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopTupleFirstRejected) {
+    EXPECT_THROW(
+        parseStr("import math\nfor math, j in [(1, 2)]:\n    print(math)\n"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByFnParamRejected) {
+    // Function parameter named 'math' would silently shadow the import
+    // inside the body but still route 'math.sqrt(...)' to the qualified
+    // call, ignoring the argument. Reject at parse time.
+    try {
+        parseStr("import math\nfn f(math: int) -> int:\n    return math\n");
+        FAIL() << "Expected parser to reject fn parameter that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByLambdaParamRejected) {
+    // Lambda parameter named 'math'. The lambda parser uses the commit-flag
+    // pattern to defer hard errors past the speculative try/catch, so this
+    // throw must surface as a user-visible diagnostic, not get swallowed
+    // and re-emitted as a generic 'expected =' error from the outer stmt
+    // parser.
+    try {
+        parseStr("import math\nf = (math: int) => math + 1\n");
+        FAIL() << "Expected parser to reject lambda parameter that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByBareLambdaParamRejected) {
+    // Bare-paren-omitted single-param lambda `math => expr` (#1572 form)
+    // must also be guarded, mirroring the parenthesized lambda above.
+    // The bare form has no try/catch wrapping so the throw surfaces
+    // directly — but the test makes the guard explicit so a future
+    // refactor that drops the call doesn't silently re-allow shadowing.
+    try {
+        parseStr("import math\nf = math => math + 1\n");
+        FAIL() << "Expected parser to reject bare lambda param that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByParenTupleDestructFirstRejected) {
+    // Parenthesized tuple destructure first-position binding. The bare-form
+    // path was already guarded (QualifiedImportShadowingByTupleDestructFirstRejected
+    // above) but the parenthesized variant lives in a separate code path
+    // (parser.cpp, looksLikeParenthesizedTupleDestructure branch) and must
+    // be guarded independently.
+    EXPECT_THROW(parseStr("import math\n(math, y) = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByParenTupleDestructRestRejected) {
+    // Rest-position shadowing in the parenthesized form — mirror of the
+    // first-position guard. Both first and rest sites must be checked.
+    EXPECT_THROW(parseStr("import math\n(x, math) = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportChainedQualifiedFieldAccessAtStmt) {
+    // AC1 / CR-review (#1729): `math.PI.toStr()` at statement position must
+    // set qualified_module on the FIRST FieldAccessExpr so codegen routes
+    // PI through the namespace lookup before the trailing UFCS hop. Without
+    // the fix the multi-hop chain in parser.cpp built the FieldAccessExpr
+    // without qualified_module and codegen errored with "undefined
+    // variable: math".
+    Program prog = parseStr("import math\nmath.PI.toStr()");
+    // [QualifiedImportStmt, ExprStmt] — the qualified import counts as a
+    // statement and lives at prog[0].
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    // Chain shape: CallExpr{toStr, args=[FieldAccessExpr{math, PI, qm=math}]}
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(call.callee, "toStr");
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data);
+    EXPECT_EQ(fa.field, "PI");
+    ASSERT_TRUE(fa.qualified_module.has_value());
+    EXPECT_EQ(*fa.qualified_module, "math");
+}
+
+TEST(ParserTest, QualifiedImportChainedQualifiedCallAtStmt) {
+    // CR-review (#1729): statement-side dot fast path used to short-circuit
+    // back to ExprStmt right after the qualified 1-hop call, dropping any
+    // postfix tail. `math.sqrt(2.0).toStr()` at statement position must now
+    // chain through parsePostfixContinuation so the trailing `.toStr()`
+    // wraps the qualified CallExpr as a UFCS first-arg.
+    Program prog = parseStr("import math\nmath.sqrt(2.0).toStr()");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    // Outer call is the UFCS hop `.toStr()`, inner first-arg is the
+    // qualified call `math.sqrt(2.0)`.
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(outer.callee, "toStr");
+    EXPECT_FALSE(outer.qualified_module.has_value());
+    ASSERT_FALSE(outer.args.empty());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "sqrt");
+    ASSERT_TRUE(inner.qualified_module.has_value());
+    EXPECT_EQ(*inner.qualified_module, "math");
+}
+
+TEST(ParserTest, QualifiedImportKeywordMemberAtStmt) {
+    // CR-review (#1729): statement-side dot fast path used to require
+    // TokenKind::Ident after `.`, rejecting keyword tokens like `expect`,
+    // `and`, etc. that arrive from the lexer's keyword_map. The expression
+    // side already accepted them via isKeywordAfterDot — the statement
+    // side must now match.
+    //
+    // Use a synthetic stdlib-shaped module that does not exist so codegen
+    // would reject downstream, but parse must succeed and produce the
+    // qualified CallExpr. We import `testing` (a real importable name) and
+    // call its `expect` member, which yields TokenKind::Expect from the
+    // lexer.
+    Program prog = parseStr("import testing\ntesting.expect(1)");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(call.callee, "expect");
+    ASSERT_TRUE(call.qualified_module.has_value());
+    EXPECT_EQ(*call.qualified_module, "testing");
+}
+
+TEST(ParserTest, QualifiedImportDoesNotBreakStructFieldAccess) {
+    // AC5: regular struct field access (p.x where p is a value, not a
+    // module) still produces FieldAccessExpr with NO qualified_module.
+    Program prog = parseStr(
+        "import math\nrecord Point:\n    x: int\np = Point(3)\nv = p.x");
+    const auto &vAssign = std::get<AssignStmt>(prog.back());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(vAssign.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(vAssign.value->data);
+    EXPECT_EQ(fa.field, "x");
+    EXPECT_FALSE(fa.qualified_module.has_value());
+}
+
 TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }

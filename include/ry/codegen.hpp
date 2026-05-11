@@ -945,6 +945,15 @@ public:
     // require an explicit import (#715).
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
+    // Modules introduced by `import xxx` (qualified import) at module scope.
+    // Key = module name, value = `is_stdlib` flag propagated from ModuleLoader.
+    // Populated by `emitStmt(QualifiedImportStmt&)`. Consulted by the call /
+    // field-access dispatchers to route `<mod>.fn(...)` (CallExpr with
+    // `qualified_module` set) — stdlib modules reuse the existing dispatch
+    // chain; user-defined modules raise a "not yet supported in v0.0.23"
+    // codegen error (issue #1723, follow-up #1724 / TBD).
+    std::unordered_map<std::string, bool> module_namespaces_;
+
     // User-defined @directive declarations. Keyed by directive name.
     std::unordered_map<std::string, DirectiveSignature> user_directive_registry_;
 
@@ -1206,6 +1215,7 @@ public:
     void emitStmt(ExprStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
+    void emitStmt(QualifiedImportStmt &s);
     void emitStmt(RecordStmt &s);
     void emitStmt(TypeAliasStmt &s);
     void emitStmt(IndexAssignStmt &s);

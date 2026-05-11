@@ -90,6 +90,68 @@ bool Parser::isCamelCase(const std::string &name) {
     parseError(lex_.peek().line, msg);
 }
 
+// ===== Qualified-import shadowing rejection (#1723) =====
+
+// After '.', a field/method name may be an Ident, a numeric tuple index, or
+// any keyword token from the lexer's keyword_map (e.g. `.and()`, `.or()`,
+// `.expect(...)`). Keyword tokens arrive as TokenKind::And / Or / Expect /
+// etc., NOT as TokenKind::Ident, so a strict Ident-only check at the
+// statement-side dot fast path would reject legal qualified calls like
+// `testing.expect(1).toEq(1)` that work at expression position.
+bool Parser::isFieldNameTokenKind(TokenKind k) {
+    switch (k) {
+        case TokenKind::Ident:
+        case TokenKind::Number:
+        case TokenKind::And:
+        case TokenKind::Or:
+        case TokenKind::Not:
+        case TokenKind::True:
+        case TokenKind::False:
+        case TokenKind::If:
+        case TokenKind::Else:
+        case TokenKind::While:
+        case TokenKind::For:
+        case TokenKind::In:
+        case TokenKind::Break:
+        case TokenKind::Continue:
+        case TokenKind::Fn:
+        case TokenKind::Return:
+        case TokenKind::From:
+        case TokenKind::Import:
+        case TokenKind::Type:
+        case TokenKind::Record:
+        case TokenKind::Operator:
+        case TokenKind::Enum:
+        case TokenKind::Case:
+        case TokenKind::Expect:
+        case TokenKind::Require:
+        case TokenKind::Ensure:
+        case TokenKind::Invariant:
+        case TokenKind::NoneKw:
+        case TokenKind::As:
+        case TokenKind::ErrorKw:
+        case TokenKind::Async:
+        case TokenKind::Await:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Throws if the given identifier collides with a qualified-imported module.
+// Used at every local-binding site (AssignStmt, TupleDestructStmt, compound
+// assign, increment/decrement) so 'import math\nmath = 42' fails at parse
+// time with a precise diagnostic, instead of crashing in codegen with an
+// opaque resolution error. Shadowing is rejected even inside function
+// bodies — see plan #1723 (AC7-adjacent).
+void Parser::rejectImportShadowing(const Token &nameTok) {
+    if (imported_modules_.count(nameTok.value) > 0)
+        parseError(nameTok.line,
+            "cannot shadow imported module '" + nameTok.value +
+            "' with a local binding; rename the local or remove the matching "
+            "'import " + nameTok.value + "' statement");
+}
+
 // ===== Compound assignment helper: x op= rhs =====
 
 AssignStmt Parser::makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs) {
@@ -271,6 +333,8 @@ Program Parser::parseProgram() {
     while (lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::From) {
             prog.push_back(parseImportStatement());
+        } else if (lex_.peek().kind == TokenKind::Import) {
+            prog.push_back(parseQualifiedImportStatement());
         } else {
             prog.push_back(parseStatement());
         }
@@ -465,6 +529,46 @@ StmtNode Parser::parseImportStatement() {
     return ImportStmt{modulePath, std::move(names), {fromTok.line, fromTok.col, file_id_}};
 }
 
+StmtNode Parser::parseQualifiedImportStatement() {
+    // Qualified import: `import <ident> [as <ident>]` (#1723)
+    // - Only single identifier accepted; `import a.b` rejected (AC6)
+    // - `as` form reserved for #1724; currently rejected
+    // - Duplicate `import <same>` rejected (AC7)
+    Token importTok = lex_.next(); // consume 'import'
+
+    Token modTok = lex_.peek();
+    if (modTok.kind != TokenKind::Ident)
+        parseError(modTok.line, "expected module name after 'import'");
+    std::string moduleName = lex_.next().value;
+
+    if (lex_.peek().kind == TokenKind::Dot)
+        parseError(lex_.peek().line,
+            "qualified import does not support dotted module paths "
+            "('import a.b'); use 'from a.b import ...' instead");
+
+    std::optional<std::string> alias;
+    if (lex_.peek().kind == TokenKind::As) {
+        Token asTok = lex_.next(); // consume 'as'
+        Token aliasTok = lex_.peek();
+        if (aliasTok.kind != TokenKind::Ident)
+            parseError(aliasTok.line, "expected identifier after 'as'");
+        parseError(asTok.line,
+            "qualified import alias ('import xxx as yyy') is not yet "
+            "supported (tracked by issue #1724)");
+    }
+
+    if (!imported_modules_.insert(moduleName).second)
+        parseError(importTok.line,
+            "duplicate qualified import: 'import " + moduleName +
+            "' was already imported in this file");
+
+    return QualifiedImportStmt{
+        std::move(moduleName),
+        std::move(alias),
+        /*is_stdlib=*/false,
+        {importTok.line, importTok.col, file_id_}};
+}
+
 StmtNode Parser::parseStatement() {
     RecursionGuard guard(*this);
     // Parse directives before the statement
@@ -474,6 +578,9 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
+
+    if (first.kind == TokenKind::Import)
+        parseError(first.line, "'import' is only allowed at top level");
 
     // @directive(...) declares a new directive (#708). Must be followed by `fn`.
     // Only @public is permitted alongside @directive so stdlib directive
@@ -580,6 +687,8 @@ StmtNode Parser::parseStatement() {
             Token n = lex_.peek();
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            if (n.value != "_")
+                rejectImportShadowing(n);
             names.push_back(n.value);
             lex_.next();
         }
@@ -588,6 +697,8 @@ StmtNode Parser::parseStatement() {
             Token n = lex_.peek();
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            if (n.value != "_")
+                rejectImportShadowing(n);
             names.push_back(n.value);
             lex_.next();
         }
@@ -676,6 +787,7 @@ StmtNode Parser::parseStatement() {
                 "variable name '" + first.value +
                 "' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)");
         }
+        rejectImportShadowing(first);
         lex_.next(); // consume ':'
         auto typeAnnotation = parseTypeName();
         AssignStmt s;
@@ -730,13 +842,39 @@ StmtNode Parser::parseStatement() {
         // which produces a CallStmt rather than an ExprStmt<CallExpr>.
         Token dotTok = lex_.next(); // consume '.'
         Token fieldTok = lex_.peek();
-        if (fieldTok.kind != TokenKind::Ident)
-            parseError(fieldTok.line, "expected field name after '.'");
+        // Accept Ident, tuple-index Number, and keyword field names (mirrors
+        // parsePostfixContinuation in parser_expr.cpp). Without this,
+        // qualified calls whose member name is a keyword (e.g.
+        // `testing.expect(1).toEq(1)`) are rejected at statement position
+        // while the same expression succeeds inside `let x = testing.expect(...)`.
+        if (!isFieldNameTokenKind(fieldTok.kind))
+            parseError(fieldTok.line, "expected field name or index after '.'");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind == TokenKind::LParen) {
-            // UFCS call statement: ident.method(args)
             lex_.next(); // consume '('
+            // Qualified module dispatch (#1723): `<mod>.fn(args)` where `mod`
+            // was registered via `import mod` is a qualified call, NOT UFCS.
+            // Build a CallExpr with qualified_module set, then feed it through
+            // parsePostfixContinuation so postfix tails like
+            // `testing.expect(1).toEq(1)` chain through to finishChainedLhs
+            // and emit the correct ExprStmt with the trailing UFCS hop wired
+            // up. Without the continuation, the second `.toEq(...)` would be
+            // left in the token stream and trigger "unexpected token '.'".
+            if (imported_modules_.count(first.value) > 0) {
+                auto call = std::make_unique<CallExpr>();
+                call->callee = fieldTok.value;
+                call->qualified_module = first.value;
+                auto rest = parseArgList(&call->named_args);
+                for (auto &arg : rest)
+                    call->args.push_back(std::move(arg));
+                auto node = std::make_unique<ExprNode>();
+                node->data = std::move(call);
+                node->loc = locFromToken(first);
+                ExprPtr chain = parsePostfixContinuation(std::move(node));
+                return finishChainedLhs(std::move(chain), first);
+            }
+            // UFCS call statement: ident.method(args)
             CallStmt s;
             s.callee = fieldTok.value;
             s.loc = locFromToken(first);
@@ -754,12 +892,19 @@ StmtNode Parser::parseStatement() {
         // Build `ident.field` as the chain base and continue parsing any
         // further postfix hops (`.a`, `[i]`, etc.) to support chained LHS
         // forms like `rec.field[i] = v`, `rec.a.b = v`, `rec.a[i].x = v`.
+        // For qualified module access (e.g. `math.PI.toStr()`), the FIRST
+        // FieldAccessExpr carries qualified_module so codegen routes through
+        // the namespace lookup before the trailing UFCS hop sees it as a
+        // value. parsePostfixContinuation only inspects the chain root for
+        // VariableExpr, so subsequent hops stay UFCS even when LHS is qual.
         auto varExpr = std::make_unique<ExprNode>();
         varExpr->data = VariableExpr{first.value};
         varExpr->loc = locFromToken(first);
         auto fa = std::make_unique<FieldAccessExpr>();
         fa->object = std::move(varExpr);
         fa->field = fieldTok.value;
+        if (imported_modules_.count(first.value) > 0)
+            fa->qualified_module = first.value;
         auto chain = std::make_unique<ExprNode>();
         chain->data = std::move(fa);
         chain->loc = locFromToken(dotTok);
@@ -771,6 +916,7 @@ StmtNode Parser::parseStatement() {
         std::vector<std::string> names;
         if (first.value != "_" && !isCamelCase(first.value))
             parseError(first.line, "tuple-destructure name '" + first.value + "' must be camelCase");
+        rejectImportShadowing(first);
         names.push_back(first.value);
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
@@ -779,6 +925,7 @@ StmtNode Parser::parseStatement() {
                 parseError("expected identifier or '_' in tuple destructuring");
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            rejectImportShadowing(n);
             lex_.next(); // consume ident
             names.push_back(n.value);
         }
@@ -794,6 +941,7 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::Equals) {
+        rejectImportShadowing(first);
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
@@ -810,11 +958,13 @@ StmtNode Parser::parseStatement() {
                next.kind == TokenKind::LessLessEq || next.kind == TokenKind::GreaterGreaterEq) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on compound assignment");
+        rejectImportShadowing(first);
         // Compound assignment: preserve compound_op for codegen resolution
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
         return makeCompoundAssign(first, op, parseConditional());
     } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
+        rejectImportShadowing(first);
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
         auto one = std::make_unique<ExprNode>();
@@ -915,10 +1065,12 @@ StmtNode Parser::parseForStatement() {
         Token firstTok = lex_.peek();
         if (firstTok.kind != TokenKind::Ident)
             parseError(firstTok.line, "expected variable name after 'for'");
-        if (firstTok.value == "_")
+        if (firstTok.value == "_") {
             binding = WildcardPattern{};
-        else
+        } else {
+            rejectImportShadowing(firstTok);
             binding = VariablePattern{firstTok.value};
+        }
         lex_.next(); // consume first binding token
 
         if (lex_.peek().kind == TokenKind::Comma) {
@@ -933,10 +1085,12 @@ StmtNode Parser::parseForStatement() {
                 Token vTok = lex_.peek();
                 if (vTok.kind != TokenKind::Ident)
                     parseError(vTok.line, "expected variable name after ',' in for loop");
-                if (vTok.value == "_")
+                if (vTok.value == "_") {
                     tuple->elements.push_back(WildcardPattern{});
-                else
+                } else {
+                    rejectImportShadowing(vTok);
                     tuple->elements.push_back(VariablePattern{vTok.value});
+                }
                 lex_.next(); // consume var
             }
             binding = std::move(tuple);

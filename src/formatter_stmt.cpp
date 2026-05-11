@@ -166,6 +166,18 @@ void Formatter::formatImport(const ImportStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
+void Formatter::formatQualifiedImport(const QualifiedImportStmt &s) {
+    emit("import ");
+    emit(s.module_name);
+    if (s.alias.has_value()) {
+        emit(" as ");
+        emit(*s.alias);
+    }
+    emitInlineComment(s.loc.line);
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+}
+
 void Formatter::formatRecord(const RecordStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();

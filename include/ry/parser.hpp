@@ -10,6 +10,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 
@@ -37,6 +38,11 @@ private:
     // bare-lambda dispatch (`Ident FatArrow`) in parsePrimary so the `=>` is
     // recognised as the if-expression then-arm, not consumed as a lambda body.
     bool in_if_cond_ = false;
+    // Module names introduced by `import xxx` (qualified import) at the top
+    // level of the current source. Used by parsePrimary's Dot dispatch to
+    // disambiguate `mod.f(...)` qualified calls from UFCS / field access, and
+    // by parseStatement to reject `let mod = ...` shadowing.
+    std::unordered_set<std::string> imported_modules_;
     static constexpr int MAX_RECURSION_DEPTH = 256;
 
     struct RecursionGuard {
@@ -63,12 +69,22 @@ private:
     static bool isCamelCase(const std::string &name);
     static void coerceFirstArgToString(std::vector<ExprPtr> &args);
 
+    // After '.', a field/method name token may be an Ident, a numeric tuple
+    // index, or any keyword from the lexer's keyword_map (e.g. `.and()`,
+    // `.expect(...)`, `.case`). Shared between the expression-side
+    // continuation (`parsePostfixContinuation`) and the statement-side dot
+    // fast path in `parseStatement` so `import testing\ntesting.expect(...)`
+    // parses identically in both positions.
+    static bool isFieldNameTokenKind(TokenKind k);
+
     SourceLocation locFromToken(const Token &t) const { return {t.line, t.col, file_id_}; }
 
     std::vector<Directive> parseDirectives();
     void skipNewlines();
     void skipStructuralTokens();
     StmtNode parseImportStatement();
+    StmtNode parseQualifiedImportStatement();
+    void rejectImportShadowing(const Token &nameTok);
     StmtNode parseStatement();
 
 

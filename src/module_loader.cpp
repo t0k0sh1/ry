@@ -540,6 +540,83 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
     Program result;
 
     for (auto &stmt : prog) {
+        if (std::holds_alternative<QualifiedImportStmt>(stmt)) {
+            auto &qimp = std::get<QualifiedImportStmt>(stmt);
+
+            ResolvedPath rp = resolve(qimp.module_name, referrer_dir);
+            const std::string &abs_path = rp.path;
+
+            // Propagate stdlib origin to codegen — Task 9 uses this to gate
+            // qualified-call routing (stdlib → existing dispatch chain;
+            // user-defined → "not yet supported" error in v0.0.23).
+            qimp.is_stdlib = rp.from_stdlib;
+
+            std::string target_dir = rp.is_directory ? abs_path
+                                                     : fs::path(abs_path).parent_path().string();
+            bool cross_package = isCrossPackage(referrer_dir, target_dir);
+
+            if (loading_.count(abs_path))
+                throw std::runtime_error("circular import detected: " + abs_path);
+
+            if (loaded_.count(abs_path)) {
+                // exports_cache_ already populated by an earlier import of the
+                // same module (AC2: `import math` + `from math import PI`).
+                // Just push the QualifiedImportStmt so codegen can register the
+                // module in module_namespaces_.
+                result.push_back(std::move(stmt));
+                continue;
+            }
+
+            // First-time load: inline all exportable definitions (same path as
+            // `from xxx import` with empty names) so that:
+            //   1. @native fn signatures get registered in native_fn_sigs_
+            //      (required for stdlib qualified-call dispatch in Task 9).
+            //   2. exports_cache_ / exports_kinds_cache_ get populated for any
+            //      subsequent `from xxx import` referencing the same module.
+            //
+            // For user-defined modules (`!rp.from_stdlib`), route extracted
+            // definitions to a throwaway Program so they are NOT inlined into
+            // the caller's namespace. The caches still get populated so
+            // `from <mod> import x` after `import <mod>` works (AC2-like).
+            // Without this gate, `import usermod` followed by bare `greet()`
+            // succeeds — bypassing the documented v0.0.23 rejection at call
+            // site. Stdlib path stays unchanged: native-fn registration in
+            // CodeGen still relies on inlining (#1730 tracks proper namespace
+            // isolation for stdlib).
+            Program throwaway;
+            Program &push_target = rp.from_stdlib ? result : throwaway;
+            if (rp.is_directory) {
+                loading_.insert(abs_path);
+                Program dir_prog = loadModuleDir(abs_path);
+                loading_.erase(abs_path);
+                loaded_.insert(abs_path);
+
+                extractDefinitions(dir_prog, push_target, /*requested_items=*/{},
+                                   qimp.module_name, qimp.loc.line, cross_package,
+                                   rp.from_stdlib,
+                                   &exports_cache_[abs_path],
+                                   &exports_kinds_cache_[abs_path],
+                                   qimp.loc.file_id);
+            } else {
+                loading_.insert(abs_path);
+                auto sub_prog = loadAndParse(abs_path, sm_);
+                std::string sub_dir = fs::path(abs_path).parent_path().string();
+                sub_prog = resolveImports(sub_prog, sub_dir);
+                loading_.erase(abs_path);
+                loaded_.insert(abs_path);
+
+                extractDefinitions(sub_prog, push_target, /*requested_items=*/{},
+                                   qimp.module_name, qimp.loc.line, cross_package,
+                                   rp.from_stdlib,
+                                   &exports_cache_[abs_path],
+                                   &exports_kinds_cache_[abs_path],
+                                   qimp.loc.file_id);
+            }
+
+            result.push_back(std::move(stmt));
+            continue;
+        }
+
         if (!std::holds_alternative<ImportStmt>(stmt)) {
             result.push_back(std::move(stmt));
             continue;

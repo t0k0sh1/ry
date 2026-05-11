@@ -2,7 +2,12 @@
 
 ## Overview
 
-Ry uses a module system to organize code. A **module** can be either a single `.ry` file or a directory containing multiple `.ry` files. Use the `from` statement to import modules.
+Ry uses a module system to organize code. A **module** can be either a single `.ry` file or a directory containing multiple `.ry` files. Two import forms are supported:
+
+| Form | Syntax | Behavior |
+|---|---|---|
+| Selective import | `from <module> import <name>` | Binds the named symbol into the current file's scope |
+| Qualified import | `import <module>` | Binds the module itself; access members via `<module>.<name>` |
 
 The standard library (`std`) is automatically imported into every program.
 
@@ -87,6 +92,55 @@ the comma-separated form — the braces are purely syntactic. Editor
 support (tree-sitter): single-line braced imports are recognized; brace-
 internal newline suppression for the multi-line form is tracked in
 [#1727](https://github.com/t0k0sh1/ry/issues/1727).
+
+### Qualified Import
+
+```ry
+import math
+x = math.sqrt(2.0)       # 1.4142135623730951
+y = math.PI              # 3.141592653589793
+```
+
+`import <module>` binds the module name itself; members are then accessed
+via `<module>.<name>` for both functions and constants. The dot here is
+not UFCS — it is a qualified namespace lookup that resolves directly to
+the module's exports.
+
+Qualified import composes with selective import — both forms may target
+the same module in the same file:
+
+```ry
+import math
+from math import PI
+print(math.sqrt(PI))     # 1.7724538509055159
+print(PI)                # 3.141592653589793
+```
+
+Qualified import is especially useful when two modules export the same
+name. Importing one selectively and the other qualified avoids the
+collision:
+
+```ry
+from str import contains
+import list
+
+xs: List<int> = [1, 2, 3]
+list.append(xs, 4)             # list module's append
+contains("hello", "ell")       # str module's contains
+```
+
+**Constraints (v0.0.23)**:
+
+| Constraint | Details |
+|---|---|
+| Module form | Single identifier only. `import a.b` is rejected — use `from a.b import ...` instead. |
+| Alias | `import <module> as <local>` is parsed but rejected. Alias support is tracked in [#1724](https://github.com/t0k0sh1/ry/issues/1724). |
+| Module scope | Standard library modules only. Qualified call to a user-defined module produces a diagnostic suggesting `from <module> import ...`. |
+| Duplicate | `import math` followed by `import math` in the same file is a parse error. |
+| Shadowing | After `import math`, declaring `math: int = ...` (or any local named `math`) is a parse error. Rename the local or remove the matching `import` statement. |
+
+`import` is only valid at top level — placing it inside a function or
+block is rejected, matching the existing rule for `from` imports.
 
 ### Relative Import
 
@@ -279,7 +333,8 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 | Constraint | Details |
 |------|------|
 | Allowed location | Top level only (not inside functions or blocks) |
-| Duplicate imports | Automatically skipped (no error) |
+| Duplicate `from` imports | Automatically skipped (no error) |
+| Duplicate qualified `import` | Compile error (`'import xxx' already in this file`) |
 | Circular imports | Compile error |
 | Relative imports | `from .` and `from .submodule` resolve only against the current file's directory |
 | Parent directory imports | `from ..` is not supported |
@@ -290,9 +345,13 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 fn main():
     from math   # Error: imports only allowed at top level
 
-# OK: Importing the same module multiple times does not cause an error
+# OK: Repeating the same `from` import is silently skipped
 from math
 from math   # Skipped
+
+# Error: the qualified form rejects duplicates at parse time
+import math
+import math   # Error: 'import math' already in this file
 ```
 
 ---

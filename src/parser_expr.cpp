@@ -675,6 +675,12 @@ ExprPtr Parser::parsePrimary() {
         if (lex_.peek().kind == TokenKind::FatArrow && !in_if_cond_) {
             if (!isCamelCase(t.value))
                 parseError(t.line, "parameter name '" + t.value + "' must be camelCase");
+            // #1723: bare lambda param must not shadow an imported module —
+            // the body would then route `math.sqrt(...)` to the qualified
+            // call instead of treating `math` as the lambda parameter.
+            // Mirrors the same guard on parenthesized lambda params
+            // (parseParenLambdaExpr) and fn-decl params (parser_decl.cpp).
+            rejectImportShadowing(t);
             lex_.next(); // consume '=>'
             auto lambda = std::make_unique<LambdaExpr>();
             lambda->params.push_back({t.value, TypeNode::makeBasic("any"), nullptr});
@@ -1004,6 +1010,7 @@ ExprPtr Parser::parseParenLambdaExpr() {
     for (const auto &tok : paramNameTokens) {
         if (!isCamelCase(tok.value))
             parseError(tok.line, "parameter name '" + tok.value + "' must be camelCase");
+        rejectImportShadowing(tok);
     }
 
     if (lex_.peek().kind == TokenKind::Arrow) {
@@ -1098,60 +1105,35 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
         // Dot access follows below
         Token dotTok = lex_.next(); // consume '.'
         Token field = lex_.peek();
-        // After '.', accept identifiers, numbers, and keyword tokens.
-        // Keyword tokens (e.g., '.and()', '.or()', '.not()') come from the
-        // lexer's keyword_map and arrive as TokenKind::And / Or / Not / etc.,
-        // not as TokenKind::Ident. In dot-access context the syntax is
-        // unambiguous, so keywords are valid as field or method names.
-        auto isKeywordAfterDot = [](TokenKind k) {
-            switch (k) {
-                case TokenKind::And:
-                case TokenKind::Or:
-                case TokenKind::Not:
-                case TokenKind::True:
-                case TokenKind::False:
-                case TokenKind::If:
-                case TokenKind::Else:
-                case TokenKind::While:
-                case TokenKind::For:
-                case TokenKind::In:
-                case TokenKind::Break:
-                case TokenKind::Continue:
-                case TokenKind::Fn:
-                case TokenKind::Return:
-                case TokenKind::From:
-                case TokenKind::Import:
-                case TokenKind::Type:
-                case TokenKind::Record:
-                case TokenKind::Operator:
-                case TokenKind::Enum:
-                case TokenKind::Case:
-                case TokenKind::Expect:
-                case TokenKind::Require:
-                case TokenKind::Ensure:
-                case TokenKind::Invariant:
-                case TokenKind::NoneKw:
-                case TokenKind::As:
-                case TokenKind::ErrorKw:
-                case TokenKind::Async:
-                case TokenKind::Await:
-                    return true;
-                default:
-                    return false;
-            }
-        };
-        bool isFieldName = field.kind == TokenKind::Ident
-                        || field.kind == TokenKind::Number
-                        || isKeywordAfterDot(field.kind);
-        if (!isFieldName)
+        // After '.', accept identifiers, numbers (tuple indices), and keyword
+        // tokens (`.and()`, `.expect(...)`, …). The same predicate is reused
+        // by the statement-side dot fast path in parser.cpp so qualified
+        // calls whose member is a keyword behave identically at statement and
+        // expression positions.
+        if (!isFieldNameTokenKind(field.kind))
             parseError(field.line, "expected field name or index after '.'");
         lex_.next(); // consume field name/number
+        // Qualified module dispatch (#1723): when the LHS is a bare identifier
+        // whose name was registered via `import <mod>`, the dot is a namespace
+        // access, not UFCS or field access. The original VariableExpr is left
+        // intact (stored on CallExpr/FieldAccessExpr) but codegen short-circuits
+        // before evaluating it once `qualified_module` is set.
+        std::optional<std::string> qualified_module;
+        if (auto *ve = std::get_if<VariableExpr>(&expr->data)) {
+            if (imported_modules_.count(ve->name) > 0)
+                qualified_module = ve->name;
+        }
         if (lex_.peek().kind == TokenKind::LParen) {
-            // UFCS: a.f(b, c) → f(a, b, c)
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
             call->callee = field.value;
-            call->args.push_back(std::move(expr));
+            if (qualified_module.has_value()) {
+                // Qualified call: do NOT prepend LHS as receiver.
+                call->qualified_module = std::move(qualified_module);
+            } else {
+                // UFCS: a.f(b, c) → f(a, b, c)
+                call->args.push_back(std::move(expr));
+            }
             auto rest = parseArgList(&call->named_args); // consumes ')'
             for (auto &arg : rest)
                 call->args.push_back(std::move(arg));
@@ -1160,10 +1142,11 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             node->loc = locFromToken(dotTok);
             expr = std::move(node);
         } else {
-            // Field access: a.x
+            // Field access: a.x (or qualified const access: math.PI)
             auto fa = std::make_unique<FieldAccessExpr>();
             fa->object = std::move(expr);
             fa->field = field.value;
+            fa->qualified_module = std::move(qualified_module);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(fa);
             node->loc = locFromToken(dotTok);

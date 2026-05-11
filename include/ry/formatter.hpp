@@ -55,6 +55,7 @@ private:
     void formatExprStmt(const ExprStmt &s);
     void formatReturn(const ReturnStmt &s);
     void formatImport(const ImportStmt &s);
+    void formatQualifiedImport(const QualifiedImportStmt &s);
     void formatRecord(const RecordStmt &s);
     void formatEnum(const EnumStmt &s);
     void formatTypeAlias(const TypeAliasStmt &s);

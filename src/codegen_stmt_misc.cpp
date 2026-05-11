@@ -837,6 +837,17 @@ void CodeGen::emitStmt(ImportStmt &s) {
                              " (ModuleLoader should have resolved this)");
 }
 
+void CodeGen::emitStmt(QualifiedImportStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    // ModuleLoader has already loaded the module, inlined its exportable
+    // definitions, populated `exports_cache_`, and set `s.is_stdlib`.
+    // Codegen's job here is purely to register the module name so the
+    // call / field-access dispatchers can recognize `<mod>.fn(...)` /
+    // `<mod>.x` qualified forms. No IR is emitted for the statement
+    // itself (mirrors `emitStmt(ImportStmt&)` which is also IR-less).
+    module_namespaces_[s.module_name] = s.is_stdlib;
+}
+
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
