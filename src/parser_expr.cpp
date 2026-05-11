@@ -1146,12 +1146,27 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
         if (!isFieldName)
             parseError(field.line, "expected field name or index after '.'");
         lex_.next(); // consume field name/number
+        // Qualified module dispatch (#1723): when the LHS is a bare identifier
+        // whose name was registered via `import <mod>`, the dot is a namespace
+        // access, not UFCS or field access. The original VariableExpr is left
+        // intact (stored on CallExpr/FieldAccessExpr) but codegen short-circuits
+        // before evaluating it once `qualified_module` is set.
+        std::optional<std::string> qualified_module;
+        if (auto *ve = std::get_if<VariableExpr>(&expr->data)) {
+            if (imported_modules_.count(ve->name) > 0)
+                qualified_module = ve->name;
+        }
         if (lex_.peek().kind == TokenKind::LParen) {
-            // UFCS: a.f(b, c) → f(a, b, c)
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
             call->callee = field.value;
-            call->args.push_back(std::move(expr));
+            if (qualified_module.has_value()) {
+                // Qualified call: do NOT prepend LHS as receiver.
+                call->qualified_module = std::move(qualified_module);
+            } else {
+                // UFCS: a.f(b, c) → f(a, b, c)
+                call->args.push_back(std::move(expr));
+            }
             auto rest = parseArgList(&call->named_args); // consumes ')'
             for (auto &arg : rest)
                 call->args.push_back(std::move(arg));
@@ -1160,10 +1175,11 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             node->loc = locFromToken(dotTok);
             expr = std::move(node);
         } else {
-            // Field access: a.x
+            // Field access: a.x (or qualified const access: math.PI)
             auto fa = std::make_unique<FieldAccessExpr>();
             fa->object = std::move(expr);
             fa->field = field.value;
+            fa->qualified_module = std::move(qualified_module);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(fa);
             node->loc = locFromToken(dotTok);

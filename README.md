@@ -20,7 +20,7 @@
 - **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
-- **Modules** — Directory-based modules, auto-imported `std` library, `from ... import ...`
+- **Modules** — Directory-based modules, auto-imported `std` library, `from ... import ...` selective import, `import ...` qualified import
 - **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Memory Management** — ARC (Automatic Reference Counting) with a cycle collector (`std.gc`)
 - **Testing Framework** — `@describe` / `@it` directives on named functions, matchers (`expect(x).toEq(...)`), parameterized tests (`@each`), property-based tests (`@property`)
@@ -90,6 +90,11 @@ print(c)               # Red
 # Module import (with optional `as` alias)
 from math import sqrt, PI as PI_CONST
 print(sqrt(PI_CONST))
+
+# Qualified import: bind the module itself
+import math
+print(math.sqrt(2.0))   # 1.4142135623730951
+print(math.PI)          # 3.141592653589793
 ```
 
 ## Installation

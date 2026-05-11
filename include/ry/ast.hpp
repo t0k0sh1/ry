@@ -223,11 +223,13 @@ struct CallExpr {
     std::string callee;
     std::vector<ExprPtr> args;
     std::vector<NamedArg> named_args;
+    std::optional<std::string> qualified_module;  // set when call originates from `<mod>.fn(...)` qualified call
 };
 
 struct FieldAccessExpr {
     ExprPtr object;
     std::string field;
+    std::optional<std::string> qualified_module;  // set when access is `<mod>.x` qualified (mod-name held on .object as VariableExpr too, but this disambiguates from struct field access)
 };
 
 struct TupleExpr {
@@ -267,6 +269,13 @@ struct ImportName {
 struct ImportStmt {
     std::string module_path;              // "utils/math" (resolved to dir or .ry file)
     std::vector<ImportName> names;        // {{"add", nullopt}, {"sub", "minus"}} — empty means import all
+    SourceLocation loc;
+};
+
+struct QualifiedImportStmt {
+    std::string module_name;              // single identifier — multi-segment paths rejected at parse time
+    std::optional<std::string> alias;     // reserved for #1724 (`import xxx as yyy`); parser currently rejects non-empty
+    bool is_stdlib = false;               // set by ModuleLoader::resolveImports — gates qualified-call routing in CodeGen (stdlib dispatch vs. user-fn error in v0.0.23)
     SourceLocation loc;
 };
 
@@ -344,7 +353,7 @@ struct DirectiveDefStmt {
 };
 
 using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
-                              ReturnStmt, ImportStmt, RecordStmt,
+                              ReturnStmt, ImportStmt, QualifiedImportStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,

@@ -275,8 +275,17 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 callee[lt] = '[';
                 callee.back() = ']';
             }
-            return callee + "(" + args + ")";
+            // Restore `module.callee(...)` form for qualified imports (#1723).
+            std::string prefix;
+            if (call.qualified_module.has_value())
+                prefix = *call.qualified_module + ".";
+            return prefix + callee + "(" + args + ")";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
+            // Qualified const access via `import xxx` (#1723): the parser
+            // creates a FieldAccessExpr with an empty/placeholder object and
+            // `qualified_module` set. Render as `module.field`.
+            if (v->qualified_module.has_value())
+                return *v->qualified_module + "." + v->field;
             return formatExpr(*v->object) + "." + v->field;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
             std::string elems;
@@ -614,6 +623,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
         else if constexpr (std::is_same_v<T, ReturnStmt>) return v.loc.line; // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, ExprStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, ImportStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, QualifiedImportStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, RecordStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -652,6 +662,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, ExprStmt>) formatExprStmt(v);
         else if constexpr (std::is_same_v<T, ReturnStmt>) formatReturn(v);
         else if constexpr (std::is_same_v<T, ImportStmt>) formatImport(v);
+        else if constexpr (std::is_same_v<T, QualifiedImportStmt>) formatQualifiedImport(v);
         else if constexpr (std::is_same_v<T, RecordStmt>) formatRecord(v);
         else if constexpr (std::is_same_v<T, IndexAssignStmt>) formatIndexAssign(v);
         else if constexpr (std::is_same_v<T, BreakStmt>) formatBreak(v);

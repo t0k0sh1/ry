@@ -88,6 +88,26 @@ llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e) {
+    // Qualified field access `<mod>.x` (#1723). Same routing rules as the
+    // qualified-call dispatcher in codegen_call_dispatch.cpp: stdlib modules
+    // resolve through the bare-name lookup (the field was inlined as a
+    // top-level binding by ModuleLoader), user-defined modules error with a
+    // redirect to selective import.
+    if (e->qualified_module.has_value()) {
+        const std::string &mod = *e->qualified_module;
+        auto it = module_namespaces_.find(mod);
+        if (it == module_namespaces_.end())
+            codegenError("qualified access on module '" + mod +
+                         "' which was not imported via 'import " + mod + "'");
+        if (!it->second)
+            codegenError("qualified field access on user-defined module '" + mod +
+                         "' is not yet supported in v0.0.23; use 'from " + mod +
+                         " import " + e->field + "' instead");
+        // stdlib: the inlined top-level definition is reachable by bare name.
+        VariableExpr proxy{e->field};
+        return emitExprVariant(proxy);
+    }
+
     llvm::Value *obj = emitExpr(*e->object);
     llvm::Type *objTy = obj->getType();
 

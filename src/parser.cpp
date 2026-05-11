@@ -90,6 +90,22 @@ bool Parser::isCamelCase(const std::string &name) {
     parseError(lex_.peek().line, msg);
 }
 
+// ===== Qualified-import shadowing rejection (#1723) =====
+
+// Throws if the given identifier collides with a qualified-imported module.
+// Used at every local-binding site (AssignStmt, TupleDestructStmt, compound
+// assign, increment/decrement) so 'import math\nmath = 42' fails at parse
+// time with a precise diagnostic, instead of crashing in codegen with an
+// opaque resolution error. Shadowing is rejected even inside function
+// bodies — see plan #1723 (AC7-adjacent).
+void Parser::rejectImportShadowing(const Token &nameTok) {
+    if (imported_modules_.count(nameTok.value) > 0)
+        parseError(nameTok.line,
+            "cannot shadow imported module '" + nameTok.value +
+            "' with a local binding; rename the local or remove the matching "
+            "'import " + nameTok.value + "' statement");
+}
+
 // ===== Compound assignment helper: x op= rhs =====
 
 AssignStmt Parser::makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs) {
@@ -271,6 +287,8 @@ Program Parser::parseProgram() {
     while (lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::From) {
             prog.push_back(parseImportStatement());
+        } else if (lex_.peek().kind == TokenKind::Import) {
+            prog.push_back(parseQualifiedImportStatement());
         } else {
             prog.push_back(parseStatement());
         }
@@ -465,6 +483,46 @@ StmtNode Parser::parseImportStatement() {
     return ImportStmt{modulePath, std::move(names), {fromTok.line, fromTok.col, file_id_}};
 }
 
+StmtNode Parser::parseQualifiedImportStatement() {
+    // Qualified import: `import <ident> [as <ident>]` (#1723)
+    // - Only single identifier accepted; `import a.b` rejected (AC6)
+    // - `as` form reserved for #1724; currently rejected
+    // - Duplicate `import <same>` rejected (AC7)
+    Token importTok = lex_.next(); // consume 'import'
+
+    Token modTok = lex_.peek();
+    if (modTok.kind != TokenKind::Ident)
+        parseError(modTok.line, "expected module name after 'import'");
+    std::string moduleName = lex_.next().value;
+
+    if (lex_.peek().kind == TokenKind::Dot)
+        parseError(lex_.peek().line,
+            "qualified import does not support dotted module paths "
+            "('import a.b'); use 'from a.b import ...' instead");
+
+    std::optional<std::string> alias;
+    if (lex_.peek().kind == TokenKind::As) {
+        Token asTok = lex_.next(); // consume 'as'
+        Token aliasTok = lex_.peek();
+        if (aliasTok.kind != TokenKind::Ident)
+            parseError(aliasTok.line, "expected identifier after 'as'");
+        parseError(asTok.line,
+            "qualified import alias ('import xxx as yyy') is not yet "
+            "supported (tracked by issue #1724)");
+    }
+
+    if (!imported_modules_.insert(moduleName).second)
+        parseError(importTok.line,
+            "duplicate qualified import: 'import " + moduleName +
+            "' was already imported in this file");
+
+    return QualifiedImportStmt{
+        std::move(moduleName),
+        std::move(alias),
+        /*is_stdlib=*/false,
+        {importTok.line, importTok.col, file_id_}};
+}
+
 StmtNode Parser::parseStatement() {
     RecursionGuard guard(*this);
     // Parse directives before the statement
@@ -474,6 +532,9 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
+
+    if (first.kind == TokenKind::Import)
+        parseError(first.line, "'import' is only allowed at top level");
 
     // @directive(...) declares a new directive (#708). Must be followed by `fn`.
     // Only @public is permitted alongside @directive so stdlib directive
@@ -676,6 +737,7 @@ StmtNode Parser::parseStatement() {
                 "variable name '" + first.value +
                 "' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)");
         }
+        rejectImportShadowing(first);
         lex_.next(); // consume ':'
         auto typeAnnotation = parseTypeName();
         AssignStmt s;
@@ -735,8 +797,28 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume field name
 
         if (lex_.peek().kind == TokenKind::LParen) {
-            // UFCS call statement: ident.method(args)
             lex_.next(); // consume '('
+            // Qualified module dispatch (#1723): `<mod>.fn(args)` where `mod`
+            // was registered via `import mod` is a qualified call, NOT UFCS.
+            // Produce an ExprStmt wrapping a CallExpr with qualified_module
+            // set so the codegen short-circuit at codegen_call_dispatch.cpp
+            // takes the stdlib dispatcher path.
+            if (imported_modules_.count(first.value) > 0) {
+                auto call = std::make_unique<CallExpr>();
+                call->callee = fieldTok.value;
+                call->qualified_module = first.value;
+                auto rest = parseArgList(&call->named_args);
+                for (auto &arg : rest)
+                    call->args.push_back(std::move(arg));
+                auto node = std::make_unique<ExprNode>();
+                node->data = std::move(call);
+                node->loc = locFromToken(first);
+                ExprStmt es;
+                es.expr = std::move(node);
+                es.loc = locFromToken(first);
+                return es;
+            }
+            // UFCS call statement: ident.method(args)
             CallStmt s;
             s.callee = fieldTok.value;
             s.loc = locFromToken(first);
@@ -771,6 +853,7 @@ StmtNode Parser::parseStatement() {
         std::vector<std::string> names;
         if (first.value != "_" && !isCamelCase(first.value))
             parseError(first.line, "tuple-destructure name '" + first.value + "' must be camelCase");
+        rejectImportShadowing(first);
         names.push_back(first.value);
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
@@ -779,6 +862,7 @@ StmtNode Parser::parseStatement() {
                 parseError("expected identifier or '_' in tuple destructuring");
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            rejectImportShadowing(n);
             lex_.next(); // consume ident
             names.push_back(n.value);
         }
@@ -794,6 +878,7 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::Equals) {
+        rejectImportShadowing(first);
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
@@ -810,11 +895,13 @@ StmtNode Parser::parseStatement() {
                next.kind == TokenKind::LessLessEq || next.kind == TokenKind::GreaterGreaterEq) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on compound assignment");
+        rejectImportShadowing(first);
         // Compound assignment: preserve compound_op for codegen resolution
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
         return makeCompoundAssign(first, op, parseConditional());
     } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
+        rejectImportShadowing(first);
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
         auto one = std::make_unique<ExprNode>();

@@ -1783,6 +1783,53 @@ TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
     EXPECT_EQ(intrinsics, expected);
 }
 
+// Qualified import — user-defined module call rejection (#1723).
+// Triggers the codegen branch in `emitCall` that rejects qualified calls
+// on user-defined modules; covered as a v0.0.23 limitation pointing users
+// at the selective-import form.
+TEST_F(ImportTest, QualifiedImportUserDefinedModuleCallRejected) {
+    writeFile("mymod.ry",
+        "fn greet() -> int:\n"
+        "    return 7\n");
+    try {
+        runWithImports(
+            "import mymod\n"
+            "print(mymod.greet())\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("qualified call to user-defined module 'mymod'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("from mymod import greet"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Qualified import — user-defined module field access rejection (#1723).
+// Triggers the codegen branch in field-access lowering that rejects
+// qualified const access on user-defined modules.
+TEST_F(ImportTest, QualifiedImportUserDefinedModuleFieldRejected) {
+    writeFile("constmod2.ry",
+        "@directive(target=[\"statement\"])\n"
+        "fn const()\n"
+        "@const\n"
+        "ANSWER: int = 42\n");
+    try {
+        runWithImports(
+            "import constmod2\n"
+            "print(constmod2.ANSWER)\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("qualified field access on user-defined module 'constmod2'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("from constmod2 import ANSWER"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
 // ===== type alias =====
 
 TEST_F(CodeGenTest, TypeAlias) {

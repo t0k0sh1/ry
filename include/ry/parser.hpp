@@ -10,6 +10,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 
@@ -37,6 +38,11 @@ private:
     // bare-lambda dispatch (`Ident FatArrow`) in parsePrimary so the `=>` is
     // recognised as the if-expression then-arm, not consumed as a lambda body.
     bool in_if_cond_ = false;
+    // Module names introduced by `import xxx` (qualified import) at the top
+    // level of the current source. Used by parsePrimary's Dot dispatch to
+    // disambiguate `mod.f(...)` qualified calls from UFCS / field access, and
+    // by parseStatement to reject `let mod = ...` shadowing.
+    std::unordered_set<std::string> imported_modules_;
     static constexpr int MAX_RECURSION_DEPTH = 256;
 
     struct RecursionGuard {
@@ -69,6 +75,8 @@ private:
     void skipNewlines();
     void skipStructuralTokens();
     StmtNode parseImportStatement();
+    StmtNode parseQualifiedImportStatement();
+    void rejectImportShadowing(const Token &nameTok);
     StmtNode parseStatement();
 
 

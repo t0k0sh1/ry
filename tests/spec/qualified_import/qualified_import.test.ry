@@ -1,0 +1,51 @@
+from testing import it, describe, expect
+
+import math
+from math import PI
+
+import list
+from str import contains
+
+@describe("qualified import (#1723)")
+fn qualifiedImportTests():
+  @it("AC1: import math then qualified call resolves to stdlib dispatcher")
+  fn shouldQualifiedCall():
+    expect(math.sqrt(2.0)).toBeCloseTo(1.4142135623730951, 10)
+    expect(math.sqrt(4.0)).toEq(2.0)
+
+  @it("AC1: qualified const access resolves to module constant")
+  fn shouldQualifiedConst():
+    expect(math.PI).toBeCloseTo(3.141592653589793, 10)
+
+  @it("AC2: qualified import and selective import of the same module coexist")
+  fn shouldCoexistWithSelectiveImport():
+    # PI from `from math import PI` is the same value math.PI resolves to.
+    expect(PI).toEq(math.PI)
+    expect(math.sqrt(PI)).toBeCloseTo(1.7724538509055159, 10)
+
+  @it("AC3: qualified import resolves name collisions across modules")
+  fn shouldDisambiguateCollidingNames():
+    # `contains` resolves to str.contains via selective import;
+    # `list.append` is the list-module function reached qualified.
+    xs: List<int> = [1, 2, 3]
+    list.append(xs, 4)
+    expect(xs).toEq([1, 2, 3, 4])
+    expect(contains("hello", "ell")).toBeTrue()
+
+  @it("AC4: UFCS on non-imported receivers still works alongside import math")
+  fn shouldNotBreakUfcs():
+    s: str = "hello"
+    expect(s.contains("ell")).toBeTrue()
+    expect(math.sqrt(9.0)).toEq(3.0)
+
+  @it("AC5: struct field access on record values is unaffected by import")
+  fn shouldNotBreakStructFieldAccess():
+    record Point:
+      x: int
+      y: int
+
+    p = Point(3, 4)
+    expect(p.x).toEq(3)
+    expect(p.y).toEq(4)
+    # math is still a module; p.x is still a field. Both paths coexist.
+    expect(math.sqrt(25.0)).toEq(5.0)
