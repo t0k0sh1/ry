@@ -1004,6 +1004,7 @@ ExprPtr Parser::parseParenLambdaExpr() {
     for (const auto &tok : paramNameTokens) {
         if (!isCamelCase(tok.value))
             parseError(tok.line, "parameter name '" + tok.value + "' must be camelCase");
+        rejectImportShadowing(tok);
     }
 
     if (lex_.peek().kind == TokenKind::Arrow) {

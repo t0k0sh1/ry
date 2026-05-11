@@ -1155,6 +1155,71 @@ TEST(ParserTest, QualifiedImportShadowingByIncrementRejected) {
     EXPECT_THROW(parseStr("import math\nmath++"), std::runtime_error);
 }
 
+TEST(ParserTest, QualifiedImportShadowingByDecrementRejected) {
+    // Mirror of the increment test — both ++ and -- bind a name locally
+    // and must be guarded the same way.
+    EXPECT_THROW(parseStr("import math\nmath--"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopVarRejected) {
+    // 'for math in ...' shadows the imported module inside the loop body,
+    // which then routes 'math.sqrt(...)' to the qualified call rather than
+    // to the loop variable — silently the wrong result. Reject at parse time.
+    try {
+        parseStr("import math\nfor math in [1, 2]:\n    print(math)\n");
+        FAIL() << "Expected parser to reject for-loop binding that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopTupleElementRejected) {
+    // Rest-position shadowing in for-loop tuple destructure. Both first and
+    // rest positions must be guarded, mirroring the regular tuple-destruct
+    // tests above.
+    EXPECT_THROW(
+        parseStr("import math\nfor i, math in [(1, 2)]:\n    print(math)\n"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByForLoopTupleFirstRejected) {
+    EXPECT_THROW(
+        parseStr("import math\nfor math, j in [(1, 2)]:\n    print(math)\n"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByFnParamRejected) {
+    // Function parameter named 'math' would silently shadow the import
+    // inside the body but still route 'math.sqrt(...)' to the qualified
+    // call, ignoring the argument. Reject at parse time.
+    try {
+        parseStr("import math\nfn f(math: int) -> int:\n    return math\n");
+        FAIL() << "Expected parser to reject fn parameter that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByLambdaParamRejected) {
+    // Lambda parameter named 'math'. The lambda parser uses the commit-flag
+    // pattern to defer hard errors past the speculative try/catch, so this
+    // throw must surface as a user-visible diagnostic, not get swallowed
+    // and re-emitted as a generic 'expected =' error from the outer stmt
+    // parser.
+    try {
+        parseStr("import math\nf = (math: int) => math + 1\n");
+        FAIL() << "Expected parser to reject lambda parameter that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
 TEST(ParserTest, QualifiedImportDoesNotBreakStructFieldAccess) {
     // AC5: regular struct field access (p.x where p is a value, not a
     // module) still produces FieldAccessExpr with NO qualified_module.

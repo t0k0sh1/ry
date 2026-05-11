@@ -1002,10 +1002,12 @@ StmtNode Parser::parseForStatement() {
         Token firstTok = lex_.peek();
         if (firstTok.kind != TokenKind::Ident)
             parseError(firstTok.line, "expected variable name after 'for'");
-        if (firstTok.value == "_")
+        if (firstTok.value == "_") {
             binding = WildcardPattern{};
-        else
+        } else {
+            rejectImportShadowing(firstTok);
             binding = VariablePattern{firstTok.value};
+        }
         lex_.next(); // consume first binding token
 
         if (lex_.peek().kind == TokenKind::Comma) {
@@ -1020,10 +1022,12 @@ StmtNode Parser::parseForStatement() {
                 Token vTok = lex_.peek();
                 if (vTok.kind != TokenKind::Ident)
                     parseError(vTok.line, "expected variable name after ',' in for loop");
-                if (vTok.value == "_")
+                if (vTok.value == "_") {
                     tuple->elements.push_back(WildcardPattern{});
-                else
+                } else {
+                    rejectImportShadowing(vTok);
                     tuple->elements.push_back(VariablePattern{vTok.value});
+                }
                 lex_.next(); // consume var
             }
             binding = std::move(tuple);

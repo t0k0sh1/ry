@@ -573,13 +573,25 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             //      (required for stdlib qualified-call dispatch in Task 9).
             //   2. exports_cache_ / exports_kinds_cache_ get populated for any
             //      subsequent `from xxx import` referencing the same module.
+            //
+            // For user-defined modules (`!rp.from_stdlib`), route extracted
+            // definitions to a throwaway Program so they are NOT inlined into
+            // the caller's namespace. The caches still get populated so
+            // `from <mod> import x` after `import <mod>` works (AC2-like).
+            // Without this gate, `import usermod` followed by bare `greet()`
+            // succeeds — bypassing the documented v0.0.23 rejection at call
+            // site. Stdlib path stays unchanged: native-fn registration in
+            // CodeGen still relies on inlining (#1730 tracks proper namespace
+            // isolation for stdlib).
+            Program throwaway;
+            Program &push_target = rp.from_stdlib ? result : throwaway;
             if (rp.is_directory) {
                 loading_.insert(abs_path);
                 Program dir_prog = loadModuleDir(abs_path);
                 loading_.erase(abs_path);
                 loaded_.insert(abs_path);
 
-                extractDefinitions(dir_prog, result, /*requested_items=*/{},
+                extractDefinitions(dir_prog, push_target, /*requested_items=*/{},
                                    qimp.module_name, qimp.loc.line, cross_package,
                                    rp.from_stdlib,
                                    &exports_cache_[abs_path],
@@ -593,7 +605,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                 loading_.erase(abs_path);
                 loaded_.insert(abs_path);
 
-                extractDefinitions(sub_prog, result, /*requested_items=*/{},
+                extractDefinitions(sub_prog, push_target, /*requested_items=*/{},
                                    qimp.module_name, qimp.loc.line, cross_package,
                                    rp.from_stdlib,
                                    &exports_cache_[abs_path],

@@ -333,7 +333,8 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 | Constraint | Details |
 |------|------|
 | Allowed location | Top level only (not inside functions or blocks) |
-| Duplicate imports | Automatically skipped (no error) |
+| Duplicate `from` imports | Automatically skipped (no error) |
+| Duplicate qualified `import` | Compile error (`'import xxx' already in this file`) |
 | Circular imports | Compile error |
 | Relative imports | `from .` and `from .submodule` resolve only against the current file's directory |
 | Parent directory imports | `from ..` is not supported |
@@ -344,9 +345,13 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 fn main():
     from math   # Error: imports only allowed at top level
 
-# OK: Importing the same module multiple times does not cause an error
+# OK: Repeating the same `from` import is silently skipped
 from math
 from math   # Skipped
+
+# Error: the qualified form rejects duplicates at parse time
+import math
+import math   # Error: 'import math' already in this file
 ```
 
 ---

@@ -168,6 +168,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 parseError(paramName.line, "expected parameter name");
             if (!isCamelCase(paramName.value))
                 parseError(paramName.line, "parameter name '" + paramName.value + "' must be camelCase");
+            rejectImportShadowing(paramName);
             lex_.next(); // consume param name
 
             TypeNodePtr paramType = TypeNode::makeBasic("any");  // default when type is omitted

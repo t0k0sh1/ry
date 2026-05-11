@@ -1830,6 +1830,27 @@ TEST_F(ImportTest, QualifiedImportUserDefinedModuleFieldRejected) {
     }
 }
 
+// Qualified import — user-defined module must NOT leak bare names into caller (#1723, CR review).
+// Triggers the module_loader.cpp branch that routes user-defined defs to a throwaway
+// Program (instead of inlining them into the caller) so `import usermod\ngreet()`
+// fails with the regular `undefined function: greet` resolver error rather than
+// silently succeeding.
+TEST_F(ImportTest, QualifiedImportUserDefinedDoesNotLeakBareNames) {
+    writeFile("leakmod.ry",
+        "fn greet() -> int:\n"
+        "    return 7\n");
+    try {
+        runWithImports(
+            "import leakmod\n"
+            "print(greet())\n");
+        FAIL() << "Expected exception (bare 'greet' must not resolve through qualified import)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("undefined function: greet"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
 // ===== type alias =====
 
 TEST_F(CodeGenTest, TypeAlias) {
