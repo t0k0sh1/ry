@@ -259,9 +259,14 @@ struct ExprStmt   { ExprPtr expr; SourceLocation loc; };
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; };
 
+struct ImportName {
+    std::string name;                       // original symbol name from the module
+    std::optional<std::string> alias;       // local-side rebinding via `as`; nullopt means no alias (or normalized self-alias)
+};
+
 struct ImportStmt {
     std::string module_path;              // "utils/math" (resolved to dir or .ry file)
-    std::vector<std::string> names;       // {"add", "sub"} — empty means import all
+    std::vector<ImportName> names;        // {{"add", nullopt}, {"sub", "minus"}} — empty means import all
     SourceLocation loc;
 };
 

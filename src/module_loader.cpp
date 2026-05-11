@@ -91,6 +91,65 @@ static bool isTestingIntrinsic(bool from_stdlib,
            testingIntrinsics().count(name) > 0;
 }
 
+static ExportableKind getExportableKind(const StmtNode &stmt) {
+    if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt)) return ExportableKind::Fn;
+    if (std::holds_alternative<AssignStmt>(stmt)) return ExportableKind::Const;
+    if (std::holds_alternative<RecordStmt>(stmt)) return ExportableKind::Record;
+    if (std::holds_alternative<EnumStmt>(stmt)) return ExportableKind::Enum;
+    if (std::holds_alternative<TypeAliasStmt>(stmt)) return ExportableKind::TypeAlias;
+    if (std::holds_alternative<DirectiveDefStmt>(stmt)) return ExportableKind::Directive;
+    return ExportableKind::Fn; // unreachable: caller already filtered via isExportable
+}
+
+// Build a synthesized binding `alias = orig` for `@const` symbols so the
+// importer's scope sees `alias` as an additional name pointing at the same
+// underlying value. Only `@const` alias is supported in this release:
+// fn / record / enum / type-alias alias requires codegen-side name-resolution
+// fallback that is not yet implemented (tracked in follow-up issue #1725).
+// The caller MUST reject non-Const kinds before reaching here; this function
+// asserts that contract via the switch default.
+static StmtNode makeAliasBinding(ExportableKind kind,
+                                  const std::string &orig_name,
+                                  const std::string &alias_name,
+                                  SourceLocation loc) {
+    (void)kind; // contract: caller guarantees ExportableKind::Const
+    auto var = std::make_unique<ExprNode>();
+    var->data = VariableExpr{orig_name};
+    var->loc = loc;
+    AssignStmt a;
+    a.name = alias_name;
+    a.value = std::move(var);
+    a.loc = loc;
+    return a;
+}
+
+// Validate that an `as` alias is only requested for a supported kind.
+// In v0.0.23 (#1721) only `@const` alias is functional; the other kinds
+// (fn / record / enum / type alias) parse and reach the loader, but emitting
+// a binding that survives codegen requires the follow-up work tracked in
+// #1725. Throw a descriptive error so the user understands what to do.
+static void rejectUnsupportedAlias(ExportableKind kind,
+                                    const std::string &name,
+                                    const std::string &import_path,
+                                    int line) {
+    if (kind == ExportableKind::Const) return;
+    std::string detail = "alias not supported for ";
+    switch (kind) {
+        case ExportableKind::Fn:        detail += "function";   break;
+        case ExportableKind::Record:    detail += "record";     break;
+        case ExportableKind::Enum:      detail += "enum";       break;
+        case ExportableKind::TypeAlias: detail += "type alias"; break;
+        case ExportableKind::Directive: detail += "directive";  break;
+        case ExportableKind::Const:     return;
+    }
+    detail += " '";
+    detail += name;
+    detail += "' from module '";
+    detail += import_path;
+    detail += "': only @const aliases are supported in v0.0.23 (tracked in #1725)";
+    throw std::runtime_error(makeImportError(line, detail));
+}
+
 // Returns true when the definition carries an `@public` directive.
 static bool isPublicDefinition(const StmtNode &stmt) {
     auto check = [](const std::vector<Directive> &directives) -> bool {
@@ -129,28 +188,40 @@ static bool isPublicDefinition(const StmtNode &stmt) {
 // is_public flag for subsequent already-loaded import validation against the
 // cache without re-parsing.
 static void extractDefinitions(Program &source, Program &dest,
-                                const std::vector<std::string> &requested_names,
+                                const std::vector<ImportName> &requested_items,
                                 const std::string &import_path, int line,
                                 bool cross_package, bool from_stdlib,
-                                std::unordered_map<std::string, bool> *out_names = nullptr) {
+                                std::unordered_map<std::string, bool> *out_names = nullptr,
+                                std::unordered_map<std::string, ExportableKind> *out_kinds = nullptr,
+                                int file_id = 0) {
     // REQ-B3 (#1560): code availability is decoupled from name visibility.
     // Every exportable definition is copied to the importer's program so a
     // `@public` facade can call its non-`@public` helpers in the same JIT
     // linkage unit. Cross-package `@public` enforcement only narrows what
     // names the importer may write in `from foo import <name>` (validated
     // below), not what the codegen layer can resolve.
-    std::unordered_set<std::string> requested(requested_names.begin(), requested_names.end());
+    std::unordered_set<std::string> requested;
+    requested.reserve(requested_items.size());
+    for (const auto &item : requested_items)
+        requested.insert(item.name);
     std::unordered_map<std::string, bool> found;
+    std::unordered_map<std::string, ExportableKind> found_kinds;
     for (auto &stmt : source) {
         if (!isExportable(stmt)) continue;
         std::string name = getExportName(stmt);
         if (name.empty()) continue;
         bool is_pub = isPublicDefinition(stmt);
+        ExportableKind kind = getExportableKind(stmt);
         if (out_names) (*out_names)[name] = is_pub;
-        if (requested.count(name)) found[name] = is_pub;
+        if (out_kinds) (*out_kinds)[name] = kind;
+        if (requested.count(name)) {
+            found[name] = is_pub;
+            found_kinds[name] = kind;
+        }
         dest.push_back(std::move(stmt));
     }
-    for (const auto &name : requested_names) {
+    for (const auto &item : requested_items) {
+        const std::string &name = item.name;
         auto it = found.find(name);
         if (it == found.end()) {
             if (isTestingIntrinsic(from_stdlib, import_path, name)) continue;
@@ -168,6 +239,12 @@ static void extractDefinitions(Program &source, Program &dest,
             detail += import_path;
             detail += "': symbol is not @public";
             throw std::runtime_error(makeImportError(line, detail));
+        }
+        if (item.alias.has_value()) {
+            ExportableKind kind = found_kinds[name];
+            rejectUnsupportedAlias(kind, name, import_path, line);
+            SourceLocation alias_loc{line, 1, file_id};
+            dest.push_back(makeAliasBinding(kind, name, *item.alias, alias_loc));
         }
     }
 }
@@ -436,7 +513,9 @@ Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
         // decisions made at the import site.
         extractDefinitions(sub_prog, collected, {}, "", 0, /*cross_package=*/false,
                            /*from_stdlib=*/false,
-                           &exports_cache_[file_path]);
+                           &exports_cache_[file_path],
+                           &exports_kinds_cache_[file_path],
+                           /*file_id=*/0);
     }
 
     return collected;
@@ -466,9 +545,9 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                 for (const auto &name : testingIntrinsics())
                     imported_testing_intrinsics_.insert(name);
             } else {
-                for (const auto &name : imp.names) {
-                    if (testingIntrinsics().count(name) > 0)
-                        imported_testing_intrinsics_.insert(name);
+                for (const auto &item : imp.names) {
+                    if (testingIntrinsics().count(item.name) > 0)
+                        imported_testing_intrinsics_.insert(item.name);
                 }
             }
         }
@@ -483,7 +562,9 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         if (loaded_.count(abs_path)) {
             if (!imp.names.empty()) {
                 auto &exports = exports_cache_[abs_path];
-                for (const auto &name : imp.names) {
+                auto &kinds = exports_kinds_cache_[abs_path];
+                for (const auto &item : imp.names) {
+                    const std::string &name = item.name;
                     auto it = exports.find(name);
                     if (it == exports.end()) {
                         if (isTestingIntrinsic(rp.from_stdlib, imp.module_path, name)) continue;
@@ -502,6 +583,14 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                         detail += "': symbol is not @public";
                         throw std::runtime_error(makeImportError(imp.loc.line, detail));
                     }
+                    if (item.alias.has_value()) {
+                        auto k_it = kinds.find(name);
+                        ExportableKind kind = (k_it != kinds.end()) ? k_it->second
+                                                                    : ExportableKind::Fn;
+                        rejectUnsupportedAlias(kind, name, imp.module_path, imp.loc.line);
+                        SourceLocation alias_loc{imp.loc.line, 1, imp.loc.file_id};
+                        result.push_back(makeAliasBinding(kind, name, *item.alias, alias_loc));
+                    }
                 }
             }
             continue;
@@ -515,7 +604,9 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
             extractDefinitions(dir_prog, result, imp.names, imp.module_path,
                                imp.loc.line, cross_package, rp.from_stdlib,
-                               &exports_cache_[abs_path]);
+                               &exports_cache_[abs_path],
+                               &exports_kinds_cache_[abs_path],
+                               imp.loc.file_id);
         } else {
             loading_.insert(abs_path);
             auto sub_prog = loadAndParse(abs_path, sm_);
@@ -526,7 +617,9 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
             extractDefinitions(sub_prog, result, imp.names, imp.module_path,
                                imp.loc.line, cross_package, rp.from_stdlib,
-                               &exports_cache_[abs_path]);
+                               &exports_cache_[abs_path],
+                               &exports_kinds_cache_[abs_path],
+                               imp.loc.file_id);
         }
     }
 

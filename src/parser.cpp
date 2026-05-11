@@ -393,7 +393,26 @@ StmtNode Parser::parseImportStatement() {
         parseError(modTok.line, "expected module name after 'from'");
     }
 
-    std::vector<std::string> names;
+    // Consume one `<name> [as <alias>]` import item. The name token has
+    // already been validated by the caller. Normalizes self-alias
+    // (`foo as foo`) to nullopt so downstream code and formatter output
+    // stay canonical.
+    auto parseOneImportItem = [&]() -> ImportName {
+        std::string itemName = lex_.next().value;
+        std::optional<std::string> aliasOpt;
+        if (lex_.peek().kind == TokenKind::As) {
+            lex_.next(); // consume 'as'
+            Token aliasTok = lex_.peek();
+            if (aliasTok.kind != TokenKind::Ident && aliasTok.kind != TokenKind::Expect)
+                parseError(aliasTok.line, "expected identifier after 'as'");
+            std::string aliasName = lex_.next().value;
+            if (aliasName != itemName)
+                aliasOpt = std::move(aliasName);
+        }
+        return ImportName{std::move(itemName), std::move(aliasOpt)};
+    };
+
+    std::vector<ImportName> names;
     names.reserve(4);
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
@@ -404,18 +423,18 @@ StmtNode Parser::parseImportStatement() {
         // rejected at this position.
         if (name.kind != TokenKind::Ident && name.kind != TokenKind::Expect)
             parseError(name.line, "expected function name after 'import'");
-        names.push_back(lex_.next().value);
+        names.push_back(parseOneImportItem());
 
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
             Token next = lex_.peek();
             if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
                 parseError(next.line, "expected function name after ','");
-            names.push_back(lex_.next().value);
+            names.push_back(parseOneImportItem());
         }
     }
 
-    return ImportStmt{modulePath, names, {fromTok.line, fromTok.col, file_id_}};
+    return ImportStmt{modulePath, std::move(names), {fromTok.line, fromTok.col, file_id_}};
 }
 
 StmtNode Parser::parseStatement() {

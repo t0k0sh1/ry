@@ -14,6 +14,20 @@ namespace ry {
 
 Program loadAndParse(const std::string &abs_path, SourceManager *sm = nullptr);
 
+// Classification used when emitting alias bindings for `from m import x as y`.
+// Mirrors the variants returned by `isExportable` so the alias binding can be
+// generated with the right AST shape (AssignStmt for values, TypeAliasStmt
+// for types). Directives are tracked here so the alias-not-supported error
+// has a dedicated branch.
+enum class ExportableKind {
+    Fn,
+    Const,
+    Record,
+    Enum,
+    TypeAlias,
+    Directive,
+};
+
 class ModuleLoader {
 public:
     explicit ModuleLoader(const std::vector<std::string> &search_paths = {},
@@ -56,6 +70,10 @@ private:
     // (the nearest ancestor directory containing `package.toml`; files
     // outside any package share an anonymous package).
     std::unordered_map<std::string, std::unordered_map<std::string, bool>> exports_cache_;
+    // Parallel cache of exportable kinds keyed by abs_path then name. Populated
+    // alongside `exports_cache_` so cache-hit imports can synthesize alias
+    // bindings (`from m import x as y`) without re-parsing the source.
+    std::unordered_map<std::string, std::unordered_map<std::string, ExportableKind>> exports_kinds_cache_;
     // Cache: directory path -> nearest ancestor `package.toml` root (or nullopt
     // if the directory is not contained in any rooted package).
     std::unordered_map<std::string, std::optional<std::string>> pkg_root_cache_;

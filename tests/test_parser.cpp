@@ -677,7 +677,8 @@ TEST(ParserTest, ImportSingleFunction) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_FALSE(imp.names[0].alias.has_value());
 }
 
 TEST(ParserTest, ImportMultipleFunctions) {
@@ -685,8 +686,10 @@ TEST(ParserTest, ImportMultipleFunctions) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 2u);
-    EXPECT_EQ(imp.names[0], "add");
-    EXPECT_EQ(imp.names[1], "sub");
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_FALSE(imp.names[0].alias.has_value());
+    EXPECT_EQ(imp.names[1].name, "sub");
+    EXPECT_FALSE(imp.names[1].alias.has_value());
 }
 
 TEST(ParserTest, ImportDotPath) {
@@ -694,7 +697,7 @@ TEST(ParserTest, ImportDotPath) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "utils/math");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[0].name, "add");
 }
 
 TEST(ParserTest, ImportExpectedModuleName) {
@@ -714,7 +717,7 @@ TEST(ParserTest, RelativeImportDot) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, ".");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[0].name, "add");
 }
 
 TEST(ParserTest, RelativeImportDotMultiple) {
@@ -722,8 +725,8 @@ TEST(ParserTest, RelativeImportDotMultiple) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, ".");
     ASSERT_EQ(imp.names.size(), 2u);
-    EXPECT_EQ(imp.names[0], "add");
-    EXPECT_EQ(imp.names[1], "sub");
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_EQ(imp.names[1].name, "sub");
 }
 
 TEST(ParserTest, RelativeImportDotAll) {
@@ -739,7 +742,7 @@ TEST(ParserTest, RelativeImportDotSubmodule) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "./utils");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "helper");
+    EXPECT_EQ(imp.names[0].name, "helper");
 }
 
 TEST(ParserTest, RelativeImportDotNestedSubmodule) {
@@ -747,7 +750,7 @@ TEST(ParserTest, RelativeImportDotNestedSubmodule) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "./utils/calc");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[0].name, "add");
 }
 
 TEST(ParserTest, ImportHyphenError) {
@@ -805,7 +808,7 @@ TEST(ParserTest, ImportExpectKeywordAccepted) {
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "testing");
     ASSERT_EQ(imp.names.size(), 1u);
-    EXPECT_EQ(imp.names[0], "expect");
+    EXPECT_EQ(imp.names[0].name, "expect");
 }
 
 TEST(ParserTest, ImportFnKeywordRejected) {
@@ -828,6 +831,70 @@ TEST(ParserTest, ImportFnKeywordRejectedAfterComma) {
         EXPECT_NE(msg.find("expected function name after ','"), std::string::npos)
             << "Error message should match the post-comma import-name diagnostic: " << msg;
     }
+}
+
+// ===== alias tests (#1721) =====
+
+TEST(ParserTest, ImportSingleAlias) {
+    Program prog = parseStr("from math import add as plus");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    ASSERT_TRUE(imp.names[0].alias.has_value());
+    EXPECT_EQ(*imp.names[0].alias, "plus");
+}
+
+TEST(ParserTest, ImportMixedAlias) {
+    Program prog = parseStr("from math import a, b as B, c");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 3u);
+    EXPECT_EQ(imp.names[0].name, "a");
+    EXPECT_FALSE(imp.names[0].alias.has_value());
+    EXPECT_EQ(imp.names[1].name, "b");
+    ASSERT_TRUE(imp.names[1].alias.has_value());
+    EXPECT_EQ(*imp.names[1].alias, "B");
+    EXPECT_EQ(imp.names[2].name, "c");
+    EXPECT_FALSE(imp.names[2].alias.has_value());
+}
+
+// Self-alias (`foo as foo`) is parser-normalized to no alias so AST and
+// formatter output stay canonical (a redundant binding is never generated).
+TEST(ParserTest, ImportSelfAliasNormalized) {
+    Program prog = parseStr("from math import add as add");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "add");
+    EXPECT_FALSE(imp.names[0].alias.has_value());
+}
+
+TEST(ParserTest, ImportExpectKeywordAsAlias) {
+    // `expect` is accepted as an alias target the same way it is accepted as
+    // an import name (#712 keyword carve-out). Lock both halves so a future
+    // narrowing of one path keeps the other consistent.
+    Program prog = parseStr("from testing import fail as expect");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0].name, "fail");
+    ASSERT_TRUE(imp.names[0].alias.has_value());
+    EXPECT_EQ(*imp.names[0].alias, "expect");
+}
+
+TEST(ParserTest, ImportAsRequiresIdent) {
+    try {
+        parseStr("from math import add as 123");
+        FAIL() << "Expected parser to reject non-identifier alias";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected identifier after 'as'"), std::string::npos)
+            << "Error message should match the alias diagnostic: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportAsRequiresAliasNotKeyword) {
+    // 'fn' is a keyword; using it as an alias target must be rejected, mirroring
+    // the existing `from m import fn` rejection at the name position.
+    EXPECT_THROW(parseStr("from math import add as fn"), std::runtime_error);
 }
 
 TEST(ParserTest, DuplicateFieldNameThrows) {

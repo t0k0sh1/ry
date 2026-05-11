@@ -832,6 +832,110 @@ TEST_F(ImportTest, ImportErrors) {
     EXPECT_THROW(runWithImports("from mathmod import nope"), std::runtime_error);
 }
 
+// Symbol alias (`from m import x as y`) — #1721.
+//
+// Only `@const` aliases work end-to-end in v0.0.23: emitting an
+// `AssignStmt { name=alias, value=VariableExpr(orig) }` for a `@const`
+// passes through codegen as a plain top-level binding. fn / record /
+// enum / type-alias aliases require codegen-side name-resolution
+// fallback that is not yet implemented, so `module_loader.cpp`
+// explicitly rejects them with a message pointing at follow-up #1725.
+TEST_F(ImportTest, ImportAliasConstWorks) {
+    // Use camelCase: SCREAMING_SNAKE_CASE requires @const, but the harness
+    // has no stdlib search path so directive lookup fails. A bare
+    // module-global AssignStmt is still classified as ExportableKind::Const
+    // by `getExportableKind`, which is what the alias logic keys on.
+    writeFile("constmod.ry",
+        "originX: int = 42\n");
+    EXPECT_EQ(runWithImports(
+        "from constmod import originX as zeroX\n"
+        "print(zeroX)"),
+        "42\n");
+}
+
+TEST_F(ImportTest, ImportAliasFunctionRejected) {
+    writeFile("fnmod.ry",
+        "fn rectArea(w: int, h: int) -> int:\n"
+        "    return w * h\n");
+    try {
+        runWithImports("from fnmod import rectArea as area\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for function 'rectArea'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasRecordRejected) {
+    writeFile("recmod.ry",
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n");
+    try {
+        runWithImports("from recmod import Point as P\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for record 'Point'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasEnumRejected) {
+    writeFile("enummod.ry",
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n");
+    try {
+        runWithImports("from enummod import Color as C\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for enum 'Color'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasTypeAliasRejected) {
+    writeFile("tymod.ry",
+        "type Distance = int\n");
+    try {
+        runWithImports("from tymod import Distance as D\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for type alias 'Distance'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Cache-hit path (`loaded_.count(abs_path) != 0`) also enforces the
+// rejection. Two `from <mod>` statements force the second one through
+// the cached branch.
+TEST_F(ImportTest, ImportAliasFunctionRejectedCacheHit) {
+    writeFile("fnmod2.ry",
+        "fn helper() -> int:\n"
+        "    return 1\n");
+    try {
+        runWithImports(
+            "from fnmod2\n"
+            "from fnmod2 import helper as h\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for function 'helper'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
+}
+
 // Lock in the v0.0.17 error-wording switch from "package" -> "module" so that
 // any future regression that re-introduces the old wording is caught directly.
 TEST_F(ImportTest, ModuleNotFoundErrorMentionsModule) {

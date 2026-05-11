@@ -1,0 +1,15 @@
+from testing import it, describe, expect
+
+from .shapes import ORIGIN_X as ZERO_X, ORIGIN_Y as ZERO_Y
+
+@describe("import alias")
+fn importAliasTests():
+    @it("should bind @const with alias")
+    fn shouldBindConstWithAlias():
+        expect(ZERO_X).toEq(0)
+        expect(ZERO_Y).toEq(0)
+
+    @it("should allow mixing aliased and non-aliased const imports")
+    fn shouldMixAliasedAndNonAliased():
+        sum: int = ZERO_X + ZERO_Y + 7
+        expect(sum).toEq(7)

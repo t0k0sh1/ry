@@ -154,7 +154,11 @@ void Formatter::formatImport(const ImportStmt &s) {
         emit(" import ");
         for (size_t i = 0; i < s.names.size(); ++i) {
             if (i > 0) emit(", ");
-            emit(s.names[i]);
+            emit(s.names[i].name);
+            if (s.names[i].alias.has_value()) {
+                emit(" as ");
+                emit(*s.names[i].alias);
+            }
         }
     }
     emitInlineComment(s.loc.line);

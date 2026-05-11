@@ -87,9 +87,9 @@ enum Color:
 c = Color::Red
 print(c)               # Red
 
-# Module import
-from math import sqrt, PI
-print(sqrt(PI))
+# Module import (with optional `as` alias)
+from math import sqrt, PI as TAU
+print(sqrt(TAU))
 ```
 
 ## Installation
