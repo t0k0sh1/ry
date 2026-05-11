@@ -92,6 +92,52 @@ bool Parser::isCamelCase(const std::string &name) {
 
 // ===== Qualified-import shadowing rejection (#1723) =====
 
+// After '.', a field/method name may be an Ident, a numeric tuple index, or
+// any keyword token from the lexer's keyword_map (e.g. `.and()`, `.or()`,
+// `.expect(...)`). Keyword tokens arrive as TokenKind::And / Or / Expect /
+// etc., NOT as TokenKind::Ident, so a strict Ident-only check at the
+// statement-side dot fast path would reject legal qualified calls like
+// `testing.expect(1).toEq(1)` that work at expression position.
+bool Parser::isFieldNameTokenKind(TokenKind k) {
+    switch (k) {
+        case TokenKind::Ident:
+        case TokenKind::Number:
+        case TokenKind::And:
+        case TokenKind::Or:
+        case TokenKind::Not:
+        case TokenKind::True:
+        case TokenKind::False:
+        case TokenKind::If:
+        case TokenKind::Else:
+        case TokenKind::While:
+        case TokenKind::For:
+        case TokenKind::In:
+        case TokenKind::Break:
+        case TokenKind::Continue:
+        case TokenKind::Fn:
+        case TokenKind::Return:
+        case TokenKind::From:
+        case TokenKind::Import:
+        case TokenKind::Type:
+        case TokenKind::Record:
+        case TokenKind::Operator:
+        case TokenKind::Enum:
+        case TokenKind::Case:
+        case TokenKind::Expect:
+        case TokenKind::Require:
+        case TokenKind::Ensure:
+        case TokenKind::Invariant:
+        case TokenKind::NoneKw:
+        case TokenKind::As:
+        case TokenKind::ErrorKw:
+        case TokenKind::Async:
+        case TokenKind::Await:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Throws if the given identifier collides with a qualified-imported module.
 // Used at every local-binding site (AssignStmt, TupleDestructStmt, compound
 // assign, increment/decrement) so 'import math\nmath = 42' fails at parse
@@ -641,6 +687,8 @@ StmtNode Parser::parseStatement() {
             Token n = lex_.peek();
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            if (n.value != "_")
+                rejectImportShadowing(n);
             names.push_back(n.value);
             lex_.next();
         }
@@ -649,6 +697,8 @@ StmtNode Parser::parseStatement() {
             Token n = lex_.peek();
             if (n.value != "_" && !isCamelCase(n.value))
                 parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            if (n.value != "_")
+                rejectImportShadowing(n);
             names.push_back(n.value);
             lex_.next();
         }
@@ -792,17 +842,25 @@ StmtNode Parser::parseStatement() {
         // which produces a CallStmt rather than an ExprStmt<CallExpr>.
         Token dotTok = lex_.next(); // consume '.'
         Token fieldTok = lex_.peek();
-        if (fieldTok.kind != TokenKind::Ident)
-            parseError(fieldTok.line, "expected field name after '.'");
+        // Accept Ident, tuple-index Number, and keyword field names (mirrors
+        // parsePostfixContinuation in parser_expr.cpp). Without this,
+        // qualified calls whose member name is a keyword (e.g.
+        // `testing.expect(1).toEq(1)`) are rejected at statement position
+        // while the same expression succeeds inside `let x = testing.expect(...)`.
+        if (!isFieldNameTokenKind(fieldTok.kind))
+            parseError(fieldTok.line, "expected field name or index after '.'");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind == TokenKind::LParen) {
             lex_.next(); // consume '('
             // Qualified module dispatch (#1723): `<mod>.fn(args)` where `mod`
             // was registered via `import mod` is a qualified call, NOT UFCS.
-            // Produce an ExprStmt wrapping a CallExpr with qualified_module
-            // set so the codegen short-circuit at codegen_call_dispatch.cpp
-            // takes the stdlib dispatcher path.
+            // Build a CallExpr with qualified_module set, then feed it through
+            // parsePostfixContinuation so postfix tails like
+            // `testing.expect(1).toEq(1)` chain through to finishChainedLhs
+            // and emit the correct ExprStmt with the trailing UFCS hop wired
+            // up. Without the continuation, the second `.toEq(...)` would be
+            // left in the token stream and trigger "unexpected token '.'".
             if (imported_modules_.count(first.value) > 0) {
                 auto call = std::make_unique<CallExpr>();
                 call->callee = fieldTok.value;
@@ -813,10 +871,8 @@ StmtNode Parser::parseStatement() {
                 auto node = std::make_unique<ExprNode>();
                 node->data = std::move(call);
                 node->loc = locFromToken(first);
-                ExprStmt es;
-                es.expr = std::move(node);
-                es.loc = locFromToken(first);
-                return es;
+                ExprPtr chain = parsePostfixContinuation(std::move(node));
+                return finishChainedLhs(std::move(chain), first);
             }
             // UFCS call statement: ident.method(args)
             CallStmt s;
@@ -836,12 +892,19 @@ StmtNode Parser::parseStatement() {
         // Build `ident.field` as the chain base and continue parsing any
         // further postfix hops (`.a`, `[i]`, etc.) to support chained LHS
         // forms like `rec.field[i] = v`, `rec.a.b = v`, `rec.a[i].x = v`.
+        // For qualified module access (e.g. `math.PI.toStr()`), the FIRST
+        // FieldAccessExpr carries qualified_module so codegen routes through
+        // the namespace lookup before the trailing UFCS hop sees it as a
+        // value. parsePostfixContinuation only inspects the chain root for
+        // VariableExpr, so subsequent hops stay UFCS even when LHS is qual.
         auto varExpr = std::make_unique<ExprNode>();
         varExpr->data = VariableExpr{first.value};
         varExpr->loc = locFromToken(first);
         auto fa = std::make_unique<FieldAccessExpr>();
         fa->object = std::move(varExpr);
         fa->field = fieldTok.value;
+        if (imported_modules_.count(first.value) > 0)
+            fa->qualified_module = first.value;
         auto chain = std::make_unique<ExprNode>();
         chain->data = std::move(fa);
         chain->loc = locFromToken(dotTok);

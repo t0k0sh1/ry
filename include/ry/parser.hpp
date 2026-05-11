@@ -69,6 +69,14 @@ private:
     static bool isCamelCase(const std::string &name);
     static void coerceFirstArgToString(std::vector<ExprPtr> &args);
 
+    // After '.', a field/method name token may be an Ident, a numeric tuple
+    // index, or any keyword from the lexer's keyword_map (e.g. `.and()`,
+    // `.expect(...)`, `.case`). Shared between the expression-side
+    // continuation (`parsePostfixContinuation`) and the statement-side dot
+    // fast path in `parseStatement` so `import testing\ntesting.expect(...)`
+    // parses identically in both positions.
+    static bool isFieldNameTokenKind(TokenKind k);
+
     SourceLocation locFromToken(const Token &t) const { return {t.line, t.col, file_id_}; }
 
     std::vector<Directive> parseDirectives();

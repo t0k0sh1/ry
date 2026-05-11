@@ -1220,6 +1220,106 @@ TEST(ParserTest, QualifiedImportShadowingByLambdaParamRejected) {
     }
 }
 
+TEST(ParserTest, QualifiedImportShadowingByBareLambdaParamRejected) {
+    // Bare-paren-omitted single-param lambda `math => expr` (#1572 form)
+    // must also be guarded, mirroring the parenthesized lambda above.
+    // The bare form has no try/catch wrapping so the throw surfaces
+    // directly — but the test makes the guard explicit so a future
+    // refactor that drops the call doesn't silently re-allow shadowing.
+    try {
+        parseStr("import math\nf = math => math + 1\n");
+        FAIL() << "Expected parser to reject bare lambda param that shadows imported module";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'math'"), std::string::npos)
+            << "Error should mention shadow rejection: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportShadowingByParenTupleDestructFirstRejected) {
+    // Parenthesized tuple destructure first-position binding. The bare-form
+    // path was already guarded (QualifiedImportShadowingByTupleDestructFirstRejected
+    // above) but the parenthesized variant lives in a separate code path
+    // (parser.cpp, looksLikeParenthesizedTupleDestructure branch) and must
+    // be guarded independently.
+    EXPECT_THROW(parseStr("import math\n(math, y) = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportShadowingByParenTupleDestructRestRejected) {
+    // Rest-position shadowing in the parenthesized form — mirror of the
+    // first-position guard. Both first and rest sites must be checked.
+    EXPECT_THROW(parseStr("import math\n(x, math) = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, QualifiedImportChainedQualifiedFieldAccessAtStmt) {
+    // AC1 / CR-review (#1729): `math.PI.toStr()` at statement position must
+    // set qualified_module on the FIRST FieldAccessExpr so codegen routes
+    // PI through the namespace lookup before the trailing UFCS hop. Without
+    // the fix the multi-hop chain in parser.cpp built the FieldAccessExpr
+    // without qualified_module and codegen errored with "undefined
+    // variable: math".
+    Program prog = parseStr("import math\nmath.PI.toStr()");
+    // [QualifiedImportStmt, ExprStmt] — the qualified import counts as a
+    // statement and lives at prog[0].
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    // Chain shape: CallExpr{toStr, args=[FieldAccessExpr{math, PI, qm=math}]}
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(call.callee, "toStr");
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data);
+    EXPECT_EQ(fa.field, "PI");
+    ASSERT_TRUE(fa.qualified_module.has_value());
+    EXPECT_EQ(*fa.qualified_module, "math");
+}
+
+TEST(ParserTest, QualifiedImportChainedQualifiedCallAtStmt) {
+    // CR-review (#1729): statement-side dot fast path used to short-circuit
+    // back to ExprStmt right after the qualified 1-hop call, dropping any
+    // postfix tail. `math.sqrt(2.0).toStr()` at statement position must now
+    // chain through parsePostfixContinuation so the trailing `.toStr()`
+    // wraps the qualified CallExpr as a UFCS first-arg.
+    Program prog = parseStr("import math\nmath.sqrt(2.0).toStr()");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    // Outer call is the UFCS hop `.toStr()`, inner first-arg is the
+    // qualified call `math.sqrt(2.0)`.
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(outer.callee, "toStr");
+    EXPECT_FALSE(outer.qualified_module.has_value());
+    ASSERT_FALSE(outer.args.empty());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "sqrt");
+    ASSERT_TRUE(inner.qualified_module.has_value());
+    EXPECT_EQ(*inner.qualified_module, "math");
+}
+
+TEST(ParserTest, QualifiedImportKeywordMemberAtStmt) {
+    // CR-review (#1729): statement-side dot fast path used to require
+    // TokenKind::Ident after `.`, rejecting keyword tokens like `expect`,
+    // `and`, etc. that arrive from the lexer's keyword_map. The expression
+    // side already accepted them via isKeywordAfterDot — the statement
+    // side must now match.
+    //
+    // Use a synthetic stdlib-shaped module that does not exist so codegen
+    // would reject downstream, but parse must succeed and produce the
+    // qualified CallExpr. We import `testing` (a real importable name) and
+    // call its `expect` member, which yields TokenKind::Expect from the
+    // lexer.
+    Program prog = parseStr("import testing\ntesting.expect(1)");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &es = std::get<ExprStmt>(prog.back());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(call.callee, "expect");
+    ASSERT_TRUE(call.qualified_module.has_value());
+    EXPECT_EQ(*call.qualified_module, "testing");
+}
+
 TEST(ParserTest, QualifiedImportDoesNotBreakStructFieldAccess) {
     // AC5: regular struct field access (p.x where p is a value, not a
     // module) still produces FieldAccessExpr with NO qualified_module.
