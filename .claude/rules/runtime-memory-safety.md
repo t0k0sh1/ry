@@ -8,6 +8,50 @@ paths:
 
 # Runtime / Memory
 
+### Local types in `namespace ry` must not shadow public class names in `include/ry/*.hpp`
+
+**Source**: PR #1729 (2026-05-11, CI asan failure investigation; PR #1723 surfacing)
+**Tags**: odr, namespace, runtime, gotcha, comdat, linker, libstdc++, libc++, asan
+
+**Rule**: Translation-unit-local types declared inside `namespace ry { ... }`
+in any `src/runtime_*.cpp` (or other `.cpp`) must use a name that does **not**
+collide with a public class declared in `include/ry/*.hpp`. Prefix or suffix
+the local type with the module name (e.g. `JsonParser` inside
+`runtime_json.cpp`, not `Parser`). Anonymous namespaces do **not** suffice
+when both definitions sit under `namespace ry` — the linker still merges
+implicit / inline destructor symbols across translation units via COMDAT.
+
+**Why** (concrete incident): `src/runtime_json.cpp` had `struct Parser` in
+`namespace ry` for a TU-local JSON parser. `include/ry/parser.hpp` has
+`class ry::Parser` for the Ry source parser. Both auto-generated
+destructors (`_ZN2ry6ParserD1Ev`) share the same mangled symbol. On Linux
+libstdc++ the linker COMDAT-picked `parser.hpp`'s destructor and applied it
+across every TU, including `__ry_json_parse`. PR #1723 added
+`std::unordered_set<std::string> imported_modules_` to `ry::Parser`, making
+its destructor non-trivial. From that point on, `JsonParser` instances
+were destructed by code that ran `~unordered_set()` on JSON-struct memory,
+reading garbage as the hashtable bucket count and triggering
+`__asan_memset` of multi-GB → `AddressSanitizer: unknown-crash`.
+
+The bug was **latent for years** — both destructors were trivially equal
+until the qualified-import work added a non-POD member. macOS libc++
+happens to avoid the crash because of memory-layout differences; the
+asan CI job (Linux libstdc++) hit it deterministically.
+
+**How to apply**:
+- For every TU-local type inside `src/runtime_*.cpp` (or any `.cpp`
+  declared in `namespace ry`), use a module-qualified name:
+  `JsonParser`, `HttpParser`, `TomlLexer`, etc. — never the bare
+  `Parser` / `Lexer` / `Tokenizer` / etc. used by public headers.
+- Anonymous namespaces (`namespace { struct Parser { ... }; }`) hide
+  external linkage but **do not** prevent the COMDAT collision when the
+  destructor inlines into another TU that includes the public header.
+  Renaming is the safe fix.
+- When auditing existing code, grep for class names in `include/ry/*.hpp`
+  and search `src/*.cpp` for matching `struct <Name>` / `class <Name>`
+  inside `namespace ry`. Surface any matches before they grow non-trivial
+  members.
+
 ### Runtime functions returning ARC-managed structs must use `arc_alloc`, not `checked_malloc`
 
 **Source**: #1007, #1011 (2026-04-16, bug fixes), PR #997 (pattern established for ListHeader)

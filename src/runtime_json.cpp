@@ -67,9 +67,9 @@ static void json_release_contents(JsonValue *v) {
     }
 }
 
-// ===== Parser =====
+// ===== JsonParser =====
 
-struct Parser {
+struct JsonParser {
     static constexpr int MAX_NESTING_DEPTH = 256;
 
     const char *src;
@@ -78,15 +78,15 @@ struct Parser {
     std::string error;
     int depth = 0;
 
-    Parser(const char *text) : src(text), pos(0), src_len((size_t)stringByteLen(text)) {}
+    JsonParser(const char *text) : src(text), pos(0), src_len((size_t)stringByteLen(text)) {}
 
     // RAII helper: increments `depth` on construction and decrements on
     // destruction. parse_array / parse_object instantiate it after the
     // `if (depth >= MAX_NESTING_DEPTH)` gate, so multiple early-return paths
     // restore the counter without each having to remember the decrement.
     struct DepthGuard {
-        Parser *p;
-        explicit DepthGuard(Parser *parser) : p(parser) { ++p->depth; }
+        JsonParser *p;
+        explicit DepthGuard(JsonParser *parser) : p(parser) { ++p->depth; }
         ~DepthGuard() { --p->depth; }
         DepthGuard(const DepthGuard&) = delete;
         DepthGuard& operator=(const DepthGuard&) = delete;
@@ -601,7 +601,7 @@ void *__ry_json_parse(const char *text) {
         __ry_set_last_error("json parse: input is null");
         return nullptr;
     }
-    Parser parser(text);
+    JsonParser parser(text);
     JsonValue *val = parser.parse_value();
     if (!val) {
         __ry_set_last_error(parser.error.c_str());

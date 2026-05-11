@@ -17,3 +17,14 @@
   [#1724](https://github.com/t0k0sh1/ry/issues/1724); duplicate
   `import` of the same module in a file and local bindings that shadow
   an imported module name are both parse errors. (#1723)
+
+### Fixed
+
+- Renamed the TU-local `struct ry::Parser` in `src/runtime_json.cpp` to
+  `JsonParser` to remove a latent ODR collision with the public
+  `class ry::Parser` declared in `include/ry/parser.hpp`. The collision
+  was benign while both implicit destructors were trivially equivalent,
+  but became a crash (`AddressSanitizer: unknown-crash` inside
+  `__ry_json_parse`) on Linux libstdc++ once `ry::Parser` grew a
+  non-trivial member as part of the qualified-import work in this PR.
+  (#1723)
