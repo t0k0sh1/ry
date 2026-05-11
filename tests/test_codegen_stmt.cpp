@@ -832,6 +832,131 @@ TEST_F(ImportTest, ImportErrors) {
     EXPECT_THROW(runWithImports("from mathmod import nope"), std::runtime_error);
 }
 
+// Symbol alias (`from m import x as y`) — #1721.
+//
+// Only `@const` aliases work end-to-end in v0.0.23: emitting an
+// `AssignStmt { name=alias, value=VariableExpr(orig) }` for a `@const`
+// passes through codegen as a plain top-level binding. fn / record /
+// enum / type-alias aliases require codegen-side name-resolution
+// fallback that is not yet implemented, so `module_loader.cpp`
+// explicitly rejects them with a message pointing at follow-up #1725.
+TEST_F(ImportTest, ImportAliasConstWorks) {
+    // Inline-declare the `@const` directive so the imported file can use it
+    // without relying on stdlib resolution (the harness loader is constructed
+    // with empty search_paths). With CodeRabbit's #1726 fix, only AssignStmts
+    // carrying `@const` qualify as `ExportableKind::Const` and are aliasable.
+    writeFile("constmod.ry",
+        "@directive(target=[\"statement\"])\n"
+        "fn const()\n"
+        "@const\n"
+        "ORIGIN_X: int = 42\n");
+    EXPECT_EQ(runWithImports(
+        "from constmod import ORIGIN_X as ZERO_X\n"
+        "print(ZERO_X)"),
+        "42\n");
+}
+
+// Non-`@const` module-level assignments are classified as `ExportableKind::Value`
+// and the alias path rejects them. Regression for CodeRabbit's #1726 concern that
+// every AssignStmt was previously classified as Const, bypassing rejection.
+TEST_F(ImportTest, ImportAliasValueRejected) {
+    writeFile("valmod.ry",
+        "counter: int = 42\n");
+    try {
+        runWithImports("from valmod import counter as c\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for non-@const assignment 'counter'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasFunctionRejected) {
+    writeFile("fnmod.ry",
+        "fn rectArea(w: int, h: int) -> int:\n"
+        "    return w * h\n");
+    try {
+        runWithImports("from fnmod import rectArea as area\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for function 'rectArea'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasRecordRejected) {
+    writeFile("recmod.ry",
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n");
+    try {
+        runWithImports("from recmod import Point as P\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for record 'Point'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasEnumRejected) {
+    writeFile("enummod.ry",
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n");
+    try {
+        runWithImports("from enummod import Color as C\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for enum 'Color'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasTypeAliasRejected) {
+    writeFile("tymod.ry",
+        "type Distance = int\n");
+    try {
+        runWithImports("from tymod import Distance as D\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for type alias 'Distance'"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Cache-hit path (`loaded_.count(abs_path) != 0`) also enforces the
+// rejection. Two `from <mod>` statements force the second one through
+// the cached branch.
+TEST_F(ImportTest, ImportAliasFunctionRejectedCacheHit) {
+    writeFile("fnmod2.ry",
+        "fn helper() -> int:\n"
+        "    return 1\n");
+    try {
+        runWithImports(
+            "from fnmod2\n"
+            "from fnmod2 import helper as h\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for function 'helper'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+    }
+}
+
 // Lock in the v0.0.17 error-wording switch from "package" -> "module" so that
 // any future regression that re-introduces the old wording is caught directly.
 TEST_F(ImportTest, ModuleNotFoundErrorMentionsModule) {
@@ -1456,6 +1581,45 @@ TEST_F(ImportTest, FromTestingImportExpectViaCacheHit) {
             tmp_dir_.string(),
             search_paths);
     });
+}
+
+// #1726 (CodeRabbit): testing intrinsics are looked up via the allow-list, not
+// via the AST. The alias path must reject `from testing import expect as e`
+// instead of silently dropping the alias. Both load and cache-hit branches
+// share this check.
+TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from testing import expect as e\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected alias on testing intrinsic to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for testing intrinsic 'expect'"),
+                  std::string::npos) << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, FromTestingImportRejectsAliasOnCacheHitPath) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        // First `from testing` warms the cache; the aliased lookup must then
+        // travel the cache-hit branch in resolveImports.
+        resolveImportsOnly(
+            "from testing\n"
+            "from testing import mock as m\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected alias on testing intrinsic to be rejected (cache-hit)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("alias not supported for testing intrinsic 'mock'"),
+                  std::string::npos) << msg;
+        EXPECT_NE(msg.find("#1725"), std::string::npos) << msg;
+    }
 }
 
 // AC #4: a name that is neither a testing intrinsic nor a declared symbol

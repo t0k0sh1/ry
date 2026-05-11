@@ -77,6 +77,11 @@ TEST(Formatter, StatementFormatting) {
     // Wildcard import (no 'import' keyword)
     EXPECT_EQ(fmt("from math\n"), "from math\n");
     EXPECT_EQ(fmt("from .\n"), "from .\n");
+    // Import alias (#1721)
+    EXPECT_EQ(fmt("from math import add as plus\n"), "from math import add as plus\n");
+    EXPECT_EQ(fmt("from math import a, b as B, c\n"), "from math import a, b as B, c\n");
+    // Self-alias is normalized away by the parser (alias == name → no alias)
+    EXPECT_EQ(fmt("from math import add as add\n"), "from math import add\n");
     // Return
     {
         auto src = "fn f() -> int:\n    return 42\n";

@@ -34,6 +34,29 @@ from math import sqrt, PI
 
 Imports multiple definitions separated by commas.
 
+### Symbol Alias
+
+```ry
+from math import sqrt as squareRoot
+```
+
+Each imported name may carry an optional `as <ident>` clause that binds the
+symbol under a different local name. Aliases can be mixed with non-aliased
+names in a single statement:
+
+```ry
+from math import sqrt as sr, PI, sin as s
+```
+
+Self-alias (`foo as foo`) is normalized to a plain import — the formatter
+will round-trip it as `from math import foo`.
+
+**Limitation (v0.0.23)**: only `@const` aliases work end-to-end. Aliases
+for functions, records, enums, and type aliases are accepted by the
+parser but rejected by the module loader with a diagnostic pointing at
+follow-up issue [#1725](https://github.com/t0k0sh1/ry/issues/1725). Full
+alias support for those kinds is tracked there.
+
 ### Relative Import
 
 ```ry
