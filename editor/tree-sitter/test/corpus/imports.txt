@@ -73,3 +73,59 @@ from std.collections.list import filter, map, reduce
         name: (identifier))
       (import_item
         name: (identifier)))))
+
+==================
+braced single-line import
+==================
+
+from std.io import { print, println }
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier)))))
+
+==================
+braced import with alias
+==================
+
+from std.io import { print as p, println }
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)
+        alias: (identifier))
+      (import_item
+        name: (identifier)))))
+
+==================
+braced single-element import with trailing comma
+==================
+
+from std.io import { print, }
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)))))

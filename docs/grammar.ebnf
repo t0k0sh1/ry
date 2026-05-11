@@ -43,7 +43,8 @@ import_statement ::= 'from' module_path 'import' import_list NEWLINE
 
 module_path      ::= IDENT { '.' IDENT }
 
-import_list      ::= import_item { ',' import_item }
+import_list      ::= '{' import_item { ',' import_item } [ ',' ] '}'
+                   | import_item { ',' import_item }
 
 import_item      ::= IDENT [ 'as' IDENT ]
 

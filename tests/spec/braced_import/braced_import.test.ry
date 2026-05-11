@@ -1,0 +1,25 @@
+from testing import { it, describe, expect }
+
+from .symbols import {
+  ALPHA,
+  BETA as B,
+  GAMMA,
+  DELTA,
+}
+
+@describe("braced selective import")
+fn bracedImportTests():
+  @it("should bind constants imported via braces")
+  fn shouldBindBracedConstants():
+    expect(ALPHA).toEq(1)
+    expect(GAMMA).toEq(3)
+    expect(DELTA).toEq(4)
+
+  @it("should support alias inside braces")
+  fn shouldSupportAliasInsideBraces():
+    expect(B).toEq(2)
+
+  @it("should mix braced constants across statements")
+  fn shouldMixBracedConstants():
+    sum: int = ALPHA + B + GAMMA + DELTA
+    expect(sum).toEq(10)
