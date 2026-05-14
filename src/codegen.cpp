@@ -594,6 +594,22 @@ const CodeGen::RecordInfo *CodeGen::findRecordInfoForType(llvm::StructType *st) 
     return nullptr;
 }
 
+CodeGen::ModuleNamespaceInfo *CodeGen::findModuleNamespace(const std::string &effective) {
+    auto ait = effective_to_canonical_.find(effective);
+    const std::string &canonical = (ait != effective_to_canonical_.end()) ? ait->second : effective;
+    auto it = module_namespaces_.find(canonical);
+    if (it == module_namespaces_.end()) return nullptr;
+    return &it->second;
+}
+
+const CodeGen::ModuleNamespaceInfo *CodeGen::findModuleNamespace(const std::string &effective) const {
+    auto ait = effective_to_canonical_.find(effective);
+    const std::string &canonical = (ait != effective_to_canonical_.end()) ? ait->second : effective;
+    auto it = module_namespaces_.find(canonical);
+    if (it == module_namespaces_.end()) return nullptr;
+    return &it->second;
+}
+
 CodeGen::EnumInfo *CodeGen::findEnumType(const std::string &name) {
     auto it = enum_types_.find(name);
     if (it != enum_types_.end()) return &it->second;

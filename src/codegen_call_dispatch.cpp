@@ -26,24 +26,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     //   misresolve caller-scope bare fn refs in the args).
     if (e->qualified_module.has_value()) {
         const std::string &mod = *e->qualified_module;
-        auto it = module_namespaces_.find(mod);
-        if (it == module_namespaces_.end())
+        // findModuleNamespace walks `effective_to_canonical_` so aliases
+        // (`import usermod as u` followed by `u.greet()`) resolve to the
+        // canonical-keyed bucket populated by the original import (#1730).
+        ModuleNamespaceInfo *ns = findModuleNamespace(mod);
+        if (!ns)
             codegenError("qualified call to module '" + mod +
                          "' which was not imported via 'import " + mod + "'");
-        if (!it->second.is_stdlib) {
+        if (!ns->is_stdlib) {
             // Record constructor `usermod.MyRecord(args)` — look in the
             // namespace's records bucket before fn_overloads. Records and
             // fns share the call-syntax namespace, mirroring the bare-name
             // dispatch order at line 134.
-            auto rit = it->second.records.find(e->callee);
-            if (rit != it->second.records.end()) {
+            auto rit = ns->records.find(e->callee);
+            if (rit != ns->records.end()) {
                 if (deprecated_types_.count(e->callee))
                     emitDeprecationWarning(e->callee);
                 return emitRecordConstructor(rit->second, e->callee, e->args);
             }
-            auto fit = it->second.fn_overloads.find(e->callee);
-            if (fit == it->second.fn_overloads.end()) {
-                codegenError("module '" + it->second.original_name +
+            auto fit = ns->fn_overloads.find(e->callee);
+            if (fit == ns->fn_overloads.end()) {
+                codegenError("module '" + ns->original_name +
                              "' has no function or record '" + e->callee + "'");
             }
             return emitUserFnCall(e->callee, e->args, &fit->second);

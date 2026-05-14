@@ -522,6 +522,31 @@ bool ModuleLoader::isCrossPackage(const std::string &caller_dir,
     return *caller_root != *target_root;
 }
 
+void ModuleLoader::invalidateLoaded(const std::string &abs_path, bool is_directory) {
+    loaded_.erase(abs_path);
+    qualified_only_user_loaded_.erase(abs_path);
+    if (!is_directory) return;
+    // `loadModuleDir` inserts each contained `.ry` file's canonical path
+    // into `loaded_` independently from the directory path itself. If we
+    // only erased the directory entry, the next `loadModuleDir` would
+    // observe the per-file `loaded_.count(file_path)` guard at line 546
+    // and silently skip every file — leaving the re-extract destination
+    // empty. Walk the directory and clear those entries too.
+    std::error_code dec;
+    fs::directory_iterator dit(abs_path, dec);
+    if (dec) return;
+    for (const auto &entry : dit) {
+        if (!entry.is_regular_file()) continue;
+        auto filename = entry.path().filename().string();
+        if (filename.size() < 3 || filename.compare(filename.size() - 3, 3, ".ry") != 0) continue;
+        if (filename.size() >= 8 && filename.compare(filename.size() - 8, 8, ".test.ry") == 0) continue;
+        std::error_code ec;
+        std::string canonical = cachedCanonical(entry.path(), ec);
+        if (canonical.empty()) continue;
+        loaded_.erase(canonical);
+    }
+}
+
 Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
     Program collected;
     std::vector<std::string> ry_files;
@@ -569,6 +594,19 @@ Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
 
 Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_dir) {
     Program result;
+    // Track canonical module names whose `QualifiedImportStmt::definitions`
+    // have already been populated in this resolveImports run. The codegen-side
+    // `module_namespaces_` bucket is keyed by canonical name (#1730 alias
+    // indirection), so only the FIRST qimp per canonical may carry decls —
+    // any subsequent qimp for the same canonical (whether bare or aliased)
+    // must leave `definitions` empty, otherwise `forwardDeclareFunctions`
+    // walks both and `declareFunction` rejects the second emit with
+    // "fn 'X' is already defined with the same signature". Mixed-form
+    // scenarios that hit this: `import M` → `import M as X` → `from M import y`
+    // → `import M as Z` — step 3's inline invalidates qualified_only_user_loaded_,
+    // which then re-enables step 4's force-populate branch and re-extracts
+    // every decl into the second qimp's definitions.
+    std::unordered_set<std::string> canonicals_with_populated_qimp;
 
     for (auto &stmt : prog) {
         if (std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(stmt)) {
@@ -588,6 +626,44 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
             if (loading_.count(abs_path))
                 throw std::runtime_error("circular import detected: " + abs_path);
+
+            // Cache-hit for user-defined modules that were previously loaded
+            // ONLY via `from <mod> import x` (i.e. the module's decls landed
+            // in the top-level `result`, not in any prior
+            // `QualifiedImportStmt::definitions`). Without re-extracting,
+            // this `import <mod>` would leave `qimp.definitions` empty and
+            // codegen would create an empty `module_namespaces_[...]` bucket
+            // — the subsequent `<mod>.foo()` call would then fail with
+            // "module '<mod>' has no function or record 'foo'" (#1730
+            // CodeRabbit Bug 2). Invalidate to force the cache-miss path
+            // below to repopulate `qimp.definitions`. Stdlib is excluded
+            // because its decls remain valid in `result` from the prior
+            // `from <stdlib> import` and codegen routes stdlib qualified
+            // calls through the regular dispatch chain.
+            //
+            // For user-defined modules previously loaded via `import <mod>`
+            // (qualified-only), `qualified_only_user_loaded_` is set; codegen
+            // reuses the bucket keyed by canonical module name (#1730 codegen
+            // alias indirection) so a second `import <mod> [as <alias>]`
+            // does NOT need its own `qimp.definitions` — fast cache-hit path.
+            // If a prior qimp in this Program already populated the canonical
+            // bucket, suppress the force-populate path — codegen will register
+            // any alias on this stmt via `effective_to_canonical_` and reuse
+            // the already-populated bucket. Without this guard, mixed-form
+            // input would re-extract the same decls into a second
+            // `qimp.definitions`, producing duplicate-signature errors at
+            // forward-declare time.
+            bool canonical_already_populated = !rp.from_stdlib &&
+                canonicals_with_populated_qimp.count(qimp.module_name) > 0;
+
+            if (!rp.from_stdlib && loaded_.count(abs_path) &&
+                !qualified_only_user_loaded_.count(abs_path) &&
+                !canonical_already_populated) {
+                invalidateLoaded(abs_path, rp.is_directory);
+                // exports_cache_ / exports_kinds_cache_ remain populated;
+                // they will be refreshed by the upcoming
+                // extractDefinitions call below.
+            }
 
             if (loaded_.count(abs_path)) {
                 // exports_cache_ already populated by an earlier import of the
@@ -613,6 +689,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             Program &push_target = rp.from_stdlib ? result : qimp.definitions;
             if (!rp.from_stdlib) {
                 qualified_only_user_loaded_.insert(abs_path);
+                canonicals_with_populated_qimp.insert(qimp.module_name);
             }
             if (rp.is_directory) {
                 loading_.insert(abs_path);
@@ -685,11 +762,11 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         // QualifiedImportStmt::definitions and were not inlined to the
         // top-level Program. To honor a subsequent `from <mod> import x`
         // (AC3), re-parse and re-extract so the requested names reach
-        // `result`. Erase from both sets so the next reference cache-hits
-        // normally.
+        // `result`. `invalidateLoaded` walks directory modules too so the
+        // per-file `loaded_` entries that `loadModuleDir` adds are also
+        // dropped — otherwise the directory-walk would skip every file.
         if (qualified_only_user_loaded_.count(abs_path) && !imp.names.empty()) {
-            qualified_only_user_loaded_.erase(abs_path);
-            loaded_.erase(abs_path);
+            invalidateLoaded(abs_path, rp.is_directory);
             // exports_cache_ / exports_kinds_cache_ remain populated; they
             // get refreshed by the upcoming extractDefinitions call below
             // (cache-miss path).

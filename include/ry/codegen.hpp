@@ -975,15 +975,19 @@ public:
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
     // Modules introduced by `import xxx [as yyy]` (qualified import) at
-    // module scope. Key = effective name in the importing file (alias when
-    // present, else original module name); value carries the original
-    // module name (for diagnostics that need to point at the file the
-    // module came from), the `is_stdlib` flag propagated from
-    // ModuleLoader, and (for user-defined modules only, #1730) per-kind
-    // decl buckets populated while `emitStmt(QualifiedImportStmt&)` emits
-    // `qimp.definitions` under a `NamespaceEmitScope` guard. Stdlib
-    // modules still inline into the top-level Program so their buckets
-    // stay empty.
+    // module scope. Keyed by the **canonical module name** (the actual
+    // source-file module path, e.g. `usermod`), not the effective alias
+    // — multiple `import usermod` / `import usermod as u` from the same
+    // file share one bucket, so any decl emitted on the first import is
+    // visible under every alias. Aliases redirect through
+    // `effective_to_canonical_` (lookup-only; aliases do not own a
+    // separate bucket). Value carries the original module name (for
+    // diagnostics that need to point at the file the module came from),
+    // the `is_stdlib` flag propagated from ModuleLoader, and (for
+    // user-defined modules only, #1730) per-kind decl buckets populated
+    // while `emitStmt(QualifiedImportStmt&)` emits `qimp.definitions`
+    // under a `NamespaceEmitScope` guard. Stdlib modules still inline
+    // into the top-level Program so their buckets stay empty.
     struct ModuleNamespaceInfo {
         std::string original_name;
         bool is_stdlib = false;
@@ -994,6 +998,16 @@ public:
         std::unordered_map<std::string, RecordInfo> records;
     };
     std::unordered_map<std::string, ModuleNamespaceInfo> module_namespaces_;
+    // Alias → canonical redirect for qualified imports. Populated only
+    // when `import <mod> as <alias>` introduces an alias different from
+    // the canonical module name. `findModuleNamespace(effective)` walks
+    // this map before `module_namespaces_.find(effective)`.
+    std::unordered_map<std::string, std::string> effective_to_canonical_;
+    // Look up a qualified-imported module by its effective name (the
+    // identifier used at the call / field-access site: alias if present,
+    // else the original module name). Returns nullptr on miss.
+    ModuleNamespaceInfo *findModuleNamespace(const std::string &effective);
+    const ModuleNamespaceInfo *findModuleNamespace(const std::string &effective) const;
 
     // While non-null, `emitStmt(FnStmt&)` / `emitStmt(RecordStmt&)` /
     // top-level `@const AssignStmt` redirect their registration into this

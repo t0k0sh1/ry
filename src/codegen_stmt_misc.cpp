@@ -846,16 +846,25 @@ void CodeGen::emitStmt(std::unique_ptr<QualifiedImportStmt> &sp) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     // ModuleLoader has already loaded the module, inlined its exportable
     // definitions (stdlib) or stashed them in `s.definitions` (user-defined,
-    // #1730), populated `exports_cache_`, and set `s.is_stdlib`. Codegen
-    // registers the module under the effective name (alias if present, else
-    // original name) so the call / field-access dispatchers recognize
-    // `<effective>.fn(...)` / `<effective>.x` qualified forms. The original
-    // module name is preserved so diagnostics can quote the file's actual
-    // module name even when the user wrote `import mymod as m`.
+    // #1730), populated `exports_cache_`, and set `s.is_stdlib`. The
+    // namespace bucket is keyed by the **canonical module name** so multiple
+    // imports of the same module (`import usermod` + `import usermod as u`,
+    // or `from usermod import x` + `import usermod`) share a single decl
+    // bucket. Aliases register an `effective_to_canonical_` redirect; only
+    // the canonical-keyed entry owns the actual decls.
     const std::string &effective = s.alias.has_value() ? *s.alias : s.module_name;
-    auto [it, inserted] = module_namespaces_.try_emplace(effective);
-    it->second.original_name = s.module_name;
-    it->second.is_stdlib = s.is_stdlib;
+    const std::string &canonical = s.module_name;
+    auto [it, inserted] = module_namespaces_.try_emplace(canonical);
+    if (inserted) {
+        it->second.original_name = canonical;
+        it->second.is_stdlib = s.is_stdlib;
+    } else if (it->second.is_stdlib != s.is_stdlib) {
+        // Defense-in-depth — ModuleLoader resolves the same module path to
+        // the same `from_stdlib` flag, so a flip here means the module
+        // pipeline misclassified one of the imports.
+        codegenError("internal: module '" + canonical + "' imported with inconsistent stdlib origin");
+    }
+    if (effective != canonical) effective_to_canonical_[effective] = canonical;
 
     // User-defined modules: emit the stashed decls under a namespace guard
     // so registrations land in `it->second.{fn_overloads, consts, records}`

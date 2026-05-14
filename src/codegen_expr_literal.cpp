@@ -108,14 +108,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     //   (mirrors the bare-name module-global path at codegen_expr.cpp:170).
     if (e->qualified_module.has_value()) {
         const std::string &mod = *e->qualified_module;
-        auto it = module_namespaces_.find(mod);
-        if (it == module_namespaces_.end())
+        // findModuleNamespace walks `effective_to_canonical_` so aliases
+        // resolve to the canonical-keyed bucket (#1730).
+        ModuleNamespaceInfo *ns = findModuleNamespace(mod);
+        if (!ns)
             codegenError("qualified access on module '" + mod +
                          "' which was not imported via 'import " + mod + "'");
-        if (!it->second.is_stdlib) {
-            auto cit = it->second.consts.find(e->field);
-            if (cit == it->second.consts.end())
-                codegenError("module '" + it->second.original_name +
+        if (!ns->is_stdlib) {
+            auto cit = ns->consts.find(e->field);
+            if (cit == ns->consts.end())
+                codegenError("module '" + ns->original_name +
                              "' has no constant '" + e->field + "'");
             const ModuleBinding &b = cit->second;
             if (b.is_weak)

@@ -115,6 +115,14 @@ private:
     // Load all .ry files from a module directory and return collected statements
     Program loadModuleDir(const std::string &abs_dir_path);
 
+    // Drop @p abs_path from `loaded_` / `qualified_only_user_loaded_` so the
+    // next reference re-runs the cache-miss path. For directory modules,
+    // also drops every contained `.ry` file from `loaded_` because
+    // `loadModuleDir` inserts each per-file canonical path independently.
+    // Without that recursive walk, re-extracting a directory module would
+    // observe the per-file `loaded_` entries and silently skip every file.
+    void invalidateLoaded(const std::string &abs_path, bool is_directory);
+
     // Cached `findProjectRoot` for a given directory.
     std::optional<std::string> packageRootOfDir(const std::string &dir);
 

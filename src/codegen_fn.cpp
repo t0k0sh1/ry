@@ -502,10 +502,13 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
         if (!qp) continue;
         auto &qs = **qp;
         if (qs.is_stdlib || qs.definitions.empty()) continue;
-        const std::string &eff = qs.alias.has_value() ? *qs.alias : qs.module_name;
-        auto [it, inserted] = module_namespaces_.try_emplace(eff);
+        // Bucket keyed by canonical module name (#1730) — multiple
+        // imports of the same module share one bucket. Aliases register
+        // an `effective_to_canonical_` redirect in `emitStmt`.
+        const std::string &canonical = qs.module_name;
+        auto [it, inserted] = module_namespaces_.try_emplace(canonical);
         if (inserted) {
-            it->second.original_name = qs.module_name;
+            it->second.original_name = canonical;
             it->second.is_stdlib = qs.is_stdlib;
         }
         NamespaceEmitScope guard(*this, &it->second);

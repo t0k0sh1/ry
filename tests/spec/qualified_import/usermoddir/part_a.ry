@@ -1,0 +1,7 @@
+@public
+fn dirGreet() -> int:
+    return 11
+
+@public
+@const
+DIR_ANSWER: int = 88

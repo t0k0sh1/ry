@@ -1045,6 +1045,24 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (native_constants_.count(s.name))
         codegenError("cannot reassign native constant: " + s.name);
 
+    // AC3 re-extract duplicate (Bug 2 of #1730): when `from <mod> import x`
+    // wildcard-extracted every exportable @const into the top-level Program,
+    // and a later `import <mod>` then triggers the loader's force-populate
+    // path to also push every decl into `QualifiedImportStmt::definitions`,
+    // the second emission runs under NamespaceEmitScope. `findVar(s.name)`
+    // would return the existing top-level alloca and the reassignment-rejection
+    // path below would fire on the @const's type annotation. Detect this
+    // duplicate by checking the flat `module_globals_` table directly (which
+    // bypasses `findModuleGlobal`'s namespace-first lookup); register the
+    // SAME binding into the namespace bucket and return — no new init.
+    if (current_namespace_target_ && is_const) {
+        auto mit = module_globals_.find(s.name);
+        if (mit != module_globals_.end()) {
+            current_namespace_target_->consts[s.name] = mit->second;
+            return;
+        }
+    }
+
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
         // Write-through to a previously declared top-level module global
