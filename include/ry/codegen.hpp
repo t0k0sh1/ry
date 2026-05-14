@@ -945,14 +945,22 @@ public:
     // require an explicit import (#715).
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
-    // Modules introduced by `import xxx` (qualified import) at module scope.
-    // Key = module name, value = `is_stdlib` flag propagated from ModuleLoader.
-    // Populated by `emitStmt(QualifiedImportStmt&)`. Consulted by the call /
-    // field-access dispatchers to route `<mod>.fn(...)` (CallExpr with
-    // `qualified_module` set) — stdlib modules reuse the existing dispatch
-    // chain; user-defined modules raise a "not yet supported in v0.0.23"
-    // codegen error (issue #1723, follow-up #1724 / TBD).
-    std::unordered_map<std::string, bool> module_namespaces_;
+    // Modules introduced by `import xxx [as yyy]` (qualified import) at
+    // module scope. Key = effective name in the importing file (alias when
+    // present, else original module name); value carries the original
+    // module name (for diagnostics that need to point at the file the
+    // module came from) plus the `is_stdlib` flag propagated from
+    // ModuleLoader. Populated by `emitStmt(QualifiedImportStmt&)`.
+    // Consulted by the call / field-access dispatchers to route
+    // `<effective>.fn(...)` (CallExpr with `qualified_module` set) —
+    // stdlib modules reuse the existing dispatch chain; user-defined
+    // modules raise a "not yet supported in v0.0.23" codegen error whose
+    // redirect quotes the original module name (issues #1723 / #1724).
+    struct ModuleNamespaceInfo {
+        std::string original_name;
+        bool is_stdlib;
+    };
+    std::unordered_map<std::string, ModuleNamespaceInfo> module_namespaces_;
 
     // User-defined @directive declarations. Keyed by directive name.
     std::unordered_map<std::string, DirectiveSignature> user_directive_registry_;

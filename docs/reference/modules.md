@@ -134,7 +134,7 @@ contains("hello", "ell")       # str module's contains
 | Constraint | Details |
 |---|---|
 | Module form | Single identifier only. `import a.b` is rejected — use `from a.b import ...` instead. |
-| Alias | `import <module> as <local>` is parsed but rejected. Alias support is tracked in [#1724](https://github.com/t0k0sh1/ry/issues/1724). |
+| Alias | `import <module> as <local>` registers `<local>` as the effective module name (Python-style: alias **replaces** the original — bare `<module>` is no longer in scope). The alias must be camelCase. Two imports that resolve to the same effective name (e.g. `import math as m` then `import path as m`) are a parse error. |
 | Module scope | Standard library modules only. Qualified call to a user-defined module produces a diagnostic suggesting `from <module> import ...`. |
 | Duplicate | `import math` followed by `import math` in the same file is a parse error. |
 | Shadowing | After `import math`, declaring `math: int = ...` (or any local named `math`) is a parse error. Rename the local or remove the matching `import` statement. |

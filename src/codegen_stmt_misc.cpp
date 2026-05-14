@@ -841,11 +841,17 @@ void CodeGen::emitStmt(QualifiedImportStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     // ModuleLoader has already loaded the module, inlined its exportable
     // definitions, populated `exports_cache_`, and set `s.is_stdlib`.
-    // Codegen's job here is purely to register the module name so the
-    // call / field-access dispatchers can recognize `<mod>.fn(...)` /
-    // `<mod>.x` qualified forms. No IR is emitted for the statement
-    // itself (mirrors `emitStmt(ImportStmt&)` which is also IR-less).
-    module_namespaces_[s.module_name] = s.is_stdlib;
+    // Codegen's job here is purely to register the module under the
+    // effective name (alias if present, original name otherwise) so the
+    // call / field-access dispatchers can recognize `<effective>.fn(...)`
+    // / `<effective>.x` qualified forms (#1723, #1724). The original
+    // module name is preserved in the value so the user-defined-module
+    // redirect diagnostic can quote the file's actual module name even
+    // when the user wrote `import mymod as m`. No IR is emitted for the
+    // statement itself (mirrors `emitStmt(ImportStmt&)` which is also
+    // IR-less).
+    const std::string &effective = s.alias.has_value() ? *s.alias : s.module_name;
+    module_namespaces_[effective] = ModuleNamespaceInfo{s.module_name, s.is_stdlib};
 }
 
 void CodeGen::emitStmt(IndexAssignStmt &s) {

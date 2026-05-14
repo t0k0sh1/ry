@@ -1830,6 +1830,59 @@ TEST_F(ImportTest, QualifiedImportUserDefinedModuleFieldRejected) {
     }
 }
 
+// Qualified import alias — user-defined module rejection error must quote the
+// ORIGINAL module name (the actual file basename), not the alias (#1724).
+// Without `ModuleNamespaceInfo::original_name` tracking the redirect text
+// would suggest `from m import greet`, which doesn't resolve because the file
+// is `mymod.ry`.
+TEST_F(ImportTest, QualifiedImportAliasUserDefinedModuleErrorUsesOriginalName) {
+    writeFile("mymod_alias_call.ry",
+        "fn greet() -> int:\n"
+        "    return 7\n");
+    try {
+        runWithImports(
+            "import mymod_alias_call as m\n"
+            "print(m.greet())\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("qualified call to user-defined module 'm'"),
+                  std::string::npos)
+            << "got: " << msg;
+        // The redirect must point at the original module name, not the alias.
+        EXPECT_NE(msg.find("from mymod_alias_call import greet"),
+                  std::string::npos)
+            << "redirect must use original module name, not alias: " << msg;
+        EXPECT_EQ(msg.find("from m import greet"), std::string::npos)
+            << "redirect must NOT use the alias as the module name: " << msg;
+    }
+}
+
+// Qualified import alias — field-access redirect mirrors the call-site fix.
+TEST_F(ImportTest, QualifiedImportAliasUserDefinedFieldErrorUsesOriginalName) {
+    writeFile("mymod_alias_field.ry",
+        "@directive(target=[\"statement\"])\n"
+        "fn const()\n"
+        "@const\n"
+        "ANSWER: int = 42\n");
+    try {
+        runWithImports(
+            "import mymod_alias_field as m\n"
+            "print(m.ANSWER)\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("qualified field access on user-defined module 'm'"),
+                  std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("from mymod_alias_field import ANSWER"),
+                  std::string::npos)
+            << "redirect must use original module name, not alias: " << msg;
+        EXPECT_EQ(msg.find("from m import ANSWER"), std::string::npos)
+            << "redirect must NOT use the alias as the module name: " << msg;
+    }
+}
+
 // Qualified import — user-defined module must NOT leak bare names into caller (#1723, CR review).
 // Triggers the module_loader.cpp branch that routes user-defined defs to a throwaway
 // Program (instead of inlining them into the caller) so `import usermod\ngreet()`

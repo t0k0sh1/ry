@@ -169,6 +169,70 @@ CI (Linux) では `/usr/local/llvm/bin/clang` が `cc` / `c++` symlink を介し
 
 ---
 
+### macOS: SDK ヘッダ更新後の PCH staleness はフルリビルド不要 — `.pch` だけ削除して再ビルド
+
+**Source**: #1724 セルフ検証 (2026-05-14)
+**Tags**: cmake, ninja, pch, macos, sdk-update, sanitizer
+
+**Wrong**: macOS SDK が xcode-select / Xcode 更新で差し替わった後、既存の `build-asan` / `build-tsan` を `cmake --build` すると `fatal error: file '.../MacOSX.sdk/usr/include/AvailabilityVersions.h' has been modified since the precompiled header '.../cmake_pch.hxx.pch' was built: size changed (was 31882, now 32391)` で失敗する。frustration から `rm -rf build-asan && cmake --preset asan && cmake --build build-asan` するのは時間の無駄（数分かかる）。
+
+**Correct**: 該当ビルドツリーの `.pch` だけを削除して再ビルドする (数十秒で完了):
+
+```bash
+find build-asan -name 'cmake_pch.hxx.pch*' -delete
+cmake --build build-asan
+# 同様に build-tsan / build / build-fuzz も SDK 更新後は同じ症状が出る
+find build-tsan -name 'cmake_pch.hxx.pch*' -delete
+cmake --build build-tsan
+```
+
+**Why**: PCH は生成時に SDK ヘッダのファイルサイズ・mtime をスナップショットとして埋め込む。SDK ヘッダが入れ替わるとこのスナップショットと実体が一致しなくなり、PCH 読み込み時に上記の `fatal error` が発生する。CMake / Ninja は SDK ヘッダの変更を依存関係として追跡しない（システムヘッダは通常 `-MD` の出力に含まれない）ため、`.pch` だけが古い状態のまま残る。
+
+`.pch` だけ削除すれば、次の `cmake --build` で PCH が再生成され、それ以降の翻訳単位は新しい PCH を使う。`build-asan/` 全体を消すと configure からやり直しになり、CMake のキャッシュ生成と LLVM ライブラリ依存の検出に数分かかる。`.pch` だけなら数十秒で済む。
+
+上記の Apple clang vs LLVM clang PCH 互換性の entry はコンパイラ違いによる PCH 読み込み拒否の話で、こちらは SDK ヘッダ更新による staleness — 別の症状で別の対処なので両方を区別して記録する。**この対処は SDK 更新が原因の場合のみ有効**：preset / コンパイラ / フラグ変更を伴う場合は `.pch` 削除では不足するので preset の再 configure が必要。
+
+---
+
+### `cmd 2>&1 | tail -N` は ninja の失敗を silently mask する — exit code を別途確保せよ
+
+**Source**: #1724 セルフ検証 (2026-05-14)
+**Tags**: bash, pipefail, ninja, cmake, masked-failure, build-validation
+
+**Wrong**:
+
+```bash
+cmake --build build-asan 2>&1 | tail -10
+# tail が exit 0 を返すため bash の $? は 0
+# 実際は ninja が exit 1 で PCH staleness エラーを出していたのに気付かない
+# 結果: 古いバイナリで ASan テストを実行 → 既に修正したはずのバグが再現する
+```
+
+**Correct**: `set -o pipefail` を有効にするか、`tail` を通さず exit code を直接確認する:
+
+```bash
+# Option A: pipefail を有効化（zsh/bash 両対応）
+set -o pipefail
+cmake --build build-asan 2>&1 | tail -10
+
+# Option B: tail を通さない（推奨 — エラー出力が完全に見える）
+cmake --build build-asan
+
+# Option C: exit code を別変数に保存
+cmake --build build-asan 2>&1 | tail -10
+# ↑ pipefail なしだと $? は 0
+build_status=${PIPESTATUS[0]}  # bash 専用; zsh は $pipestatus[1]
+[[ $build_status -eq 0 ]] || { echo "build failed"; exit 1; }
+```
+
+**Why**: bash / zsh の pipeline はデフォルトで「最後の要素の exit code」を返す。`cmd | tail` の場合、`cmd` が exit 1 でも `tail` は exit 0 で終わるので pipeline 全体は 0 と報告される。`set -o pipefail` を設定するとパイプ内で最初に失敗した要素の exit code が伝播する。
+
+ninja は失敗時に短いエラー要約 (5-10 行) を末尾に出力するため `| tail -10` で見ようとしがちだが、これがまさに罠。`tail` が exit code を握り潰すので、Claude Code の Bash ツールが「成功」と判断してしまい、後続の sanitizer テスト実行が古いバイナリで走り、結果として「テストは pass したが実は古いコードのまま」という silent regression を生む。検出は downstream 症状（spec test が修正前のエラーメッセージを出す等）でしか起きず、デバッグに時間を浪費する。
+
+`run_in_background=true` でビルドを実行する場合も同じ罠が当てはまる: BashOutput の `tail -N` ライクな表示は同様に exit code を見落としがち。Bash ツールの戻り値の `<exit_code>` 行を必ず確認する。
+
+---
+
 ### `printf "%s" "$big_var" | grep -q ...` silently misses matches under `set -o pipefail`
 
 **Source**: #1617 PR review (CodeRabbit, 2026-05-08)
