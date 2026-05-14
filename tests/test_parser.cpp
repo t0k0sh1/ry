@@ -1009,6 +1009,9 @@ TEST(ParserTest, QualifiedImportDottedPathRejected) {
 
 TEST(ParserTest, QualifiedImportDuplicateRejected) {
     // AC7: duplicate 'import math' in same file is a compile error.
+    // The same-module-duplicate branch and the alias-collision branch
+    // emit deliberately distinct wordings; assert this case takes the
+    // non-alias branch so a future refactor that collapses them is caught.
     try {
         parseStr("import math\nimport math");
         FAIL() << "Expected parser to reject duplicate qualified import";
@@ -1016,20 +1019,121 @@ TEST(ParserTest, QualifiedImportDuplicateRejected) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("duplicate qualified import"), std::string::npos)
             << "Error should mention duplicate qualified import: " << msg;
+        EXPECT_NE(msg.find("'import math'"), std::string::npos)
+            << "Same-module branch should quote the full 'import <mod>' form: " << msg;
+        EXPECT_EQ(msg.find("alias collision"), std::string::npos)
+            << "Same-module branch must not use alias-collision wording: " << msg;
     }
 }
 
-TEST(ParserTest, QualifiedImportAsNotYetSupported) {
-    // 'import xxx as yyy' is reserved for #1724; reject for now with a
-    // pointer to the tracking issue.
+TEST(ParserTest, QualifiedImportAsRegistersAlias) {
+    // #1724: 'import math as m' parses successfully and stores the alias on
+    // the QualifiedImportStmt while preserving the original module name. This
+    // is the positive sibling of the (formerly rejecting) test that locked
+    // in the pre-#1724 spec — flipped per
+    // .claude/rules/tests-rejection-tdd.md "Relaxing a rejection branch
+    // requires flipping (not deleting) existing EXPECT_THROW tests".
+    Program prog = parseStr("import math as m");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
+    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    EXPECT_EQ(qi.module_name, "math");
+    ASSERT_TRUE(qi.alias.has_value());
+    EXPECT_EQ(*qi.alias, "m");
+}
+
+TEST(ParserTest, QualifiedImportAliasOnlyRegistersAliasNotOriginal) {
+    // Python-style semantic: `import math as m` makes `m` (and only `m`) a
+    // qualified-import handle. Bare `math.sqrt(2.0)` after the alias must
+    // fall through to UFCS dispatch (CallExpr with receiver prepended,
+    // qualified_module unset) — the qualified-call path requires
+    // `imported_modules_.count(name) > 0`, which only the alias satisfies.
+    Program prog = parseStr("import math as m\nx = math.sqrt(2.0)\n");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &assign = std::get<AssignStmt>(prog[1]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(assign.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(assign.value->data);
+    EXPECT_EQ(call.callee, "sqrt");
+    EXPECT_FALSE(call.qualified_module.has_value());
+    // UFCS prepends the receiver, so the call has 2 args (math, 2.0).
+    ASSERT_EQ(call.args.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(call.args[0]->data));
+    EXPECT_EQ(std::get<VariableExpr>(call.args[0]->data).name, "math");
+}
+
+TEST(ParserTest, QualifiedImportAliasCollisionRejected) {
+    // Two distinct modules aliased to the same effective name must collide
+    // at parse time, even though they originate from different module names.
+    // The wording is intentionally distinct from the same-module-duplicate
+    // branch (see QualifiedImportDuplicateRejected) so the two cases stay
+    // separable across future refactors.
     try {
-        parseStr("import math as m");
-        FAIL() << "Expected parser to reject 'import ... as ...' (deferred to #1724)";
+        parseStr("import math as m\nimport path as m");
+        FAIL() << "Expected parser to reject duplicate alias 'm'";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("#1724"), std::string::npos)
-            << "Error should reference issue #1724: " << msg;
+        EXPECT_NE(msg.find("duplicate qualified import"), std::string::npos)
+            << "Error should mention duplicate qualified import: " << msg;
+        EXPECT_NE(msg.find("name 'm'"), std::string::npos)
+            << "Alias branch should quote the colliding effective name as `name 'm'`: " << msg;
+        EXPECT_NE(msg.find("alias collision"), std::string::npos)
+            << "Alias branch should mention 'alias collision' to differentiate from the same-module case: " << msg;
     }
+}
+
+TEST(ParserTest, QualifiedImportSelfAliasIsAccepted) {
+    // Degenerate `import math as math` is accepted and behaves identically
+    // to bare `import math` — the effective name is 'math' in both cases.
+    Program prog = parseStr("import math as math");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    EXPECT_EQ(qi.module_name, "math");
+    ASSERT_TRUE(qi.alias.has_value());
+    EXPECT_EQ(*qi.alias, "math");
+}
+
+TEST(ParserTest, QualifiedImportAliasRejectsSnakeCase) {
+    // Per .claude/rules/parser-conventions.md "Module-global typed-decl ...
+    // enforces camelCase", every binding site rejects snake_case.
+    try {
+        parseStr("import math as my_alias");
+        FAIL() << "Expected parser to reject snake_case alias name";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'my_alias'"), std::string::npos)
+            << "Error should quote the rejected alias name: " << msg;
+        EXPECT_NE(msg.find("camelCase"), std::string::npos)
+            << "Error should mention camelCase requirement: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportAliasShadowingRejected) {
+    // The shadow-check at parser.cpp consults `imported_modules_`, which
+    // (post-#1724) is keyed by the alias when present. Binding the alias as
+    // a local must trigger the same diagnostic as bare-import shadowing.
+    try {
+        parseStr("import math as m\nm: int = 1\n");
+        FAIL() << "Expected parser to reject local binding that shadows alias";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot shadow imported module 'm'"), std::string::npos)
+            << "Error should mention shadow rejection of alias 'm': " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportAliasFieldAccessRouting) {
+    // After `import math as m`, the postfix parser must recognize `m.PI`
+    // as a qualified field access (qualified_module == "m"), not as UFCS
+    // on a local `m`. The alias must propagate through the
+    // `imported_modules_.count(ve->name)` gate in src/parser_expr.cpp.
+    Program prog = parseStr("import math as m\nx = m.PI");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &assign = std::get<AssignStmt>(prog[1]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(assign.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(assign.value->data);
+    EXPECT_EQ(fa.field, "PI");
+    ASSERT_TRUE(fa.qualified_module.has_value());
+    EXPECT_EQ(*fa.qualified_module, "m");
 }
 
 TEST(ParserTest, QualifiedImportInBlockThrows) {

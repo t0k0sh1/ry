@@ -94,6 +94,14 @@ TEST(Formatter, StatementFormatting) {
     // Qualified const access via `import xxx`.
     EXPECT_EQ(fmt("import math\nx = math.PI\n"),
               "import math\nx = math.PI\n");
+    // Qualified import alias (#1724): `import math as m` round-trips verbatim.
+    EXPECT_EQ(fmt("import math as m\n"), "import math as m\n");
+    // Alias propagates through qualified call sites.
+    EXPECT_EQ(fmt("import math as m\nx = m.sqrt(2.0)\n"),
+              "import math as m\nx = m.sqrt(2.0)\n");
+    // Alias propagates through qualified const access.
+    EXPECT_EQ(fmt("import math as m\nx = m.PI\n"),
+              "import math as m\nx = m.PI\n");
     // Return
     {
         auto src = "fn f() -> int:\n    return 42\n";

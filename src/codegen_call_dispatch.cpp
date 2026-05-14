@@ -8,25 +8,28 @@ namespace ry {
 // ===== CallExpr Dispatcher =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    // Qualified call `<mod>.fn(args)` (#1723). The parser sets
-    // `qualified_module` when the dotted LHS is a single identifier that was
-    // imported via `import <mod>` (parser tracks via `imported_modules_`,
-    // codegen via `module_namespaces_`). In v0.0.23 we route stdlib modules
-    // through the normal dispatch chain (StdlibRegistry already routes by
-    // callee name, so `math.sqrt(2.0)` → `emitBuiltinMath` resolves the same
-    // way `sqrt(2.0)` would once `import math` is in scope). User-defined
-    // qualified imports are not yet supported — emit a clear redirect to the
-    // selective-import form.
+    // Qualified call `<effective>.fn(args)` (#1723, #1724). The parser
+    // sets `qualified_module` when the dotted LHS is a single identifier
+    // that was imported via `import <mod>` or `import <mod> as <alias>`
+    // (parser tracks the effective name via `imported_modules_`, codegen
+    // via `module_namespaces_`). In v0.0.23 we route stdlib modules
+    // through the normal dispatch chain (StdlibRegistry already routes
+    // by callee name, so `math.sqrt(2.0)` → `emitBuiltinMath` resolves
+    // the same way `sqrt(2.0)` would once `import math` is in scope).
+    // User-defined qualified imports are not yet supported — emit a
+    // clear redirect to the selective-import form, quoting the file's
+    // original module name even when the user wrote an alias.
     if (e->qualified_module.has_value()) {
         const std::string &mod = *e->qualified_module;
         auto it = module_namespaces_.find(mod);
         if (it == module_namespaces_.end())
             codegenError("qualified call to module '" + mod +
                          "' which was not imported via 'import " + mod + "'");
-        if (!it->second)
+        if (!it->second.is_stdlib)
             codegenError("qualified call to user-defined module '" + mod +
-                         "' is not yet supported in v0.0.23; use 'from " + mod +
-                         " import " + e->callee + "' instead");
+                         "' is not yet supported in v0.0.23; use 'from " +
+                         it->second.original_name + " import " + e->callee +
+                         "' instead");
         // stdlib module → fall through; downstream dispatchers route by callee.
     }
 

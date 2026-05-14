@@ -1,0 +1,21 @@
+from testing import it, describe, expect
+
+import math as m
+from math import PI
+
+@describe("qualified import alias (#1724)")
+fn qualifiedImportAliasTests():
+  @it("alias-side qualified call dispatches to the original module")
+  fn shouldAliasedCallResolveToStdlib():
+    expect(m.sqrt(2.0)).toBeCloseTo(1.4142135623730951, 10)
+    expect(m.sqrt(4.0)).toEq(2.0)
+
+  @it("alias-side qualified const access reaches the original module's constant")
+  fn shouldAliasedConstResolveToStdlib():
+    expect(m.PI).toBeCloseTo(3.141592653589793, 10)
+    expect(m.PI).toEq(PI)
+
+  @it("alias coexists with selective import of the original module")
+  fn shouldAliasCoexistWithSelectiveImport():
+    expect(m.sqrt(PI)).toBeCloseTo(1.7724538509055159, 10)
+    expect(m.sqrt(9.0)).toEq(3.0)

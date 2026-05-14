@@ -530,10 +530,12 @@ StmtNode Parser::parseImportStatement() {
 }
 
 StmtNode Parser::parseQualifiedImportStatement() {
-    // Qualified import: `import <ident> [as <ident>]` (#1723)
+    // Qualified import: `import <ident> [as <ident>]` (#1723, #1724)
     // - Only single identifier accepted; `import a.b` rejected (AC6)
-    // - `as` form reserved for #1724; currently rejected
-    // - Duplicate `import <same>` rejected (AC7)
+    // - `as` clause registers the alias as the effective name (Python-style:
+    //   `import math as m` makes `m.sqrt(...)` valid and bare `math` undefined)
+    // - Duplicate effective-name registrations rejected (alias collision or
+    //   same-module duplicate without alias) (AC7)
     Token importTok = lex_.next(); // consume 'import'
 
     Token modTok = lex_.peek();
@@ -548,19 +550,30 @@ StmtNode Parser::parseQualifiedImportStatement() {
 
     std::optional<std::string> alias;
     if (lex_.peek().kind == TokenKind::As) {
-        Token asTok = lex_.next(); // consume 'as'
+        lex_.next(); // consume 'as'
         Token aliasTok = lex_.peek();
         if (aliasTok.kind != TokenKind::Ident)
             parseError(aliasTok.line, "expected identifier after 'as'");
-        parseError(asTok.line,
-            "qualified import alias ('import xxx as yyy') is not yet "
-            "supported (tracked by issue #1724)");
+        if (!isCamelCase(aliasTok.value))
+            parseError(aliasTok.line,
+                "qualified import alias name '" + aliasTok.value +
+                "' must be camelCase");
+        alias = aliasTok.value;
+        lex_.next(); // consume alias identifier
     }
 
-    if (!imported_modules_.insert(moduleName).second)
-        parseError(importTok.line,
-            "duplicate qualified import: 'import " + moduleName +
-            "' was already imported in this file");
+    const std::string &effective = alias.has_value() ? *alias : moduleName;
+    if (!imported_modules_.insert(effective).second) {
+        if (alias.has_value())
+            parseError(importTok.line,
+                "duplicate qualified import: name '" + effective +
+                "' is already imported in this file (alias collision or "
+                "same-module duplicate)");
+        else
+            parseError(importTok.line,
+                "duplicate qualified import: 'import " + effective +
+                "' was already imported in this file");
+    }
 
     return QualifiedImportStmt{
         std::move(moduleName),

@@ -120,10 +120,10 @@ export default grammar({
       $._newline,
     ),
 
-    // Qualified import: `import xxx [as yyy]` (#1723).
-    // The `as` alias form is parsed but rejected by the Ry parser pending
-    // #1724; tree-sitter accepts it so the editor surface tolerates the
-    // syntax in flight.
+    // Qualified import: `import xxx [as yyy]` (#1723, #1724).
+    // The `as` alias form registers the alias as the effective name
+    // (Python-style: `import math as m` makes `m.sqrt(...)` valid and
+    // bare `math` undefined). Same-effective-name collisions are rejected.
     qualified_import_statement: $ => seq(
       'import',
       field('module', $.identifier),
