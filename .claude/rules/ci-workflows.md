@@ -416,6 +416,65 @@ CI invocations.
 and confirm `--use-analyzer` accompanies every invocation. In CI logs,
 the `Use of uninitialized value $Clang` warning must be absent.
 
+### scan-build: `--target ry` (fast) on pull_request, full `all` target on push to main
+
+**Source**: #1738 (2026-05-14, implementation)
+**Tags**: ci, scan-build, static-analysis, performance, target
+
+**Context**: `scan-build` performs path-sensitive symbolic execution
+over every translation unit it sees. Running it across the default
+`all` target builds and analyses `ry_tests` (~45 TU), `ry_<pkg>`
+native shared libraries (~15 TU), and fuzz targets in addition to the
+production compiler/runtime (`src/main.cpp` + `ry_lib`, ~76 TU).
+Including the test and plugin TUs dominates CI time without adding
+meaningful coverage on the production path that releases ship.
+
+**Rule**: In `.github/workflows/ci.yml`, the `scan-build` job's
+build-and-analyse step must select the analysis scope from
+`github.event_name`:
+
+- `pull_request`: pass `--target ry --parallel` to the wrapped
+  `cmake --build build` so only `ry` (i.e. `src/main.cpp` + `ry_lib`)
+  is analysed. PR feedback stays fast.
+- `push` (to `main`): pass `--parallel` but **no** `--target`, so the
+  default `all` target is analysed. Mainline keeps the wider coverage
+  including tests, native plugins, and fuzz harnesses.
+
+The canonical form is a single step using a ternary expression:
+
+```yaml
+cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
+```
+
+Do not invert the mapping (full on PR, fast on main); this would
+defeat the purpose of fast PR feedback and leave mainline with
+narrower coverage.
+
+**How to apply**:
+
+- When editing the `scan-build` step, keep the existing
+  `--use-analyzer=/usr/local/llvm/bin/clang` flag (see sibling rule
+  "scan-build: pass --use-analyzer=... explicitly"). Only the wrapped
+  `cmake --build` invocation is varied.
+- Both events stay `continue-on-error: true` (warn-only) until the
+  existing findings backlog is triaged. Do not flip required-ness in
+  the same change.
+- Local documentation in `.claude/skills/static-analysis-tools/SKILL.md`
+  and `.claude/skills/pre-commit-checklist/SKILL.md` mirrors the same
+  fast / full split so contributors can reproduce either mode locally.
+
+**How to verify**:
+
+- `grep -n 'cmake --build build' .github/workflows/ci.yml` shows the
+  `scan-build` step using the `github.event_name == 'pull_request'`
+  ternary; no other CI step should accidentally adopt the same
+  ternary without intent.
+- On a PR CI run, the `scan-build` log shows `Building target: ry`
+  (not the full target list) and finishes notably faster than the
+  previous all-target run.
+- On a push-to-main CI run, the same step shows the full target list
+  being built.
+
 ### `actions/download-artifact@v4` `pattern:` is a glob — beware prefix collisions across matrix dimensions
 
 **Source**: #1505 manifest job failure (2026-05-02)

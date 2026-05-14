@@ -63,9 +63,15 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 
 CI の `scan-build` ジョブがシンボリック実行ベースのパス感度解析を実行する。Clang-Tidy / Cppcheck では検出しづらい null 参照・use-after-free・memory leak・未初期化変数・dead store を検出する。
 
+CI は event に応じて分析スコープを切り替える (#1738):
+- **pull request**: `--target ry --parallel` で fast scan (`src/main.cpp` + `ry_lib` ≒ ~76 TU)。test と native plugin の TU は除外し、PR フィードバックを高速化する。
+- **push to main**: `--parallel` 付きの full scan (all target)。test / native plugin / fuzz も含めた広いカバレッジを維持する。
+
+両 event とも `continue-on-error: true` (warn-only) 運用中。
+
 - `scan-build` は CI コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`) の LLVM 21 source build に同梱されており、`/usr/local/llvm/bin/scan-build` から利用可能。ローカル Linux ホストでは `sudo apt-get install clang-tools-21`、macOS では `brew install llvm@21` で入手する
 - `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
-- ローカル実行:
+- ローカル実行 — fast scan (`ry` target のみ、PR と同等):
   ```bash
   scan-build --use-analyzer=/usr/local/llvm/bin/clang \
              --use-cc=/usr/local/llvm/bin/clang \
@@ -76,8 +82,17 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
              --use-c++=/usr/local/llvm/bin/clang++ \
              -o /tmp/scan-build-report \
              --status-bugs \
-             cmake --build build
-  # HTML レポートが /tmp/scan-build-report/<timestamp>/index.html に生成される
+             cmake --build build --target ry --parallel
   ```
+- ローカル実行 — full scan (push-to-main と同等の広いカバレッジ):
+  ```bash
+  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
+             --use-cc=/usr/local/llvm/bin/clang \
+             --use-c++=/usr/local/llvm/bin/clang++ \
+             -o /tmp/scan-build-report \
+             --status-bugs \
+             cmake --build build --parallel
+  ```
+  HTML レポートが `/tmp/scan-build-report/<timestamp>/index.html` に生成される
 - false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
-- 新規コードは scan-build 警告ゼロを維持すること
+- CI は warn-only 運用 (`continue-on-error: true`)。新規 null-dereference / use-after-free / division-by-zero などが検出されたら同 PR で対処することを強く推奨する

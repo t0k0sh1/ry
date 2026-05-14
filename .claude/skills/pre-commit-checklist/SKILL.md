@@ -209,7 +209,7 @@ cppcheck --enable=warning,performance,portability --std=c++17 --error-exitcode=1
 
 CI は `continue-on-error: true` で warn-only 運用中。ローカルでも警告即修正は不要だが、新規 null-dereference / use-after-free / division-by-zero が検出された場合は同 PR で対処することを強く推奨する。
 
-scan-build は Homebrew LLVM 21 に同梱されているが PATH には入らない。フルパス `/opt/homebrew/opt/llvm@21/bin/scan-build` で呼び出す:
+CI は event ごとに分析スコープを切り替える (#1738): PR では `--target ry`、push-to-main では全 target。ローカルでも同じ使い分けが可能。scan-build は Homebrew LLVM 21 に同梱されているが PATH には入らない。フルパス `/opt/homebrew/opt/llvm@21/bin/scan-build` で呼び出す。configure ステップは fast / full とも共通:
 
 ```bash
 /opt/homebrew/opt/llvm@21/bin/scan-build \
@@ -217,12 +217,26 @@ scan-build は Homebrew LLVM 21 に同梱されているが PATH には入らな
     --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
     --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
     cmake --preset default
+```
 
+build + analyze — **高速確認のみ** (PR 相当、`ry` target ≒ ~76 TU):
+
+```bash
 /opt/homebrew/opt/llvm@21/bin/scan-build \
     --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
     --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
     --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    -o /tmp/scan-build-report --status-bugs cmake --build build
+    -o /tmp/scan-build-report --status-bugs cmake --build build --target ry --parallel
+```
+
+build + analyze — **deep verification (推奨)** (push-to-main 相当、全 target):
+
+```bash
+/opt/homebrew/opt/llvm@21/bin/scan-build \
+    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    -o /tmp/scan-build-report --status-bugs cmake --build build --parallel
 ```
 
 scan-build はビルドをラップするため `build/` の状態が変わる場合がある。以降のステップでビルドが必要なら §3 のコマンドで再ビルドする。
