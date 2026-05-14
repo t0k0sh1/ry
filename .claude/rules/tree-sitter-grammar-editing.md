@@ -67,3 +67,31 @@ Build/install workflow and verification recipes
 block tokens + f-string + regex) live in the skill and in
 `editor/tree-sitter/README.md` §Contributor workflow. Pre-commit gating
 is handled by `/pre-commit-checklist` §3.6.5.
+
+### Brace-internal newline tolerance is a grammar-rule concern, not a scanner concern
+
+**Source**: issue #1727, `editor/tree-sitter/grammar.js`
+(`import_list`, `list_literal`, `map_literal`, `set_literal`,
+`bracedSep1` helper), `editor/tree-sitter/README.md`
+§"Brace-internal newline tolerance"
+**Tags**: tree-sitter, scanner, valid-symbols, brace-internal, newline,
+bracket-depth, blind-spot
+
+**Rule**: `src/scanner.c` cannot suppress NEWLINE / INDENT / DEDENT
+inside `{` / `[` / `(` by tracking bracket depth locally. tree-sitter
+only calls the external scanner when `valid_symbols[]` requests an
+external token, so for `from std.io import {` the scanner is *not*
+invoked between `{` and the first `import_item` (parser expects an
+identifier, no external is valid). A bracket-depth counter that
+increments on `{` lookahead therefore never observes the opening brace,
+and the tolerance must be expressed at the grammar-rule level instead.
+
+**How to apply**: For brace-delimited rules that need to accept
+newlines between elements, use the `bracedSep1(rule, separator,
+newline)` helper in `grammar.js` and pass **only** `$._newline`. Do
+not pass `$._indent` / `$._dedent` — the scanner's indent stack must
+stay clean. This mirrors the C++ parser's `skipStructuralTokens`
+(`src/parser.cpp:352`). Out-of-scope rules (`tuple_literal`,
+`_parenthesized`, `argument_list`, `parameter_list`, `case_*` arm
+bodies) still ERROR for multi-line forms — extend the pattern when
+warranted, tracked as separate issues.

@@ -66,15 +66,13 @@ tests/spec/record_subtyping.test.ry
 tests/spec/records.test.ry
 tests/spec/relative_import/mymath/mymath.test.ry
 tests/spec/relative_import/relative_import.test.ry
+# braced_import.test.ry exercises both multi-line braced imports (resolved
+# by #1727) and `from .symbols import {...}` relative imports — the relative
+# import grammar gap above still causes ERROR nodes for this file.
+tests/spec/braced_import/braced_import.test.ry
 tests/spec/result_type_inference.test.ry
 tests/spec/trailing_commas.test.ry
 tests/spec/type_of.test.ry
-
-# === Brace-internal newline suppression (list / map / set / braced-import multi-line) ===
-# `editor/tree-sitter/src/scanner.c` does not track bracket depth, so NEWLINE /
-# INDENT / DEDENT tokens fire inside `{` / `[` / `(` and produce ERROR nodes for
-# multi-line brace-delimited expressions. Tracked in #1727.
-tests/spec/braced_import/braced_import.test.ry
 
 # === Housekeeping: pre-existing gaps not registered by earlier PRs ===
 # Discovered during #1722 self-verification; the parent PRs introduced these
