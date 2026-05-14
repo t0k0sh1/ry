@@ -220,20 +220,17 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return getResultType(okTy, errTy);
     }
 
-    auto it = record_types_.find(typeName);
-    if (it != record_types_.end()) return it->second.llvmType;
+    if (auto *ri = findRecordType(typeName)) return ri->llvmType;
 
     // enum name → i64 (simple) or ADT struct type
     {
-        auto eit = enum_types_.find(typeName);
-        if (eit != enum_types_.end())
-            return eit->second.isADT ? eit->second.adtType : i64Ty_;
+        if (auto *ei = findEnumType(typeName))
+            return ei->isADT ? ei->adtType : i64Ty_;
         // On-demand generic-enum instantiation for type positions that have
         // not been touched by a construction site or pattern yet.
         if (ensureEnumInstantiated(typeName)) {
-            auto eit2 = enum_types_.find(typeName);
-            if (eit2 != enum_types_.end())
-                return eit2->second.isADT ? eit2->second.adtType : i64Ty_;
+            if (auto *ei2 = findEnumType(typeName))
+                return ei2->isADT ? ei2->adtType : i64Ty_;
         }
     }
 

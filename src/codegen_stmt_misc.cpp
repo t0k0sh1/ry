@@ -854,6 +854,118 @@ void CodeGen::emitStmt(QualifiedImportStmt &s) {
     module_namespaces_[effective] = ModuleNamespaceInfo{s.module_name, s.is_stdlib};
 }
 
+// `from m import foo as bar` for fn / record / enum / type-alias kinds
+// (#1725 — follow-up to #1721). ModuleLoader::makeAliasBinding synthesizes
+// this node after the original definition has been pushed into the destination
+// program (or, in the cache-hit path, after the prior import already left the
+// original definition registered with codegen). We register `alias_name` as a
+// fresh key into the same codegen table as `original_name`, so every existing
+// name-resolution site (`findFunction`, `record_types_.find`,
+// `enum_types_.find`, `resolveType` chain) keeps working without per-site
+// hooks. `@const` aliases still go through the AssignStmt path; Value /
+// Directive aliases remain rejected at the loader.
+void CodeGen::emitStmt(ImportAliasStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+
+    const std::string &alias = s.alias_name;
+    const std::string &orig = s.original_name;
+
+    // Cross-kind alias-map + generic-template collision check. Each case below
+    // already rejects same-kind collisions against its own primary table +
+    // alias map; this lambda fills in the missing cross-kind checks
+    // (e.g. fn alias `X` then record alias `X`, or fn alias `X` then a
+    // generic fn template named `X` defined later in this module).
+    // `rejectIfTypeNameTakenByOtherKind` covers cross-kind *type* collisions
+    // (record / enum / generic enum / type-alias) but does not see the new
+    // fn/record/enum alias maps or `generic_fn_templates_`.
+    auto rejectCrossKindAliasCollision = [&](ImportAliasStmt::Kind incoming) {
+        if (incoming != ImportAliasStmt::Kind::Fn &&
+            (fn_aliases_.count(alias) || generic_fn_templates_.count(alias)))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing function alias or generic function template");
+        if (incoming != ImportAliasStmt::Kind::Record &&
+            record_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing record alias");
+        if (incoming != ImportAliasStmt::Kind::Enum &&
+            enum_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing enum alias");
+    };
+
+    switch (s.kind) {
+    case ImportAliasStmt::Kind::Fn: {
+        // OverloadEntry holds `unique_ptr<...> capturedClosureInfos` and is
+        // therefore non-copyable. Route alias lookups through `fn_aliases_`
+        // (consulted by `findFunction`) rather than duplicating the entry.
+        if (functions_.count(alias) || fn_aliases_.count(alias) ||
+            generic_fn_templates_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing function definition");
+        rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Fn);
+        if (generic_fn_templates_.count(orig))
+            codegenError("import alias for generic function '" + orig +
+                         "' is not yet supported (tracked as a follow-up to #1725)");
+        if (!functions_.count(orig))
+            codegenError("cannot create import alias '" + alias +
+                         "': function '" + orig + "' is not defined");
+        fn_aliases_[alias] = orig;
+        break;
+    }
+    case ImportAliasStmt::Kind::Record: {
+        // RecordInfo's `fields` / `invariants` hold `unique_ptr<TypeNode>` /
+        // `unique_ptr<ExprNode>` — non-copyable. Route alias lookups through
+        // `record_aliases_` (consulted by `findRecordType`).
+        if (record_types_.count(alias) || record_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing record definition");
+        rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Record);
+        if (!record_types_.count(orig))
+            codegenError("cannot create import alias '" + alias +
+                         "': record '" + orig + "' is not defined");
+        record_aliases_[alias] = orig;
+        // Cycle-collector visit functions key on user-visible type names.
+        // Propagate the orig's cyclic status so `List<P>` (alias) and
+        // `List<Point>` (orig) share the same GC visit decision.
+        if (potentially_cyclic_types_.count(orig))
+            potentially_cyclic_types_.insert(alias);
+        break;
+    }
+    case ImportAliasStmt::Kind::Enum: {
+        if (enum_types_.count(alias) || enum_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing enum definition");
+        rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Enum);
+        if (generic_enum_templates_.count(orig))
+            codegenError("import alias for generic enum '" + orig +
+                         "' is not yet supported (tracked as a follow-up to #1725)");
+        if (!enum_types_.count(orig))
+            codegenError("cannot create import alias '" + alias +
+                         "': enum '" + orig + "' is not defined");
+        enum_aliases_[alias] = orig;
+        if (potentially_cyclic_types_.count(orig))
+            potentially_cyclic_types_.insert(alias);
+        break;
+    }
+    case ImportAliasStmt::Kind::TypeAlias: {
+        if (type_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing type alias");
+        rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::TypeAlias);
+        if (!type_aliases_.count(orig))
+            codegenError("cannot create import alias '" + alias +
+                         "': type alias '" + orig + "' is not defined");
+        // Point alias at orig; resolveType's existing chain walks the rest.
+        type_aliases_[alias] = orig;
+        break;
+    }
+    }
+}
+
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);

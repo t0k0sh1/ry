@@ -18,7 +18,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     {
         auto *evMeta = getMeta(val);
         if (evMeta && !evMeta->enum_value_type.empty()) {
-            auto &einfo = enum_types_[evMeta->enum_value_type];
+            auto *einfoPtr = findEnumType(evMeta->enum_value_type);
+            if (!einfoPtr)
+                codegenError("valueToString: unknown enum type: " + evMeta->enum_value_type);
+            auto &einfo = *einfoPtr;
             if (!einfo.isADT) {
                 if (einfo.hasExplicitValues) {
                     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
@@ -691,10 +694,10 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
     if (cached != adt_to_string_fns_.end())
         return cached->second;
 
-    auto einfoIt = enum_types_.find(enumName);
-    if (einfoIt == enum_types_.end())
+    auto *einfoPtr = findEnumType(enumName);
+    if (!einfoPtr)
         return nullptr;
-    auto &einfo = einfoIt->second;
+    auto &einfo = *einfoPtr;
 
     // enumName may contain '<', '>', ',' (e.g. "Option<int>") — not valid in LLVM identifiers.
     std::string sanitized;

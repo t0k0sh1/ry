@@ -41,9 +41,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::string variantName = e->callee.substr(colonPos + 2);
             // Try to instantiate generic enum if not found
             ensureEnumInstantiated(enumName);
-            auto eit = enum_types_.find(enumName);
-            if (eit != enum_types_.end() && eit->second.isADT) {
-                auto &info = eit->second;
+            if (auto *einfoPtr = findEnumType(enumName); einfoPtr && einfoPtr->isADT) {
+                auto &info = *einfoPtr;
                 auto vit = info.variants.find(variantName);
                 if (vit == info.variants.end())
                     codegenError("unknown variant '" + variantName + "' in enum '" + enumName + "'");
@@ -124,11 +123,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     }
 
     // Struct constructor
-    auto sit = record_types_.find(e->callee);
-    if (sit != record_types_.end()) {
+    if (auto *ri = findRecordType(e->callee)) {
         if (deprecated_types_.count(e->callee))
             emitDeprecationWarning(e->callee);
-        return emitRecordConstructor(sit->second, e->callee, e->args);
+        return emitRecordConstructor(*ri, e->callee, e->args);
     }
 
     // Try indirect call via variable (function pointer / lambda)

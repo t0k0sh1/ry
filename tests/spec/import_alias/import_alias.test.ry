@@ -1,6 +1,11 @@
 from testing import it, describe, expect
 
 from .shapes import ORIGIN_X as ZERO_X, ORIGIN_Y
+from .shapes import rectArea as area
+from .shapes import Point as P
+from .shapes import Color as C
+from .shapes import Shape as S
+from .shapes import Distance as D
 
 @describe("import alias")
 fn importAliasTests():
@@ -12,3 +17,32 @@ fn importAliasTests():
     fn shouldMixAliasedAndNonAliased():
         sum: int = ZERO_X + ORIGIN_Y + 7
         expect(sum).toEq(7)
+
+    @it("should call a fn through an alias")
+    fn shouldCallFnThroughAlias():
+        expect(area(3, 4)).toEq(12)
+
+    @it("should construct a record and access fields through an alias")
+    fn shouldConstructRecordThroughAlias():
+        p: P = P(7, 9)
+        expect(p.x).toEq(7)
+        expect(p.y).toEq(9)
+
+    @it("should construct a unit-enum variant through an alias")
+    fn shouldConstructEnumThroughAlias():
+        c: C = C::Red
+        expect(toStr(c)).toEq("Red")
+
+    @it("should pattern-match an ADT enum through an alias")
+    fn shouldPatternMatchAdtThroughAlias():
+        s: S = S::Circle(5)
+        result: int = 0
+        case s:
+            S::Circle(r): result = r
+            S::Square(side): result = side
+        expect(result).toEq(5)
+
+    @it("should use a type alias as a type annotation")
+    fn shouldUseTypeAliasAnnotation():
+        d: D = 42
+        expect(d).toEq(42)
