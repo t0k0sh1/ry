@@ -135,7 +135,19 @@ export default grammar({
 
     import_list: $ => choice(
       sep1($.import_item, ','),
-      seq('{', sep1($.import_item, ','), optional(','), '}'),
+      // Multi-line brace tolerance (#1727): NEWLINE tokens fire inside `{}`
+      // because the external scanner does not track bracket depth; absorb
+      // them around the separator and at the brace boundaries. INDENT /
+      // DEDENT are intentionally NOT absorbed — the indent stack must stay
+      // clean. Mirrors C++ parser's `skipStructuralTokens` (parser.cpp:352).
+      seq(
+        '{',
+        repeat($._newline),
+        bracedSep1($.import_item, ',', $._newline),
+        optional(','),
+        repeat($._newline),
+        '}',
+      ),
     ),
 
     import_item: $ => seq(
@@ -909,22 +921,41 @@ export default grammar({
       seq('(', $._expression, ',', sep1($._expression, ','), ')'),
     ),
 
+    // Multi-line brace tolerance (#1727): see import_list note above.
     list_literal: $ => seq(
       '[',
-      optional(seq(sep1($._expression, ','), optional(','))),
+      repeat($._newline),
+      optional(seq(
+        bracedSep1($._expression, ',', $._newline),
+        optional(','),
+        repeat($._newline),
+      )),
       ']',
     ),
 
     map_literal: $ => seq(
       '{',
-      sep1(seq(field('key', $._expression), ':', field('value', $._expression)), ','),
+      repeat($._newline),
+      bracedSep1(
+        seq(field('key', $._expression), ':', field('value', $._expression)),
+        ',',
+        $._newline,
+      ),
       optional(','),
+      repeat($._newline),
       '}',
     ),
 
     set_literal: $ => choice(
-      seq('{', '}'),                                    // empty (also empty-map; parser decides)
-      seq('{', sep1($._expression, ','), optional(','), '}'),
+      seq('{', repeat($._newline), '}'),               // empty (also empty-map; parser decides)
+      seq(
+        '{',
+        repeat($._newline),
+        bracedSep1($._expression, ',', $._newline),
+        optional(','),
+        repeat($._newline),
+        '}',
+      ),
     ),
 
     /* =====================================================================
@@ -1022,4 +1053,17 @@ export default grammar({
  * ===================================================================*/
 function sep1(rule, separator) {
   return seq(rule, repeat(seq(separator, rule)));
+}
+
+// Like `sep1` but tolerates the given newline token around the separator.
+// Used inside brace-delimited expressions (list_literal, map_literal,
+// set_literal, braced import_list) where the external scanner emits
+// NEWLINE tokens even inside braces (#1727). Only the newline token is
+// absorbed — INDENT / DEDENT must not be passed in here, so the scanner's
+// indent stack stays clean.
+function bracedSep1(rule, separator, newline) {
+  return seq(
+    rule,
+    repeat(seq(repeat(newline), separator, repeat(newline), rule)),
+  );
 }

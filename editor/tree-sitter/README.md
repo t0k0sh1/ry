@@ -194,6 +194,32 @@ for the most common live-editing scenario (`case x:` typed and `<CR>`
 pressed); arm-level partial typing falls back to the existing block-level
 `@indent.begin` capture on the surrounding case statement.
 
+## Brace-internal newline tolerance (#1727)
+
+The external scanner (`src/scanner.c`) does not track bracket depth, so
+NEWLINE / INDENT / DEDENT tokens fire even inside `{` / `[` / `(` once
+the parser state requests them. The C++ parser handles this in
+`src/parser.cpp:352` `skipStructuralTokens` by advancing past structural
+tokens while a bracket counter is non-zero. The tree-sitter grammar
+mirrors that behavior at the **grammar-rule level** for brace-delimited
+literal and import forms — the rules below explicitly absorb `_newline`
+around their separators and at the brace boundaries via the
+`bracedSep1(rule, separator, newline)` helper in `grammar.js`.
+
+| Grammar rule    | What is absorbed                                                |
+|-----------------|-----------------------------------------------------------------|
+| `import_list`   | `_newline` around `,` and at `{` / `}` boundaries (braced form) |
+| `list_literal`  | `_newline` around `,` and at `[` / `]` boundaries               |
+| `map_literal`   | `_newline` around `,` and at `{` / `}` boundaries               |
+| `set_literal`   | `_newline` around `,` and at `{` / `}` boundaries               |
+
+Only the `_newline` token is absorbed — `_indent` / `_dedent` are
+intentionally *not* passed into `bracedSep1`, so the scanner's indent
+stack stays clean. Out of scope: `tuple_literal`, the hidden
+`_parenthesized` rule, `argument_list`, `parameter_list`, and `case_*`
+arm bodies still produce ERROR nodes for multi-line forms; extend the
+same `bracedSep1` pattern there when warranted (separate issues).
+
 ## Contributor workflow
 
 Whenever a PR touches one of these paths (paths are relative to the

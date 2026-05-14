@@ -129,3 +129,70 @@ from std.io import { print, }
     items: (import_list
       (import_item
         name: (identifier)))))
+
+==================
+braced multi-line import (#1727)
+==================
+
+from std.io import {
+  print,
+  println,
+}
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier)))))
+
+==================
+braced multi-line import without trailing comma (#1727)
+==================
+
+from std.io import {
+  print,
+  println
+}
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier))
+      (import_item
+        name: (identifier)))))
+
+==================
+braced multi-line import with alias (#1727)
+==================
+
+from std.io import {
+  print as p,
+  println,
+}
+
+---
+
+(source_file
+  (import_statement
+    source: (module_path
+      (identifier)
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)
+        alias: (identifier))
+      (import_item
+        name: (identifier)))))
