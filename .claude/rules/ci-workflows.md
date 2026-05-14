@@ -418,8 +418,8 @@ the `Use of uninitialized value $Clang` warning must be absent.
 
 ### Static-analysis PR scope: `--target ry` on PR, full target on push to main
 
-**Source**: #1738 (2026-05-14, scan-build), #1740 (2026-05-15, CodeQL)
-**Tags**: ci, scan-build, codeql, static-analysis, performance, target
+**Source**: #1738 (2026-05-14, scan-build), #1740 (2026-05-15, CodeQL), #1741 (2026-05-15, clang-tidy)
+**Tags**: ci, scan-build, codeql, clang-tidy, static-analysis, performance, target
 
 **Context**: Whole-TU static analysers (`scan-build`'s path-sensitive
 symbolic execution, CodeQL's extraction + query evaluation) scale with
@@ -454,6 +454,22 @@ Concrete invocations using this pattern today:
   (#1738) — wrapped under `scan-build ... cmake --build build ...`.
 - `.github/workflows/codeql.yml` c-cpp matrix `Build` step (#1740) —
   bare `cmake --build build ...` driven by CodeQL's manual build mode.
+- `.github/workflows/ci.yml` `clang-tidy` job, `Build` step (#1741) —
+  bare `cmake --build build ...`; clang-tidy is then invoked separately
+  on the resulting `compile_commands.json`.
+
+**clang-tidy semantic difference**: for scan-build and CodeQL the
+analyser wraps the build itself, so `--target ry` narrows both the
+build *and* the analysis to `ry_lib` + `src/main.cpp`. For clang-tidy,
+`--target ry` narrows only the `Build` step — the subsequent
+`Run clang-tidy` step still drives `find src -name '*.cpp'` over every
+`src/*.cpp` (90 files, including TUs not built into `ry_lib` like
+`ry_<pkg>` native libs and fuzz harness sources). The PR-mode wins for
+clang-tidy are therefore (1) skipping the `ry_tests` / native-lib /
+fuzz build cost, and (2) the new `xargs -0 -n 1 -P "$(nproc)"`
+parallelisation of the analysis step itself. The `-n 1` is required:
+without it, xargs batches all `.cpp` paths into a single `clang-tidy`
+invocation that processes them sequentially, defeating `-P`.
 
 Do not invert the mapping (full on PR, fast on main); this would
 defeat the purpose of fast PR feedback and leave mainline with
@@ -477,27 +493,31 @@ depend on the wider coverage being produced by mainline runs.
   — do not flip them in the same change.
 - Local documentation in `.claude/skills/static-analysis-tools/SKILL.md`
   and `.claude/skills/pre-commit-checklist/SKILL.md` mirrors the same
-  fast / full split for `scan-build` so contributors can reproduce
-  either mode locally. CodeQL has no local-execution skill mirror
-  because contributors do not run CodeQL locally — the GitHub
-  `pull_request` event is the only entry point.
-- The inline workflow comment that cites this rule (in `ci.yml` and
-  `codeql.yml` Build steps) references the heading verbatim. If the
-  heading is renamed again, update both call sites in the same commit
-  to keep grep-based verification truthful.
+  fast / full split for `scan-build`, and the
+  `xargs -0 -n 1 -P "$(nproc)"` /
+  `xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)"` parallel form for
+  clang-tidy, so contributors can reproduce either mode locally. CodeQL has no
+  local-execution skill mirror because contributors do not run CodeQL
+  locally — the GitHub `pull_request` event is the only entry point.
+- The inline workflow comment that cites this rule (in `ci.yml`
+  `scan-build` / `clang-tidy` steps and `codeql.yml` Build step)
+  references the heading verbatim. If the heading is renamed again,
+  update all three call sites in the same commit to keep grep-based
+  verification truthful.
 
 **How to verify**:
 
 - `grep -nE 'cmake --build build .*github\.event_name' .github/workflows/*.yml`
-  shows both the `scan-build` step in `ci.yml` and the c-cpp Build
-  step in `codeql.yml` using the `github.event_name == 'pull_request'`
-  ternary; no other CI step should accidentally adopt the same
-  ternary without intent.
-- On a PR CI run, both the `scan-build` log and the CodeQL c-cpp
-  Build log show only the `ry` target being built (not the full target
-  list) and finish notably faster than the previous all-target runs.
-- On a push-to-main CI run, both steps show the full target list being
-  built.
+  shows the three intentional `--target ry` ternary call sites: the
+  `scan-build` and `clang-tidy` steps in `ci.yml`, and the c-cpp Build
+  step in `codeql.yml`. No other CI step should adopt the same ternary
+  without an entry being added to the "Concrete invocations" list above.
+- On a PR CI run, the `scan-build`, `clang-tidy`, and CodeQL c-cpp
+  Build logs all show only the `ry` target being built (not the full
+  target list) and finish notably faster than the previous all-target
+  runs.
+- On a push-to-main CI run, all three steps show the full target list
+  being built.
 
 ### `actions/download-artifact@v4` `pattern:` is a glob — beware prefix collisions across matrix dimensions
 
