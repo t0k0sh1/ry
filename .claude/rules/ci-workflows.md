@@ -416,29 +416,31 @@ CI invocations.
 and confirm `--use-analyzer` accompanies every invocation. In CI logs,
 the `Use of uninitialized value $Clang` warning must be absent.
 
-### scan-build: `--target ry` (fast) on pull_request, full `all` target on push to main
+### Static-analysis PR scope: `--target ry` on PR, full target on push to main
 
-**Source**: #1738 (2026-05-14, implementation)
-**Tags**: ci, scan-build, static-analysis, performance, target
+**Source**: #1738 (2026-05-14, scan-build), #1740 (2026-05-15, CodeQL)
+**Tags**: ci, scan-build, codeql, static-analysis, performance, target
 
-**Context**: `scan-build` performs path-sensitive symbolic execution
-over every translation unit it sees. Running it across the default
-`all` target builds and analyses `ry_tests` (~45 TU), `ry_<pkg>`
-native shared libraries (~15 TU), and fuzz targets in addition to the
-production compiler/runtime (`src/main.cpp` + `ry_lib`, ~76 TU).
-Including the test and plugin TUs dominates CI time without adding
-meaningful coverage on the production path that releases ship.
+**Context**: Whole-TU static analysers (`scan-build`'s path-sensitive
+symbolic execution, CodeQL's extraction + query evaluation) scale with
+the number of translation units they see. The default `all` target
+pulls in `ry_tests` (~45 TU), `ry_<pkg>` native shared libraries
+(~15 TU), and fuzz targets in addition to the production
+compiler/runtime (`src/main.cpp` + `ry_lib`, ~76 TU). Including the
+test and plugin TUs dominates CI time without adding meaningful
+coverage on the production path that releases ship.
 
-**Rule**: In `.github/workflows/ci.yml`, the `scan-build` job's
-build-and-analyse step must select the analysis scope from
+**Rule**: In every CI workflow whose job wraps `cmake --build build`
+under a static-analysis tool, select the analysis scope from
 `github.event_name`:
 
-- `pull_request`: pass `--target ry --parallel` to the wrapped
-  `cmake --build build` so only `ry` (i.e. `src/main.cpp` + `ry_lib`)
-  is analysed. PR feedback stays fast.
+- `pull_request`: pass `--target ry --parallel` so only `ry` (i.e.
+  `src/main.cpp` + `ry_lib`) is built and analysed. PR feedback stays
+  fast.
 - `push` (to `main`): pass `--parallel` but **no** `--target`, so the
-  default `all` target is analysed. Mainline keeps the wider coverage
-  including tests, native plugins, and fuzz harnesses.
+  default target is analysed. Mainline keeps the wider coverage
+  including tests, native plugins, and fuzz harnesses, which feeds the
+  Code Scanning dashboard and the release `codeql-gate`.
 
 The canonical form is a single step using a ternary expression:
 
@@ -446,34 +448,56 @@ The canonical form is a single step using a ternary expression:
 cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
 ```
 
+Concrete invocations using this pattern today:
+
+- `.github/workflows/ci.yml` `scan-build` job, `Build + Analyze` step
+  (#1738) — wrapped under `scan-build ... cmake --build build ...`.
+- `.github/workflows/codeql.yml` c-cpp matrix `Build` step (#1740) —
+  bare `cmake --build build ...` driven by CodeQL's manual build mode.
+
 Do not invert the mapping (full on PR, fast on main); this would
 defeat the purpose of fast PR feedback and leave mainline with
-narrower coverage.
+narrower coverage. Do not narrow the `push` branch on either tool —
+both the scan-build report and the CodeQL Code Scanning dashboard
+depend on the wider coverage being produced by mainline runs.
 
 **How to apply**:
 
-- When editing the `scan-build` step, keep the existing
+- When editing the `scan-build` step in `ci.yml`, keep the existing
   `--use-analyzer=/usr/local/llvm/bin/clang` flag (see sibling rule
   "scan-build: pass --use-analyzer=... explicitly"). Only the wrapped
   `cmake --build` invocation is varied.
-- Both events stay `continue-on-error: true` (warn-only) until the
-  existing findings backlog is triaged. Do not flip required-ness in
-  the same change.
+- For CodeQL, the change is confined to the c-cpp matrix entry
+  (`build-mode: manual`); the `actions` matrix entry uses
+  `build-mode: none` and runs no manual build, so the ternary does not
+  apply there.
+- Both `scan-build` (warn-only, `continue-on-error: true` until the
+  findings backlog is triaged) and CodeQL (no `continue-on-error`,
+  fails the workflow on findings) keep their existing status semantics
+  — do not flip them in the same change.
 - Local documentation in `.claude/skills/static-analysis-tools/SKILL.md`
   and `.claude/skills/pre-commit-checklist/SKILL.md` mirrors the same
-  fast / full split so contributors can reproduce either mode locally.
+  fast / full split for `scan-build` so contributors can reproduce
+  either mode locally. CodeQL has no local-execution skill mirror
+  because contributors do not run CodeQL locally — the GitHub
+  `pull_request` event is the only entry point.
+- The inline workflow comment that cites this rule (in `ci.yml` and
+  `codeql.yml` Build steps) references the heading verbatim. If the
+  heading is renamed again, update both call sites in the same commit
+  to keep grep-based verification truthful.
 
 **How to verify**:
 
-- `grep -n 'cmake --build build' .github/workflows/ci.yml` shows the
-  `scan-build` step using the `github.event_name == 'pull_request'`
+- `grep -nE 'cmake --build build .*github\.event_name' .github/workflows/*.yml`
+  shows both the `scan-build` step in `ci.yml` and the c-cpp Build
+  step in `codeql.yml` using the `github.event_name == 'pull_request'`
   ternary; no other CI step should accidentally adopt the same
   ternary without intent.
-- On a PR CI run, the `scan-build` log shows `Building target: ry`
-  (not the full target list) and finishes notably faster than the
-  previous all-target run.
-- On a push-to-main CI run, the same step shows the full target list
-  being built.
+- On a PR CI run, both the `scan-build` log and the CodeQL c-cpp
+  Build log show only the `ry` target being built (not the full target
+  list) and finish notably faster than the previous all-target runs.
+- On a push-to-main CI run, both steps show the full target list being
+  built.
 
 ### `actions/download-artifact@v4` `pattern:` is a glob — beware prefix collisions across matrix dimensions
 
