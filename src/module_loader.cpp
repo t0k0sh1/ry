@@ -105,53 +105,84 @@ static ExportableKind getExportableKind(const StmtNode &stmt) {
     return ExportableKind::Fn; // unreachable: caller already filtered via isExportable
 }
 
-// Build a synthesized binding `alias = orig` for `@const` symbols so the
-// importer's scope sees `alias` as an additional name pointing at the same
-// underlying value. Only `@const` alias is supported in this release:
-// fn / record / enum / type-alias alias requires codegen-side name-resolution
-// fallback that is not yet implemented (tracked in follow-up issue #1725).
-// The caller MUST reject non-Const kinds before reaching here; this function
-// asserts that contract via the switch default.
+// Build a synthesized binding for `from m import orig as alias`.
+//   - `@const` aliases: emit `AssignStmt{alias = orig}` so the existing
+//     module-global / const-folding paths see `alias` as an additional name
+//     pointing at the same underlying value.
+//   - fn / record / enum / type-alias aliases (#1725): emit an
+//     `ImportAliasStmt` whose codegen handler registers `alias_name` as a
+//     fresh key into the corresponding codegen table
+//     (`functions_` / `record_types_` / `enum_types_` / `type_aliases_`).
+// Value (non-@const) and Directive aliases are rejected by
+// `rejectUnsupportedAlias` upstream and must not reach this function.
 static StmtNode makeAliasBinding(ExportableKind kind,
                                   const std::string &orig_name,
                                   const std::string &alias_name,
                                   SourceLocation loc) {
-    (void)kind; // contract: caller guarantees ExportableKind::Const
-    auto var = std::make_unique<ExprNode>();
-    var->data = VariableExpr{orig_name};
-    var->loc = loc;
-    AssignStmt a;
-    a.name = alias_name;
-    a.value = std::move(var);
-    a.loc = loc;
-    return a;
+    switch (kind) {
+        case ExportableKind::Const: {
+            auto var = std::make_unique<ExprNode>();
+            var->data = VariableExpr{orig_name};
+            var->loc = loc;
+            AssignStmt a;
+            a.name = alias_name;
+            a.value = std::move(var);
+            a.loc = loc;
+            return a;
+        }
+        case ExportableKind::Fn:
+            return ImportAliasStmt{alias_name, orig_name,
+                                   ImportAliasStmt::Kind::Fn, loc};
+        case ExportableKind::Record:
+            return ImportAliasStmt{alias_name, orig_name,
+                                   ImportAliasStmt::Kind::Record, loc};
+        case ExportableKind::Enum:
+            return ImportAliasStmt{alias_name, orig_name,
+                                   ImportAliasStmt::Kind::Enum, loc};
+        case ExportableKind::TypeAlias:
+            return ImportAliasStmt{alias_name, orig_name,
+                                   ImportAliasStmt::Kind::TypeAlias, loc};
+        case ExportableKind::Value:
+        case ExportableKind::Directive:
+            // Unreachable: rejectUnsupportedAlias filters these before
+            // we reach the alias-emit path.
+            throw std::runtime_error(
+                "internal: makeAliasBinding invoked with unsupported kind for '" +
+                alias_name + "'");
+    }
+    // Unreachable under a well-formed ExportableKind switch.
+    throw std::runtime_error(
+        "internal: makeAliasBinding fallthrough for '" + alias_name + "'");
 }
 
 // Validate that an `as` alias is only requested for a supported kind.
-// In v0.0.23 (#1721) only `@const` alias is functional; the other kinds
-// (fn / record / enum / type alias) parse and reach the loader, but emitting
-// a binding that survives codegen requires the follow-up work tracked in
-// #1725. Throw a descriptive error so the user understands what to do.
+// Since #1725, alias is functional for `@const`, fn, record, enum, and
+// type-alias kinds; only Value (non-`@const` assignment) and Directive remain
+// rejected, both for semantic reasons documented in the issue scope.
 static void rejectUnsupportedAlias(ExportableKind kind,
                                     const std::string &name,
                                     const std::string &import_path,
                                     int line) {
-    if (kind == ExportableKind::Const) return;
-    std::string detail = "alias not supported for ";
     switch (kind) {
-        case ExportableKind::Fn:        detail += "function";              break;
-        case ExportableKind::Value:     detail += "non-@const assignment"; break;
-        case ExportableKind::Record:    detail += "record";                break;
-        case ExportableKind::Enum:      detail += "enum";                  break;
-        case ExportableKind::TypeAlias: detail += "type alias";            break;
-        case ExportableKind::Directive: detail += "directive";             break;
-        case ExportableKind::Const:     return;
+        case ExportableKind::Const:
+        case ExportableKind::Fn:
+        case ExportableKind::Record:
+        case ExportableKind::Enum:
+        case ExportableKind::TypeAlias:
+            return;
+        case ExportableKind::Value:
+        case ExportableKind::Directive: break;
     }
+    std::string detail = "alias not supported for ";
+    if (kind == ExportableKind::Value)
+        detail += "non-@const assignment";
+    else
+        detail += "directive";
     detail += " '";
     detail += name;
     detail += "' from module '";
     detail += import_path;
-    detail += "': only @const aliases are supported in v0.0.23 (tracked in #1725)";
+    detail += "': mutable globals and directives cannot be re-bound via 'as'";
     throw std::runtime_error(makeImportError(line, detail));
 }
 

@@ -553,6 +553,11 @@ public:
         std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
+    // Import aliases (`from m import f as g`) — alias name → original name.
+    // Used by `findFunction` to forward to `functions_[orig]` so OverloadEntry
+    // (which is non-copyable due to `unique_ptr<...> capturedClosureInfos`) does
+    // not have to be duplicated. Populated by emitStmt(ImportAliasStmt&).
+    std::unordered_map<std::string, std::string> fn_aliases_;
     std::unordered_set<llvm::Function*> forward_declared_fns_;
     // Lexical scope stack for nested named functions (parallel to scope_stack_)
     std::vector<std::unordered_map<std::string, std::vector<OverloadEntry>>> fn_scope_stack_;
@@ -582,6 +587,16 @@ public:
         }
     };
     std::unordered_map<std::string, RecordInfo> record_types_;
+    // Import aliases (`from m import R as P`) — alias → original. Used by the
+    // `findRecordType` helper so non-copyable `RecordInfo` (its `fields` /
+    // `invariants` hold `unique_ptr<TypeNode>` / `unique_ptr<ExprNode>`) does
+    // not need duplication. Populated by emitStmt(ImportAliasStmt&).
+    std::unordered_map<std::string, std::string> record_aliases_;
+    // Look up a record by user-visible name, walking `record_aliases_` so
+    // import aliases resolve to the original `record_types_` entry. Mirrors
+    // `findFunction` for fn aliases. Returns nullptr on miss.
+    RecordInfo *findRecordType(const std::string &name);
+    const RecordInfo *findRecordType(const std::string &name) const;
 
     // Type ID registry for typeOf builtin.
     // Each distinct type definition gets a unique id, allowing identity-based
@@ -630,6 +645,13 @@ public:
         int64_t type_id = -1;   // unique identity for typeOf
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
+    // Import aliases (`from m import E as C`) — alias → original. Mirrors
+    // `record_aliases_` / `fn_aliases_`. EnumInfo is technically copyable today
+    // but routing through this map keeps the alias mechanism uniform across
+    // kinds and avoids per-kind divergence as EnumInfo grows.
+    std::unordered_map<std::string, std::string> enum_aliases_;
+    EnumInfo *findEnumType(const std::string &name);
+    const EnumInfo *findEnumType(const std::string &name) const;
     EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
     std::string findRecordTypeName(llvm::StructType *st) const;
@@ -1224,6 +1246,7 @@ public:
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
     void emitStmt(QualifiedImportStmt &s);
+    void emitStmt(ImportAliasStmt &s);
     void emitStmt(RecordStmt &s);
     void emitStmt(TypeAliasStmt &s);
     void emitStmt(IndexAssignStmt &s);

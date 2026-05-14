@@ -515,6 +515,73 @@ std::vector<CodeGen::OverloadEntry> *CodeGen::findFunction(const std::string &na
     auto fit = functions_.find(name);
     if (fit != functions_.end())
         return &fit->second;
+    // Import alias fallback: `from m import f as g` registers `g → f` in
+    // `fn_aliases_`. Walk the chain (depth-limited) to support aliased
+    // re-exports without copying non-copyable `OverloadEntry`.
+    std::string cur = name;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto ait = fn_aliases_.find(cur);
+        if (ait == fn_aliases_.end()) break;
+        cur = ait->second;
+        auto rit = functions_.find(cur);
+        if (rit != functions_.end()) return &rit->second;
+    }
+    return nullptr;
+}
+
+CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) {
+    auto it = record_types_.find(name);
+    if (it != record_types_.end()) return &it->second;
+    std::string cur = name;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto ait = record_aliases_.find(cur);
+        if (ait == record_aliases_.end()) break;
+        cur = ait->second;
+        auto rit = record_types_.find(cur);
+        if (rit != record_types_.end()) return &rit->second;
+    }
+    return nullptr;
+}
+
+const CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) const {
+    auto it = record_types_.find(name);
+    if (it != record_types_.end()) return &it->second;
+    std::string cur = name;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto ait = record_aliases_.find(cur);
+        if (ait == record_aliases_.end()) break;
+        cur = ait->second;
+        auto rit = record_types_.find(cur);
+        if (rit != record_types_.end()) return &rit->second;
+    }
+    return nullptr;
+}
+
+CodeGen::EnumInfo *CodeGen::findEnumType(const std::string &name) {
+    auto it = enum_types_.find(name);
+    if (it != enum_types_.end()) return &it->second;
+    std::string cur = name;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto ait = enum_aliases_.find(cur);
+        if (ait == enum_aliases_.end()) break;
+        cur = ait->second;
+        auto rit = enum_types_.find(cur);
+        if (rit != enum_types_.end()) return &rit->second;
+    }
+    return nullptr;
+}
+
+const CodeGen::EnumInfo *CodeGen::findEnumType(const std::string &name) const {
+    auto it = enum_types_.find(name);
+    if (it != enum_types_.end()) return &it->second;
+    std::string cur = name;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto ait = enum_aliases_.find(cur);
+        if (ait == enum_aliases_.end()) break;
+        cur = ait->second;
+        auto rit = enum_types_.find(cur);
+        if (rit != enum_types_.end()) return &rit->second;
+    }
     return nullptr;
 }
 

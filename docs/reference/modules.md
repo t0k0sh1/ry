@@ -56,11 +56,12 @@ from math import sqrt as sr, PI, sin as s
 Self-alias (`foo as foo`) is normalized to a plain import — the formatter
 will round-trip it as `from math import foo`.
 
-**Limitation (v0.0.23)**: only `@const` aliases work end-to-end. Aliases
-for functions, records, enums, and type aliases are accepted by the
-parser but rejected by the module loader with a diagnostic pointing at
-follow-up issue [#1725](https://github.com/t0k0sh1/ry/issues/1725). Full
-alias support for those kinds is tracked there.
+Aliases work end-to-end for `@const` values, functions, records, enums,
+and type aliases. Aliases for mutable global values (non-`@const`
+assignments) and `@directive` definitions remain unsupported — mutable
+globals and directives cannot be re-bound via `as`. Aliases for generic
+functions and generic enums are also rejected today; non-generic forms
+work as expected.
 
 ### Braced Selective Import
 

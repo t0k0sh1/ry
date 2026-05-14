@@ -5,3 +5,26 @@ ORIGIN_X: int = 0
 @public
 @const
 ORIGIN_Y: int = 0
+
+@public
+fn rectArea(w: int, h: int) -> int:
+    return w * h
+
+@public
+record Point:
+    x: int
+    y: int
+
+@public
+enum Color:
+    Red
+    Green
+    Blue
+
+@public
+enum Shape:
+    Circle(radius: int)
+    Square(side: int)
+
+@public
+type Distance = int

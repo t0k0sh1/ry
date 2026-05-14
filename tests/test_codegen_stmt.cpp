@@ -870,90 +870,236 @@ TEST_F(ImportTest, ImportAliasValueRejected) {
         EXPECT_NE(msg.find("alias not supported for non-@const assignment 'counter'"),
                   std::string::npos)
             << "got: " << msg;
-        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
-    }
-}
-
-TEST_F(ImportTest, ImportAliasFunctionRejected) {
-    writeFile("fnmod.ry",
-        "fn rectArea(w: int, h: int) -> int:\n"
-        "    return w * h\n");
-    try {
-        runWithImports("from fnmod import rectArea as area\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("alias not supported for function 'rectArea'"),
+        EXPECT_NE(msg.find("mutable globals and directives cannot be re-bound"),
                   std::string::npos)
             << "got: " << msg;
-        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
     }
 }
 
-TEST_F(ImportTest, ImportAliasRecordRejected) {
+TEST_F(ImportTest, ImportAliasFunctionWorks) {
+    writeFile("fnmod.ry",
+        "@public\n"
+        "fn rectArea(w: int, h: int) -> int:\n"
+        "    return w * h\n");
+    EXPECT_EQ(runWithImports(
+        "from fnmod import rectArea as area\n"
+        "print(area(3, 4))"),
+        "12\n");
+}
+
+TEST_F(ImportTest, ImportAliasRecordWorks) {
     writeFile("recmod.ry",
+        "@public\n"
         "record Point:\n"
         "    x: int\n"
         "    y: int\n");
-    try {
-        runWithImports("from recmod import Point as P\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("alias not supported for record 'Point'"),
-                  std::string::npos)
-            << "got: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "from recmod import Point as P\n"
+        "p: P = P(7, 9)\n"
+        "print(p.x)\n"
+        "print(p.y)"),
+        "7\n9\n");
 }
 
-TEST_F(ImportTest, ImportAliasEnumRejected) {
+TEST_F(ImportTest, ImportAliasEnumWorks) {
     writeFile("enummod.ry",
+        "@public\n"
         "enum Color:\n"
         "    Red\n"
         "    Green\n");
-    try {
-        runWithImports("from enummod import Color as C\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("alias not supported for enum 'Color'"),
-                  std::string::npos)
-            << "got: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "from enummod import Color as C\n"
+        "c: C = C::Red\n"
+        "print(toStr(c))"),
+        "Red\n");
 }
 
-TEST_F(ImportTest, ImportAliasTypeAliasRejected) {
+TEST_F(ImportTest, ImportAliasTypeAliasWorks) {
     writeFile("tymod.ry",
+        "@public\n"
         "type Distance = int\n");
-    try {
-        runWithImports("from tymod import Distance as D\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("alias not supported for type alias 'Distance'"),
-                  std::string::npos)
-            << "got: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "from tymod import Distance as D\n"
+        "d: D = 42\n"
+        "print(d)"),
+        "42\n");
 }
 
-// Cache-hit path (`loaded_.count(abs_path) != 0`) also enforces the
-// rejection. Two `from <mod>` statements force the second one through
-// the cached branch.
-TEST_F(ImportTest, ImportAliasFunctionRejectedCacheHit) {
+// Cache-hit path (`loaded_.count(abs_path) != 0`) also handles the alias.
+// Two `from <mod>` statements force the second one through the cached branch.
+TEST_F(ImportTest, ImportAliasFunctionWorksCacheHit) {
     writeFile("fnmod2.ry",
+        "@public\n"
+        "fn helper() -> int:\n"
+        "    return 100\n");
+    EXPECT_EQ(runWithImports(
+        "from fnmod2\n"
+        "from fnmod2 import helper as h\n"
+        "print(h())"),
+        "100\n");
+}
+
+// Cache-hit path for record alias: second `from <mod>` triggers the cached
+// branch in module_loader. The alias still registers into record_types_.
+TEST_F(ImportTest, ImportAliasRecordWorksCacheHit) {
+    writeFile("recmod2.ry",
+        "@public\n"
+        "record Pt:\n"
+        "    x: int\n"
+        "    y: int\n");
+    EXPECT_EQ(runWithImports(
+        "from recmod2\n"
+        "from recmod2 import Pt as Q\n"
+        "q: Q = Q(5, 8)\n"
+        "print(q.x)"),
+        "5\n");
+}
+
+TEST_F(ImportTest, ImportAliasEnumWorksCacheHit) {
+    writeFile("enummod2.ry",
+        "@public\n"
+        "enum Mode:\n"
+        "    On\n"
+        "    Off\n");
+    EXPECT_EQ(runWithImports(
+        "from enummod2\n"
+        "from enummod2 import Mode as M\n"
+        "m: M = M::On\n"
+        "print(toStr(m))"),
+        "On\n");
+}
+
+TEST_F(ImportTest, ImportAliasTypeAliasWorksCacheHit) {
+    writeFile("tymod2.ry",
+        "@public\n"
+        "type Count = int\n");
+    EXPECT_EQ(runWithImports(
+        "from tymod2\n"
+        "from tymod2 import Count as N\n"
+        "n: N = 7\n"
+        "print(n)"),
+        "7\n");
+}
+
+// Overloaded function: alias must point at the entire OverloadEntry vector
+// so each arity is callable through the alias.
+TEST_F(ImportTest, ImportAliasFunctionOverload) {
+    writeFile("ovlmod.ry",
+        "@public\n"
+        "fn area(w: int) -> int:\n"
+        "    return w * w\n"
+        "@public\n"
+        "fn area(w: int, h: int) -> int:\n"
+        "    return w * h\n");
+    EXPECT_EQ(runWithImports(
+        "from ovlmod import area as a\n"
+        "print(a(5))\n"
+        "print(a(3, 4))"),
+        "25\n12\n");
+}
+
+// Record with parent: the parent_name field must travel with the alias.
+TEST_F(ImportTest, ImportAliasRecordWithParent) {
+    writeFile("parmod.ry",
+        "@public\n"
+        "record Animal:\n"
+        "    name: str\n"
+        "@public\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n");
+    EXPECT_EQ(runWithImports(
+        "from parmod import Dog as D\n"
+        "d: D = D(\"Rex\", \"Lab\")\n"
+        "print(d.name)\n"
+        "print(d.breed)"),
+        "Rex\nLab\n");
+}
+
+// ADT enum: pattern match on a variant through the alias.
+TEST_F(ImportTest, ImportAliasEnumAdtPatternMatch) {
+    writeFile("adtmod.ry",
+        "@public\n"
+        "enum Shape:\n"
+        "    Circle(radius: int)\n"
+        "    Square(side: int)\n");
+    EXPECT_EQ(runWithImports(
+        "from adtmod import Shape as S\n"
+        "s: S = S::Circle(5)\n"
+        "case s:\n"
+        "    S::Circle(r): print(r)\n"
+        "    S::Square(side): print(side)"),
+        "5\n");
+}
+
+// Type alias chain: `type B = int` in m, then `from m import B as X`. The
+// new alias X resolves through the chain to int.
+TEST_F(ImportTest, ImportAliasTypeAliasChain) {
+    writeFile("chainmod.ry",
+        "@public\n"
+        "type B = int\n");
+    EXPECT_EQ(runWithImports(
+        "from chainmod import B as X\n"
+        "y: X = 100\n"
+        "print(y)"),
+        "100\n");
+}
+
+// Self-collision: importing a name and aliasing it to itself should be
+// rejected by the alias's name-collision guard.
+TEST_F(ImportTest, ImportAliasNameCollision) {
+    writeFile("colmod.ry",
+        "@public\n"
         "fn helper() -> int:\n"
         "    return 1\n");
     try {
         runWithImports(
-            "from fnmod2\n"
-            "from fnmod2 import helper as h\n");
+            "fn helper() -> int:\n"
+            "    return 2\n"
+            "from colmod import helper as helper\n");
         FAIL() << "Expected exception";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("alias not supported for function 'helper'"),
-                  std::string::npos)
+        EXPECT_NE(msg.find("helper"), std::string::npos) << "got: " << msg;
+    }
+}
+
+// Generic fn alias is scope-out: the instantiation cache + mangle keys are
+// driven by the original name, so aliasing breaks them. Reject explicitly.
+TEST_F(ImportTest, ImportAliasGenericFnRejected) {
+    writeFile("genfnmod.ry",
+        "@public\n"
+        "fn identity<T>(x: T) -> T:\n"
+        "    return x\n");
+    try {
+        runWithImports(
+            "from genfnmod import identity as id\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("generic"), std::string::npos)
             << "got: " << msg;
-        EXPECT_NE(msg.find("#1725"), std::string::npos) << "got: " << msg;
+        EXPECT_NE(msg.find("identity"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Generic enum alias is scope-out for the same reasons as generic fn.
+TEST_F(ImportTest, ImportAliasGenericEnumRejected) {
+    writeFile("genenummod.ry",
+        "@public\n"
+        "enum Maybe<T>:\n"
+        "    Just(value: T)\n"
+        "    Nothing\n");
+    try {
+        runWithImports(
+            "from genenummod import Maybe as M\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("generic"), std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("Maybe"), std::string::npos)
+            << "got: " << msg;
     }
 }
 

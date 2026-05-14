@@ -163,13 +163,13 @@ void CodeGen::checkMatchExhaustiveness(
         }
     }
     if (!enumName.empty()) {
-        if (!enum_types_.count(enumName) && !subjectEnumName.empty()) {
+        if (!findEnumType(enumName) && !subjectEnumName.empty()) {
             auto ltPos = subjectEnumName.find('<');
             if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == enumName)
                 enumName = subjectEnumName;
         }
-        auto it = enum_types_.find(enumName);
-        if (it != enum_types_.end()) {
+        if (auto *einfoPtr = findEnumType(enumName)) {
+            auto &info = *einfoPtr;
             std::unordered_set<std::string> covered;
             for (auto &[pat, hasGuard] : armPatterns) {
                 if (!hasGuard) {
@@ -187,7 +187,7 @@ void CodeGen::checkMatchExhaustiveness(
                     }
                 }
             }
-            for (auto &[vname, _] : it->second.variants) {
+            for (auto &[vname, _] : info.variants) {
                 if (!covered.count(vname)) {
                     std::string exhaustMsg = "non-exhaustive match: missing variant '";
                     exhaustMsg += enumName;
@@ -289,20 +289,20 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             testResult = llvm::ConstantInt::get(i1Ty_, 1);
         } else if constexpr (std::is_same_v<T, EnumPattern>) {
             std::string resolvedEnum = pat.enum_name;
-            auto enumIt = enum_types_.find(resolvedEnum);
-            if (enumIt == enum_types_.end() && !subjectEnumName.empty()) {
+            auto *enumInfo = findEnumType(resolvedEnum);
+            if (!enumInfo && !subjectEnumName.empty()) {
                 auto ltPos = subjectEnumName.find('<');
                 if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat.enum_name) {
                     resolvedEnum = subjectEnumName;
-                    enumIt = enum_types_.find(resolvedEnum);
+                    enumInfo = findEnumType(resolvedEnum);
                 }
             }
-            if (enumIt == enum_types_.end())
+            if (!enumInfo)
                 codegenError("match: unknown enum '" + pat.enum_name + "'");
-            auto varIt = enumIt->second.variants.find(pat.variant_name);
-            if (varIt == enumIt->second.variants.end())
+            auto varIt = enumInfo->variants.find(pat.variant_name);
+            if (varIt == enumInfo->variants.end())
                 codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
-            if (enumIt->second.isADT) {
+            if (enumInfo->isADT) {
                 llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
                 testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second)), "match.adt_eq");
             } else {
@@ -311,25 +311,25 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
             std::string resolvedEnum = pat->enum_name;
-            auto enumIt = enum_types_.find(resolvedEnum);
-            if (enumIt == enum_types_.end() && !subjectEnumName.empty()) {
+            auto *enumInfo = findEnumType(resolvedEnum);
+            if (!enumInfo && !subjectEnumName.empty()) {
                 auto ltPos = subjectEnumName.find('<');
                 if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat->enum_name) {
                     resolvedEnum = subjectEnumName;
-                    enumIt = enum_types_.find(resolvedEnum);
+                    enumInfo = findEnumType(resolvedEnum);
                 }
             }
-            if (enumIt == enum_types_.end())
+            if (!enumInfo)
                 codegenError("match: unknown enum '" + pat->enum_name + "'");
-            if (!enumIt->second.isADT)
+            if (!enumInfo->isADT)
                 codegenError("match: constructor pattern requires ADT enum, but '" + pat->enum_name + "' is not ADT");
-            auto varIt = enumIt->second.variants.find(pat->variant_name);
-            if (varIt == enumIt->second.variants.end())
+            auto varIt = enumInfo->variants.find(pat->variant_name);
+            if (varIt == enumInfo->variants.end())
                 codegenError("match: unknown variant '" + pat->enum_name + "::" + pat->variant_name + "'");
             llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
             testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second)), "match.adt_eq");
-            auto fit = enumIt->second.variantFields.find(pat->variant_name);
-            if (fit != enumIt->second.variantFields.end() && !pat->bindings.empty()) {
+            auto fit = enumInfo->variantFields.find(pat->variant_name);
+            if (fit != enumInfo->variantFields.end() && !pat->bindings.empty()) {
                 const std::vector<Pattern> *fieldPats =
                     unwrapEnumPayloadTuple(pat->bindings, fit->second.fieldTypes.size());
                 // Branch on tag match so payload loads only run when the tag is correct.
@@ -345,7 +345,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "ecp.test.tmp");
                 builder_.CreateStore(subjectVal, tmpAlloca);
                 llvm::Value *payloadPtr = builder_.CreateStructGEP(
-                    enumIt->second.adtType, tmpAlloca, 1, "ecp.test.payload");
+                    enumInfo->adtType, tmpAlloca, 1, "ecp.test.payload");
                 const llvm::DataLayout &dl = mod_->getDataLayout();
                 size_t offset = 0;
                 llvm::Value *fieldsMatch = llvm::ConstantInt::get(i1Ty_, 1);
@@ -669,23 +669,22 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
             std::string resolvedEnum = pat->enum_name;
-            if (!enum_types_.count(resolvedEnum) && !subjectEnumName.empty()) {
+            if (!findEnumType(resolvedEnum) && !subjectEnumName.empty()) {
                 auto ltPos = subjectEnumName.find('<');
                 if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat->enum_name)
                     resolvedEnum = subjectEnumName;
             }
             // emitPatternTest already validated the enum; skip silently if lookup fails here.
-            auto enumIt = enum_types_.find(resolvedEnum);
-            if (enumIt != enum_types_.end()) {
-                auto fit = enumIt->second.variantFields.find(pat->variant_name);
-                if (fit != enumIt->second.variantFields.end()) {
+            if (auto *enumInfo = findEnumType(resolvedEnum)) {
+                auto fit = enumInfo->variantFields.find(pat->variant_name);
+                if (fit != enumInfo->variantFields.end()) {
                     const std::vector<Pattern> *fieldPats =
                         unwrapEnumPayloadTuple(pat->bindings, fit->second.fieldTypes.size());
                     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "adt.val");
                     llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "adt.tmp");
                     builder_.CreateStore(sv, tmpAlloca);
                     llvm::Value *payloadPtr = builder_.CreateStructGEP(
-                        enumIt->second.adtType, tmpAlloca, 1, "adt.payload");
+                        enumInfo->adtType, tmpAlloca, 1, "adt.payload");
                     const llvm::DataLayout &dl = mod_->getDataLayout();
                     size_t offset = 0;
                     for (size_t bi = 0; bi < fieldPats->size() && bi < fit->second.fieldTypes.size(); ++bi) {

@@ -279,6 +279,16 @@ struct QualifiedImportStmt {
     SourceLocation loc;
 };
 
+// Synthesized by ModuleLoader::makeAliasBinding for `from m import foo as bar` (#1725 — fn/record/enum/typealias kinds).
+// Const aliases stay on AssignStmt; Value/Directive aliases remain rejected upstream.
+struct ImportAliasStmt {
+    enum class Kind { Fn, Record, Enum, TypeAlias };
+    std::string alias_name;
+    std::string original_name;
+    Kind kind;
+    SourceLocation loc;
+};
+
 struct IndexAssignStmt {
     ExprPtr object;
     std::vector<ExprPtr> indices;
@@ -353,7 +363,7 @@ struct DirectiveDefStmt {
 };
 
 using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
-                              ReturnStmt, ImportStmt, QualifiedImportStmt, RecordStmt,
+                              ReturnStmt, ImportStmt, QualifiedImportStmt, ImportAliasStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
