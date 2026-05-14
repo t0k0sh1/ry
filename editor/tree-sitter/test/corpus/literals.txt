@@ -153,12 +153,52 @@ xs = [
       (integer_literal))))
 
 ==================
+list literal multi-line without trailing comma (#1727)
+==================
+
+xs = [
+  1,
+  2,
+  3
+]
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (list_literal
+      (integer_literal)
+      (integer_literal)
+      (integer_literal))))
+
+==================
 map literal multi-line with trailing comma (#1727)
 ==================
 
 m = {
   "a": 1,
   "b": 2,
+}
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (map_literal
+      key: (string_literal)
+      value: (integer_literal)
+      key: (string_literal)
+      value: (integer_literal))))
+
+==================
+map literal multi-line without trailing comma (#1727)
+==================
+
+m = {
+  "a": 1,
+  "b": 2
 }
 
 ---
@@ -180,6 +220,26 @@ s = {
   1,
   2,
   3,
+}
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (set_literal
+      (integer_literal)
+      (integer_literal)
+      (integer_literal))))
+
+==================
+set literal multi-line without trailing comma (#1727)
+==================
+
+s = {
+  1,
+  2,
+  3
 }
 
 ---
