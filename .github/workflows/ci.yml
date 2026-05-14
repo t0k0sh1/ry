@@ -134,6 +134,9 @@ jobs:
       - name: Build + Analyze
         # warn-only: triage existing findings before making this required.
         # Once findings are resolved, remove continue-on-error.
+        # PR runs analyse only the `ry` target (~76 TU) for faster feedback;
+        # push-to-main keeps full all-target coverage. See
+        # .claude/rules/ci-workflows.md "scan-build: --target ry on PR ...".
         continue-on-error: true
         run: |
           scan-build \
@@ -142,7 +145,7 @@ jobs:
             --use-c++=/usr/local/llvm/bin/clang++ \
             -o scan-build-report \
             --status-bugs \
-            cmake --build build
+            cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
       - name: Upload scan-build report
         if: always()
         uses: actions/upload-artifact@v4
