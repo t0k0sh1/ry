@@ -136,7 +136,7 @@ jobs:
         # Once findings are resolved, remove continue-on-error.
         # PR runs analyse only the `ry` target (~76 TU) for faster feedback;
         # push-to-main keeps full all-target coverage. See
-        # .claude/rules/ci-workflows.md "scan-build: --target ry on PR ...".
+        # .claude/rules/ci-workflows.md "Static-analysis PR scope: --target ry on PR ...".
         continue-on-error: true
         run: |
           scan-build \
