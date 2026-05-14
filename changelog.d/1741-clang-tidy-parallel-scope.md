@@ -6,7 +6,9 @@
   `ry_<pkg>` native shared libraries, and fuzz harnesses); the full
   all-target build is retained for `push` to `main`. The `cmake --build`
   invocation now also passes `--parallel`, and the `Run clang-tidy`
-  step now parallelises per-TU via `xargs -0 -P "$(nproc)"` instead of
-  running clang-tidy sequentially. The PR `--target ry` narrows only
+  step now parallelises per-TU via `xargs -0 -n 1 -P "$(nproc)"`
+  instead of running clang-tidy sequentially (`-n 1` is required —
+  otherwise xargs batches every `.cpp` path into a single clang-tidy
+  invocation and the `-P` flag does nothing). The PR `--target ry` narrows only
   the build step — clang-tidy still analyses every `src/*.cpp`
   (90 files) in both event modes. (#1741)

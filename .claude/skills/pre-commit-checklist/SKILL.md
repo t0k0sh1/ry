@@ -181,8 +181,10 @@ CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカル
 
 ```bash
 # macOS: sysctl -n hw.ncpu / Linux: nproc
+# -n 1 is required — xargs otherwise batches all .cpp paths into a single
+# clang-tidy invocation, defeating the -P parallelism.
 find src -name '*.cpp' -print0 \
-  | xargs -0 -P "$(sysctl -n hw.ncpu)" /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
+  | xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)" /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
 ```
 
 **PCH 互換性**: macOS で `cmake --preset default` (Apple clang が PCH 生成) の後に LLVM clang-tidy を実行すると `PCH file built from a different branch` で失敗することがある。`build/` を削除して LLVM clang を CC/CXX に明示してから再 configure する (`SDKROOT` も必須):

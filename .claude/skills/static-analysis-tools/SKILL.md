@@ -26,11 +26,11 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
   - **pull request**: `cmake --build build --target ry --parallel` で fast build (`src/main.cpp` + `ry_lib` ≒ ~76 TU)。`ry_tests` / native plugin / fuzz の TU build は省略
   - **push to main**: `cmake --build build --parallel` で full build (all target)
   - **注意**: `--target ry` は **build step のみ** narrowing する。clang-tidy 解析は両 event とも `find src -name '*.cpp'` で得られる全 90 ファイル (ry_lib に含まれない 14 TU を含む) を並列解析する
-- 解析は `xargs -0 -P "$(nproc)"` で TU 並列実行 (#1741)
+- 解析は `xargs -0 -n 1 -P "$(nproc)"` で TU 並列実行 (#1741)。`-n 1` は必須 — 省くと xargs が全 .cpp を 1 つの clang-tidy 呼び出しにまとめてしまい、`-P` の並列度が無効化される
 - ローカル実行 (macOS は `sysctl -n hw.ncpu`、Linux は `nproc`):
   ```bash
   find src -name '*.cpp' -print0 \
-    | xargs -0 -P "$(sysctl -n hw.ncpu)" clang-tidy -p build --quiet
+    | xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)" clang-tidy -p build --quiet
   ```
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 

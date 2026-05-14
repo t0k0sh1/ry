@@ -123,7 +123,7 @@ jobs:
       - name: Run clang-tidy
         run: |
           find src -name '*.cpp' -print0 \
-            | xargs -0 -P "$(nproc)" clang-tidy -p build --quiet
+            | xargs -0 -n 1 -P "$(nproc)" clang-tidy -p build --quiet
 
   scan-build:
     runs-on: ubuntu-24.04

@@ -466,8 +466,10 @@ build *and* the analysis to `ry_lib` + `src/main.cpp`. For clang-tidy,
 `src/*.cpp` (90 files, including TUs not built into `ry_lib` like
 `ry_<pkg>` native libs and fuzz harness sources). The PR-mode wins for
 clang-tidy are therefore (1) skipping the `ry_tests` / native-lib /
-fuzz build cost, and (2) the new `xargs -0 -P "$(nproc)"`
-parallelisation of the analysis step itself.
+fuzz build cost, and (2) the new `xargs -0 -n 1 -P "$(nproc)"`
+parallelisation of the analysis step itself. The `-n 1` is required:
+without it, xargs batches all `.cpp` paths into a single `clang-tidy`
+invocation that processes them sequentially, defeating `-P`.
 
 Do not invert the mapping (full on PR, fast on main); this would
 defeat the purpose of fast PR feedback and leave mainline with
@@ -491,9 +493,10 @@ depend on the wider coverage being produced by mainline runs.
   — do not flip them in the same change.
 - Local documentation in `.claude/skills/static-analysis-tools/SKILL.md`
   and `.claude/skills/pre-commit-checklist/SKILL.md` mirrors the same
-  fast / full split for `scan-build`, and the `xargs -0 -P "$(nproc)"`
-  / `xargs -0 -P "$(sysctl -n hw.ncpu)"` parallel form for clang-tidy,
-  so contributors can reproduce either mode locally. CodeQL has no
+  fast / full split for `scan-build`, and the
+  `xargs -0 -n 1 -P "$(nproc)"` /
+  `xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)"` parallel form for
+  clang-tidy, so contributors can reproduce either mode locally. CodeQL has no
   local-execution skill mirror because contributors do not run CodeQL
   locally — the GitHub `pull_request` event is the only entry point.
 - The inline workflow comment that cites this rule (in `ci.yml`
