@@ -594,18 +594,21 @@ Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
 
 Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_dir) {
     Program result;
-    // Track canonical module names whose `QualifiedImportStmt::definitions`
-    // have already been populated in this resolveImports run. The codegen-side
-    // `module_namespaces_` bucket is keyed by canonical name (#1730 alias
-    // indirection), so only the FIRST qimp per canonical may carry decls —
-    // any subsequent qimp for the same canonical (whether bare or aliased)
-    // must leave `definitions` empty, otherwise `forwardDeclareFunctions`
-    // walks both and `declareFunction` rejects the second emit with
-    // "fn 'X' is already defined with the same signature". Mixed-form
-    // scenarios that hit this: `import M` → `import M as X` → `from M import y`
-    // → `import M as Z` — step 3's inline invalidates qualified_only_user_loaded_,
-    // which then re-enables step 4's force-populate branch and re-extracts
-    // every decl into the second qimp's definitions.
+    // Track canonical resolved paths (`abs_path` from ResolvedPath) whose
+    // `QualifiedImportStmt::definitions` have already been populated in this
+    // resolveImports run. The codegen-side `module_namespaces_` bucket is
+    // keyed by canonical name (#1730 alias indirection), so only the FIRST
+    // qimp per canonical may carry decls — any subsequent qimp for the same
+    // canonical (whether bare or aliased) must leave `definitions` empty,
+    // otherwise `forwardDeclareFunctions` walks both and `declareFunction`
+    // rejects the second emit with "fn 'X' is already defined with the same
+    // signature". Mixed-form scenarios that hit this: `import M` → `import M
+    // as X` → `from M import y` → `import M as Z` — step 3's inline
+    // invalidates qualified_only_user_loaded_, which then re-enables step
+    // 4's force-populate branch and re-extracts every decl into the second
+    // qimp's definitions. Keyed by `abs_path` (not raw `qimp.module_name`)
+    // so equivalent imports of the same module via different spelling
+    // (relative vs absolute, symlink) share dedup state.
     std::unordered_set<std::string> canonicals_with_populated_qimp;
 
     for (auto &stmt : prog) {
@@ -654,7 +657,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             // `qimp.definitions`, producing duplicate-signature errors at
             // forward-declare time.
             bool canonical_already_populated = !rp.from_stdlib &&
-                canonicals_with_populated_qimp.count(qimp.module_name) > 0;
+                canonicals_with_populated_qimp.count(abs_path) > 0;
 
             if (!rp.from_stdlib && loaded_.count(abs_path) &&
                 !qualified_only_user_loaded_.count(abs_path) &&
@@ -689,7 +692,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             Program &push_target = rp.from_stdlib ? result : qimp.definitions;
             if (!rp.from_stdlib) {
                 qualified_only_user_loaded_.insert(abs_path);
-                canonicals_with_populated_qimp.insert(qimp.module_name);
+                canonicals_with_populated_qimp.insert(abs_path);
             }
             if (rp.is_directory) {
                 loading_.insert(abs_path);
