@@ -180,7 +180,9 @@ CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカル
 **clang-tidy** (required):
 
 ```bash
-find src -name '*.cpp' | xargs /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
+# macOS: sysctl -n hw.ncpu / Linux: nproc
+find src -name '*.cpp' -print0 \
+  | xargs -0 -P "$(sysctl -n hw.ncpu)" /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
 ```
 
 **PCH 互換性**: macOS で `cmake --preset default` (Apple clang が PCH 生成) の後に LLVM clang-tidy を実行すると `PCH file built from a different branch` で失敗することがある。`build/` を削除して LLVM clang を CC/CXX に明示してから再 configure する (`SDKROOT` も必須):

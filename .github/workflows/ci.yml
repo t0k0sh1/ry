@@ -111,13 +111,19 @@ jobs:
             ci-clang-tidy-${{ github.ref }}-
             ci-clang-tidy-
       - name: Build
+        # PR runs build only the `ry` target (~76 TU) for faster feedback;
+        # push-to-main keeps full all-target coverage so clang-tidy has the
+        # same compile_commands.json input as on developer machines. See
+        # .claude/rules/ci-workflows.md "Static-analysis PR scope: --target ry on PR ...".
+        # NOTE: --target ry narrows only the *build* step here; clang-tidy
+        # itself still analyses every file matched by `find src -name '*.cpp'`.
         run: |
           cmake --preset default
-          cmake --build build
+          cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
       - name: Run clang-tidy
         run: |
-          find src -name '*.cpp' \
-            | xargs clang-tidy -p build --quiet
+          find src -name '*.cpp' -print0 \
+            | xargs -0 -P "$(nproc)" clang-tidy -p build --quiet
 
   scan-build:
     runs-on: ubuntu-24.04

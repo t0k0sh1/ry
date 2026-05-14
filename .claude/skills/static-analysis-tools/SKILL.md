@@ -22,7 +22,16 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 - `HeaderFilterRegex` はプロジェクトヘッダ (`include/ry/`) のみに制限
 - LLVM / GoogleTest ヘッダは SYSTEM include のため自動除外
 - `compile_commands.json` は `CMAKE_EXPORT_COMPILE_COMMANDS=ON` で自動生成（`build/` 内）
-- ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
+- CI は event に応じて build スコープを切り替える (#1741):
+  - **pull request**: `cmake --build build --target ry --parallel` で fast build (`src/main.cpp` + `ry_lib` ≒ ~76 TU)。`ry_tests` / native plugin / fuzz の TU build は省略
+  - **push to main**: `cmake --build build --parallel` で full build (all target)
+  - **注意**: `--target ry` は **build step のみ** narrowing する。clang-tidy 解析は両 event とも `find src -name '*.cpp'` で得られる全 90 ファイル (ry_lib に含まれない 14 TU を含む) を並列解析する
+- 解析は `xargs -0 -P "$(nproc)"` で TU 並列実行 (#1741)
+- ローカル実行 (macOS は `sysctl -n hw.ncpu`、Linux は `nproc`):
+  ```bash
+  find src -name '*.cpp' -print0 \
+    | xargs -0 -P "$(sysctl -n hw.ncpu)" clang-tidy -p build --quiet
+  ```
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 
 ### Platform-specific false positives (libc++ vs libstdc++)
