@@ -870,15 +870,40 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
     const std::string &alias = s.alias_name;
     const std::string &orig = s.original_name;
 
+    // Cross-kind alias-map + generic-template collision check. Each case below
+    // already rejects same-kind collisions against its own primary table +
+    // alias map; this lambda fills in the missing cross-kind checks
+    // (e.g. fn alias `X` then record alias `X`, or fn alias `X` then a
+    // generic fn template named `X` defined later in this module).
+    // `rejectIfTypeNameTakenByOtherKind` covers cross-kind *type* collisions
+    // (record / enum / generic enum / type-alias) but does not see the new
+    // fn/record/enum alias maps or `generic_fn_templates_`.
+    auto rejectCrossKindAliasCollision = [&](ImportAliasStmt::Kind incoming) {
+        if (incoming != ImportAliasStmt::Kind::Fn &&
+            (fn_aliases_.count(alias) || generic_fn_templates_.count(alias)))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing function alias or generic function template");
+        if (incoming != ImportAliasStmt::Kind::Record &&
+            record_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing record alias");
+        if (incoming != ImportAliasStmt::Kind::Enum &&
+            enum_aliases_.count(alias))
+            codegenError("import alias '" + alias +
+                         "' conflicts with an existing enum alias");
+    };
+
     switch (s.kind) {
     case ImportAliasStmt::Kind::Fn: {
         // OverloadEntry holds `unique_ptr<...> capturedClosureInfos` and is
         // therefore non-copyable. Route alias lookups through `fn_aliases_`
         // (consulted by `findFunction`) rather than duplicating the entry.
-        if (functions_.count(alias) || fn_aliases_.count(alias))
+        if (functions_.count(alias) || fn_aliases_.count(alias) ||
+            generic_fn_templates_.count(alias))
             codegenError("import alias '" + alias +
                          "' conflicts with an existing function definition");
         rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Fn);
         if (generic_fn_templates_.count(orig))
             codegenError("import alias for generic function '" + orig +
                          "' is not yet supported (tracked as a follow-up to #1725)");
@@ -896,6 +921,7 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
             codegenError("import alias '" + alias +
                          "' conflicts with an existing record definition");
         rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Record);
         if (!record_types_.count(orig))
             codegenError("cannot create import alias '" + alias +
                          "': record '" + orig + "' is not defined");
@@ -912,6 +938,7 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
             codegenError("import alias '" + alias +
                          "' conflicts with an existing enum definition");
         rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Enum);
         if (generic_enum_templates_.count(orig))
             codegenError("import alias for generic enum '" + orig +
                          "' is not yet supported (tracked as a follow-up to #1725)");
@@ -928,6 +955,7 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
             codegenError("import alias '" + alias +
                          "' conflicts with an existing type alias");
         rejectIfTypeNameTakenByOtherKind(alias);
+        rejectCrossKindAliasCollision(ImportAliasStmt::Kind::TypeAlias);
         if (!type_aliases_.count(orig))
             codegenError("cannot create import alias '" + alias +
                          "': type alias '" + orig + "' is not defined");

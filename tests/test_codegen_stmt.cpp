@@ -1044,9 +1044,9 @@ TEST_F(ImportTest, ImportAliasTypeAliasChain) {
         "100\n");
 }
 
-// Self-collision: importing a name and aliasing it to itself should be
-// rejected by the alias's name-collision guard.
-TEST_F(ImportTest, ImportAliasNameCollision) {
+// An import alias whose chosen name shadows a local definition in the
+// importing module must be rejected by the alias's name-collision guard.
+TEST_F(ImportTest, ImportAliasCollidesWithLocalDefinition) {
     writeFile("colmod.ry",
         "@public\n"
         "fn helper() -> int:\n"
