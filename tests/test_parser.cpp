@@ -989,8 +989,8 @@ TEST(ParserTest, ImportBracedRejectsBadAlias) {
 TEST(ParserTest, QualifiedImportSingleModule) {
     Program prog = parseStr("import math");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
-    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(prog[0]));
+    const auto &qi = *std::get<std::unique_ptr<QualifiedImportStmt>>(prog[0]);
     EXPECT_EQ(qi.module_name, "math");
     EXPECT_FALSE(qi.alias.has_value());
 }
@@ -1035,8 +1035,8 @@ TEST(ParserTest, QualifiedImportAsRegistersAlias) {
     // requires flipping (not deleting) existing EXPECT_THROW tests".
     Program prog = parseStr("import math as m");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
-    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(prog[0]));
+    const auto &qi = *std::get<std::unique_ptr<QualifiedImportStmt>>(prog[0]);
     EXPECT_EQ(qi.module_name, "math");
     ASSERT_TRUE(qi.alias.has_value());
     EXPECT_EQ(*qi.alias, "m");
@@ -1086,7 +1086,7 @@ TEST(ParserTest, QualifiedImportSelfAliasIsAccepted) {
     // to bare `import math` — the effective name is 'math' in both cases.
     Program prog = parseStr("import math as math");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &qi = std::get<QualifiedImportStmt>(prog[0]);
+    const auto &qi = *std::get<std::unique_ptr<QualifiedImportStmt>>(prog[0]);
     EXPECT_EQ(qi.module_name, "math");
     ASSERT_TRUE(qi.alias.has_value());
     EXPECT_EQ(*qi.alias, "math");
@@ -1173,7 +1173,7 @@ TEST(ParserTest, QualifiedImportCoexistsWithSelectiveImport) {
     // file. The parser must not reject the combination.
     Program prog = parseStr("import math\nfrom math import PI");
     ASSERT_EQ(prog.size(), 2u);
-    ASSERT_TRUE(std::holds_alternative<QualifiedImportStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(prog[0]));
     ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[1]));
 }
 

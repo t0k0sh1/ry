@@ -1073,6 +1073,19 @@ void CodeGen::emitStmt(AssignStmt &s) {
             auto it = scope_stack_[0].find(s.name);
             if (it != scope_stack_[0].end() && it->second != nullptr)
                 registerModuleGlobal(s.name, it->second, is_const);
+            // Qualified-imported user-defined module (#1730): keep the namespace
+            // bucket as the sole source of truth. emitVarDecl added the alloca
+            // to scope_stack_[0] / immutable_scope_stack_[0]; remove those
+            // entries so (a) AC4 bare-name isolation holds (importer code that
+            // only writes `import usermod` cannot read bare `ANSWER`), and
+            // (b) the AC3 re-extract wildcard push, which inserts a duplicate
+            // top-level AssignStmt for every exportable @const, does not see
+            // an existing alloca via findVar and mis-fire as a reassignment.
+            if (current_namespace_target_) {
+                scope_stack_[0].erase(s.name);
+                if (!immutable_scope_stack_.empty())
+                    immutable_scope_stack_[0].erase(s.name);
+            }
         }
         return;
     }

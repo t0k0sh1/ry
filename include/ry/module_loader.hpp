@@ -63,6 +63,15 @@ private:
     SourceManager *sm_ = nullptr;
     std::unordered_set<std::string> loaded_;
     std::unordered_set<std::string> loading_;
+    // Modules that were loaded via `import <mod>` (qualified-only) to a
+    // user-defined module — their decls landed in `QualifiedImportStmt::definitions`
+    // and were NOT inlined to the top-level Program. If a subsequent
+    // `from <mod> import x` references the same module, the cache-hit branch
+    // would normally short-circuit without pushing decls anywhere; this set
+    // forces re-extract so the requested names reach the top-level Program
+    // (AC3 of #1730). Stdlib modules are not tracked here because their decls
+    // are still inlined to `result` on first load.
+    std::unordered_set<std::string> qualified_only_user_loaded_;
     // Cache: abs_path -> map of exported name -> is_public flag (true if @public).
     // Stores every exportable kind (functions, records, lets, enums, type
     // aliases, directive defs), so the name "fn" no longer applies — kept as

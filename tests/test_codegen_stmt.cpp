@@ -1929,104 +1929,57 @@ TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
     EXPECT_EQ(intrinsics, expected);
 }
 
-// Qualified import — user-defined module call rejection (#1723).
-// Triggers the codegen branch in `emitCall` that rejects qualified calls
-// on user-defined modules; covered as a v0.0.23 limitation pointing users
-// at the selective-import form.
-TEST_F(ImportTest, QualifiedImportUserDefinedModuleCallRejected) {
+// Qualified import — user-defined module call works (#1730).
+// Previously rejected as a v0.0.23 limitation; with the namespace-isolation
+// rewrite (#1730), `import usermod` + `usermod.greet()` resolves through the
+// per-module namespace bucket on CodeGen.
+TEST_F(ImportTest, QualifiedImportUserDefinedModuleCallWorks) {
     writeFile("mymod.ry",
         "fn greet() -> int:\n"
         "    return 7\n");
-    try {
-        runWithImports(
-            "import mymod\n"
-            "print(mymod.greet())\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("qualified call to user-defined module 'mymod'"),
-                  std::string::npos)
-            << "got: " << msg;
-        EXPECT_NE(msg.find("from mymod import greet"), std::string::npos)
-            << "got: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "import mymod\n"
+        "print(mymod.greet())\n"), "7\n");
 }
 
-// Qualified import — user-defined module field access rejection (#1723).
-// Triggers the codegen branch in field-access lowering that rejects
-// qualified const access on user-defined modules.
-TEST_F(ImportTest, QualifiedImportUserDefinedModuleFieldRejected) {
+// Qualified import — user-defined module field access works (#1730).
+// `@const` declarations now route through `ModuleNamespaceInfo::consts`
+// when emitted under `NamespaceEmitScope`; qualified field-access reads
+// from that bucket via the namespace `consts` map.
+TEST_F(ImportTest, QualifiedImportUserDefinedModuleFieldWorks) {
     writeFile("constmod2.ry",
         "@directive(target=[\"statement\"])\n"
         "fn const()\n"
         "@const\n"
         "ANSWER: int = 42\n");
-    try {
-        runWithImports(
-            "import constmod2\n"
-            "print(constmod2.ANSWER)\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("qualified field access on user-defined module 'constmod2'"),
-                  std::string::npos)
-            << "got: " << msg;
-        EXPECT_NE(msg.find("from constmod2 import ANSWER"), std::string::npos)
-            << "got: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "import constmod2\n"
+        "print(constmod2.ANSWER)\n"), "42\n");
 }
 
-// Qualified import alias — user-defined module rejection error must quote the
-// ORIGINAL module name (the actual file basename), not the alias (#1724).
-// Without `ModuleNamespaceInfo::original_name` tracking the redirect text
-// would suggest `from m import greet`, which doesn't resolve because the file
-// is `mymod.ry`.
-TEST_F(ImportTest, QualifiedImportAliasUserDefinedModuleErrorUsesOriginalName) {
+// Qualified import alias — user-defined module call works with alias (#1730).
+// `import mymod_alias_call as m` registers the module under effective alias `m`
+// while preserving `original_name = "mymod_alias_call"`; the qualified call
+// `m.greet()` dispatches through the namespace bucket keyed by `m`.
+TEST_F(ImportTest, QualifiedImportAliasUserDefinedModuleCallWorks) {
     writeFile("mymod_alias_call.ry",
         "fn greet() -> int:\n"
         "    return 7\n");
-    try {
-        runWithImports(
-            "import mymod_alias_call as m\n"
-            "print(m.greet())\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("qualified call to user-defined module 'm'"),
-                  std::string::npos)
-            << "got: " << msg;
-        // The redirect must point at the original module name, not the alias.
-        EXPECT_NE(msg.find("from mymod_alias_call import greet"),
-                  std::string::npos)
-            << "redirect must use original module name, not alias: " << msg;
-        EXPECT_EQ(msg.find("from m import greet"), std::string::npos)
-            << "redirect must NOT use the alias as the module name: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "import mymod_alias_call as m\n"
+        "print(m.greet())\n"), "7\n");
 }
 
-// Qualified import alias — field-access redirect mirrors the call-site fix.
-TEST_F(ImportTest, QualifiedImportAliasUserDefinedFieldErrorUsesOriginalName) {
+// Qualified import alias — user-defined module field access works with alias (#1730).
+TEST_F(ImportTest, QualifiedImportAliasUserDefinedFieldWorks) {
     writeFile("mymod_alias_field.ry",
         "@directive(target=[\"statement\"])\n"
         "fn const()\n"
         "@const\n"
         "ANSWER: int = 42\n");
-    try {
-        runWithImports(
-            "import mymod_alias_field as m\n"
-            "print(m.ANSWER)\n");
-        FAIL() << "Expected exception";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("qualified field access on user-defined module 'm'"),
-                  std::string::npos)
-            << "got: " << msg;
-        EXPECT_NE(msg.find("from mymod_alias_field import ANSWER"),
-                  std::string::npos)
-            << "redirect must use original module name, not alias: " << msg;
-        EXPECT_EQ(msg.find("from m import ANSWER"), std::string::npos)
-            << "redirect must NOT use the alias as the module name: " << msg;
-    }
+    EXPECT_EQ(runWithImports(
+        "import mymod_alias_field as m\n"
+        "print(m.ANSWER)\n"), "42\n");
 }
 
 // Qualified import — user-defined module must NOT leak bare names into caller (#1723, CR review).
@@ -2048,6 +2001,125 @@ TEST_F(ImportTest, QualifiedImportUserDefinedDoesNotLeakBareNames) {
         EXPECT_NE(msg.find("undefined function: greet"), std::string::npos)
             << "got: " << msg;
     }
+}
+
+// Qualified import — user-defined module `@const` must NOT leak bare names
+// into caller (#1730 AC4). Mirrors `QualifiedImportUserDefinedDoesNotLeakBareNames`
+// but for `@const` declarations. `AssignStmt` is the only namespace-routed kind
+// that flows through `emitVarDecl` (which adds to `scope_stack_[0]` unconditionally);
+// without the scope_stack_[0]/immutable_scope_stack_[0] cleanup after
+// `registerModuleGlobal`, a bare reference to the namespaced const would resolve
+// via the top-level scope alloca and break AC4 isolation.
+TEST_F(ImportTest, QualifiedImportUserDefinedDoesNotLeakBareConst) {
+    writeFile("leakconst.ry",
+        "@directive(target=[\"statement\"])\n"
+        "fn const()\n"
+        "@const\n"
+        "ANSWER: int = 42\n");
+    try {
+        runWithImports(
+            "import leakconst\n"
+            "print(ANSWER)\n");
+        FAIL() << "Expected exception (bare 'ANSWER' must not resolve through qualified import)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("ANSWER"), std::string::npos) << "got: " << msg;
+    }
+}
+
+// Qualified import — generic functions in user-defined modules are explicitly
+// rejected with an actionable error (#1730 scope-out).
+// Generic fn declarations route through `generic_fn_templates_` flat-table,
+// which the per-module namespace bucket cannot intercept; reject under
+// `NamespaceEmitScope` with a redirect to the `from <mod> import <fn>` form.
+TEST_F(ImportTest, QualifiedImportUserDefinedGenericFnRejected) {
+    writeFile("genmod.ry",
+        "fn id<T>(x: T) -> T:\n"
+        "    return x\n");
+    try {
+        runWithImports(
+            "import genmod\n"
+            "print(genmod.id(7))\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("generic functions in qualified-imported user-defined modules"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Qualified import — `enum` declarations in user-defined modules are
+// explicitly rejected (#1730 scope-out). Enums register via the flat
+// `enum_types_` table; the per-module namespace bucket has no slot for
+// them. Reject under `NamespaceEmitScope` with an actionable error.
+TEST_F(ImportTest, QualifiedImportUserDefinedEnumRejected) {
+    writeFile("enummod.ry",
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n");
+    try {
+        runWithImports(
+            "import enummod\n"
+            "print(0)\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("enum declarations in qualified-imported user-defined modules"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Qualified import — `type` aliases in user-defined modules are
+// explicitly rejected (#1730 scope-out). Type aliases register via the
+// flat `type_aliases_` table; the per-module namespace bucket has no slot
+// for them. Reject under `NamespaceEmitScope` with an actionable error.
+TEST_F(ImportTest, QualifiedImportUserDefinedTypeAliasRejected) {
+    writeFile("aliasmod.ry",
+        "type Age = int\n");
+    try {
+        runWithImports(
+            "import aliasmod\n"
+            "print(0)\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("type alias declarations in qualified-imported user-defined modules"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Qualified import — `import usermod` followed by `from usermod import foo`
+// must reuse the cached AST so the selective form sees `foo` (AC3 from #1730).
+TEST_F(ImportTest, QualifiedImportThenSelectiveImportReusesCache) {
+    writeFile("cachemod.ry",
+        "fn greet() -> int:\n"
+        "    return 42\n");
+    EXPECT_EQ(runWithImports(
+        "import cachemod\n"
+        "from cachemod import greet\n"
+        "print(greet())\n"
+        "print(cachemod.greet())\n"), "42\n42\n");
+}
+
+// Qualified import — record constructor in user-defined module works (#1730).
+// `usermod.MyRecord(...)` resolves through `ModuleNamespaceInfo::records`
+// when `NamespaceEmitScope` reroutes record registration during import emission.
+// Note: qualified type annotations (`p: recmod.Point = ...`) are not yet
+// supported by the parser; rely on inference for the let binding.
+TEST_F(ImportTest, QualifiedImportUserDefinedRecordConstructor) {
+    writeFile("recmod.ry",
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n");
+    EXPECT_EQ(runWithImports(
+        "import recmod\n"
+        "p = recmod.Point(3, 4)\n"
+        "print(p.x)\n"
+        "print(p.y)\n"), "3\n4\n");
 }
 
 // ===== type alias =====

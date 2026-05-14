@@ -512,6 +512,15 @@ std::vector<CodeGen::OverloadEntry> *CodeGen::findFunction(const std::string &na
         if (found != it->end())
             return &found->second;
     }
+    // When emitting decls inside a qualified-imported user-defined module,
+    // peer fns live in the namespace bucket — check it first so intra-module
+    // calls resolve. After NamespaceEmitScope exits, this branch is skipped,
+    // preserving bare-name isolation (AC4).
+    if (current_namespace_target_) {
+        auto nsit = current_namespace_target_->fn_overloads.find(name);
+        if (nsit != current_namespace_target_->fn_overloads.end())
+            return &nsit->second;
+    }
     auto fit = functions_.find(name);
     if (fit != functions_.end())
         return &fit->second;
@@ -530,6 +539,11 @@ std::vector<CodeGen::OverloadEntry> *CodeGen::findFunction(const std::string &na
 }
 
 CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) {
+    if (current_namespace_target_) {
+        auto nsit = current_namespace_target_->records.find(name);
+        if (nsit != current_namespace_target_->records.end())
+            return &nsit->second;
+    }
     auto it = record_types_.find(name);
     if (it != record_types_.end()) return &it->second;
     std::string cur = name;
@@ -544,6 +558,11 @@ CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) {
 }
 
 const CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) const {
+    if (current_namespace_target_) {
+        auto nsit = current_namespace_target_->records.find(name);
+        if (nsit != current_namespace_target_->records.end())
+            return &nsit->second;
+    }
     auto it = record_types_.find(name);
     if (it != record_types_.end()) return &it->second;
     std::string cur = name;
@@ -554,6 +573,24 @@ const CodeGen::RecordInfo *CodeGen::findRecordType(const std::string &name) cons
         auto rit = record_types_.find(cur);
         if (rit != record_types_.end()) return &rit->second;
     }
+    return nullptr;
+}
+
+CodeGen::RecordInfo *CodeGen::findRecordInfoForType(llvm::StructType *st) {
+    for (auto &[name, info] : record_types_)
+        if (info.llvmType == st) return &info;
+    for (auto &[mod, ns] : module_namespaces_)
+        for (auto &[name, info] : ns.records)
+            if (info.llvmType == st) return &info;
+    return nullptr;
+}
+
+const CodeGen::RecordInfo *CodeGen::findRecordInfoForType(llvm::StructType *st) const {
+    for (auto &[name, info] : record_types_)
+        if (info.llvmType == st) return &info;
+    for (auto &[mod, ns] : module_namespaces_)
+        for (auto &[name, info] : ns.records)
+            if (info.llvmType == st) return &info;
     return nullptr;
 }
 
@@ -598,6 +635,11 @@ bool CodeGen::isImmutable(const std::string &name) const {
         if (it->count(name))
             return false;
     }
+    if (current_namespace_target_) {
+        auto nsit = current_namespace_target_->consts.find(name);
+        if (nsit != current_namespace_target_->consts.end() && nsit->second.is_immutable)
+            return true;
+    }
     auto mit = module_globals_.find(name);
     if (mit != module_globals_.end() && mit->second.is_immutable)
         return true;
@@ -607,6 +649,14 @@ bool CodeGen::isImmutable(const std::string &name) const {
 // ===== Module-level bindings (#817) =====
 
 const CodeGen::ModuleBinding *CodeGen::findModuleGlobal(const std::string &name) const {
+    // While inside a NamespaceEmitScope, peer @const lookups go to the
+    // namespace bucket first. After the scope exits, bare-name lookup of
+    // namespaced consts must not succeed (AC4).
+    if (current_namespace_target_) {
+        auto nsit = current_namespace_target_->consts.find(name);
+        if (nsit != current_namespace_target_->consts.end())
+            return &nsit->second;
+    }
     auto it = module_globals_.find(name);
     if (it == module_globals_.end())
         return nullptr;
@@ -616,6 +666,12 @@ const CodeGen::ModuleBinding *CodeGen::findModuleGlobal(const std::string &name)
 void CodeGen::registerModuleGlobal(const std::string &name,
                                     llvm::AllocaInst *alloca,
                                     bool is_immutable) {
+    // Qualified-import of user-defined module: route into namespace bucket
+    // instead of the flat module_globals_, preserving AC4 isolation.
+    bool isNamespaced = current_namespace_target_ != nullptr;
+    std::string trampolineName = isNamespaced
+        ? "__ry_modvar_" + current_namespace_target_->original_name + "__" + name
+        : "__ry_modvar_" + name;
     // The trampoline is a private module-level pointer variable initialized to
     // null at module load; __ry_main__ stores the alloca address into it just
     // after the alloca is materialized, so lookups from other top-level
@@ -627,7 +683,7 @@ void CodeGen::registerModuleGlobal(const std::string &name,
         /*isConstant=*/false,
         llvm::GlobalValue::PrivateLinkage,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
-        "__ry_modvar_" + name);
+        trampolineName);
     // Store the alloca address into the trampoline global at __ry_main__'s
     // current insert point, which is source-order during the top-level loop.
     builder_.CreateStore(alloca, gv);
@@ -647,7 +703,10 @@ void CodeGen::registerModuleGlobal(const std::string &name,
     mb.is_resource = resource_managed_vars_.count(alloca) > 0;
     mb.is_str = arc_str_managed_vars_.count(alloca) > 0;
     mb.destructor = resolveDestructor(alloca);
-    module_globals_[name] = mb;
+    if (isNamespaced)
+        current_namespace_target_->consts[name] = mb;
+    else
+        module_globals_[name] = mb;
 }
 
 llvm::Value *CodeGen::loadModuleGlobalStorage(const ModuleBinding &b,

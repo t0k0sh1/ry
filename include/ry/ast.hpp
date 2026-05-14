@@ -272,12 +272,12 @@ struct ImportStmt {
     SourceLocation loc;
 };
 
-struct QualifiedImportStmt {
-    std::string module_name;              // single identifier — multi-segment paths rejected at parse time
-    std::optional<std::string> alias;     // reserved for #1724 (`import xxx as yyy`); parser currently rejects non-empty
-    bool is_stdlib = false;               // set by ModuleLoader::resolveImports — gates qualified-call routing in CodeGen (stdlib dispatch vs. user-fn error in v0.0.23)
-    SourceLocation loc;
-};
+// `QualifiedImportStmt` is held by `unique_ptr` in `StmtNode` (#1730) because
+// its `definitions` field is a `Program` whose element type `StmtNode` is the
+// variant itself — a value-type alternative would require completeness before
+// the variant is defined, which is impossible. Full definition lives after the
+// `Program` alias below.
+struct QualifiedImportStmt;
 
 // Synthesized by ModuleLoader::makeAliasBinding for `from m import foo as bar` (#1725 — fn/record/enum/typealias kinds).
 // Const aliases stay on AssignStmt; Value/Directive aliases remain rejected upstream.
@@ -363,7 +363,7 @@ struct DirectiveDefStmt {
 };
 
 using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
-                              ReturnStmt, ImportStmt, QualifiedImportStmt, ImportAliasStmt, RecordStmt,
+                              ReturnStmt, ImportStmt, std::unique_ptr<QualifiedImportStmt>, ImportAliasStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
@@ -375,6 +375,18 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               std::unique_ptr<FnStmt>,
                               std::unique_ptr<CaseStmt>>;
 using Program  = std::vector<StmtNode>;
+
+struct QualifiedImportStmt {
+    std::string module_name;              // single identifier — multi-segment paths rejected at parse time
+    std::optional<std::string> alias;     // `import xxx as yyy` (#1724); parser stores user's alias if present
+    bool is_stdlib = false;               // set by ModuleLoader::resolveImports — stdlib still inlines into the top-level Program; user-defined modules carry decls in `definitions` (#1730)
+    // User-defined module decls extracted by ModuleLoader (#1730). Empty for
+    // stdlib (which still inlines into the top-level Program for native-fn
+    // signature registration). Codegen emits these under a namespace bucket
+    // keyed by the effective alias so bare names do not leak.
+    Program definitions;
+    SourceLocation loc;
+};
 
 // ===== Match patterns =====
 

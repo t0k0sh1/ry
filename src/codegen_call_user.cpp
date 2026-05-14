@@ -8,8 +8,9 @@ namespace ry {
 
 llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                                           const std::vector<ExprPtr> &args,
-                                          std::vector<llvm::Value*> &outArgVals) {
-    auto *overloadsPtr = findFunction(callee);
+                                          std::vector<llvm::Value*> &outArgVals,
+                                          std::vector<OverloadEntry> *explicitOverloads) {
+    auto *overloadsPtr = explicitOverloads ? explicitOverloads : findFunction(callee);
     if (!overloadsPtr) {
         if (native_fn_sigs_.count(callee) || native_lib_index_.count(callee)) {
             codegenError("no matching overload for @native fn '" + callee + "'");
@@ -230,15 +231,16 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     return chosen->func;
 }
 
-llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args) {
+llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args,
+                                     std::vector<OverloadEntry> *explicitOverloads) {
     if (deprecated_functions_.count(callee))
         emitDeprecationWarning(callee);
     std::vector<llvm::Value*> argVals;
-    llvm::Function *fn = resolveOverload(callee, args, argVals);
+    llvm::Function *fn = resolveOverload(callee, args, argVals, explicitOverloads);
 
     // Find the matching overload entry (single scan for constraints + result type)
     OverloadEntry *matchedEntry = nullptr;
-    auto *fnOverloads = findFunction(callee);
+    auto *fnOverloads = explicitOverloads ? explicitOverloads : findFunction(callee);
     if (fnOverloads) {
         for (auto &entry : *fnOverloads) {
             if (entry.func == fn) { matchedEntry = &entry; break; }

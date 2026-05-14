@@ -1,0 +1,26 @@
+from testing import it, describe, expect
+
+import usermod
+from usermod import double
+
+@describe("qualified import — user-defined modules (#1730)")
+fn qualifiedImportUserDefinedTests():
+    @it("AC1: qualified fn call dispatches to the user-defined module")
+    fn shouldCallUserDefinedFn():
+        expect(usermod.greet()).toEq(7)
+        expect(usermod.double(21)).toEq(42)
+
+    @it("AC1: qualified @const access reads the user-defined module's value")
+    fn shouldReadUserDefinedConst():
+        expect(usermod.ANSWER).toEq(42)
+
+    @it("AC1: qualified record constructor + field access on a user-defined module")
+    fn shouldConstructAndAccessRecord():
+        p = usermod.Point(3, 4)
+        expect(p.x).toEq(3)
+        expect(p.y).toEq(4)
+
+    @it("AC3: qualified import and selective import of the same module coexist")
+    fn shouldCoexistWithSelectiveImport():
+        expect(double(21)).toEq(42)
+        expect(usermod.greet()).toEq(7)

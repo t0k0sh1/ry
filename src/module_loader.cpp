@@ -571,8 +571,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
     Program result;
 
     for (auto &stmt : prog) {
-        if (std::holds_alternative<QualifiedImportStmt>(stmt)) {
-            auto &qimp = std::get<QualifiedImportStmt>(stmt);
+        if (std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(stmt)) {
+            auto &qimp = *std::get<std::unique_ptr<QualifiedImportStmt>>(stmt);
 
             ResolvedPath rp = resolve(qimp.module_name, referrer_dir);
             const std::string &abs_path = rp.path;
@@ -601,21 +601,19 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             // First-time load: inline all exportable definitions (same path as
             // `from xxx import` with empty names) so that:
             //   1. @native fn signatures get registered in native_fn_sigs_
-            //      (required for stdlib qualified-call dispatch in Task 9).
+            //      (required for stdlib qualified-call dispatch).
             //   2. exports_cache_ / exports_kinds_cache_ get populated for any
             //      subsequent `from xxx import` referencing the same module.
             //
-            // For user-defined modules (`!rp.from_stdlib`), route extracted
-            // definitions to a throwaway Program so they are NOT inlined into
-            // the caller's namespace. The caches still get populated so
-            // `from <mod> import x` after `import <mod>` works (AC2-like).
-            // Without this gate, `import usermod` followed by bare `greet()`
-            // succeeds — bypassing the documented v0.0.23 rejection at call
-            // site. Stdlib path stays unchanged: native-fn registration in
-            // CodeGen still relies on inlining (#1730 tracks proper namespace
-            // isolation for stdlib).
-            Program throwaway;
-            Program &push_target = rp.from_stdlib ? result : throwaway;
+            // For user-defined modules (`!rp.from_stdlib`, #1730), route
+            // extracted definitions to `qimp.definitions` so codegen can emit
+            // them under a namespace bucket keyed by the effective alias
+            // rather than the top-level Program. Stdlib path stays unchanged:
+            // native-fn registration in CodeGen still relies on inlining.
+            Program &push_target = rp.from_stdlib ? result : qimp.definitions;
+            if (!rp.from_stdlib) {
+                qualified_only_user_loaded_.insert(abs_path);
+            }
             if (rp.is_directory) {
                 loading_.insert(abs_path);
                 Program dir_prog = loadModuleDir(abs_path);
@@ -681,6 +679,21 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
         if (loading_.count(abs_path))
             throw std::runtime_error("circular import detected: " + abs_path);
+
+        // If the module was previously loaded only via `import <mod>` to a
+        // user-defined module (#1730), its decls reside in the prior
+        // QualifiedImportStmt::definitions and were not inlined to the
+        // top-level Program. To honor a subsequent `from <mod> import x`
+        // (AC3), re-parse and re-extract so the requested names reach
+        // `result`. Erase from both sets so the next reference cache-hits
+        // normally.
+        if (qualified_only_user_loaded_.count(abs_path) && !imp.names.empty()) {
+            qualified_only_user_loaded_.erase(abs_path);
+            loaded_.erase(abs_path);
+            // exports_cache_ / exports_kinds_cache_ remain populated; they
+            // get refreshed by the upcoming extractDefinitions call below
+            // (cache-miss path).
+        }
 
         if (loaded_.count(abs_path)) {
             if (!imp.names.empty()) {
