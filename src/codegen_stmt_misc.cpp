@@ -498,6 +498,10 @@ void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
 
+    if (current_namespace_target_) {
+        codegenError("enum declarations in qualified-imported user-defined modules are not yet supported; use 'from <mod> import <enum>' instead");
+    }
+
     // Reject direct inline self-reference in variant fields. Recurses through
     // inline layouts (`T?`, tuples, unions, arrays, and generic applications
     // that are not pointer-backed) so `enum Tree: Node(Tree?)`, `Node((Tree,
@@ -837,21 +841,43 @@ void CodeGen::emitStmt(ImportStmt &s) {
                              " (ModuleLoader should have resolved this)");
 }
 
-void CodeGen::emitStmt(QualifiedImportStmt &s) {
+void CodeGen::emitStmt(std::unique_ptr<QualifiedImportStmt> &sp) {
+    QualifiedImportStmt &s = *sp;
     if (s.loc.isValid()) current_loc_ = s.loc;
     // ModuleLoader has already loaded the module, inlined its exportable
-    // definitions, populated `exports_cache_`, and set `s.is_stdlib`.
-    // Codegen's job here is purely to register the module under the
-    // effective name (alias if present, original name otherwise) so the
-    // call / field-access dispatchers can recognize `<effective>.fn(...)`
-    // / `<effective>.x` qualified forms (#1723, #1724). The original
-    // module name is preserved in the value so the user-defined-module
-    // redirect diagnostic can quote the file's actual module name even
-    // when the user wrote `import mymod as m`. No IR is emitted for the
-    // statement itself (mirrors `emitStmt(ImportStmt&)` which is also
-    // IR-less).
+    // definitions (stdlib) or stashed them in `s.definitions` (user-defined,
+    // #1730), populated `exports_cache_`, and set `s.is_stdlib`. The
+    // namespace bucket is keyed by the **canonical module name** so multiple
+    // imports of the same module (`import usermod` + `import usermod as u`,
+    // or `from usermod import x` + `import usermod`) share a single decl
+    // bucket. Aliases register an `effective_to_canonical_` redirect; only
+    // the canonical-keyed entry owns the actual decls.
     const std::string &effective = s.alias.has_value() ? *s.alias : s.module_name;
-    module_namespaces_[effective] = ModuleNamespaceInfo{s.module_name, s.is_stdlib};
+    const std::string &canonical = s.module_name;
+    auto [it, inserted] = module_namespaces_.try_emplace(canonical);
+    if (inserted) {
+        it->second.original_name = canonical;
+        it->second.is_stdlib = s.is_stdlib;
+    } else if (it->second.is_stdlib != s.is_stdlib) {
+        // Defense-in-depth — ModuleLoader resolves the same module path to
+        // the same `from_stdlib` flag, so a flip here means the module
+        // pipeline misclassified one of the imports.
+        codegenError("internal: module '" + canonical + "' imported with inconsistent stdlib origin");
+    }
+    if (effective != canonical) effective_to_canonical_[effective] = canonical;
+
+    // User-defined modules: emit the stashed decls under a namespace guard
+    // so registrations land in `it->second.{fn_overloads, consts, records}`
+    // rather than the flat `functions_` / `module_globals_` / `record_types_`
+    // tables. Stdlib modules still inline at the top-level Program for
+    // native-fn signature registration, so their `definitions` is empty and
+    // the guard is unnecessary.
+    if (!s.is_stdlib && !s.definitions.empty()) {
+        NamespaceEmitScope guard(*this, &it->second);
+        for (auto &decl : s.definitions) {
+            std::visit([this](auto &st) { emitStmt(st); }, decl);
+        }
+    }
 }
 
 // `from m import foo as bar` for fn / record / enum / type-alias kinds

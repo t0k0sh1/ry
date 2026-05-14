@@ -1,0 +1,43 @@
+from testing import it, describe, expect
+
+# Bug 1 of PR #1736: `import usermod` + `import usermod as u`. Before the
+# fix the namespace bucket was keyed by the effective (alias-rewritten) name
+# so the second import created a fresh, empty bucket and `u.greet()` reported
+# "module 'u' has no function or record 'greet'". Canonical-keying the
+# bucket and routing aliases through `effective_to_canonical_` makes both
+# `usermod.greet()` and `u.greet()` resolve to the same registered fn.
+import usermod
+import usermod as u
+
+# Bug 2 of PR #1736: `from usermod import greet` first inlined every
+# exportable decl into the top-level Program (REQ-B3 wildcard side-effect)
+# and set `loaded_`. A subsequent `import usermod` then short-circuited
+# without populating `QualifiedImportStmt::definitions`, so `usermod.greet`
+# was not registered. The loader now force-populates via `invalidateLoaded`,
+# and the codegen handles the duplicate @const re-extract by re-binding into
+# the namespace bucket without re-emitting an alloca.
+from usermod import double
+import usermod as v
+
+@describe("qualified import — user-defined modules, mixed import forms (#1730)")
+fn qualifiedImportUserDefinedMixedTests():
+    @it("Bug 1: alias-then-bare share the same canonical namespace")
+    fn aliasAndBareShareCanonical():
+        expect(usermod.greet()).toEq(7)
+        expect(u.greet()).toEq(7)
+        expect(usermod.ANSWER).toEq(42)
+        expect(u.ANSWER).toEq(42)
+
+    @it("Bug 1: alias resolves records to the same registered type")
+    fn aliasResolvesRecord():
+        pBare = usermod.Point(1, 2)
+        pAlias = u.Point(3, 4)
+        expect(pBare.x).toEq(1)
+        expect(pAlias.y).toEq(4)
+
+    @it("Bug 2: `from <mod> import x` followed by `import <mod>` exposes qualified access")
+    fn fromBeforeImportExposesQualified():
+        expect(double(7)).toEq(14)
+        expect(v.greet()).toEq(7)
+        expect(v.double(21)).toEq(42)
+        expect(v.ANSWER).toEq(42)

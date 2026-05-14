@@ -1,0 +1,16 @@
+@public
+@const
+ANSWER: int = 42
+
+@public
+fn greet() -> int:
+    return 7
+
+@public
+fn double(x: int) -> int:
+    return x * 2
+
+@public
+record Point:
+    x: int
+    y: int

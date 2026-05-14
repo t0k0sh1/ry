@@ -9,17 +9,29 @@ void CodeGen::emitStmt(RecordStmt &s) {
     for (const auto &f : s.fields)
         validateDirectives(f.directives, DirectiveTarget::Field);
     emitTraceSymbolDefine("record", s.name, s.loc);
-    if (record_types_.count(s.name))
+
+    // Qualified-import of user-defined module: register into namespace bucket
+    // instead of the flat record_types_, preserving AC4 isolation.
+    bool isNamespaced = current_namespace_target_ != nullptr;
+    auto &record_table = isNamespaced
+        ? current_namespace_target_->records
+        : record_types_;
+
+    if (record_table.count(s.name))
         codegenError("redefined type: " + s.name);
-    rejectIfTypeNameTakenByOtherKind(s.name);
+    if (!isNamespaced)
+        rejectIfTypeNameTakenByOtherKind(s.name);
 
     std::string parentName;
     std::vector<FieldDef> allFields;
 
     if (s.parent_name) {
         parentName = *s.parent_name;
-        auto pit = record_types_.find(parentName);
-        if (pit == record_types_.end())
+        // Parent lookup uses the same scope: namespace bucket if active,
+        // flat table otherwise. Inherited records must be defined earlier
+        // in the same module.
+        auto pit = record_table.find(parentName);
+        if (pit == record_table.end())
             codegenError("parent record '" + parentName + "' not defined");
 
         const auto &parentInfo = pit->second;
@@ -55,7 +67,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
     }
 
     RecordInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
-    record_types_[s.name] = std::move(info);
+    record_table[s.name] = std::move(info);
 }
 
 llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
@@ -88,24 +100,40 @@ llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e) {
-    // Qualified field access `<effective>.x` (#1723, #1724). Same routing
-    // rules as the qualified-call dispatcher in codegen_call_dispatch.cpp:
-    // stdlib modules resolve through the bare-name lookup (the field was
-    // inlined as a top-level binding by ModuleLoader), user-defined
-    // modules error with a redirect to selective import. The redirect
-    // quotes the original module name from `module_namespaces_` so an
-    // alias does not mislead the user about which file to import from.
+    // Qualified field access `<effective>.x` (#1723, #1724, #1730).
+    //
+    // - stdlib module: the inlined top-level binding is reachable by bare
+    //   name; route through VariableExpr.
+    // - user-defined module: load through the namespace's `consts` bucket
+    //   (mirrors the bare-name module-global path at codegen_expr.cpp:170).
     if (e->qualified_module.has_value()) {
         const std::string &mod = *e->qualified_module;
-        auto it = module_namespaces_.find(mod);
-        if (it == module_namespaces_.end())
+        // findModuleNamespace walks `effective_to_canonical_` so aliases
+        // resolve to the canonical-keyed bucket (#1730).
+        ModuleNamespaceInfo *ns = findModuleNamespace(mod);
+        if (!ns)
             codegenError("qualified access on module '" + mod +
                          "' which was not imported via 'import " + mod + "'");
-        if (!it->second.is_stdlib)
-            codegenError("qualified field access on user-defined module '" + mod +
-                         "' is not yet supported in v0.0.23; use 'from " +
-                         it->second.original_name + " import " + e->field +
-                         "' instead");
+        if (!ns->is_stdlib) {
+            auto cit = ns->consts.find(e->field);
+            if (cit == ns->consts.end())
+                codegenError("module '" + ns->original_name +
+                             "' has no constant '" + e->field + "'");
+            const ModuleBinding &b = cit->second;
+            if (b.is_weak)
+                codegenError("weak top-level variables are not yet accessible from functions (#817 follow-up)");
+            if (b.is_resource)
+                codegenError("resource-typed top-level variables are not yet accessible from functions (#817 follow-up)");
+            auto *storagePtr = loadModuleGlobalStorage(b, e->field);
+            llvm::Type *valueTy = b.valueTy();
+            if (llvm::isa<llvm::ArrayType>(valueTy)) {
+                array_storage_to_alloca_[storagePtr] = b.original_alloca;
+                return storagePtr;
+            }
+            auto *loaded = builder_.CreateLoad(valueTy, storagePtr, e->field);
+            propagateMeta(b.original_alloca, loaded);
+            return loaded;
+        }
         // stdlib: the inlined top-level definition is reachable by bare name.
         VariableExpr proxy{e->field};
         return emitExprVariant(proxy);
@@ -155,11 +183,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     }
 
     std::string typeName = structTy->getName().str();
-    auto it = record_types_.find(typeName);
-    if (it == record_types_.end())
+    // Walk both flat record_types_ and module_namespaces_[*].records by LLVM
+    // type identity so qualified-imported records (#1730) are findable from
+    // user code emitted with current_namespace_target_ unset.
+    const RecordInfo *infoPtr = findRecordInfoForType(structTy);
+    if (!infoPtr)
         codegenError("unknown record type: " + typeName);
 
-    const auto &info = it->second;
+    const auto &info = *infoPtr;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
         if (info.fields[i].name == e->field) {
             std::string qualifiedField = typeName + "." + e->field;

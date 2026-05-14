@@ -63,6 +63,15 @@ private:
     SourceManager *sm_ = nullptr;
     std::unordered_set<std::string> loaded_;
     std::unordered_set<std::string> loading_;
+    // Modules that were loaded via `import <mod>` (qualified-only) to a
+    // user-defined module — their decls landed in `QualifiedImportStmt::definitions`
+    // and were NOT inlined to the top-level Program. If a subsequent
+    // `from <mod> import x` references the same module, the cache-hit branch
+    // would normally short-circuit without pushing decls anywhere; this set
+    // forces re-extract so the requested names reach the top-level Program
+    // (AC3 of #1730). Stdlib modules are not tracked here because their decls
+    // are still inlined to `result` on first load.
+    std::unordered_set<std::string> qualified_only_user_loaded_;
     // Cache: abs_path -> map of exported name -> is_public flag (true if @public).
     // Stores every exportable kind (functions, records, lets, enums, type
     // aliases, directive defs), so the name "fn" no longer applies — kept as
@@ -105,6 +114,14 @@ private:
 
     // Load all .ry files from a module directory and return collected statements
     Program loadModuleDir(const std::string &abs_dir_path);
+
+    // Drop @p abs_path from `loaded_` / `qualified_only_user_loaded_` so the
+    // next reference re-runs the cache-miss path. For directory modules,
+    // also drops every contained `.ry` file from `loaded_` because
+    // `loadModuleDir` inserts each per-file canonical path independently.
+    // Without that recursive walk, re-extracting a directory module would
+    // observe the per-file `loaded_` entries and silently skip every file.
+    void invalidateLoaded(const std::string &abs_path, bool is_directory);
 
     // Cached `findProjectRoot` for a given directory.
     std::optional<std::string> packageRootOfDir(const std::string &dir);

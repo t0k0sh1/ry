@@ -8,28 +8,49 @@ namespace ry {
 // ===== CallExpr Dispatcher =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    // Qualified call `<effective>.fn(args)` (#1723, #1724). The parser
-    // sets `qualified_module` when the dotted LHS is a single identifier
-    // that was imported via `import <mod>` or `import <mod> as <alias>`
-    // (parser tracks the effective name via `imported_modules_`, codegen
-    // via `module_namespaces_`). In v0.0.23 we route stdlib modules
-    // through the normal dispatch chain (StdlibRegistry already routes
-    // by callee name, so `math.sqrt(2.0)` → `emitBuiltinMath` resolves
-    // the same way `sqrt(2.0)` would once `import math` is in scope).
-    // User-defined qualified imports are not yet supported — emit a
-    // clear redirect to the selective-import form, quoting the file's
-    // original module name even when the user wrote an alias.
+    // Qualified call `<effective>.fn(args)` (#1723, #1724, #1730).
+    //
+    // The parser sets `qualified_module` when the dotted LHS is a single
+    // identifier imported via `import <mod>` / `import <mod> as <alias>`.
+    // Two dispatch flavors:
+    //
+    // - stdlib module: fall through to the regular call dispatch chain.
+    //   The stdlib loader inlines @native decls at the top level so the
+    //   bare-name route (`math.sqrt(2.0)` → callee `sqrt` → emitBuiltinMath)
+    //   resolves naturally.
+    //
+    // - user-defined module: look up the callee in the namespace's
+    //   `fn_overloads` bucket populated by NamespaceEmitScope (#1730).
+    //   Pass the bucket explicitly to emitUserFnCall to avoid setting
+    //   current_namespace_target_ during arg emission (which would
+    //   misresolve caller-scope bare fn refs in the args).
     if (e->qualified_module.has_value()) {
         const std::string &mod = *e->qualified_module;
-        auto it = module_namespaces_.find(mod);
-        if (it == module_namespaces_.end())
+        // findModuleNamespace walks `effective_to_canonical_` so aliases
+        // (`import usermod as u` followed by `u.greet()`) resolve to the
+        // canonical-keyed bucket populated by the original import (#1730).
+        ModuleNamespaceInfo *ns = findModuleNamespace(mod);
+        if (!ns)
             codegenError("qualified call to module '" + mod +
                          "' which was not imported via 'import " + mod + "'");
-        if (!it->second.is_stdlib)
-            codegenError("qualified call to user-defined module '" + mod +
-                         "' is not yet supported in v0.0.23; use 'from " +
-                         it->second.original_name + " import " + e->callee +
-                         "' instead");
+        if (!ns->is_stdlib) {
+            // Record constructor `usermod.MyRecord(args)` — look in the
+            // namespace's records bucket before fn_overloads. Records and
+            // fns share the call-syntax namespace, mirroring the bare-name
+            // dispatch order at line 134.
+            auto rit = ns->records.find(e->callee);
+            if (rit != ns->records.end()) {
+                if (deprecated_types_.count(e->callee))
+                    emitDeprecationWarning(e->callee);
+                return emitRecordConstructor(rit->second, e->callee, e->args);
+            }
+            auto fit = ns->fn_overloads.find(e->callee);
+            if (fit == ns->fn_overloads.end()) {
+                codegenError("module '" + ns->original_name +
+                             "' has no function or record '" + e->callee + "'");
+            }
+            return emitUserFnCall(e->callee, e->args, &fit->second);
+        }
         // stdlib module → fall through; downstream dispatchers route by callee.
     }
 

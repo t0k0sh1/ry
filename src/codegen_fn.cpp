@@ -306,9 +306,17 @@ llvm::Function *CodeGen::declareFunction(
     }
     size_t newMaxArity = paramTypes.size();
 
-    // Determine registration target: nested functions use fn_scope_stack_
+    // Determine registration target:
+    // - Nested fns use fn_scope_stack_
+    // - Qualified-imported user-defined module fns use the namespace bucket
+    // - Otherwise the flat functions_ table
     bool isNested = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
-    auto &overloads = isNested ? fn_scope_stack_.back()[name] : functions_[name];
+    bool isNamespaced = !isNested && current_namespace_target_ != nullptr;
+    auto &overloads = isNested
+        ? fn_scope_stack_.back()[name]
+        : (isNamespaced
+            ? current_namespace_target_->fn_overloads[name]
+            : functions_[name]);
 
     // Check for duplicate/conflicting signatures
     for (auto &entry : overloads) {
@@ -338,6 +346,13 @@ llvm::Function *CodeGen::declareFunction(
     llvm::Function::LinkageTypes linkage;
     if (isNested) {
         irName = current_function_name_ + "." + name + "." + std::to_string(nested_fn_counter_++);
+        linkage = llvm::Function::InternalLinkage;
+    } else if (isNamespaced) {
+        // Mangle namespace fns to avoid LLVM-level symbol collisions when
+        // multiple user-defined modules export the same fn name.
+        irName = current_namespace_target_->original_name + "__" + name;
+        if (!overloads.empty())
+            irName += "." + std::to_string(overloads.size());
         linkage = llvm::Function::InternalLinkage;
     } else {
         irName = name;
@@ -475,6 +490,30 @@ void CodeGen::forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool v
 }
 
 void CodeGen::forwardDeclareFunctions(Program &prog) {
+    // First, forward-declare functions inside `QualifiedImportStmt::definitions`
+    // (user-defined modules, #1730). Set up the namespace target so the
+    // declarations land in `module_namespaces_[effective].fn_overloads` rather
+    // than the flat `functions_` table. Without this, intra-module peer-fn
+    // forward references would miss; and if a sibling `from <mod> import x`
+    // re-extracts the same fn at the top level, the top-level entry must end
+    // up in flat while the qimp-inner entry lives only in the namespace bucket.
+    for (auto &stmt : prog) {
+        auto *qp = std::get_if<std::unique_ptr<QualifiedImportStmt>>(&stmt);
+        if (!qp) continue;
+        auto &qs = **qp;
+        if (qs.is_stdlib || qs.definitions.empty()) continue;
+        // Bucket keyed by canonical module name (#1730) — multiple
+        // imports of the same module share one bucket. Aliases register
+        // an `effective_to_canonical_` redirect in `emitStmt`.
+        const std::string &canonical = qs.module_name;
+        auto [it, inserted] = module_namespaces_.try_emplace(canonical);
+        if (inserted) {
+            it->second.original_name = canonical;
+            it->second.is_stdlib = qs.is_stdlib;
+        }
+        NamespaceEmitScope guard(*this, &it->second);
+        forwardDeclareFunctionsInBody(qs.definitions, /*validateOperatorReturn=*/true);
+    }
     forwardDeclareFunctionsInBody(prog, /*validateOperatorReturn=*/true);
 }
 
@@ -531,6 +570,11 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     emitCoverage(s->loc);
     emitTraceSymbolDefine("fn", s->name, s->loc);
+
+    // Qualified import of user-defined module: reject generic fns (Phase 2)
+    if (current_namespace_target_ && !s->type_params.empty()) {
+        codegenError("generic functions in qualified-imported user-defined modules are not yet supported; use 'from <mod> import <fn>' instead");
+    }
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {

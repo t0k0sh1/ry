@@ -575,11 +575,12 @@ StmtNode Parser::parseQualifiedImportStatement() {
                 "' was already imported in this file");
     }
 
-    return QualifiedImportStmt{
+    return std::make_unique<QualifiedImportStmt>(QualifiedImportStmt{
         std::move(moduleName),
         std::move(alias),
         /*is_stdlib=*/false,
-        {importTok.line, importTok.col, file_id_}};
+        /*definitions=*/{},
+        {importTok.line, importTok.col, file_id_}});
 }
 
 StmtNode Parser::parseStatement() {

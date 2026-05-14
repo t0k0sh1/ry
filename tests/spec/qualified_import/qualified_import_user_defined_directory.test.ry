@@ -1,0 +1,30 @@
+from testing import it, describe, expect
+
+# Directory-module form: `usermoddir/` resolves to the directory module
+# whose files (`part_a.ry`, `part_b.ry`) are merged at load time. Qualified
+# access (`usermoddir.dirGreet()`) must reach decls defined in any file of
+# the directory. The `invalidateLoaded` walk also dropping per-file
+# `loaded_` entries is what enables a subsequent reload (`from <dir> import`
+# after `import <dir>`, AC3) to work — without it the directory walk would
+# skip every file.
+import usermoddir
+
+# AC3 for directory modules: `import <dir>` followed by `from <dir> import
+# <x>` exposes both the namespaced form and the imported bare name.
+from usermoddir import dirDouble
+
+@describe("qualified import — user-defined directory module (#1730)")
+fn qualifiedImportUserDefinedDirectoryTests():
+    @it("qualified call across files of the directory module")
+    fn shouldCallAcrossFiles():
+        expect(usermoddir.dirGreet()).toEq(11)
+        expect(usermoddir.dirDouble(7)).toEq(14)
+
+    @it("qualified @const access reaches a sibling file's decl")
+    fn shouldReadConstFromSibling():
+        expect(usermoddir.DIR_ANSWER).toEq(88)
+
+    @it("AC3: qualified-then-selective coexists for a directory module")
+    fn shouldCoexistWithSelectiveImport():
+        expect(dirDouble(21)).toEq(42)
+        expect(usermoddir.dirGreet()).toEq(11)

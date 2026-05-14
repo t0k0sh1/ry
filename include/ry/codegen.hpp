@@ -597,6 +597,13 @@ public:
     // `findFunction` for fn aliases. Returns nullptr on miss.
     RecordInfo *findRecordType(const std::string &name);
     const RecordInfo *findRecordType(const std::string &name) const;
+    // Look up a record by its LLVM struct type, walking both `record_types_`
+    // and `module_namespaces_[*].records`. Used by codegen sites that receive
+    // a `llvm::StructType*` from a value (FieldAccessExpr, ARC dispatch on
+    // record fields, etc.) and need to find the source-level RecordInfo
+    // regardless of which module declared the record (#1730).
+    RecordInfo *findRecordInfoForType(llvm::StructType *st);
+    const RecordInfo *findRecordInfoForType(llvm::StructType *st) const;
 
     // Type ID registry for typeOf builtin.
     // Each distinct type definition gets a unique id, allowing identity-based
@@ -968,21 +975,47 @@ public:
     std::unordered_set<std::string> testing_intrinsics_imported_;
 
     // Modules introduced by `import xxx [as yyy]` (qualified import) at
-    // module scope. Key = effective name in the importing file (alias when
-    // present, else original module name); value carries the original
-    // module name (for diagnostics that need to point at the file the
-    // module came from) plus the `is_stdlib` flag propagated from
-    // ModuleLoader. Populated by `emitStmt(QualifiedImportStmt&)`.
-    // Consulted by the call / field-access dispatchers to route
-    // `<effective>.fn(...)` (CallExpr with `qualified_module` set) —
-    // stdlib modules reuse the existing dispatch chain; user-defined
-    // modules raise a "not yet supported in v0.0.23" codegen error whose
-    // redirect quotes the original module name (issues #1723 / #1724).
+    // module scope. Keyed by the **canonical module name** (the actual
+    // source-file module path, e.g. `usermod`), not the effective alias
+    // — multiple `import usermod` / `import usermod as u` from the same
+    // file share one bucket, so any decl emitted on the first import is
+    // visible under every alias. Aliases redirect through
+    // `effective_to_canonical_` (lookup-only; aliases do not own a
+    // separate bucket). Value carries the original module name (for
+    // diagnostics that need to point at the file the module came from),
+    // the `is_stdlib` flag propagated from ModuleLoader, and (for
+    // user-defined modules only, #1730) per-kind decl buckets populated
+    // while `emitStmt(QualifiedImportStmt&)` emits `qimp.definitions`
+    // under a `NamespaceEmitScope` guard. Stdlib modules still inline
+    // into the top-level Program so their buckets stay empty.
     struct ModuleNamespaceInfo {
         std::string original_name;
-        bool is_stdlib;
+        bool is_stdlib = false;
+        // User-defined module decls (#1730). Keyed by bare fn / const /
+        // record name. Empty for stdlib.
+        std::unordered_map<std::string, std::vector<OverloadEntry>> fn_overloads;
+        std::unordered_map<std::string, ModuleBinding> consts;
+        std::unordered_map<std::string, RecordInfo> records;
     };
     std::unordered_map<std::string, ModuleNamespaceInfo> module_namespaces_;
+    // Alias → canonical redirect for qualified imports. Populated only
+    // when `import <mod> as <alias>` introduces an alias different from
+    // the canonical module name. `findModuleNamespace(effective)` walks
+    // this map before `module_namespaces_.find(effective)`.
+    std::unordered_map<std::string, std::string> effective_to_canonical_;
+    // Look up a qualified-imported module by its effective name (the
+    // identifier used at the call / field-access site: alias if present,
+    // else the original module name). Returns nullptr on miss.
+    ModuleNamespaceInfo *findModuleNamespace(const std::string &effective);
+    const ModuleNamespaceInfo *findModuleNamespace(const std::string &effective) const;
+
+    // While non-null, `emitStmt(FnStmt&)` / `emitStmt(RecordStmt&)` /
+    // top-level `@const AssignStmt` redirect their registration into this
+    // namespace's per-kind buckets instead of `functions_` /
+    // `record_types_` / `module_globals_`. Set/cleared by RAII
+    // `NamespaceEmitScope` while emitting a user-defined module's
+    // `QualifiedImportStmt::definitions` (#1730).
+    ModuleNamespaceInfo *current_namespace_target_ = nullptr;
 
     // User-defined @directive declarations. Keyed by directive name.
     std::unordered_map<std::string, DirectiveSignature> user_directive_registry_;
@@ -1155,6 +1188,27 @@ public:
     void validateParallelFor(const ForStmt &s);
 
     // RAII scope for function emission (B5)
+    // RAII guard that redirects FnStmt / RecordStmt / top-level @const
+    // AssignStmt registrations into `target`'s per-kind buckets instead of
+    // `functions_` / `record_types_` / `module_globals_`. Active for the
+    // duration of one user-defined `QualifiedImportStmt::definitions`
+    // emission (#1730).
+    class NamespaceEmitScope {
+    public:
+        NamespaceEmitScope(CodeGen &cg, ModuleNamespaceInfo *target)
+            : cg_(cg), saved_(cg.current_namespace_target_) {
+            cg_.current_namespace_target_ = target;
+        }
+        ~NamespaceEmitScope() noexcept {
+            cg_.current_namespace_target_ = saved_;
+        }
+        NamespaceEmitScope(const NamespaceEmitScope&) = delete;
+        NamespaceEmitScope& operator=(const NamespaceEmitScope&) = delete;
+    private:
+        CodeGen &cg_;
+        ModuleNamespaceInfo *saved_;
+    };
+
     class FnScope {
     public:
         explicit FnScope(CodeGen &cg);
@@ -1245,7 +1299,7 @@ public:
     void emitStmt(ExprStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
-    void emitStmt(QualifiedImportStmt &s);
+    void emitStmt(std::unique_ptr<QualifiedImportStmt> &s);
     void emitStmt(ImportAliasStmt &s);
     void emitStmt(RecordStmt &s);
     void emitStmt(TypeAliasStmt &s);
@@ -1473,11 +1527,17 @@ public:
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
-    // Function call helper (B4)
-    llvm::Value *emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args);
+    // Function call helper (B4).
+    // `explicitOverloads`, when non-null, bypasses findFunction() and uses
+    // the provided list directly. Used by qualified-call dispatch (#1730)
+    // to route `usermod.foo(...)` into the namespace bucket without
+    // setting current_namespace_target_ during arg emission.
+    llvm::Value *emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args,
+                                std::vector<OverloadEntry> *explicitOverloads = nullptr);
     llvm::Function *resolveOverload(const std::string &callee,
                                     const std::vector<ExprPtr> &args,
-                                    std::vector<llvm::Value*> &outArgVals);
+                                    std::vector<llvm::Value*> &outArgVals,
+                                    std::vector<OverloadEntry> *explicitOverloads = nullptr);
 
     llvm::Value *emitRecordConstructor(const RecordInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);

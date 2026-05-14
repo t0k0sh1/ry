@@ -623,7 +623,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
         else if constexpr (std::is_same_v<T, ReturnStmt>) return v.loc.line; // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, ExprStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, ImportStmt>) return v.loc.line;
-        else if constexpr (std::is_same_v<T, QualifiedImportStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, std::unique_ptr<QualifiedImportStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, RecordStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -662,7 +662,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, ExprStmt>) formatExprStmt(v);
         else if constexpr (std::is_same_v<T, ReturnStmt>) formatReturn(v);
         else if constexpr (std::is_same_v<T, ImportStmt>) formatImport(v);
-        else if constexpr (std::is_same_v<T, QualifiedImportStmt>) formatQualifiedImport(v);
+        else if constexpr (std::is_same_v<T, std::unique_ptr<QualifiedImportStmt>>) formatQualifiedImport(*v);
         else if constexpr (std::is_same_v<T, RecordStmt>) formatRecord(v);
         else if constexpr (std::is_same_v<T, IndexAssignStmt>) formatIndexAssign(v);
         else if constexpr (std::is_same_v<T, BreakStmt>) formatBreak(v);
