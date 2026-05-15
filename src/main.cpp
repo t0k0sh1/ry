@@ -257,7 +257,7 @@ int main(int argc, char *argv[]) {
                     ry::watchAndRunTests(target_str, [target_str, a0, sgl, parallel, coverage, outline]() {
                         ry::discoverAndRunTests(target_str, a0, sgl, parallel, coverage, outline);
                     });
-                    return 0;
+                    return finalizeAfterPossibleJit(0);
                 }
                 return finalizeAfterPossibleJit(
                     ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel, coverage, outline));
@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
                         errs() << "Error: " << e.what() << "\n";
                     }
                 });
-                return 0;
+                return finalizeAfterPossibleJit(0);
             }
             // ry test <file.ry> — single file test (parallel flag ignored)
             test_mode = true;
@@ -315,7 +315,7 @@ int main(int argc, char *argv[]) {
                 ry::watchAndRunTests(root_dir, [root_dir, a0, sgl, parallel, coverage, outline]() {
                     ry::discoverAndRunTests(root_dir, a0, sgl, parallel, coverage, outline);
                 });
-                return 0;
+                return finalizeAfterPossibleJit(0);
             }
             return finalizeAfterPossibleJit(
                 ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel, coverage, outline));
