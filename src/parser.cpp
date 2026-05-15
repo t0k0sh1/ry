@@ -417,6 +417,11 @@ StmtNode Parser::parseImportStatement() {
         "hyphens '-' are not allowed in module names; "
         "use underscores '_' instead";
 
+    static constexpr const char *kWildcardError =
+        "selective import does not support wildcards "
+        "('from x import *'); use 'from x import a, b' "
+        "or 'from x import {a, b}' instead";
+
     // Parse dot-separated path segments: ident ('.' ident)*
     // Checks for hyphens after each segment and after each dot.
     auto parseDotPath = [&](std::string &path) {
@@ -488,6 +493,8 @@ StmtNode Parser::parseImportStatement() {
             lex_.next(); // consume '{'
             skipStructuralTokens();
             Token first = lex_.peek();
+            if (first.kind == TokenKind::Star)
+                parseError(first.line, kWildcardError);
             if (first.kind != TokenKind::Ident && first.kind != TokenKind::Expect)
                 parseError(first.line, "expected import name after '{'");
             names.push_back(parseOneImportItem());
@@ -498,6 +505,8 @@ StmtNode Parser::parseImportStatement() {
                 if (lex_.peek().kind == TokenKind::RBrace)
                     break; // trailing comma allowed
                 Token next = lex_.peek();
+                if (next.kind == TokenKind::Star)
+                    parseError(next.line, kWildcardError);
                 if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
                     parseError(next.line, "expected import name after ','");
                 names.push_back(parseOneImportItem());
@@ -512,6 +521,8 @@ StmtNode Parser::parseImportStatement() {
             // import name; it names the testing intrinsic exposed via
             // `from testing import expect` (#712). All other keywords remain
             // rejected at this position.
+            if (name.kind == TokenKind::Star)
+                parseError(name.line, kWildcardError);
             if (name.kind != TokenKind::Ident && name.kind != TokenKind::Expect)
                 parseError(name.line, "expected function name after 'import'");
             names.push_back(parseOneImportItem());
@@ -519,6 +530,8 @@ StmtNode Parser::parseImportStatement() {
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 Token next = lex_.peek();
+                if (next.kind == TokenKind::Star)
+                    parseError(next.line, kWildcardError);
                 if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
                     parseError(next.line, "expected function name after ','");
                 names.push_back(parseOneImportItem());
