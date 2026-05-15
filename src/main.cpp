@@ -8,9 +8,11 @@
 #include "ry/file_watcher.hpp"
 #include "ry/trace.hpp"
 #include "ry/diagnostic.hpp"
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <unistd.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
@@ -19,6 +21,27 @@ using namespace ry;
 using namespace llvm;
 
 namespace fs = std::filesystem;
+
+// #1749 / #1187 / #1657: after a successful JIT run on Linux/macOS, the C++
+// static destructor chain (LLVM ManagedStatic, llvm_shutdown, etc.)
+// intermittently aborts inside glibc heap consolidation. The triple-stage
+// leak in src/jit_runner.cpp already suppresses ~LLJIT() and ~CodeGen()
+// destructors, but residual LLVM static state run from atexit handlers still
+// touches the disturbed heap. Bypassing the entire teardown chain via
+// _exit(rc) is the canonical workaround pattern when destructor crashes have
+// already been narrowed to the LLVM ORC family. Returns rc unchanged on
+// platforms or paths that never JIT'd, so non-JIT exits (parse errors,
+// help printing, formatter) still run normal teardown.
+[[nodiscard]] static int finalizeAfterPossibleJit(int rc) {
+#if defined(__linux__) || defined(__APPLE__)
+    if (ry::jitWasInitialized()) {
+        std::fflush(stdout);
+        std::fflush(stderr);
+        _exit(rc);
+    }
+#endif
+    return rc;
+}
 
 // NOLINTNEXTLINE(bugprone-exception-escape): process boundary; uncaught exceptions invoke std::terminate
 int main(int argc, char *argv[]) {
@@ -105,14 +128,15 @@ int main(int argc, char *argv[]) {
         __ry_args_init(0, nullptr);
         std::string cwd = fs::current_path().string();
         try {
-            return ry::runRySource(src, "<stdin>", cwd, false, argv[0], skip_global_lib,
-                                   false, false, nullptr, emit_llvm_ir);
+            return finalizeAfterPossibleJit(
+                ry::runRySource(src, "<stdin>", cwd, false, argv[0], skip_global_lib,
+                                false, false, nullptr, emit_llvm_ir));
         } catch (const DiagnosticError &e) {
             errs() << e.what();
-            return 1;
+            return finalizeAfterPossibleJit(1);
         } catch (const std::exception &e) {
             errs() << "Error: " << e.what() << "\n";
-            return 1;
+            return finalizeAfterPossibleJit(1);
         }
     } else if (argc >= 2 && std::strcmp(argv[1], "--") == 0) {
         // ry -- [args...] — run entry point with arguments
@@ -233,9 +257,10 @@ int main(int argc, char *argv[]) {
                     ry::watchAndRunTests(target_str, [target_str, a0, sgl, parallel, coverage, outline]() {
                         ry::discoverAndRunTests(target_str, a0, sgl, parallel, coverage, outline);
                     });
-                    return 0;
+                    return finalizeAfterPossibleJit(0);
                 }
-                return ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel, coverage, outline);
+                return finalizeAfterPossibleJit(
+                    ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel, coverage, outline));
             }
             if (!path_exists) {
                 std::string resolved;
@@ -266,7 +291,7 @@ int main(int argc, char *argv[]) {
                         errs() << "Error: " << e.what() << "\n";
                     }
                 });
-                return 0;
+                return finalizeAfterPossibleJit(0);
             }
             // ry test <file.ry> — single file test (parallel flag ignored)
             test_mode = true;
@@ -290,9 +315,10 @@ int main(int argc, char *argv[]) {
                 ry::watchAndRunTests(root_dir, [root_dir, a0, sgl, parallel, coverage, outline]() {
                     ry::discoverAndRunTests(root_dir, a0, sgl, parallel, coverage, outline);
                 });
-                return 0;
+                return finalizeAfterPossibleJit(0);
             }
-            return ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel, coverage, outline);
+            return finalizeAfterPossibleJit(
+                ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel, coverage, outline));
         }
     } else if (argc == 1) {
         entry_path_storage = ry::cli::resolveEntryPoint(false);
@@ -311,12 +337,12 @@ int main(int argc, char *argv[]) {
                                coverage_mode, outline_mode, coverage_mode ? &cs : nullptr,
                                emit_llvm_ir);
         if (coverage_mode) ry::emitCoverageReport(cs);
-        return rc;
+        return finalizeAfterPossibleJit(rc);
     } catch (const DiagnosticError &e) {
         errs() << e.what();
-        return 1;
+        return finalizeAfterPossibleJit(1);
     } catch (const std::exception &e) {
         errs() << "Error: " << e.what() << "\n";
-        return 1;
+        return finalizeAfterPossibleJit(1);
     }
 }

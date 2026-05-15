@@ -94,6 +94,22 @@ support (tree-sitter): single-line braced imports are recognized; brace-
 internal newline suppression for the multi-line form is tracked in
 [#1727](https://github.com/t0k0sh1/ry/issues/1727).
 
+### Wildcard Import (unsupported)
+
+Wildcard import `from math import *` is **not** supported. Every `*`
+at an import-name position is rejected with an actionable diagnostic:
+
+```text
+error: selective import does not support wildcards ('from x import *');
+use 'from x import a, b' or 'from x import {a, b}' instead
+```
+
+The diagnostic fires uniformly across all four wildcard positions —
+`from math import *`, `from math import {*}`, `from math import a, *`,
+and `from math import {a, *}`. Use the selective form
+(`from math import sqrt, PI`) or the braced form
+(`from math import { sqrt, PI }`) instead.
+
 ### Qualified Import
 
 ```ry

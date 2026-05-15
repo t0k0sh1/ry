@@ -13,6 +13,7 @@
 #include "ry/coverage_runtime.hpp"
 #include "ry/trace.hpp"
 #include "ry/dotenv.hpp"
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 #include <algorithm>
@@ -52,6 +53,18 @@ static void test_timeout_handler(int) {
 }
 
 namespace ry {
+
+// #1749: records whether this process has ever successfully initialized an
+// LLVM LLJIT. main() consults this via jitWasInitialized() to decide whether
+// to bypass the C++ static destructor chain on exit (_exit(rc)) — even with
+// the triple-stage leak below, the destructor chain intermittently aborts
+// inside glibc heap consolidation during scan-build / -O0 runs in CI when
+// JIT state has perturbed the heap.
+static std::atomic<bool> g_jitInitialized{false};
+
+bool jitWasInitialized() {
+    return g_jitInitialized.load(std::memory_order_relaxed);
+}
 
 void resetCoverageState(CoverageState &cs) {
     __ry_coverage_reset();
@@ -212,6 +225,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         return 1;
     }
     auto &jit = *jitOrErr;
+    g_jitInitialized.store(true, std::memory_order_relaxed);
 
     jit->getIRTransformLayer().setTransform(ry::optimizeModule);
 

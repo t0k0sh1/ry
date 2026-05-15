@@ -637,3 +637,61 @@ should match the `Run Cppcheck` step in `ci.yml`. The `lint` job
 should exit 0 even when functions hit the branch budget; cppcheck's
 stdout will still print the notice (which is fine — humans can read
 it, CI just won't fail on it).
+
+### Warn-only jobs: `continue-on-error: true` must extend to artifact upload steps
+
+**Source**: #1750 (2026-05-15, scan-build CI red on main)
+**Tags**: ci, github-actions, warn-only, artifact-upload, continue-on-error, transient-failure
+
+**Context**: The `scan-build` job's `Build + Analyze` step already carries
+`continue-on-error: true` because the findings backlog is still being
+triaged — its `--status-bugs` exit 1 is intentionally absorbed rather than
+failing the job. But the subsequent `Upload scan-build report` step
+(`actions/upload-artifact@v4`) did **not** have the same flag, and a
+transient GitHub Actions artifact API failure (5-retry exhaustion against
+an HTML error page returned instead of JSON, observed on the
+`main`-branch run for #1750) turned the warn-only job into a hard red.
+The "warn-only" promise is broken any time *any* step in the job can
+fail-close.
+
+**Rule**: If a CI job is warn-only (one or more steps carry
+`continue-on-error: true` because their failure is non-blocking), every
+subsequent step that depends on GitHub-side services (artifact upload,
+release upload, code-scanning result upload, cache save, etc.) must
+also carry `continue-on-error: true`. The unit of warn-only-ness is the
+**job**, not the single step it was attached to.
+
+**Why**: GitHub-side service calls have non-zero transient failure rates
+(API rate limits, regional outages, HTML returned during incidents).
+Letting one transient turn a warn-only analysis job red defeats the
+point of the warn-only posture. The trade-off (one missing artifact
+report when an upload glitches) is strictly better than the alternative
+(losing the entire job's signal on every transient).
+
+**Counter-rule**: do **not** apply this to jobs where every step is
+required (e.g. the `ry_tests` build-and-test job). In those jobs the
+upload failure should still fail-close — it indicates a real
+integration issue worth investigating.
+
+**How to apply**: In every job whose primary analysis step is
+`continue-on-error: true`, audit each subsequent step that touches
+GitHub services and add the same flag. Canonical example:
+
+```yaml
+- name: Build + Analyze
+  continue-on-error: true   # warn-only: findings backlog still triaging
+  run: scan-build ... cmake --build build ...
+- name: Upload scan-build report
+  if: always()
+  continue-on-error: true   # mirror warn-only: transient upload failure
+                            # should not red the job
+  uses: actions/upload-artifact@v4
+  with:
+    name: scan-build-report
+    ...
+```
+
+**How to verify**: `grep -n 'continue-on-error' .github/workflows/*.yml`
+should show paired analysis/upload steps in every warn-only job. If a
+job has one without the other, audit whether the imbalance is
+intentional.

@@ -833,6 +833,57 @@ TEST(ParserTest, ImportFnKeywordRejectedAfterComma) {
     }
 }
 
+// ===== wildcard import rejection (#1748) =====
+//
+// `*` is not accepted at any import-name position. All four sites
+// (non-braced head, braced head, non-braced post-comma, braced post-comma)
+// produce the same actionable diagnostic. Wildcard import is intentionally
+// unsupported; selective or braced forms must be used instead.
+
+TEST(ParserTest, ImportWildcardNonBracedRejected) {
+    try {
+        parseStr("from math import *");
+        FAIL() << "Expected parser to reject '*' as wildcard import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("wildcards"), std::string::npos)
+            << "Error message should mention wildcards: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportWildcardBracedRejected) {
+    try {
+        parseStr("from math import {*}");
+        FAIL() << "Expected parser to reject '*' inside braced import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("wildcards"), std::string::npos)
+            << "Error message should mention wildcards: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportWildcardAfterCommaRejected) {
+    try {
+        parseStr("from math import a, *");
+        FAIL() << "Expected parser to reject '*' after comma in non-braced import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("wildcards"), std::string::npos)
+            << "Error message should mention wildcards: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportWildcardBracedAfterCommaRejected) {
+    try {
+        parseStr("from math import {a, *}");
+        FAIL() << "Expected parser to reject '*' after comma in braced import";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("wildcards"), std::string::npos)
+            << "Error message should mention wildcards: " << msg;
+    }
+}
+
 // ===== alias tests (#1721) =====
 
 TEST(ParserTest, ImportSingleAlias) {
