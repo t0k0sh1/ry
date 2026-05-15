@@ -154,6 +154,15 @@ jobs:
             cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
       - name: Upload scan-build report
         if: always()
+        # warn-only: this step is best-effort. actions/upload-artifact@v4
+        # occasionally fails after exhausting its 5-retry budget when the
+        # GitHub Actions artifact API returns a transient HTML error page
+        # instead of JSON (observed on #1750 main-branch run). The Build +
+        # Analyze step above is the source-of-truth and is already
+        # continue-on-error: true for the same warn-only reason; failing
+        # the whole scan-build job on an artifact-upload glitch would be
+        # strictly worse than just losing one report's diagnostics.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: scan-build-report
