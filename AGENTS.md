@@ -165,7 +165,9 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 
 1. **ユーザー要望優先**: 副次的発見の扱いについてユーザーが明示的に方針指示した場合 (`/triage-side-finding` Q2 = Yes)、判定フローよりユーザー指示を優先する。skill / agent / advisor の判断を根拠にユーザー指示を覆そうとしてはならない。**ただし副次的発見の判断にのみ適用** — サニタイザーエラー禁止 / TDD サイクル分割禁止などの品質ゲートは override しない。
 2. **再現困難問題の即時修正**: CI 検出の再現困難なメモリ破壊 / 並行性 race / fuzz crash 等 (`/triage-side-finding` Q1 = Yes に該当) は、起源判定 (regression vs pre-existing) より修正タイミングを優先する。再現中のウィンドウを逃さない原則。**ただし副次的発見の判断にのみ適用**。
-3. **分析より修正優先**: Q1 / Q2 該当時は `bug-forensics-analyst` / `advisor` を呼ばない。意味は「即時修正を選んだあと不要な分析で時間を消費しない」であり、root cause 分析投資原則 (`/plan-rubric` 等) と衝突せず、Q3 経由の分析完了後の修正着手を妨げない。
+3. **分析より修正優先**: Q1 / Q2 該当時は `bug-forensics-analyst` / advisor を呼ばない。意味は「即時修正を選んだあと不要な分析で時間を消費しない」であり、root cause 分析投資原則 (`/plan-rubric` 等) と衝突せず、Q3 経由の分析完了後の修正着手を妨げない。
+
+> **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (L49 catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
 
 ### ユーザーが明示的に指示すること
 

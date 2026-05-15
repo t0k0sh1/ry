@@ -18,7 +18,7 @@ allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Agent
 
 ## Decision Flow
 
-副次的発見を検出したら、以下の順序で判定する。**前段で確定したら後段の処理 (`bug-forensics-analyst` / `advisor` 呼び出し含む) は実行しない**。
+副次的発見を検出したら、以下の順序で判定する。**前段で確定したら後段の処理 (`bug-forensics-analyst` / advisor 呼び出し含む) は実行しない**。
 
 ### Q1: 今再現中で、後で再現困難になる問題か?
 
@@ -37,7 +37,7 @@ CI のサニタイザー (ASan / TSan / UBSan) / libFuzzer crash / 並行性 rac
 - production 環境のクラッシュレポートで再現手順が手元にある
 - 既知の再現性のあるテストケースで露呈した既存バグ
 
-→ **Q1 = Yes**: **即時修正に振る。`bug-forensics-analyst` / `advisor` は呼ばない**。
+→ **Q1 = Yes**: **即時修正に振る。`bug-forensics-analyst` / advisor は呼ばない**。
    - 再現中のウィンドウを最優先する設計上の判断であり「ついでに直す」ではない (`plan-rubric` の「ついでに直す禁止」と衝突しない、`/plan-rubric` 参照)
    - 必要に応じてクラッシュ入力 / スタックトレースを `tests/fuzz/regressions/` 等に永続化してから修正する
    - フィーチャーブランチに含めて同 PR 内で対処する
@@ -56,7 +56,7 @@ CI のサニタイザー (ASan / TSan / UBSan) / libFuzzer crash / 並行性 rac
 
 ユーザーがこれを承知した上で指示するなら従う。明らかな品質ゲート違反 (サニタイザーエラーを残す / TDD サイクル分割禁止違反など) は **Q2 の対象外** — それらは AGENTS.md の品質ゲート系ルールが優先する (`AGENTS.md` 「副次的発見の判断優先順位」参照)。
 
-→ **Q2 = Yes**: **ユーザー指示に従う。`bug-forensics-analyst` / `advisor` は呼ばない** (ルール順守側で「今直す」判断を覆さない)。
+→ **Q2 = Yes**: **ユーザー指示に従う。`bug-forensics-analyst` / advisor は呼ばない** (ルール順守側で「今直す」判断を覆さない)。
 → **Q2 = No**: Q3 へ進む。
 
 ### Q3: `bug-forensics-analyst` agent で起源分析
