@@ -204,7 +204,7 @@ Proposed action: \<1–2 sentences describing what to do\>
 **Next steps**
 
 1. **PR-caused failures** — Fix using the investigation above. Push and let the re-run or a new run verify.
-2. **Pre-existing failures** — File a separate issue following the `/scope-out-issue` skill (use the current PR's milestone) and decouple from this PR's CI.
+2. **Pre-existing failures** — Triage via the `/triage-side-finding` skill. **Hard-to-reproduce CI failures** (sanitizer / fuzz / TSan race that does not reliably reproduce locally) hit Q1 = Yes and should be fixed in the current PR to capture the reproduction window. Locally-reproducible pre-existing bugs follow Q3-Q4 (either fold into this PR via Q4(a) or file a separate issue via Q4(b) using the current PR's milestone) to decouple from this PR's CI.
 3. **Flaky / environment-caused (positive evidence confirmed)** — Check the re-run result triggered in Step 3.
 4. **Indeterminate** — Review the log excerpts above and decide with the user whether to investigate further or file an issue.
 
@@ -216,7 +216,7 @@ Proposed action: \<1–2 sentences describing what to do\>
 - Re-run is **not** a substitute for investigation. Proceed to Step 4 immediately after triggering.
 - If a failure is **PR-caused**, fixing the code is required regardless of whether the re-run passes.
 
-> **Important:** This skill does NOT commit, push, or fix code. It investigates, reports, and triggers re-runs only. For Pre-existing issues, follow the `/scope-out-issue` skill.
+> **Important:** This skill does NOT commit, push, or fix code. It investigates, reports, and triggers re-runs only. For Pre-existing issues, follow the `/triage-side-finding` skill (which may resolve to immediate fix via Q1 for hard-to-reproduce CI failures, not just to filing a separate issue).
 
 ---
 

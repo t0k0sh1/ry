@@ -171,7 +171,7 @@ cmake --preset tsan && cmake --build build-tsan && \
   TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
 ```
 
-C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716、Linux 限定) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。LLVM ORC teardown family の crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) は両 OS で観測されうるが `src/jit_runner.cpp` の三段階 leak (#1187 + #1657) で suppress 済み — このパターンの再発は新規 issue として起票する。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry および ORC teardown entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
+C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716、Linux 限定) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。LLVM ORC teardown family の crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) は両 OS で観測されうるが `src/jit_runner.cpp` の三段階 leak (#1187 + #1657) で suppress 済み — このパターンの再発は新規 issue として起票する。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること (`/triage-side-finding` Q1 該当 = CI 検出の再現困難問題 → 即時修正)。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry および ORC teardown entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
 ## 3.5.5. Static Analysis
 
@@ -288,7 +288,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 ```
 
 - 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
-- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは `/scope-out-issue` の判定フローに従って別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
+- crash が発見された場合は `/triage-side-finding` の判定フローに従う。**再現困難な crash** (ローカルで 3 回試行しても再現しない / コーパス未保存 / CI でのみ出る) は Q1 = Yes として**同 PR で即座に修正**する (再現中のウィンドウを逃さない設計上の判断であり、TSan race の取り扱い §3.5 L174 と同じ原則)。現在の PR のコードが直接引き起こしたものも同 PR で即座に修正してよい (Q4(a) = 即時修正)。ローカルで安定再現する既存バグかつ scope を実質的に変える規模のものに限って Q4(b) で別 issue 起票に振る。crash 入力は再現性に関わらず `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること (再現困難な crash でも入力アーティファクトは残す)。
 
 ## 3.6.5. tree-sitter Grammar Regression Check
 

@@ -46,7 +46,7 @@ CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、r
 
 - **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter `paths:` glob に一致するファイル編集時に自動 load
 - **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。`description:` にマッチした時に呼び出される
-- **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。現状は `.claude/agents/devils-advocate.md` (Plan / 設計レビュー用の批評エージェント) のみ
+- **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。現状は `.claude/agents/devils-advocate.md` (Plan / 設計レビュー用の批評エージェント) と `.claude/agents/bug-forensics-analyst.md` (バグの起源判定 / git archaeology / テストギャップ分析。`/triage-side-finding` Q3 経由で起動)
 - **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・昇格手順は `/knowledge-md-management` 参照
 - **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md`
 - **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。**該当する rule / skill が既にあればそこを更新**、どこにも該当 entry がない新規知見は **`KNOWLEDGE.md` に追記** (詳細は `/knowledge-md-management`)。path 限定の整理先は `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
@@ -107,7 +107,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
   - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
-- **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
+- **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。`/triage-side-finding` Q4(b) で「別 issue 起票」と判定された場合のみ、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)
 - **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
 
 ## repo build と stdlib 解決
@@ -155,9 +155,19 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 - ドキュメント更新
 - PR マージ後の `wip` ラベル除去（`git-merge-pr` Step 5 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない。issue クローズは `Closes #xx` キーワードにより GitHub が自動で行う。ただしこれは feature が main に入った記録であり、リリース完了ではない — 「リリースワークフロー」参照）
 
-#### スコープ外の問題を発見した場合の対応ルール
+#### 副次的発見への対応
 
-スコープ外の問題を発見したときの判定フロー (Case 1/2/3) と issue 起票手順は `.claude/skills/scope-out-issue/SKILL.md`（または `/scope-out-issue`）参照。
+副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 3 択判定 [即時修正 / 別 issue 起票 / ユーザー確認]) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。
+
+#### 副次的発見の判断優先順位
+
+副次的発見のトリアージ (Q1-Q4) において以下の優先順位を適用する。**本サブセクションのルールは「副次的発見の扱いに関する判断」にのみ適用** — 品質ゲート系ルール (サニタイザーエラー禁止 / TDD サイクル分割禁止 / `main` 直接コミット禁止 / `.serena/` 差分の同時コミット 等) は本サブセクションで override されない。
+
+1. **ユーザー要望優先**: 副次的発見の扱いについてユーザーが明示的に方針指示した場合 (`/triage-side-finding` Q2 = Yes)、判定フローよりユーザー指示を優先する。skill / agent / advisor の判断を根拠にユーザー指示を覆そうとしてはならない。**ただし副次的発見の判断にのみ適用** — サニタイザーエラー禁止 / TDD サイクル分割禁止などの品質ゲートは override しない。
+2. **再現困難問題の即時修正**: CI 検出の再現困難なメモリ破壊 / 並行性 race / fuzz crash 等 (`/triage-side-finding` Q1 = Yes に該当) は、起源判定 (regression vs pre-existing) より修正タイミングを優先する。再現中のウィンドウを逃さない原則。**ただし副次的発見の判断にのみ適用**。
+3. **分析より修正優先**: Q1 / Q2 該当時は `bug-forensics-analyst` / advisor を呼ばない。意味は「即時修正を選んだあと不要な分析で時間を消費しない」であり、root cause 分析投資原則 (`/plan-rubric` 等) と衝突せず、Q3 経由の分析完了後の修正着手を妨げない。
+
+> **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (L49 catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
 
 ### ユーザーが明示的に指示すること
 

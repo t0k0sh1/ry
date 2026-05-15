@@ -90,9 +90,9 @@ OK (WHAT 止まり):
 ### Axis 2: スコープ (Pass / Fail)
 
 **Pass**: すべてのタスクが issue の受け入れ条件にマッピングできる。  
-**Fail**: 計画段階で発見した既存バグの修正が含まれているのに `/scope-out-issue` の判定 (Case 1/2/3) が記録されていない。
+**Fail**: 計画段階で発見した副次的問題に対する `/triage-side-finding` の判定 (Q1-Q4) が Plan 本文に記録されていない。
 
-スコープ外の問題を見つけたら `/scope-out-issue` で判定し、別 issue 起票タスクとして Plan 本文に明記する。本タスク内で「ついでに直す」を許容しない。
+副次的な問題を見つけたら `/triage-side-finding` で判定する。**Q1 (再現困難な CI 検出問題) / Q2 (ユーザー明示指示) に該当する場合は「設計上の即時修正」として同 PR で対処し、本ルールでいう「ついでに直す」には該当しない**。Q3 経由で起源分析した結果 Q4(a) 即時修正と判定された場合のみ計画タスクに織り込み、Q4(b) と判定された場合は別 issue 起票タスクとして Plan 本文に明記する。Q1-Q4 判定なしの「ついでに直す」は許容しない。
 
 ---
 
@@ -152,7 +152,7 @@ Agent tool 呼び出し例:
   subagent_type: devils-advocate
   prompt: |
     以下の Plan を批評してください。WHAT/HOW 分離 (Axis 1) と
-    スコープ外問題の扱い (Axis 2) を中心に、Phase 1-4 で検討してください。
+    副次的発見の扱い (Axis 2) を中心に、Phase 1-4 で検討してください。
 
     [plan ファイルの本文を貼る]
 ```
@@ -175,7 +175,7 @@ Agent tool 呼び出し例:
 - **`/test-checklist`** — `/test-design-techniques` の inductive 補完。Plan 内では参照のみ、実行は実装フェーズ
 - **`/tdd-cycle`** — Plan 内の TDD タスクは Red-Green-Refactor を分割せず 1 タスクにまとめる (AGENTS.md §"Plan モードのルール" の規約と一致)
 - **`.claude/agents/devils-advocate.md`** — Plan 批評モード (Phase 1-4)
-- **`/scope-out-issue`** — Axis 2 で検出したスコープ外問題の Case 1/2/3 判定と issue 起票
+- **`/triage-side-finding`** — Axis 2 で検出した副次的発見の Q1-Q4 判定 (Q1 再現困難 CI 問題 / Q2 ユーザー明示指示 / Q3 `bug-forensics-analyst` / Q4 3 択判定) と Issue Creation Steps
 - **`/pre-commit-checklist`** — 実装フェーズ後の完了前検証 (Plan の検証対象ではない)
 
 ---

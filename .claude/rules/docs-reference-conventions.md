@@ -437,11 +437,13 @@ the example works end-to-end before publishing.
   per shape: as of v0.0.17, selective imports drop unselected helpers
   even within the same package; wildcard imports across packages filter
   non-`@public` symbols silently.
-- If the documented behavior diverges from observed behavior, file an
-  issue (per `/scope-out-issue`), document the discrepancy with an issue
-  link, and revise the docs to describe what works today rather than
-  what the design spec promised. Do not ship aspirational examples in a
-  user-facing guide.
+- If the documented behavior diverges from observed behavior, triage
+  via `/triage-side-finding` (the divergence typically lands in Q4(b)
+  "file a separate issue" since docs are normally not reproducible
+  fixes for the current PR scope), document the discrepancy with an
+  issue link, and revise the docs to describe what works today rather
+  than what the design spec promised. Do not ship aspirational examples
+  in a user-facing guide.
 - Single-snippet `./build/ry -c` verification (the
   "Example code in docs must match the current Ry syntax" rule above) is
   necessary but not sufficient for multi-file scenarios.
