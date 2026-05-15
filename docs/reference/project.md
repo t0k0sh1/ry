@@ -37,6 +37,8 @@ If no `package.toml` is found or no `entry` field is set, `ry` prints help and e
 
 If the first argument is a **single path component** whose name ends with `.ry` (for example `main.ry`) and no file with that name exists in the current working directory, `ry` searches the nearest `package.toml` project in order: **first** the project root directory (the directory containing `package.toml`), **then** each directory listed under `[paths]` (keys sorted alphabetically; keys starting with `_` are reserved and ignored for this search, except `_dev_stdlib` which is handled separately). The **first** existing regular file wins (for example `foo.ry` next to `package.toml` is chosen over `src/foo.ry` when both exist). If none match, `ry` reports that the file does not exist and lists the paths that were tried. Tokens without a `.ry` suffix are not resolved this way (so mistyped subcommands still show “unknown command”).
 
+If the argument is a **single path component** *and* a file with that name exists in the current working directory, `ry` rejects it as ambiguous and exits with status 1 (e.g. `Error: ambiguous script path 'foo.ry'. Use './foo.ry' or an absolute path.`). Prefix the path with `./` or use an absolute path to indicate that the literal file in the current directory is intended; this also makes relative imports inside the script (such as `from .sub import ...`) resolve correctly.
+
 If the argument is a **path with more than one component** (for example `src/foo.ry` or `./foo.ry`) and that path does not exist, `ry` reports **no such file** instead of treating it as an unknown subcommand.
 
 The same rules apply to `ry test <file.ry>` when `<file.ry>` is a basename and does not exist relative to the current directory.

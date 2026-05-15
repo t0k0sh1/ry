@@ -125,6 +125,11 @@ int main(int argc, char *argv[]) {
         // try resolving a bare filename against package.toml [paths], else error.
         std::string arg1 = argv[1];
         if (fs::exists(arg1)) {
+            if (!fs::path(arg1).has_parent_path()) {
+                errs() << "Error: ambiguous script path '" << arg1
+                       << "'. Use './" << arg1 << "' or an absolute path.\n";
+                return 1;
+            }
             entry_path_storage.clear();
             filename = argv[1];
         } else {
