@@ -610,6 +610,13 @@ const CodeGen::ModuleNamespaceInfo *CodeGen::findModuleNamespace(const std::stri
     return &it->second;
 }
 
+std::optional<std::string> CodeGen::findAliasForCanonical(const std::string &canonical) const {
+    for (const auto &[alias, canon] : effective_to_canonical_) {
+        if (canon == canonical) return alias;
+    }
+    return std::nullopt;
+}
+
 CodeGen::EnumInfo *CodeGen::findEnumType(const std::string &name) {
     auto it = enum_types_.find(name);
     if (it != enum_types_.end()) return &it->second;

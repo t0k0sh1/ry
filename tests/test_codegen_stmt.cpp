@@ -2561,6 +2561,9 @@ TEST_F(CodeGenTest, DefaultArgGenericError) {
 // compile code that imports stdlib modules"). The alias-then-bare-call
 // regression case (`import math as m; math.sqrt(2.0)`) is therefore
 // covered by smoke tests in the PR description rather than here.
+// #1747's alias-suggestion variant (`'math' is not defined. Did you
+// mean 'm' (aliased from 'math')?`) inherits the same harness
+// limitation and is likewise smoke-tested only.
 
 TEST_F(CodeGenTest, UnimportedStdlibCallExprEmitsError) {
     expectCompileError("x = math.sqrt(4.0)\n",

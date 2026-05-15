@@ -110,14 +110,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     // `<mod>.<field>`, handled by the qualified branch below). Gate on
     // `!findVar(receiver)` so a local that happens to share a stdlib name
     // (e.g. `path: str = "/tmp"; print(path.length)`) is not misdiagnosed.
+    //
+    // #1747: when an alias is registered for the canonical module (e.g.
+    // `import math as m`), the canonical name is hidden per the
+    // Python-style contract. Emit a targeted alias suggestion instead of
+    // the misleading "add 'import math'" hint.
     if (!e->qualified_module.has_value()) {
         if (auto *ve = std::get_if<VariableExpr>(&e->object->data)) {
             if (isStdlibPackageName(ve->name) && !findVar(ve->name)) {
-                std::string msg = "module '";
-                msg += ve->name;
-                msg += "' is not imported (add 'import ";
-                msg += ve->name;
-                msg += "' at the top of the file)";
+                std::string msg;
+                if (auto alias = findAliasForCanonical(ve->name)) {
+                    msg = "'" + ve->name + "' is not defined. Did you mean '"
+                        + *alias + "' (aliased from '" + ve->name + "')?";
+                } else {
+                    msg = "module '" + ve->name + "' is not imported (add 'import "
+                        + ve->name + "' at the top of the file)";
+                }
                 codegenError(msg);
             }
         }
