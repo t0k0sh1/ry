@@ -49,3 +49,26 @@ Runtime fns like `__ry_http_client_request` are called from three contexts: user
 ### String negative-index wrap uses UTF-8 char count, not byte length
 
 When applying `emitNegativeIndexWrap(idx, wrapBase, prefix)` to string indices, `wrapBase` MUST be the UTF-8 codepoint count via `__ry_utf8_len_n(s, byteLen)`, not `emitStringByteLen(s)`. For 5-char / 15-byte `"あいうえお"`, byte length gives `-1 + 15 = 14` (out-of-range); char count gives `-1 + 5 = 4` (correct last-char index). The `_n` variant is NUL-safe. Always hoist `emitStringByteLen` into a local so it feeds both `__ry_utf8_len_n` and the downstream string-indexed runtime call (`__ry_utf8_substring` etc.). Zero-clamp after wrap is still required (`-100 + 5 = -95`). `emitCollOp_slice` does NOT need this — list length is element count, no byte/codepoint distinction.
+
+### Unimported stdlib module diagnostic lives at codegen dispatch top, not parser
+
+**Source**: #1746 (2026-05-15, implementation)
+**Tags**: stdlib, dispatch, parser-vs-codegen, unimported-module, ufcs, scope-info, blind-spot
+
+**Context**: The naïve fix for `<mod>.fn(...)` without `import <mod>` (e.g. `math.sqrt(4.0)` without `import math`) is to reject it in the parser at the UFCS lowering site (`parseQualifiedCall` / `parsePostfixContinuation`): the parser already maintains `imported_modules_` and `StdlibRegistry::instance().packages()` is reachable from the parser TU. This was the original Plan approach for #1746, and it works for the trivial case.
+
+It silently breaks for the **local-shadow case**: `path: str = "/tmp/foo.txt"; path.basename()` is legitimate UFCS over a local that happens to share a stdlib package name. The parser has no scope info to discriminate the local from a real unimported package use — its earliest scope-aware pass is type checking inside codegen (`findVar`). A parser-side check therefore false-positives every locally-named-after-stdlib variable.
+
+**Rule**: The "module not imported" diagnostic for `<mod>.fn(...)` and `<mod>.field` lives at the **top of `emitExprVariant<CallExpr>` and `emitExprVariant<FieldAccessExpr>`** (`src/codegen_call_dispatch.cpp`, `src/codegen_expr_literal.cpp`), gated on:
+- `!e->qualified_module.has_value()` (skip when the user wrote a properly imported `<mod>.xxx` — that path has its own qualified-module diagnostic),
+- the receiver is a bare `VariableExpr`,
+- `isStdlibPackageName(receiver->name)` (matches against `StdlibRegistry::instance().packages()`),
+- `!findVar(receiver->name)` (skip when the name is a local — local shadowing is intentional and the existing "undefined function: <method>" path is correct for it).
+
+The check fires before any dispatch (table-driven stdlib, generic native, user-fn fallthrough), so it overrides every misleading diagnostic those paths would otherwise emit (`"sqrt() takes exactly 1 argument"` from `requireArgs` in the math table-driven path; `"undefined function: sqrt (hint: forward references...)"` from `resolveOverload`'s user-fn fallthrough).
+
+**How to apply**:
+- Do not move this check to the parser. The local-shadow case requires `findVar` and the parser cannot discriminate.
+- Use `StdlibRegistry::instance().packages()` (statically populated via `RY_REGISTER_STDLIB_PACKAGE` initializers), not `native_fn_sigs_` (lazily populated by `import` statements — empty for the very case we want to diagnose).
+- Cache the package-name set in a function-local `static std::unordered_set` inside `isStdlibPackageName` (registry is immutable after startup).
+- The bare unqualified-call case (`sqrt(4.0)` without `from math import sqrt`) is intentionally out of scope: distinguishing "user forgot the import" from "user defined `fn sqrt` later in the file" requires context the codegen dispatcher does not have at the call site, and the existing forward-reference hint is genuinely useful for the second case.

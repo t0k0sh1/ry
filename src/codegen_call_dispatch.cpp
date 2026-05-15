@@ -2,12 +2,55 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
+#include <unordered_set>
 
 namespace ry {
 
 // ===== CallExpr Dispatcher =====
 
+// #1746: returns true when `name` matches a stdlib package registered via
+// RY_REGISTER_STDLIB_PACKAGE (e.g. "math", "json", "path"). The registry is
+// populated by static initializers and immutable after program startup, so a
+// function-local static set caches the snapshot.
+bool CodeGen::isStdlibPackageName(const std::string &name) {
+    static const std::unordered_set<std::string> kStdlibPackages = []() {
+        std::unordered_set<std::string> s;
+        for (const auto &pkg : StdlibRegistry::instance().packages())
+            s.insert(pkg.package_name);
+        return s;
+    }();
+    return kStdlibPackages.count(name) > 0;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    // #1746: detect `<mod>.<callee>(...)` where `<mod>` names a stdlib
+    // package the user forgot to `import`. The parser, finding `<mod>`
+    // absent from `imported_modules_`, leaves `qualified_module` unset and
+    // UFCS-lowers the call to `CallExpr{callee, args=[VariableExpr{<mod>},
+    // ...]}`. Without this guard the call falls through to the table-driven
+    // stdlib dispatcher (which fires "<callee>() takes exactly N argument"
+    // because UFCS prepended the receiver) or to `resolveOverload`'s
+    // "undefined function" path — both of which mislead users away from the
+    // actual root cause. Gate on `!findVar(receiver)` so a local variable
+    // happening to share a stdlib name (e.g. `path: str = "/tmp"` then
+    // `path.basename()`) is not misdiagnosed: such locals shadow the
+    // package and the existing "undefined function" path is correct for
+    // them. Skip when `qualified_module` is set: the user wrote a properly
+    // imported `<mod>.fn(...)`, and the qualified-module branch below
+    // handles the missing-namespace case with its own diagnostic.
+    if (!e->qualified_module.has_value() && !e->args.empty()) {
+        if (auto *ve = std::get_if<VariableExpr>(&e->args[0]->data)) {
+            if (isStdlibPackageName(ve->name) && !findVar(ve->name)) {
+                std::string msg = "module '";
+                msg += ve->name;
+                msg += "' is not imported (add 'import ";
+                msg += ve->name;
+                msg += "' at the top of the file)";
+                codegenError(msg);
+            }
+        }
+    }
+
     // Qualified call `<effective>.fn(args)` (#1723, #1724, #1730).
     //
     // The parser sets `qualified_module` when the dotted LHS is a single

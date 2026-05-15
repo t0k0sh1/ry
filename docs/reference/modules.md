@@ -139,6 +139,7 @@ contains("hello", "ell")       # str module's contains
 | Module scope | Both standard library and user-defined modules are supported. Generic functions, `enum` declarations, and `type` aliases inside a qualified-imported user-defined module are rejected with a diagnostic suggesting `from <module> import ...` (Phase 2). |
 | Duplicate | `import math` followed by `import math` in the same file is a parse error. |
 | Shadowing | After `import math`, declaring `math: int = ...` (or any local named `math`) is a parse error. Rename the local or remove the matching `import` statement. |
+| Unimported stdlib use | `<mod>.fn(...)` or `<mod>.field` where `<mod>` names a registered stdlib module (`math`, `json`, `path`, …) but no `import <mod>` (or `import <mod> as <alias>`) is in scope is rejected at codegen with `module '<mod>' is not imported (add 'import <mod>' at the top of the file)`. A local variable that happens to share a stdlib module name shadows the package and is exempt from this check. (#1746) |
 
 `import` is only valid at top level — placing it inside a function or
 block is rejected, matching the existing rule for `from` imports.

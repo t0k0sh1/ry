@@ -2545,3 +2545,67 @@ TEST_F(CodeGenTest, DefaultArgGenericError) {
         "    return x\n"
         "print(identity(42))"), std::runtime_error);
 }
+
+// ===== unimported stdlib module diagnostic (#1746) =====
+//
+// `<mod>.fn(...)` / `<mod>.field` where `<mod>` names a registered
+// stdlib package but the user forgot to `import <mod>` must produce an
+// actionable error pointing at the missing import. The check fires at
+// codegen-dispatch time (parser cannot discriminate between an
+// unimported stdlib module and a local that happens to share its name,
+// because parser has no scope info; codegen does, via `findVar`).
+//
+// `import <mod>` / `import <mod> as <alias>` requires ModuleLoader to
+// run, which `runSource` does not invoke (see
+// .claude/rules/tests-cpp-conventions.md "CodeGenTest::runSource cannot
+// compile code that imports stdlib modules"). The alias-then-bare-call
+// regression case (`import math as m; math.sqrt(2.0)`) is therefore
+// covered by smoke tests in the PR description rather than here.
+
+TEST_F(CodeGenTest, UnimportedStdlibCallExprEmitsError) {
+    expectCompileError("x = math.sqrt(4.0)\n",
+                       "module 'math' is not imported");
+}
+
+TEST_F(CodeGenTest, UnimportedStdlibCallStmtEmitsError) {
+    expectCompileError("math.sqrt(4.0)\n",
+                       "module 'math' is not imported");
+}
+
+TEST_F(CodeGenTest, UnimportedStdlibFieldAccessEmitsError) {
+    expectCompileError("x = math.PI\n",
+                       "module 'math' is not imported");
+}
+
+TEST_F(CodeGenTest, UnimportedStdlibCallExprIncludesImportHint) {
+    expectCompileError("x = json.parse(\"{}\")\n",
+                       "add 'import json'");
+}
+
+// Regression guard: a local variable whose name happens to match a
+// stdlib package shadows the package, and the new diagnostic must NOT
+// fire. The existing "undefined function: basename" / "undefined
+// variable: ..." paths remain authoritative for these cases.
+TEST_F(CodeGenTest, LocalShadowingStdlibPackageNameDoesNotTriggerImportError) {
+    try {
+        runSource("path: str = \"/tmp/foo.txt\"\nx = path.basename()\n");
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_EQ(msg.find("module 'path' is not imported"), std::string::npos)
+            << "local-shadow guard failed; got: " << msg;
+    }
+}
+
+// Regression guard: non-stdlib `<ident>.<call>` continues to flow
+// through the existing UFCS-lowering / "undefined function" path.
+TEST_F(CodeGenTest, NonStdlibUfcsStillRoutesToUndefinedFunction) {
+    try {
+        runSource("x = foo.bar(1)\n");
+        FAIL() << "Expected compile error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_EQ(msg.find("module 'foo' is not imported"), std::string::npos)
+            << "non-stdlib name must not trip the import diagnostic; got: " << msg;
+    }
+}
