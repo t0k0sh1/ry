@@ -38,14 +38,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // them. Skip when `qualified_module` is set: the user wrote a properly
     // imported `<mod>.fn(...)`, and the qualified-module branch below
     // handles the missing-namespace case with its own diagnostic.
+    //
+    // #1747: when an alias is registered for the canonical module (e.g.
+    // `import math as m` was seen earlier), the canonical name is no
+    // longer in scope per the Python-style contract documented in
+    // docs/reference/modules.md. The "add 'import math'" hint would be
+    // misleading — the user already imported it under an alias. Emit a
+    // targeted suggestion pointing at the alias instead.
     if (!e->qualified_module.has_value() && !e->args.empty()) {
         if (auto *ve = std::get_if<VariableExpr>(&e->args[0]->data)) {
             if (isStdlibPackageName(ve->name) && !findVar(ve->name)) {
-                std::string msg = "module '";
-                msg += ve->name;
-                msg += "' is not imported (add 'import ";
-                msg += ve->name;
-                msg += "' at the top of the file)";
+                std::string msg;
+                if (auto alias = findAliasForCanonical(ve->name)) {
+                    msg = "'" + ve->name + "' is not defined. Did you mean '"
+                        + *alias + "' (aliased from '" + ve->name + "')?";
+                } else {
+                    msg = "module '" + ve->name + "' is not imported (add 'import "
+                        + ve->name + "' at the top of the file)";
+                }
                 codegenError(msg);
             }
         }

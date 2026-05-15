@@ -52,8 +52,8 @@ When applying `emitNegativeIndexWrap(idx, wrapBase, prefix)` to string indices, 
 
 ### Unimported stdlib module diagnostic lives at codegen dispatch top, not parser
 
-**Source**: #1746 (2026-05-15, implementation)
-**Tags**: stdlib, dispatch, parser-vs-codegen, unimported-module, ufcs, scope-info, blind-spot
+**Source**: #1746 (2026-05-15, implementation); #1747 (2026-05-15, alias-aware variant)
+**Tags**: stdlib, dispatch, parser-vs-codegen, unimported-module, ufcs, scope-info, blind-spot, alias-suggestion
 
 **Context**: The naïve fix for `<mod>.fn(...)` without `import <mod>` (e.g. `math.sqrt(4.0)` without `import math`) is to reject it in the parser at the UFCS lowering site (`parseQualifiedCall` / `parsePostfixContinuation`): the parser already maintains `imported_modules_` and `StdlibRegistry::instance().packages()` is reachable from the parser TU. This was the original Plan approach for #1746, and it works for the trivial case.
 
@@ -72,3 +72,4 @@ The check fires before any dispatch (table-driven stdlib, generic native, user-f
 - Use `StdlibRegistry::instance().packages()` (statically populated via `RY_REGISTER_STDLIB_PACKAGE` initializers), not `native_fn_sigs_` (lazily populated by `import` statements — empty for the very case we want to diagnose).
 - Cache the package-name set in a function-local `static std::unordered_set` inside `isStdlibPackageName` (registry is immutable after startup).
 - The bare unqualified-call case (`sqrt(4.0)` without `from math import sqrt`) is intentionally out of scope: distinguishing "user forgot the import" from "user defined `fn sqrt` later in the file" requires context the codegen dispatcher does not have at the call site, and the existing forward-reference hint is genuinely useful for the second case.
+- **#1747 alias-aware variant**: before constructing the "module not imported" message, call `findAliasForCanonical(ve->name)` (linear scan over `effective_to_canonical_`). If an alias exists, emit `"'<canonical>' is not defined. Did you mean '<alias>' (aliased from '<canonical>')?"` instead. The alias check is required because `import math as m` hides the canonical name per the Python-style contract documented in `docs/reference/modules.md`, so the generic `add 'import math'` hint is misleading — the user has already imported the module under a different name. The reverse-lookup helper lives next to `findModuleNamespace` in `include/ry/codegen.hpp` and `src/codegen.cpp`; both guard sites (`codegen_call_dispatch.cpp` CallExpr and `codegen_expr_literal.cpp` FieldAccessExpr) must apply the alias check uniformly so suggestion behavior matches whether the user wrote `math.fn(...)` or `math.field`.

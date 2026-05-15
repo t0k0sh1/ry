@@ -1014,6 +1014,13 @@ public:
     // else the original module name). Returns nullptr on miss.
     ModuleNamespaceInfo *findModuleNamespace(const std::string &effective);
     const ModuleNamespaceInfo *findModuleNamespace(const std::string &effective) const;
+    // Reverse lookup: given a canonical module name, find an alias that
+    // maps to it (if any). Returns std::nullopt when no alias is
+    // registered. Linear scan over effective_to_canonical_, which is
+    // tiny (at most one entry per `import X as Y`). Used by the
+    // unimported-stdlib-module diagnostic (#1747) to suggest the alias
+    // when the user wrote bare `X.fn(...)` after `import X as Y`.
+    std::optional<std::string> findAliasForCanonical(const std::string &canonical) const;
 
     // While non-null, `emitStmt(FnStmt&)` / `emitStmt(RecordStmt&)` /
     // top-level `@const AssignStmt` redirect their registration into this
