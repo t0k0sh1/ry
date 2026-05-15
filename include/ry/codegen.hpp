@@ -93,6 +93,12 @@ public:
         return package.empty() ? name : package + "::" + name;
     }
 
+    // #1746: returns true when `name` matches a stdlib package registered
+    // via RY_REGISTER_STDLIB_PACKAGE (e.g. "math", "json", "path"). Used
+    // by call/field-access dispatch to detect `<mod>.<name>` where `<mod>`
+    // is a stdlib package the user forgot to `import`. Cached on first use.
+    static bool isStdlibPackageName(const std::string &name);
+
     // Table-driven native call dispatch (public for use by self-registering
     // stdlib modules in codegen_call_<mod>.cpp files).
     llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,

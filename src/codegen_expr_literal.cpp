@@ -100,6 +100,29 @@ llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e) {
+    // #1746: detect `<mod>.<field>` where `<mod>` names a stdlib package
+    // the user forgot to `import` (e.g. `math.PI`, `math.E`). Mirrors the
+    // CallExpr-dispatch guard in `codegen_call_dispatch.cpp`. Without this
+    // the field access falls through to evaluating `e->object` as a
+    // VariableExpr and emits the more generic "undefined variable: <mod>"
+    // — true but doesn't tell the user which import to add. Skip when
+    // `qualified_module` is set (the user wrote a properly imported
+    // `<mod>.<field>`, handled by the qualified branch below). Gate on
+    // `!findVar(receiver)` so a local that happens to share a stdlib name
+    // (e.g. `path: str = "/tmp"; print(path.length)`) is not misdiagnosed.
+    if (!e->qualified_module.has_value()) {
+        if (auto *ve = std::get_if<VariableExpr>(&e->object->data)) {
+            if (isStdlibPackageName(ve->name) && !findVar(ve->name)) {
+                std::string msg = "module '";
+                msg += ve->name;
+                msg += "' is not imported (add 'import ";
+                msg += ve->name;
+                msg += "' at the top of the file)";
+                codegenError(msg);
+            }
+        }
+    }
+
     // Qualified field access `<effective>.x` (#1723, #1724, #1730).
     //
     // - stdlib module: the inlined top-level binding is reachable by bare
