@@ -6,6 +6,226 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.23] - 2026-05-15
+
+### Added
+
+- Added symbol alias support in selective import (`from m import foo as bar`).
+  The parser now accepts an optional `as <ident>` after each imported name,
+  the formatter emits it round-trip, and self-alias (`foo as foo`) is
+  normalized away (#1721).
+  In this release only `@const` aliases are functional end-to-end; alias
+  requests for `fn` / `record` / `enum` / `type alias` parse and reach the
+  module loader but are rejected with a clear diagnostic pointing at
+  follow-up #1725, which will extend codegen-side name resolution to make
+  the remaining kinds work. (#1721)
+- Added braced selective import syntax: `from x import { a, b }` and
+  `from x import { a as b, c }`. Both single-line and multi-line forms
+  are accepted, with an optional trailing comma. The new form parses to
+  the same `ImportStmt` AST as the existing `from x import a, b` form,
+  so semantics (including #1721 symbol aliases) are unchanged. Empty
+  braces (`from x import {}`) are rejected with
+  `expected import name after '{'`.
+  The tree-sitter grammar accepts braced single-line imports; brace-
+  internal newline suppression for the multi-line form is tracked in
+  #1727 alongside the same gap for list / map / set literals. (#1722)
+- Added qualified import syntax: `import <module>` binds the module
+  itself, and members are accessed via `<module>.<name>` (e.g.
+  `import math; math.sqrt(2.0)`, `math.PI`). Qualified and selective
+  imports compose — `import math` and `from math import PI` may both
+  appear in the same file. Qualified import is the recommended way to
+  resolve name collisions between modules: `from str import contains`
+  alongside `import list` lets the importer use `contains(...)` for the
+  string version and `list.append(...)` for the list version without
+  ambiguity. v0.0.23 supports qualified import for standard library
+  modules only; user-defined modules continue to use
+  `from <mod> import ...`. Constraints: single-identifier modules only
+  (`import a.b` is rejected, use `from a.b import ...`); the
+  `import <mod> as <local>` alias form is parsed but rejected with a
+  pointer to the follow-up issue
+  [#1724](https://github.com/t0k0sh1/ry/issues/1724); duplicate
+  `import` of the same module in a file and local bindings that shadow
+  an imported module name are both parse errors. (#1723)
+- Extended qualified import (#1723) with the alias clause:
+  `import <module> as <local>` registers `<local>` as the effective
+  module name, so `import math as m` makes `m.sqrt(2.0)` and `m.PI`
+  work. The alias **replaces** the original name (Python-style): bare
+  `math.sqrt(2.0)` after `import math as m` is no longer routed to the
+  qualified-call path. The alias must be camelCase, and two imports
+  whose effective names collide (e.g. `import math as m` followed by
+  `import path as m`) are a parse error. The original module name is
+  preserved internally so user-defined-module rejection diagnostics
+  still cite the actual file (`from mymod import greet`, not
+  `from m import greet`). (#1724)
+- Extended `from m import foo as bar` symbol alias to `fn`, `record`,
+  `enum`, and `type alias` kinds. The module loader now generates an
+  `ImportAliasStmt` AST node per non-`@const` alias, and codegen
+  registers the alias under the existing function / record / enum /
+  type-alias tables so every call site, type annotation, constructor,
+  enum variant access, and ADT pattern match resolves transparently
+  through the alias name (#1725).
+- Generic-fn and generic-enum aliases are explicitly rejected at codegen
+  with a "not yet supported" diagnostic; aliases for non-`@const`
+  mutable globals and `@directive` definitions remain rejected by the
+  module loader (#1725).
+- Extended qualified import (#1723 / #1724) to user-defined modules: after
+  `import usermod`, the qualified forms `usermod.foo()`, `usermod.PI`, and
+  `usermod.MyRecord(...)` resolve through a per-module namespace bucket on
+  `CodeGen`, replacing the previous "throwaway Program" carve-out that
+  outright rejected qualified calls into user-defined modules. The
+  selective form (`from usermod import foo`) continues to share the same
+  loader cache, so mixing both in one file (`import usermod` followed by
+  `from usermod import foo`) reuses the AST without re-parsing. Bare-name
+  leak isolation is preserved: `import usermod` alone never exposes
+  `foo()` as a top-level identifier. (#1730)
+
+### Changed
+
+- Generic functions, `enum` declarations, and `type` aliases inside a
+  user-defined module reached through qualified import are now rejected
+  at codegen with an actionable diagnostic suggesting
+  `from <module> import ...`. These constructs route through flat tables
+  (`generic_fn_templates_` / `enum_types_` / `type_aliases_`) that the
+  per-module namespace bucket cannot intercept; surfacing the limitation
+  early avoids silent bare-name leaks. (#1730)
+- CI `scan-build` job now analyses only the `ry` target on pull requests
+  for faster feedback (~76 TU instead of the default `all` target,
+  which previously also dragged in `ry_tests`, `ry_<pkg>` native shared
+  libraries, and fuzz harnesses); the full all-target scan is retained
+  for `push` to `main` so mainline keeps the wider coverage. Both
+  invocations now pass `--parallel`. (#1738)
+- CodeQL Advanced workflow's c-cpp matrix Build step now compiles only
+  the `ry` target on pull requests for faster feedback (~76 TU instead
+  of the default target, which previously also dragged in `ry_tests`,
+  `ry_<pkg>` native shared libraries, and fuzz harnesses); the full
+  default-target build is retained for `push` to `main` and
+  `workflow_dispatch` so the Code Scanning dashboard and the release
+  `codeql-gate` keep the wider coverage. The `cmake --build` invocation
+  now also passes `--parallel`. (#1740)
+- CI `clang-tidy` job's `Build` step now compiles only the `ry` target
+  on pull requests for faster feedback (~76 TU instead of the default
+  `all` target, which previously also dragged in `ry_tests`,
+  `ry_<pkg>` native shared libraries, and fuzz harnesses); the full
+  all-target build is retained for `push` to `main`. The `cmake --build`
+  invocation now also passes `--parallel`, and the `Run clang-tidy`
+  step now parallelises per-TU via `xargs -0 -n 1 -P "$(nproc)"`
+  instead of running clang-tidy sequentially (`-n 1` is required —
+  otherwise xargs batches every `.cpp` path into a single clang-tidy
+  invocation and the `-P` flag does nothing). The PR `--target ry` narrows only
+  the build step — clang-tidy still analyses every `src/*.cpp`
+  (90 files) in both event modes. (#1741)
+- `ry foo.ry` (a bare filename with no path separator) is now rejected with
+  an actionable error when `foo.ry` exists in the current working directory:
+  `Error: ambiguous script path 'foo.ry'. Use './foo.ry' or an absolute
+  path.` Previously the bare form silently bypassed referrer-directory
+  resolution, causing scripts that used relative imports
+  (`from .sub import ...`) to fail with `relative import requires a
+  referrer directory`. Use `./foo.ry` or an absolute path instead; bare
+  filenames that do not exist in the current directory are still resolved
+  through `package.toml` `[paths]` as before. (#1745)
+- `pre-commit-checklist` §3.6 (libFuzzer) reframes the crash-handling
+  policy to match §3.5 (TSan): hard-to-reproduce crashes (sanitizer /
+  fuzz output that does not reliably reproduce locally) are now fixed
+  in the current PR to capture the reproduction window, instead of
+  being deferred to a separate issue. This aligns with the new
+  `/triage-side-finding` Q1 short-circuit (formerly `/scope-out-issue`)
+  and removes the prior asymmetry where TSan races required immediate
+  fixes but libFuzzer crashes were routed to follow-up issues. Crash
+  inputs are still saved to `tests/fuzz/regressions/<name>/` and
+  `tests/fuzz/corpus/<name>/` regardless of fix timing. (#1752)
+
+### Fixed
+
+- Renamed the TU-local `struct ry::Parser` in `src/runtime_json.cpp` to
+  `JsonParser` to remove a latent ODR collision with the public
+  `class ry::Parser` declared in `include/ry/parser.hpp`. The collision
+  was benign while both implicit destructors were trivially equivalent,
+  but became a crash (`AddressSanitizer: unknown-crash` inside
+  `__ry_json_parse`) on Linux libstdc++ once `ry::Parser` grew a
+  non-trivial member as part of the qualified-import work in this PR.
+  (#1723)
+- tree-sitter grammar now accepts newlines inside brace-delimited
+  expressions: multi-line `list_literal` (`[
+  1,
+  2,
+]`),
+  `map_literal` (`{
+  "a": 1,
+}`), `set_literal` (`{
+  1,
+  2,
+}`),
+  and braced selective import (`from std.io import {
+  print,
+}`)
+  no longer produce `(ERROR (UNEXPECTED '
+'))`. The fix is contained to
+  `editor/tree-sitter/grammar.js` via a new `bracedSep1` helper that
+  absorbs the external `_newline` token around list separators and at
+  the brace boundaries; `_indent` / `_dedent` are intentionally not
+  absorbed so the scanner's indent stack stays clean. This mirrors the
+  C++ parser's `skipStructuralTokens` (`src/parser.cpp:352`) and the
+  Phase 2 corpus gains four `#1727` cases under `imports` / `literals`
+  including a function-body nesting case that exercises indent-stack
+  health. Out of scope (still produce ERROR for multi-line forms):
+  `tuple_literal` / `_parenthesized` / `argument_list` / `parameter_list`
+  / `case_*` arm bodies. (#1727)
+- Calling `<mod>.fn(...)` or accessing `<mod>.field` where `<mod>` is the
+  name of a registered stdlib module (e.g. `math`, `json`, `path`) but
+  was not introduced via `import <mod>` now produces an actionable error:
+  `module 'math' is not imported (add 'import math' at the top of the
+  file)`. Previously the qualified call fell through to UFCS conversion
+  (`math.sqrt(4.0)` → `sqrt(math, 4.0)`) and codegen surfaced a
+  misleading `undefined function: sqrt (hint: forward references...)`
+  diagnostic that pointed users away from the root cause. The check
+  fires at codegen-dispatch time so a local variable that happens to
+  share a stdlib name (e.g. `path: str = "/tmp"; path.basename()`)
+  shadows the package and the existing diagnostic path is preserved.
+  Bare unqualified calls (`sqrt(4.0)` without `from math import sqrt`)
+  are out of scope and continue to use the forward-reference hint.
+  (#1746)
+- When a stdlib module is imported under an alias (e.g. `import math as
+  m`), the canonical name is hidden per the Python-style contract
+  (`docs/reference/modules.md`). Writing bare `math.sqrt(...)` /
+  `math.PI` after such an import now produces a targeted suggestion:
+  `'math' is not defined. Did you mean 'm' (aliased from 'math')?`.
+  Previously the diagnostic from #1746 fired with the generic
+  `module 'math' is not imported (add 'import math' ...)` message,
+  which was misleading because the user had already imported the
+  module — just under a different name. The unaliased case
+  (`math.sqrt(4.0)` with no `import math` at all) keeps the original
+  hint unchanged. (#1747)
+- `from x import *` and other wildcard import positions now produce a
+  clear, actionable diagnostic instead of the misleading
+  `expected function name after 'import'` message. The new error reads
+  `selective import does not support wildcards ('from x import *');
+  use 'from x import a, b' or 'from x import {a, b}' instead` and
+  fires uniformly across all four wildcard positions:
+  `from x import *`, `from x import {*}`, `from x import a, *`, and
+  `from x import {a, *}`. Wildcard import remains intentionally
+  unsupported; whether to add it is tracked separately. (#1748)
+- `ry test` / `ry run` / `ry -c` on Linux and macOS now bypass the C++
+  static-destructor chain via `_exit(rc)` after a successful JIT run
+  (gated on a `jitWasInitialized()` flag set inside
+  `src/jit_runner.cpp` immediately after `LLJITBuilder().create()`
+  succeeds). The existing triple-stage leak (`rtCleanup.release()`,
+  `(void)jit.release()`, `(void)cg.release()`) already suppresses the
+  `~LLJIT()` / `~CodeGen()` frames of the #1187 / #1657 LLVM ORC
+  teardown family, but residual LLVM `ManagedStatic` / `llvm_shutdown`
+  state run from `atexit` handlers intermittently aborted inside glibc
+  `_int_malloc` heap consolidation (exit 134) after the test result
+  had already been printed. Non-JIT exits (help printing, formatter,
+  parse-time errors before any LLJIT instance is created) still run
+  normal C++ teardown. (#1749)
+- The `scan-build` CI job no longer fails when GitHub's artifact API
+  returns a transient HTML error page instead of JSON during
+  `actions/upload-artifact@v4` retry exhaustion. The
+  `Upload scan-build report` step now carries `continue-on-error: true`,
+  mirroring the warn-only posture of the sibling `Build + Analyze` step
+  — both are best-effort because the scan-build findings backlog is
+  still being triaged, and an artifact-upload transient should not
+  fail-close the job. (#1750)
+
 ## [0.0.22] - 2026-05-10
 
 ### Added
@@ -1921,7 +2141,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.22...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.23...HEAD
+[0.0.23]: https://github.com/t0k0sh1/ry/compare/v0.0.22...v0.0.23
 [0.0.22]: https://github.com/t0k0sh1/ry/compare/v0.0.21...v0.0.22
 [0.0.21]: https://github.com/t0k0sh1/ry/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/t0k0sh1/ry/compare/v0.0.19...v0.0.20
