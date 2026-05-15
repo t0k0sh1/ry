@@ -172,6 +172,20 @@ TEST_F(EntryPointTest, ParentRelativeRyPathAccepted) {
     EXPECT_EQ(out, "ok\n");
 }
 
+TEST_F(EntryPointTest, BareNonRyFileInCwdNotRejectedAsAmbiguous) {
+    writePackageToml();
+    writeFile("data.txt", "noise");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"data.txt"});
+    EXPECT_EQ(out.find("ambiguous script path"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, BareDirectoryInCwdNotRejectedAsAmbiguous) {
+    writePackageToml();
+    fs::create_directories(tmp_dir_ / "data");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"data"});
+    EXPECT_EQ(out.find("ambiguous script path"), std::string::npos);
+}
+
 TEST_F(EntryPointTest, BareFilenameFirstMatchWinsAcrossPaths) {
     writeFile("package.toml",
               "[project]\nname = \"test\"\nversion = \"0.1.0\"\nentry = \"src/main.ry\"\n\n"
