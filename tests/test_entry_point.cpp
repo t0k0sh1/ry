@@ -136,13 +136,54 @@ TEST_F(EntryPointTest, BareFilenameNotFoundListsSearchRoots) {
     EXPECT_NE(out.find("Searched:"), std::string::npos);
 }
 
-TEST_F(EntryPointTest, BareFilenamePrefersProjectRootOverPaths) {
+TEST_F(EntryPointTest, BareFilenameInCwdRejectedAsAmbiguous) {
     writePackageToml();
     writeFile("foo.ry", "print(\"root\")");
     writeFile("src/foo.ry", "print(\"src\")");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("ambiguous script path 'foo.ry'"), std::string::npos);
+    EXPECT_NE(out.find("./foo.ry"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, DotSlashRyPathInCwdAccepted) {
+    writePackageToml();
+    writeFile("foo.ry", "print(\"ok\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"./foo.ry"});
     EXPECT_EQ(rc, 0);
-    EXPECT_EQ(out, "root\n");
+    EXPECT_EQ(out, "ok\n");
+}
+
+TEST_F(EntryPointTest, AbsoluteRyPathAccepted) {
+    writePackageToml();
+    writeFile("foo.ry", "print(\"ok\")");
+    const std::string abs_path = (tmp_dir_ / "foo.ry").string();
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {abs_path.c_str()});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "ok\n");
+}
+
+TEST_F(EntryPointTest, ParentRelativeRyPathAccepted) {
+    writePackageToml();
+    writeFile("foo.ry", "print(\"ok\")");
+    fs::create_directories(tmp_dir_ / "sub");
+    auto [out, rc] = runRyInDir((tmp_dir_ / "sub").string(), {"../foo.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "ok\n");
+}
+
+TEST_F(EntryPointTest, BareNonRyFileInCwdNotRejectedAsAmbiguous) {
+    writePackageToml();
+    writeFile("data.txt", "noise");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"data.txt"});
+    EXPECT_EQ(out.find("ambiguous script path"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, BareDirectoryInCwdNotRejectedAsAmbiguous) {
+    writePackageToml();
+    fs::create_directories(tmp_dir_ / "data");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"data"});
+    EXPECT_EQ(out.find("ambiguous script path"), std::string::npos);
 }
 
 TEST_F(EntryPointTest, BareFilenameFirstMatchWinsAcrossPaths) {
