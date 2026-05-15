@@ -31,6 +31,13 @@
 (qualified_import_statement
   alias: (identifier) @module)
 
+; Selective import alias: `from x import foo as bar` — capture the alias
+; symmetrically with `qualified_import_statement` above. The alias target is
+; not always a module (could be a fn / const / type), but we accept the same
+; semantic compromise as the qualified-import captures noted below.
+(import_item
+  alias: (identifier) @module)
+
 ; Treat the module access prefix `math.sqrt(...)` / `math.PI` as a namespace
 ; reference. Tree-sitter cannot distinguish stdlib qualified-call receivers
 ; from generic field-access objects at the syntactic level, so this falls
