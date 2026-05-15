@@ -196,3 +196,47 @@ from std.io import {
         alias: (identifier))
       (import_item
         name: (identifier)))))
+
+==================
+qualified import single module (#1723)
+==================
+
+import math
+
+---
+
+(source_file
+  (qualified_import_statement
+    module: (identifier)))
+
+==================
+qualified import with alias (#1724)
+==================
+
+import math as m
+
+---
+
+(source_file
+  (qualified_import_statement
+    module: (identifier)
+    alias: (identifier)))
+
+==================
+qualified and selective import of the same module (#1723, #1724)
+==================
+
+import math
+from math import PI
+
+---
+
+(source_file
+  (qualified_import_statement
+    module: (identifier))
+  (import_statement
+    source: (module_path
+      (identifier))
+    items: (import_list
+      (import_item
+        name: (identifier)))))
