@@ -118,6 +118,34 @@ TEST_F(CodeGenTest, FailRequiresTestingImport) {
     }
 }
 
+// fail() now bypasses the user-fn signature type-check (#1690 made it a
+// pure codegen intrinsic), so guard non-str message args explicitly —
+// otherwise non-str pointers (List/Map/closure handles) flow into
+// `__ry_test_fail`'s `%s` format and read garbage at runtime.
+TEST_F(CodeGenTest, FailRejectsNonStrMessage) {
+    try {
+        runTestSource("fail(42)\n");
+        FAIL() << "Expected compile error for non-str fail() arg";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("fail() message argument must be a str"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(CodeGenTest, FailRejectsListMessage) {
+    try {
+        runTestSource("fail([1, 2, 3])\n");
+        FAIL() << "Expected compile error for List fail() arg";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("fail() message argument must be a str"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
 // ============================================================
 // `@it` / `@describe` directives are declared in
 // `share/std/testing/testing.ry`. Without `from testing import it,
