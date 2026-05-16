@@ -14,10 +14,11 @@ extern "C" {
     void __ry_test_fail(int line, const char *msg);
     int  __ry_test_summary();
 
-    // Mock support
+    // Mock / spy support
     void    __ry_mock_set(const char *name, void *fn_ptr);
     void    __ry_mock_set_closure(const char *name, void *thunk_ptr,
                                    void *env_ptr, void (*env_dtor)(void *));
+    void    __ry_spy_register(const char *name);
     void   *__ry_mock_get(const char *name);
     void   *__ry_mock_get_env(const char *name);
     int64_t __ry_mock_get_call_count(const char *name);

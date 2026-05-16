@@ -586,6 +586,472 @@ void CodeGen::emitMockCall(CallStmt &s) {
     builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
 }
 
+// ===== Test: spy(fn_name) — record calls without replacement =====
+
+void CodeGen::emitSpyCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'spy' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("spy"))
+        codegenError(s.loc, "'spy' requires 'from testing import spy'");
+
+    if (s.args.size() != 1)
+        codegenError("spy() requires exactly 1 argument: function name");
+
+    auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
+    if (!strExpr)
+        codegenError("spy() first argument must be a function name");
+    const std::string &fnName = strExpr->value;
+
+    auto *fitOverloads = findFunction(fnName);
+    if (!fitOverloads)
+        codegenError("spy(): unknown function '" + fnName + "'");
+
+    if (fitOverloads->size() > 1)
+        codegenError("spy(): overloaded functions are not supported");
+
+    spied_functions_.insert(fnName);
+
+    auto &nameStr = mock_name_strings_[fnName];
+    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+
+    llvm::FunctionType *spyRegTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee spyRegFn =
+        mod_->getOrInsertFunction("__ry_spy_register", spyRegTy);
+    builder_.CreateCall(spyRegFn, {nameStr});
+}
+
+// ===== Mock/spy: argument recording IR for verifyCalledWith =====
+//
+// Emits a `__ry_mock_begin_call_record` call followed by per-arg
+// `__ry_mock_store_arg*` IR. Reused from:
+//   - mockBB (mock-only path: tri-block; emitted alongside replacement call)
+//   - origBB (spy-only path: linear; before the real call)
+//   - origBB (mock+spy coexistence: spy records before real call in origBB)
+//
+// Mock kind tags:
+//   1=int (raw i64), 2=float (bitcast f64->i64), 3=bool (zext i1->i64),
+//   4=str (ptr->i64, retain handle),
+//   5=opaque (unsupported in v1; never matches a verifyCalledWith query),
+//   6=list (snapshot ptr; #1703 — element kind ∈ {1..4}),
+//   7=set  (snapshot ptr; #1704 — unordered compare; element kind ∈ {1..4}),
+//   8=map  (snapshot ptr; #1705 — unordered key->value; key/val kind ∈ {1..4}),
+//   9=record (snapshot ptr; #1706 — per-slot compare; field kind ∈ {1..4}),
+//  10=tuple  (snapshot ptr; #1706 — per-slot compare; element kind ∈ {1..4}),
+//  11=fn    (snapshot ptr; #1707 — pointer-equality on {thunk, env}).
+void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
+                                    const std::vector<llvm::Value *> &argVals,
+                                    OverloadEntry *matchedEntry) {
+    llvm::FunctionType *mockBeginRecTy =
+        llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+    llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
+        "__ry_mock_begin_call_record", mockBeginRecTy);
+    llvm::FunctionType *mockStoreArgTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
+    llvm::FunctionCallee mockStoreArgFn = mod_->getOrInsertFunction(
+        "__ry_mock_store_arg", mockStoreArgTy);
+    llvm::FunctionType *mockStoreArgListTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
+    llvm::FunctionCallee mockStoreArgListFn = mod_->getOrInsertFunction(
+        "__ry_mock_store_arg_list", mockStoreArgListTy);
+    llvm::FunctionCallee mockStoreArgSetFn = mod_->getOrInsertFunction(
+        "__ry_mock_store_arg_set", mockStoreArgListTy);
+    llvm::FunctionType *mockStoreArgMapTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_, ptrTy_}, false);
+    llvm::FunctionCallee mockStoreArgMapFn = mod_->getOrInsertFunction(
+        "__ry_mock_store_arg_map", mockStoreArgMapTy);
+    llvm::Value *callRec = builder_.CreateCall(
+        mockBeginRecFn, {nameStr}, "mock_call_rec");
+
+    const size_t recordCount = matchedEntry
+        ? std::min(argVals.size(), matchedEntry->paramTypes.size())
+        : argVals.size();
+    for (size_t i = 0; i < recordCount; ++i) {
+        llvm::Value *argVal = argVals[i];
+        llvm::Type *argTy = argVal->getType();
+        // List<T> arg path (#1703): when T ∈ {int, float, bool, str},
+        // record via __ry_mock_store_arg_list which deep-copies the
+        // element buffer into a MockListSnapshot. Other element types
+        // (nested list, Map, record, …) fall through to kind=5 opaque.
+        if (argTy == ptrTy_) {
+            llvm::Type *listElemTy = getListElementType(argVal);
+            if (listElemTy != nullptr) {
+                const auto *meta = getMeta(argVal);
+                std::string elemName =
+                    meta ? meta->list_elem_type_name : std::string();
+                int64_t elemKind = 0;
+                if (elemName == "int") elemKind = 1;
+                else if (elemName == "float") elemKind = 2;
+                else if (elemName == "bool") elemKind = 3;
+                else if (elemName == "str") elemKind = 4;
+                else if (elemName.empty()) {
+                    // Fall back to LLVM type when the source-level name
+                    // was not stamped (literal `[1, 2, 3]` may not always
+                    // carry a name on every codepath).
+                    if (listElemTy == i64Ty_) elemKind = 1;
+                    else if (listElemTy == f64Ty_) elemKind = 2;
+                    else if (listElemTy == i1Ty_ || listElemTy == i8Ty_)
+                        elemKind = 3;
+                    else if (listElemTy == ptrTy_) elemKind = 4;
+                }
+                if (elemKind != 0) {
+                    const llvm::DataLayout &dl = mod_->getDataLayout();
+                    uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
+                    builder_.CreateCall(
+                        mockStoreArgListFn,
+                        {callRec, argVal,
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
+                         llvm::ConstantInt::get(i64Ty_, elemSize, false),
+                         nameStr});
+                    continue;
+                }
+            }
+        }
+        // Set<T> arg path (#1704): mirror of the List path. The only
+        // semantic difference (unordered comparison) is realized in
+        // mockArgEqual's kind-7 branch, not here.
+        if (argTy == ptrTy_) {
+            llvm::Type *setElemTy = getSetElementType(argVal);
+            if (setElemTy != nullptr) {
+                const auto *meta = getMeta(argVal);
+                std::string elemName =
+                    meta ? meta->set_elem_type_name : std::string();
+                int64_t elemKind = 0;
+                if (elemName == "int") elemKind = 1;
+                else if (elemName == "float") elemKind = 2;
+                else if (elemName == "bool") elemKind = 3;
+                else if (elemName == "str") elemKind = 4;
+                else if (elemName.empty()) {
+                    if (setElemTy == i64Ty_) elemKind = 1;
+                    else if (setElemTy == f64Ty_) elemKind = 2;
+                    else if (setElemTy == i1Ty_ || setElemTy == i8Ty_)
+                        elemKind = 3;
+                    // Do not infer str from a bare ptr element type:
+                    // unknown pointer-backed elements stay opaque (kind
+                    // 5) so List/Map/Set/closure-backed sets cannot
+                    // sneak through the kind-4 path. emitSetLiteral
+                    // stamps set_elem_type_name = "str" via
+                    // anyElemIsStrLike for bare-literal Set<str>, so
+                    // the elemName == "str" branch above covers them.
+                }
+                if (elemKind != 0) {
+                    const llvm::DataLayout &dl = mod_->getDataLayout();
+                    uint64_t elemSize = dl.getTypeAllocSize(setElemTy);
+                    builder_.CreateCall(
+                        mockStoreArgSetFn,
+                        {callRec, argVal,
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(elemKind), true),
+                         llvm::ConstantInt::get(i64Ty_, elemSize, false),
+                         nameStr});
+                    continue;
+                }
+            }
+        }
+        // Map<K, V> arg path (#1705): K, V ∈ {int, float, bool, str}.
+        // Records via __ry_mock_store_arg_map which deep-copies both
+        // parallel buffers (keys + vals) into a MockMapSnapshot. Other
+        // K / V combinations fall through to kind=5 opaque.
+        if (argTy == ptrTy_) {
+            llvm::Type *mapKeyTy = getMapKeyType(argVal);
+            llvm::Type *mapValTy = getMapValueType(argVal);
+            if (mapKeyTy != nullptr && mapValTy != nullptr) {
+                const auto *meta = getMeta(argVal);
+                std::string keyName =
+                    meta ? meta->map_key_type_name : std::string();
+                std::string valName =
+                    meta ? meta->map_value_type_name : std::string();
+                auto resolveKind = [&](const std::string &name,
+                                        llvm::Type *ty) -> int64_t {
+                    if (name == "int") return 1;
+                    if (name == "float") return 2;
+                    if (name == "bool") return 3;
+                    if (name == "str") return 4;
+                    if (name.empty()) {
+                        if (ty == i64Ty_) return 1;
+                        if (ty == f64Ty_) return 2;
+                        if (ty == i1Ty_ || ty == i8Ty_) return 3;
+                        // Bare ptr without a stamped name is opaque —
+                        // do not infer str (mirrors the Set guard).
+                    }
+                    return 0;
+                };
+                int64_t keyKind = resolveKind(keyName, mapKeyTy);
+                int64_t valKind = resolveKind(valName, mapValTy);
+                if (keyKind != 0 && valKind != 0) {
+                    const llvm::DataLayout &dl = mod_->getDataLayout();
+                    uint64_t keySize = dl.getTypeAllocSize(mapKeyTy);
+                    uint64_t valSize = dl.getTypeAllocSize(mapValTy);
+                    builder_.CreateCall(
+                        mockStoreArgMapFn,
+                        {callRec, argVal,
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(keyKind), true),
+                         llvm::ConstantInt::get(i64Ty_, keySize, false),
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(valKind), true),
+                         llvm::ConstantInt::get(i64Ty_, valSize, false),
+                         nameStr});
+                    continue;
+                }
+            }
+        }
+        // Record / tuple arg paths (#1706): when every field/element is
+        // primitive (int/float/bool) or str, build per-slot kinds[] and
+        // values[] stack alloca buffers and call the dedicated runtime
+        // helper. All-or-nothing — any unsupported field/element kind
+        // falls through to kind=5 opaque so cross-shape verifyCalledWith
+        // attempts still produce a clean error in Stage 1 of
+        // emitVerifyCalledWithCall.
+        if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
+            auto kindForFieldName =
+                [](const std::string &n) -> int64_t {
+                    if (n == "int") return 1;
+                    if (n == "float") return 2;
+                    if (n == "bool") return 3;
+                    if (n == "str") return 4;
+                    return 0;
+                };
+            bool emittedRecordOrTuple = false;
+            if (st->hasName()) {
+                const std::string recName = st->getName().str();
+                auto recIt = record_types_.find(recName);
+                if (recIt != record_types_.end()) {
+                    const auto &info = recIt->second;
+                    std::vector<int64_t> kinds;
+                    kinds.reserve(info.fields.size());
+                    bool allOk = true;
+                    for (const auto &fld : info.fields) {
+                        std::string fldName =
+                            resolveTypeAlias(fld.type->toString());
+                        int64_t k = kindForFieldName(fldName);
+                        if (k == 0) { allOk = false; break; }
+                        kinds.push_back(k);
+                    }
+                    if (allOk && !info.fields.empty()) {
+                        llvm::FunctionType *mockStoreArgRecordTy =
+                            llvm::FunctionType::get(
+                                llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
+                                false);
+                        llvm::FunctionCallee mockStoreArgRecordFn =
+                            mod_->getOrInsertFunction(
+                                "__ry_mock_store_arg_record",
+                                mockStoreArgRecordTy);
+                        llvm::Constant *typeNameStr = cachedGlobalString(
+                            recName, llvm::Twine(".mock.record_name.") + recName);
+                        int64_t fieldCount =
+                            static_cast<int64_t>(info.fields.size());
+                        llvm::Value *kindsAlloca =
+                            builder_.CreateAlloca(
+                                i8Ty_,
+                                llvm::ConstantInt::get(
+                                    i64Ty_,
+                                    static_cast<uint64_t>(fieldCount)),
+                                "mock_rec_kinds");
+                        llvm::Value *valsAlloca =
+                            builder_.CreateAlloca(
+                                i64Ty_,
+                                llvm::ConstantInt::get(
+                                    i64Ty_,
+                                    static_cast<uint64_t>(fieldCount)),
+                                "mock_rec_vals");
+                        for (size_t fi = 0; fi < info.fields.size(); ++fi) {
+                            int64_t k = kinds[fi];
+                            llvm::Value *fieldVal =
+                                builder_.CreateExtractValue(
+                                    argVal, {static_cast<unsigned>(fi)},
+                                    "mock_rec_fld");
+                            llvm::Value *valI64;
+                            if (k == 1) valI64 = fieldVal;
+                            else if (k == 2)
+                                valI64 = builder_.CreateBitCast(
+                                    fieldVal, i64Ty_, "mock_rec_f2i");
+                            else if (k == 3)
+                                valI64 = builder_.CreateZExt(
+                                    fieldVal, i64Ty_, "mock_rec_b2i");
+                            else // k == 4 (str)
+                                valI64 = builder_.CreatePtrToInt(
+                                    fieldVal, i64Ty_, "mock_rec_p2i");
+                            llvm::Value *kindGEP = builder_.CreateGEP(
+                                i8Ty_, kindsAlloca,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(fi)));
+                            builder_.CreateStore(
+                                llvm::ConstantInt::get(
+                                    i8Ty_, static_cast<uint64_t>(k), true),
+                                kindGEP);
+                            llvm::Value *valGEP = builder_.CreateGEP(
+                                i64Ty_, valsAlloca,
+                                llvm::ConstantInt::get(
+                                    i64Ty_, static_cast<uint64_t>(fi)));
+                            builder_.CreateStore(valI64, valGEP);
+                        }
+                        builder_.CreateCall(
+                            mockStoreArgRecordFn,
+                            {callRec, typeNameStr,
+                             llvm::ConstantInt::get(
+                                 i64Ty_,
+                                 static_cast<uint64_t>(fieldCount), true),
+                             kindsAlloca, valsAlloca, nameStr});
+                        emittedRecordOrTuple = true;
+                    }
+                }
+            }
+            if (!emittedRecordOrTuple && isTupleStructType(st)) {
+                // Tuple kinds derived from per-element LLVM types only
+                // when the source-level name is unavailable; if metadata
+                // carries `source_type_name = "(T1, T2, ...)"`, prefer
+                // that for str detection (LLVM type ptr alone is opaque).
+                const auto *meta = getMeta(argVal);
+                std::vector<std::string> elemNames;
+                if (meta) {
+                    std::string tupleSig = !meta->source_type_name.empty()
+                        ? meta->source_type_name
+                        : std::string();
+                    if (!tupleSig.empty())
+                        elemNames = splitTupleSig(tupleSig);
+                }
+                unsigned arity = st->getNumElements();
+                std::vector<int64_t> kinds;
+                kinds.reserve(arity);
+                bool allOk = arity > 0;
+                for (unsigned ei = 0; ei < arity; ++ei) {
+                    llvm::Type *elemTy = st->getElementType(ei);
+                    int64_t k = 0;
+                    if (ei < elemNames.size()) {
+                        k = kindForFieldName(elemNames[ei]);
+                    }
+                    if (k == 0) {
+                        // Fall back to LLVM type when source name is missing.
+                        if (elemTy == i64Ty_) k = 1;
+                        else if (elemTy == f64Ty_) k = 2;
+                        else if (elemTy == i1Ty_ || elemTy == i8Ty_) k = 3;
+                        // Bare ptr without a stamped name is opaque —
+                        // do not infer str (mirrors the Set/Map guard).
+                    }
+                    if (k == 0) { allOk = false; break; }
+                    kinds.push_back(k);
+                }
+                if (allOk) {
+                    llvm::FunctionType *mockStoreArgTupleTy =
+                        llvm::FunctionType::get(
+                            llvm::Type::getVoidTy(*ctx_),
+                            {ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
+                            false);
+                    llvm::FunctionCallee mockStoreArgTupleFn =
+                        mod_->getOrInsertFunction(
+                            "__ry_mock_store_arg_tuple",
+                            mockStoreArgTupleTy);
+                    llvm::Value *kindsAlloca =
+                        builder_.CreateAlloca(
+                            i8Ty_,
+                            llvm::ConstantInt::get(
+                                i64Ty_, static_cast<uint64_t>(arity)),
+                            "mock_tup_kinds");
+                    llvm::Value *valsAlloca =
+                        builder_.CreateAlloca(
+                            i64Ty_,
+                            llvm::ConstantInt::get(
+                                i64Ty_, static_cast<uint64_t>(arity)),
+                            "mock_tup_vals");
+                    for (unsigned ei = 0; ei < arity; ++ei) {
+                        int64_t k = kinds[ei];
+                        llvm::Value *elemVal =
+                            builder_.CreateExtractValue(
+                                argVal, {ei}, "mock_tup_elem");
+                        llvm::Value *valI64;
+                        if (k == 1) valI64 = elemVal;
+                        else if (k == 2)
+                            valI64 = builder_.CreateBitCast(
+                                elemVal, i64Ty_, "mock_tup_f2i");
+                        else if (k == 3)
+                            valI64 = builder_.CreateZExt(
+                                elemVal, i64Ty_, "mock_tup_b2i");
+                        else // k == 4 (str)
+                            valI64 = builder_.CreatePtrToInt(
+                                elemVal, i64Ty_, "mock_tup_p2i");
+                        llvm::Value *kindGEP = builder_.CreateGEP(
+                            i8Ty_, kindsAlloca,
+                            llvm::ConstantInt::get(
+                                i64Ty_, static_cast<uint64_t>(ei)));
+                        builder_.CreateStore(
+                            llvm::ConstantInt::get(
+                                i8Ty_, static_cast<uint64_t>(k), true),
+                            kindGEP);
+                        llvm::Value *valGEP = builder_.CreateGEP(
+                            i64Ty_, valsAlloca,
+                            llvm::ConstantInt::get(
+                                i64Ty_, static_cast<uint64_t>(ei)));
+                        builder_.CreateStore(valI64, valGEP);
+                    }
+                    builder_.CreateCall(
+                        mockStoreArgTupleFn,
+                        {callRec,
+                         llvm::ConstantInt::get(
+                             i64Ty_, static_cast<uint64_t>(arity), true),
+                         kindsAlloca, valsAlloca, nameStr});
+                    emittedRecordOrTuple = true;
+                }
+            }
+            if (emittedRecordOrTuple) continue;
+        }
+        // Fn-typed arg path (#1707): if the declared param type is a
+        // function type, argVals[i] is the post-wrapFnTypedArgs uniform
+        // closure pointer (`{thunk_ptr, env_ptr, env_dtor_ptr}`). Extract
+        // the {thunk_ptr, env_ptr} pair and record as kind=11. env_dtor is
+        // determined by thunk and omitted. Pointer-equality compare lives
+        // in mockArgEqual's kind-11 branch.
+        if (matchedEntry && i < matchedEntry->paramTypeNames.size()) {
+            std::string declared = resolveTypeAlias(
+                matchedEntry->paramTypeNames[i]);
+            if (isFunctionTypeName(declared) && argTy == ptrTy_) {
+                auto *ucTy = getUniformClosureTy();
+                llvm::Value *thunkField = builder_.CreateStructGEP(
+                    ucTy, argVal, 0, "mock_fn.thunk_gep");
+                llvm::Value *envField = builder_.CreateStructGEP(
+                    ucTy, argVal, 1, "mock_fn.env_gep");
+                llvm::Value *thunkPtr = builder_.CreateLoad(
+                    ptrTy_, thunkField, "mock_fn.thunk");
+                llvm::Value *envPtr = builder_.CreateLoad(
+                    ptrTy_, envField, "mock_fn.env");
+                llvm::FunctionType *mockStoreArgFnTy =
+                    llvm::FunctionType::get(
+                        llvm::Type::getVoidTy(*ctx_),
+                        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee mockStoreArgFnFn =
+                    mod_->getOrInsertFunction(
+                        "__ry_mock_store_arg_fn", mockStoreArgFnTy);
+                builder_.CreateCall(
+                    mockStoreArgFnFn,
+                    {callRec, thunkPtr, envPtr, nameStr});
+                continue;
+            }
+        }
+        int64_t kind = 5;
+        llvm::Value *valI64 = llvm::ConstantInt::get(i64Ty_, 0);
+        if (argTy == i64Ty_) {
+            kind = 1;
+            valI64 = argVal;
+        } else if (argTy == f64Ty_) {
+            kind = 2;
+            valI64 = builder_.CreateBitCast(argVal, i64Ty_, "mock_rec_f2i");
+        } else if (argTy == i1Ty_) {
+            kind = 3;
+            valI64 = builder_.CreateZExt(argVal, i64Ty_, "mock_rec_b2i");
+        } else if (argTy == ptrTy_ && isStringValue(argVal)) {
+            kind = 4;
+            valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "mock_rec_p2i");
+        }
+        builder_.CreateCall(
+            mockStoreArgFn,
+            {callRec,
+             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(kind),
+                                     true),
+             valI64, nameStr});
+    }
+}
+
 // ===== Test: verifyCalledWith(name, args...) -> int =====
 
 llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
@@ -602,8 +1068,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         codegenError("verifyCalledWith() first argument must be a function name string literal");
     const std::string &fnName = strExpr->value;
 
-    if (!mocked_functions_.count(fnName))
-        codegenError("verifyCalledWith: '" + fnName + "' is not mocked");
+    if (!mocked_functions_.count(fnName) && !spied_functions_.count(fnName))
+        codegenError("verifyCalledWith: '" + fnName + "' is not mocked or spied");
 
     auto *overloads = findFunction(fnName);
     if (!overloads || overloads->empty())

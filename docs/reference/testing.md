@@ -36,10 +36,10 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
+Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `spy`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
 
 - `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
-- `expect`, `mock`, `fail`, `verifyCalledWith` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
+- `expect`, `mock`, `spy`, `fail`, `verifyCalledWith` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
 - `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic. (`verifyCalledWith` is an intrinsic — not a `@public fn` — because it must inspect the mocked function's signature at compile time to validate argument types, which a regular Ry function cannot do.)
 
 ```ry
@@ -366,6 +366,42 @@ fn verifyCalledWithTests():
 - `fn(...) -> R` arguments are compared by **pointer equality** on the `{thunk_ptr, env_ptr}` pair extracted from the uniform closure struct, not by structural / behavioral equivalence. Two independently constructed lambdas that happen to be structurally identical (e.g. `(x: int) => x + 1` written twice on different source lines) do not match — only the same closure value (a single named `let f = ...` flowing into both the recorded call and the verify side, or two `let` aliases of the same bare `@public fn`) matches. Capture closures with different captured environments (e.g. `makeAdder(5)` vs `makeAdder(6)`) are distinguished by the per-instance `env_ptr` even though they share a single cached capturing thunk. The fn signature must exactly match the recorded parameter type (since v0.0.22, #1715); mismatched parameter count, parameter types, or return type are rejected at compile time with both signatures included in the diagnostic. Within matching signatures, identity is determined by the pointer pair.
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
+
+### spy(name)
+
+Records calls to a function without replacing its implementation. Unlike `mock`, the original function body still executes — `spy` only adds call-count and argument-recording instrumentation around it.
+
+```ry
+from testing import it, describe, spy, verify, verifyCalledWith, expect
+
+fn compute(x: int) -> int:
+    return x * 3
+
+@describe("spy")
+fn spyTests():
+    @it("records calls without replacing implementation")
+    fn recordsWithoutReplacing():
+        spy("compute")
+        expect(compute(5)).toEq(15)         # real implementation runs
+        expect(verify("compute")).toEq(1)   # call is recorded
+
+    @it("works with verifyCalledWith")
+    fn worksWithVerifyCalledWith():
+        spy("compute")
+        compute(7)
+        compute(8)
+        compute(7)
+        expect(verifyCalledWith("compute", 7)).toEq(2)
+        expect(verifyCalledWith("compute", 8)).toEq(1)
+```
+
+- Requires `from testing import spy` (since v0.0.24, #1683)
+- The argument is the **string literal** name of the function (same convention as `verifyCalledWith`)
+- The function must exist and must not be overloaded; both are compile errors
+- Spy registrations are automatically cleared at the end of each `it` block (same lifecycle as `mock`)
+- `verify(name)` and `verifyCalledWith(name, args...)` work uniformly on spied functions (same call-recording mechanism as `mock`)
+- `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
+- A function may be both mocked and spied across different `it` blocks within the same describe. When both are active in the same block (mock+spy coexistence), `mock` takes precedence: the replacement runs and the call is counted; the real implementation is bypassed
 
 ### mockClear(name)
 

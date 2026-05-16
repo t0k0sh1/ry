@@ -1,0 +1,177 @@
+from testing import it, describe, expect, mock, spy, verify, verifyCalledWith, mockClear, mockReset
+
+# Real implementations — these must continue to run when spied.
+fn computeReal(x: int) -> int:
+  return x * 3
+
+fn greet(name: str) -> str:
+  return "hello " + name
+
+fn flagToInt(b: bool) -> int:
+  if b:
+    return 1
+  return 0
+
+fn floatDouble(x: float) -> float:
+  return x * 2.0
+
+fn sumList(xs: List<int>) -> int:
+  total: int = 0
+  for x in xs:
+    total = total + x
+  return total
+
+fn countStrSet(xs: Set<str>) -> int:
+  return len(xs)
+
+fn sumMapValues(m: Map<str, int>) -> int:
+  total: int = 0
+  for k, v in m:
+    total = total + v
+  return total
+
+# Module-global counter so we can confirm the real implementation runs
+# under a spy (mock would normally replace the body).
+sideEffectCount: List<int> = [0]
+
+fn tickAndReturn(x: int) -> int:
+  sideEffectCount[0] = sideEffectCount[0] + 1
+  return x + 100
+
+@describe("spy")
+fn spyTests():
+  @it("records calls without replacing implementation")
+  fn recordsWithoutReplacing():
+    spy("computeReal")
+    result: int = computeReal(5)
+    expect(result).toEq(15)
+    expect(verify("computeReal")).toEq(1)
+
+  @it("counts multiple calls")
+  fn countsMultipleCalls():
+    spy("computeReal")
+    computeReal(1)
+    computeReal(2)
+    computeReal(3)
+    expect(verify("computeReal")).toEq(3)
+
+  @it("preserves side effects of the real implementation")
+  fn preservesSideEffects():
+    sideEffectCount[0] = 0
+    spy("tickAndReturn")
+    r1: int = tickAndReturn(1)
+    r2: int = tickAndReturn(2)
+    expect(r1).toEq(101)
+    expect(r2).toEq(102)
+    expect(sideEffectCount[0]).toEq(2)
+    expect(verify("tickAndReturn")).toEq(2)
+
+  @it("returns 0 for a function that was never spied")
+  fn unspiedReturnsZero():
+    expect(verify("computeReal")).toEq(0)
+
+  @it("auto-restores after the it block")
+  fn autoRestoresAfterItBlock():
+    # The previous it block populated sideEffectCount[0]; this fresh it
+    # block must see a clean registry: verify returns 0 because the spy
+    # registration was cleared by __ry_mock_clear_all between tests.
+    expect(verify("tickAndReturn")).toEq(0)
+
+@describe("spy + verifyCalledWith")
+fn spyVerifyCalledWithTests():
+  @it("matches int argument")
+  fn matchesIntArg():
+    spy("computeReal")
+    computeReal(7)
+    computeReal(8)
+    computeReal(7)
+    expect(verifyCalledWith("computeReal", 7)).toEq(2)
+    expect(verifyCalledWith("computeReal", 8)).toEq(1)
+    expect(verifyCalledWith("computeReal", 999)).toEq(0)
+
+  @it("matches str argument")
+  fn matchesStrArg():
+    spy("greet")
+    greet("alice")
+    greet("bob")
+    greet("alice")
+    expect(verifyCalledWith("greet", "alice")).toEq(2)
+    expect(verifyCalledWith("greet", "bob")).toEq(1)
+
+  @it("matches bool argument")
+  fn matchesBoolArg():
+    spy("flagToInt")
+    flagToInt(true)
+    flagToInt(false)
+    flagToInt(true)
+    expect(verifyCalledWith("flagToInt", true)).toEq(2)
+    expect(verifyCalledWith("flagToInt", false)).toEq(1)
+
+  @it("matches float argument")
+  fn matchesFloatArg():
+    spy("floatDouble")
+    floatDouble(1.5)
+    floatDouble(1.5)
+    floatDouble(3.0)
+    expect(verifyCalledWith("floatDouble", 1.5)).toEq(2)
+    expect(verifyCalledWith("floatDouble", 3.0)).toEq(1)
+
+  @it("matches List<int> argument")
+  fn matchesListIntArg():
+    spy("sumList")
+    sumList([1, 2, 3])
+    sumList([1, 2, 3])
+    sumList([4, 5])
+    expect(verifyCalledWith("sumList", [1, 2, 3])).toEq(2)
+    expect(verifyCalledWith("sumList", [4, 5])).toEq(1)
+    expect(verifyCalledWith("sumList", [9, 9])).toEq(0)
+
+  @it("matches Set<str> argument")
+  fn matchesSetStrArg():
+    spy("countStrSet")
+    countStrSet({"a", "b"})
+    countStrSet({"b", "a"})
+    expect(verifyCalledWith("countStrSet", {"a", "b"})).toEq(2)
+
+  @it("matches Map<str, int> argument")
+  fn matchesMapStrIntArg():
+    spy("sumMapValues")
+    m1: Map<str, int> = {"a": 1, "b": 2}
+    sumMapValues(m1)
+    sumMapValues(m1)
+    expect(verifyCalledWith("sumMapValues", {"a": 1, "b": 2})).toEq(2)
+    expect(verifyCalledWith("sumMapValues", {"x": 9})).toEq(0)
+
+@describe("spy interop with mock and mockClear/mockReset")
+fn spyMockInteropTests():
+  @it("does not leak across it blocks (mock from a sibling it)")
+  fn spyAfterSiblingMock():
+    # Without registry isolation between it blocks, a previous mock("computeReal", ...)
+    # could remain and replace the implementation under spy. The runtime auto-clears
+    # the registry between it blocks, so spy() here must observe the real impl.
+    spy("computeReal")
+    expect(computeReal(4)).toEq(12)
+    expect(verify("computeReal")).toEq(1)
+
+  @it("mockClear zeroes the spy call count")
+  fn mockClearResetsSpyCount():
+    spy("computeReal")
+    computeReal(1)
+    computeReal(2)
+    expect(verify("computeReal")).toEq(2)
+    mockClear("computeReal")
+    expect(verify("computeReal")).toEq(0)
+    computeReal(3)
+    expect(verify("computeReal")).toEq(1)
+
+  @it("mockReset removes the spy registration entirely")
+  fn mockResetRemovesSpyRegistration():
+    spy("computeReal")
+    computeReal(5)
+    expect(verify("computeReal")).toEq(1)
+    mockReset("computeReal")
+    expect(verify("computeReal")).toEq(0)
+    # After reset, the function is no longer spied. Calling it must still
+    # work (real impl is intact) but verify stays at 0.
+    expect(computeReal(2)).toEq(6)
+    expect(verify("computeReal")).toEq(0)

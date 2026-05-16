@@ -1412,9 +1412,14 @@ public:
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
+    void emitSpyCall(CallStmt &s);
     void emitFailCall(CallStmt &s);
     llvm::Value *emitVerifyCalledWithCall(const CallExpr &e);
+    void emitMockArgRecording(llvm::Value *nameStr,
+                               const std::vector<llvm::Value *> &argVals,
+                               OverloadEntry *matchedEntry);
     std::unordered_set<std::string> mocked_functions_;
+    std::unordered_set<std::string> spied_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Value *toBool(llvm::Value *v);
 

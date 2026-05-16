@@ -1835,9 +1835,10 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     // share/std/testing/testing.ry — it flows through the normal import
     // path and is no longer recorded in the testing-intrinsic set.
     // #1677 adds `verifyCalledWith` as an intrinsic.
+    // #1683 adds `spy` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "spy", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 5u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1904,9 +1905,10 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
     // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
     // `@public fn` in share/std/testing/testing.ry).
     // #1677 adds `verifyCalledWith` as an intrinsic.
+    // #1683 adds `spy` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 4u);
+        "expect", "mock", "spy", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 5u);
     EXPECT_EQ(intrinsics, expected);
 }
 
