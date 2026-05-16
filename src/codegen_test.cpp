@@ -1458,6 +1458,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     llvm::Value *cmpResult = nullptr;
     // Save expectedVal from comparison section to reuse in failure message
     llvm::Value *savedExpectedVal = nullptr;
+    // For toBeBetween: capture max so the failure formatter can print "between min and max".
+    llvm::Value *savedMaxVal = nullptr;
     // For toBeCloseTo: capture decimals so the failure formatter can print it.
     int64_t savedDecimals = 0;
     bool savedDecimalsValid = false;
@@ -1675,6 +1677,105 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             codegenError("line " + std::to_string(s.loc.line) +
                 ": " + s.matcher + ": requires int or float operands");
         }
+    } else if (s.matcher == "toBeBetween") {
+        llvm::Value *minVal = emitExpr(*s.expected);
+        savedExpectedVal = minVal;
+        llvm::Value *maxVal = emitExpr(*s.extra_args[0]);
+        savedMaxVal = maxVal;
+        llvm::Type *minTy = minVal->getType();
+        llvm::Type *maxTy = maxVal->getType();
+
+        bool actualOk = (actualTy == i64Ty_ || actualTy == f64Ty_);
+        bool minOk = (minTy == i64Ty_ || minTy == f64Ty_);
+        bool maxOk = (maxTy == i64Ty_ || maxTy == f64Ty_);
+        if (!actualOk || !minOk || !maxOk) {
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeBetween: requires int or float operands");
+        }
+
+        if (actualTy == i64Ty_ && minTy == i64Ty_ && maxTy == i64Ty_) {
+            llvm::Value *geMin = builder_.CreateICmpSGE(actualVal, minVal, "geMin");
+            llvm::Value *leMax = builder_.CreateICmpSLE(actualVal, maxVal, "leMax");
+            cmpResult = builder_.CreateAnd(geMin, leMax, "between");
+        } else {
+            llvm::Value *af = (actualTy == f64Ty_) ? actualVal
+                : builder_.CreateSIToFP(actualVal, f64Ty_, "actual_f");
+            llvm::Value *mf = (minTy == f64Ty_) ? minVal
+                : builder_.CreateSIToFP(minVal, f64Ty_, "min_f");
+            llvm::Value *xf = (maxTy == f64Ty_) ? maxVal
+                : builder_.CreateSIToFP(maxVal, f64Ty_, "max_f");
+            llvm::Value *geMin = builder_.CreateFCmpOGE(af, mf, "geMin");
+            llvm::Value *leMax = builder_.CreateFCmpOLE(af, xf, "leMax");
+            cmpResult = builder_.CreateAnd(geMin, leMax, "between");
+        }
+    } else if (s.matcher == "toBeOneOf") {
+        llvm::Value *listVal = emitExpr(*s.expected);
+        savedExpectedVal = listVal;
+
+        if (listVal->getType() != ptrTy_)
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeOneOf: expected a list argument");
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeOneOf: expected a list argument");
+        if (actualTy != elemTy)
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeOneOf: actual type does not match list element type");
+        if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i1Ty_ && elemTy != ptrTy_)
+            codegenError("line " + std::to_string(s.loc.line) +
+                ": toBeOneOf: list element type must be int, float, str, or bool");
+
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "oo_len_ptr");
+        llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "oo_len");
+        llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "oo_data_field");
+        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "oo_data_ptr");
+
+        llvm::AllocaInst *foundVar = builder_.CreateAlloca(i1Ty_, nullptr, "oo_found");
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), foundVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "oo_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::Function *currentFnOO = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *cBB = llvm::BasicBlock::Create(*ctx_, "oneof.cond", currentFnOO);
+        llvm::BasicBlock *bBB = llvm::BasicBlock::Create(*ctx_, "oneof.body", currentFnOO);
+        llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, "oneof.next", currentFnOO);
+        llvm::BasicBlock *eBB = llvm::BasicBlock::Create(*ctx_, "oneof.end", currentFnOO);
+
+        builder_.CreateBr(cBB);
+        builder_.SetInsertPoint(cBB);
+        llvm::Value *ci = builder_.CreateLoad(i64Ty_, iVar, "oo_ci");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(ci, len, "oo_clt"), bBB, eBB);
+
+        builder_.SetInsertPoint(bBB);
+        llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "oo_cur_i");
+        llvm::Value *ePtr = builder_.CreateGEP(elemTy, dataPtr, {curI}, "oo_elem_ptr");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, ePtr, "oo_elem");
+        llvm::Value *eq;
+        if (elemTy == ptrTy_) {
+            auto strcmpFn = getStdlibStrcmp();
+            llvm::Value *cmp = builder_.CreateCall(strcmpFn, {actualVal, elem}, "oo_strcmp");
+            eq = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "oo_eq");
+        } else if (elemTy == f64Ty_) {
+            eq = builder_.CreateFCmpOEQ(actualVal, elem, "oo_eq");
+        } else {
+            eq = builder_.CreateICmpEQ(actualVal, elem, "oo_eq");
+        }
+
+        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "oneof.found", currentFnOO);
+        builder_.CreateCondBr(eq, foundBB, nBB);
+        builder_.SetInsertPoint(foundBB);
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
+        builder_.CreateBr(eBB);
+
+        builder_.SetInsertPoint(nBB);
+        llvm::Value *nextI = builder_.CreateAdd(
+            builder_.CreateLoad(i64Ty_, iVar, "oo_ni"), llvm::ConstantInt::get(i64Ty_, 1), "oo_next_i");
+        builder_.CreateStore(nextI, iVar);
+        builder_.CreateBr(cBB);
+
+        builder_.SetInsertPoint(eBB);
+        cmpResult = builder_.CreateLoad(i1Ty_, foundVar, "oo_result");
     } else if (s.matcher == "toHaveLen" || s.matcher == "toBeEmpty") {
         if (actualTy != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
@@ -1912,6 +2013,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "cmp_buf");
         llvm::Value *fmt = cachedGlobalString(op + "%s", ".fmt_cmp");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, valStr});
+        expectedStr = buf;
+    } else if (s.matcher == "toBeBetween") {
+        llvm::Value *minStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "min_buf");
+        llvm::Value *maxStr = formatValue(savedMaxVal, savedMaxVal->getType(), "max_buf");
+        llvm::Value *buf = builder_.CreateAlloca(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "btw_buf");
+        llvm::Value *fmt = cachedGlobalString("between %s and %s", ".fmt_btw");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, minStr, maxStr});
+        expectedStr = buf;
+    } else if (s.matcher == "toBeOneOf") {
+        llvm::Value *listStr = valueToString(savedExpectedVal);
+        llvm::Value *buf = builder_.CreateAlloca(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 256), nullptr, "oo_msg");
+        llvm::Value *fmt = cachedGlobalString("one of %s", ".fmt_oo");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 256), fmt, listStr});
         expectedStr = buf;
     } else if (s.matcher == "toHaveLen") {
         llvm::Value *buf = builder_.CreateAlloca(

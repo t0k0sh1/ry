@@ -459,7 +459,12 @@ void Formatter::formatEllipsis(const EllipsisStmt &s) {
 void Formatter::formatExpect(const ExpectStmt &s) {
     emit("expect(" + formatExpr(*s.actual) + ")." + s.matcher);
     if (s.expected) {
-        emit("(" + formatExpr(*s.expected) + ")");
+        std::string args = "(" + formatExpr(*s.expected);
+        for (const auto &arg : s.extra_args) {
+            args += ", " + formatExpr(*arg);
+        }
+        args += ")";
+        emit(args);
     } else {
         emit("()");
     }

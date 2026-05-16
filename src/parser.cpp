@@ -1210,7 +1210,8 @@ StmtNode Parser::parseExpectStatement() {
         "toEq", "toNotEq", "toContain", "toNotContain",
         "toBeGreaterThan", "toBeLessThan",
         "toBeGreaterThanOrEq", "toBeLessThanOrEq",
-        "toHaveLen", "toStartWith", "toEndWith", "toMatch"
+        "toHaveLen", "toStartWith", "toEndWith", "toMatch",
+        "toBeOneOf"
     };
     static const std::unordered_set<std::string> matchers_no_arg = {
         "toBeTrue", "toBeFalse", "toBeNone", "toBeSome", "toBeOk", "toBeErr", "toBeEmpty",
@@ -1223,6 +1224,12 @@ StmtNode Parser::parseExpectStatement() {
             lex_.next(); // consume ','
             es.extra_args.push_back(parseConditional());
         }
+    } else if (matcher == "toBeBetween") {
+        es.expected = parseConditional();
+        if (lex_.peek().kind != TokenKind::Comma)
+            parseError(matcherTok.line, "toBeBetween requires two arguments: min and max");
+        lex_.next(); // consume ','
+        es.extra_args.push_back(parseConditional());
     } else if (matchers_with_arg.count(matcher)) {
         es.expected = parseConditional();
     } else if (matchers_no_arg.count(matcher)) {

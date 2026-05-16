@@ -1355,6 +1355,96 @@ TEST_F(CodeGenTest, ExpectToBeCloseToCustomDecimals) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
+// ===== toBeBetween / toBeOneOf (#1689) =====
+
+TEST_F(CodeGenTest, ExpectToBeBetweenIntInside) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"in range\")\n"
+        "    fn inRange():\n"
+        "        expect(5).toBeBetween(1, 10)\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToBeBetweenRejectsBoolActual) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"bool actual\")\n"
+        "    fn boolActual():\n"
+        "        expect(true).toBeBetween(1, 10)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToBeBetweenRejectsStrBound) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"str bound\")\n"
+        "    fn strBound():\n"
+        "        expect(5).toBeBetween(\"a\", 10)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToBeBetweenRejectsSingleArg) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"single arg\")\n"
+        "    fn singleArg():\n"
+        "        expect(5).toBeBetween(1)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToBeOneOfIntMatch) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"int match\")\n"
+        "    fn intMatch():\n"
+        "        expect(200).toBeOneOf([200, 201, 204])\n"
+    );
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToBeOneOfRejectsNonList) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"non-list\")\n"
+        "    fn nonList():\n"
+        "        expect(200).toBeOneOf(200)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToBeOneOfRejectsStrArg) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"str not list\")\n"
+        "    fn strNotList():\n"
+        "        expect(\"foo\").toBeOneOf(\"bar\")\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToBeOneOfRejectsTypeMismatch) {
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"type mismatch\")\n"
+        "    fn typeMismatch():\n"
+        "        expect(\"foo\").toBeOneOf([1, 2, 3])\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
 // ===== Field assignment subtype coercion (#359) =====
 
 TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {

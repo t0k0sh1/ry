@@ -637,3 +637,21 @@ TEST(FormatterTest, DirectiveDefRoundTripWithPublic) {
     EXPECT_EQ(first, src);
     EXPECT_EQ(Formatter::formatSource(first), first);
 }
+
+TEST(FormatterTest, ExpectToBeBetweenRoundTrip) {
+    auto src = "expect(x).toBeBetween(1, 10)\n";
+    EXPECT_EQ(fmt(src), src);
+    EXPECT_EQ(fmt(fmt(src)), fmt(src));
+}
+
+TEST(FormatterTest, ExpectToBeOneOfRoundTrip) {
+    auto src = "expect(x).toBeOneOf([200, 201, 204])\n";
+    EXPECT_EQ(fmt(src), src);
+    EXPECT_EQ(fmt(fmt(src)), fmt(src));
+}
+
+TEST(FormatterTest, ExpectToBeCloseToWithDecimalsRoundTrip) {
+    auto src = "expect(x).toBeCloseTo(1.0, 4)\n";
+    EXPECT_EQ(fmt(src), src);
+    EXPECT_EQ(fmt(fmt(src)), fmt(src));
+}

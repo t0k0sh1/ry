@@ -287,3 +287,58 @@ fn floatIeee754Matchers():
   @it("should pass toBeFinite for very small finite value")
   fn shouldPassToBeFiniteForSmallValue():
     expect(-1.0e308).toBeFinite()
+
+@describe("Range matcher (toBeBetween)")
+fn rangeMatcherToBeBetween():
+  @it("should pass toBeBetween for int strictly inside range")
+  fn shouldPassToBeBetweenIntInside():
+    expect(5).toBeBetween(1, 10)
+  @it("should pass toBeBetween for int equal to lower bound (inclusive)")
+  fn shouldPassToBeBetweenIntLowerBound():
+    expect(1).toBeBetween(1, 10)
+  @it("should pass toBeBetween for int equal to upper bound (inclusive)")
+  fn shouldPassToBeBetweenIntUpperBound():
+    expect(10).toBeBetween(1, 10)
+  @it("should pass toBeBetween for negative int range")
+  fn shouldPassToBeBetweenIntNegative():
+    expect(-5).toBeBetween(-10, -1)
+  @it("should pass toBeBetween for float strictly inside range")
+  fn shouldPassToBeBetweenFloatInside():
+    expect(2.5).toBeBetween(2.0, 3.0)
+  @it("should pass toBeBetween for float equal to bounds")
+  fn shouldPassToBeBetweenFloatBoundary():
+    expect(0.0).toBeBetween(0.0, 0.0)
+  @it("should pass toBeBetween with int actual and float bounds")
+  fn shouldPassToBeBetweenIntActualFloatBounds():
+    expect(2).toBeBetween(1.5, 2.5)
+  @it("should pass toBeBetween with float actual and int bounds")
+  fn shouldPassToBeBetweenFloatActualIntBounds():
+    expect(1.5).toBeBetween(1, 2)
+
+@describe("Membership matcher (toBeOneOf)")
+fn membershipMatcherToBeOneOf():
+  @it("should pass toBeOneOf for int matching first element")
+  fn shouldPassToBeOneOfIntFirst():
+    expect(200).toBeOneOf([200, 201, 204])
+  @it("should pass toBeOneOf for int matching middle element")
+  fn shouldPassToBeOneOfIntMiddle():
+    expect(201).toBeOneOf([200, 201, 204])
+  @it("should pass toBeOneOf for int matching last element")
+  fn shouldPassToBeOneOfIntLast():
+    expect(204).toBeOneOf([200, 201, 204])
+  @it("should pass toBeOneOf for str matching element")
+  fn shouldPassToBeOneOfStr():
+    expect("get").toBeOneOf(["get", "post", "put"])
+  @it("should pass toBeOneOf for float matching element")
+  fn shouldPassToBeOneOfFloat():
+    expect(1.5).toBeOneOf([0.5, 1.5, 2.5])
+  @it("should pass toBeOneOf for bool matching element")
+  fn shouldPassToBeOneOfBool():
+    expect(true).toBeOneOf([true, false])
+  @it("should pass toBeOneOf for single-element list")
+  fn shouldPassToBeOneOfSingleElement():
+    expect(42).toBeOneOf([42])
+  @it("should pass toBeOneOf with list bound to variable")
+  fn shouldPassToBeOneOfListVariable():
+    allowed: List<int> = [1, 2, 3]
+    expect(2).toBeOneOf(allowed)
