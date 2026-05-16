@@ -155,6 +155,8 @@ foo("arg", ():
 | `toEndWith(suffix)` | Asserts string ends with suffix | str |
 | `toMatch(pattern)` | Asserts string matches the given regex pattern (unanchored; use `^` / `$` to anchor) | str |
 | `toBeCloseTo(value)` / `toBeCloseTo(value, decimals)` | Asserts approximate equality: `\|actual - value\| < 0.5 * 10^-decimals`. `decimals` defaults to `2` and must be a non-negative integer literal in `[0, 15]` | int, float |
+| `toBeBetween(min, max)` | Asserts `min <= actual <= max` (inclusive on both ends). Both bounds are required | int, float |
+| `toBeOneOf(list)` | Asserts `actual` equals at least one element in `list`. Equivalent to `toContain` with arguments reversed | int, float, str, bool (as List elements) |
 | `toBeNaN()` | Asserts value is NaN (IEEE 754); `NaN == NaN` is false, so use this matcher instead of `toEq` | float |
 | `toBeInfinity()` | Asserts value is positive or negative infinity (`+∞` or `-∞`) | float |
 | `toBeFinite()` | Asserts value is finite (not NaN and not `±∞`) | float |
