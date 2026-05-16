@@ -1967,3 +1967,18 @@ TEST_F(DirectiveTest, TodoOnDescribeRejected) {
         "        expect(1).toEq(1)\n"
     )), std::runtime_error);
 }
+
+// Regression: `@only` on a non-@it function must NOT flip
+// file_has_only_directive_. Before the pre-pass scope fix (PR #1767), bare
+// `@only fn helper()` falsely triggered file-wide implicit skip, causing the
+// plain @it test below to be reported as skipped instead of passed.
+TEST_F(DirectiveTest, OnlyOnNonItDoesNotTriggerFileWideSkip) {
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "@only\n"
+        "fn helper():\n"
+        "    0\n"
+        "@it(\"plain test\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )), "\033[32m+ plain test\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
+}

@@ -802,7 +802,9 @@ static bool stmtHasOnlyDirective(const StmtNode &stmt) {
     return std::visit([](const auto &s) -> bool {
         using T = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
-            if (hasDirective(s->directives, "only")) return true;
+            if (hasDirective(s->directives, "only") &&
+                hasDirective(s->directives, "it"))
+                return true;
             return stmtsHaveOnlyDirective(s->body);
         }
         return false;
