@@ -365,6 +365,91 @@ fn verifyCalledWithTests():
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 
+### mockClear(name)
+
+Resets the recorded call list (and call count) for a single mock to zero, but keeps the mock active. Subsequent calls continue to dispatch to the replacement.
+
+```ry
+from testing import it, describe, mock, verify, mockClear, expect
+
+@describe("mockClear")
+fn mockClearTests():
+    @it("should reset count but preserve mock")
+    fn shouldClearCount():
+        mock(fetchData, () => "fake")
+        fetchData()
+        fetchData()
+        expect(verify("fetchData")).toEq(2)
+        mockClear("fetchData")
+        expect(verify("fetchData")).toEq(0)
+        # mock is still active — calls continue to hit the replacement
+        x = fetchData()
+        expect(verify("fetchData")).toEq(1)
+```
+
+- Requires `from testing import mockClear`
+- The argument is the **string name** of the mocked function (same convention as `verify`)
+- No-op when `name` is not currently mocked (no error)
+- Affects `verify(name)` and `verifyCalledWith(name, args...)` identically — both observe the cleared call list
+
+### mockReset(name)
+
+Removes a single mock entirely, restoring the original implementation. After `mockReset`, calls dispatch to the original function and the call count is zero.
+
+```ry
+from testing import it, describe, mock, verify, mockReset, expect
+
+fn fetchData() -> str:
+    return "real"
+
+@describe("mockReset")
+fn mockResetTests():
+    @it("should restore original implementation")
+    fn shouldResetMock():
+        mock(fetchData, () => "fake")
+        expect(fetchData()).toEq("fake")
+        mockReset("fetchData")
+        expect(fetchData()).toEq("real")
+        expect(verify("fetchData")).toEq(0)
+```
+
+- Requires `from testing import mockReset`
+- The argument is the **string name** of the mocked function
+- No-op when `name` is not currently mocked (no error)
+- Releases the replacement closure environment (capturing closures' captured variables are dropped immediately, equivalent to `it`-block end auto-cleanup for this single mock)
+
+### mockResetAll()
+
+Removes every mock currently active in the enclosing `it` block. Equivalent to the automatic cleanup that runs when an `it` block ends, but explicit and usable mid-block.
+
+```ry
+from testing import it, describe, mock, verify, mockResetAll, expect
+
+fn fa() -> int:
+    return 1
+
+fn fb() -> int:
+    return 2
+
+@describe("mockResetAll")
+fn mockResetAllTests():
+    @it("should remove all mocks")
+    fn shouldResetAll():
+        mock(fa, () => 10)
+        mock(fb, () => 20)
+        fa()
+        fb()
+        mockResetAll()
+        expect(fa()).toEq(1)
+        expect(fb()).toEq(2)
+        expect(verify("fa")).toEq(0)
+        expect(verify("fb")).toEq(0)
+```
+
+- Requires `from testing import mockResetAll`
+- Takes no arguments
+- No-op when no mock is currently registered
+
 ### Limitations
 
 - Overloaded functions cannot be mocked.

@@ -1,4 +1,4 @@
-from testing import it, describe, expect, mock, verify, verifyCalledWith
+from testing import it, describe, expect, mock, verify, verifyCalledWith, mockClear, mockReset, mockResetAll
 
 fn fetchData() -> str:
   return "real data"
@@ -568,3 +568,104 @@ fn verifyCalledWithFnArgs():
     takesFn(add5)
     expect(verifyCalledWith("takesFn", add5)).toEq(1)
     expect(verifyCalledWith("takesFn", add6)).toEq(0)
+
+@describe("mockClear")
+fn mockClearTests():
+  @it("should reset call count but preserve mock")
+  fn shouldResetCallCountPreserveMock():
+    mock("fetchData", () => "fake")
+    fetchData()
+    fetchData()
+    fetchData()
+    mockClear("fetchData")
+    expect(verify("fetchData")).toEq(0)
+    expect(fetchData()).toEq("fake")
+    expect(verify("fetchData")).toEq(1)
+  @it("should separate verifyCalledWith counts across clear")
+  fn shouldSeparateVerifyCalledWithCounts():
+    mock("compute", (x: int) => x * 10)
+    compute(5)
+    compute(5)
+    expect(verifyCalledWith("compute", 5)).toEq(2)
+    mockClear("compute")
+    expect(verifyCalledWith("compute", 5)).toEq(0)
+    compute(5)
+    expect(verifyCalledWith("compute", 5)).toEq(1)
+  @it("should release retained list-arg snapshots on clear")
+  fn shouldReleaseListArgSnapshots():
+    mock("takesIntList", (xs: List<int>) => len(xs))
+    takesIntList([1, 2, 3])
+    takesIntList([4, 5])
+    mockClear("takesIntList")
+    expect(verify("takesIntList")).toEq(0)
+    takesIntList([6, 7, 8, 9])
+    expect(verify("takesIntList")).toEq(1)
+    expect(verifyCalledWith("takesIntList", [6, 7, 8, 9])).toEq(1)
+  @it("should be selective across mocks")
+  fn shouldBeSelectiveClear():
+    mock("fetchData", () => "fake")
+    mock("compute", (x: int) => x * 10)
+    fetchData()
+    fetchData()
+    compute(1)
+    compute(2)
+    mockClear("fetchData")
+    expect(verify("fetchData")).toEq(0)
+    expect(verify("compute")).toEq(2)
+    expect(fetchData()).toEq("fake")
+  @it("should be no-op for unknown name")
+  fn shouldBeNoopUnknownClear():
+    mockClear("neverMocked")
+    expect(verify("neverMocked")).toEq(0)
+
+@describe("mockReset")
+fn mockResetTests():
+  @it("should restore original implementation")
+  fn shouldRestoreOriginal():
+    mock("fetchData", () => "fake")
+    expect(fetchData()).toEq("fake")
+    mockReset("fetchData")
+    expect(fetchData()).toEq("real data")
+    expect(verify("fetchData")).toEq(0)
+  @it("should release capturing closure env on reset")
+  fn shouldReleaseCapturingClosure():
+    factor = 3
+    mock("compute", (x: int) => x * factor)
+    expect(compute(2)).toEq(6)
+    mockReset("compute")
+    expect(compute(2)).toEq(4)
+    expect(verify("compute")).toEq(0)
+  @it("should be selective across mocks")
+  fn shouldBeSelectiveReset():
+    mock("fetchData", () => "fake")
+    mock("compute", (x: int) => x * 10)
+    mockReset("fetchData")
+    expect(fetchData()).toEq("real data")
+    expect(compute(5)).toEq(50)
+    expect(verify("compute")).toEq(1)
+  @it("should be no-op for unknown name")
+  fn shouldBeNoopUnknownReset():
+    mockReset("neverMocked")
+    expect(verify("neverMocked")).toEq(0)
+
+@describe("mockResetAll")
+fn mockResetAllTests():
+  @it("should remove all mocks in current it")
+  fn shouldRemoveAllMocks():
+    mock("fetchData", () => "fake")
+    mock("compute", (x: int) => x + 100)
+    mock("lookup", (k: str) => "mocked")
+    fetchData()
+    compute(1)
+    lookup("k")
+    mockResetAll()
+    expect(fetchData()).toEq("real data")
+    expect(compute(5)).toEq(10)
+    expect(lookup("hello")).toEq("hello")
+    expect(verify("fetchData")).toEq(0)
+    expect(verify("compute")).toEq(0)
+    expect(verify("lookup")).toEq(0)
+  @it("should be no-op on empty registry")
+  fn shouldBeNoopEmptyRegistry():
+    mockResetAll()
+    expect(verify("anything")).toEq(0)
