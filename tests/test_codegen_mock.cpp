@@ -1001,3 +1001,118 @@ TEST_F(CodeGenTest, VerifyCalledWithOutsideTestModeError) {
         "verifyCalledWith(\"compute\", 5)\n"
     ), std::exception);
 }
+
+// ============================================================
+// spy() rejection tests (#1683)
+// ============================================================
+
+// spy() outside test mode -> compile error
+TEST_F(CodeGenTest, SpyOutsideTestModeError) {
+    EXPECT_THROW(runSource(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "spy(\"compute\")\n"
+    ), std::exception);
+}
+
+// spy() without `from testing import spy` -> compile error
+TEST_F(CodeGenTest, SpyImportMissingError) {
+    EXPECT_THROW(runTestSourceNoTestingImports(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        spy(\"compute\")\n"
+    ), std::exception);
+}
+
+// spy() with no arguments -> compile error
+TEST_F(CodeGenTest, SpyZeroArgsError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        spy()\n"
+    )), std::exception);
+}
+
+// spy() with too many arguments -> compile error
+TEST_F(CodeGenTest, SpyTooManyArgsError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        spy(\"compute\", \"extra\")\n"
+    )), std::exception);
+}
+
+// spy() with non-string-literal first arg -> compile error
+TEST_F(CodeGenTest, SpyFirstArgNotStringLiteralError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        name = \"compute\"\n"
+        "        spy(name)\n"
+    )), std::exception);
+}
+
+// spy() on a non-existent function -> compile error
+TEST_F(CodeGenTest, SpyNonExistentFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        spy(\"no_such_fn\")\n"
+    )), std::exception);
+}
+
+// spy() on an overloaded function -> compile error
+TEST_F(CodeGenTest, SpyOverloadedFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x\n"
+        "fn compute(x: float) -> float:\n"
+        "    return x\n"
+        "\n"
+        "@describe(\"spy err\")\n"
+        "fn spyErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        spy(\"compute\")\n"
+    )), std::exception);
+}
+
+// Positive control: verifyCalledWith works on a spied function
+// (parallels VerifyCalledWith* tests above; ensures the spied_functions_
+// guard in emitVerifyCalledWithCall accepts spy-only registration).
+TEST_F(CodeGenTest, VerifyCalledWithSpiedFunction) {
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "fn compute(x: int) -> int:\n"
+        "    return x * 2\n"
+        "\n"
+        "@describe(\"vcw spy\")\n"
+        "fn vcwSpy():\n"
+        "    @it(\"matches spied call\")\n"
+        "    fn matchesSpiedCall():\n"
+        "        spy(\"compute\")\n"
+        "        compute(5)\n"
+        "        compute(7)\n"
+        "        compute(5)\n"
+        "        expect(verifyCalledWith(\"compute\", 5)).toEq(2)\n"
+        "        expect(verifyCalledWith(\"compute\", 7)).toEq(1)\n"
+    )), "vcw spy\n  \033[32m+ matches spied call\033[0m\n\n1 passed, 0 failed\n");
+}

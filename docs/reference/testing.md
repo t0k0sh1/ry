@@ -36,10 +36,10 @@ When `ry test` is run without arguments, it:
 
 ### Syntax
 
-Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
+Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `spy`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
 
 - `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
-- `expect`, `mock`, `fail`, `verifyCalledWith` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
+- `expect`, `mock`, `spy`, `fail`, `verifyCalledWith` are compiler intrinsics tracked separately and rejected with `'<name>' requires 'from testing import <name>'`.
 - `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic. (`verifyCalledWith` is an intrinsic — not a `@public fn` — because it must inspect the mocked function's signature at compile time to validate argument types, which a regular Ry function cannot do.)
 
 ```ry
@@ -367,6 +367,42 @@ fn verifyCalledWithTests():
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 
+### spy(name)
+
+Records calls to a function without replacing its implementation. Unlike `mock`, the original function body still executes — `spy` only adds call-count and argument-recording instrumentation around it.
+
+```ry
+from testing import it, describe, spy, verify, verifyCalledWith, expect
+
+fn compute(x: int) -> int:
+    return x * 3
+
+@describe("spy")
+fn spyTests():
+    @it("records calls without replacing implementation")
+    fn recordsWithoutReplacing():
+        spy("compute")
+        expect(compute(5)).toEq(15)         # real implementation runs
+        expect(verify("compute")).toEq(1)   # call is recorded
+
+    @it("works with verifyCalledWith")
+    fn worksWithVerifyCalledWith():
+        spy("compute")
+        compute(7)
+        compute(8)
+        compute(7)
+        expect(verifyCalledWith("compute", 7)).toEq(2)
+        expect(verifyCalledWith("compute", 8)).toEq(1)
+```
+
+- Requires `from testing import spy` (since v0.0.24, #1683)
+- The argument is the **string literal** name of the function (same convention as `verifyCalledWith`)
+- The function must exist and must not be overloaded; both are compile errors
+- Spy registrations are automatically cleared at the end of each `it` block (same lifecycle as `mock`)
+- `verify(name)` and `verifyCalledWith(name, args...)` work uniformly on spied functions (same call-recording mechanism as `mock`)
+- `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
+- A function may be both mocked and spied across different `it` blocks within the same describe. When both are active in the same block (mock+spy coexistence), `mock` takes precedence: the replacement runs and the call is counted; the real implementation is bypassed
+
 ### mockClear(name)
 
 Resets the recorded call list (and call count) for a single mock to zero, but keeps the mock active. Subsequent calls continue to dispatch to the replacement.
@@ -390,9 +426,10 @@ fn mockClearTests():
 ```
 
 - Requires `from testing import mockClear`
-- The argument is the **string name** of the mocked function (same convention as `verify`)
-- No-op when `name` is not currently mocked (no error)
+- The argument is the **string name** of the mocked or spied function (same convention as `verify`)
+- No-op when `name` is not currently mocked or spied (no error)
 - Affects `verify(name)` and `verifyCalledWith(name, args...)` identically — both observe the cleared call list
+- Applies to spied functions identically — mock and spy share the same call-recording registry (#1683)
 
 ### mockReset(name)
 
@@ -416,9 +453,10 @@ fn mockResetTests():
 ```
 
 - Requires `from testing import mockReset`
-- The argument is the **string name** of the mocked function
-- No-op when `name` is not currently mocked (no error)
+- The argument is the **string name** of the mocked or spied function
+- No-op when `name` is not currently mocked or spied (no error)
 - Releases the replacement closure environment (capturing closures' captured variables are dropped immediately, equivalent to `it`-block end auto-cleanup for this single mock)
+- Applies to spied functions identically — removes the spy registration, after which `verify(name)` returns 0 (#1683)
 
 ### mockResetAll()
 
@@ -450,7 +488,8 @@ fn mockResetAllTests():
 
 - Requires `from testing import mockResetAll`
 - Takes no arguments
-- No-op when no mock is currently registered
+- No-op when no mock or spy is currently registered
+- Clears spied functions identically — the registry is shared between mock and spy (#1683)
 
 ### Limitations
 

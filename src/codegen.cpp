@@ -742,47 +742,54 @@ bool CodeGen::isCapturedVar(llvm::AllocaInst *ptr) const {
 }
 
 // Forward declaration for mutual recursion.
-static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
-                                             std::unordered_set<std::string> &out);
+static void collectTestTargetsFromStmts(const std::vector<StmtNode> &stmts,
+                                        std::unordered_set<std::string> &mocked,
+                                        std::unordered_set<std::string> &spied);
 
-// Scan a single statement (and its nested bodies) for mock() call targets.
-static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
-                                            std::unordered_set<std::string> &out) {
+// Scan a single statement (and its nested bodies) for mock() / spy() targets.
+static void collectTestTargetsFromStmt(const StmtNode &stmt,
+                                       std::unordered_set<std::string> &mocked,
+                                       std::unordered_set<std::string> &spied) {
     std::visit([&](const auto &s) {
         using T = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<T, CallStmt>) {
-            if (s.callee == "mock" && !s.args.empty()) {
-                if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
-                    out.insert(str->value);
+            if ((s.callee == "mock" || s.callee == "spy") && !s.args.empty()) {
+                if (auto *str = std::get_if<StringExpr>(&s.args[0]->data)) {
+                    if (s.callee == "mock")
+                        mocked.insert(str->value);
+                    else
+                        spied.insert(str->value);
+                }
             }
             for (auto &arg : s.args) {
                 if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
-                    collectMockedFunctionsFromStmts((*lam)->body, out);
+                    collectTestTargetsFromStmts((*lam)->body, mocked, spied);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-            collectMockedFunctionsFromStmts(s->branch.body, out);
-            collectMockedFunctionsFromStmts(s->else_body, out);
+            collectTestTargetsFromStmts(s->branch.body, mocked, spied);
+            collectTestTargetsFromStmts(s->else_body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
             for (auto &arm : s->arms)
-                collectMockedFunctionsFromStmts(arm.body, out);
-            collectMockedFunctionsFromStmts(s->else_body, out);
+                collectTestTargetsFromStmts(arm.body, mocked, spied);
+            collectTestTargetsFromStmts(s->else_body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) { // NOLINT(bugprone-branch-clone)
-            collectMockedFunctionsFromStmts(s->body, out);
+            collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-            collectMockedFunctionsFromStmts(s->body, out);
+            collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
-            collectMockedFunctionsFromStmts(s->body, out);
+            collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
             for (auto &arm : s->arms)
-                collectMockedFunctionsFromStmts(arm.body, out);
+                collectTestTargetsFromStmts(arm.body, mocked, spied);
         }
     }, stmt);
 }
 
-static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
-                                             std::unordered_set<std::string> &out) {
+static void collectTestTargetsFromStmts(const std::vector<StmtNode> &stmts,
+                                        std::unordered_set<std::string> &mocked,
+                                        std::unordered_set<std::string> &spied) {
     for (const auto &stmt : stmts)
-        collectMockedFunctionsFromStmt(stmt, out);
+        collectTestTargetsFromStmt(stmt, mocked, spied);
 }
 
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
@@ -792,7 +799,7 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     for (auto &stmt : prog) {
         collectTypeGraphFromStmt(stmt, typeGraph, allTypes);
         if (test_mode_)
-            collectMockedFunctionsFromStmt(stmt, mocked_functions_);
+            collectTestTargetsFromStmt(stmt, mocked_functions_, spied_functions_);
     }
     runCyclicTypeAnalysis(typeGraph, allTypes);
 

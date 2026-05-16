@@ -323,12 +323,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
     // inferCollectionTypeName returns "" for bare str, so the primitive gate
     // skips it. Side-table lookup via isStrHandle fills the gap (#1354).
+    // anyElemIsStrLike mirrors the Map/Set path — immortal literal globals from
+    // cachedGlobalString are excluded from arc_str_owned_values_, so isStrHandle
+    // misses them. isStringValue covers any ptr-backed value without other
+    // metadata, which is the correct stamp signal for list_elem_type_name = "str"
+    // (consumed by verifyCalledWith arg recording, etc.).
     bool anyElemIsStr = false;
+    bool anyElemIsStrLike = false;
 
     for (int64_t i = 0; i < count; ++i) {
         const bool elemIsStr =
             elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
         anyElemIsStr = anyElemIsStr || elemIsStr;
+        if (elemTy == ptrTy_ && isStringValue(vals[static_cast<size_t>(i)]))
+            anyElemIsStrLike = true;
         llvm::Value *elemPtr = builder_.CreateGEP(
             elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "elem_ptr");
         if (elemNeedsRetain || elemIsStr)
@@ -415,7 +423,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         }
         if (!elemTypeName.empty())
             getOrCreateMeta(headerPtr).list_elem_type_name = elemTypeName;
-        else if (anyElemIsStr)
+        else if (anyElemIsStr || anyElemIsStrLike)
             getOrCreateMeta(headerPtr).list_elem_type_name = "str";
         else if (elemFnTypeInfo)
             getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemFnTypeInfo;

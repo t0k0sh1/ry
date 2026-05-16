@@ -575,6 +575,14 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     entry.env_dtor = nullptr;
 }
 
+// Create-if-absent registration for spy(). Unlike __ry_mock_set, this does NOT
+// overwrite fn_ptr / env_ptr / env_dtor — if a mock has already been registered
+// for `name` in the same it block, the mock takes precedence at runtime.
+// call_count and retained_str_args are also preserved.
+void __ry_spy_register(const char *name) {
+    (void)g_mock_registry[name];
+}
+
 void __ry_mock_set_closure(const char *name, void *thunk_ptr,
                             void *env_ptr, void (*env_dtor)(void *)) {
     auto &entry = g_mock_registry[name];
