@@ -86,6 +86,14 @@ fn containmentMatchersTests():
   fn shouldPassTonotcontainWithMapKey():
     m = {"a": 1, "b": 2}
     expect(m).toNotContain("c")
+  @it("should pass toContain with list of str")
+  fn shouldPassTocontainWithListOfStr():
+    xs: List<str> = ["a", "b", "c"]
+    expect(xs).toContain("b")
+  @it("should pass toContain with set of str")
+  fn shouldPassTocontainWithSetOfStr():
+    s: Set<str> = {"x", "y"}
+    expect(s).toContain("x")
 
 record MatcherPoint:
   x: int

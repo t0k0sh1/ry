@@ -143,8 +143,8 @@ foo("arg", ():
 | `toBeSome()` | Asserts Option is `Some` | Option |
 | `toBeOk()` | Asserts Result is `Ok` | Result |
 | `toBeErr()` | Asserts Result is `Err` | Result |
-| `toContain(val)` | Asserts container includes value | List, Set, Map, str |
-| `toNotContain(val)` | Asserts container does not include value | List, Set, Map, str |
+| `toContain(val)` | Asserts container includes value (for List/Set, element type must be `int`, `float`, `str`, or `bool`; for Map, checks keys) | List, Set, Map, str |
+| `toNotContain(val)` | Asserts container does not include value (for List/Set, element type must be `int`, `float`, `str`, or `bool`; for Map, checks keys) | List, Set, Map, str |
 | `toBeGreaterThan(v)` | Asserts `actual > v` | int, float |
 | `toBeLessThan(v)` | Asserts `actual < v` | int, float |
 | `toBeGreaterThanOrEq(v)` | Asserts `actual >= v` | int, float |

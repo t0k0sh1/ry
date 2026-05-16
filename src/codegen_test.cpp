@@ -2124,6 +2124,31 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Type *elemTy = listElemTy ? listElemTy : setElemTy;
             llvm::StructType *headerTy = listElemTy ? listHeaderTy_ : setHeaderTy_;
 
+            // Pointer-element positive-allowlist guard (mirrors toBeOneOf
+            // L2273-2281 / emitListRemove L244-250). Under opaque pointers
+            // elemTy == ptrTy_ matches List<str> as well as List<List<T>>,
+            // List<Map<K,V>>, List<Set<T>>, List<fn>, Set<List<T>>, etc.
+            // strcmp on collection headers is UB (#1763). Narrow to str only.
+            if (elemTy == ptrTy_) {
+                const ValueMetadata *meta = getMeta(actualVal);
+                if (listElemTy) {
+                    const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+                    const bool isNonStrName  = !elemName.empty() && elemName != "str";
+                    const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+                    const bool hasFnInfo     = meta && meta->list_elem_fn_type_info.has_value();
+                    if (isNonStrName || hasNestedList || hasFnInfo || !isStringValue(expectedVal))
+                        codegenError("line " + std::to_string(s.loc.line) +
+                                     ": " + s.matcher + ": list element type must be int, float, str, or bool");
+                } else {
+                    const std::string &elemName = meta ? meta->set_elem_type_name : std::string{};
+                    const bool isNonStrName = !elemName.empty() && elemName != "str";
+                    const bool hasFnInfo    = meta && meta->set_elem_fn_type_info.has_value();
+                    if (isNonStrName || hasFnInfo || !isStringValue(expectedVal))
+                        codegenError("line " + std::to_string(s.loc.line) +
+                                     ": " + s.matcher + ": set element type must be int, float, str, or bool");
+                }
+            }
+
             llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, actualVal, 0, "len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "len");
             llvm::Value *dataField = builder_.CreateStructGEP(headerTy, actualVal, 2, "data_field");
