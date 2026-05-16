@@ -695,7 +695,9 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
                     else if (listElemTy == f64Ty_) elemKind = 2;
                     else if (listElemTy == i1Ty_ || listElemTy == i8Ty_)
                         elemKind = 3;
-                    else if (listElemTy == ptrTy_) elemKind = 4;
+                    // Do not infer str from a bare ptr element type
+                    // (mirrors the Set/Map guards below): unknown
+                    // pointer-backed elements stay opaque (kind 5).
                 }
                 if (elemKind != 0) {
                     const llvm::DataLayout &dl = mod_->getDataLayout();

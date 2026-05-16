@@ -426,9 +426,10 @@ fn mockClearTests():
 ```
 
 - Requires `from testing import mockClear`
-- The argument is the **string name** of the mocked function (same convention as `verify`)
-- No-op when `name` is not currently mocked (no error)
+- The argument is the **string name** of the mocked or spied function (same convention as `verify`)
+- No-op when `name` is not currently mocked or spied (no error)
 - Affects `verify(name)` and `verifyCalledWith(name, args...)` identically — both observe the cleared call list
+- Applies to spied functions identically — mock and spy share the same call-recording registry (#1683)
 
 ### mockReset(name)
 
@@ -452,9 +453,10 @@ fn mockResetTests():
 ```
 
 - Requires `from testing import mockReset`
-- The argument is the **string name** of the mocked function
-- No-op when `name` is not currently mocked (no error)
+- The argument is the **string name** of the mocked or spied function
+- No-op when `name` is not currently mocked or spied (no error)
 - Releases the replacement closure environment (capturing closures' captured variables are dropped immediately, equivalent to `it`-block end auto-cleanup for this single mock)
+- Applies to spied functions identically — removes the spy registration, after which `verify(name)` returns 0 (#1683)
 
 ### mockResetAll()
 
@@ -486,7 +488,8 @@ fn mockResetAllTests():
 
 - Requires `from testing import mockResetAll`
 - Takes no arguments
-- No-op when no mock is currently registered
+- No-op when no mock or spy is currently registered
+- Clears spied functions identically — the registry is shared between mock and spy (#1683)
 
 ### Limitations
 

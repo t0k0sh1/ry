@@ -175,3 +175,16 @@ fn spyMockInteropTests():
     # work (real impl is intact) but verify stays at 0.
     expect(computeReal(2)).toEq(6)
     expect(verify("computeReal")).toEq(0)
+
+  @it("mock takes precedence when mock and spy coexist in the same block")
+  fn mockTakesPrecedence():
+    # When both mock() and spy() target the same function inside the same it
+    # block, the replacement runs (real impl is bypassed) and the call is
+    # counted once — see docs/reference/testing.md spy() entry.
+    sideEffectCount[0] = 0
+    mock(tickAndReturn, (x: int) => x + 1000)
+    spy("tickAndReturn")
+    expect(tickAndReturn(1)).toEq(1001)
+    expect(verify("tickAndReturn")).toEq(1)
+    # Real impl bypassed: the side-effect counter must stay at 0.
+    expect(sideEffectCount[0]).toEq(0)
