@@ -1,0 +1,42 @@
+from testing import it, expect, each, property, only
+
+# When @only exists anywhere in this file, all @it tests WITHOUT @only are
+# implicitly skipped. Only tests tagged with @only run.
+# Non-@only tests would fail if they actually ran — exit 0 proves they were skipped.
+
+@it("should NOT run — implicit skip because @only is present elsewhere")
+fn testNotFocused():
+  expect(1).toEq(2)
+
+@only
+@it("should run — has @only directive")
+fn testFocused():
+  expect(1 + 1).toEq(2)
+
+@it("should also NOT run — another implicit skip")
+fn testAlsoNotFocused():
+  expect("a").toEq("b")
+
+@only
+@it("should also run — second @only test")
+fn testFocusedTwo():
+  expect(3 * 2).toEq(6)
+
+# @each without @only is implicitly skipped when @only exists in file
+@each([(1, 2), (3, 4)])
+@it("@each WITHOUT @only — implicitly skipped: {0}, {1}")
+fn testEachNotFocused(a: int, b: int):
+  expect(a).toEq(b)
+
+# @each with @only runs
+@only
+@each([(1, 1), (2, 2), (3, 3)])
+@it("@each WITH @only runs: {0} == {1}")
+fn testEachFocused(a: int, b: int):
+  expect(a).toEq(b)
+
+# @property without @only is implicitly skipped
+@property(count=50)
+@it("@property WITHOUT @only — implicitly skipped")
+fn testPropertyNotFocused(n: int):
+  expect(n).toEq(n + 1)

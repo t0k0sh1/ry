@@ -236,7 +236,13 @@ inline std::string withStdlibDirectiveDecls(const std::string &src) {
         "@directive(target=[\"statement\", \"function\"])\n"
         "fn each(data: any)\n"
         "@directive(target=[\"statement\", \"function\"])\n"
-        "fn property(count: int = 100)\n";
+        "fn property(count: int = 100)\n"
+        "@directive(target=[\"function\"])\n"
+        "fn skip()\n"
+        "@directive(target=[\"function\"])\n"
+        "fn only()\n"
+        "@directive(target=[\"function\"])\n"
+        "fn todo()\n";
     return std::string(kDecls) + src;
 }
 

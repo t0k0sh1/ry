@@ -17,7 +17,7 @@ TEST_F(CodeGenTest, MockBasicReplace) {
         "    fn replacesFunction():\n"
         "        mock(greet, () => \"mocked\")\n"
         "        expect(greet()).toEq(\"mocked\")\n"
-    )), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -35,7 +35,7 @@ TEST_F(CodeGenTest, MockWithArgs) {
         "    fn replacesFunctionWithArgs():\n"
         "        mock(add, (a: int, b: int) => a * b)\n"
         "        expect(add(3, 4)).toEq(12)\n"
-    )), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -57,7 +57,7 @@ TEST_F(CodeGenTest, MockAutoRestore) {
         "    @it(\"auto-restores\")\n"
         "    fn autoRestores():\n"
         "        expect(greet()).toEq(\"hello\")\n"
-    )), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed\n");
+    )), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -78,7 +78,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
         "        greet()\n"
         "        greet()\n"
         "        expect(verify(\"greet\")).toEq(3)\n"
-    )), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed\n");
+    )), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -99,7 +99,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
         "        x = getValue()\n"
         "        expect(x).toEq(999)\n"
         "        expect(verify(\"getValue\")).toEq(1)\n"
-    )), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -304,7 +304,7 @@ TEST_F(CodeGenTest, VerifyCalledWithListIntArgAccepted) {
         "        mock(takesList, (xs: List<int>) => len(xs))\n"
         "        takesList([1, 2])\n"
         "        expect(verifyCalledWith(\"takesList\", [1, 2])).toEq(1)\n"
-    )), "vcw list\n  \033[32m+ counts list arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw list\n  \033[32m+ counts list arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithListStrArgAccepted) {
@@ -320,7 +320,7 @@ TEST_F(CodeGenTest, VerifyCalledWithListStrArgAccepted) {
         "        mock(takesList, (xs: List<str>) => len(xs))\n"
         "        takesList([\"a\", \"b\"])\n"
         "        expect(verifyCalledWith(\"takesList\", [\"a\", \"b\"])).toEq(1)\n"
-    )), "vcw list str\n  \033[32m+ counts list str arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw list str\n  \033[32m+ counts list str arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithNestedListArgUnsupportedError) {
@@ -354,7 +354,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapStrIntArgAccepted) {
         "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
         "        takesMap({\"a\": 1})\n"
         "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1})).toEq(1)\n"
-    )), "vcw map\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithListParameterRejectedWithPrimitiveArg) {
@@ -431,7 +431,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSetIntArgAccepted) {
         "        mock(takesSet, (xs: Set<int>) => len(xs))\n"
         "        takesSet({1, 2, 3})\n"
         "        expect(verifyCalledWith(\"takesSet\", {1, 2, 3})).toEq(1)\n"
-    )), "vcw set\n  \033[32m+ counts set arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw set\n  \033[32m+ counts set arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithSetStrArgAccepted) {
@@ -447,7 +447,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSetStrArgAccepted) {
         "        mock(takesSet, (xs: Set<str>) => len(xs))\n"
         "        takesSet({\"a\", \"b\"})\n"
         "        expect(verifyCalledWith(\"takesSet\", {\"a\", \"b\"})).toEq(1)\n"
-    )), "vcw set str\n  \033[32m+ counts set str arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw set str\n  \033[32m+ counts set str arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithSetUnorderedMatch) {
@@ -463,7 +463,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSetUnorderedMatch) {
         "        mock(takesSet, (xs: Set<int>) => len(xs))\n"
         "        takesSet({1, 2, 3})\n"
         "        expect(verifyCalledWith(\"takesSet\", {3, 2, 1})).toEq(1)\n"
-    )), "vcw set unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw set unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithSetParameterRejectedWithPrimitiveArg) {
@@ -571,7 +571,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapIntIntArgAccepted) {
         "        mock(takesMap, (m: Map<int, int>) => len(m))\n"
         "        takesMap({1: 10, 2: 20})\n"
         "        expect(verifyCalledWith(\"takesMap\", {1: 10, 2: 20})).toEq(1)\n"
-    )), "vcw map int int\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map int int\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithMapStrStrArgAccepted) {
@@ -587,7 +587,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapStrStrArgAccepted) {
         "        mock(takesMap, (m: Map<str, str>) => len(m))\n"
         "        takesMap({\"a\": \"x\", \"b\": \"y\"})\n"
         "        expect(verifyCalledWith(\"takesMap\", {\"a\": \"x\", \"b\": \"y\"})).toEq(1)\n"
-    )), "vcw map str str\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map str str\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithMapUnorderedMatch) {
@@ -603,7 +603,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapUnorderedMatch) {
         "        mock(takesMap, (m: Map<str, int>) => len(m))\n"
         "        takesMap({\"a\": 1, \"b\": 2, \"c\": 3})\n"
         "        expect(verifyCalledWith(\"takesMap\", {\"c\": 3, \"a\": 1, \"b\": 2})).toEq(1)\n"
-    )), "vcw map unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map unordered\n  \033[32m+ matches unordered\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithMapStrFloatArgAccepted) {
@@ -619,7 +619,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapStrFloatArgAccepted) {
         "        mock(takesMap, (m: Map<str, float>) => len(m))\n"
         "        takesMap({\"a\": 1.5, \"b\": 2.5})\n"
         "        expect(verifyCalledWith(\"takesMap\", {\"a\": 1.5, \"b\": 2.5})).toEq(1)\n"
-    )), "vcw map str float\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map str float\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithMapStrBoolArgAccepted) {
@@ -635,7 +635,7 @@ TEST_F(CodeGenTest, VerifyCalledWithMapStrBoolArgAccepted) {
         "        mock(takesMap, (m: Map<str, bool>) => len(m))\n"
         "        takesMap({\"a\": true, \"b\": false})\n"
         "        expect(verifyCalledWith(\"takesMap\", {\"a\": true, \"b\": false})).toEq(1)\n"
-    )), "vcw map str bool\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw map str bool\n  \033[32m+ counts map arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithMapParameterRejectedWithPrimitiveArg) {
@@ -796,7 +796,7 @@ TEST_F(CodeGenTest, VerifyCalledWithRecordArgAccepted) {
         "        mock(takesPoint, (p: Point) => p.x)\n"
         "        takesPoint(Point(1, 2))\n"
         "        expect(verifyCalledWith(\"takesPoint\", Point(1, 2))).toEq(1)\n"
-    )), "vcw record\n  \033[32m+ counts record arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw record\n  \033[32m+ counts record arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithRecordParamDifferentRecordTypeRejected) {
@@ -886,7 +886,7 @@ TEST_F(CodeGenTest, VerifyCalledWithTupleArgAccepted) {
         "        mock(takesPair, (p: (int, int)) => 0)\n"
         "        takesPair((1, 2))\n"
         "        expect(verifyCalledWith(\"takesPair\", (1, 2))).toEq(1)\n"
-    )), "vcw tuple\n  \033[32m+ counts tuple arg\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw tuple\n  \033[32m+ counts tuple arg\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 TEST_F(CodeGenTest, VerifyCalledWithTupleArityMismatchRejected) {
@@ -1114,5 +1114,5 @@ TEST_F(CodeGenTest, VerifyCalledWithSpiedFunction) {
         "        compute(5)\n"
         "        expect(verifyCalledWith(\"compute\", 5)).toEq(2)\n"
         "        expect(verifyCalledWith(\"compute\", 7)).toEq(1)\n"
-    )), "vcw spy\n  \033[32m+ matches spied call\033[0m\n\n1 passed, 0 failed\n");
+    )), "vcw spy\n  \033[32m+ matches spied call\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }

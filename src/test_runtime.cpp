@@ -18,6 +18,8 @@ namespace ry {
 
 static int g_passed = 0;
 static int g_failed = 0;
+static int g_skipped = 0;
+static int g_todo = 0;
 static int g_describe_depth = 0;
 static std::string g_current_it;
 static bool g_current_it_failed = false;
@@ -539,6 +541,20 @@ void __ry_test_it_end() {
     g_current_it.clear();
 }
 
+void __ry_test_it_skip(const char *name) {
+    const auto indent = currentIndent();
+    std::printf("%s\033[90m~ %s (skipped)\033[0m\n", indent.c_str(), name ? name : "");
+    std::fflush(stdout);
+    ++g_skipped;
+}
+
+void __ry_test_it_todo(const char *name) {
+    const auto indent = currentIndent();
+    std::printf("%s\033[36m? %s (todo)\033[0m\n", indent.c_str(), name ? name : "");
+    std::fflush(stdout);
+    ++g_todo;
+}
+
 void __ry_test_expect_fail(int line, const char *actual, const char *expected) {
     g_current_it_failed = true;
     std::printf("%s\033[31mline %d: expected %s, got %s\033[0m\n", currentIndent(2).c_str(), line, expected, actual);
@@ -555,12 +571,15 @@ void __ry_test_fail(int line, const char *msg) {
 }
 
 int __ry_test_summary() {
-    std::printf("\n%d passed, %d failed\n", g_passed, g_failed);
+    std::printf("\n%d passed, %d failed, %d skipped, %d todo\n",
+                g_passed, g_failed, g_skipped, g_todo);
     std::fflush(stdout);
     int result = g_failed;
     // Reset for potential multiple invocations
     g_passed = 0;
     g_failed = 0;
+    g_skipped = 0;
+    g_todo = 0;
     return result;
 }
 

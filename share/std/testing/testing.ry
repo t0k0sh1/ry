@@ -19,6 +19,18 @@ fn each(data: any)
 @directive(target=["statement", "function"])
 fn property(count: int = 100)
 
+@public
+@directive(target=["function"])
+fn skip()
+
+@public
+@directive(target=["function"])
+fn only()
+
+@public
+@directive(target=["function"])
+fn todo()
+
 @native("testing")
 fn _mockGetCallCount(name: str) -> int
 

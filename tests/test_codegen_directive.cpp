@@ -922,7 +922,7 @@ TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
         "@it(\"should add 1 + 2 = 3\")\n"
         "fn testAdd():\n"
         "    expect(1 + 2).toEq(3)\n"
-    )), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
+    )), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @it requires test mode — should error outside test mode
@@ -967,7 +967,7 @@ TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
         "    @it(\"should multiply\")\n"
         "    fn testMul():\n"
         "        expect(4 * 5).toEq(20)\n"
-    )), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
+    )), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @each + @it on a named function: parameterized tests
@@ -980,7 +980,7 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
     )), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
        "\033[32m+ should add 0 + 0 = 0\033[0m\n"
        "\033[32m+ should add -1 + 1 = 0\033[0m\n"
-       "\n3 passed, 0 failed\n");
+       "\n3 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @property + @it on a named function: property-based tests
@@ -1129,7 +1129,7 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
        "  \033[32m+ should pass as direct child\033[0m\n"
        "  inner\n"
        "    \033[32m+ should pass as nested child\033[0m\n"
-       "\n2 passed, 0 failed\n");
+       "\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // Positional argument that is a function call expression.
@@ -1237,7 +1237,7 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
     )), "shared setup\n"
        "  \033[32m+ should use x\033[0m\n"
        "  \033[32m+ should use x and y\033[0m\n"
-       "\n2 passed, 0 failed\n");
+       "\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @describe three levels deep: indentation tracks nesting depth
@@ -1256,7 +1256,7 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
        "  level 2\n"
        "    level 3\n"
        "      \033[32m+ should pass at deep nesting\033[0m\n"
-       "\n1 passed, 0 failed\n");
+       "\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @each + @it inside @describe: parameterized tests inside a group
@@ -1271,7 +1271,7 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
     )), "parameterized\n"
        "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
        "  \033[32m+ should add 4 + 5 = 9\033[0m\n"
-       "\n2 passed, 0 failed\n");
+       "\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // @property + @it inside @describe: property tests inside a group
@@ -1869,4 +1869,101 @@ TEST_F(DirectiveTest, PublicDirectiveRejectsArgs) {
     EXPECT_THROW({
         runSource("@public(\"foo\")\nfn bar() -> int:\n    return 1\n");
     }, std::runtime_error);
+}
+
+// ===== #1687: @skip / @only / @todo test-selection directives =====
+
+// Positive cases that must continue to parse and compile cleanly.
+TEST_F(DirectiveTest, SkipOnItCompiles) {
+    EXPECT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@skip\n"
+        "@it(\"placeholder\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, OnlyOnItCompiles) {
+    EXPECT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@only\n"
+        "@it(\"focused\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, TodoOnItCompiles) {
+    // Body intentionally uses an undefined identifier — @todo suppresses body
+    // codegen, so this must still compile (no type / lookup check).
+    EXPECT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@todo\n"
+        "@it(\"future implementation\")\n"
+        "fn t():\n"
+        "    expect(undefinedReference).toEq(0)\n"
+    )));
+}
+
+// Mutual exclusivity: any two of @skip / @only / @todo together must reject.
+TEST_F(DirectiveTest, SkipAndOnlyMutuallyExclusive) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@skip\n"
+        "@only\n"
+        "@it(\"conflict\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, SkipAndTodoMutuallyExclusive) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@skip\n"
+        "@todo\n"
+        "@it(\"conflict\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, OnlyAndTodoMutuallyExclusive) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@only\n"
+        "@todo\n"
+        "@it(\"conflict\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )), std::runtime_error);
+}
+
+// @describe must reject @skip / @only / @todo. MVP supports @it only.
+TEST_F(DirectiveTest, SkipOnDescribeRejected) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@skip\n"
+        "@describe(\"group\")\n"
+        "fn g():\n"
+        "    @it(\"inner\")\n"
+        "    fn inner():\n"
+        "        expect(1).toEq(1)\n"
+    )), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, OnlyOnDescribeRejected) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@only\n"
+        "@describe(\"group\")\n"
+        "fn g():\n"
+        "    @it(\"inner\")\n"
+        "    fn inner():\n"
+        "        expect(1).toEq(1)\n"
+    )), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, TodoOnDescribeRejected) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@todo\n"
+        "@describe(\"group\")\n"
+        "fn g():\n"
+        "    @it(\"inner\")\n"
+        "    fn inner():\n"
+        "        expect(1).toEq(1)\n"
+    )), std::runtime_error);
 }

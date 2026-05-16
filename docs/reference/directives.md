@@ -491,6 +491,75 @@ fn outer():
 
 **Supported target:** `fn` declarations only. The function must not have parameters or a return type annotation.
 
+### `@skip`
+
+Marks an `@it` test as skipped. The function body is not executed; the test is reported as `~ <name> (skipped)` (gray) and counted as `skipped` in the summary. The exit code is unaffected (only `failed` counts).
+
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import skip` at the top (or use a wildcard `from testing`).
+
+```ry
+from testing import it, expect, skip
+
+@skip
+@it("temporarily disabled while bug #123 is open")
+fn skipped():
+    expect(1).toEq(2)
+```
+
+Composes with `@each` and `@property` — `@skip @each @it(...)` and `@skip @property @it(...)` skip the entire loop without running any iteration.
+
+**Supported target:** functions with the `@it` directive only. Attaching `@skip` to `@describe` is a compile error in the current MVP.
+
+**Mutual exclusion:** `@skip` combined with `@only` or `@todo` is a compile error.
+
+### `@only`
+
+When at least one `@only` appears in a test file, every `@it` in that file **without** `@only` is implicitly skipped. Useful for focused TDD on a single failing case without commenting out or deleting other tests.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import only` at the top (or use a wildcard `from testing`).
+
+```ry
+from testing import it, expect, only
+
+@only
+@it("the one failing case I am currently debugging")
+fn focused():
+    expect(1 + 1).toEq(2)
+
+@it("this is implicitly skipped because the file has @only")
+fn other():
+    expect(1).toEq(1)
+```
+
+Composes with `@each` and `@property`. The focus filter is **per file** — it does not affect other test files.
+
+In outline mode (`ry test --outline`), all tests are shown regardless of `@only`, so the focus filter does not hide them; only the suffix `(@only)` is added so the focused tests stand out.
+
+**Supported target:** functions with the `@it` directive only. Attaching `@only` to `@describe` is a compile error in the current MVP.
+
+**Mutual exclusion:** `@only` combined with `@skip` or `@todo` is a compile error.
+
+### `@todo`
+
+Marks an `@it` test as a not-yet-implemented placeholder. The function body is **never emitted** by codegen, so it may reference undefined identifiers, omit a `return`, or otherwise fail compilation; only the directive itself is validated. Reported as `? <name> (todo)` (cyan) and counted as `todo`.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import todo` at the top (or use a wildcard `from testing`).
+
+```ry
+from testing import it, todo
+
+@todo
+@it("upcoming feature, body not yet written")
+fn upcoming():
+    notYetDefined()   # body is never compiled
+```
+
+Composes with `@each` and `@property` — the loop body is never emitted; the test is counted as a single `todo` regardless of how many iterations the `@each` table or `@property` count would have produced.
+
+**Supported target:** functions with the `@it` directive only. Attaching `@todo` to `@describe` is a compile error in the current MVP.
+
+**Mutual exclusion:** `@todo` combined with `@skip` or `@only` is a compile error.
+
 ### `@inline`
 
 Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
