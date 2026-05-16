@@ -763,7 +763,7 @@ static void collectTestTargetsFromExpr(const ExprPtr &expr,
         if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
             collectTestTargetsFromExpr(e->lhs, mocked, spied);
             collectTestTargetsFromExpr(e->rhs, mocked, spied);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) { // NOLINT(bugprone-branch-clone)
             collectTestTargetsFromExpr(e->operand, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             for (auto &a : e->args)
@@ -851,7 +851,7 @@ static void collectTestTargetsFromStmt(const StmtNode &stmt,
                 collectTestTargetsFromExpr(arg, mocked, spied);
             for (auto &na : s.named_args)
                 collectTestTargetsFromExpr(na.value, mocked, spied);
-        } else if constexpr (std::is_same_v<T, AssignStmt>) {
+        } else if constexpr (std::is_same_v<T, AssignStmt>) { // NOLINT(bugprone-branch-clone)
             collectTestTargetsFromExpr(s.value, mocked, spied);
         } else if constexpr (std::is_same_v<T, ExprStmt>) {
             collectTestTargetsFromExpr(s.expr, mocked, spied);
