@@ -58,13 +58,13 @@ static std::string makeImportError(int line, const std::string &detail) {
 
 // Compiler intrinsics exposed by the testing module (#712). The names listed
 // here either produce no AST node (`expect <expr> <matcher>` is a parser-level
-// statement form; `mock` is recognized at codegen) or are wrapped by codegen
-// synth (`fail` — `codegen_call_user.cpp:435` synthesizes the __LINE__-
-// equivalent argument before delegating to the user-fn `fail` defined in
-// `share/std/testing/testing.ry`). Listing them here lets
-// `from testing import expect / mock / fail` resolve without producing AST
-// nodes — the allow-list bypass below skips the `'<name>' not found` throw
-// without altering anything else.
+// statement form; `mock` / `spy` / `verifyCalledWith` are recognized at
+// codegen) or are emitted directly as IR via a callee-name intercept (`fail`
+// — `codegen_test.cpp:emitFailCall` calls `__ry_test_fail(line, msg)`
+// directly, with the call-site line number embedded as a constant; #1690).
+// Listing them here lets `from testing import expect / mock / fail` resolve
+// without producing AST nodes — the allow-list bypass below skips the
+// `'<name>' not found` throw without altering anything else.
 //
 // Note: `it` / `describe` are NOT listed here. They are declared as regular
 // `@directive` statements in `share/std/testing/testing.ry` and flow through

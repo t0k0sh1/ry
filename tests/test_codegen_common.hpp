@@ -108,16 +108,13 @@ protected:
     // Appended after user source so that line numbers in the user source
     // are not shifted (tests like FailWithMessage assert on specific line
     // numbers in `fail()` output).  Mirrors share/std/testing/testing.ry's
-    // declarations of `fail` / `verify` and the underlying `@native` runtime
-    // calls (`_reportFail`, `_mockGetCallCount`).
+    // declarations of `verify` and the underlying `@native` runtime call
+    // (`_mockGetCallCount`).  `fail` is a pure codegen intrinsic — codegen
+    // intercepts the callee name in `emitFailCall` and emits a direct call
+    // to `__ry_test_fail`, so no Ry declaration is needed here.
     static std::string withTestingFnDecls(const std::string &src) {
         static const char *kDecls =
             "\n"
-            "@native(\"testing\")\n"
-            "fn _reportFail(line: int, message: str) -> Unit\n"
-            "@public\n"
-            "fn fail(_line: int, message: str = \"\") -> Unit:\n"
-            "  _reportFail(_line, message)\n"
             "@native(\"testing\")\n"
             "fn _mockGetCallCount(name: str) -> int\n"
             "@public\n"
@@ -152,11 +149,12 @@ protected:
     // intentionally exercise the missing-import error must use
     // `runTestSourceNoTestingImports` instead.
     //
-    // Since #718 made `fail` and #722 made `verify` Ry-level functions
-    // (declared in share/std/testing/testing.ry, bodies emitted via
-    // emitUserFnCall), the harness also appends `fail` / `verify` and their
-    // `@native` backing declarations (`_reportFail`, `_mockGetCallCount`)
-    // after the user source so codegen can find them in user_fns_.
+    // #722 made `verify` a Ry-level function (declared in
+    // share/std/testing/testing.ry, body emitted via emitUserFnCall), so the
+    // harness appends `verify` and its `@native` backing declaration
+    // (`_mockGetCallCount`) after the user source so codegen can find it in
+    // user_fns_.  `fail` reverted to a pure codegen intrinsic in #1690 —
+    // intercepted by name in `emitFailCall`, no Ry declaration needed.
     static std::string runTestSource(const std::string &src) {
         std::string augmented = withTestingFnDecls(src);
         Lexer lex(augmented);
