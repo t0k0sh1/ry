@@ -1533,6 +1533,32 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                                      ": toBeErr: expected Result type");
         llvm::Value *isOk = builder_.CreateExtractValue(actualVal, {0}, "is_ok");
         cmpResult = builder_.CreateNot(isOk, "is_err");
+    } else if (s.matcher == "toBeNaN") {
+        if (actualTy != f64Ty_)
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": toBeNaN: expected float");
+        cmpResult = builder_.CreateFCmpUNO(actualVal, actualVal, "is_nan");
+    } else if (s.matcher == "toBeInfinity") {
+        if (actualTy != f64Ty_)
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": toBeInfinity: expected float");
+        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+            mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
+        llvm::Value *absVal = builder_.CreateCall(fabsDecl, {actualVal}, "abs_val");
+        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
+        cmpResult = builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
+    } else if (s.matcher == "toBeFinite") {
+        if (actualTy != f64Ty_)
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": toBeFinite: expected float");
+        llvm::Value *isNaN = builder_.CreateFCmpUNO(actualVal, actualVal, "is_nan");
+        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+            mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
+        llvm::Value *absVal = builder_.CreateCall(fabsDecl, {actualVal}, "abs_val");
+        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
+        llvm::Value *isInf = builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
+        llvm::Value *nonFinite = builder_.CreateOr(isNaN, isInf, "non_finite");
+        cmpResult = builder_.CreateNot(nonFinite, "is_finite");
     } else if (s.matcher == "toContain" || s.matcher == "toNotContain") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
@@ -1857,6 +1883,12 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         expectedStr = cachedGlobalString("Ok(...)", ".exp_ok");
     } else if (s.matcher == "toBeErr") {
         expectedStr = cachedGlobalString("Err(...)", ".exp_err");
+    } else if (s.matcher == "toBeNaN") {
+        expectedStr = cachedGlobalString("NaN", ".exp_nan");
+    } else if (s.matcher == "toBeInfinity") {
+        expectedStr = cachedGlobalString("Infinity", ".exp_inf");
+    } else if (s.matcher == "toBeFinite") {
+        expectedStr = cachedGlobalString("finite float", ".exp_finite");
     } else if (s.matcher == "toContain" || s.matcher == "toNotContain") {
         if (s.matcher == "toNotContain") {
             llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");

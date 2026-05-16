@@ -1213,7 +1213,8 @@ StmtNode Parser::parseExpectStatement() {
         "toHaveLen", "toStartWith", "toEndWith", "toMatch"
     };
     static const std::unordered_set<std::string> matchers_no_arg = {
-        "toBeTrue", "toBeFalse", "toBeNone", "toBeSome", "toBeOk", "toBeErr", "toBeEmpty"
+        "toBeTrue", "toBeFalse", "toBeNone", "toBeSome", "toBeOk", "toBeErr", "toBeEmpty",
+        "toBeNaN", "toBeInfinity", "toBeFinite"
     };
 
     if (matcher == "toBeCloseTo") {
