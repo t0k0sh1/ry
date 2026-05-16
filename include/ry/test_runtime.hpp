@@ -58,6 +58,8 @@ extern "C" {
                                             const int64_t *kinds,
                                             const int64_t *values);
     void    __ry_mock_clear_all();
+    void    __ry_mock_clear(const char *name);
+    void    __ry_mock_reset(const char *name);
 
     // Indent helpers
     const char *__ry_test_indent(int extra);

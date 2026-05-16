@@ -25,6 +25,15 @@ fn _reportFail(line: int, message: str) -> Unit
 @native("testing")
 fn _mockGetCallCount(name: str) -> int
 
+@native("testing")
+fn _mockClear(name: str) -> Unit
+
+@native("testing")
+fn _mockReset(name: str) -> Unit
+
+@native("testing")
+fn _mockResetAll() -> Unit
+
 @public
 fn fail(_line: int, message: str = "") -> Unit:
   _reportFail(_line, message)
@@ -32,3 +41,15 @@ fn fail(_line: int, message: str = "") -> Unit:
 @public
 fn verify(name: str) -> int:
   return _mockGetCallCount(name)
+
+@public
+fn mockClear(name: str) -> Unit:
+  _mockClear(name)
+
+@public
+fn mockReset(name: str) -> Unit:
+  _mockReset(name)
+
+@public
+fn mockResetAll() -> Unit:
+  _mockResetAll()

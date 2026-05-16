@@ -471,6 +471,32 @@ static void mockReleaseClosureEnv(void *env_ptr, void (*env_dtor)(void *)) {
     }
 }
 
+// Release every retained per-call resource on a MockEntry (str arg handles,
+// list/map/record/tuple/fn snapshots) and reset the call counter / call log.
+// fn_ptr / env_ptr / env_dtor are NOT touched — the caller decides whether to
+// keep the mock active (mockClear), set new bindings (__ry_mock_set*), or wipe
+// the slot entirely (mockReset / __ry_mock_clear_all). Each free is paired
+// with an explicit `.clear()` so the vector cannot retain freed pointers if a
+// subsequent operation re-uses the same entry.
+static void releaseMockEntryRetainedArgs(MockEntry &entry) {
+    for (char *s : entry.retained_str_args) mockReleaseStr(s);
+    entry.retained_str_args.clear();
+    for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
+    entry.retained_list_snapshots.clear();
+    for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
+    entry.retained_map_snapshots.clear();
+    for (auto *snap : entry.retained_record_snapshots)
+        freeMockRecordSnapshot(snap);
+    entry.retained_record_snapshots.clear();
+    for (auto *snap : entry.retained_tuple_snapshots)
+        freeMockTupleSnapshot(snap);
+    entry.retained_tuple_snapshots.clear();
+    for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
+    entry.retained_fn_snapshots.clear();
+    entry.calls.clear();
+    entry.call_count = 0;
+}
+
 extern "C" {
 
 void __ry_test_describe_begin(const char *name) {
@@ -543,30 +569,34 @@ int __ry_test_summary() {
 void __ry_mock_set(const char *name, void *fn_ptr) {
     auto &entry = g_mock_registry[name];
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
-    for (char *s : entry.retained_str_args) mockReleaseStr(s);
-    for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
-    for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
-    for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
-    for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
-    for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
-    entry = MockEntry{};
+    releaseMockEntryRetainedArgs(entry);
     entry.fn_ptr = fn_ptr;
+    entry.env_ptr = nullptr;
+    entry.env_dtor = nullptr;
 }
 
 void __ry_mock_set_closure(const char *name, void *thunk_ptr,
                             void *env_ptr, void (*env_dtor)(void *)) {
     auto &entry = g_mock_registry[name];
     mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
-    for (char *s : entry.retained_str_args) mockReleaseStr(s);
-    for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
-    for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
-    for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
-    for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
-    for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
-    entry = MockEntry{};
+    releaseMockEntryRetainedArgs(entry);
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
     entry.env_dtor = env_dtor;
+}
+
+void __ry_mock_clear(const char *name) {
+    auto it = g_mock_registry.find(name);
+    if (it == g_mock_registry.end()) return;
+    releaseMockEntryRetainedArgs(it->second);
+}
+
+void __ry_mock_reset(const char *name) {
+    auto it = g_mock_registry.find(name);
+    if (it == g_mock_registry.end()) return;
+    mockReleaseClosureEnv(it->second.env_ptr, it->second.env_dtor);
+    releaseMockEntryRetainedArgs(it->second);
+    g_mock_registry.erase(it);
 }
 
 void *__ry_mock_get(const char *name) {
@@ -1023,12 +1053,7 @@ void __ry_mock_clear_all() {
     for (auto &kv : g_mock_registry) {
         auto &entry = kv.second;
         mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
-        for (char *s : entry.retained_str_args) mockReleaseStr(s);
-        for (auto *snap : entry.retained_list_snapshots) freeMockListSnapshot(snap);
-        for (auto *snap : entry.retained_map_snapshots) freeMockMapSnapshot(snap);
-        for (auto *snap : entry.retained_record_snapshots) freeMockRecordSnapshot(snap);
-        for (auto *snap : entry.retained_tuple_snapshots) freeMockTupleSnapshot(snap);
-        for (auto *snap : entry.retained_fn_snapshots) freeMockFnSnapshot(snap);
+        releaseMockEntryRetainedArgs(entry);
     }
     g_mock_registry.clear();
 }

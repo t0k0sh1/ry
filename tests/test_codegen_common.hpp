@@ -122,7 +122,22 @@ protected:
             "fn _mockGetCallCount(name: str) -> int\n"
             "@public\n"
             "fn verify(name: str) -> int:\n"
-            "  return _mockGetCallCount(name)\n";
+            "  return _mockGetCallCount(name)\n"
+            "@native(\"testing\")\n"
+            "fn _mockClear(name: str) -> Unit\n"
+            "@public\n"
+            "fn mockClear(name: str) -> Unit:\n"
+            "  _mockClear(name)\n"
+            "@native(\"testing\")\n"
+            "fn _mockReset(name: str) -> Unit\n"
+            "@public\n"
+            "fn mockReset(name: str) -> Unit:\n"
+            "  _mockReset(name)\n"
+            "@native(\"testing\")\n"
+            "fn _mockResetAll() -> Unit\n"
+            "@public\n"
+            "fn mockResetAll() -> Unit:\n"
+            "  _mockResetAll()\n";
         return src + kDecls;
     }
 
