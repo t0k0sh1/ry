@@ -266,6 +266,10 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         // Retain return value before scope cleanup to prevent dangling pointer
         // when returning a value loaded from an ARC-managed local/parameter
         tryRetainArcSource(val);
+        // Fn-typed param values are not in arc_managed_vars_; without this
+        // the caller's releaseUniformClosureTemps frees the value while the
+        // caller still holds the returned handle in a local. (#1770)
+        retainFnTypedParamForReturn(val);
         emitScopeCleanupToDepth(0);
 
         emitTraceFunctionExit(current_function_name_, s.loc);
