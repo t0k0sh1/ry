@@ -1725,6 +1725,19 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i1Ty_ && elemTy != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
                 ": toBeOneOf: list element type must be int, float, str, or bool");
+        // Pointer-element branch routes to strcmp below; positive-allowlist
+        // narrow to str only — see codegen-llvm-ir-conventions.md "Collection
+        // ops on pointer elements". Mirrors emitListRemove guard.
+        if (elemTy == ptrTy_) {
+            const ValueMetadata *meta = getMeta(listVal);
+            const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+            const bool isNonStrName = !elemName.empty() && elemName != "str";
+            const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+            const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+            if (isNonStrName || hasNestedList || hasFnInfo || !isStringValue(actualVal))
+                codegenError("line " + std::to_string(s.loc.line) +
+                    ": toBeOneOf: list element type must be int, float, str, or bool");
+        }
 
         llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "oo_len_ptr");
         llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "oo_len");

@@ -1445,6 +1445,21 @@ TEST_F(CodeGenTest, ExpectToBeOneOfRejectsTypeMismatch) {
     EXPECT_THROW(runTestSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, ExpectToBeOneOfRejectsListOfLists) {
+    // Pointer-element allowlist guard: non-str ptr elements (List<List<int>>)
+    // must be rejected before reaching strcmp on List headers.
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"list of lists\")\n"
+        "    fn listOfLists():\n"
+        "        a: List<int> = [1, 2]\n"
+        "        b: List<int> = [3, 4]\n"
+        "        expect(a).toBeOneOf([a, b])\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
 // ===== Field assignment subtype coercion (#359) =====
 
 TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
