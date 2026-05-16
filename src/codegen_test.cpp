@@ -2574,9 +2574,19 @@ void CodeGen::emitFailCall(CallStmt &s) {
 
     llvm::Value *lineVal =
         llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line));
-    llvm::Value *msgVal = s.args.size() == 1
-        ? emitExpr(*s.args[0])
-        : static_cast<llvm::Value *>(cachedGlobalString("", ".fail_empty_msg"));
+    llvm::Value *msgVal = nullptr;
+    if (s.args.size() == 1) {
+        msgVal = emitExpr(*s.args[0]);
+        // Previously, dispatching through the Ry-level `fn fail(_line: int,
+        // message: str)` rejected non-str args via signature type-check.
+        // The pure-codegen-intrinsic path bypasses that check, so guard
+        // explicitly — otherwise non-str pointers (List/Map/closure handles)
+        // would flow into `__ry_test_fail`'s `%s` format and read garbage.
+        if (!isStringValue(msgVal))
+            codegenError(s.loc, "fail() message argument must be a str");
+    } else {
+        msgVal = static_cast<llvm::Value *>(cachedGlobalString("", ".fail_empty_msg"));
+    }
 
     builder_.CreateCall(failFn, {lineVal, msgVal});
 }
