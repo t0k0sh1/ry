@@ -245,6 +245,14 @@ public:
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
+    // Return-only retain for fn-typed param values. Param allocas for
+    // fn-typed params are NOT registered in arc_managed_vars_; callers
+    // own the uniform-closure wrap temp via releaseUniformClosureTemps.
+    // When `return f` propagates such a value out of the callee, the
+    // caller's post-call release would free the value before the caller
+    // consumes it. Scoped to ReturnStmt so non-return Load sites (e.g.
+    // pass-through fn args) are unaffected. (#1770)
+    void retainFnTypedParamForReturn(llvm::Value *val);
     // Unconditional retain for a pointer-typed ARC value: tries the
     // `tryRetainArcSource` fast path (LoadInst-from-alloca and arc_owned
     // values) and falls back to a header-based retain for any other

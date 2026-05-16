@@ -945,6 +945,31 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     return false;
 }
 
+// Return-only retain for fn-typed param values. Fn-typed param allocas are
+// not registered in arc_managed_vars_ (callers own the uniform-closure wrap
+// temp via releaseUniformClosureTemps). When `return f` propagates such a
+// value out of the callee, the caller's post-call temp release would
+// otherwise free the storage while the returned handle is still in flight.
+// Scoping the retain to ReturnStmt avoids unbalanced retains at non-return
+// LoadInst sites (e.g. pass-through fn args, where wrapFnTypedArgs already
+// skips the wrap and the temp set, so a retain at the load would leak).
+// (#1770)
+void CodeGen::retainFnTypedParamForReturn(llvm::Value *val) {
+    auto *load = llvm::dyn_cast<llvm::LoadInst>(val);
+    if (!load)
+        return;
+    auto *srcAlloca =
+        llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
+    if (!srcAlloca)
+        return;
+    auto *meta = getMeta(srcAlloca);
+    if (!meta || !meta->fn_type_info ||
+        !meta->fn_type_info->isUniformClosure)
+        return;
+    auto *hdr = emitArcGetHeaderFromData(val);
+    emitArcRetain(hdr, isArcAtomic(val));
+}
+
 llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind,
                                                                const std::string &elemSig,
                                                                const std::string &valSig) {

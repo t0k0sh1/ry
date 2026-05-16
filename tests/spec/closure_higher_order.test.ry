@@ -46,3 +46,51 @@ fn closureFunctionTypeParameterCaptureTests():
 
     result = applyTwice((x: int) => x + 1, 5)
     expect(result).toEq(7)
+
+  @it("should return fn() -> int param bound to local and invoke it")
+  fn shouldReturnFnIntParamBoundToLocalAndInvokeIt():
+    fn pickInt(f: fn() -> int) -> fn() -> int:
+      return f
+
+    g = pickInt(() => 42)
+    expect(g()).toEq(42)
+
+  @it("should return fn() -> Unit param bound to local and invoke it")
+  fn shouldReturnFnUnitParamBoundToLocalAndInvokeIt():
+    fn pickUnit(f: fn() -> Unit) -> fn() -> Unit:
+      return f
+
+    g = pickUnit(():
+      return
+    )
+    g()
+
+  @it("should return capturing fn() -> int param bound to local and invoke it")
+  fn shouldReturnCapturingFnIntParamBoundToLocalAndInvokeIt():
+    fn pickInt(f: fn() -> int) -> fn() -> int:
+      return f
+
+    base = 100
+    g = pickInt(() => base + 5)
+    expect(g()).toEq(105)
+
+  @it("should pass a local fn-typed value through pickInt without UAF")
+  fn shouldPassLocalFnTypedValueThroughPickIntWithoutUaf():
+    fn pickInt(f: fn() -> int) -> fn() -> int:
+      return f
+
+    g = () => 7
+    h = pickInt(g)
+    expect(h()).toEq(7)
+    expect(g()).toEq(7)
+
+  @it("should chain pickInt through a two-level wrapper")
+  fn shouldChainPickIntThroughTwoLevelWrapper():
+    fn inner(f: fn() -> int) -> fn() -> int:
+      return f
+
+    fn outer(f: fn() -> int) -> fn() -> int:
+      return inner(f)
+
+    g = outer(() => 99)
+    expect(g()).toEq(99)
