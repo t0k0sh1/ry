@@ -188,3 +188,22 @@ fn spyMockInteropTests():
     expect(verify("tickAndReturn")).toEq(1)
     # Real impl bypassed: the side-effect counter must stay at 0.
     expect(sideEffectCount[0]).toEq(0)
+
+# Helper for #1765 — verifies pre-scan walker also reaches spy() targets in
+# AssignStmt.value lambda bodies (same bug surface as mock(), exercised here
+# to lock in spy-side coverage).
+fn realComputeForSpy(x: int) -> int:
+  return x * 3
+
+fn callsRealComputeForSpy(x: int) -> int:
+  return realComputeForSpy(x)
+
+@describe("spy detection inside non-CallStmt lambda positions (#1765)")
+fn spyInNonCallStmtPositionsTests():
+  @it("detects spy target inside AssignStmt rhs lambda body")
+  fn detectsSpyInAssignRhsLambda():
+    f = ():
+      spy("realComputeForSpy")
+    f()
+    expect(callsRealComputeForSpy(4)).toEq(12)
+    expect(verify("realComputeForSpy")).toEq(1)

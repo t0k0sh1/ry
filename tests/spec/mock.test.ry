@@ -669,3 +669,84 @@ fn mockResetAllTests():
   fn shouldBeNoopEmptyRegistry():
     mockResetAll()
     expect(verify("anything")).toEq(0)
+
+# Helpers for #1765 — lambda body pre-scan coverage.
+# Each helper pair (realFetchX + callsRealFetchX) exposes the bug: the
+# callsite inside callsRealFetchX's body is codegen'd BEFORE any @it body
+# runs, so a pre-scan miss leaves the gate off and the mock cannot
+# intercept at runtime. Unique target names per test prevent cross-test
+# leakage in the global mocked_functions_ set.
+fn realFetchA() -> str:
+  return "real A"
+
+fn callsRealFetchA() -> str:
+  return realFetchA()
+
+fn realFetchB() -> str:
+  return "real B"
+
+fn callsRealFetchB() -> str:
+  return realFetchB()
+
+fn realFetchC() -> str:
+  return "real C"
+
+fn callsRealFetchC() -> str:
+  return realFetchC()
+
+fn realFetchD() -> str:
+  return "real D"
+
+fn callsRealFetchD() -> str:
+  return realFetchD()
+
+fn realFetchE() -> str:
+  return "real E"
+
+fn callsRealFetchE() -> str:
+  return realFetchE()
+
+fn makeMockSetupForB() -> fn() -> int:
+  return ():
+    mock("realFetchB", () => "fake B")
+
+fn runSetup(setup: fn() -> int) -> int:
+  setup()
+  return 0
+
+fn pickLambda(setup: fn() -> int) -> fn() -> int:
+  return setup
+
+fn applyAndReturnTrue(setup: fn() -> int) -> bool:
+  setup()
+  return true
+
+@describe("mock detection inside non-CallStmt lambda positions (#1765)")
+fn mockInNonCallStmtPositionsTests():
+  @it("detects mock target inside AssignStmt rhs lambda body")
+  fn detectsMockInAssignRhsLambda():
+    f = ():
+      mock("realFetchA", () => "fake A")
+    f()
+    expect(callsRealFetchA()).toEq("fake A")
+
+  @it("detects mock target inside ReturnStmt lambda body (via helper returning lambda)")
+  fn detectsMockInReturnStmtLambda():
+    setup = makeMockSetupForB()
+    setup()
+    expect(callsRealFetchB()).toEq("fake B")
+
+  @it("detects mock target inside AssignStmt rhs CallExpr argument lambda")
+  fn detectsMockInAssignRhsCallExprArgsLambda():
+    _ = runSetup(():
+      mock("realFetchC", () => "fake C")
+    )
+    expect(callsRealFetchC()).toEq("fake C")
+
+  @it("detects mock target inside IfStmt condition CallExpr argument lambda")
+  fn detectsMockInIfStmtConditionLambda():
+    if applyAndReturnTrue(():
+      mock("realFetchE", () => "fake E")
+    ):
+      expect(callsRealFetchE()).toEq("fake E")
+
