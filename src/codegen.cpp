@@ -741,10 +741,96 @@ bool CodeGen::isCapturedVar(llvm::AllocaInst *ptr) const {
     return captured_vars_.count(ptr) > 0;
 }
 
-// Forward declaration for mutual recursion.
+// Forward declarations for mutual recursion.
 static void collectTestTargetsFromStmts(const std::vector<StmtNode> &stmts,
                                         std::unordered_set<std::string> &mocked,
                                         std::unordered_set<std::string> &spied);
+static void collectTestTargetsFromExpr(const ExprPtr &expr,
+                                       std::unordered_set<std::string> &mocked,
+                                       std::unordered_set<std::string> &spied);
+
+// Walk every ExprPtr slot, descending into nested expressions and into the
+// stmt bodies of `LambdaExpr` / `IfBlockExpr`. Pre-scan looks for `mock` /
+// `spy` calls (which are CallStmt, not CallExpr) inside lambda bodies, so
+// the visitor's only job is to reach those bodies regardless of which AST
+// slot the lambda is nested in.
+static void collectTestTargetsFromExpr(const ExprPtr &expr,
+                                       std::unordered_set<std::string> &mocked,
+                                       std::unordered_set<std::string> &spied) {
+    if (!expr) return;
+    std::visit([&](const auto &e) {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
+            collectTestTargetsFromExpr(e->lhs, mocked, spied);
+            collectTestTargetsFromExpr(e->rhs, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+            collectTestTargetsFromExpr(e->operand, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            for (auto &a : e->args)
+                collectTestTargetsFromExpr(a, mocked, spied);
+            for (auto &na : e->named_args)
+                collectTestTargetsFromExpr(na.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
+            collectTestTargetsFromExpr(e->object, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
+            for (auto &el : e->elements)
+                collectTestTargetsFromExpr(el, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
+            for (auto &el : e->elements)
+                collectTestTargetsFromExpr(el, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
+            collectTestTargetsFromExpr(e->object, mocked, spied);
+            for (auto &i : e->indices)
+                collectTestTargetsFromExpr(i, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
+            for (auto &k : e->keys)
+                collectTestTargetsFromExpr(k, mocked, spied);
+            for (auto &v : e->values)
+                collectTestTargetsFromExpr(v, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            for (auto &el : e->elements)
+                collectTestTargetsFromExpr(el, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
+            collectTestTargetsFromStmts(e->body, mocked, spied);
+            collectTestTargetsFromExpr(e->expr_body, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+            collectTestTargetsFromExpr(e->value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
+            for (auto &ex : e->exprs)
+                collectTestTargetsFromExpr(ex, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
+            for (auto &arm : e->arms) {
+                collectTestTargetsFromExpr(arm.condition, mocked, spied);
+                collectTestTargetsFromExpr(arm.value, mocked, spied);
+            }
+            collectTestTargetsFromExpr(e->else_expr, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
+            collectTestTargetsFromExpr(e->subject, mocked, spied);
+            for (auto &arm : e->arms) {
+                collectTestTargetsFromExpr(arm.guard, mocked, spied);
+                collectTestTargetsFromExpr(arm.value, mocked, spied);
+            }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+            collectTestTargetsFromExpr(e->condition, mocked, spied);
+            collectTestTargetsFromExpr(e->then_value, mocked, spied);
+            collectTestTargetsFromExpr(e->else_value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+            collectTestTargetsFromExpr(e->condition, mocked, spied);
+            collectTestTargetsFromStmts(e->then_body, mocked, spied);
+            collectTestTargetsFromStmts(e->else_body, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
+            collectTestTargetsFromExpr(e->start, mocked, spied);
+            collectTestTargetsFromExpr(e->end, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ErrorPropagateExpr>>) {
+            collectTestTargetsFromExpr(e->operand, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
+            collectTestTargetsFromExpr(e->operand, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WeakExpr>>) {
+            collectTestTargetsFromExpr(e->operand, mocked, spied);
+        }
+        // Leaf variants (Number/Float/Bool/String/Regex/Variable/EnumAccess/None) — no recursion.
+    }, expr->data);
+}
 
 // Scan a single statement (and its nested bodies) for mock() / spy() targets.
 static void collectTestTargetsFromStmt(const StmtNode &stmt,
@@ -761,27 +847,73 @@ static void collectTestTargetsFromStmt(const StmtNode &stmt,
                         spied.insert(str->value);
                 }
             }
-            for (auto &arg : s.args) {
-                if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
-                    collectTestTargetsFromStmts((*lam)->body, mocked, spied);
-            }
+            for (auto &arg : s.args)
+                collectTestTargetsFromExpr(arg, mocked, spied);
+            for (auto &na : s.named_args)
+                collectTestTargetsFromExpr(na.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, AssignStmt>) {
+            collectTestTargetsFromExpr(s.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, ExprStmt>) {
+            collectTestTargetsFromExpr(s.expr, mocked, spied);
+        } else if constexpr (std::is_same_v<T, ReturnStmt>) {
+            collectTestTargetsFromExpr(s.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
+            collectTestTargetsFromExpr(s.object, mocked, spied);
+            for (auto &i : s.indices)
+                collectTestTargetsFromExpr(i, mocked, spied);
+            collectTestTargetsFromExpr(s.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
+            collectTestTargetsFromExpr(s.object, mocked, spied);
+            collectTestTargetsFromExpr(s.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
+            collectTestTargetsFromExpr(s.value, mocked, spied);
+        } else if constexpr (std::is_same_v<T, ExpectStmt>) {
+            collectTestTargetsFromExpr(s.actual, mocked, spied);
+            collectTestTargetsFromExpr(s.expected, mocked, spied);
+            for (auto &x : s.extra_args)
+                collectTestTargetsFromExpr(x, mocked, spied);
+        } else if constexpr (std::is_same_v<T, AwaitStmt>) {
+            collectTestTargetsFromExpr(s.operand, mocked, spied);
+        } else if constexpr (std::is_same_v<T, RecordStmt>) {
+            for (auto &inv : s.invariants)
+                collectTestTargetsFromExpr(inv, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+            collectTestTargetsFromExpr(s->branch.condition, mocked, spied);
             collectTestTargetsFromStmts(s->branch.body, mocked, spied);
             collectTestTargetsFromStmts(s->else_body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
-            for (auto &arm : s->arms)
+            for (auto &arm : s->arms) {
+                collectTestTargetsFromExpr(arm.condition, mocked, spied);
                 collectTestTargetsFromStmts(arm.body, mocked, spied);
+            }
             collectTestTargetsFromStmts(s->else_body, mocked, spied);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) { // NOLINT(bugprone-branch-clone)
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+            collectTestTargetsFromExpr(s->condition, mocked, spied);
             collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+            collectTestTargetsFromExpr(s->iterable, mocked, spied);
             collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+            for (auto &p : s->params)
+                collectTestTargetsFromExpr(p.default_value, mocked, spied);
+            for (auto &pre : s->preconditions)
+                collectTestTargetsFromExpr(pre, mocked, spied);
+            for (auto &post : s->postconditions)
+                collectTestTargetsFromExpr(post, mocked, spied);
             collectTestTargetsFromStmts(s->body, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
-            for (auto &arm : s->arms)
+            collectTestTargetsFromExpr(s->subject, mocked, spied);
+            for (auto &arm : s->arms) {
+                collectTestTargetsFromExpr(arm.guard, mocked, spied);
                 collectTestTargetsFromStmts(arm.body, mocked, spied);
+            }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<QualifiedImportStmt>>) {
+            collectTestTargetsFromStmts(s->definitions, mocked, spied);
+        } else if constexpr (std::is_same_v<T, DirectiveDefStmt>) {
+            for (auto &p : s.params)
+                collectTestTargetsFromExpr(p.default_value, mocked, spied);
         }
+        // Other stmts (Import/Break/Continue/Ellipsis/Enum/TypeAlias/ImportAlias) — no ExprPtr slots that can host a mock-bearing lambda.
     }, stmt);
 }
 
