@@ -1982,3 +1982,29 @@ TEST_F(DirectiveTest, OnlyOnNonItDoesNotTriggerFileWideSkip) {
         "    expect(1).toEq(1)\n"
     )), "\033[32m+ plain test\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
+
+// Jest-compat: @skip must compile the body so type errors / undefined
+// references in skipped tests are still surfaced. Only @todo suppresses
+// body codegen entirely (placeholder tests whose body has not been written).
+TEST_F(DirectiveTest, SkipValidatesBody) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@skip\n"
+        "@it(\"skipped test with bad body\")\n"
+        "fn t():\n"
+        "    expect(undefinedReference).toEq(0)\n"
+    )), std::runtime_error);
+}
+
+// Implicit skip (@only elsewhere in file forces this @it to skip) must also
+// validate the body. Same Jest-compat rationale as @skip.
+TEST_F(DirectiveTest, ImplicitSkipValidatesBody) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@only\n"
+        "@it(\"focused\")\n"
+        "fn focused():\n"
+        "    expect(1).toEq(1)\n"
+        "@it(\"implicitly skipped with bad body\")\n"
+        "fn t():\n"
+        "    expect(undefinedReference).toEq(0)\n"
+    )), std::runtime_error);
+}

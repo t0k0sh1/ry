@@ -394,6 +394,14 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
         return;
     }
     if (hasSkip || implicitSkip) {
+        // Jest-compat: validate the body so type errors / undefined references
+        // surface even when the test is skipped. The generated fn is never
+        // invoked (no `it_begin` / call / `it_end` emitted). `@todo` is the
+        // only directive that suppresses body codegen entirely — it is meant
+        // for placeholder tests whose body has not been written yet.
+        stripDirectives(s->directives, {"it", "only", "skip", "each", "property"});
+        emitStmt(s);
+
         llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
         builder_.CreateCall(getTestItSkipFunction(), {descVal});
         return;

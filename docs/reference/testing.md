@@ -202,9 +202,9 @@ fn todo():
     notYetDefined()     # body is never compiled
 ```
 
-- `@skip @it("...")` — the function body is **never emitted** (parallel to `@todo`), so it may reference undefined identifiers or otherwise fail body codegen; only the directive itself and the surrounding declaration are validated. Reported as `~ <name> (skipped)` (gray) and counted as `skipped`. Use this for tests that are temporarily disabled (e.g. while a bug is investigated); use `@todo` when the test has not been written yet.
-- `@only @it("...")` — when at least one `@only` appears on an `@it` function in a file, every `@it` in that file *without* `@only` is implicitly skipped. Useful for focused TDD on a single failing case. The implicit skip is reported the same way as `@skip`. `@only` on a non-`@it` function has no effect on file-wide selection — only `@only` paired with `@it` triggers the focus filter.
-- `@todo @it("...")` — a placeholder. The function body is **never emitted**, so it may reference undefined identifiers, omit a `return`, or otherwise fail compilation; only the directive itself is validated. Reported as `? <name> (todo)` (cyan) and counted as `todo`.
+- `@skip @it("...")` — the test is not executed, but the body **is still compiled** (Jest `xit` / `it.skip` semantics). Type errors, undefined identifiers, and other body-level codegen failures are still surfaced, so typos in skipped tests do not lurk until the test is un-skipped. Reported as `~ <name> (skipped)` (gray) and counted as `skipped`. Use this for tests that are temporarily disabled (e.g. while a bug is investigated); use `@todo` when the test has not been written yet.
+- `@only @it("...")` — when at least one `@only` appears on an `@it` function in a file, every `@it` in that file *without* `@only` is implicitly skipped. Useful for focused TDD on a single failing case. The implicit skip is reported the same way as `@skip` and the implicitly-skipped bodies are likewise still compiled. `@only` on a non-`@it` function has no effect on file-wide selection — only `@only` paired with `@it` triggers the focus filter.
+- `@todo @it("...")` — a placeholder. The function body is **never emitted**, so it may reference undefined identifiers, omit a `return`, or otherwise fail compilation; only the directive itself is validated. Reported as `? <name> (todo)` (cyan) and counted as `todo`. This is the only directive that suppresses body codegen entirely — `@skip` does not, by design.
 
 Composition rules:
 
