@@ -63,6 +63,30 @@ std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestDescribeFu
     };
 }
 
+llvm::FunctionCallee CodeGen::getTestItSkipFunction() {
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    return mod_->getOrInsertFunction("__ry_test_it_skip", voidStrTy);
+}
+
+llvm::FunctionCallee CodeGen::getTestItTodoFunction() {
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    return mod_->getOrInsertFunction("__ry_test_it_todo", voidStrTy);
+}
+
+// Reject mutually exclusive combinations of test-selection directives. At
+// most one of @skip / @only / @todo may appear on a single @it function.
+void CodeGen::validateTestSelectionDirectives(const std::vector<Directive> &directives,
+                                              const std::string &fnName) {
+    int count = 0;
+    if (hasDirective(directives, "skip")) ++count;
+    if (hasDirective(directives, "only")) ++count;
+    if (hasDirective(directives, "todo")) ++count;
+    if (count > 1)
+        codegenError("test selection directives @skip / @only / @todo are mutually exclusive on fn '" + fnName + "'");
+}
+
 // Helper: create a test function, bind params, emit body, verify
 llvm::Function *CodeGen::emitTestFunction(
     const std::string &namePrefix,
@@ -333,11 +357,61 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (s->return_type)
         codegenError("@it: fn '" + s->name + "' cannot have a return type annotation");
 
-    if (hasDirective(s->directives, "each")) {
+    validateTestSelectionDirectives(s->directives, s->name);
+
+    const bool hasTodo = hasDirective(s->directives, "todo");
+    const bool hasSkip = hasDirective(s->directives, "skip");
+    const bool hasOnly = hasDirective(s->directives, "only");
+    const bool hasEach = hasDirective(s->directives, "each");
+    const bool hasProperty = hasDirective(s->directives, "property");
+    const bool implicitSkip = file_has_only_directive_ && !hasOnly && !hasTodo && !hasSkip;
+
+    std::string desc = getDirectivePositionalArg(s->directives, "it");
+
+    // Outline mode: structural visualization only. The @only-driven implicit
+    // skip filter does not apply; all tests are shown with their directive
+    // suffix so the user can see the full file layout.
+    if (outline_mode_) {
+        std::string suffix;
+        if (hasTodo) suffix = " (@todo)";
+        else if (hasSkip) suffix = " (@skip)";
+        else {
+            std::string inner;
+            if (hasOnly) inner = "@only";
+            if (hasEach) inner = inner.empty() ? "@each" : inner + " @each";
+            else if (hasProperty) inner = inner.empty() ? "@property" : inner + " @property";
+            if (!inner.empty()) suffix = " (" + inner + ")";
+        }
+        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+        std::string fmt = "it %s" + suffix + "\n";
+        emitOutlinePrintf(fmt.c_str(), descVal);
+        return;
+    }
+
+    if (hasTodo) {
+        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+        builder_.CreateCall(getTestItTodoFunction(), {descVal});
+        return;
+    }
+    if (hasSkip || implicitSkip) {
+        // Jest-compat: validate the body so type errors / undefined references
+        // surface even when the test is skipped. The generated fn is never
+        // invoked (no `it_begin` / call / `it_end` emitted). `@todo` is the
+        // only directive that suppresses body codegen entirely — it is meant
+        // for placeholder tests whose body has not been written yet.
+        stripDirectives(s->directives, {"it", "only", "skip", "each", "property"});
+        emitStmt(s);
+
+        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+        builder_.CreateCall(getTestItSkipFunction(), {descVal});
+        return;
+    }
+
+    if (hasEach) {
         emitEachItDirective(s);
         return;
     }
-    if (hasDirective(s->directives, "property")) {
+    if (hasProperty) {
         emitPropertyItDirective(s);
         return;
     }
@@ -346,16 +420,10 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!s->params.empty())
         codegenError("@it: fn '" + s->name + "' has parameters but no @each or @property directive");
 
-    std::string desc = getDirectivePositionalArg(s->directives, "it");
-
-    if (outline_mode_) {
-        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
-        emitOutlinePrintf("it %s\n", descVal);
-        return;
-    }
-
-    // Strip @it and emit the function normally, then emit it_begin/call/it_end
-    stripDirectives(s->directives, {"it"});
+    // Strip @it (and @only — directive has no runtime effect once we've decided
+    // to execute the case) and emit the function normally, then emit
+    // it_begin/call/it_end.
+    stripDirectives(s->directives, {"it", "only"});
     emitStmt(s);
 
     auto *overloads = findFunction(s->name);
@@ -397,7 +465,7 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@each: tuple arity (" + std::to_string(numFields) +
                      ") doesn't match function parameter count (" + std::to_string(s->params.size()) + ")");
 
-    stripDirectives(s->directives, {"it", "each"});
+    stripDirectives(s->directives, {"it", "each", "only"});
     emitStmt(s);
 
     auto *overloads = findFunction(s->name);
@@ -438,7 +506,7 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
         paramNames.push_back(p.name);
     }
 
-    stripDirectives(s->directives, {"it", "property"});
+    stripDirectives(s->directives, {"it", "property", "only"});
     emitStmt(s);
 
     auto *overloads = findFunction(s->name);
@@ -462,6 +530,12 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@describe: fn '" + s->name + "' cannot have parameters");
     if (s->return_type)
         codegenError("@describe: fn '" + s->name + "' cannot have a return type annotation");
+    // Test-selection directives (@skip / @only / @todo) only apply to @it.
+    for (const char *bad : {"skip", "only", "todo"}) {
+        if (hasDirective(s->directives, bad))
+            codegenError(std::string("@") + bad + " cannot be applied to @describe (fn '" + s->name +
+                         "'); apply it to individual @it tests instead");
+    }
 
     std::string desc = getDirectivePositionalArg(s->directives, "describe");
     llvm::Value *descVal = cachedGlobalString(desc, ".describe_desc");

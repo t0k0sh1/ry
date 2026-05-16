@@ -930,6 +930,12 @@ public:
     int for_snap_counter_ = 0;   // monotonic counter for unique __for_iter_snap names (#1021)
     bool test_mode_ = false;
     bool outline_mode_ = false;
+    // True iff a top-level or describe-nested `@only @it` directive exists in
+    // the current translation unit. Set during compile()'s pre-pass and read
+    // by emitItDirective / emitEachItDirective / emitPropertyItDirective to
+    // implicitly skip non-@only test cases. Each *.test.ry runs as an
+    // independent subprocess (src/test_runner.cpp), so this stays file-local.
+    bool file_has_only_directive_ = false;
     int outline_depth_ = 0;
     bool coverage_mode_ = false;
     int coverage_file_id_offset_ = 0;
@@ -1409,6 +1415,10 @@ public:
     void emitOutlinePrintf(const std::string &label, llvm::Value *nameVal = nullptr);
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestDescribeFunctions();
+    llvm::FunctionCallee getTestItSkipFunction();
+    llvm::FunctionCallee getTestItTodoFunction();
+    void validateTestSelectionDirectives(const std::vector<Directive> &directives,
+                                         const std::string &fnName);
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);

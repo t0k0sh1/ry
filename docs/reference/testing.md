@@ -179,6 +179,50 @@ fn shouldNotReachHere():
 - Only available in `ry test` mode
 - Requires `from testing import fail`
 
+### Test selection: `@skip`, `@only`, `@todo`
+
+Three directives allow individual test selection within a file:
+
+```ry
+from testing import it, expect, skip, only, todo
+
+@skip
+@it("temporarily disabled while bug #123 is open")
+fn skipped():
+    expect(1).toEq(2)   # never runs, counted as `skipped`
+
+@only
+@it("the one failing case I am currently debugging")
+fn focused():
+    expect(1 + 1).toEq(2)
+
+@todo
+@it("upcoming feature, body not yet written")
+fn todo():
+    notYetDefined()     # body is never compiled
+```
+
+- `@skip @it("...")` — the test is not executed, but the body **is still compiled** (Jest `xit` / `it.skip` semantics). Type errors, undefined identifiers, and other body-level codegen failures are still surfaced, so typos in skipped tests do not lurk until the test is un-skipped. Reported as `~ <name> (skipped)` (gray) and counted as `skipped`. Use this for tests that are temporarily disabled (e.g. while a bug is investigated); use `@todo` when the test has not been written yet.
+- `@only @it("...")` — when at least one `@only` appears on an `@it` function in a file, every `@it` in that file *without* `@only` is implicitly skipped. Useful for focused TDD on a single failing case. The implicit skip is reported the same way as `@skip` and the implicitly-skipped bodies are likewise still compiled. `@only` on a non-`@it` function has no effect on file-wide selection — only `@only` paired with `@it` triggers the focus filter.
+- `@todo @it("...")` — a placeholder. The function body is **never emitted**, so it may reference undefined identifiers, omit a `return`, or otherwise fail compilation; only the directive itself is validated. Reported as `? <name> (todo)` (cyan) and counted as `todo`. This is the only directive that suppresses body codegen entirely — `@skip` does not, by design.
+
+Composition rules:
+
+- The three directives compose with `@each` and `@property`: `@skip @each @it(...)` skips the entire loop, `@only @property @it(...)` runs every iteration only when `@only` is the file's focus mode, `@todo @each @it(...)` emits nothing and counts as a single `todo`.
+- Mutual combinations (`@skip @only`, `@skip @todo`, `@only @todo`) are rejected at compile time.
+- The MVP supports `@it` only. Attaching `@skip`, `@only`, or `@todo` to `@describe` is a compile error.
+- `skipped` and `todo` do **not** influence the exit code. Only `failed` does.
+
+In outline mode (`ry test --outline`), the directive is appended as a suffix:
+
+```text
++ it temporarily disabled while bug #123 is open (@skip)
++ it the one failing case I am currently debugging (@only)
++ it upcoming feature, body not yet written (@todo)
+```
+
+When combined with `@each` or `@property`, the suffix shows both, e.g. `(@only @each)`. Outline mode shows the full structure of all tests regardless of `@only`, so the focus filter does not apply there.
+
 ---
 
 ## Output Format
@@ -189,12 +233,15 @@ Calculator
   + should subtract
   - should fail
     line 10: expected 3, got 2
+  ~ should be skipped (skipped)
+  ? should be todo (todo)
 
-2 passed, 1 failed
+2 passed, 1 failed, 1 skipped, 1 todo
 ```
 
-- `+` indicates pass (green), `-` indicates failure (red)
+- `+` indicates pass (green), `-` indicates failure (red), `~` indicates skip (gray), `?` indicates todo (cyan)
 - On failure, the line number and expected/actual values are displayed
+- The summary always prints the 4-item form; `skipped` and `todo` do not contribute to the exit code (only `failed` does)
 
 ---
 

@@ -1,0 +1,31 @@
+from testing import it, expect, each, property, todo
+
+# @todo @it suppresses body emission entirely — type errors and undefined
+# identifiers in the body are NOT detected (the body never reaches codegen).
+# The runtime prints `? <name> (todo)` and increments the todo counter.
+
+@todo
+@it("should be a todo — body uses undefined variable, must not type-check")
+fn testTodo():
+  expect(undefinedNeverDeclared).toEq(42)
+
+@todo
+@it("should also be todo — second placeholder")
+fn testTodoTwo():
+  expect(anotherUndefined + missingVar).toBeTrue()
+
+@todo
+@each([(1, 2), (3, 4)])
+@it("should be todo even with @each — body never compiles: a={0}, b={1}")
+fn testTodoEach(a: int, b: int):
+  expect(stillUndefined).toEq(missingAgain)
+
+@todo
+@property(count=50)
+@it("should be todo even with @property — body never compiles")
+fn testTodoProperty(n: int):
+  expect(yetAnotherUndefined).toEq(n)
+
+@it("should pass normally and prove non-todo tests still run")
+fn testNormal():
+  expect("ok").toEq("ok")

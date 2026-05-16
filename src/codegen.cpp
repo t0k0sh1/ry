@@ -792,14 +792,42 @@ static void collectTestTargetsFromStmts(const std::vector<StmtNode> &stmts,
         collectTestTargetsFromStmt(stmt, mocked, spied);
 }
 
+// Forward declaration for mutual recursion.
+static bool stmtsHaveOnlyDirective(const std::vector<StmtNode> &stmts);
+
+// Recursively scan a statement (and any nested fn bodies) for an `@only`
+// directive. Tests inside `@describe` are nested as inner FnStmts, so the
+// recursion through FnStmt::body naturally covers that case.
+static bool stmtHasOnlyDirective(const StmtNode &stmt) {
+    return std::visit([](const auto &s) -> bool {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+            if (hasDirective(s->directives, "only") &&
+                hasDirective(s->directives, "it"))
+                return true;
+            return stmtsHaveOnlyDirective(s->body);
+        }
+        return false;
+    }, stmt);
+}
+
+static bool stmtsHaveOnlyDirective(const std::vector<StmtNode> &stmts) {
+    for (const auto &stmt : stmts)
+        if (stmtHasOnlyDirective(stmt)) return true;
+    return false;
+}
+
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     // Single pre-pass: collect mock targets and build cyclic type graph together
     std::unordered_map<std::string, std::unordered_set<std::string>> typeGraph;
     std::unordered_set<std::string> allTypes;
     for (auto &stmt : prog) {
         collectTypeGraphFromStmt(stmt, typeGraph, allTypes);
-        if (test_mode_)
+        if (test_mode_) {
             collectTestTargetsFromStmt(stmt, mocked_functions_, spied_functions_);
+            if (!file_has_only_directive_ && stmtHasOnlyDirective(stmt))
+                file_has_only_directive_ = true;
+        }
     }
     runCyclicTypeAnalysis(typeGraph, allTypes);
 

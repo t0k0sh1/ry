@@ -1,0 +1,31 @@
+from testing import it, expect, each, property, skip
+
+# @skip @it does not execute the function body — even if the body would
+# fail, the file-level exit code stays at 0 (only failed tests bump it).
+# The runtime prints `~ <name> (skipped)` and increments the skipped counter.
+
+@skip
+@it("should not run — failing assertion would fire if not skipped")
+fn testSkipped():
+  expect(1).toEq(2)
+
+@skip
+@it("should also skip — second skipped test")
+fn testSkippedTwo():
+  expect("never").toEq("ran")
+
+@skip
+@each([(1, 2), (3, 4)])
+@it("should skip @each loop entirely: a={0}, b={1}")
+fn testSkippedEach(a: int, b: int):
+  expect(a).toEq(b)
+
+@skip
+@property(count=50)
+@it("should skip @property loop entirely")
+fn testSkippedProperty(n: int):
+  expect(n).toEq(n + 1)
+
+@it("should pass normally and prove non-skip tests still run")
+fn testNormal():
+  expect(1 + 1).toEq(2)

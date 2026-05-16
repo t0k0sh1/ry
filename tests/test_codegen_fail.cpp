@@ -13,7 +13,7 @@ TEST_F(CodeGenTest, FailWithMessage) {
         "    @it(\"marks test as failed\")\n"
         "    fn marksTestAsFailed():\n"
         "        fail(\"intentional failure\")\n"
-    )), "fail helper\n    \033[31mline 21: intentional failure\033[0m\n  \033[31m- marks test as failed\033[0m\n\n0 passed, 1 failed\n");
+    )), "fail helper\n    \033[31mline 27: intentional failure\033[0m\n  \033[31m- marks test as failed\033[0m\n\n0 passed, 1 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
@@ -27,7 +27,7 @@ TEST_F(CodeGenTest, FailWithoutMessage) {
         "    @it(\"fails generically\")\n"
         "    fn failsGenerically():\n"
         "        fail()\n"
-    )), "fail bare\n    \033[31mline 21: test failed\033[0m\n  \033[31m- fails generically\033[0m\n\n0 passed, 1 failed\n");
+    )), "fail bare\n    \033[31mline 27: test failed\033[0m\n  \033[31m- fails generically\033[0m\n\n0 passed, 1 failed, 0 skipped, 0 todo\n");
 }
 
 // ============================================================
