@@ -4,6 +4,7 @@ paths:
   - "src/codegen_expr_cast.cpp"
   - "src/codegen_builtin.cpp"
   - "src/codegen.cpp"
+  - "src/codegen_test.cpp"
   - "include/ry/codegen.hpp"
   - "tests/filecheck/**/*.ry"
 ---
@@ -32,7 +33,7 @@ Each file is both Ry source and a FileCheck script. Use `# CHECK:` (Ry comment i
 
 ### Collection ops on pointer elements: positive allowlist via list_elem_type_name
 
-When a collection helper's pointer-element branch uses `strcmp` (or any C-string op), guard with a positive allowlist on `list_elem_type_name`, not a single-field blacklist via `getNestedListElementType`. The `NestedListElem` field is set only by `propagateTypeMeta`'s isListTypeName branch; Map/Set/function element kinds live in `map_value_type_name` / `list_elem_fn_type_info`. Blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<fn(...)>` / `List<Set<T>>` slip through and `strcmp` on Map/Set/closure headers is UB. Pattern: classify pointer elements as "non-str" if `list_elem_type_name` is non-empty and not `"str"`, OR if `nested_list_elem != nullptr`, OR if `list_elem_fn_type_info.has_value()`; emit "operation only supported for primitive / str lists". Resource lists (`List<TcpStream>`) get a non-empty type name and are caught.
+When a collection helper's pointer-element branch uses `strcmp` (or any C-string op), guard with a positive allowlist on `list_elem_type_name`, not a single-field blacklist via `getNestedListElementType`. The `NestedListElem` field is set only by `propagateTypeMeta`'s isListTypeName branch; Map/Set/function element kinds live in `map_value_type_name` / `list_elem_fn_type_info`. Blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<fn(...)>` / `List<Set<T>>` slip through and `strcmp` on Map/Set/closure headers is UB. Pattern: classify pointer elements as "non-str" if `list_elem_type_name` is non-empty and not `"str"`, OR if `nested_list_elem != nullptr`, OR if `list_elem_fn_type_info.has_value()`; emit "operation only supported for primitive / str lists". Resource lists (`List<TcpStream>`) get a non-empty type name and are caught. For Set elements (`toContain` / `toNotContain` Set branch and similar helpers), apply the analogous classification using `set_elem_type_name` and `set_elem_fn_type_info` — `ValueMetadata` has no `nested_set_elem` field, so the disjunct collapses to two: `set_elem_type_name` non-empty and not `"str"`, OR `set_elem_fn_type_info.has_value()`. Sets of nested collections still flow through these two fields via `propagateTypeMeta`.
 
 ### emitRuntimeError terminates its block — caller pre-splits to continue
 

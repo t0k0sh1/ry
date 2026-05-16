@@ -1460,6 +1460,85 @@ TEST_F(CodeGenTest, ExpectToBeOneOfRejectsListOfLists) {
     EXPECT_THROW(runTestSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, ExpectToContainRejectsListOfLists) {
+    // toContain on List<List<T>> must be rejected before reaching strcmp on
+    // List headers (#1763).
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"list of lists\")\n"
+        "    fn listOfLists():\n"
+        "        a: List<int> = [1, 2]\n"
+        "        b: List<int> = [3, 4]\n"
+        "        outer: List<List<int>> = [a, b]\n"
+        "        expect(outer).toContain(a)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToContainRejectsListOfMaps) {
+    // toContain on List<Map<K, V>> must be rejected: strcmp on Map headers
+    // is UB (#1763).
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"list of maps\")\n"
+        "    fn listOfMaps():\n"
+        "        m: Map<str, int> = {\"a\": 1}\n"
+        "        outer: List<Map<str, int>> = [m]\n"
+        "        expect(outer).toContain(m)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToContainRejectsSetOfLists) {
+    // toContain on Set<List<T>> must be rejected: strcmp on List headers
+    // (Set branch shares the same UB) (#1763).
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"set of lists\")\n"
+        "    fn setOfLists():\n"
+        "        a: List<int> = [1, 2]\n"
+        "        s: Set<List<int>> = {a}\n"
+        "        expect(s).toContain(a)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToContainRejectsListOfFns) {
+    // Directly trigger the list_elem_fn_type_info disjunct: List<fn() -> int>
+    // would otherwise read closure header bytes via strcmp (#1763).
+    std::string src = withStdlibDirectiveDecls(
+        "fn helper() -> int:\n"
+        "    return 42\n"
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"list of fns\")\n"
+        "    fn listOfFns():\n"
+        "        flist: List<fn() -> int> = [helper]\n"
+        "        expect(flist).toContain(helper)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExpectToNotContainRejectsListOfLists) {
+    // toNotContain shares the same code path as toContain and must reject
+    // List<List<T>> via the same guard (#1763).
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"toNotContain list of lists\")\n"
+        "    fn notContainListOfLists():\n"
+        "        a: List<int> = [1, 2]\n"
+        "        b: List<int> = [3, 4]\n"
+        "        c: List<int> = [99, 99]\n"
+        "        outer: List<List<int>> = [a, b]\n"
+        "        expect(outer).toNotContain(c)\n"
+    );
+    EXPECT_THROW(runTestSource(src), std::runtime_error);
+}
+
 // ===== Field assignment subtype coercion (#359) =====
 
 TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
