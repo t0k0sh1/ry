@@ -1,4 +1,5 @@
 from testing import it, describe, expect
+from std.math import NAN, INF
 
 @describe("Numeric comparison matchers")
 fn numericComparisonMatchersTests():
@@ -250,3 +251,39 @@ fn floatApproxMatchers():
   @it("should pass toBeCloseTo for very small differences with high decimals")
   fn shouldPassToBeCloseToHighDecimals():
     expect(1.000000001).toBeCloseTo(1.000000002, 8)
+
+@describe("Float IEEE 754 special-value matchers")
+fn floatIeee754Matchers():
+  @it("should pass toBeNaN for NAN constant")
+  fn shouldPassToBeNaNForConstant():
+    expect(NAN).toBeNaN()
+  @it("should pass toBeNaN for 0.0 / 0.0")
+  fn shouldPassToBeNaNForZeroDivZero():
+    expect(0.0 / 0.0).toBeNaN()
+  @it("should pass toBeInfinity for positive infinity (1.0 / 0.0)")
+  fn shouldPassToBeInfinityForPosInf():
+    expect(1.0 / 0.0).toBeInfinity()
+  @it("should pass toBeInfinity for negative infinity (-1.0 / 0.0)")
+  fn shouldPassToBeInfinityForNegInf():
+    expect(-1.0 / 0.0).toBeInfinity()
+  @it("should pass toBeInfinity for INF constant")
+  fn shouldPassToBeInfinityForConstant():
+    expect(INF).toBeInfinity()
+  @it("should pass toBeInfinity for negated INF constant")
+  fn shouldPassToBeInfinityForNegConstant():
+    expect(-INF).toBeInfinity()
+  @it("should pass toBeFinite for normal float")
+  fn shouldPassToBeFiniteForNormal():
+    expect(3.14).toBeFinite()
+  @it("should pass toBeFinite for zero")
+  fn shouldPassToBeFiniteForZero():
+    expect(0.0).toBeFinite()
+  @it("should pass toBeFinite for negative zero")
+  fn shouldPassToBeFiniteForNegZero():
+    expect(-0.0).toBeFinite()
+  @it("should pass toBeFinite for very large finite value")
+  fn shouldPassToBeFiniteForLargeValue():
+    expect(1.0e308).toBeFinite()
+  @it("should pass toBeFinite for very small finite value")
+  fn shouldPassToBeFiniteForSmallValue():
+    expect(-1.0e308).toBeFinite()
