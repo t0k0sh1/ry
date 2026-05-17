@@ -1,0 +1,98 @@
+from testing import describe, it, each, beforeAll, afterAll, beforeEach, mock, spy, expect, verify
+
+# #1784 — feature-combination runtime semantics. Companion to the
+# "Feature interactions" section of docs/reference/testing.md. Each
+# describe covers one *supported* combination; mutually-exclusive
+# combinations (@each / @property + @beforeEach / @afterEach / @timeout)
+# are compile errors validated by tests/test_codegen_directive.cpp.
+
+# ─── @beforeAll fires once before the @each iteration loop ───
+@describe("beforeAll runs once before all each iterations")
+fn beforeAllRunsOncePerEach():
+    baCount = 0
+
+    @beforeAll
+    fn ba():
+        baCount = baCount + 1
+
+    @each([(1,), (2,), (3,)])
+    @it("iteration {0} sees baCount == 1")
+    fn iter(x: int):
+        expect(baCount).toEq(1)
+        expect(x > 0).toEq(true)
+
+    @it("after iterations baCount is still 1")
+    fn checker():
+        expect(baCount).toEq(1)
+
+
+# ─── @afterAll does NOT fire during @each iterations ───
+# Hooks are describe-local, so the post-describe state cannot be read
+# from a later describe. We assert the negative: @afterAll has not yet
+# fired during any @it (including the trailing sentinel).
+@describe("afterAll does not fire during each iterations")
+fn afterAllAfterEach():
+    aaCount = 0
+    log = ""
+
+    @beforeAll
+    fn ba():
+        log = log + "BA;"
+
+    @afterAll
+    fn aa():
+        aaCount = aaCount + 1
+
+    @each([(10,), (20,)])
+    @it("iter {0} sees aaCount == 0")
+    fn iter(x: int):
+        expect(aaCount).toEq(0)
+        expect(log).toEq("BA;")
+
+    @it("trailing test still sees aaCount == 0 before afterAll fires")
+    fn trailing():
+        expect(aaCount).toEq(0)
+
+
+# ─── mock installed via @beforeEach is fresh per @it (auto-restore) ───
+fn fetchValue() -> int:
+    return 7
+
+@describe("mock installed via beforeEach is fresh per it")
+fn mockInBeforeEach():
+    @beforeEach
+    fn be():
+        mock(fetchValue, () => 42)
+
+    @it("first it sees the mocked value")
+    fn firstIt():
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+
+    @it("second it sees re-installed mock with fresh call count")
+    fn secondIt():
+        expect(verify("fetchValue")).toEq(0)
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+
+
+# ─── spy installed via @beforeEach; call count resets per @it ───
+fn computeValue() -> int:
+    return 99
+
+@describe("spy installed via beforeEach has fresh call count per it")
+fn spyInBeforeEach():
+    @beforeEach
+    fn be():
+        spy("computeValue")
+
+    @it("first it records one call through the real impl")
+    fn firstIt():
+        expect(computeValue()).toEq(99)
+        expect(verify("computeValue")).toEq(1)
+
+    @it("second it re-installs spy with count reset to 0")
+    fn secondIt():
+        expect(verify("computeValue")).toEq(0)
+        expect(computeValue()).toEq(99)
+        expect(verify("computeValue")).toEq(1)
