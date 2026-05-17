@@ -597,8 +597,8 @@ iterations without ambiguity. The compiler emits one of the following
 diagnostics (from `src/codegen_test.cpp`):
 
 ```text
-@timeout cannot be combined with @each on fn '<function_name>'
-@timeout cannot be combined with @property on fn '<function_name>'
+error: @timeout cannot be combined with @each on fn '<function_name>'
+error: @timeout cannot be combined with @property on fn '<function_name>'
 ```
 
 See [Feature interactions](testing.md#feature-interactions) in the testing
