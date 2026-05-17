@@ -973,6 +973,172 @@ void CodeGen::emitNativeSpyCall(CallStmt &s,
     }
 }
 
+// mockReturnValueOnce support for @native overloads (#1682). Mirrors the
+// user-fn path in emitMockReturnValueOnceCall but resolves the overload from
+// NativeFnSignature rather than OverloadEntry. __ry_mock_register_once is
+// polymorphic on canonical sig, and __ry_mock_get (called by both table-driven
+// and customEmitter native intercepts) consumes the once_queue regardless of
+// dispatch path — so wiring stops at register-time.
+void CodeGen::emitNativeMockReturnValueOnceCall(
+    CallStmt &s,
+    const std::string &bareName,
+    const std::string &fnNameInput,
+    bool isSigForm,
+    const std::vector<std::string> &sigParamTypes,
+    const std::vector<const NativeFnSignature*> &nativeSigs) {
+    auto sigParamNames = [](const NativeFnSignature *sig) {
+        std::vector<std::string> out;
+        out.reserve(sig->params.size());
+        for (const auto &p : sig->params) out.push_back(p.typeName);
+        return out;
+    };
+
+    const NativeFnSignature *target = nullptr;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (const auto *sig : nativeSigs) {
+            if (sig->params.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { target = sig; break; }
+        }
+        if (!target) {
+            std::string msg = "mockReturnValueOnce(): no overload of '" + bareName +
+                              "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto *sig : nativeSigs)
+                msg += "\n  - " + buildCanonicalSig(bareName, sigParamNames(sig));
+            codegenError(msg);
+        }
+    } else if (nativeSigs.size() == 1) {
+        target = nativeSigs[0];
+    } else {
+        std::string msg = "mockReturnValueOnce(): '" + bareName +
+            "' is overloaded; return value type alone is ambiguous. "
+            "Specify signature: mockReturnValueOnce(\"" + bareName +
+            "(T1, T2)\", value). Available:";
+        for (const auto *sig : nativeSigs)
+            msg += "\n  - " + buildCanonicalSig(bareName, sigParamNames(sig));
+        codegenError(msg);
+    }
+
+    // cppcheck-suppress nullPointerRedundantCheck
+    llvm::Type *retTy = resolveType(target->returnTypeName);
+    const std::string &retTyName = target->returnTypeName;
+    const std::string &fnName = bareName;
+    std::string resolved = resolveTypeAlias(retTyName);
+
+    if (!retTy || retTy->isVoidTy())
+        codegenError("mockReturnValueOnce(): function '" + fnName +
+                     "' returns Unit; mockReturnValueOnce requires a value-returning function");
+
+    bool supported = (resolved == "int") || (resolved == "float")
+        || (resolved == "bool") || (resolved == "Unit")
+        || isLowLevelTypeName(resolved)
+        || (resolved == "str")
+        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || (record_types_.count(resolved) > 0)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
+        || (!resolved.empty() && resolved.back() == '?');
+    if (!supported)
+        codegenError("mockReturnValueOnce(): unsupported return type '" + retTyName +
+                     "' for '" + fnName +
+                     "' (supported: primitives, str, List, Map, Set, Record, Result, Option)");
+
+    llvm::Type *annotOptionInner = nullptr;
+    if (isOptionType(retTy))
+        annotOptionInner = llvm::cast<llvm::StructType>(retTy)->getElementType(1);
+    OptionNoneHintGuard noneHintGuard(*this, annotOptionInner);
+    DeclAnnotationInnerGuard declHintGuard(*this, annotOptionInner);
+
+    llvm::Value *value = nullptr;
+    if (isNoneLiteral(*s.args[1])) {
+        if (!isOptionType(retTy))
+            codegenError("mockReturnValueOnce(): None can only be passed when '"
+                         + fnName + "' returns Option");
+        value = buildNoneValue(retTy);
+    } else {
+        value = emitExpr(*s.args[1]);
+    }
+    if (!value)
+        codegenError("mockReturnValueOnce(): could not evaluate return value");
+    llvm::Type *valTy = value->getType();
+
+    if (valTy != retTy) {
+        if (isOptionType(retTy) && !isOptionType(valTy)) {
+            auto *optTy = llvm::cast<llvm::StructType>(retTy);
+            llvm::Type *innerTy = optTy->getElementType(1);
+            if (valTy != innerTy)
+                codegenError("mockReturnValueOnce(): return value type does not match '"
+                             + fnName + "'");
+            value = buildSomeValue(value, retTy);
+            valTy = retTy;
+        } else if (isResultType(retTy) && isResultType(valTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(retTy);
+            llvm::Value *coerced = coerceResultType(value, dstResTy);
+            if (!coerced)
+                codegenError("mockReturnValueOnce(): return value type does not match '"
+                             + fnName + "'");
+            value = coerced;
+            valTy = retTy;
+        } else if (llvm::Value *lowCoerced = coerceToLowLevelType(value, retTy,
+                                                                  retTyName, "",
+                                                                  "vret.coerce")) {
+            value = lowCoerced;
+            valTy = retTy;
+        }
+    }
+    if (valTy != retTy)
+        codegenError("mockReturnValueOnce(): return value type does not match '"
+                     + fnName + "'");
+
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t retSize = dl.getTypeAllocSize(retTy);
+    if (retSize == 0) retSize = 1;
+    auto *envHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, retSize));
+    auto *envData = emitArcGetDataPtr(envHdr);
+
+    retainValueReturnResult(value, retTy, retTyName);
+    builder_.CreateStore(value, envData);
+
+    emitArcRetain(envHdr, false);
+
+    const std::string canonicalSig = buildCanonicalSig(bareName, sigParamNames(target));
+    mocked_functions_.insert(canonicalSig);
+
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
+
+    // Build the thunk's param-type list from NativeFnSignature.
+    std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(target->params.size());
+    for (const auto &p : target->params)
+        paramTypes.push_back(resolveType(p.typeName));
+    llvm::Function *thunk =
+        getOrCreateNativeValueReturnThunk(canonicalSig, paramTypes, retTy, retTyName);
+
+    auto envDtorCallee = getOrCreateValueReturnEnvDestructor(retTy, retTyName);
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    llvm::Value *envDtorVal = envDtorCallee
+        ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
+        : llvm::cast<llvm::Value>(nullPtr);
+
+    llvm::FunctionType *registerOnceTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee registerOnceFn = mod_->getOrInsertFunction(
+        "__ry_mock_register_once", registerOnceTy);
+    builder_.CreateCall(registerOnceFn, {nameStr, thunk, envData, envDtorVal});
+}
+
 // ===== Test: mockReturnValueOnce — per-call value-return queue (#1681) =====
 //
 // Local helper: strip "Option<" or "Result<" prefix and trailing '>', return
@@ -1131,29 +1297,22 @@ void CodeGen::releaseValueReturnResult(llvm::Value *val,
     }
 }
 
-llvm::Function *CodeGen::getOrCreateValueReturnThunk(llvm::Function *origFn,
-                                                     const std::string &retTyName) {
-    auto it = value_return_thunk_cache_.find(origFn);
-    if (it != value_return_thunk_cache_.end())
-        return it->second;
-
-    llvm::Type *retTy = origFn->getReturnType();
-
-    // Thunk signature: (origParams..., ptr env) -> retTy. User-supplied params
-    // are ignored — the thunk loads the pre-stored return value from env and
-    // returns it (after a +1 retain so the caller's reference is independent
-    // of env lifetime).
-    std::vector<llvm::Type*> thunkParams;
-    for (auto &p : origFn->args())
-        thunkParams.push_back(p.getType());
+llvm::Function *CodeGen::buildValueReturnThunk(
+    const std::string &symbolName,
+    const std::vector<llvm::Type*> &paramTypes,
+    llvm::Type *retTy,
+    const std::string &retTyName) {
+    // Thunk signature: (declaredParams..., ptr env) -> retTy. User-supplied
+    // params are ignored — the thunk loads the pre-stored return value from
+    // env and returns it (after a +1 retain so the caller's reference is
+    // independent of env lifetime).
+    std::vector<llvm::Type*> thunkParams = paramTypes;
     thunkParams.push_back(ptrTy_);
     auto *thunkTy = llvm::FunctionType::get(retTy, thunkParams, false);
 
-    std::string name = "__ry_uc_vret_" + origFn->getName().str();
     auto *thunk = llvm::Function::Create(
-        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+        thunkTy, llvm::Function::InternalLinkage, symbolName, mod_.get());
     thunk->addFnAttr(llvm::Attribute::NoUnwind);
-    value_return_thunk_cache_[origFn] = thunk;
 
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
@@ -1164,7 +1323,7 @@ llvm::Function *CodeGen::getOrCreateValueReturnThunk(llvm::Function *origFn,
     if (retTy->isVoidTy()) {
         builder_.CreateRetVoid();
     } else {
-        llvm::Value *envPtr = thunk->getArg(static_cast<unsigned>(origFn->arg_size()));
+        llvm::Value *envPtr = thunk->getArg(static_cast<unsigned>(paramTypes.size()));
         auto *result = builder_.CreateLoad(retTy, envPtr, "vret.val");
         retainValueReturnResult(result, retTy, retTyName);
         builder_.CreateRet(result);
@@ -1173,6 +1332,50 @@ llvm::Function *CodeGen::getOrCreateValueReturnThunk(llvm::Function *origFn,
     if (savedBB)
         builder_.SetInsertPoint(savedBB, savedPt);
 
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateValueReturnThunk(llvm::Function *origFn,
+                                                     const std::string &retTyName) {
+    auto it = value_return_thunk_cache_.find(origFn);
+    if (it != value_return_thunk_cache_.end())
+        return it->second;
+
+    std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(origFn->arg_size());
+    for (auto &p : origFn->args())
+        paramTypes.push_back(p.getType());
+    llvm::Type *retTy = origFn->getReturnType();
+
+    std::string name = "__ry_uc_vret_" + origFn->getName().str();
+    auto *thunk = buildValueReturnThunk(name, paramTypes, retTy, retTyName);
+    value_return_thunk_cache_[origFn] = thunk;
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateNativeValueReturnThunk(
+    const std::string &canonicalSig,
+    const std::vector<llvm::Type*> &paramTypes,
+    llvm::Type *retTy,
+    const std::string &retTyName) {
+    auto it = value_return_thunk_native_cache_.find(canonicalSig);
+    if (it != value_return_thunk_native_cache_.end())
+        return it->second;
+
+    // Sanitize sig into a symbol-safe suffix. Collisions are rare and would
+    // produce duplicate-symbol link errors which are easy to diagnose.
+    std::string suffix;
+    suffix.reserve(canonicalSig.size());
+    for (char c : canonicalSig) {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '_')
+            suffix.push_back(c);
+        else
+            suffix.push_back('_');
+    }
+    std::string name = "__ry_uc_vret_native_" + suffix;
+    auto *thunk = buildValueReturnThunk(name, paramTypes, retTy, retTyName);
+    value_return_thunk_native_cache_[canonicalSig] = thunk;
     return thunk;
 }
 
@@ -1257,8 +1460,19 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
     if (!isSigForm) bareName = fnNameInput;
 
     auto *fitOverloads = findFunction(bareName);
-    if (!fitOverloads)
-        codegenError("mockReturnValueOnce(): unknown function '" + fnNameInput + "'");
+    if (!fitOverloads) {
+        // #1682: @native overloads (e.g. math.digits) miss findFunction —
+        // delegate to the parallel native-fn mockReturnValueOnce path. The
+        // runtime once_queue is polymorphic on canonical sig, so existing
+        // table-driven and customEmitter intercepts consume it without extra
+        // wiring on the dispatch side.
+        auto nativeSigs = collectNativeSigsByBareName(bareName);
+        if (nativeSigs.empty())
+            codegenError("mockReturnValueOnce(): unknown function '" + fnNameInput + "'");
+        emitNativeMockReturnValueOnceCall(s, bareName, fnNameInput,
+                                           isSigForm, sigParamTypes, nativeSigs);
+        return;
+    }
 
     OverloadEntry *entryPtr = nullptr;
     if (isSigForm) {
@@ -1945,8 +2159,20 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     if (!isSigForm) bareName = fnNameInput;
 
     auto *overloads = findFunction(bareName);
-    if (!overloads || overloads->empty())
+    if (!overloads || overloads->empty()) {
+        // #1682: @native overloads (e.g. math.digits) miss findFunction.
+        // Argument recording for @native is intentionally deferred in v1 —
+        // see codegen_call_native.cpp:797 and docs/reference/testing.md
+        // 'Native (@native) overloads' note. Count-based verify("name")
+        // still works since it goes through __ry_mock_count_matching_calls.
+        auto nativeSigs = collectNativeSigsByBareName(bareName);
+        if (!nativeSigs.empty())
+            codegenError("verifyCalledWith: argument recording for @native overloads "
+                         "(e.g. math.digits) is not supported in v1; only count-based "
+                         "verify(\"" + fnNameInput + "\") works (see "
+                         "docs/reference/testing.md 'Native (@native) overloads' note)");
         codegenError("verifyCalledWith: unknown function '" + fnNameInput + "'");
+    }
 
     OverloadEntry *entryPtr = nullptr;
     if (isSigForm) {

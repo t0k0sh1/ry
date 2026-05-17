@@ -444,7 +444,7 @@ fn spyTests():
 
 - Requires `from testing import spy` (since v0.0.24, #1683)
 - The argument is the **string literal** name of the function (same convention as `verifyCalledWith`)
-- The function must exist and must not be overloaded; both are compile errors
+- The function must exist (compile error otherwise). Overloaded functions are supported since v0.0.24 (#1682): the bare name registers spies for **all** overloads aggregately, and a signature form (`spy("foo(int)")`) targets a single overload — see "Mocking overloaded functions" below
 - Spy registrations are automatically cleared at the end of each `it` block (same lifecycle as `mock`)
 - `verify(name)` and `verifyCalledWith(name, args...)` work uniformly on spied functions (same call-recording mechanism as `mock`)
 - `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
@@ -481,7 +481,7 @@ fn mockReturnValueOnceTests():
 
 - Requires `from testing import mockReturnValueOnce` (since v0.0.24, #1681)
 - The first argument is the **string literal** name of the function (same convention as `spy` / `verifyCalledWith`, unlike `mock` which takes an identifier); non-literal first arguments are rejected at compile time
-- The function must exist, must not be overloaded, and must not return `Unit`; all are compile errors
+- The function must exist and must not return `Unit` (both are compile errors). Overloaded functions are supported since v0.0.24 (#1682) only via signature form (`mockReturnValueOnce("foo(int)", 1)`) — the bare name is a compile error on overloaded functions because the return value alone cannot disambiguate
 - The second argument's type must match the function's declared return type. Supported types: primitives (`int` / `float` / `bool`), `str`, `List` / `Map` / `Set`, records, `Result`, and `Option` (including bare `None` for `Option`-returning functions)
 - Arguments to the mocked call are ignored — the queue holds values, not call expectations
 - `verify(name)` counts only queue-served and default-mock-served calls. Once the queue empties and the call falls through to the original implementation, those calls are **not** counted (matching `mockReset` semantics — diverges from strict Jest behavior)

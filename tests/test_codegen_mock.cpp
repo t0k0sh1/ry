@@ -1083,9 +1083,10 @@ TEST_F(CodeGenTest, SpyNonExistentFunctionError) {
 // spy() on an overloaded function (bare name) is now legal: it registers all overloads
 // aggregately. Previously rejected with "spy: 'compute' is overloaded" (v1 limit, #1682).
 // Flipped per .claude/rules/tests-rejection-tdd.md "Relaxing a rejection branch requires
-// flipping (not deleting) existing EXPECT_THROW tests".
+// flipping (not deleting) existing EXPECT_THROW tests". Augmented with runtime assertions
+// to verify aggregate vs per-overload counts (PR #1777 CodeRabbit nitpick).
 TEST_F(CodeGenTest, SpyOverloadedFunctionAggregates) {
-    EXPECT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn compute(x: int) -> int:\n"
         "    return x\n"
         "fn compute(x: float) -> float:\n"
@@ -1093,10 +1094,15 @@ TEST_F(CodeGenTest, SpyOverloadedFunctionAggregates) {
         "\n"
         "@describe(\"spy ok\")\n"
         "fn spyOk():\n"
-        "    @it(\"aggregates\")\n"
+        "    @it(\"aggregates across both overloads\")\n"
         "    fn aggregates():\n"
         "        spy(\"compute\")\n"
-    )));
+        "        compute(1)\n"
+        "        compute(1.0)\n"
+        "        expect(verify(\"compute(int)\")).toEq(1)\n"
+        "        expect(verify(\"compute(float)\")).toEq(1)\n"
+        "        expect(verify(\"compute\")).toEq(2)\n"
+    )), "spy ok\n  \033[32m+ aggregates across both overloads\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // Positive control: verifyCalledWith works on a spied function
