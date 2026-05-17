@@ -2008,3 +2008,169 @@ TEST_F(DirectiveTest, ImplicitSkipValidatesBody) {
         "    expect(undefinedReference).toEq(0)\n"
     )), std::runtime_error);
 }
+
+// ============================================================
+// #1688: @timeout(ms) directive rejection branches
+// ============================================================
+
+TEST_F(DirectiveTest, TimeoutZeroIsRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(0)\n"
+            "@it(\"zero ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(0)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be a positive integer"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutNegativeIsRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(-1)\n"
+            "@it(\"negative ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(-1)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Suffixed integer literals (e.g. `100i32`, `100i64`) are rejected by codegen
+// because @timeout's runtime ABI uses plain int64_t — accepting a literal with
+// a different low-level type annotation would silently coerce. Same shape as
+// the `toBeCloseTo` 'decimals' argument check in src/codegen_test.cpp (#1688
+// review feedback).
+TEST_F(DirectiveTest, TimeoutSuffixedLiteralRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(100i32)\n"
+            "@it(\"suffixed ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(100i32)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be an integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutFloatLiteralRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(1.5)\n"
+            "@it(\"float ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(1.5)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be an integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutStringArgRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(\"100\")\n"
+            "@it(\"string ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(\"100\")";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be an integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutIdentifierArgRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(n)\n"
+            "@it(\"ident ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(n)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be an integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutWithEachRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(100)\n"
+            "@each([1, 2, 3])\n"
+            "@it(\"each conflict\")\n"
+            "fn t(x: int):\n"
+            "    expect(x).toEq(x)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout + @each";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@timeout cannot be combined with @each"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, TimeoutWithPropertyRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(100)\n"
+            "@property(count=10)\n"
+            "@it(\"property conflict\")\n"
+            "fn t(x: int):\n"
+            "    expect(x).toEq(x)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout + @property";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@timeout cannot be combined with @property"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// Positive sibling: the legal form must compile so that the rejection tests
+// above prove the new check, not a downstream regression on the happy path.
+TEST_F(DirectiveTest, TimeoutPositiveAccepted) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@timeout(100)\n"
+        "@it(\"accepted\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, TimeoutLargeValueAccepted) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@timeout(60000)\n"
+        "@it(\"large timeout\")\n"
+        "fn t():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}

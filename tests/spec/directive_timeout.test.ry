@@ -1,0 +1,24 @@
+from testing import it, expect, describe, timeout
+
+# Happy path: a test that completes well within its timeout must pass.
+@timeout(1000)
+@it("completes within 1 second")
+fn completesWithinOneSecond():
+  expect(1 + 1).toEq(2)
+
+# Larger timeout still works; non-trivial body must not consume budget.
+@timeout(60000)
+@it("completes within a generous timeout")
+fn completesWithinGenerousTimeout():
+  total = 0
+  for i in range(1, 11):
+    total = total + i
+  expect(total).toEq(55)
+
+# @timeout combined with @describe-grouped tests.
+@describe("timeout in describe block")
+fn timeoutInDescribeBlock():
+  @timeout(500)
+  @it("nested test completes quickly")
+  fn nestedTestCompletesQuickly():
+    expect("hello").toEq("hello")

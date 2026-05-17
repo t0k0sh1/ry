@@ -1,9 +1,21 @@
 #pragma once
 
 #include <cstdint>
+#include <setjmp.h>
+#include <signal.h>
 
 
 namespace ry {
+
+// Per-test timeout machinery (`@timeout(ms)` directive, #1688).
+// `g_per_test_timeout_active` is set to 1 by
+// `__ry_test_it_begin_with_timeout` and cleared by either
+// `__ry_test_it_end_with_timeout` (normal exit) or the SIGALRM handler
+// (timeout fired). The handler in `src/jit_runner.cpp` checks the flag
+// to choose between siglongjmp (per-test path) and _exit(124) (legacy
+// global-timeout path).
+extern sigjmp_buf g_per_test_timeout_jmpbuf;
+extern volatile sig_atomic_t g_per_test_timeout_active;
 
 extern "C" {
     void __ry_test_describe_begin(const char *name);
@@ -12,6 +24,15 @@ extern "C" {
     void __ry_test_it_end();
     void __ry_test_it_skip(const char *name);
     void __ry_test_it_todo(const char *name);
+    // Per-test timeout (#1688). begin starts a setitimer(ITIMER_REAL, ms)
+    // and arms the per-test jmpbuf; end disarms the timer and prints
+    // PASS/FAIL; timeout is the continuation reached via siglongjmp from
+    // the SIGALRM handler — it prints "(timeout after Nms)" and increments
+    // the failure counter, then the caller continues with the next test.
+    void __ry_test_it_begin_with_timeout(const char *name, int64_t ms);
+    void __ry_test_it_end_with_timeout();
+    void __ry_test_it_timeout();
+    void *__ry_test_get_timeout_jmpbuf();
     void __ry_test_expect_fail(int line, const char *actual, const char *expected);
     void __ry_test_fail(int line, const char *msg);
     int  __ry_test_summary();

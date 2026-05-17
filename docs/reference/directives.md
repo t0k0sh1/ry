@@ -560,6 +560,67 @@ Composes with `@each` and `@property` — the loop body is never emitted; the te
 
 **Mutual exclusion:** `@todo` combined with `@skip` or `@only` is a compile error.
 
+### `@timeout`
+
+Marks an `@it` test as having a per-test timeout in milliseconds. If the body
+takes longer than the specified `ms` to complete, the test is marked as
+**failed** with a "(timeout after Nms)" suffix, and execution continues with
+the next test. This contrasts with the file-level alarm (60s; 300s under
+ASan) which terminates the entire test process on expiry.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must
+add `from testing import timeout` at the top (or use a wildcard `from
+testing`).
+
+```ry
+from testing import it, expect, timeout
+
+@timeout(1000)
+@it("completes within 1 second")
+fn completesWithinOneSecond():
+    expensiveOperation()
+    expect(result).toEq(expected)
+```
+
+**Argument constraints (validated at compile time):**
+
+- `ms` must be a **positive integer literal** (not zero, not negative, not a
+  non-literal expression). Identifiers, function calls, and string literals
+  are rejected.
+
+**Supported target:** functions with the `@it` directive only.
+
+**Mutual exclusion:** `@timeout` combined with `@each` or `@property` is a
+compile error in the current MVP. The timer applies to one invocation of
+the test body; loop-style runners cannot share a single timer budget across
+iterations without ambiguity.
+
+**Composition with `@skip` / `@todo`:** these directives suppress body
+execution, so the timer never starts — there is no conflict. `@only`
+affects test selection only and is orthogonal to `@timeout`.
+
+**Implementation:** The timer is delivered via `setitimer(ITIMER_REAL, ms)`
++ `SIGALRM`; the signal handler routes back into the test runner via
+`siglongjmp`, so a hung test does NOT take down the test process.
+
+**Known limitation (ARC):** when `@timeout` fires mid-test, the runtime
+unwinds via `siglongjmp` and **skips ARC release** for objects allocated
+inside the test body. The leaked memory is reclaimed when the test process
+exits and is not observable from subsequent tests, but ASan / leak
+detectors may report it. This is an accepted trade-off — calling C++
+destructors from a signal-driven longjmp would be undefined behavior.
+
+**Known limitation (TSan on Linux):** `@timeout` is not exercised under
+the Linux ThreadSanitizer CI gate. Linux libtsan's `siglongjmp`
+interceptor deadlocks when invoked from the SIGALRM handler that
+delivers the timeout, so the subprocess-driven regression tests
+(`tests/test_spec_timeout.cpp`) are skipped under TSan via `GTEST_SKIP`.
+Functional coverage (timeout fires, fail counted, next test runs) is
+preserved on the default / ASan+UBSan / filecheck / macOS-TSan builds.
+Promoting `@timeout` to TSan-required is gated on either an upstream
+libtsan fix or a redesign that avoids `siglongjmp` from a signal
+handler.
+
 ### `@inline`
 
 Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
