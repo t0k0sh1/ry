@@ -842,6 +842,233 @@ it should return error when file is missing
 
 ---
 
+## Troubleshooting
+
+Common errors and what they usually mean.
+
+### `unknown directive '@it'` or `'<name>' requires 'from testing import <name>'`
+
+**Symptom:** The compiler rejects `@it`, `@describe`, `@beforeEach`, `expect`, `mock`, etc. with a message like `unknown directive '@it'` or `'expect' requires 'from testing import expect'`.
+
+**Cause:** The `testing` module symbols you used are not in scope.
+
+**Fix:** Add an explicit `from testing import ...` line at the top of the file naming every symbol you use:
+
+```ry
+from testing import describe, it, beforeEach, afterEach, expect, mock, verify
+```
+
+`testing` is not auto-imported even for files ending in `.test.ry`.
+
+### `verify("X")` returns 0 when you expected a positive count
+
+**Symptom:** `expect(verify("compute")).toEq(2)` fails because `verify` returned `0`.
+
+**Cause:** One of:
+
+- The function under test was never called through the mocked binding (e.g. typo in the mocked name)
+- The mock was registered for one **overload** but the call took a different overload
+- `mock(...)` ran **after** the function under test, so the real implementation was executed and the call was not counted
+- The mock was set in a different `@it` block — mocks are auto-cleared at the end of every `@it` block
+
+**Fix:**
+
+- Check the spelling of the mocked function name (`mock(compute, ...)` takes the function as a bare identifier — see the [`## Mocking`](#mocking) section for the signature).
+- If the function is overloaded, use the signature form (`mock("compute(int, int)", ...)`) or aggregate-verify with `verify("compute")` (bare name). See [Mocking overloaded functions](#mocking-overloaded-functions).
+- Move the `mock(...)` call to the top of the `@it` block, before any call to the function under test.
+
+### `expect(0.1 + 0.2).toEq(0.3)` fails
+
+**Symptom:** A floating-point equality assertion fails with values that look equal (`expected: 0.3, got: 0.30000000000000004`).
+
+**Cause:** IEEE 754 representation. `0.1 + 0.2` is not bit-identical to `0.3`; `toEq` uses bit-equality for floats.
+
+**Fix:** Use `toBeCloseTo` for float comparisons:
+
+```ry
+expect(0.1 + 0.2).toBeCloseTo(0.3)            # default decimals=2
+expect(1.00001).toBeCloseTo(1.00002, 4)       # custom decimals
+```
+
+The matcher table near the top of this file lists the full set of float-aware matchers (`toBeCloseTo`, `toBeNaN`, `toBeInfinity`, `toBeFinite`).
+
+### `@afterEach` did not run after a `@timeout` test fired
+
+**Symptom:** A test with `@timeout(N)` triggered the timeout, but the `@afterEach` for that test did not run.
+
+**Cause:** When `@timeout` fires (the SIGALRM path), the test is aborted via `siglongjmp` past the inlined `@afterEach` body. `@afterEach` runs only on normal completion.
+
+**Fix:** Treat `@timeout` paths as having no teardown opportunity for that single test. The next test's `@beforeEach` still runs as usual. See [Interaction with @timeout](#interaction-with-timeout) and the [Directives reference](directives.md#timeout).
+
+### `@each` or `@property` combined with `@timeout` is rejected at compile time
+
+**Symptom:** A test that carries both `@each(...)` and `@timeout(N)` (or `@property(...)` and `@timeout(N)`) fails to compile.
+
+**Cause:** `@timeout` is mutually exclusive with `@each` and `@property` in the current MVP — the timer applies to one test invocation, and loop-style runners cannot share a single timer budget across iterations.
+
+**Fix:** Drop `@timeout` from the parameterized test, or extract a single representative case into a separate `@it` that carries `@timeout`. See the [Directives reference](directives.md#timeout).
+
+---
+
+## Recipes
+
+Worked patterns for situations that compose multiple `testing` features. Each example is taken from `tests/spec/*.test.ry` so you can run it with `./build/ry test <path>` to see it pass.
+
+### Queueing return values with `mockReturnValueOnce`
+
+Use when order-dependent logic must observe a specific sequence of return values (e.g. retry-then-succeed, paginated fetch).
+
+```ry
+from testing import it, describe, expect, mockReturnValueOnce
+
+fn fetchOnceStr() -> str:
+  return "orig"
+
+@describe("mockReturnValueOnce")
+fn mockReturnValueOnceTests():
+  @it("should return queued str values in order then fall back to original")
+  fn shouldQueueStr():
+    mockReturnValueOnce("fetchOnceStr", "first")
+    mockReturnValueOnce("fetchOnceStr", "second")
+    expect(fetchOnceStr()).toEq("first")
+    expect(fetchOnceStr()).toEq("second")
+    expect(fetchOnceStr()).toEq("orig")
+```
+
+After the queue is drained the next call falls back to the default `mock(...)` lambda if one is set, otherwise to the original implementation. The `mockReturnValueOnce(name, value)` subsection under `## Mocking` documents the full precedence rules.
+
+### Observing real implementation calls with `spy`
+
+Use when the real function must run (e.g. it has side effects you care about) and you only want to inspect arguments after the fact.
+
+```ry
+from testing import it, describe, expect, spy, verify, verifyCalledWith
+
+fn computeReal(x: int) -> int:
+  return x * 3
+
+@describe("spy + verifyCalledWith")
+fn spyVerifyCalledWithTests():
+  @it("matches int argument")
+  fn matchesIntArg():
+    spy("computeReal")
+    computeReal(7)
+    computeReal(8)
+    computeReal(7)
+    expect(verifyCalledWith("computeReal", 7)).toEq(2)
+    expect(verifyCalledWith("computeReal", 8)).toEq(1)
+    expect(verifyCalledWith("computeReal", 999)).toEq(0)
+```
+
+`spy` differs from `mock` in that the real implementation still runs. If `mock` and `spy` target the same name in one `@it` block, the `mock` replacement wins — see the `spy(name)` subsection for the precedence rule.
+
+### Float-precision comparisons with `toBeCloseTo`
+
+Use whenever the value under test comes from float arithmetic — the bit-exact value rarely matches the decimal literal you would write by hand.
+
+```ry
+from testing import it, describe, expect
+
+@describe("Float approximate matchers")
+fn floatApproxMatchers():
+  @it("should pass toBeCloseTo for 0.1 + 0.2 vs 0.3 (default decimals=2)")
+  fn shouldPassToBeCloseToFloatSum():
+    expect(0.1 + 0.2).toBeCloseTo(0.3)
+  @it("should pass toBeCloseTo with custom decimals=4")
+  fn shouldPassToBeCloseToCustomDecimals4():
+    expect(1.00001).toBeCloseTo(1.00002, 4)
+```
+
+`toBeCloseTo(expected, decimals=2)` passes when `|actual - expected| < 0.5 × 10^-decimals`. Use a larger `decimals` argument when you need tighter precision.
+
+### Property-based invariants with `@property`
+
+Use when a property holds for **any** input (e.g. algebraic laws, monotonicity, idempotence).
+
+```ry
+from testing import it, describe, expect, property
+
+@describe("@property tests")
+fn propertyTests():
+  @property(count=100)
+  @it("should verify addition is commutative")
+  fn shouldVerifyAdditionIsCommutative(a: int, b: int):
+    expect(a + b).toEq(b + a)
+
+  @property(count=50)
+  @it("should verify double is always even")
+  fn shouldVerifyDoubleIsAlwaysEven(n: int):
+    expect(n * 2 % 2).toEq(0)
+```
+
+`count` controls how many randomized inputs are generated. `@property` cannot coexist with `@timeout` (compile error) — see the [Directives reference](directives.md#timeout).
+
+### Mocking overloaded functions with the signature form
+
+Use when the same function name has multiple overloads and you need to mock one without disturbing the others.
+
+```ry
+from testing import it, describe, expect, mock, mockResetAll
+
+fn addNum(a: int, b: int) -> int:
+  return a + b
+
+fn addNum(a: float, b: float) -> float:
+  return a + b
+
+@describe("mock overloaded fns - signature form")
+fn mockOverloadSigTests():
+  @it("mock with explicit signature dispatches by sig key")
+  fn mockSigBasic():
+    mock("addNum(int, int)", (x: int, y: int) => 999)
+    expect(addNum(1, 2)).toEq(999)
+    expect(addNum(1.0, 2.0)).toEq(3.0)  # float overload untouched
+    mockResetAll()
+```
+
+The signature key is the parameter type list inside parentheses, exactly as it appears in the function declaration. `verify("addNum")` (bare name) aggregates the call counts across all overloads; `verify("addNum(int, int)")` returns the count for that overload only. See [Mocking overloaded functions](#mocking-overloaded-functions).
+
+---
+
+## Best Practices
+
+Conventions that prevent footguns. None are enforced at compile time — they catch the failures that would otherwise reach CI or code review.
+
+### Do not commit code carrying `@only`
+
+`@only` makes the test runner execute only the marked tests, skipping every other one — exactly what you want during local debugging, and exactly what you do not want in CI. A stray `@only` in `main` silently suppresses real coverage.
+
+A simple pre-commit / CI guard:
+
+```bash
+git grep -nE '^[[:space:]]*@only\b' tests/ && exit 1
+```
+
+Treat any `@only` hit in a commit as a blocker.
+
+### Scope `mock` as tightly as possible
+
+By default `mock(...)` is `@it`-local: it is cleared at the end of the `@it` block. Use that default unless the fixture is genuinely shared across every test in the describe. Hoisting `mock(...)` into a `@beforeEach` (or into the describe scope) makes test failures harder to localize because the same mock state flows into multiple tests.
+
+If you do need shared mock state, reset it explicitly in `@afterEach` to avoid accumulated state — recall that the `@describe` body runs **once**, not per-test (see [Accumulation semantics (differs from Jest)](#accumulation-semantics-differs-from-jest)).
+
+### Pair `verify(...)` with at least one behavioral assertion
+
+`verify("compute")` answers "was it called N times?" but not "did it produce the right effect?" If the system under test calls `compute` exactly N times but with the wrong arguments — or produces the wrong observable output — a verify-count-only test passes. Always combine call-count checks with either:
+
+- `verifyCalledWith(...)` for specific argument shapes, or
+- an `expect(...)` on the system's externally observable output (return value, mutated state, log output).
+
+### Keep `@beforeAll` cheap
+
+`@beforeAll` runs once per describe; `@beforeEach` runs once per test. Put heavyweight setup that does **not** depend on per-test state (loading a fixture file, building a parser) in `@beforeAll`; put per-test state (resetting a counter, allocating a fresh buffer) in `@beforeEach`. Hook bodies cannot declare new variables — they may only reassign describe-scope variables. See [Mutability rules](#mutability-rules).
+
+### Name `it` descriptions in `should ...` form
+
+`it` descriptions should read as full sentences (`it should add integers`, not `it adds integers`). The full convention with preferred/avoided patterns is in [Test Description Style](#test-description-style).
+
+---
+
 ## Limitations
 
 - File top-level lifecycle hooks (outside any `@describe`) are not supported
