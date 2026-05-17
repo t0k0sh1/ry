@@ -1428,8 +1428,34 @@ public:
     // @each/@property combo) before calling this helper.
     void emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                            llvm::Function *userFn,
-                           llvm::ArrayRef<llvm::Value*> userArgs);
+                           llvm::ArrayRef<llvm::Value*> userArgs,
+                           std::vector<StmtNode> *afterEachBody);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
+
+    // Lifecycle hooks (#1686): @beforeEach / @afterEach / @beforeAll /
+    // @afterAll. Pre-scanned and AST-rewritten inside emitDescribeDirective —
+    // hook FnStmts are removed from the describe body; @beforeAll / @afterAll
+    // body stmts are spliced to the front / back of the describe body; the
+    // bodies for @beforeEach / @afterEach are moved into the active
+    // DescribeHookContext on describe_hook_stack_, where emitItDirective
+    // inlines them around each test call. The four emit* directive entries
+    // below are defense-in-depth: at normal codegen they are unreachable
+    // because the pre-scan removes the FnStmt; if a user puts a hook fn
+    // outside @describe they emit a clear "must be inside @describe" error.
+    struct DescribeHookContext {
+        std::vector<StmtNode> beforeEach;
+        std::vector<StmtNode> afterEach;
+        std::string beforeEachName;
+        std::string afterEachName;
+    };
+    std::vector<DescribeHookContext> describe_hook_stack_;
+    void emitBeforeEachDirective(std::unique_ptr<FnStmt> &s);
+    void emitAfterEachDirective(std::unique_ptr<FnStmt> &s);
+    void emitBeforeAllDirective(std::unique_ptr<FnStmt> &s);
+    void emitAfterAllDirective(std::unique_ptr<FnStmt> &s);
+    void validateLifecycleHookFnShape(const std::unique_ptr<FnStmt> &s, const char *hookName);
+    void validateLifecycleHookBody(const std::vector<StmtNode> &body, const char *hookName);
+
     void emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
                         const std::string &fmtStr, llvm::Function *testFunc,
                         const std::vector<llvm::Value*> &capturedVals = {});

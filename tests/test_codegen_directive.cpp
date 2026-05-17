@@ -2174,3 +2174,443 @@ TEST_F(DirectiveTest, TimeoutLargeValueAccepted) {
         "    expect(1).toEq(1)\n"
     )));
 }
+
+// ============================================================
+// #1686: lifecycle hook directives
+//   @beforeEach / @afterEach / @beforeAll / @afterAll
+// ============================================================
+
+// --- Rejection: declared outside @describe ---
+
+TEST_F(DirectiveTest, BeforeEachOutsideDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@beforeEach\n"
+            "fn setup():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @beforeEach outside @describe";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterEachOutsideDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@afterEach\n"
+            "fn teardown():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @afterEach outside @describe";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, BeforeAllOutsideDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@beforeAll\n"
+            "fn setupAll():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @beforeAll outside @describe";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterAllOutsideDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@afterAll\n"
+            "fn teardownAll():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @afterAll outside @describe";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+// --- Rejection: parameters ---
+
+TEST_F(DirectiveTest, BeforeEachWithParameterRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    fn setup(x: int):\n"
+            "        expect(x).toEq(x)\n"
+        ));
+        FAIL() << "Expected error for @beforeEach with parameter";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot have parameters"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterAllWithParameterRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @afterAll\n"
+            "    fn t(x: int):\n"
+            "        expect(x).toEq(x)\n"
+        ));
+        FAIL() << "Expected error for @afterAll with parameter";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot have parameters"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// --- Rejection: return type annotation ---
+
+TEST_F(DirectiveTest, BeforeAllWithReturnTypeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeAll\n"
+            "    fn s() -> int:\n"
+            "        return 0\n"
+        ));
+        FAIL() << "Expected error for @beforeAll with return type";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot have a return type annotation"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterEachWithReturnTypeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @afterEach\n"
+            "    fn t() -> bool:\n"
+            "        return true\n"
+        ));
+        FAIL() << "Expected error for @afterEach with return type";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot have a return type annotation"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+// --- Rejection: async ---
+
+TEST_F(DirectiveTest, BeforeEachAsyncRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    async fn s():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for async @beforeEach";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be async"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// --- Rejection: generic ---
+
+TEST_F(DirectiveTest, AfterAllGenericRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @afterAll\n"
+            "    fn t<T>():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for generic @afterAll";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be generic"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// --- Rejection: duplicate hook in same @describe ---
+
+TEST_F(DirectiveTest, DuplicateBeforeEachInDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    fn a():\n"
+            "        expect(1).toEq(1)\n"
+            "    @beforeEach\n"
+            "    fn b():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for duplicate @beforeEach";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("can be declared at most once per @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, DuplicateBeforeAllInDescribeRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeAll\n"
+            "    fn a():\n"
+            "        expect(1).toEq(1)\n"
+            "    @beforeAll\n"
+            "    fn b():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for duplicate @beforeAll";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("can be declared at most once per @describe block"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+// --- Rejection: combinations with other test directives ---
+
+TEST_F(DirectiveTest, BeforeEachWithItRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    @it(\"both\")\n"
+            "    fn s():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @beforeEach + @it";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be combined with @it"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterEachWithTimeoutRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @afterEach\n"
+            "    @timeout(100)\n"
+            "    fn s():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @afterEach + @timeout";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be combined with @timeout"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, BeforeAllWithSkipRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeAll\n"
+            "    @skip\n"
+            "    fn s():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @beforeAll + @skip";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be combined with @skip"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, BeforeEachWithAfterEachOnSameFnRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    @afterEach\n"
+            "    fn s():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for @beforeEach + @afterEach on same fn";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("cannot be combined with @afterEach"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+// --- Rejection: hooks + @each / @property on the wrapped @it ---
+
+TEST_F(DirectiveTest, BeforeEachActiveBlocksEachIt) {
+    // @beforeEach is active when an @each @it is encountered → reject.
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    fn s():\n"
+            "        expect(1).toEq(1)\n"
+            "    @each([1, 2])\n"
+            "    @it(\"each\")\n"
+            "    fn t(x: int):\n"
+            "        expect(x).toEq(x)\n"
+        ));
+        FAIL() << "Expected error for @beforeEach + @each @it";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("not yet supported with @each"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+// --- Rejection: hook body containing declaration-like statements ---
+
+TEST_F(DirectiveTest, BeforeEachBodyWithFnDeclarationRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    fn s():\n"
+            "        fn helper():\n"
+            "            expect(1).toEq(1)\n"
+            "        helper()\n"
+        ));
+        FAIL() << "Expected error for fn declaration inside @beforeEach body";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("body cannot contain"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// --- Acceptance: single hook inside @describe compiles ---
+
+TEST_F(DirectiveTest, BeforeEachAcceptedInDescribe) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @beforeEach\n"
+        "    fn s():\n"
+        "        counter = counter + 1\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter > 0).toEq(true)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, AfterEachAcceptedInDescribe) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @afterEach\n"
+        "    fn s():\n"
+        "        counter = counter + 1\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter).toEq(0)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, BeforeAllAcceptedInDescribe) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @beforeAll\n"
+        "    fn s():\n"
+        "        counter = counter + 100\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter).toEq(100)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, AfterAllAcceptedInDescribe) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @afterAll\n"
+        "    fn s():\n"
+        "        counter = counter + 1\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter).toEq(0)\n"
+    )));
+}
+
+// --- Acceptance: all 4 hooks together compile ---
+
+TEST_F(DirectiveTest, AllFourHooksAcceptedInDescribe) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @beforeAll\n"
+        "    fn a():\n"
+        "        counter = counter + 100\n"
+        "    @beforeEach\n"
+        "    fn b():\n"
+        "        counter = counter + 1\n"
+        "    @afterEach\n"
+        "    fn c():\n"
+        "        counter = counter + 10\n"
+        "    @afterAll\n"
+        "    fn dh():\n"
+        "        counter = counter + 1000\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter > 100).toEq(true)\n"
+    )));
+}
+
+// --- Acceptance: @beforeAll position independent of source position ---
+
+TEST_F(DirectiveTest, BeforeAllAfterItStillAccepted) {
+    // @beforeAll declared AFTER the @it should still compile — the
+    // pre-scan extracts hooks regardless of source position.
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @it(\"t\")\n"
+        "    fn t():\n"
+        "        expect(counter > 0).toEq(true)\n"
+        "    @beforeAll\n"
+        "    fn s():\n"
+        "        counter = counter + 100\n"
+    )));
+}
+

@@ -2,7 +2,9 @@
 #include "ry/diagnostic.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <initializer_list>
+#include <iterator>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
@@ -419,6 +421,20 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     const bool hasTimeout = hasDirective(s->directives, "timeout");
     const bool implicitSkip = file_has_only_directive_ && !hasOnly && !hasTodo && !hasSkip;
 
+    // Lifecycle-hook × per-iteration combo (#1686): @each / @property fire
+    // the test body N times in a runtime loop; integrating @beforeEach /
+    // @afterEach per-iteration would be MVP+ scope. For now reject the
+    // combination at validation time so the user does not silently get
+    // "@beforeEach runs once before the @each loop" semantics.
+    const bool hasActiveHooks = !describe_hook_stack_.empty() &&
+        (!describe_hook_stack_.back().beforeEach.empty() ||
+         !describe_hook_stack_.back().afterEach.empty());
+    if (hasActiveHooks && (hasEach || hasProperty)) {
+        const char *which = hasEach ? "@each" : "@property";
+        codegenError(std::string("@beforeEach / @afterEach are not yet supported with ") + which +
+                     " on @it '" + s->name + "'");
+    }
+
     // Validate @timeout (#1688): positive int literal, no @each / @property
     // combo. @skip / @todo / @only are checked below in dedicated branches.
     int64_t timeoutMs = 0;
@@ -503,22 +519,49 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!overloads || overloads->empty())
         codegenError("@it: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
+
+    // @beforeEach inline (#1686). Must run BEFORE loadCapturedArgs so any
+    // describe-scope variable that the hook mutates is observed by the test
+    // through its captured copy.
+    if (!describe_hook_stack_.empty()) {
+        for (auto &stmt : describe_hook_stack_.back().beforeEach)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
+
     auto capturedArgs = loadCapturedArgs(entry, "@it");
 
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    std::vector<StmtNode> *afterEachBody =
+        (!describe_hook_stack_.empty() && !describe_hook_stack_.back().afterEach.empty())
+            ? &describe_hook_stack_.back().afterEach
+            : nullptr;
     if (hasTimeout) {
-        emitItWithTimeout(timeoutMs, descVal, entry.func, capturedArgs);
+        // @afterEach is inlined inside emitItWithTimeout's normalBB so it
+        // runs on natural completion within the timeout window. The SIGALRM
+        // siglongjmp path (timeoutBB) intentionally skips @afterEach because
+        // we cannot guarantee user-code state is consistent after the
+        // cross-stack jump; documented as a known limitation.
+        emitItWithTimeout(timeoutMs, descVal, entry.func, capturedArgs, afterEachBody);
         return;
     }
     auto [itBeginFn, itEndFn] = getTestItFunctions();
     builder_.CreateCall(itBeginFn, {descVal});
     builder_.CreateCall(entry.func, capturedArgs);
     builder_.CreateCall(itEndFn);
+
+    // @afterEach inline. Runs after every test that completes (success or
+    // expect-failure recorded via __ry_test_record_fail); failure does not
+    // unwind because Ry has no exception-style control flow at this layer.
+    if (afterEachBody) {
+        for (auto &stmt : *afterEachBody)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
 }
 
 void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                                  llvm::Function *userFn,
-                                 llvm::ArrayRef<llvm::Value*> userArgs) {
+                                 llvm::ArrayRef<llvm::Value*> userArgs,
+                                 std::vector<StmtNode> *afterEachBody) {
     llvm::FunctionType *voidStrI64Ty = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
     llvm::FunctionType *voidTy = llvm::FunctionType::get(
@@ -560,6 +603,15 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
         {descVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(timeoutMs))});
     builder_.CreateCall(userFn, userArgs);
     builder_.CreateCall(endFn);
+    // @afterEach inline on the normal-completion path (#1686): the test
+    // finished within the timeout window, so user state is consistent and
+    // cleanup is safe. The timeoutBB path below intentionally skips this —
+    // SIGALRM siglongjmp tears across the C++ stack and there is no way to
+    // guarantee user-code invariants for the cleanup body.
+    if (afterEachBody) {
+        for (auto &stmt : *afterEachBody)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
     builder_.CreateBr(afterBB);
 
     builder_.SetInsertPoint(timeoutBB);
@@ -649,6 +701,80 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
                        std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
 }
 
+// ===== Lifecycle hook directives (#1686) =====
+//
+// All four (@beforeEach / @afterEach / @beforeAll / @afterAll) are AST-rewritten
+// inside emitDescribeDirective's pre-scan and never reach normal stmt emission.
+// The handlers here are defense-in-depth: a hook FnStmt that escapes the
+// pre-scan (placed outside @describe, or — hypothetically — in a code path
+// that bypasses the rewrite) emits a clear diagnostic instead of silently
+// being treated as a regular function.
+
+void CodeGen::validateLifecycleHookFnShape(const std::unique_ptr<FnStmt> &s, const char *hookName) {
+    if (s->is_async)
+        codegenError(std::string("@") + hookName + ": fn '" + s->name + "' cannot be async");
+    if (!s->type_params.empty())
+        codegenError(std::string("@") + hookName + ": fn '" + s->name + "' cannot be generic");
+    if (!s->params.empty())
+        codegenError(std::string("@") + hookName + ": fn '" + s->name + "' cannot have parameters");
+    if (s->return_type)
+        codegenError(std::string("@") + hookName + ": fn '" + s->name + "' cannot have a return type annotation");
+    // Cross-directive incompatibilities. Hook directives target the function
+    // template; combining with @it / @describe / @skip / @only / @todo /
+    // @each / @property / @timeout / another hook is rejected so the user
+    // does not silently get one of the two behaviours.
+    for (const char *bad : {"it", "describe", "skip", "only", "todo", "each", "property", "timeout",
+                            "beforeEach", "afterEach", "beforeAll", "afterAll"}) {
+        if (std::strcmp(bad, hookName) == 0) continue;
+        if (hasDirective(s->directives, bad))
+            codegenError(std::string("@") + hookName + " cannot be combined with @" + bad +
+                         " on fn '" + s->name + "'");
+    }
+}
+
+// Reject stmt kinds that are unsafe to re-emit or that would pollute the
+// describe scope. FnStmt (generic path moves out), RecordStmt / EnumStmt /
+// TypeAliasStmt / DirectiveDefStmt would register a type/directive with a
+// duplicate name on the second re-emit of @beforeEach / @afterEach; Import*
+// has module-load side effects. Helpers should be defined at file scope or
+// in the describe body outside the hook.
+void CodeGen::validateLifecycleHookBody(const std::vector<StmtNode> &body, const char *hookName) {
+    for (const auto &stmt : body) {
+        const char *kind = nullptr;
+        if (std::get_if<std::unique_ptr<FnStmt>>(&stmt))                kind = "fn declaration";
+        else if (std::get_if<RecordStmt>(&stmt))                        kind = "record declaration";
+        else if (std::get_if<EnumStmt>(&stmt))                          kind = "enum declaration";
+        else if (std::get_if<TypeAliasStmt>(&stmt))                     kind = "type alias";
+        else if (std::get_if<DirectiveDefStmt>(&stmt))                  kind = "directive declaration";
+        else if (std::get_if<ImportStmt>(&stmt))                        kind = "import";
+        else if (std::get_if<std::unique_ptr<QualifiedImportStmt>>(&stmt)) kind = "qualified import";
+        else if (std::get_if<ImportAliasStmt>(&stmt))                   kind = "import alias";
+        if (kind)
+            codegenError(std::string("@") + hookName + " body cannot contain a " + kind +
+                         "; define it at file scope or in the @describe body outside the hook");
+    }
+}
+
+void CodeGen::emitBeforeEachDirective(std::unique_ptr<FnStmt> &s) {
+    codegenError("@beforeEach: fn '" + s->name +
+                 "' must be declared inside an @describe block");
+}
+
+void CodeGen::emitAfterEachDirective(std::unique_ptr<FnStmt> &s) {
+    codegenError("@afterEach: fn '" + s->name +
+                 "' must be declared inside an @describe block");
+}
+
+void CodeGen::emitBeforeAllDirective(std::unique_ptr<FnStmt> &s) {
+    codegenError("@beforeAll: fn '" + s->name +
+                 "' must be declared inside an @describe block");
+}
+
+void CodeGen::emitAfterAllDirective(std::unique_ptr<FnStmt> &s) {
+    codegenError("@afterAll: fn '" + s->name +
+                 "' must be declared inside an @describe block");
+}
+
 void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@describe is only allowed in test mode (use 'ry test')");
@@ -676,6 +802,8 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         for (auto &stmt : s->body) {
             if (auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt)) {
                 auto &fn = *fnPtr;
+                // Hooks are structural setup, not test nodes — skip them in
+                // outline view so the user sees only describe / it hierarchy.
                 if (hasDirective(fn->directives, "it") || hasDirective(fn->directives, "describe"))
                     std::visit([this](auto &st) { emitStmt(st); }, stmt);
             }
@@ -684,8 +812,109 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
+    // ----- Pre-scan: extract lifecycle hooks from s->body -----
+    //
+    // Walk linearly; for each FnStmt carrying a hook directive, validate,
+    // steal the body into a local slot, then erase the FnStmt from s->body.
+    // After the walk, splice @beforeAll body to the front, @afterAll body
+    // to the back. The bodies for @beforeEach / @afterEach are moved into
+    // the active DescribeHookContext on describe_hook_stack_.
+    std::vector<StmtNode> beforeAllBody;
+    std::vector<StmtNode> afterAllBody;
+    std::vector<StmtNode> beforeEachBody;
+    std::vector<StmtNode> afterEachBody;
+    std::string beforeAllName, afterAllName, beforeEachName, afterEachName;
+
+    auto extractHook = [&](std::unique_ptr<FnStmt> &fn, const char *hookName,
+                           std::vector<StmtNode> &dest, std::string &destName) {
+        if (!destName.empty())
+            codegenError(std::string("@") + hookName + " can be declared at most once per @describe block (fn '" +
+                         destName + "' already declared)");
+        validateLifecycleHookFnShape(fn, hookName);
+        validateLifecycleHookBody(fn->body, hookName);
+        destName = fn->name;
+        dest = std::move(fn->body);
+    };
+
+    for (auto it = s->body.begin(); it != s->body.end(); ) {
+        auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&*it);
+        if (!fnPtr) { ++it; continue; }
+        auto &fn = *fnPtr;
+        bool consumed = false;
+        if (hasDirective(fn->directives, "beforeEach")) {
+            extractHook(fn, "beforeEach", beforeEachBody, beforeEachName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "afterEach")) {
+            extractHook(fn, "afterEach", afterEachBody, afterEachName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "beforeAll")) {
+            extractHook(fn, "beforeAll", beforeAllBody, beforeAllName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "afterAll")) {
+            extractHook(fn, "afterAll", afterAllBody, afterAllName);
+            consumed = true;
+        }
+        if (consumed) it = s->body.erase(it);
+        else          ++it;
+    }
+
+    // Splice @beforeAll body immediately BEFORE the first @it / @describe;
+    // @afterAll body immediately AFTER the last @it / @describe. This makes
+    // the hook position independent of where in the source the user declared
+    // it (it still runs before / after all tests) while preserving the
+    // describe-scope let-bindings declared before the tests — splicing at
+    // the very start would break `counter = 0` followed by
+    // `@beforeAll fn s(): counter = counter + 1` because the hook body
+    // would reference `counter` before its alloca exists. If the describe
+    // body contains no @it / @describe at all, the hook bodies fall back to
+    // start / end of body (semantics is irrelevant — nothing runs anyway).
+    auto isTestStmt = [](const StmtNode &stmt) {
+        const auto *fnp = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
+        if (!fnp) return false;
+        return hasDirective((*fnp)->directives, "it") ||
+               hasDirective((*fnp)->directives, "describe");
+    };
+    size_t firstTestIdx = s->body.size();
+    size_t lastTestIdx = 0;
+    bool sawTest = false;
+    for (size_t i = 0; i < s->body.size(); ++i) {
+        if (isTestStmt(s->body[i])) {
+            if (!sawTest) { firstTestIdx = i; sawTest = true; }
+            lastTestIdx = i;
+        }
+    }
+    if (!beforeAllBody.empty()) {
+        const size_t insertAt = sawTest ? firstTestIdx : 0;
+        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(insertAt),
+                       std::make_move_iterator(beforeAllBody.begin()),
+                       std::make_move_iterator(beforeAllBody.end()));
+        if (sawTest) lastTestIdx += beforeAllBody.size();
+    }
+    if (!afterAllBody.empty()) {
+        const size_t insertAt = sawTest ? lastTestIdx + 1 : s->body.size();
+        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(insertAt),
+                       std::make_move_iterator(afterAllBody.begin()),
+                       std::make_move_iterator(afterAllBody.end()));
+    }
+
+    // Push @beforeEach / @afterEach into the active hook frame so
+    // emitItDirective can inline them around each test call.
+    describe_hook_stack_.push_back({
+        std::move(beforeEachBody),
+        std::move(afterEachBody),
+        std::move(beforeEachName),
+        std::move(afterEachName)
+    });
+
     stripDirectives(s->directives, {"describe"});
-    emitStmt(s);
+
+    try {
+        emitStmt(s);
+    } catch (...) {
+        describe_hook_stack_.pop_back();
+        throw;
+    }
+    describe_hook_stack_.pop_back();
 
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())

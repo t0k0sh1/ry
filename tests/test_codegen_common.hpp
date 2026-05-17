@@ -244,7 +244,15 @@ inline std::string withStdlibDirectiveDecls(const std::string &src) {
         "@directive(target=[\"function\"])\n"
         "fn todo()\n"
         "@directive(target=[\"function\"])\n"
-        "fn timeout(ms: int)\n";
+        "fn timeout(ms: int)\n"
+        "@directive(target=[\"function\"])\n"
+        "fn beforeEach()\n"
+        "@directive(target=[\"function\"])\n"
+        "fn afterEach()\n"
+        "@directive(target=[\"function\"])\n"
+        "fn beforeAll()\n"
+        "@directive(target=[\"function\"])\n"
+        "fn afterAll()\n";
     return std::string(kDecls) + src;
 }
 

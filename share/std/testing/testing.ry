@@ -35,6 +35,22 @@ fn todo()
 @directive(target=["function"])
 fn timeout(ms: int)
 
+@public
+@directive(target=["function"])
+fn beforeEach()
+
+@public
+@directive(target=["function"])
+fn afterEach()
+
+@public
+@directive(target=["function"])
+fn beforeAll()
+
+@public
+@directive(target=["function"])
+fn afterAll()
+
 @native("testing")
 fn _mockGetCallCount(name: str) -> int
 

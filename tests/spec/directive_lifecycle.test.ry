@@ -1,0 +1,246 @@
+from testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect, timeout
+
+# #1686 — @beforeEach / @afterEach / @beforeAll / @afterAll runtime semantics.
+# Each describe verifies one specific contract; counters are kept describe-local
+# (declared with `<name> = 0` inside the describe fn) so the order of describes
+# does not affect any single test. Only hook bodies (inlined into the describe
+# fn) may mutate describe-scope variables — @it bodies capture them by value.
+
+# ─── execution order: beforeAll → (beforeEach → it → afterEach)* → afterAll ───
+@describe("lifecycle execution order")
+fn lifecycleExecutionOrder():
+    log = ""
+
+    @beforeAll
+    fn setupAll():
+        log = log + "BA;"
+
+    @beforeEach
+    fn setupEach():
+        log = log + "BE;"
+
+    @afterEach
+    fn teardownEach():
+        log = log + "AE;"
+
+    @afterAll
+    fn teardownAll():
+        log = log + "AA;"
+
+    @it("first test sees BA + BE prefix")
+    fn first():
+        # Before this test ran, BA fired once and BE fired once.
+        expect(log).toEq("BA;BE;")
+
+    @it("second test sees afterEach + beforeEach repeating")
+    fn second():
+        # After first: "BA;BE;AE;". Then BE for self: "BA;BE;AE;BE;".
+        expect(log).toEq("BA;BE;AE;BE;")
+
+    @it("third test confirms accumulation continues")
+    fn third():
+        # Accumulated: "BA;BE;AE;BE;AE;BE;"
+        expect(log).toEq("BA;BE;AE;BE;AE;BE;")
+
+
+# ─── accumulation semantics (unlike Jest, the describe fn runs ONCE) ───
+@describe("counter accumulation across tests")
+fn counterAccumulation():
+    counter = 0
+
+    @beforeEach
+    fn s():
+        counter = counter + 1
+
+    @it("counter == 1 after first beforeEach")
+    fn t1():
+        expect(counter).toEq(1)
+
+    @it("counter == 2 after second beforeEach (accumulated)")
+    fn t2():
+        # In Jest each describe-body runs per-test and counter resets to 0;
+        # in Ry it runs once, so counter accumulates. This is intentional —
+        # documented in docs/reference/testing.md Lifecycle Hooks section.
+        expect(counter).toEq(2)
+
+
+# ─── mutable describe-scope variable visible from @it ───
+@describe("describe-scope mutation flows to it")
+fn describeScopeMutation():
+    label = "init"
+
+    @beforeEach
+    fn s():
+        label = "ready"
+
+    @it("@it sees @beforeEach mutation via captured var")
+    fn t():
+        expect(label).toEq("ready")
+
+
+# ─── @beforeAll fires exactly once per describe ───
+@describe("beforeAll runs exactly once")
+fn beforeAllRunsOnce():
+    setupCount = 0
+    counter = 0
+
+    @beforeAll
+    fn s():
+        setupCount = setupCount + 1
+
+    @beforeEach
+    fn each():
+        counter = counter + 1
+
+    @it("first test: setupCount == 1, counter == 1")
+    fn t1():
+        expect(setupCount).toEq(1)
+        expect(counter).toEq(1)
+
+    @it("second test: setupCount STILL == 1, counter == 2")
+    fn t2():
+        expect(setupCount).toEq(1)
+        expect(counter).toEq(2)
+
+
+# ─── describes do not share hooks (each describe gets its own hook frame) ───
+@describe("first describe with its own beforeEach")
+fn firstDescribeIsolated():
+    visited = 0
+
+    @beforeEach
+    fn s():
+        visited = visited + 100
+
+    @it("visited == 100")
+    fn t():
+        expect(visited).toEq(100)
+
+
+@describe("second describe with different beforeEach")
+fn secondDescribeIsolated():
+    visited = 0
+
+    @beforeEach
+    fn s():
+        visited = visited + 7
+
+    @it("visited == 7 (not leaked from prior describe)")
+    fn t():
+        expect(visited).toEq(7)
+
+
+# ─── position independence: @beforeAll declared AFTER @it still runs first ───
+@describe("hook position independence")
+fn hookPositionIndependent():
+    setupRan = false
+
+    @it("@beforeAll runs before this @it even though declared after")
+    fn t():
+        expect(setupRan).toEq(true)
+
+    @beforeAll
+    fn lateDeclaration():
+        setupRan = true
+
+
+# ─── @timeout normal completion still runs @afterEach (advisor regression) ───
+@describe("timeout x afterEach normal completion")
+fn timeoutAfterEachNormal():
+    counter = 0
+
+    @beforeEach
+    fn s():
+        counter = counter + 1
+
+    @afterEach
+    fn t():
+        counter = counter + 10
+
+    @timeout(2000)
+    @it("fast test within timeout runs both hooks")
+    fn fast():
+        expect(counter > 0).toEq(true)
+
+    @it("second test sees prior afterEach cumulative effect")
+    fn second():
+        # After fast: counter = 1 (BE) + 10 (AE). Then BE for self = 12.
+        expect(counter).toEq(12)
+
+
+# ─── ARC: str / List re-emission across multiple tests (per advisor #3) ───
+@describe("arc re-emit safety for str beforeEach")
+fn arcStrBeforeEach():
+    greeting = ""
+
+    @beforeEach
+    fn s():
+        # Allocate a fresh str each test — body emitted once but evaluated
+        # per @it; if ARC retain/release is buggy we crash under ASan.
+        greeting = "hello" + ", world"
+
+    @it("first test")
+    fn t1():
+        expect(greeting).toEq("hello, world")
+
+    @it("second test")
+    fn t2():
+        expect(greeting).toEq("hello, world")
+
+    @it("third test")
+    fn t3():
+        expect(greeting).toEq("hello, world")
+
+
+@describe("arc re-emit safety for list beforeEach")
+fn arcListBeforeEach():
+    items: List<int> = []
+
+    @beforeEach
+    fn s():
+        # Allocate a fresh list each test — the literal is emitted once
+        # but evaluated per @it; ARC retain/release on the previous
+        # `items` value must run cleanly each time.
+        items = [1, 2, 3]
+
+    @it("first test")
+    fn t1():
+        expect(len(items)).toEq(3)
+
+    @it("second test")
+    fn t2():
+        expect(len(items)).toEq(3)
+
+    @it("third test")
+    fn t3():
+        expect(len(items)).toEq(3)
+
+
+# ─── describe without hooks still works (existing behaviour preserved) ───
+@describe("describe with no hooks")
+fn describeNoHooks():
+    @it("plain test still works")
+    fn t():
+        expect(1 + 1).toEq(2)
+
+
+# ─── @afterEach accumulates across tests ───
+@describe("afterEach accumulation observable from later it")
+fn afterEachAccumulation():
+    log = ""
+
+    @afterEach
+    fn ae():
+        log = log + "AE;"
+
+    @it("first test: log empty")
+    fn t1():
+        expect(log).toEq("")
+
+    @it("second test: log shows prior afterEach")
+    fn t2():
+        expect(log).toEq("AE;")
+
+    @it("third test: log shows two prior afterEach runs")
+    fn t3():
+        expect(log).toEq("AE;AE;")
