@@ -873,7 +873,7 @@ from testing import describe, it, beforeEach, afterEach, expect, mock, verify
 
 **Fix:**
 
-- Check the spelling of the mocked function name (`mock("compute", ...)` is per-name).
+- Check the spelling of the mocked function name (`mock(compute, ...)` takes the function as a bare identifier — see the [`## Mocking`](#mocking) section for the signature).
 - If the function is overloaded, use the signature form (`mock("compute(int, int)", ...)`) or aggregate-verify with `verify("compute")` (bare name). See [Mocking overloaded functions](#mocking-overloaded-functions).
 - Move the `mock(...)` call to the top of the `@it` block, before any call to the function under test.
 
