@@ -361,16 +361,32 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     //                              at runtime — the runtime registry keys
     //                              mocks and spies into the same entry so
     //                              both compile-time sets can be populated)
-    const bool isMocked = test_mode_ && mocked_functions_.count(callee);
-    const bool isSpied = test_mode_ && spied_functions_.count(callee);
+    // Canonical sig key (#1682): mock/spy registry is per-overload. Built from
+    // the resolved overload's paramTypeNames so each (mocked/spied) overload
+    // gets its own dispatch decision; sibling overloads of the same fn name
+    // remain unmocked.
+    const std::string mockKey = matchedEntry
+        ? buildCanonicalSig(callee, matchedEntry->paramTypeNames)
+        : callee;
+    // Both bare name and canonical sig are accepted: the pre-scan in
+    // `collectTestTargetsFromStmt` (codegen.cpp) populates these sets with
+    // bare names (it lacks overload context), while `emitMockCall` /
+    // `emitSpyCall` populate them with canonical sigs. Bare-name presence
+    // therefore means "pre-detected, maybe mocked"; the tri-block emitted
+    // here will fall through to origBB if the runtime registry has no entry
+    // under the canonical sig, so a false-positive is correctness-preserving.
+    const bool isMocked = test_mode_ &&
+        (mocked_functions_.count(mockKey) || mocked_functions_.count(callee));
+    const bool isSpied = test_mode_ &&
+        (spied_functions_.count(mockKey) || spied_functions_.count(callee));
 
     if (isSpied && !isMocked) {
         // Case (b): spy-only. No mock branching needed — runtime entry is
         // populated by __ry_spy_register but never has fn_ptr/env_ptr set,
         // so the mockBB path would be dead. Emit linear increment + arg
         // recording, then fall through to the normal call path below.
-        auto &nameStr = mock_name_strings_[callee];
-        if (!nameStr) nameStr = cachedGlobalString(callee, ".mock." + callee);
+        auto &nameStr = mock_name_strings_[mockKey];
+        if (!nameStr) nameStr = cachedGlobalString(mockKey, ".mock." + mockKey);
         llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction(
@@ -388,8 +404,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
 
-        auto &nameStr = mock_name_strings_[callee];
-        if (!nameStr) nameStr = cachedGlobalString(callee, ".mock." + callee);
+        auto &nameStr = mock_name_strings_[mockKey];
+        if (!nameStr) nameStr = cachedGlobalString(mockKey, ".mock." + mockKey);
         llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
         llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *mockActive = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");

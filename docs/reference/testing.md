@@ -444,7 +444,7 @@ fn spyTests():
 
 - Requires `from testing import spy` (since v0.0.24, #1683)
 - The argument is the **string literal** name of the function (same convention as `verifyCalledWith`)
-- The function must exist and must not be overloaded; both are compile errors
+- The function must exist (compile error otherwise). Overloaded functions are supported since v0.0.24 (#1682): the bare name registers spies for **all** overloads aggregately, and a signature form (`spy("foo(int)")`) targets a single overload — see "Mocking overloaded functions" below
 - Spy registrations are automatically cleared at the end of each `it` block (same lifecycle as `mock`)
 - `verify(name)` and `verifyCalledWith(name, args...)` work uniformly on spied functions (same call-recording mechanism as `mock`)
 - `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
@@ -481,7 +481,7 @@ fn mockReturnValueOnceTests():
 
 - Requires `from testing import mockReturnValueOnce` (since v0.0.24, #1681)
 - The first argument is the **string literal** name of the function (same convention as `spy` / `verifyCalledWith`, unlike `mock` which takes an identifier); non-literal first arguments are rejected at compile time
-- The function must exist, must not be overloaded, and must not return `Unit`; all are compile errors
+- The function must exist and must not return `Unit` (both are compile errors). Overloaded functions are supported since v0.0.24 (#1682) only via signature form (`mockReturnValueOnce("foo(int)", 1)`) — the bare name is a compile error on overloaded functions because the return value alone cannot disambiguate
 - The second argument's type must match the function's declared return type. Supported types: primitives (`int` / `float` / `bool`), `str`, `List` / `Map` / `Set`, records, `Result`, and `Option` (including bare `None` for `Option`-returning functions)
 - Arguments to the mocked call are ignored — the queue holds values, not call expectations
 - `verify(name)` counts only queue-served and default-mock-served calls. Once the queue empties and the call falls through to the original implementation, those calls are **not** counted (matching `mockReset` semantics — diverges from strict Jest behavior)
@@ -580,10 +580,56 @@ fn mockResetAllTests():
 - Clears spied functions identically — the registry is shared between mock and spy (#1683)
 - **Discards all `mockReturnValueOnce` queues** — every named function's queued values are released (#1681)
 
+### Mocking overloaded functions
+
+Since v0.0.24 (#1682), overloaded functions can be mocked / spied / verified per overload. The mock registry is keyed by **canonical signature** `"name(T1, T2, ...)"` rather than by bare function name, so each overload has an independent slot.
+
+**Signature-form syntax.** Pass `"name(T1, T2)"` instead of the bare name to target a specific overload:
+
+```ry
+from testing import it, describe, mock, verify, verifyCalledWith, expect
+
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn add(a: float, b: float) -> float:
+    return a + b
+
+@describe("overloaded mock")
+fn overloadedMockTests():
+    @it("targets int overload only")
+    fn targetsIntOverload():
+        mock("add(int, int)", (a: int, b: int) -> int => 100)
+        expect(add(2, 3)).toEq(100)        # mocked
+        expect(add(2.5, 3.5)).toEq(6.0)    # float overload still real
+        expect(verify("add(int, int)")).toEq(1)
+        expect(verify("add(float, float)")).toEq(0)  # not mocked/spied, so not counted
+```
+
+- Whitespace inside the parameter list is normalized — `"add(int, int)"` ≡ `"add( int , int )"`.
+- The parameter types must match the function's declaration form exactly. Type aliases are resolved automatically; equivalent surface spellings such as `int?` vs `Option<int>` are **not** unified (the parser keeps them distinct strings, so use the form the function was declared with).
+- Zero-parameter overloads use `"name()"` — this is distinct from the bare name `"name"`.
+- Available for `mock` / `mockReturnValueOnce` / `spy` / `verify` / `verifyCalledWith` / `mockClear` / `mockReset`.
+
+**Bare-name semantics on overloaded functions.** When the bare name (e.g. `"add"` rather than `"add(int, int)"`) is passed to an overloaded function, each API behaves as follows:
+
+| API | Bare-name behavior on overloaded function |
+|---|---|
+| `mock(n, repl)` | Auto-dispatch when the replacement lambda's signature matches exactly one overload; otherwise compile error listing available signatures |
+| `mockReturnValueOnce(n, v)` | Compile error — the return-value alone cannot disambiguate; signature form required |
+| `spy(n)` | Registers spy for **all** overloads aggregately |
+| `verify(n)` | Returns the **sum** of call counts across all overloads |
+| `verifyCalledWith(n, ...)` | Compile error when the arity does not pinpoint a unique overload; otherwise dispatches to the arity-matching overload |
+| `mockClear(n)` | Clears the call counter for **all** overloads |
+| `mockReset(n)` | Removes mocks/spies for **all** overloads |
+
+**Behavior shift on adding overloads.** If existing code calls `verify("foo")` and a second overload of `foo` is later introduced, the return value silently becomes the aggregate count across both overloads. To preserve per-overload counting through such a change, switch to the signature form (`verify("foo(int)")`) when the function gains overloads. The other aggregate APIs (`mockClear` / `mockReset` / `spy`) are not behavior-sensitive in the same way — their pre- and post-overload semantics coincide on a single-overload function.
+
+**Native (`@native`) overloads.** `customEmitter`-based stdlib overloads — including the math overload set (`abs`, `floor`, `ceil`, `round`, `log`, `pow`, `digits`) — can be mocked / spied via signature form (`mock("digits(int)", ...)`, `spy("abs(float)")`). Argument recording for `verifyCalledWith` on these natives is **not** supported in v1 — only count-based `verify("digits(int)")` works. Other `@native fn` declarations (table-driven without `customEmitter`, hand-written `emitBuiltin*` helpers) cannot be mocked.
+
 ### Limitations
 
-- Overloaded functions cannot be mocked.
-- `@native fn` declarations cannot be mocked.
+- Most `@native fn` declarations cannot be mocked. The exceptions are `customEmitter`-based overloads such as the math module's `abs` / `floor` / `ceil` / `round` / `log` / `pow` / `digits` (see "Mocking overloaded functions" above). Argument recording for `verifyCalledWith` on those natives is not supported in v1.
 - Capture-based closures **are supported as mock replacements** (since v0.0.22, #1678) — the closure can read or mutate variables from the enclosing scope. The captured environment is released automatically when the `it` block ends.
 - For `mockReturnValueOnce`, calls that fall through to the original implementation (after the queue empties and with no default `mock` set) are not counted by `verify(name)` — only queue-served and default-mock-served calls increment the counter. This diverges from strict Jest behavior but matches the Ry convention used by `mockReset` (#1681).
 

@@ -1080,20 +1080,29 @@ TEST_F(CodeGenTest, SpyNonExistentFunctionError) {
     )), std::exception);
 }
 
-// spy() on an overloaded function -> compile error
-TEST_F(CodeGenTest, SpyOverloadedFunctionError) {
-    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+// spy() on an overloaded function (bare name) is now legal: it registers all overloads
+// aggregately. Previously rejected with "spy: 'compute' is overloaded" (v1 limit, #1682).
+// Flipped per .claude/rules/tests-rejection-tdd.md "Relaxing a rejection branch requires
+// flipping (not deleting) existing EXPECT_THROW tests". Augmented with runtime assertions
+// to verify aggregate vs per-overload counts (PR #1777 CodeRabbit nitpick).
+TEST_F(CodeGenTest, SpyOverloadedFunctionAggregates) {
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn compute(x: int) -> int:\n"
         "    return x\n"
         "fn compute(x: float) -> float:\n"
         "    return x\n"
         "\n"
-        "@describe(\"spy err\")\n"
-        "fn spyErr():\n"
-        "    @it(\"errors\")\n"
-        "    fn errors():\n"
+        "@describe(\"spy ok\")\n"
+        "fn spyOk():\n"
+        "    @it(\"aggregates across both overloads\")\n"
+        "    fn aggregates():\n"
         "        spy(\"compute\")\n"
-    )), std::exception);
+        "        compute(1)\n"
+        "        compute(1.0)\n"
+        "        expect(verify(\"compute(int)\")).toEq(1)\n"
+        "        expect(verify(\"compute(float)\")).toEq(1)\n"
+        "        expect(verify(\"compute\")).toEq(2)\n"
+    )), "spy ok\n  \033[32m+ aggregates across both overloads\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
 // Positive control: verifyCalledWith works on a spied function
@@ -1148,7 +1157,9 @@ TEST_F(CodeGenTest, MockReturnValueOnceUnknownFunctionError) {
     )), std::exception);
 }
 
-// mockReturnValueOnce() on an overloaded function (overloads not supported)
+// mockReturnValueOnce() bare-name on an overloaded function is rejected (#1682):
+// return-value type alone cannot disambiguate the overload; signature form
+// `mockReturnValueOnce("over(int)", 1)` is required.
 TEST_F(CodeGenTest, MockReturnValueOnceOverloadedFunctionError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "fn over(x: int) -> int:\n"
@@ -1161,6 +1172,27 @@ TEST_F(CodeGenTest, MockReturnValueOnceOverloadedFunctionError) {
         "    @it(\"errors\")\n"
         "    fn errors():\n"
         "        mockReturnValueOnce(\"over\", 1)\n"
+    )), std::exception);
+}
+
+// verifyCalledWith() bare-name on an overloaded function whose overloads all
+// share the supplied arity is rejected (#1682): arity alone cannot pinpoint
+// a unique overload; signature form is required. Covers
+// src/codegen_test.cpp `matchCount != 1` branch (matchCount > 1 case).
+TEST_F(CodeGenTest, VerifyCalledWithOverloadedArityAmbiguousError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn over(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn over(a: float, b: float) -> float:\n"
+        "    return a + b\n"
+        "\n"
+        "@describe(\"vcw amb\")\n"
+        "fn vcwAmb():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(\"over(int, int)\", (a: int, b: int) -> int => 0)\n"
+        "        over(1, 2)\n"
+        "        expect(verifyCalledWith(\"over\", 1, 2)).toEq(0)\n"
     )), std::exception);
 }
 
@@ -1241,4 +1273,66 @@ TEST_F(CodeGenTest, MockReturnValueOnceNoneOnNonOptionError) {
         "    fn errors():\n"
         "        mockReturnValueOnce(\"fetchInt\", None)\n"
     )), std::exception);
+}
+
+// ============================================================
+// Signature-string syntax error tests (#1682)
+// `parseSigString` should emit a clear error for malformed sig
+// inputs instead of silently falling through to bare-name lookup
+// (which would yield a misleading "unknown function 'add(int'" message).
+// ============================================================
+
+TEST_F(CodeGenTest, MockSigStringMissingCloseParenError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hi\"\n"
+        "\n"
+        "@describe(\"sig err\")\n"
+        "fn sigErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(\"greet(\", () => \"x\")\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, MockSigStringEmptyNameError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hi\"\n"
+        "\n"
+        "@describe(\"sig err\")\n"
+        "fn sigErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(\"()\", () => \"x\")\n"
+    )), std::exception);
+}
+
+TEST_F(CodeGenTest, MockSigStringEmptyParamError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn add(x: int, y: int) -> int:\n"
+        "    return x + y\n"
+        "\n"
+        "@describe(\"sig err\")\n"
+        "fn sigErr():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mock(\"add(int,,int)\", (a: int, b: int) -> int => a)\n"
+    )), std::exception);
+}
+
+// Zero-arg sig form `"name()"` is the valid empty-param case and must NOT
+// be mistaken for an empty-name malformed shape. This positive test guards
+// the `inner.empty() return true` branch in `parseSigString`.
+TEST_F(CodeGenTest, MockSigStringZeroParamAccepted) {
+    EXPECT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hi\"\n"
+        "\n"
+        "@describe(\"sig ok\")\n"
+        "fn sigOk():\n"
+        "    @it(\"accepts zero-param sig\")\n"
+        "    fn acceptsZeroParamSig():\n"
+        "        mock(\"greet()\", () => \"x\")\n"
+    )));
 }
