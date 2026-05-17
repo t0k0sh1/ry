@@ -416,7 +416,29 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     const bool hasOnly = hasDirective(s->directives, "only");
     const bool hasEach = hasDirective(s->directives, "each");
     const bool hasProperty = hasDirective(s->directives, "property");
+    const bool hasTimeout = hasDirective(s->directives, "timeout");
     const bool implicitSkip = file_has_only_directive_ && !hasOnly && !hasTodo && !hasSkip;
+
+    // Validate @timeout (#1688): positive int literal, no @each / @property
+    // combo. @skip / @todo / @only are checked below in dedicated branches.
+    int64_t timeoutMs = 0;
+    if (hasTimeout) {
+        if (hasEach)
+            codegenError("@timeout cannot be combined with @each on fn '" + s->name + "'");
+        if (hasProperty)
+            codegenError("@timeout cannot be combined with @property on fn '" + s->name + "'");
+        const Directive *timeoutDir = findDirective(s->directives, "timeout");
+        if (!timeoutDir || timeoutDir->args.size() != 1 ||
+            timeoutDir->args[0].name.has_value() || !timeoutDir->args[0].value)
+            codegenError("@timeout requires a single positional integer literal argument (ms)");
+        const auto *numExpr = std::get_if<NumberExpr>(&timeoutDir->args[0].value->data);
+        if (!numExpr)
+            codegenError("@timeout 'ms' must be an integer literal");
+        double v = numExpr->value;
+        if (v <= 0.0 || std::floor(v) != v)
+            codegenError("@timeout 'ms' must be a positive integer");
+        timeoutMs = static_cast<int64_t>(v);
+    }
 
     std::string desc = getDirectivePositionalArg(s->directives, "it");
 
@@ -472,10 +494,10 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!s->params.empty())
         codegenError("@it: fn '" + s->name + "' has parameters but no @each or @property directive");
 
-    // Strip @it (and @only — directive has no runtime effect once we've decided
-    // to execute the case) and emit the function normally, then emit
-    // it_begin/call/it_end.
-    stripDirectives(s->directives, {"it", "only"});
+    // Strip @it / @only / @timeout (no runtime effect once dispatch is decided)
+    // and emit the function normally, then emit it_begin/call/it_end (or the
+    // timeout-aware variant when @timeout is present).
+    stripDirectives(s->directives, {"it", "only", "timeout"});
     emitStmt(s);
 
     auto *overloads = findFunction(s->name);
@@ -484,11 +506,68 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     const auto &entry = overloads->back();
     auto capturedArgs = loadCapturedArgs(entry, "@it");
 
-    auto [itBeginFn, itEndFn] = getTestItFunctions();
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    if (hasTimeout) {
+        emitItWithTimeout(timeoutMs, descVal, entry.func, capturedArgs);
+        return;
+    }
+    auto [itBeginFn, itEndFn] = getTestItFunctions();
     builder_.CreateCall(itBeginFn, {descVal});
     builder_.CreateCall(entry.func, capturedArgs);
     builder_.CreateCall(itEndFn);
+}
+
+void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
+                                 llvm::Function *userFn,
+                                 llvm::ArrayRef<llvm::Value*> userArgs) {
+    llvm::FunctionType *voidStrI64Ty = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+    llvm::FunctionType *voidTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), false);
+    llvm::FunctionType *getPtrTy = llvm::FunctionType::get(ptrTy_, false);
+    llvm::FunctionType *sigsetjmpTy = llvm::FunctionType::get(
+        i32Ty_, {ptrTy_, i32Ty_}, false);
+
+    auto beginFn = mod_->getOrInsertFunction("__ry_test_it_begin_with_timeout", voidStrI64Ty);
+    auto endFn = mod_->getOrInsertFunction("__ry_test_it_end_with_timeout", voidTy);
+    auto timeoutFn = mod_->getOrInsertFunction("__ry_test_it_timeout", voidTy);
+    auto getJmpbufFn = mod_->getOrInsertFunction("__ry_test_get_timeout_jmpbuf", getPtrTy);
+
+    // glibc declares `sigsetjmp` as a macro that expands to `__sigsetjmp`;
+    // the symbol exposed by libc is the latter. macOS / musl / BSD expose
+    // the bare name. We could not call `sigsetjmp` from generated IR
+    // either way (macros don't apply to LLVM IR symbol lookup), so pick
+    // the actual symbol explicitly at codegen time.
+#if defined(__GLIBC__)
+    const char *kSigsetjmpSym = "__sigsetjmp";
+#else
+    const char *kSigsetjmpSym = "sigsetjmp";
+#endif
+    auto sigsetjmpFn = mod_->getOrInsertFunction(kSigsetjmpSym, sigsetjmpTy);
+
+    llvm::Value *jmpbuf = builder_.CreateCall(getJmpbufFn, {}, "it.jmpbuf");
+    llvm::Value *retVal = builder_.CreateCall(
+        sigsetjmpFn, {jmpbuf, llvm::ConstantInt::get(i32Ty_, 1)}, "it.sigsetjmp");
+    llvm::Value *isNormal = builder_.CreateICmpEQ(
+        retVal, llvm::ConstantInt::get(i32Ty_, 0), "it.timeout.is_normal");
+
+    llvm::BasicBlock *normalBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.normal", fn_);
+    llvm::BasicBlock *timeoutBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.fired", fn_);
+    llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.after", fn_);
+    builder_.CreateCondBr(isNormal, normalBB, timeoutBB);
+
+    builder_.SetInsertPoint(normalBB);
+    builder_.CreateCall(beginFn,
+        {descVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(timeoutMs))});
+    builder_.CreateCall(userFn, userArgs);
+    builder_.CreateCall(endFn);
+    builder_.CreateBr(afterBB);
+
+    builder_.SetInsertPoint(timeoutBB);
+    builder_.CreateCall(timeoutFn);
+    builder_.CreateBr(afterBB);
+
+    builder_.SetInsertPoint(afterBB);
 }
 
 void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {

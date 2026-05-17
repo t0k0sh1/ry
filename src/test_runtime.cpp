@@ -3,13 +3,16 @@
 #include "ry/runtime_list.hpp"
 #include "ry/runtime_string.hpp"
 #include "ry/test_runtime.hpp"
+#include <csignal>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <random>
+#include <setjmp.h>
 #include <string>
+#include <sys/time.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +36,14 @@ static std::string currentIndent(int extra = 0) {
 // async-signal-safe buffer for the timeout handler in main.cpp
 static char g_current_it_buf[256];
 const char *__ry_test_current_it_name() { return g_current_it_buf; }
+
+// Per-test timeout state (#1688). Single-threaded test execution — the
+// JIT runs `__ry_main__` on the main thread and any `@timeout` directive
+// executes sequentially, so non-thread_local storage is correct.
+sigjmp_buf g_per_test_timeout_jmpbuf;
+volatile sig_atomic_t g_per_test_timeout_active = 0;
+static int64_t g_per_test_timeout_ms = 0;
+static char g_per_test_timeout_name[256];
 
 // Per-call argument record for argument-level mock verification
 // (#1677, #1703, #1704, #1705, #1706).
@@ -620,6 +631,78 @@ void __ry_test_it_todo(const char *name) {
     std::printf("%s\033[36m? %s (todo)\033[0m\n", indent.c_str(), name ? name : "");
     std::fflush(stdout);
     ++g_todo;
+}
+
+// Per-test timeout (#1688). begin sets up the jmpbuf state (already armed
+// by the caller-side `sigsetjmp`) and starts a one-shot
+// `setitimer(ITIMER_REAL, ms)` so a hung test gets SIGALRM after `ms`
+// elapses. The legacy `__ry_test_it_begin` path (`alarm(60)`) is kept for
+// tests that have no `@timeout` — the two paths use different runtime
+// functions so they never share state.
+void __ry_test_it_begin_with_timeout(const char *name, int64_t ms) {
+    g_current_it = name ? name : "";
+    g_current_it_failed = false;
+    std::snprintf(g_current_it_buf, sizeof(g_current_it_buf), "%s", name ? name : "");
+    std::snprintf(g_per_test_timeout_name, sizeof(g_per_test_timeout_name), "%s", name ? name : "");
+    g_per_test_timeout_ms = ms;
+    g_per_test_timeout_active = 1;
+
+    struct itimerval itv = {};
+    itv.it_value.tv_sec = static_cast<time_t>(ms / 1000);
+    itv.it_value.tv_usec = static_cast<suseconds_t>((ms % 1000) * 1000);
+    setitimer(ITIMER_REAL, &itv, nullptr);
+}
+
+void __ry_test_it_end_with_timeout() {
+    // Order: clear active flag FIRST, then disable timer. If a SIGALRM
+    // fires between these two steps, the handler sees active=0 and falls
+    // through to `_exit(124)` (equivalent to the legacy global-timeout
+    // path — same failure mode as the alarm()-based code we already
+    // shipped). True atomicity (sigprocmask(SIG_BLOCK, {SIGALRM})) is
+    // available if we later observe spurious end-path timeouts in the
+    // wild; the simpler ordering suffices for typical ms-scale tests.
+    g_per_test_timeout_active = 0;
+    struct itimerval itv = {};
+    setitimer(ITIMER_REAL, &itv, nullptr);
+
+    __ry_mock_clear_all();
+    const auto indent = currentIndent();
+    if (g_current_it_failed) {
+        std::printf("%s\033[31m- %s\033[0m\n", indent.c_str(), g_current_it.c_str());
+        ++g_failed;
+    } else {
+        std::printf("%s\033[32m+ %s\033[0m\n", indent.c_str(), g_current_it.c_str());
+        ++g_passed;
+    }
+    std::fflush(stdout);
+    g_current_it.clear();
+}
+
+// Continuation reached via siglongjmp from the SIGALRM handler in
+// jit_runner.cpp. Prints "(timeout after Nms)" + increments g_failed,
+// then returns so __ry_main__ continues with the next @it. Notes:
+//   - mockClearAll() restores mocks to a known baseline; ARC-managed
+//     locals leaked by the longjmp through the user test body are NOT
+//     recovered (documented in docs/reference/directives.md as known
+//     limitation).
+//   - setitimer(zero) is technically redundant (the one-shot already
+//     fired) but defensively clears any pending residue.
+void __ry_test_it_timeout() {
+    struct itimerval itv = {};
+    setitimer(ITIMER_REAL, &itv, nullptr);
+    __ry_mock_clear_all();
+    const auto indent = currentIndent();
+    std::printf("%s\033[31m- %s (timeout after %lldms)\033[0m\n",
+                indent.c_str(), g_per_test_timeout_name,
+                static_cast<long long>(g_per_test_timeout_ms));
+    std::fflush(stdout);
+    ++g_failed;
+    g_current_it.clear();
+    g_current_it_failed = false;
+}
+
+void *__ry_test_get_timeout_jmpbuf() {
+    return static_cast<void *>(&g_per_test_timeout_jmpbuf);
 }
 
 void __ry_test_expect_fail(int line, const char *actual, const char *expected) {

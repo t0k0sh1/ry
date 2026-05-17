@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <iterator>
+#include <setjmp.h>
 #include <unistd.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
@@ -39,6 +40,19 @@ extern const char *__ry_test_current_it_name();
 extern "C" int64_t  __ry_runtime_internal_arc_live_count();
 
 static void test_timeout_handler(int) {
+    // Per-test @timeout(ms) path (#1688): the test_runtime arms the
+    // jmpbuf and sets g_per_test_timeout_active=1 before starting the
+    // setitimer(ITIMER_REAL). On SIGALRM we clear the flag (async-signal
+    // safe write to volatile sig_atomic_t) and siglongjmp back to the
+    // codegen-emitted continuation, which calls __ry_test_it_timeout()
+    // and proceeds to the next @it. siglongjmp is async-signal-safe per
+    // POSIX.1-2017.
+    if (ry::g_per_test_timeout_active) {
+        ry::g_per_test_timeout_active = 0;
+        siglongjmp(ry::g_per_test_timeout_jmpbuf, 1);
+    }
+    // Legacy global-test-timeout path: kill the process. Pre-#1688
+    // behaviour preserved for tests with no @timeout directive.
     const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
     const char *name = ry::__ry_test_current_it_name();

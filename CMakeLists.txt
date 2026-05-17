@@ -368,6 +368,7 @@ add_executable(ry_tests
     tests/test_codegen_type_safety.cpp
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
+    tests/test_spec_timeout.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
@@ -389,6 +390,7 @@ else()
 endif()
 
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
+target_compile_definitions(ry_tests PRIVATE RY_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 target_compile_options(ry_tests PRIVATE ${RY_WARNING_FLAGS})
 

@@ -1421,6 +1421,14 @@ public:
     void emitItDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItDirective(std::unique_ptr<FnStmt> &s);
     void emitPropertyItDirective(std::unique_ptr<FnStmt> &s);
+    // Per-test @timeout(ms) directive (#1688). Emits a sigsetjmp + cond-br
+    // around the user fn call: normal exit -> __ry_test_it_end_with_timeout;
+    // SIGALRM -> siglongjmp continuation -> __ry_test_it_timeout. Caller is
+    // responsible for arg validation (ms positive integer literal, no
+    // @each/@property combo) before calling this helper.
+    void emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
+                           llvm::Function *userFn,
+                           llvm::ArrayRef<llvm::Value*> userArgs);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
                         const std::string &fmtStr, llvm::Function *testFunc,
