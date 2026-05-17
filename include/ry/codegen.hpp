@@ -1427,8 +1427,8 @@ public:
     // responsible for arg validation (ms positive integer literal, no
     // @each/@property combo) before calling this helper.
     void emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
-                           llvm::Function *userFn,
-                           llvm::ArrayRef<llvm::Value*> userArgs,
+                           const OverloadEntry &entry,
+                           std::vector<StmtNode> *beforeEachBody,
                            std::vector<StmtNode> *afterEachBody);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
 

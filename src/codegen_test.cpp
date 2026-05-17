@@ -520,47 +520,48 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@it: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
 
-    // @beforeEach inline (#1686). Must run BEFORE loadCapturedArgs so any
-    // describe-scope variable that the hook mutates is observed by the test
-    // through its captured copy.
-    if (!describe_hook_stack_.empty()) {
-        for (auto &stmt : describe_hook_stack_.back().beforeEach)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    }
-
-    auto capturedArgs = loadCapturedArgs(entry, "@it");
-
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    std::vector<StmtNode> *beforeEachBody =
+        (!describe_hook_stack_.empty() && !describe_hook_stack_.back().beforeEach.empty())
+            ? &describe_hook_stack_.back().beforeEach
+            : nullptr;
     std::vector<StmtNode> *afterEachBody =
         (!describe_hook_stack_.empty() && !describe_hook_stack_.back().afterEach.empty())
             ? &describe_hook_stack_.back().afterEach
             : nullptr;
     if (hasTimeout) {
-        // @afterEach is inlined inside emitItWithTimeout's normalBB so it
-        // runs on natural completion within the timeout window. The SIGALRM
-        // siglongjmp path (timeoutBB) intentionally skips @afterEach because
-        // we cannot guarantee user-code state is consistent after the
-        // cross-stack jump; documented as a known limitation.
-        emitItWithTimeout(timeoutMs, descVal, entry.func, capturedArgs, afterEachBody);
+        // @beforeEach / @afterEach are inlined inside emitItWithTimeout's
+        // normalBB between begin and end, so hook failures attribute to the
+        // current @it via __ry_test_record_fail. The SIGALRM siglongjmp path
+        // (timeoutBB) intentionally skips BOTH hooks because cross-stack
+        // jump can leave user state inconsistent; documented as a known
+        // limitation.
+        emitItWithTimeout(timeoutMs, descVal, entry, beforeEachBody, afterEachBody);
         return;
     }
+    // Inline @beforeEach / user fn / @afterEach INSIDE the it_begin/it_end
+    // window so any expect failure inside a hook is recorded against the
+    // current @it slot set by __ry_test_it_begin (#1686). @beforeEach runs
+    // BEFORE loadCapturedArgs so describe-scope variables it mutates are
+    // observed by the test through its captured copies.
     auto [itBeginFn, itEndFn] = getTestItFunctions();
     builder_.CreateCall(itBeginFn, {descVal});
+    if (beforeEachBody) {
+        for (auto &stmt : *beforeEachBody)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
+    auto capturedArgs = loadCapturedArgs(entry, "@it");
     builder_.CreateCall(entry.func, capturedArgs);
-    builder_.CreateCall(itEndFn);
-
-    // @afterEach inline. Runs after every test that completes (success or
-    // expect-failure recorded via __ry_test_record_fail); failure does not
-    // unwind because Ry has no exception-style control flow at this layer.
     if (afterEachBody) {
         for (auto &stmt : *afterEachBody)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
     }
+    builder_.CreateCall(itEndFn);
 }
 
 void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
-                                 llvm::Function *userFn,
-                                 llvm::ArrayRef<llvm::Value*> userArgs,
+                                 const OverloadEntry &entry,
+                                 std::vector<StmtNode> *beforeEachBody,
                                  std::vector<StmtNode> *afterEachBody) {
     llvm::FunctionType *voidStrI64Ty = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
@@ -601,17 +602,22 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
     builder_.SetInsertPoint(normalBB);
     builder_.CreateCall(beginFn,
         {descVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(timeoutMs))});
-    builder_.CreateCall(userFn, userArgs);
-    builder_.CreateCall(endFn);
-    // @afterEach inline on the normal-completion path (#1686): the test
-    // finished within the timeout window, so user state is consistent and
-    // cleanup is safe. The timeoutBB path below intentionally skips this —
-    // SIGALRM siglongjmp tears across the C++ stack and there is no way to
-    // guarantee user-code invariants for the cleanup body.
+    // Inline @beforeEach / user fn / @afterEach INSIDE the begin/end window
+    // on the normal-completion path (#1686) so hook expect failures attribute
+    // to the current @it via __ry_test_record_fail. The timeoutBB path below
+    // intentionally skips all three — SIGALRM siglongjmp tears across the C++
+    // stack and there is no way to guarantee user-code invariants.
+    if (beforeEachBody) {
+        for (auto &stmt : *beforeEachBody)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
+    auto capturedArgs = loadCapturedArgs(entry, "@it");
+    builder_.CreateCall(entry.func, capturedArgs);
     if (afterEachBody) {
         for (auto &stmt : *afterEachBody)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
     }
+    builder_.CreateCall(endFn);
     builder_.CreateBr(afterBB);
 
     builder_.SetInsertPoint(timeoutBB);
@@ -858,41 +864,39 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         else          ++it;
     }
 
-    // Splice @beforeAll body immediately BEFORE the first @it / @describe;
-    // @afterAll body immediately AFTER the last @it / @describe. This makes
-    // the hook position independent of where in the source the user declared
-    // it (it still runs before / after all tests) while preserving the
-    // describe-scope let-bindings declared before the tests — splicing at
-    // the very start would break `counter = 0` followed by
-    // `@beforeAll fn s(): counter = counter + 1` because the hook body
-    // would reference `counter` before its alloca exists. If the describe
-    // body contains no @it / @describe at all, the hook bodies fall back to
-    // start / end of body (semantics is irrelevant — nothing runs anyway).
-    auto isTestStmt = [](const StmtNode &stmt) {
+    // Splice @beforeAll body immediately BEFORE the first direct-child @it;
+    // @afterAll body immediately AFTER the last direct-child @it. Anchoring
+    // on @it only (not nested @describe) keeps hooks scoped to the current
+    // describe — MVP does not propagate to nested describes (#1686 follow-up).
+    // Splicing after the bindings preserves describe-scope let-bindings
+    // declared before the tests: `counter = 0` followed by
+    // `@beforeAll fn s(): counter = counter + 1` works because the hook body
+    // sees `counter`'s alloca. If the describe contains no direct @it, the
+    // hook bodies are dropped entirely — the describe body is still emitted
+    // and called, so splicing the hooks would run their side effects with
+    // no test attribution.
+    auto isItStmt = [](const StmtNode &stmt) {
         const auto *fnp = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
         if (!fnp) return false;
-        return hasDirective((*fnp)->directives, "it") ||
-               hasDirective((*fnp)->directives, "describe");
+        return hasDirective((*fnp)->directives, "it");
     };
-    size_t firstTestIdx = s->body.size();
-    size_t lastTestIdx = 0;
-    bool sawTest = false;
+    size_t firstItIdx = s->body.size();
+    size_t lastItIdx = 0;
+    bool sawIt = false;
     for (size_t i = 0; i < s->body.size(); ++i) {
-        if (isTestStmt(s->body[i])) {
-            if (!sawTest) { firstTestIdx = i; sawTest = true; }
-            lastTestIdx = i;
+        if (isItStmt(s->body[i])) {
+            if (!sawIt) { firstItIdx = i; sawIt = true; }
+            lastItIdx = i;
         }
     }
-    if (!beforeAllBody.empty()) {
-        const size_t insertAt = sawTest ? firstTestIdx : 0;
-        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(insertAt),
+    if (sawIt && !beforeAllBody.empty()) {
+        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(firstItIdx),
                        std::make_move_iterator(beforeAllBody.begin()),
                        std::make_move_iterator(beforeAllBody.end()));
-        if (sawTest) lastTestIdx += beforeAllBody.size();
+        lastItIdx += beforeAllBody.size();
     }
-    if (!afterAllBody.empty()) {
-        const size_t insertAt = sawTest ? lastTestIdx + 1 : s->body.size();
-        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(insertAt),
+    if (sawIt && !afterAllBody.empty()) {
+        s->body.insert(s->body.begin() + static_cast<std::ptrdiff_t>(lastItIdx + 1),
                        std::make_move_iterator(afterAllBody.begin()),
                        std::make_move_iterator(afterAllBody.end()));
     }

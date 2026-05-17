@@ -16,8 +16,9 @@
   hook of each kind per describe; lifecycle hooks cannot coexist with
   `@it` / `@describe` / `@timeout` / `@skip` / `@only` / `@todo` /
   `@each` / `@property` on the same function; hooks declared outside
-  a `@describe` are rejected; and hook bodies cannot introduce new
-  named variables (the body is re-emitted per `@it` and the second
-  emission would clash). Known limitation: a test fired by `@timeout`
-  unwinds via `siglongjmp` past the inlined `@afterEach` body, so
-  cleanup runs only on normal completion. (#1686)
+  a `@describe` are rejected; and hook bodies cannot contain
+  top-level declarations (`fn` / `record` / `enum` / type alias /
+  directive / `import`) because re-emission per `@it` would
+  duplicate-register them. Known limitation: a test fired by
+  `@timeout` unwinds via `siglongjmp` past the inlined `@afterEach`
+  body, so cleanup runs only on normal completion. (#1686)

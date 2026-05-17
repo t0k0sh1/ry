@@ -315,7 +315,7 @@ fn counterTests():
 
 For a describe with `N` tests, hooks run in this order:
 
-```
+```text
 @beforeAll
 (@beforeEach → @it → @afterEach) × N
 @afterAll
