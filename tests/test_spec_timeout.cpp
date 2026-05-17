@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -20,9 +21,15 @@ struct TimeoutRunResult {
     bool killed_by_backstop = false;
 };
 
-// Backstop wait: tests use @timeout(200) so the child should exit in well under
-// a second.  A 5-second WNOHANG poll + SIGKILL fallback prevents an unfinished
-// runtime implementation from hanging ry_tests indefinitely.
+// Backstop wait: tests use @timeout(200) so the child should exit well under a
+// second under normal builds, and within a few seconds under TSan/ASan on slow
+// CI runners.  A 30-second WNOHANG poll + SIGKILL fallback prevents an
+// unfinished runtime implementation from hanging ry_tests indefinitely while
+// being generous enough that JIT warmup on instrumented Linux containers does
+// not cause spurious failures (the actual @timeout(200) deadline is what gets
+// exercised; the backstop only fires on broken implementations).
+static constexpr int kBackstopSeconds = 30;
+
 static TimeoutRunResult runRyTest(const fs::path &scriptPath) {
     int pipeOut[2];
     int pipeErr[2];
@@ -81,7 +88,7 @@ static TimeoutRunResult runRyTest(const fs::path &scriptPath) {
     std::thread errReader([&]() { r.err = readAll(pipeErr[0]); });
 
     auto deadline = std::chrono::steady_clock::now() +
-                    std::chrono::seconds(5);
+                    std::chrono::seconds(kBackstopSeconds);
     int status = 0;
     bool reaped = false;
     while (std::chrono::steady_clock::now() < deadline) {
@@ -149,7 +156,8 @@ TEST_F(SpecTimeoutTest, InfiniteLoopTestTimesOutAndContinuesToNext) {
     auto r = runRyTest(path);
 
     ASSERT_FALSE(r.killed_by_backstop)
-        << "Backstop fired — ry test did not return within 5s.\n"
+        << "Backstop fired — ry test did not return within "
+        << kBackstopSeconds << "s.\n"
         << "stdout:\n" << r.out << "\nstderr:\n" << r.err;
 
     EXPECT_NE(r.exit_code, 0)
@@ -198,7 +206,8 @@ TEST_F(SpecTimeoutTest, MixedTimeoutsContinueExecution) {
     auto r = runRyTest(path);
 
     ASSERT_FALSE(r.killed_by_backstop)
-        << "Backstop fired — ry test did not return within 5s.\n"
+        << "Backstop fired — ry test did not return within "
+        << kBackstopSeconds << "s.\n"
         << "stdout:\n" << r.out << "\nstderr:\n" << r.err;
 
     EXPECT_NE(r.exit_code, 0)

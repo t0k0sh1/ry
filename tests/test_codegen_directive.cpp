@@ -2046,6 +2046,28 @@ TEST_F(DirectiveTest, TimeoutNegativeIsRejected) {
     }
 }
 
+// Suffixed integer literals (e.g. `100i32`, `100i64`) are rejected by codegen
+// because @timeout's runtime ABI uses plain int64_t — accepting a literal with
+// a different low-level type annotation would silently coerce. Same shape as
+// the `toBeCloseTo` 'decimals' argument check in src/codegen_test.cpp (#1688
+// review feedback).
+TEST_F(DirectiveTest, TimeoutSuffixedLiteralRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@timeout(100i32)\n"
+            "@it(\"suffixed ms\")\n"
+            "fn t():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected compile error for @timeout(100i32)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'ms' must be an integer literal"),
+                  std::string::npos)
+            << "got: " << msg;
+    }
+}
+
 TEST_F(DirectiveTest, TimeoutFloatLiteralRejected) {
     try {
         runTestSource(withStdlibDirectiveDecls(

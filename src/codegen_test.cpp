@@ -432,12 +432,11 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
             timeoutDir->args[0].name.has_value() || !timeoutDir->args[0].value)
             codegenError("@timeout requires a single positional integer literal argument (ms)");
         const auto *numExpr = std::get_if<NumberExpr>(&timeoutDir->args[0].value->data);
-        if (!numExpr)
+        if (!numExpr || !numExpr->suffix.empty())
             codegenError("@timeout 'ms' must be an integer literal");
-        double v = numExpr->value;
-        if (v <= 0.0 || std::floor(v) != v)
+        if (numExpr->value <= 0)
             codegenError("@timeout 'ms' must be a positive integer");
-        timeoutMs = static_cast<int64_t>(v);
+        timeoutMs = numExpr->value;
     }
 
     std::string desc = getDirectivePositionalArg(s->directives, "it");
