@@ -1298,6 +1298,15 @@ private:
     std::string formatNativeFnSignature(const NativeFnSignature &sig);
     std::vector<std::string> collectNativeOverloadCandidateSigs(
         const std::string &callee);
+
+    // #1682: Collect every NativeFnSignature whose `name` field equals `bareName`,
+    // scanning all (package::name) keys in `native_fn_sigs_`. Used by mock /
+    // mockReturnValueOnce / spy / verifyCalledWith to find native overloads
+    // referenced without a package prefix (e.g. `mock("digits(int)", ...)`).
+    // `collectNativeOverloadCandidateSigs` only looks up by exact key, so it
+    // misses package-keyed entries like "math::digits".
+    std::vector<const NativeFnSignature*> collectNativeSigsByBareName(
+        const std::string &bareName) const;
     // Canonical Ry type name string for an argument value. Tries
     // `buildTypeNameFromMeta` first, then `reverseResolveTypeName`. Returns
     // empty when neither resolves; callers substitute "<unknown>" via
@@ -1468,9 +1477,72 @@ public:
                                    llvm::Type *retTy,
                                    const std::string &retTyName);
 
+    // Mock / spy registries (#1682): keyed by canonical sig string
+    // ("name(T1, T2)") so overloaded fns can be mocked/spied per-overload.
+    // For non-overloaded fns the canonical sig is still constructed; runtime
+    // additionally maintains a bare-name index for aggregate verify/clear.
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_set<std::string> spied_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
+
+    // Canonical sig helpers (#1682). buildCanonicalSig joins a fn name with
+    // resolveTypeAlias'd + whitespace-normalized param type names into
+    // "name(T1, T2)". parseSigString splits user input "name(T1, T2)" via
+    // paren-depth-aware scanning. Returns false ONLY when input has no '('
+    // (bare-name case, caller handles separately). When '(' is present the
+    // signature form is required: malformed shapes (no matching ')', empty
+    // name, empty parameter) raise codegenError with the offending input —
+    // the function never returns false for paren-bearing inputs. Normalization
+    // is alias + outer whitespace trim only — int? ≡ Option<int> is NOT
+    // unified (parser keeps them distinct strings). Sig form must match the
+    // fn's declaration.
+    std::string buildCanonicalSig(const std::string &name,
+                                   const std::vector<std::string> &paramTypeNames);
+    bool parseSigString(const std::string &input,
+                        std::string &outName,
+                        std::vector<std::string> &outParamTypeNames);
+
+    // Native fn mock/spy support (#1682). Called from emitMockCall / emitSpyCall
+    // when findFunction misses but collectNativeSigsByBareName finds @native
+    // overloads. Registration logic mirrors the user-fn path but compares
+    // FnTypeInfo against NativeFnSignature instead of OverloadEntry.
+    void emitNativeMockCall(CallStmt &s,
+                             const std::string &bareName,
+                             const std::string &fnNameInput,
+                             bool isSigForm,
+                             const std::vector<std::string> &sigParamTypes,
+                             const std::vector<const NativeFnSignature*> &nativeSigs);
+    void emitNativeSpyCall(CallStmt &s,
+                            const std::string &bareName,
+                            const std::string &fnNameInput,
+                            bool isSigForm,
+                            const std::vector<std::string> &sigParamTypes,
+                            const std::vector<const NativeFnSignature*> &nativeSigs);
+
+    // AST-level overload picker for mock dispatch on @native customEmitter path.
+    // Customs emit their own args inside their bodies, so we cannot pre-emit
+    // before resolving — double-emission would impure-eval args twice. Pass 1
+    // matches by arity (sufficient when arities differ as in `digits(n)` vs
+    // `digits(n, base)`); Pass 2 uses inferExprTypeName for multi-arity-match
+    // cases. Returns nullptr when no unique overload matches; caller falls
+    // back to the un-mocked customEmitter path.
+    const NativeFnSignature *pickNativeOverloadByCallShape(
+        const CallExpr &e,
+        const std::vector<NativeFnSignature> &sigs);
+
+    // Emit the tri-block mock dispatch for a customEmitter native call. The
+    // mockBB emits args fresh and dispatches through __ry_mock_get; origBB
+    // delegates to the customEmitter (which emits its own args). Returns the
+    // PHI-merged result. Pre-condition: caller has already verified
+    // (mocked || spied) for this canonicalSig.
+    llvm::Value *emitNativeCustomEmitterMockDispatch(
+        const CallExpr &e,
+        const NativeDispatchEntry *entry,
+        const NativeFnSignature &sig,
+        const std::string &canonicalSig,
+        bool isMocked,
+        bool isSpied);
+
     llvm::Value *toBool(llvm::Value *v);
 
     // Low-level type helpers

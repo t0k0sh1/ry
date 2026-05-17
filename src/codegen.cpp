@@ -407,6 +407,18 @@ std::vector<std::string> CodeGen::collectNativeOverloadCandidateSigs(
     return result;
 }
 
+std::vector<const CodeGen::NativeFnSignature*>
+CodeGen::collectNativeSigsByBareName(const std::string &bareName) const {
+    std::vector<const NativeFnSignature*> result;
+    for (const auto &[key, sigs] : native_fn_sigs_) {
+        for (const auto &sig : sigs) {
+            if (sig.name == bareName)
+                result.push_back(&sig);
+        }
+    }
+    return result;
+}
+
 std::string CodeGen::formatActualArgTypeName(llvm::Value *val) {
     if (!val) return "";
     std::string name = buildTypeNameFromMeta(val);

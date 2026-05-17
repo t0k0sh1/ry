@@ -195,6 +195,29 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         }
         if (!hasCallArityMatch)
             return nullptr;  // No sig with this arity — fall through
+
+        // #1682: mock/spy interception for customEmitter natives. We resolve
+        // the call's target overload at AST level (arity-only when arities
+        // differ — sufficient for math.digits-style overloads), build the
+        // canonical sig, and only divert through the tri-block dispatch if
+        // the sig was registered via mock() / spy(). Otherwise fall straight
+        // through to the customEmitter (zero-overhead path).
+        if (test_mode_) {
+            const NativeFnSignature *picked =
+                pickNativeOverloadByCallShape(e, sigIt->second);
+            if (picked) {
+                std::vector<std::string> pn;
+                pn.reserve(picked->params.size());
+                for (const auto &p : picked->params) pn.push_back(p.typeName);
+                const std::string canonicalSig = buildCanonicalSig(e.callee, pn);
+                const bool isMocked = mocked_functions_.count(canonicalSig) > 0;
+                const bool isSpied = spied_functions_.count(canonicalSig) > 0;
+                if (isMocked || isSpied) {
+                    return emitNativeCustomEmitterMockDispatch(
+                        e, entry, *picked, canonicalSig, isMocked, isSpied);
+                }
+            }
+        }
         return entry->customEmitter(*this, e);
     }
 
@@ -703,6 +726,183 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     }
 
     return result;
+}
+
+// ===== #1682: mock/spy for @native customEmitter overloads =====
+
+const CodeGen::NativeFnSignature *CodeGen::pickNativeOverloadByCallShape(
+    const CallExpr &e, const std::vector<NativeFnSignature> &sigs) {
+    // Pass 1: arity-unique match. Covers the digits(n) / digits(n, base)
+    // pattern where each arity has exactly one overload. Most existing
+    // customEmitter natives are arity-disjoint, so this short-circuit
+    // resolves them without needing AST type inference.
+    const NativeFnSignature *picked = nullptr;
+    int matchCount = 0;
+    for (const auto &sig : sigs) {
+        if (sig.params.size() == e.args.size()) {
+            picked = &sig;
+            ++matchCount;
+        }
+    }
+    if (matchCount == 1) return picked;
+    if (matchCount == 0) return nullptr;
+
+    // Pass 2: multiple same-arity overloads (e.g. abs(int) / abs(float),
+    // pow(int, int) / pow(float, float)). Resolve by inferring each arg's
+    // type at the AST level and matching against sig.params[i].typeName
+    // verbatim. Widening (int → float fallback) is NOT applied here — the
+    // unmocked customEmitter path handles widening internally, so for mock
+    // dispatch we only intercept exact-match calls. Mismatched-type calls
+    // fall through to the customEmitter (unchanged behavior).
+    std::unordered_map<std::string, llvm::Type *> emptyParamMap;
+    std::unordered_map<std::string, std::string> emptyParamNameMap;
+    std::vector<std::string> actualNames;
+    actualNames.reserve(e.args.size());
+    for (const auto &arg : e.args) {
+        std::string n = inferExprTypeName(*arg, emptyParamMap, emptyParamNameMap);
+        actualNames.push_back(resolveTypeAlias(trimTypeNameSpaces(n)));
+    }
+
+    picked = nullptr;
+    matchCount = 0;
+    for (const auto &sig : sigs) {
+        if (sig.params.size() != e.args.size()) continue;
+        bool eq = true;
+        for (size_t i = 0; i < sig.params.size(); ++i) {
+            if (resolveTypeAlias(trimTypeNameSpaces(sig.params[i].typeName))
+                    != actualNames[i]) {
+                eq = false; break;
+            }
+        }
+        if (eq) { picked = &sig; ++matchCount; }
+    }
+    return matchCount == 1 ? picked : nullptr;
+}
+
+llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
+    const CallExpr &e,
+    const NativeDispatchEntry *entry,
+    const NativeFnSignature &sig,
+    const std::string &canonicalSig,
+    bool isMocked,
+    bool isSpied) {
+    // Mock/spy intercept for customEmitter natives. Three runtime cases mirror
+    // the user-fn dispatch (see codegen_call_user.cpp):
+    //   - spy-only: linear increment, fall through to customEmitter
+    //   - mocked: tri-block (mockBB calls replacement via __ry_mock_get,
+    //             origBB delegates to customEmitter), PHI-merged
+    //   - mocked+spied: tri-block; origBB additionally increments before
+    //                   delegating (spy semantics when mock is runtime-inactive)
+    //
+    // v1 limitation: customEmitter-path natives do NOT record args for
+    // verifyCalledWith. Only count-style verify("name") is supported. The
+    // recording side requires an OverloadEntry (paramTypes/paramTypeNames) to
+    // dispatch the per-arg store function; NativeFnSignature.params carry
+    // only Ry-level type names, and synthesizing a fake OverloadEntry would
+    // duplicate the dispatch logic. Defer to a follow-up.
+
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
+
+    llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee mockIncFn =
+        mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
+
+    // Spy-only: emit linear increment, then delegate to the customEmitter
+    // (which emits args + the original call).
+    if (isSpied && !isMocked) {
+        builder_.CreateCall(mockIncFn, {nameStr});
+        return entry->customEmitter(*this, e);
+    }
+
+    // Mocked (with or without spy). Use the mock-get probe BEFORE emitting
+    // args so we can split into mockBB / origBB and emit args independently
+    // in each branch — args may have side effects, so we want exactly one
+    // evaluation per runtime path (not two if we pre-emitted).
+    llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+    llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
+    llvm::FunctionCallee mockGetEnvFn = mod_->getOrInsertFunction("__ry_mock_get_env", mockGetTy);
+
+    llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
+    llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    llvm::Value *mockActive = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
+
+    llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
+    llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
+    builder_.CreateCondBr(mockActive, mockBB, origBB);
+
+    // Mock path: emit args fresh, increment, dispatch via plain or capture
+    // ABI based on env pointer.
+    builder_.SetInsertPoint(mockBB);
+    builder_.CreateCall(mockIncFn, {nameStr});
+
+    std::vector<llvm::Value *> mockArgs;
+    mockArgs.reserve(e.args.size());
+    std::vector<llvm::Type *> mockParamTys;
+    mockParamTys.reserve(sig.params.size());
+    for (size_t i = 0; i < e.args.size(); ++i) {
+        llvm::Value *v = emitExpr(*e.args[i]);
+        llvm::Type *want = resolveType(sig.params[i].typeName);
+        if (v->getType() != want && isWideningConversion(v, want, sig.params[i].typeName))
+            v = emitWideningConversion(v, want);
+        mockArgs.push_back(v);
+        mockParamTys.push_back(want);
+    }
+    llvm::Type *mockRetTy = resolveType(sig.returnTypeName);
+    llvm::FunctionType *mockFnTy = llvm::FunctionType::get(mockRetTy, mockParamTys, false);
+
+    llvm::Value *envPtr = builder_.CreateCall(mockGetEnvFn, {nameStr}, "mock_env");
+    llvm::Value *isCapture = builder_.CreateICmpNE(envPtr, nullPtr, "is_capture_mock");
+
+    llvm::BasicBlock *plainBB = llvm::BasicBlock::Create(*ctx_, "mock_plain_bb", fn_);
+    llvm::BasicBlock *captureBB = llvm::BasicBlock::Create(*ctx_, "mock_capture_bb", fn_);
+    builder_.CreateCondBr(isCapture, captureBB, plainBB);
+
+    std::vector<llvm::Type *> captureParamTys = mockParamTys;
+    captureParamTys.push_back(ptrTy_);
+    llvm::FunctionType *captureFnTy = llvm::FunctionType::get(
+        mockRetTy, captureParamTys, false);
+    std::vector<llvm::Value *> captureArgs = mockArgs;
+    captureArgs.push_back(envPtr);
+
+    builder_.SetInsertPoint(plainBB);
+    llvm::Value *mockResultPlain = mockRetTy->isVoidTy()
+        ? nullptr
+        : builder_.CreateCall(mockFnTy, mockPtr, mockArgs, "mock_result_plain");
+    if (mockRetTy->isVoidTy())
+        builder_.CreateCall(mockFnTy, mockPtr, mockArgs);
+    builder_.CreateBr(mergeBB);
+    llvm::BasicBlock *plainEndBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(captureBB);
+    llvm::Value *mockResultCapture = mockRetTy->isVoidTy()
+        ? nullptr
+        : builder_.CreateCall(captureFnTy, mockPtr, captureArgs, "mock_result_capture");
+    if (mockRetTy->isVoidTy())
+        builder_.CreateCall(captureFnTy, mockPtr, captureArgs);
+    builder_.CreateBr(mergeBB);
+    llvm::BasicBlock *captureEndBB = builder_.GetInsertBlock();
+
+    // Original path: delegate to customEmitter (which emits its own args).
+    builder_.SetInsertPoint(origBB);
+    if (isSpied)
+        builder_.CreateCall(mockIncFn, {nameStr});
+    llvm::Value *origResult = entry->customEmitter(*this, e);
+    builder_.CreateBr(mergeBB);
+    llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(mergeBB);
+    if (mockRetTy->isVoidTy())
+        return llvm::ConstantInt::get(i8Ty_, 0);
+
+    llvm::PHINode *phi = builder_.CreatePHI(mockRetTy, 3, "call_result");
+    phi->addIncoming(mockResultPlain, plainEndBB);
+    phi->addIncoming(mockResultCapture, captureEndBB);
+    phi->addIncoming(origResult, origEndBB);
+    propagateTypeMeta(sig.returnTypeName, phi);
+    return phi;
 }
 
 } // namespace ry

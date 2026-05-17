@@ -12,6 +12,7 @@
 #include <string>
 #include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 
@@ -188,6 +189,35 @@ struct MockEntry {
     std::vector<MockFnSnapshot *> retained_fn_snapshots;
 };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
+
+// Bare-name → set of canonical sig keys (#1682). Lets aggregate ops
+// (verify("foo") / mockClear("foo")) collect every overload registered under
+// `foo` when the user passes the bare name and no exact-sig entry exists.
+// Updated in lockstep with g_mock_registry inserts / erases.
+static std::unordered_map<std::string, std::unordered_set<std::string>>
+    g_mock_name_index;
+
+// Split "name(T1, T2)" at the first '(' to recover the bare name. Inputs
+// without parens are returned unchanged (bare-name lookups stay as-is).
+static std::string extractBareName(const std::string &key) {
+    const size_t pos = key.find('(');
+    if (pos == std::string::npos) return key;
+    return key.substr(0, pos);
+}
+
+static void mockIndexInsert(const std::string &key) {
+    if (key.find('(') == std::string::npos) return;
+    g_mock_name_index[extractBareName(key)].insert(key);
+}
+
+static void mockIndexErase(const std::string &key) {
+    if (key.find('(') == std::string::npos) return;
+    const std::string bare = extractBareName(key);
+    auto it = g_mock_name_index.find(bare);
+    if (it == g_mock_name_index.end()) return;
+    it->second.erase(key);
+    if (it->second.empty()) g_mock_name_index.erase(it);
+}
 
 // Lightweight retain/release for str handles inside the mock registry.
 // We do not link against the codegen-emitted IR retain/release helpers from
@@ -629,6 +659,7 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
     entry.fn_ptr = fn_ptr;
     entry.env_ptr = nullptr;
     entry.env_dtor = nullptr;
+    mockIndexInsert(name);
 }
 
 // Create-if-absent registration for spy(). Unlike __ry_mock_set, this does NOT
@@ -637,6 +668,7 @@ void __ry_mock_set(const char *name, void *fn_ptr) {
 // call_count and retained_str_args are also preserved.
 void __ry_spy_register(const char *name) {
     (void)g_mock_registry[name];
+    mockIndexInsert(name);
 }
 
 void __ry_mock_set_closure(const char *name, void *thunk_ptr,
@@ -647,6 +679,7 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     entry.fn_ptr = thunk_ptr;
     entry.env_ptr = env_ptr;
     entry.env_dtor = env_dtor;
+    mockIndexInsert(name);
 }
 
 // Append a per-call binding to the once-queue (#1681). Ownership of env_ptr
@@ -657,23 +690,52 @@ void __ry_mock_register_once(const char *name, void *thunk_ptr,
                               void *env_ptr, void (*env_dtor)(void *)) {
     auto &entry = g_mock_registry[name];
     entry.once_queue.push_back(MockBinding{thunk_ptr, env_ptr, env_dtor});
+    mockIndexInsert(name);
 }
 
 // Jest-compatible mockClear: reset call log/count, preserve default mock
-// AND once-queue. Use mockReset to wipe the queue.
+// AND once-queue. Use mockReset to wipe the queue. When `name` is the bare
+// fn name (no parens) and no exact-sig entry exists, aggregate across every
+// canonical sig recorded under that bare name (#1682).
 void __ry_mock_clear(const char *name) {
     auto it = g_mock_registry.find(name);
-    if (it == g_mock_registry.end()) return;
-    releaseMockEntryRetainedArgs(it->second);
+    if (it != g_mock_registry.end()) {
+        releaseMockEntryRetainedArgs(it->second);
+        return;
+    }
+    auto idxIt = g_mock_name_index.find(name);
+    if (idxIt == g_mock_name_index.end()) return;
+    for (const auto &sig : idxIt->second) {
+        auto sigIt = g_mock_registry.find(sig);
+        if (sigIt != g_mock_registry.end())
+            releaseMockEntryRetainedArgs(sigIt->second);
+    }
 }
 
 void __ry_mock_reset(const char *name) {
     auto it = g_mock_registry.find(name);
-    if (it == g_mock_registry.end()) return;
-    mockReleaseClosureEnv(it->second.env_ptr, it->second.env_dtor);
-    releaseMockOnceQueue(it->second);
-    releaseMockEntryRetainedArgs(it->second);
-    g_mock_registry.erase(it);
+    if (it != g_mock_registry.end()) {
+        mockReleaseClosureEnv(it->second.env_ptr, it->second.env_dtor);
+        releaseMockOnceQueue(it->second);
+        releaseMockEntryRetainedArgs(it->second);
+        const std::string keyCopy = it->first;
+        g_mock_registry.erase(it);
+        mockIndexErase(keyCopy);
+        return;
+    }
+    auto idxIt = g_mock_name_index.find(name);
+    if (idxIt == g_mock_name_index.end()) return;
+    // Copy keys before erasing — mockIndexErase mutates the set we iterate.
+    std::vector<std::string> sigs(idxIt->second.begin(), idxIt->second.end());
+    for (const auto &sig : sigs) {
+        auto sigIt = g_mock_registry.find(sig);
+        if (sigIt == g_mock_registry.end()) continue;
+        mockReleaseClosureEnv(sigIt->second.env_ptr, sigIt->second.env_dtor);
+        releaseMockOnceQueue(sigIt->second);
+        releaseMockEntryRetainedArgs(sigIt->second);
+        g_mock_registry.erase(sigIt);
+    }
+    g_mock_name_index.erase(name);
 }
 
 // Queue-consuming dispatch (#1681). Each call pops one binding from
@@ -719,7 +781,16 @@ void *__ry_mock_get_env(const char *name) {
 int64_t __ry_mock_get_call_count(const char *name) {
     auto it = g_mock_registry.find(name);
     if (it != g_mock_registry.end()) return it->second.call_count;
-    return 0;
+    // Aggregate fallback (#1682): bare-name lookup sums every overload's
+    // call_count when no exact-sig entry exists.
+    auto idxIt = g_mock_name_index.find(name);
+    if (idxIt == g_mock_name_index.end()) return 0;
+    int64_t total = 0;
+    for (const auto &sig : idxIt->second) {
+        auto sigIt = g_mock_registry.find(sig);
+        if (sigIt != g_mock_registry.end()) total += sigIt->second.call_count;
+    }
+    return total;
 }
 
 void __ry_mock_increment_call(const char *name) {
@@ -1112,10 +1183,25 @@ static bool mockArgEqual(const MockArg &recorded, int64_t expectedKind,
 int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                         const int64_t *kinds,
                                         const int64_t *values) {
-    auto it = g_mock_registry.find(name);
+    // Collect every registry entry to inspect: exact-sig hit when registered
+    // under canonical sig; otherwise bare-name index aggregation (#1682).
+    std::vector<MockEntry *> entries;
+    auto exactIt = g_mock_registry.find(name);
+    if (exactIt != g_mock_registry.end()) {
+        entries.push_back(&exactIt->second);
+    } else {
+        auto idxIt = g_mock_name_index.find(name);
+        if (idxIt != g_mock_name_index.end()) {
+            for (const auto &sig : idxIt->second) {
+                auto sigIt = g_mock_registry.find(sig);
+                if (sigIt != g_mock_registry.end())
+                    entries.push_back(&sigIt->second);
+            }
+        }
+    }
     int64_t matched = 0;
-    if (it != g_mock_registry.end()) {
-        for (const auto &call : it->second.calls) {
+    for (MockEntry *entry : entries) {
+        for (const auto &call : entry->calls) {
             if (static_cast<int64_t>(call.args.size()) != numArgs) continue;
             bool ok = true;
             for (int64_t i = 0; i < numArgs; ++i) {
@@ -1162,6 +1248,7 @@ void __ry_mock_clear_all() {
         releaseMockEntryRetainedArgs(entry);
     }
     g_mock_registry.clear();
+    g_mock_name_index.clear();
 }
 
 // ===== Property-based test support =====

@@ -23,6 +23,58 @@ void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) 
         builder_.CreateCall(printfFn, {fmt});
 }
 
+// ===== Canonical signature helpers (#1682) =====
+//
+// Both forms share the same "name(T1, T2)" canonical shape. Each component is
+// alias-resolved (via `resolveTypeAlias`) and whitespace-trimmed so user input
+// "add( int , int )" and "add(int, int)" normalize identically. Note: parser
+// preserves the two forms `int?` and `Option<int>` as distinct strings, so the
+// sig string MUST match the fn's declaration form (mirroring how function
+// resolution itself compares paramTypeNames).
+
+std::string CodeGen::buildCanonicalSig(const std::string &name,
+                                        const std::vector<std::string> &paramTypeNames) {
+    std::string result = name;
+    result += '(';
+    for (size_t i = 0; i < paramTypeNames.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += resolveTypeAlias(trimTypeNameSpaces(paramTypeNames[i]));
+    }
+    result += ')';
+    return result;
+}
+
+bool CodeGen::parseSigString(const std::string &input,
+                              std::string &outName,
+                              std::vector<std::string> &outParamTypeNames) {
+    const size_t parenPos = input.find('(');
+    if (parenPos == std::string::npos) return false;
+    // Paren present → user intended signature form. Reject malformed shapes
+    // (missing ')' / empty function name) with a clear error instead of
+    // silently falling through to bare-name lookup (#1682).
+    if (input.empty() || input.back() != ')')
+        codegenError("invalid signature syntax: '" + input +
+                     "' — expected 'name(T1, T2, ...)' with matching parentheses");
+    outName = trimTypeNameSpaces(input.substr(0, parenPos));
+    if (outName.empty())
+        codegenError("invalid signature syntax: '" + input +
+                     "' — function name before '(' is empty");
+    const std::string inner = trimTypeNameSpaces(
+        input.substr(parenPos + 1, input.size() - parenPos - 2));
+    outParamTypeNames.clear();
+    if (inner.empty()) return true;
+    const auto parts = splitTypeArgs(inner);
+    outParamTypeNames.reserve(parts.size());
+    for (const auto &p : parts) {
+        const std::string trimmed = trimTypeNameSpaces(p);
+        if (trimmed.empty())
+            codegenError("invalid signature syntax: '" + input +
+                         "' — empty parameter type between commas");
+        outParamTypeNames.push_back(resolveTypeAlias(trimmed));
+    }
+    return true;
+}
+
 // ===== Test helpers =====
 
 llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry &entry, const std::string &directive) {
@@ -580,49 +632,120 @@ void CodeGen::emitMockCall(CallStmt &s) {
     if (s.args.size() != 2)
         codegenError("mock() requires exactly 2 arguments: function name and replacement");
 
-    // First arg is the function name (converted to StringExpr by parser)
     auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
     if (!strExpr)
         codegenError("mock() first argument must be a function name");
-    const std::string &fnName = strExpr->value;
+    const std::string &fnNameInput = strExpr->value;
 
-    // Check function exists
-    auto *fitOverloads = findFunction(fnName);
-    if (!fitOverloads)
-        codegenError("mock(): unknown function '" + fnName + "'");
+    // Sig form ("name(T1, T2)") vs bare name. parseSigString returns true for
+    // the former and populates outName + outParamTypeNames; false means bare.
+    std::string bareName;
+    std::vector<std::string> sigParamTypes;
+    const bool isSigForm = parseSigString(fnNameInput, bareName, sigParamTypes);
+    if (!isSigForm) bareName = fnNameInput;
 
-    // Check no overloads (v1 limitation)
-    if (fitOverloads->size() > 1)
-        codegenError("mock(): overloaded functions are not supported");
+    auto *fitOverloads = findFunction(bareName);
+    if (!fitOverloads) {
+        // #1682: @native overloads (e.g. math.digits) miss findFunction —
+        // delegate to the parallel native-fn registration path.
+        auto nativeSigs = collectNativeSigsByBareName(bareName);
+        if (nativeSigs.empty())
+            codegenError("mock(): unknown function '" + fnNameInput + "'");
+        emitNativeMockCall(s, bareName, fnNameInput,
+                            isSigForm, sigParamTypes, nativeSigs);
+        return;
+    }
 
-    auto &entry = (*fitOverloads)[0];
-    llvm::Function *origFn = entry.func;
+    // Pick the target overload entry. Sig form requires exact match on the
+    // normalized paramTypeNames; bare form requires exactly one overload
+    // (Option C — auto-dispatch by replacement type is handled below for the
+    // overloaded-bare-name case before we land here).
+    OverloadEntry *entry = nullptr;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (auto &ov : *fitOverloads) {
+            if (ov.paramTypeNames.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { entry = &ov; break; }
+        }
+        if (!entry) {
+            std::string msg = "mock(): no overload of '" + bareName + "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto &ov : *fitOverloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+    } else if (fitOverloads->size() == 1) {
+        entry = &(*fitOverloads)[0];
+    }
+    // If bare + overloaded, `entry` stays null — resolved below after emitting
+    // the replacement (Option C: pick the overload whose paramTypes match).
 
-    // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
     auto *fnInfo = lookupFnTypeInfo(replacement);
     if (!fnInfo)
         codegenError("mock(): second argument must be a lambda or function reference");
 
-    // Verify type compatibility
-    llvm::Type *origRetTy = origFn->getReturnType();
-    if (fnInfo->returnType != origRetTy)
-        codegenError("mock(): replacement return type does not match '" + fnName + "'");
-    if (fnInfo->paramTypes.size() != entry.paramTypes.size())
-        codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
-    for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
-        if (fnInfo->paramTypes[i] != entry.paramTypes[i])
-            codegenError("mock(): replacement parameter type " + std::to_string(i) +
-                         " does not match '" + fnName + "'");
+    if (!entry) {
+        // Bare name + multiple overloads: find the single overload whose
+        // (paramTypes, returnType) matches the replacement's FnTypeInfo.
+        OverloadEntry *match = nullptr;
+        int matchCount = 0;
+        for (auto &ov : *fitOverloads) {
+            if (ov.paramTypes.size() != fnInfo->paramTypes.size()) continue;
+            if (ov.func->getReturnType() != fnInfo->returnType) continue;
+            bool eq = true;
+            for (size_t i = 0; i < ov.paramTypes.size(); ++i) {
+                if (ov.paramTypes[i] != fnInfo->paramTypes[i]) { eq = false; break; }
+            }
+            if (eq) { match = &ov; ++matchCount; }
+        }
+        if (matchCount == 0 || matchCount > 1) {
+            std::string msg = "mock(): '" + bareName + "' is overloaded; replacement's signature ";
+            msg += (matchCount == 0)
+                ? "does not match any overload."
+                : "is ambiguous (matches multiple overloads).";
+            msg += " Use signature form: mock(\"" + bareName + "(T1, T2)\", ...). Available:";
+            for (const auto &ov : *fitOverloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+        entry = match;
     }
 
-    // Track that this function is mocked (for selective dispatch in emitUserFnCall)
-    mocked_functions_.insert(fnName);
+    // codegenError above is [[noreturn]], so entry is guaranteed non-null
+    // here when matchCount==1.
+    // cppcheck-suppress nullPointerRedundantCheck
+    llvm::Function *origFn = entry->func;
 
-    // Cache global string per function name
-    auto &nameStr = mock_name_strings_[fnName];
-    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+    // Verify type compatibility against the resolved overload.
+    llvm::Type *origRetTy = origFn->getReturnType();
+    if (fnInfo->returnType != origRetTy)
+        codegenError("mock(): replacement return type does not match '" + bareName + "'");
+    if (fnInfo->paramTypes.size() != entry->paramTypes.size())
+        codegenError("mock(): replacement parameter count does not match '" + bareName + "'");
+    for (size_t i = 0; i < entry->paramTypes.size(); ++i) {
+        if (fnInfo->paramTypes[i] != entry->paramTypes[i])
+            codegenError("mock(): replacement parameter type " + std::to_string(i) +
+                         " does not match '" + bareName + "'");
+    }
+
+    // Canonical sig keys the runtime registry and the dispatch-site check
+    // (mocked_functions_ in src/codegen_call_user.cpp).
+    const std::string canonicalSig = buildCanonicalSig(bareName, entry->paramTypeNames);
+    mocked_functions_.insert(canonicalSig);
+
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
 
     if (fnInfo->capturedVars.empty()) {
         // Non-capturing: register plain function pointer.
@@ -658,6 +781,196 @@ void CodeGen::emitMockCall(CallStmt &s) {
     llvm::FunctionCallee mockSetClosureFn =
         mod_->getOrInsertFunction("__ry_mock_set_closure", mockSetClosureTy);
     builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
+}
+
+// ===== Mock support for @native overloads (#1682) =====
+//
+// emitMockCall delegates here when findFunction(bareName) returns null but
+// collectNativeSigsByBareName(bareName) finds @native signatures (e.g.
+// math.digits / math.abs). The registration logic mirrors emitMockCall but
+// operates on NativeFnSignature instead of OverloadEntry — type validation
+// uses LLVM-level equality between FnTypeInfo paramTypes/returnType and
+// resolveType()'d sig.params[i].typeName / sig.returnTypeName.
+void CodeGen::emitNativeMockCall(CallStmt &s,
+                                  const std::string &bareName,
+                                  const std::string &fnNameInput,
+                                  bool isSigForm,
+                                  const std::vector<std::string> &sigParamTypes,
+                                  const std::vector<const NativeFnSignature*> &nativeSigs) {
+    auto sigParamNames = [](const NativeFnSignature *sig) {
+        std::vector<std::string> out;
+        out.reserve(sig->params.size());
+        for (const auto &p : sig->params) out.push_back(p.typeName);
+        return out;
+    };
+
+    const NativeFnSignature *target = nullptr;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (const auto *sig : nativeSigs) {
+            if (sig->params.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { target = sig; break; }
+        }
+        if (!target) {
+            std::string msg = "mock(): no overload of '" + bareName +
+                              "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto *sig : nativeSigs)
+                msg += "\n  - " + buildCanonicalSig(bareName, sigParamNames(sig));
+            codegenError(msg);
+        }
+    } else if (nativeSigs.size() == 1) {
+        target = nativeSigs[0];
+    }
+    // else (bare + multiple native overloads): target stays null — resolved
+    // below after emitting the replacement (Option C: pick by replacement type).
+
+    llvm::Value *replacement = emitExpr(*s.args[1]);
+    auto *fnInfo = lookupFnTypeInfo(replacement);
+    if (!fnInfo)
+        codegenError("mock(): second argument must be a lambda or function reference");
+
+    if (!target) {
+        const NativeFnSignature *match = nullptr;
+        int matchCount = 0;
+        for (const auto *sig : nativeSigs) {
+            if (sig->params.size() != fnInfo->paramTypes.size()) continue;
+            if (resolveType(sig->returnTypeName) != fnInfo->returnType) continue;
+            bool eq = true;
+            for (size_t i = 0; i < sig->params.size(); ++i) {
+                if (resolveType(sig->params[i].typeName) != fnInfo->paramTypes[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { match = sig; ++matchCount; }
+        }
+        if (matchCount == 0 || matchCount > 1) {
+            std::string msg = "mock(): '" + bareName + "' is overloaded; replacement's signature ";
+            msg += (matchCount == 0)
+                ? "does not match any overload."
+                : "is ambiguous (matches multiple overloads).";
+            msg += " Use signature form: mock(\"" + bareName + "(T1, T2)\", ...). Available:";
+            for (const auto *sig : nativeSigs)
+                msg += "\n  - " + buildCanonicalSig(bareName, sigParamNames(sig));
+            codegenError(msg);
+        }
+        target = match;
+    }
+
+    // Verify type compatibility against the resolved native sig.
+    // codegenError above is [[noreturn]], so target is guaranteed non-null
+    // here when matchCount==1.
+    // cppcheck-suppress nullPointerRedundantCheck
+    llvm::Type *targetRetTy = resolveType(target->returnTypeName);
+    if (fnInfo->returnType != targetRetTy)
+        codegenError("mock(): replacement return type does not match '" + bareName + "'");
+    if (fnInfo->paramTypes.size() != target->params.size())
+        codegenError("mock(): replacement parameter count does not match '" + bareName + "'");
+    for (size_t i = 0; i < target->params.size(); ++i) {
+        llvm::Type *targetParamTy = resolveType(target->params[i].typeName);
+        if (fnInfo->paramTypes[i] != targetParamTy)
+            codegenError("mock(): replacement parameter type " + std::to_string(i) +
+                         " does not match '" + bareName + "'");
+    }
+
+    const std::string canonicalSig = buildCanonicalSig(bareName, sigParamNames(target));
+    mocked_functions_.insert(canonicalSig);
+
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
+
+    if (fnInfo->capturedVars.empty()) {
+        llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+        builder_.CreateCall(mockSetFn, {nameStr, replacement});
+        return;
+    }
+
+    llvm::Function *realFn = fnInfo->sourceFn;
+    if (!realFn)
+        codegenError("mock(): cannot wrap capturing closure (missing sourceFn)");
+    llvm::Function *thunk = getOrCreateCapturingThunk(realFn, *fnInfo);
+    auto envDtorCallee = getOrCreateClosureDestructor(*fnInfo);
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    llvm::Value *envDtorVal = envDtorCallee
+        ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
+        : llvm::cast<llvm::Value>(nullPtr);
+    auto *envHdr = emitArcGetHeaderFromData(replacement);
+    emitArcRetain(envHdr, false);
+    llvm::FunctionType *mockSetClosureTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee mockSetClosureFn =
+        mod_->getOrInsertFunction("__ry_mock_set_closure", mockSetClosureTy);
+    builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
+}
+
+// Spy support for @native overloads (#1682). Bare-name spy registers ALL
+// native overloads of `bareName`; sig form picks the one whose normalized
+// paramTypeNames match.
+void CodeGen::emitNativeSpyCall(CallStmt &s,
+                                 const std::string &bareName,
+                                 const std::string &fnNameInput,
+                                 bool isSigForm,
+                                 const std::vector<std::string> &sigParamTypes,
+                                 const std::vector<const NativeFnSignature*> &nativeSigs) {
+    (void)s;
+    auto sigParamNames = [](const NativeFnSignature *sig) {
+        std::vector<std::string> out;
+        out.reserve(sig->params.size());
+        for (const auto &p : sig->params) out.push_back(p.typeName);
+        return out;
+    };
+
+    std::vector<const NativeFnSignature*> targets;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (const auto *sig : nativeSigs) {
+            if (sig->params.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { targets.push_back(sig); break; }
+        }
+        if (targets.empty()) {
+            std::string msg = "spy(): no overload of '" + bareName +
+                              "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto *sig : nativeSigs)
+                msg += "\n  - " + buildCanonicalSig(bareName, sigParamNames(sig));
+            codegenError(msg);
+        }
+    } else {
+        for (const auto *sig : nativeSigs) targets.push_back(sig);
+    }
+
+    llvm::FunctionType *spyRegTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee spyRegFn =
+        mod_->getOrInsertFunction("__ry_spy_register", spyRegTy);
+    for (const auto *sig : targets) {
+        const std::string canonicalSig = buildCanonicalSig(bareName, sigParamNames(sig));
+        spied_functions_.insert(canonicalSig);
+        auto &nameStr = mock_name_strings_[canonicalSig];
+        if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
+        builder_.CreateCall(spyRegFn, {nameStr});
+    }
 }
 
 // ===== Test: mockReturnValueOnce — per-call value-return queue (#1681) =====
@@ -932,18 +1245,61 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
     auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
     if (!strExpr)
         codegenError("mockReturnValueOnce() first argument must be a function name");
-    const std::string &fnName = strExpr->value;
+    const std::string &fnNameInput = strExpr->value;
 
-    auto *fitOverloads = findFunction(fnName);
+    // Sig form ("name(T1, T2)") vs bare name. Bare + overloaded is rejected
+    // for mockReturnValueOnce: return value type alone cannot disambiguate
+    // (`Result<int, str>` and `Result<float, str>` both accept the same int
+    // payload), so users must specify sig form when overloads exist.
+    std::string bareName;
+    std::vector<std::string> sigParamTypes;
+    const bool isSigForm = parseSigString(fnNameInput, bareName, sigParamTypes);
+    if (!isSigForm) bareName = fnNameInput;
+
+    auto *fitOverloads = findFunction(bareName);
     if (!fitOverloads)
-        codegenError("mockReturnValueOnce(): unknown function '" + fnName + "'");
-    if (fitOverloads->size() > 1)
-        codegenError("mockReturnValueOnce(): overloaded functions are not supported");
+        codegenError("mockReturnValueOnce(): unknown function '" + fnNameInput + "'");
 
-    auto &entry = (*fitOverloads)[0];
+    OverloadEntry *entryPtr = nullptr;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (auto &ov : *fitOverloads) {
+            if (ov.paramTypeNames.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { entryPtr = &ov; break; }
+        }
+        if (!entryPtr) {
+            std::string msg = "mockReturnValueOnce(): no overload of '" + bareName +
+                "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto &ov : *fitOverloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+    } else if (fitOverloads->size() == 1) {
+        entryPtr = &(*fitOverloads)[0];
+    } else {
+        std::string msg = "mockReturnValueOnce(): '" + bareName +
+            "' is overloaded; return value type alone is ambiguous. "
+            "Specify signature: mockReturnValueOnce(\"" + bareName +
+            "(T1, T2)\", value). Available:";
+        for (const auto &ov : *fitOverloads)
+            msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+        codegenError(msg);
+    }
+    auto &entry = *entryPtr;
     llvm::Function *origFn = entry.func;
     llvm::Type *retTy = origFn->getReturnType();
     const std::string &retTyName = entry.returnTypeName;
+    const std::string &fnName = bareName;
     std::string resolved = resolveTypeAlias(retTyName);
 
     if (retTy->isVoidTy())
@@ -1034,10 +1390,11 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
     // Retain env so the registry owns +1.
     emitArcRetain(envHdr, false);
 
-    mocked_functions_.insert(fnName);
+    const std::string canonicalSig = buildCanonicalSig(bareName, entry.paramTypeNames);
+    mocked_functions_.insert(canonicalSig);
 
-    auto &nameStr = mock_name_strings_[fnName];
-    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
 
     llvm::Function *thunk = getOrCreateValueReturnThunk(origFn, retTyName);
     auto envDtorCallee = getOrCreateValueReturnEnvDestructor(retTy, retTyName);
@@ -1068,25 +1425,66 @@ void CodeGen::emitSpyCall(CallStmt &s) {
     auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
     if (!strExpr)
         codegenError("spy() first argument must be a function name");
-    const std::string &fnName = strExpr->value;
+    const std::string &fnNameInput = strExpr->value;
 
-    auto *fitOverloads = findFunction(fnName);
-    if (!fitOverloads)
-        codegenError("spy(): unknown function '" + fnName + "'");
+    // Sig form vs bare. Bare + overloaded registers spy for ALL overloads
+    // (aggregate spy semantics per the plan); sig form registers for exactly one.
+    std::string bareName;
+    std::vector<std::string> sigParamTypes;
+    const bool isSigForm = parseSigString(fnNameInput, bareName, sigParamTypes);
+    if (!isSigForm) bareName = fnNameInput;
 
-    if (fitOverloads->size() > 1)
-        codegenError("spy(): overloaded functions are not supported");
+    auto *fitOverloads = findFunction(bareName);
+    if (!fitOverloads) {
+        // #1682: @native overloads (e.g. math.digits) miss findFunction —
+        // delegate to the parallel native-fn spy path.
+        auto nativeSigs = collectNativeSigsByBareName(bareName);
+        if (nativeSigs.empty())
+            codegenError("spy(): unknown function '" + fnNameInput + "'");
+        emitNativeSpyCall(s, bareName, fnNameInput,
+                           isSigForm, sigParamTypes, nativeSigs);
+        return;
+    }
 
-    spied_functions_.insert(fnName);
-
-    auto &nameStr = mock_name_strings_[fnName];
-    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+    std::vector<OverloadEntry *> targets;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (auto &ov : *fitOverloads) {
+            if (ov.paramTypeNames.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { targets.push_back(&ov); break; }
+        }
+        if (targets.empty()) {
+            std::string msg = "spy(): no overload of '" + bareName +
+                "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto &ov : *fitOverloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+    } else {
+        for (auto &ov : *fitOverloads) targets.push_back(&ov);
+    }
 
     llvm::FunctionType *spyRegTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionCallee spyRegFn =
         mod_->getOrInsertFunction("__ry_spy_register", spyRegTy);
-    builder_.CreateCall(spyRegFn, {nameStr});
+    for (auto *ov : targets) {
+        const std::string canonicalSig = buildCanonicalSig(bareName, ov->paramTypeNames);
+        spied_functions_.insert(canonicalSig);
+        auto &nameStr = mock_name_strings_[canonicalSig];
+        if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
+        builder_.CreateCall(spyRegFn, {nameStr});
+    }
 }
 
 // ===== Mock/spy: argument recording IR for verifyCalledWith =====
@@ -1536,17 +1934,76 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     auto *strExpr = std::get_if<StringExpr>(&e.args[0]->data);
     if (!strExpr)
         codegenError("verifyCalledWith() first argument must be a function name string literal");
-    const std::string &fnName = strExpr->value;
+    const std::string &fnNameInput = strExpr->value;
 
-    if (!mocked_functions_.count(fnName) && !spied_functions_.count(fnName))
-        codegenError("verifyCalledWith: '" + fnName + "' is not mocked or spied");
+    // Sig form vs bare. Bare-name on an overloaded function is matched
+    // arity-then-type against the supplied args; with multiple matching
+    // overloads (e.g. ambiguous numeric coercion) the user must use sig form.
+    std::string bareName;
+    std::vector<std::string> sigParamTypes;
+    const bool isSigForm = parseSigString(fnNameInput, bareName, sigParamTypes);
+    if (!isSigForm) bareName = fnNameInput;
 
-    auto *overloads = findFunction(fnName);
+    auto *overloads = findFunction(bareName);
     if (!overloads || overloads->empty())
-        codegenError("verifyCalledWith: unknown function '" + fnName + "'");
-    if (overloads->size() > 1)
-        codegenError("verifyCalledWith: overloaded functions are not supported");
-    auto &entry = (*overloads)[0];
+        codegenError("verifyCalledWith: unknown function '" + fnNameInput + "'");
+
+    OverloadEntry *entryPtr = nullptr;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+        for (auto &ov : *overloads) {
+            if (ov.paramTypeNames.size() != wantNorm.size()) continue;
+            bool eq = true;
+            for (size_t i = 0; i < wantNorm.size(); ++i) {
+                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                        != wantNorm[i]) {
+                    eq = false; break;
+                }
+            }
+            if (eq) { entryPtr = &ov; break; }
+        }
+        if (!entryPtr) {
+            std::string msg = "verifyCalledWith: no overload of '" + bareName +
+                "' matches signature '" + fnNameInput + "'. Available:";
+            for (const auto &ov : *overloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+    } else if (overloads->size() == 1) {
+        entryPtr = &(*overloads)[0];
+    } else {
+        // Bare + overloaded: pick the overload whose arity matches the supplied
+        // arg count. Ambiguous (multiple matches) requires sig form.
+        const size_t suppliedArgs = e.args.size() - 1;
+        OverloadEntry *match = nullptr;
+        int matchCount = 0;
+        for (auto &ov : *overloads) {
+            if (ov.paramTypes.size() == suppliedArgs) { match = &ov; ++matchCount; }
+        }
+        if (matchCount != 1) {
+            std::string msg = "verifyCalledWith: '" + bareName +
+                "' is overloaded; ";
+            msg += (matchCount == 0)
+                ? "no overload accepts " + std::to_string(suppliedArgs) + " argument(s)."
+                : "multiple overloads accept " + std::to_string(suppliedArgs) +
+                  " argument(s).";
+            msg += " Use signature form: verifyCalledWith(\"" + bareName +
+                "(T1, T2)\", ...). Available:";
+            for (const auto &ov : *overloads)
+                msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
+            codegenError(msg);
+        }
+        entryPtr = match;
+    }
+    auto &entry = *entryPtr;
+    const std::string canonicalSig = buildCanonicalSig(bareName, entry.paramTypeNames);
+    const std::string &fnName = bareName;
+
+    if (!mocked_functions_.count(canonicalSig) && !spied_functions_.count(canonicalSig))
+        codegenError("verifyCalledWith: '" + fnName + "' is not mocked or spied");
 
     const size_t expectedNumArgs = e.args.size() - 1;
     if (expectedNumArgs != entry.paramTypes.size())
@@ -1555,9 +2012,9 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                      " argument(s) for '" + fnName + "', got " +
                      std::to_string(expectedNumArgs));
 
-    // Cache global string for the function name.
-    auto &nameStr = mock_name_strings_[fnName];
-    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+    // Cache global string for the function name (keyed by canonical sig).
+    auto &nameStr = mock_name_strings_[canonicalSig];
+    if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
 
     // Allocate kinds[] and values[] arrays sized to expectedNumArgs.
     llvm::Value *numArgsConst = llvm::ConstantInt::get(i64Ty_, expectedNumArgs);
