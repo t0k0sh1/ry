@@ -79,6 +79,36 @@ intermittent crash" entry.
 
 ---
 
+### TSan + Linux libtsan deadlocks on `siglongjmp` from a signal handler
+
+**Source**: #1688 (2026-05-17, `@timeout(ms)` directive)
+**Tags**: tsan, sanitizer, ci, linux, signal-handler, siglongjmp, setitimer, gotcha
+
+**Rule**: `@timeout(ms)` (`src/codegen_test.cpp::emitItWithTimeout` + `src/jit_runner.cpp::test_timeout_handler`) installs a SIGALRM handler that calls `siglongjmp` back to a JIT-emitted continuation. On **Linux + TSan**, libtsan's `siglongjmp` interceptor deadlocks when invoked from signal context (subprocess never returns; CI hits the 30s WNOHANG backstop with empty / truncated stdout). The exact same code completes in ~1.4s on **macOS TSan** and passes under default + ASan+UBSan builds, so this is an upstream TSan + Linux libtsan interaction — not a race in ry code.
+
+**How to apply**: When adding tests that exercise `@timeout` via a forked-child subprocess (`tests/test_spec_timeout.cpp`), gate the test body with:
+
+```cpp
+#if defined(__SANITIZE_THREAD__) || \
+    (defined(__has_feature) && __has_feature(thread_sanitizer))
+#  define RY_TSAN_BUILD 1
+#endif
+
+TEST_F(..., ...) {
+#ifdef RY_TSAN_BUILD
+    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
+                    "deadlocks when invoked from the SIGALRM handler ...";
+#endif
+    ...
+}
+```
+
+Full coverage (timeout fires, fail counted, next test runs) is preserved on the **required** non-TSan gates (default / ASan+UBSan / filecheck) and on local macOS TSan. Promoting `@timeout` to TSan-required is gated on either an upstream libtsan fix or a rework of the timeout mechanism to avoid `siglongjmp` from a signal handler.
+
+**Why not just extend the backstop further**: the failure is a deterministic deadlock — both `InfiniteLoopTestTimesOutAndContinuesToNext` (empty stdout) and `MixedTimeoutsContinueExecution` (truncated at `+ normal one` before the first `@timeout` test) hit the exact backstop window. Increasing the backstop only postpones the same failure.
+
+---
+
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
 **Source**: #630 / #874
