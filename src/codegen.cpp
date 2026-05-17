@@ -839,12 +839,13 @@ static void collectTestTargetsFromStmt(const StmtNode &stmt,
     std::visit([&](const auto &s) {
         using T = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<T, CallStmt>) {
-            if ((s.callee == "mock" || s.callee == "spy") && !s.args.empty()) {
+            if ((s.callee == "mock" || s.callee == "mockReturnValueOnce" ||
+                 s.callee == "spy") && !s.args.empty()) {
                 if (auto *str = std::get_if<StringExpr>(&s.args[0]->data)) {
-                    if (s.callee == "mock")
-                        mocked.insert(str->value);
-                    else
+                    if (s.callee == "spy")
                         spied.insert(str->value);
+                    else
+                        mocked.insert(str->value);
                 }
             }
             for (auto &arg : s.args)

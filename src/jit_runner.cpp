@@ -295,6 +295,8 @@ int runRySource(const std::string &src, const std::string &source_name,
             {ExecutorAddr::fromPtr(&__ry_mock_set), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_set_closure")] =
             {ExecutorAddr::fromPtr(&__ry_mock_set_closure), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_register_once")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_register_once), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_get")] =
             {ExecutorAddr::fromPtr(&__ry_mock_get), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_get_env")] =

@@ -512,6 +512,10 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitMockCall(s);
         return;
     }
+    if (s.callee == "mockReturnValueOnce") {
+        emitMockReturnValueOnceCall(s);
+        return;
+    }
     if (s.callee == "spy") {
         emitSpyCall(s);
         return;

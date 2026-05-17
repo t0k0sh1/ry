@@ -450,6 +450,45 @@ fn spyTests():
 - `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
 - A function may be both mocked and spied across different `it` blocks within the same describe. When both are active in the same block (mock+spy coexistence), `mock` takes precedence: the replacement runs and the call is counted; the real implementation is bypassed
 
+### mockReturnValueOnce(name, value)
+
+Enqueues a value for the named function. The next call to that function dequeues and returns the head of the queue. When the queue empties, calls fall back to the function set via `mock(name, replacement)` (if any), then to the original implementation — matching Jest's fallback chain.
+
+```ry
+from testing import it, describe, mock, mockReturnValueOnce, verify, expect
+
+fn fetchUser() -> str:
+    return "real"
+
+@describe("mockReturnValueOnce")
+fn mockReturnValueOnceTests():
+    @it("returns queued values in order then falls back to original")
+    fn returnsQueuedThenOriginal():
+        mockReturnValueOnce("fetchUser", "first")
+        mockReturnValueOnce("fetchUser", "second")
+        expect(fetchUser()).toEq("first")
+        expect(fetchUser()).toEq("second")
+        expect(fetchUser()).toEq("real")   # queue empty, falls back to original
+
+    @it("can mix with mock() default — queue wins, then default, then original")
+    fn mixesWithDefault():
+        mock(fetchUser, () => "fallback")
+        mockReturnValueOnce("fetchUser", "queued")
+        expect(fetchUser()).toEq("queued")     # queue
+        expect(fetchUser()).toEq("fallback")   # default mock
+        expect(fetchUser()).toEq("fallback")   # default mock (stays)
+```
+
+- Requires `from testing import mockReturnValueOnce` (since v0.0.24, #1681)
+- The first argument is the **string literal** name of the function (same convention as `spy` / `verifyCalledWith`, unlike `mock` which takes an identifier); non-literal first arguments are rejected at compile time
+- The function must exist, must not be overloaded, and must not return `Unit`; all are compile errors
+- The second argument's type must match the function's declared return type. Supported types: primitives (`int` / `float` / `bool`), `str`, `List` / `Map` / `Set`, records, `Result`, and `Option` (including bare `None` for `Option`-returning functions)
+- Arguments to the mocked call are ignored — the queue holds values, not call expectations
+- `verify(name)` counts only queue-served and default-mock-served calls. Once the queue empties and the call falls through to the original implementation, those calls are **not** counted (matching `mockReset` semantics — diverges from strict Jest behavior)
+- `mockClear(name)` preserves the queue and only resets the call counter; `mockReset(name)` and `mockResetAll()` discard the queue
+- Queues are automatically cleared at the end of each `it` block (same lifecycle as `mock` / `spy`)
+- Capture-based closures registered via `mock(name, replacement)` coexist with queued values — the queue is consumed first, then the closure
+
 ### mockClear(name)
 
 Resets the recorded call list (and call count) for a single mock to zero, but keeps the mock active. Subsequent calls continue to dispatch to the replacement.
@@ -477,6 +516,7 @@ fn mockClearTests():
 - No-op when `name` is not currently mocked or spied (no error)
 - Affects `verify(name)` and `verifyCalledWith(name, args...)` identically — both observe the cleared call list
 - Applies to spied functions identically — mock and spy share the same call-recording registry (#1683)
+- **Preserves the `mockReturnValueOnce` queue** — only the call counter is reset; queued values remain and continue to be dispatched on subsequent calls (matches Jest semantics, #1681)
 
 ### mockReset(name)
 
@@ -504,6 +544,7 @@ fn mockResetTests():
 - No-op when `name` is not currently mocked or spied (no error)
 - Releases the replacement closure environment (capturing closures' captured variables are dropped immediately, equivalent to `it`-block end auto-cleanup for this single mock)
 - Applies to spied functions identically — removes the spy registration, after which `verify(name)` returns 0 (#1683)
+- **Discards the `mockReturnValueOnce` queue** for the named function — any remaining queued values are released (#1681)
 
 ### mockResetAll()
 
@@ -537,12 +578,14 @@ fn mockResetAllTests():
 - Takes no arguments
 - No-op when no mock or spy is currently registered
 - Clears spied functions identically — the registry is shared between mock and spy (#1683)
+- **Discards all `mockReturnValueOnce` queues** — every named function's queued values are released (#1681)
 
 ### Limitations
 
 - Overloaded functions cannot be mocked.
 - `@native fn` declarations cannot be mocked.
 - Capture-based closures **are supported as mock replacements** (since v0.0.22, #1678) — the closure can read or mutate variables from the enclosing scope. The captured environment is released automatically when the `it` block ends.
+- For `mockReturnValueOnce`, calls that fall through to the original implementation (after the queue empties and with no default `mock` set) are not counted by `verify(name)` — only queue-served and default-mock-served calls increment the counter. This diverges from strict Jest behavior but matches the Ry convention used by `mockReset` (#1681).
 
 ---
 

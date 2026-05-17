@@ -1116,3 +1116,129 @@ TEST_F(CodeGenTest, VerifyCalledWithSpiedFunction) {
         "        expect(verifyCalledWith(\"compute\", 7)).toEq(1)\n"
     )), "vcw spy\n  \033[32m+ matches spied call\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
+
+// ============================================================
+// mockReturnValueOnce() rejection tests (#1681)
+// ============================================================
+
+// First argument must be a string literal (parser converts `mockReturnValueOnce(name, ...)`
+// to a CallStmt where args[0] is StringExpr; non-literal must be rejected).
+TEST_F(CodeGenTest, MockReturnValueOnceFirstArgNonLiteralError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hello\"\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        name: str = \"greet\"\n"
+        "        mockReturnValueOnce(name, \"x\")\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() on a function that doesn't exist
+TEST_F(CodeGenTest, MockReturnValueOnceUnknownFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"no_such_fn\", \"x\")\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() on an overloaded function (overloads not supported)
+TEST_F(CodeGenTest, MockReturnValueOnceOverloadedFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn over(x: int) -> int:\n"
+        "    return x\n"
+        "fn over(x: int, y: int) -> int:\n"
+        "    return x + y\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"over\", 1)\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() with mismatched return value type
+TEST_F(CodeGenTest, MockReturnValueOnceTypeMismatchError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hello\"\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"greet\", 42)\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() outside test mode (no 'ry test')
+TEST_F(CodeGenTest, MockReturnValueOnceOutsideTestModeError) {
+    EXPECT_THROW(runSource(
+        "fn greet() -> str:\n"
+        "    return \"hello\"\n"
+        "mockReturnValueOnce(\"greet\", \"x\")\n"
+    ), std::exception);
+}
+
+// mockReturnValueOnce() without `from testing import mockReturnValueOnce`
+TEST_F(CodeGenTest, MockReturnValueOnceWithoutImportError) {
+    EXPECT_THROW(runTestSourceNoTestingImports(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hello\"\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"greet\", \"x\")\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() on a Unit-returning function (no value to mock)
+TEST_F(CodeGenTest, MockReturnValueOnceUnitFunctionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn doNothing() -> Unit:\n"
+        "    return\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"doNothing\", 0)\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() with wrong arity (1 arg)
+TEST_F(CodeGenTest, MockReturnValueOnceWrongArityError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn greet() -> str:\n"
+        "    return \"hello\"\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"greet\")\n"
+    )), std::exception);
+}
+
+// mockReturnValueOnce() with `None` on a non-Option return type
+TEST_F(CodeGenTest, MockReturnValueOnceNoneOnNonOptionError) {
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "fn fetchInt() -> int:\n"
+        "    return 1\n"
+        "\n"
+        "@describe(\"mrvo error\")\n"
+        "fn mrvoError():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
+        "        mockReturnValueOnce(\"fetchInt\", None)\n"
+    )), std::exception);
+}

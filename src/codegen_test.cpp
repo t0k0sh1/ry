@@ -660,6 +660,400 @@ void CodeGen::emitMockCall(CallStmt &s) {
     builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
 }
 
+// ===== Test: mockReturnValueOnce — per-call value-return queue (#1681) =====
+//
+// Local helper: strip "Option<" or "Result<" prefix and trailing '>', return
+// the nth comma-separated type argument (paren-aware). Mirrors the static
+// helper in codegen_match.cpp but lives here to avoid leaking a private TU
+// symbol. Used to recover the Ok / Err / Some inner type names for retain /
+// release dispatch on tagged-union return types.
+static std::string vretExtractGenericArg(const std::string &typeStr,
+                                          const std::string &prefix,
+                                          size_t argIdx) {
+    if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
+        if (argIdx != 0) return {};
+        return CodeGen::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
+    }
+    if (typeStr.size() <= prefix.size() ||
+        typeStr.compare(0, prefix.size(), prefix) != 0 ||
+        typeStr.back() != '>')
+        return {};
+    const std::string inner = typeStr.substr(prefix.size(),
+                                              typeStr.size() - prefix.size() - 1);
+    const auto parts = CodeGen::splitTypeArgs(inner);
+    if (argIdx >= parts.size()) return {};
+    return CodeGen::trimTypeNameSpaces(parts[argIdx]);
+}
+
+void CodeGen::retainValueReturnResult(llvm::Value *val,
+                                       llvm::Type *retTy,
+                                       const std::string &retTyName) {
+    if (!val || !retTy || retTy->isVoidTy())
+        return;
+    std::string resolved = resolveTypeAlias(retTyName);
+
+    if (resolved == "str") {
+        auto *hdr = emitStrGetHeaderFromData(val);
+        emitArcRetain(hdr, false);
+        return;
+    }
+    if (isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        emitArcRetain(hdr, false);
+        return;
+    }
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(retTy)) {
+        if (record_types_.count(resolved)) {
+            emitRecordArcFieldsRetain(val, st);
+            return;
+        }
+        // Result<T, E> / Option<T> / T?
+        bool isResult = resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0;
+        bool isOption = (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
+                     || (!resolved.empty() && resolved.back() == '?');
+        if (!isResult && !isOption) return;
+
+        std::string okName  = isResult ? vretExtractGenericArg(resolved, "Result<", 0)
+                                       : vretExtractGenericArg(resolved, "Option<", 0);
+        std::string errName = isResult ? vretExtractGenericArg(resolved, "Result<", 1) : "";
+
+        auto *tag = builder_.CreateExtractValue(val, {0}, "vret.retain.tag");
+        auto *isOk = builder_.CreateICmpEQ(tag,
+            llvm::ConstantInt::get(tag->getType(), 1), "vret.retain.is_ok");
+        auto *fn = builder_.GetInsertBlock()->getParent();
+        auto *okBB    = llvm::BasicBlock::Create(*ctx_, "vret.retain.ok", fn);
+        auto *errBB   = llvm::BasicBlock::Create(*ctx_, "vret.retain.err", fn);
+        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "vret.retain.merge", fn);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        builder_.SetInsertPoint(okBB);
+        if (st->getNumElements() >= 2 && !okName.empty()) {
+            auto *okSlot = builder_.CreateExtractValue(val, {1}, "vret.retain.ok_slot");
+            retainValueReturnResult(okSlot, st->getElementType(1), okName);
+        }
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(errBB);
+        if (isResult && st->getNumElements() >= 3 && !errName.empty()) {
+            auto *errSlot = builder_.CreateExtractValue(val, {2}, "vret.retain.err_slot");
+            retainValueReturnResult(errSlot, st->getElementType(2), errName);
+        }
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        return;
+    }
+    // int / float / bool / Unit / low-level: no-op
+}
+
+void CodeGen::releaseValueReturnResult(llvm::Value *val,
+                                        llvm::Type *retTy,
+                                        const std::string &retTyName) {
+    if (!val || !retTy || retTy->isVoidTy())
+        return;
+    std::string resolved = resolveTypeAlias(retTyName);
+
+    if (resolved == "str") {
+        auto *hdr = emitStrGetHeaderFromData(val);
+        emitArcRelease(hdr, false, {});
+        return;
+    }
+    if (isListTypeName(resolved)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        auto subDtor = getOrCreateCollectionDestructor(CollectionKind::List);
+        emitArcRelease(hdr, false, subDtor);
+        return;
+    }
+    if (isMapTypeName(resolved)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        auto subDtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+        emitArcRelease(hdr, false, subDtor);
+        return;
+    }
+    if (isSetTypeName(resolved)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        auto subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        emitArcRelease(hdr, false, subDtor);
+        return;
+    }
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(retTy)) {
+        if (record_types_.count(resolved)) {
+            emitRecordArcFieldsRelease(val, st);
+            return;
+        }
+        bool isResult = resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0;
+        bool isOption = (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
+                     || (!resolved.empty() && resolved.back() == '?');
+        if (!isResult && !isOption) return;
+
+        std::string okName  = isResult ? vretExtractGenericArg(resolved, "Result<", 0)
+                                       : vretExtractGenericArg(resolved, "Option<", 0);
+        std::string errName = isResult ? vretExtractGenericArg(resolved, "Result<", 1) : "";
+
+        auto *tag = builder_.CreateExtractValue(val, {0}, "vret.rel.tag");
+        auto *isOk = builder_.CreateICmpEQ(tag,
+            llvm::ConstantInt::get(tag->getType(), 1), "vret.rel.is_ok");
+        auto *fn = builder_.GetInsertBlock()->getParent();
+        auto *okBB    = llvm::BasicBlock::Create(*ctx_, "vret.rel.ok", fn);
+        auto *errBB   = llvm::BasicBlock::Create(*ctx_, "vret.rel.err", fn);
+        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "vret.rel.merge", fn);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        builder_.SetInsertPoint(okBB);
+        if (st->getNumElements() >= 2 && !okName.empty()) {
+            auto *okSlot = builder_.CreateExtractValue(val, {1}, "vret.rel.ok_slot");
+            releaseValueReturnResult(okSlot, st->getElementType(1), okName);
+        }
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(errBB);
+        if (isResult && st->getNumElements() >= 3 && !errName.empty()) {
+            auto *errSlot = builder_.CreateExtractValue(val, {2}, "vret.rel.err_slot");
+            releaseValueReturnResult(errSlot, st->getElementType(2), errName);
+        }
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        return;
+    }
+}
+
+llvm::Function *CodeGen::getOrCreateValueReturnThunk(llvm::Function *origFn,
+                                                     const std::string &retTyName) {
+    auto it = value_return_thunk_cache_.find(origFn);
+    if (it != value_return_thunk_cache_.end())
+        return it->second;
+
+    llvm::Type *retTy = origFn->getReturnType();
+
+    // Thunk signature: (origParams..., ptr env) -> retTy. User-supplied params
+    // are ignored — the thunk loads the pre-stored return value from env and
+    // returns it (after a +1 retain so the caller's reference is independent
+    // of env lifetime).
+    std::vector<llvm::Type*> thunkParams;
+    for (auto &p : origFn->args())
+        thunkParams.push_back(p.getType());
+    thunkParams.push_back(ptrTy_);
+    auto *thunkTy = llvm::FunctionType::get(retTy, thunkParams, false);
+
+    std::string name = "__ry_uc_vret_" + origFn->getName().str();
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+    value_return_thunk_cache_[origFn] = thunk;
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    builder_.SetInsertPoint(entry);
+
+    if (retTy->isVoidTy()) {
+        builder_.CreateRetVoid();
+    } else {
+        llvm::Value *envPtr = thunk->getArg(static_cast<unsigned>(origFn->arg_size()));
+        auto *result = builder_.CreateLoad(retTy, envPtr, "vret.val");
+        retainValueReturnResult(result, retTy, retTyName);
+        builder_.CreateRet(result);
+    }
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    return thunk;
+}
+
+llvm::FunctionCallee CodeGen::getOrCreateValueReturnEnvDestructor(
+    llvm::Type *retTy, const std::string &retTyName) {
+    if (!retTy || retTy->isVoidTy())
+        return {};
+    // Non-ARC primitives need no dtor — runtime frees env memory unconditionally.
+    std::string resolved = resolveTypeAlias(retTyName);
+    bool needsDtor = (resolved == "str")
+        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || record_types_.count(resolved)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
+        || (!resolved.empty() && resolved.back() == '?');
+    if (!needsDtor)
+        return {};
+
+    auto cacheIt = value_return_env_dtor_cache_.find(resolved);
+    if (cacheIt != value_return_env_dtor_cache_.end())
+        return cacheIt->second;
+
+    auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    // Sanitize cache key into a symbol-safe suffix (rough; collisions are rare
+    // and would only produce duplicate-symbol link errors which are easy to
+    // diagnose).
+    std::string suffix;
+    suffix.reserve(resolved.size());
+    for (char c : resolved) {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '_')
+            suffix.push_back(c);
+        else
+            suffix.push_back('_');
+    }
+    std::string name = "__ry_uc_vret_dtor_" + suffix;
+    auto *dtorFn = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, name, mod_.get());
+    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    llvm::FunctionCallee callee(dtorTy, dtorFn);
+    value_return_env_dtor_cache_[resolved] = callee;
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    builder_.SetInsertPoint(entry);
+    auto *envPtr = dtorFn->getArg(0);
+    auto *loaded = builder_.CreateLoad(retTy, envPtr, "vret.dtor.val");
+    releaseValueReturnResult(loaded, retTy, retTyName);
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    return callee;
+}
+
+void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'mockReturnValueOnce' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count("mockReturnValueOnce"))
+        codegenError(s.loc,
+            "'mockReturnValueOnce' requires 'from testing import mockReturnValueOnce'");
+
+    if (s.args.size() != 2)
+        codegenError("mockReturnValueOnce() requires exactly 2 arguments: function name and return value");
+
+    auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
+    if (!strExpr)
+        codegenError("mockReturnValueOnce() first argument must be a function name");
+    const std::string &fnName = strExpr->value;
+
+    auto *fitOverloads = findFunction(fnName);
+    if (!fitOverloads)
+        codegenError("mockReturnValueOnce(): unknown function '" + fnName + "'");
+    if (fitOverloads->size() > 1)
+        codegenError("mockReturnValueOnce(): overloaded functions are not supported");
+
+    auto &entry = (*fitOverloads)[0];
+    llvm::Function *origFn = entry.func;
+    llvm::Type *retTy = origFn->getReturnType();
+    const std::string &retTyName = entry.returnTypeName;
+    std::string resolved = resolveTypeAlias(retTyName);
+
+    if (retTy->isVoidTy())
+        codegenError("mockReturnValueOnce(): function '" + fnName +
+                     "' returns Unit; mockReturnValueOnce requires a value-returning function");
+
+    // Reject return types whose retain/release the helpers do not handle.
+    bool supported = (resolved == "int") || (resolved == "float")
+        || (resolved == "bool") || (resolved == "Unit")
+        || isLowLevelTypeName(resolved)
+        || (resolved == "str")
+        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || (record_types_.count(resolved) > 0)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
+        || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
+        || (!resolved.empty() && resolved.back() == '?');
+    if (!supported)
+        codegenError("mockReturnValueOnce(): unsupported return type '" + retTyName +
+                     "' for '" + fnName +
+                     "' (supported: primitives, str, List, Map, Set, Record, Result, Option)");
+
+    // Install Option-inner hint so `None` / `None()` literal pick up the right
+    // inner type from the callee's return signature.
+    llvm::Type *annotOptionInner = nullptr;
+    if (isOptionType(retTy))
+        annotOptionInner = llvm::cast<llvm::StructType>(retTy)->getElementType(1);
+    OptionNoneHintGuard noneHintGuard(*this, annotOptionInner);
+    DeclAnnotationInnerGuard declHintGuard(*this, annotOptionInner);
+
+    llvm::Value *value = nullptr;
+    if (isNoneLiteral(*s.args[1])) {
+        if (!isOptionType(retTy))
+            codegenError("mockReturnValueOnce(): None can only be passed when '"
+                         + fnName + "' returns Option");
+        value = buildNoneValue(retTy);
+    } else {
+        value = emitExpr(*s.args[1]);
+    }
+    if (!value)
+        codegenError("mockReturnValueOnce(): could not evaluate return value");
+    llvm::Type *valTy = value->getType();
+
+    // Coerce common annotation-style mismatches (mirrors emitVarDecl).
+    if (valTy != retTy) {
+        if (isOptionType(retTy) && !isOptionType(valTy)) {
+            auto *optTy = llvm::cast<llvm::StructType>(retTy);
+            llvm::Type *innerTy = optTy->getElementType(1);
+            if (valTy != innerTy)
+                codegenError("mockReturnValueOnce(): return value type does not match '"
+                             + fnName + "'");
+            value = buildSomeValue(value, retTy);
+            valTy = retTy;
+        } else if (isResultType(retTy) && isResultType(valTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(retTy);
+            llvm::Value *coerced = coerceResultType(value, dstResTy);
+            if (!coerced)
+                codegenError("mockReturnValueOnce(): return value type does not match '"
+                             + fnName + "'");
+            value = coerced;
+            valTy = retTy;
+        } else if (llvm::Value *lowCoerced = coerceToLowLevelType(value, retTy,
+                                                                  retTyName, "",
+                                                                  "vret.coerce")) {
+            value = lowCoerced;
+            valTy = retTy;
+        }
+    }
+    if (valTy != retTy)
+        codegenError("mockReturnValueOnce(): return value type does not match '"
+                     + fnName + "'");
+
+    // Allocate env (sizeof(retTy) bytes, ARC-managed) and store the value.
+    // The env's own ARC strong starts at 1 (from emitArcAlloc). emitArcRetain
+    // bumps it to 2 so the registry retains +1 after statement-end cleanup
+    // releases the local alloc +1.
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t retSize = dl.getTypeAllocSize(retTy);
+    if (retSize == 0) retSize = 1;
+    auto *envHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, retSize));
+    auto *envData = emitArcGetDataPtr(envHdr);
+
+    // Retain the value's ARC content for env's ownership. The statement-end
+    // release of the original +1 (from emitExpr) then balances, leaving env
+    // as sole owner of the stored value.
+    retainValueReturnResult(value, retTy, retTyName);
+    builder_.CreateStore(value, envData);
+
+    // Retain env so the registry owns +1.
+    emitArcRetain(envHdr, false);
+
+    mocked_functions_.insert(fnName);
+
+    auto &nameStr = mock_name_strings_[fnName];
+    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
+
+    llvm::Function *thunk = getOrCreateValueReturnThunk(origFn, retTyName);
+    auto envDtorCallee = getOrCreateValueReturnEnvDestructor(retTy, retTyName);
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    llvm::Value *envDtorVal = envDtorCallee
+        ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
+        : llvm::cast<llvm::Value>(nullPtr);
+
+    llvm::FunctionType *registerOnceTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_),
+        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee registerOnceFn = mod_->getOrInsertFunction(
+        "__ry_mock_register_once", registerOnceTy);
+    builder_.CreateCall(registerOnceFn, {nameStr, thunk, envData, envDtorVal});
+}
+
 // ===== Test: spy(fn_name) — record calls without replacement =====
 
 void CodeGen::emitSpyCall(CallStmt &s) {
