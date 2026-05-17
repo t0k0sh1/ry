@@ -571,6 +571,25 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         emitDescribeDirective(s);
         return;
     }
+    // Lifecycle hooks (#1686). At normal codegen these are pre-scanned out
+    // by emitDescribeDirective; reaching this dispatch means the hook fn is
+    // outside an @describe and the handler emits a clear diagnostic.
+    if (hasDirective(s->directives, "beforeEach")) {
+        emitBeforeEachDirective(s);
+        return;
+    }
+    if (hasDirective(s->directives, "afterEach")) {
+        emitAfterEachDirective(s);
+        return;
+    }
+    if (hasDirective(s->directives, "beforeAll")) {
+        emitBeforeAllDirective(s);
+        return;
+    }
+    if (hasDirective(s->directives, "afterAll")) {
+        emitAfterAllDirective(s);
+        return;
+    }
 
     emitCoverage(s->loc);
     emitTraceSymbolDefine("fn", s->name, s->loc);

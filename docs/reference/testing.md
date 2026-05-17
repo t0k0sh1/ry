@@ -273,6 +273,86 @@ fn booleansTests():
 
 ---
 
+## Lifecycle Hooks
+
+Four directives — `@beforeEach`, `@afterEach`, `@beforeAll`, `@afterAll` — let you factor common setup/teardown out of every `@it` body. They are declared on parameterless, return-typeless functions inside a `@describe` block; the body is **inlined** into the describe at codegen time and runs in the describe's variable scope.
+
+```ry
+from testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect
+
+@describe("counter")
+fn counterTests():
+    counter = 0
+    log = ""
+
+    @beforeAll
+    fn setupAll():
+        log = log + "BA;"
+
+    @beforeEach
+    fn setupEach():
+        counter = counter + 1
+        log = log + "BE;"
+
+    @afterEach
+    fn teardownEach():
+        log = log + "AE;"
+
+    @afterAll
+    fn teardownAll():
+        log = log + "AA;"
+
+    @it("first call sees counter == 1")
+    fn first():
+        expect(counter).toEq(1)
+
+    @it("second call sees counter == 2 (state accumulates)")
+    fn second():
+        expect(counter).toEq(2)
+```
+
+### Execution order
+
+For a describe with `N` tests, hooks run in this order:
+
+```text
+@beforeAll
+(@beforeEach → @it → @afterEach) × N
+@afterAll
+```
+
+### Accumulation semantics (differs from Jest)
+
+The `@describe` body executes **once**, not per-test. Variables declared inside the describe are allocated once and live across all tests in the block; `@beforeEach` mutations accumulate across `@it` invocations (the `counter == 1` then `counter == 2` example above). This is intentional and follows from Ry's scope model.
+
+If you need per-test reset semantics, write the reset explicitly:
+
+```ry
+@beforeEach
+fn reset():
+    counter = 0           # explicit reset, not implicit
+```
+
+### Mutability rules
+
+- **Hook bodies** are inlined into the describe scope, so they may freely read and reassign describe-scope variables (`counter = counter + 1` above).
+- **`@it` bodies** are compiled as separate functions that capture describe-scope variables. Captures are read-only — attempting `counter = counter + 1` inside an `@it` body raises `cannot modify captured variable`.
+- A hook body cannot **introduce a new variable** (e.g. `items: List<int> = []`) because hook bodies are re-emitted before every `@it`; the second emission would re-declare the same name and fail with `type annotation not allowed on reassignment`. Declare such variables in the describe scope and have the hook only reassign them.
+
+### Constraints
+
+- A hook function must have no parameters and no declared return type
+- At most one of each hook kind per describe block
+- A function cannot carry two lifecycle directives (e.g. `@beforeEach @afterEach`)
+- A lifecycle hook directive cannot coexist with `@it`, `@describe`, `@timeout`, `@skip`, `@only`, `@todo`, `@each`, or `@property` on the same function
+- Hooks declared outside a `@describe` (file top-level) are rejected
+
+### Interaction with `@timeout`
+
+When `@timeout` fires (the SIGALRM path), the test is aborted via `siglongjmp` past the inlined `@afterEach` body — so `@afterEach` runs only on normal completion. See the [Directives reference](directives.md#timeout) for the underlying mechanism.
+
+---
+
 ## Mocking
 
 ### mock(fnName, replacement)
@@ -766,7 +846,9 @@ it should return error when file is missing
 
 ## Limitations
 
-- `before_each` / `after_each` are not supported
+- File top-level lifecycle hooks (outside any `@describe`) are not supported
+- Nested-describe inheritance of lifecycle hooks is not supported (each `@describe` owns its own hooks)
+- A test fired by `@timeout` (i.e. the test body did not finish within the budget) skips its `@afterEach` — see [Directives reference](directives.md#timeout) for details
 
 ---
 

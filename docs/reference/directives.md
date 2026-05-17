@@ -621,6 +621,180 @@ Promoting `@timeout` to TSan-required is gated on either an upstream
 libtsan fix or a redesign that avoids `siglongjmp` from a signal
 handler.
 
+**Composition with `@afterEach`:** when `@timeout` fires mid-test,
+the runtime unwinds via `siglongjmp` past the inlined `@afterEach`
+body, so cleanup runs **only on normal completion**. See `@afterEach`
+below.
+
+### `@beforeEach`
+
+Runs before every `@it` inside the enclosing `@describe`. Used for
+per-test setup (resetting state, allocating fresh fixtures, etc.).
+
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test
+files must add `from testing import beforeEach` at the top (or use
+a wildcard `from testing`).
+
+```ry
+from testing import describe, it, beforeEach, expect
+
+@describe("counter starts fresh each test")
+fn counterTests():
+    counter = 99
+
+    @beforeEach
+    fn reset():
+        counter = 0
+
+    @it("first sees counter == 0 (not 99)")
+    fn first():
+        expect(counter).toEq(0)
+
+    @it("second also sees counter == 0")
+    fn second():
+        expect(counter).toEq(0)
+```
+
+**Supported target:** functions inside a `@describe` body, with no
+parameters and no declared return type.
+
+**Constraints:**
+
+- At most one `@beforeEach` per describe
+- Cannot coexist on the same function with `@it`, `@describe`,
+  `@timeout`, `@skip`, `@only`, `@todo`, `@each`, `@property`, or any
+  other lifecycle hook directive
+- Hooks declared outside a `@describe` (file top-level) are rejected
+- The hook body cannot introduce new named variables (see
+  [Lifecycle Hooks](testing.md#lifecycle-hooks) for the re-emission
+  constraint)
+
+**Implementation:** Hook bodies are not emitted as standalone LLVM
+functions; the AST body is stashed and inlined into the describe
+scope before each `@it` call. Describe-scope variable mutation
+therefore propagates to subsequent `@it` invocations (Ry's
+accumulating semantics — see the testing reference for contrast with
+Jest).
+
+### `@afterEach`
+
+Runs after every `@it` inside the enclosing `@describe` that
+completes **normally**. Used for per-test cleanup.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`.
+
+```ry
+from testing import describe, it, afterEach, expect
+
+@describe("cleanup after each test")
+fn cleanupTests():
+    log = ""
+
+    @afterEach
+    fn appendMarker():
+        log = log + "AE;"
+
+    @it("first test")
+    fn first():
+        expect(log).toEq("")
+
+    @it("second test sees prior afterEach")
+    fn second():
+        expect(log).toEq("AE;")
+```
+
+**Supported target:** functions inside a `@describe` body, with no
+parameters and no declared return type. Same constraints as
+`@beforeEach`.
+
+**Composition with `@timeout`:** when `@timeout` fires for a test,
+the runtime unwinds via `siglongjmp` and the test's `@afterEach`
+body is **skipped**. `@afterEach` runs only when the body completes
+within the timeout budget. Tests that need a cleanup guarantee even
+on timeout must arrange it through external means (e.g. a parent
+process / fixture in the test harness).
+
+**Composition with failing assertions:** when an `expect` fails, the
+test is marked failed but execution within the test body stops at
+the failing assertion. `@afterEach` still runs for the failed test
+because the test function returns normally (the failure is recorded
+via a flag, not an exception).
+
+### `@beforeAll`
+
+Runs **once** before the first `@it` inside the enclosing
+`@describe`. Used for one-time setup that all tests share.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`.
+
+```ry
+from testing import describe, it, beforeAll, expect
+
+@describe("seed shared resource once")
+fn sharedResourceTests():
+    setupCount = 0
+
+    @beforeAll
+    fn seed():
+        setupCount = setupCount + 1
+
+    @it("setupCount == 1")
+    fn first():
+        expect(setupCount).toEq(1)
+
+    @it("setupCount still == 1 (beforeAll did not re-run)")
+    fn second():
+        expect(setupCount).toEq(1)
+```
+
+**Position independence:** `@beforeAll` runs before the first `@it`
+even when declared **after** the `@it` lexically. The describe body
+is scanned for hooks before any tests are emitted.
+
+**Supported target:** functions inside a `@describe` body, with no
+parameters and no declared return type. Same constraints as
+`@beforeEach`.
+
+### `@afterAll`
+
+Runs **once** after the last `@it` inside the enclosing `@describe`.
+Used for one-time teardown.
+
+**Defined as:** Declared in `share/std/testing/testing.ry`.
+
+```ry
+from testing import describe, it, beforeAll, afterAll, expect
+
+@describe("shared handle opened once, closed once")
+fn teardownTests():
+    openCount = 0
+    closeCount = 0
+
+    @beforeAll
+    fn open():
+        openCount = openCount + 1
+
+    @afterAll
+    fn close():
+        closeCount = closeCount + 1
+
+    @it("first test")
+    fn first():
+        expect(openCount).toEq(1)
+
+    @it("second test")
+    fn second():
+        expect(openCount).toEq(1)
+```
+
+**Supported target:** functions inside a `@describe` body, with no
+parameters and no declared return type. Same constraints as
+`@beforeEach`.
+
+**Note:** `@afterAll` runs after the last `@it` regardless of
+whether individual tests failed. It does **not** run if the entire
+test process is terminated by an external signal.
+
 ### `@inline`
 
 Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
