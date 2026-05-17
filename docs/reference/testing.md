@@ -34,8 +34,6 @@ When `ry test` is run without arguments, it:
 
 ## Syntax
 
-### Syntax
-
 Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`, `spy`, `verify`, `verifyCalledWith`, `fail` from the `testing` module. Import them at the top using either `from testing` (wildcard) or `from testing import ...` (named). Several enforcement paths produce different error messages:
 
 - `@it` / `@describe` are declared in `share/std/testing/testing.ry` as `@directive` declarations. Without the import, codegen rejects them via the general directive-resolution mechanism with `unknown directive '@it'` or `unknown directive '@describe'`.
@@ -302,11 +300,11 @@ fn counterTests():
     fn teardownAll():
         log = log + "AA;"
 
-    @it("first call sees counter == 1")
+    @it("should see counter == 1 on first call")
     fn first():
         expect(counter).toEq(1)
 
-    @it("second call sees counter == 2 (state accumulates)")
+    @it("should see counter == 2 on second call (state accumulates)")
     fn second():
         expect(counter).toEq(2)
 ```
@@ -482,7 +480,7 @@ fn verifyCalledWithTests():
 
 - Requires `from testing import verifyCalledWith`
 - The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
-- The function must already be mocked via `mock(...)` before `verifyCalledWith` is called; calling on a non-mocked function is a compile error.
+- The function must already be mocked via `mock(...)` or spied via `spy(...)` before `verifyCalledWith` is called; calling on a function that has neither is a compile error.
 - The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
 - Supported argument types: `int`, `float`, `bool`, `str` (since v0.0.22, #1677), `List<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1703), `Set<T>` where `T ∈ {int, float, bool, str}` (since v0.0.22, #1704), `Map<K, V>` where `K, V ∈ {int, float, bool, str}` (since v0.0.22, #1705), record types whose fields are all in `{int, float, bool, str}` (since v0.0.22, #1706), tuple types whose elements are all in `{int, float, bool, str}` (since v0.0.22, #1706), and `fn(...) -> R` (function-typed) arguments compared by pointer equality (since v0.0.22, #1707). Other types (nested `List<List<T>>`, records or tuples containing collections) are rejected at compile time and are tracked for v0.0.x follow-up.
 - `List<T>` arguments are compared by deep snapshot: the recorded call snapshot and the verify-side snapshot must agree on length and element-wise equality. Element comparison is byte-exact for `int` / `float` / `bool` and uses NUL-safe length+`memcmp` for `str`.
@@ -506,13 +504,13 @@ fn compute(x: int) -> int:
 
 @describe("spy")
 fn spyTests():
-    @it("records calls without replacing implementation")
+    @it("should record calls without replacing implementation")
     fn recordsWithoutReplacing():
         spy("compute")
         expect(compute(5)).toEq(15)         # real implementation runs
         expect(verify("compute")).toEq(1)   # call is recorded
 
-    @it("works with verifyCalledWith")
+    @it("should work with verifyCalledWith")
     fn worksWithVerifyCalledWith():
         spy("compute")
         compute(7)
@@ -542,7 +540,7 @@ fn fetchUser() -> str:
 
 @describe("mockReturnValueOnce")
 fn mockReturnValueOnceTests():
-    @it("returns queued values in order then falls back to original")
+    @it("should return queued values in order then fall back to original")
     fn returnsQueuedThenOriginal():
         mockReturnValueOnce("fetchUser", "first")
         mockReturnValueOnce("fetchUser", "second")
@@ -550,7 +548,7 @@ fn mockReturnValueOnceTests():
         expect(fetchUser()).toEq("second")
         expect(fetchUser()).toEq("real")   # queue empty, falls back to original
 
-    @it("can mix with mock() default — queue wins, then default, then original")
+    @it("should mix with mock() default (queue wins, then default, then original)")
     fn mixesWithDefault():
         mock(fetchUser, () => "fallback")
         mockReturnValueOnce("fetchUser", "queued")
@@ -677,7 +675,7 @@ fn add(a: float, b: float) -> float:
 
 @describe("overloaded mock")
 fn overloadedMockTests():
-    @it("targets int overload only")
+    @it("should target int overload only")
     fn targetsIntOverload():
         mock("add(int, int)", (a: int, b: int) -> int => 100)
         expect(add(2, 3)).toEq(100)        # mocked
