@@ -480,7 +480,7 @@ fn mockReturnValueOnceTests():
 ```
 
 - Requires `from testing import mockReturnValueOnce` (since v0.0.24, #1681)
-- The first argument is the **string literal** name of the function (same convention as `mock` / `spy`); non-literal first arguments are rejected at compile time
+- The first argument is the **string literal** name of the function (same convention as `spy` / `verifyCalledWith`, unlike `mock` which takes an identifier); non-literal first arguments are rejected at compile time
 - The function must exist, must not be overloaded, and must not return `Unit`; all are compile errors
 - The second argument's type must match the function's declared return type. Supported types: primitives (`int` / `float` / `bool`), `str`, `List` / `Map` / `Set`, records, `Result`, and `Option` (including bare `None` for `Option`-returning functions)
 - Arguments to the mocked call are ignored — the queue holds values, not call expectations
