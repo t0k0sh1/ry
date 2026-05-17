@@ -744,6 +744,46 @@ void CodeGen::validateLifecycleHookFnShape(const std::unique_ptr<FnStmt> &s, con
 // duplicate name on the second re-emit of @beforeEach / @afterEach; Import*
 // has module-load side effects. Helpers should be defined at file scope or
 // in the describe body outside the hook.
+namespace {
+// Recursively detect ReturnStmt anywhere in a hook body. The hook is inlined
+// into the surrounding @describe / @it generated function, so a `return` here
+// returns from the enclosing function rather than from the source hook, which
+// bypasses __ry_test_it_end / __ry_test_describe_end. Skip nested FnStmt
+// because that defines a separate function whose return is local to it.
+bool stmtHasReturn(const StmtNode &stmt);
+
+bool bodyHasReturn(const std::vector<StmtNode> &body) {
+    for (const auto &s : body)
+        if (stmtHasReturn(s)) return true;
+    return false;
+}
+
+bool stmtHasReturn(const StmtNode &stmt) {
+    if (std::get_if<ReturnStmt>(&stmt)) return true;
+    if (std::get_if<std::unique_ptr<FnStmt>>(&stmt)) return false;
+    if (auto *p = std::get_if<std::unique_ptr<IfStmt>>(&stmt)) {
+        if (bodyHasReturn((*p)->branch.body)) return true;
+        if (bodyHasReturn((*p)->else_body)) return true;
+        return false;
+    }
+    if (auto *p = std::get_if<std::unique_ptr<CaseCondStmt>>(&stmt)) {
+        for (const auto &arm : (*p)->arms)
+            if (bodyHasReturn(arm.body)) return true;
+        return bodyHasReturn((*p)->else_body);
+    }
+    if (auto *p = std::get_if<std::unique_ptr<WhileStmt>>(&stmt))
+        return bodyHasReturn((*p)->body);
+    if (auto *p = std::get_if<std::unique_ptr<ForStmt>>(&stmt))
+        return bodyHasReturn((*p)->body);
+    if (auto *p = std::get_if<std::unique_ptr<CaseStmt>>(&stmt)) {
+        for (const auto &arm : (*p)->arms)
+            if (bodyHasReturn(arm.body)) return true;
+        return false;
+    }
+    return false;
+}
+}  // namespace
+
 void CodeGen::validateLifecycleHookBody(const std::vector<StmtNode> &body, const char *hookName) {
     for (const auto &stmt : body) {
         const char *kind = nullptr;
@@ -758,6 +798,11 @@ void CodeGen::validateLifecycleHookBody(const std::vector<StmtNode> &body, const
         if (kind)
             codegenError(std::string("@") + hookName + " body cannot contain a " + kind +
                          "; define it at file scope or in the @describe body outside the hook");
+        if (stmtHasReturn(stmt))
+            codegenError(std::string("@") + hookName + " body cannot contain a return statement "
+                         "(including in nested if / case / for / while blocks); the body is inlined "
+                         "into the surrounding @describe/@it function and a return would exit that "
+                         "function, bypassing per-test cleanup");
     }
 }
 

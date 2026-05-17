@@ -2513,6 +2513,95 @@ TEST_F(DirectiveTest, BeforeEachBodyWithFnDeclarationRejected) {
     }
 }
 
+// Inlined hooks share the enclosing @describe/@it generated function, so a
+// `return` inside a hook body would exit that function and bypass
+// __ry_test_it_end / __ry_test_describe_end. Reject return at hook body root
+// and inside nested if / for / while / case branches.
+
+TEST_F(DirectiveTest, BeforeEachBodyWithReturnRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeEach\n"
+            "    fn s():\n"
+            "        return\n"
+            "    @it(\"t\")\n"
+            "    fn t():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for return inside @beforeEach body";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("return"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterEachBodyWithReturnInIfRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    flag = true\n"
+            "    @afterEach\n"
+            "    fn s():\n"
+            "        if flag:\n"
+            "            return\n"
+            "    @it(\"t\")\n"
+            "    fn t():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for return inside nested if in @afterEach body";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("return"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, BeforeAllBodyWithReturnInForRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    @beforeAll\n"
+            "    fn s():\n"
+            "        for i in 0..3:\n"
+            "            return\n"
+            "    @it(\"t\")\n"
+            "    fn t():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for return inside nested for in @beforeAll body";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("return"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, AfterAllBodyWithReturnInCaseRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@describe(\"d\")\n"
+            "fn d():\n"
+            "    n = 1\n"
+            "    @afterAll\n"
+            "    fn s():\n"
+            "        case:\n"
+            "            n == 1:\n"
+            "                return\n"
+            "            _:\n"
+            "                0\n"
+            "    @it(\"t\")\n"
+            "    fn t():\n"
+            "        expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for return inside nested case in @afterAll body";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("return"), std::string::npos) << "got: " << msg;
+    }
+}
+
 // --- Acceptance: single hook inside @describe compiles ---
 
 TEST_F(DirectiveTest, BeforeEachAcceptedInDescribe) {
