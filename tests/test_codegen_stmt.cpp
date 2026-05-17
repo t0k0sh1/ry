@@ -1836,9 +1836,10 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     // path and is no longer recorded in the testing-intrinsic set.
     // #1677 adds `verifyCalledWith` as an intrinsic.
     // #1683 adds `spy` as an intrinsic.
+    // #1681 adds `mockReturnValueOnce` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "spy", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 5u);
+        "expect", "mock", "mockReturnValueOnce", "spy", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 6u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1906,9 +1907,10 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
     // `@public fn` in share/std/testing/testing.ry).
     // #1677 adds `verifyCalledWith` as an intrinsic.
     // #1683 adds `spy` as an intrinsic.
+    // #1681 adds `mockReturnValueOnce` as an intrinsic.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "spy", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 5u);
+        "expect", "mock", "mockReturnValueOnce", "spy", "fail", "verifyCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 6u);
     EXPECT_EQ(intrinsics, expected);
 }
 

@@ -1,4 +1,4 @@
-from testing import it, describe, expect, mock, verify, verifyCalledWith, mockClear, mockReset, mockResetAll
+from testing import it, describe, expect, mock, mockReturnValueOnce, verify, verifyCalledWith, mockClear, mockReset, mockResetAll, fail
 
 fn fetchData() -> str:
   return "real data"
@@ -749,4 +749,267 @@ fn mockInNonCallStmtPositionsTests():
       mock("realFetchE", () => "fake E")
     ):
       expect(callsRealFetchE()).toEq("fake E")
+
+# Helpers for mockReturnValueOnce (#1681) — return types of various shapes.
+fn fetchOnceStr() -> str:
+  return "orig"
+
+fn fetchOnceInt() -> int:
+  return 0
+
+fn fetchOnceFloat() -> float:
+  return 0.0
+
+fn fetchOnceBool() -> bool:
+  return false
+
+fn fetchOncePoint() -> Point:
+  return Point(0, 0)
+
+fn fetchOnceList() -> List<int>:
+  empty: List<int> = []
+  return empty
+
+fn fetchOnceOpt() -> int?:
+  return None
+
+fn fetchOnceRes() -> Result<int, str>:
+  return Ok(0)
+
+fn fetchOnceArg(label: str) -> int:
+  return -1
+
+fn fetchOnceFallback() -> str:
+  return "original"
+
+fn fetchOnceQueueOnly() -> int:
+  return -999
+
+fn fetchOnceMix() -> int:
+  return -1
+
+fn fetchOnceCount() -> int:
+  return 0
+
+fn fetchOnceClearedQueue() -> str:
+  return "orig"
+
+fn fetchOnceResetQueue() -> str:
+  return "orig"
+
+fn fetchOnceA1() -> int:
+  return -1
+
+fn fetchOnceA2() -> str:
+  return "origA2"
+
+fn fetchOnceItCheck() -> int:
+  return -7
+
+fn fetchOnceCapMix() -> int:
+  return -1
+
+@describe("mockReturnValueOnce")
+fn mockReturnValueOnceTests():
+  @it("should return queued str values in order then fall back to original")
+  fn shouldQueueStr():
+    mockReturnValueOnce("fetchOnceStr", "first")
+    mockReturnValueOnce("fetchOnceStr", "second")
+    expect(fetchOnceStr()).toEq("first")
+    expect(fetchOnceStr()).toEq("second")
+    expect(fetchOnceStr()).toEq("orig")
+
+  @it("should return queued int values in order")
+  fn shouldQueueInt():
+    mockReturnValueOnce("fetchOnceInt", 11)
+    mockReturnValueOnce("fetchOnceInt", 22)
+    mockReturnValueOnce("fetchOnceInt", 33)
+    expect(fetchOnceInt()).toEq(11)
+    expect(fetchOnceInt()).toEq(22)
+    expect(fetchOnceInt()).toEq(33)
+    expect(fetchOnceInt()).toEq(0)
+
+  @it("should return queued float values in order")
+  fn shouldQueueFloat():
+    mockReturnValueOnce("fetchOnceFloat", 1.5)
+    mockReturnValueOnce("fetchOnceFloat", 2.5)
+    expect(fetchOnceFloat()).toEq(1.5)
+    expect(fetchOnceFloat()).toEq(2.5)
+    expect(fetchOnceFloat()).toEq(0.0)
+
+  @it("should return queued bool values in order")
+  fn shouldQueueBool():
+    mockReturnValueOnce("fetchOnceBool", true)
+    mockReturnValueOnce("fetchOnceBool", false)
+    mockReturnValueOnce("fetchOnceBool", true)
+    expect(fetchOnceBool()).toEq(true)
+    expect(fetchOnceBool()).toEq(false)
+    expect(fetchOnceBool()).toEq(true)
+    expect(fetchOnceBool()).toEq(false)
+
+  @it("should return queued Record values in order")
+  fn shouldQueueRecord():
+    mockReturnValueOnce("fetchOncePoint", Point(1, 2))
+    mockReturnValueOnce("fetchOncePoint", Point(3, 4))
+    p1 = fetchOncePoint()
+    expect(p1.x).toEq(1)
+    expect(p1.y).toEq(2)
+    p2 = fetchOncePoint()
+    expect(p2.x).toEq(3)
+    expect(p2.y).toEq(4)
+    p3 = fetchOncePoint()
+    expect(p3.x).toEq(0)
+    expect(p3.y).toEq(0)
+
+  @it("should return queued List values and preserve elements")
+  fn shouldQueueList():
+    mockReturnValueOnce("fetchOnceList", [1, 2, 3])
+    mockReturnValueOnce("fetchOnceList", [10, 20])
+    xs1 = fetchOnceList()
+    expect(len(xs1)).toEq(3)
+    expect(xs1[0]).toEq(1)
+    expect(xs1[2]).toEq(3)
+    xs2 = fetchOnceList()
+    expect(len(xs2)).toEq(2)
+    expect(xs2[1]).toEq(20)
+    xs3 = fetchOnceList()
+    expect(len(xs3)).toEq(0)
+
+  @it("should return queued Option values (Some/None auto-wrap)")
+  fn shouldQueueOption():
+    mockReturnValueOnce("fetchOnceOpt", Some(42))
+    mockReturnValueOnce("fetchOnceOpt", None)
+    mockReturnValueOnce("fetchOnceOpt", 99)
+    gotSome = false
+    case fetchOnceOpt():
+      Some(v): expect(v).toEq(42)
+      None: fail("expected Some(42)")
+    gotNone = false
+    case fetchOnceOpt():
+      Some(v): fail("expected None")
+      None: gotNone = true
+    expect(gotNone).toEq(true)
+    case fetchOnceOpt():
+      Some(v): expect(v).toEq(99)
+      None: fail("expected Some(99)")
+
+  @it("should return queued Result values (Ok and Err)")
+  fn shouldQueueResult():
+    mockReturnValueOnce("fetchOnceRes", Ok(10))
+    mockReturnValueOnce("fetchOnceRes", Err("bad"))
+    mockReturnValueOnce("fetchOnceRes", Ok(20))
+    case fetchOnceRes():
+      Ok(v): expect(v).toEq(10)
+      Err(e): fail("expected Ok(10), got Err(" + e + ")")
+    case fetchOnceRes():
+      Ok(v): fail("expected Err")
+      Err(e): expect(e).toEq("bad")
+    case fetchOnceRes():
+      Ok(v): expect(v).toEq(20)
+      Err(e): fail("expected Ok(20)")
+
+  @it("should ignore arguments and still return queued value")
+  fn shouldIgnoreArgs():
+    mockReturnValueOnce("fetchOnceArg", 100)
+    mockReturnValueOnce("fetchOnceArg", 200)
+    expect(fetchOnceArg("first")).toEq(100)
+    expect(fetchOnceArg("second")).toEq(200)
+    expect(fetchOnceArg("third")).toEq(-1)
+
+  @it("should fall back to default mock() lambda after queue is empty")
+  fn shouldFallBackToDefaultMock():
+    mock("fetchOnceFallback", () => "default")
+    mockReturnValueOnce("fetchOnceFallback", "once-a")
+    mockReturnValueOnce("fetchOnceFallback", "once-b")
+    expect(fetchOnceFallback()).toEq("once-a")
+    expect(fetchOnceFallback()).toEq("once-b")
+    expect(fetchOnceFallback()).toEq("default")
+    expect(fetchOnceFallback()).toEq("default")
+
+  @it("should fall back to original when neither queue nor default mock is set")
+  fn shouldFallBackToOriginal():
+    mockReturnValueOnce("fetchOnceQueueOnly", 42)
+    expect(fetchOnceQueueOnly()).toEq(42)
+    expect(fetchOnceQueueOnly()).toEq(-999)
+
+  @it("should consume queue before reaching default mock and original")
+  fn shouldMixQueueAndDefault():
+    mock("fetchOnceMix", () => 7)
+    mockReturnValueOnce("fetchOnceMix", 1)
+    mockReturnValueOnce("fetchOnceMix", 2)
+    expect(fetchOnceMix()).toEq(1)
+    expect(fetchOnceMix()).toEq(2)
+    expect(fetchOnceMix()).toEq(7)
+    expect(fetchOnceMix()).toEq(7)
+
+  @it("should count queue-consuming calls toward verify")
+  fn shouldCountQueueCalls():
+    # Note: Ry's verify() counts only mock-served calls (queue or default mock).
+    # Once the queue empties and no default mock is set, calls fall through to
+    # the original implementation and are NOT counted (matching mockReset semantics).
+    # This diverges from strict Jest semantics where every call increments the counter.
+    mockReturnValueOnce("fetchOnceCount", 1)
+    mockReturnValueOnce("fetchOnceCount", 2)
+    fetchOnceCount()
+    fetchOnceCount()
+    fetchOnceCount()
+    expect(verify("fetchOnceCount")).toEq(2)
+
+  @it("should preserve queue across mockClear and reset only call count")
+  fn shouldPreserveQueueOnClear():
+    mockReturnValueOnce("fetchOnceClearedQueue", "q1")
+    mockReturnValueOnce("fetchOnceClearedQueue", "q2")
+    expect(fetchOnceClearedQueue()).toEq("q1")
+    expect(verify("fetchOnceClearedQueue")).toEq(1)
+    mockClear("fetchOnceClearedQueue")
+    expect(verify("fetchOnceClearedQueue")).toEq(0)
+    expect(fetchOnceClearedQueue()).toEq("q2")
+    expect(verify("fetchOnceClearedQueue")).toEq(1)
+
+  @it("should clear queue on mockReset")
+  fn shouldClearQueueOnReset():
+    mockReturnValueOnce("fetchOnceResetQueue", "q1")
+    mockReturnValueOnce("fetchOnceResetQueue", "q2")
+    expect(fetchOnceResetQueue()).toEq("q1")
+    mockReset("fetchOnceResetQueue")
+    expect(fetchOnceResetQueue()).toEq("orig")
+    expect(fetchOnceResetQueue()).toEq("orig")
+    expect(verify("fetchOnceResetQueue")).toEq(0)
+
+  @it("should clear all queues on mockResetAll")
+  fn shouldClearAllQueuesOnResetAll():
+    mockReturnValueOnce("fetchOnceA1", 1)
+    mockReturnValueOnce("fetchOnceA1", 2)
+    mockReturnValueOnce("fetchOnceA2", "x")
+    mockResetAll()
+    expect(fetchOnceA1()).toEq(-1)
+    expect(fetchOnceA2()).toEq("origA2")
+
+  @it("should auto-clear queue at it block end (first it sets up)")
+  fn shouldAutoClearItFirst():
+    mockReturnValueOnce("fetchOnceItCheck", 100)
+    mockReturnValueOnce("fetchOnceItCheck", 200)
+    expect(fetchOnceItCheck()).toEq(100)
+  @it("should auto-clear queue at it block end (second it sees fresh state)")
+  fn shouldAutoClearItSecond():
+    # After __ry_test_it_end clears the entire registry, the orig fallback
+    # path is taken and (per the divergence noted in shouldCountQueueCalls)
+    # is not counted by verify().
+    expect(fetchOnceItCheck()).toEq(-7)
+    expect(verify("fetchOnceItCheck")).toEq(0)
+
+  @it("should coexist with capture-closure default mock")
+  fn shouldCoexistWithCaptureClosure():
+    counter: List<int> = [0]
+    accumulate = ():
+      counter[0] = counter[0] + 1
+      return counter[0]
+    mock("fetchOnceCapMix", accumulate)
+    mockReturnValueOnce("fetchOnceCapMix", 1000)
+    mockReturnValueOnce("fetchOnceCapMix", 2000)
+    expect(fetchOnceCapMix()).toEq(1000)
+    expect(fetchOnceCapMix()).toEq(2000)
+    expect(fetchOnceCapMix()).toEq(1)
+    expect(fetchOnceCapMix()).toEq(2)
+    expect(counter[0]).toEq(2)
 

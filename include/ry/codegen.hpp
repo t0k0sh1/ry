@@ -1430,12 +1430,44 @@ public:
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
+    void emitMockReturnValueOnceCall(CallStmt &s);
     void emitSpyCall(CallStmt &s);
     void emitFailCall(CallStmt &s);
     llvm::Value *emitVerifyCalledWithCall(const CallExpr &e);
     void emitMockArgRecording(llvm::Value *nameStr,
                                const std::vector<llvm::Value *> &argVals,
                                OverloadEntry *matchedEntry);
+
+    // mockReturnValueOnce support (#1681): a value-return thunk loads a
+    // pre-stored return value from the env, retains it (so the caller gets
+    // a +1), and returns. Cached by origFn since the thunk body is fully
+    // determined by origFn's return signature.
+    llvm::Function *getOrCreateValueReturnThunk(llvm::Function *origFn,
+                                                 const std::string &retTyName);
+    std::unordered_map<llvm::Function*, llvm::Function*> value_return_thunk_cache_;
+
+    // Env destructor for a value-return mock binding. Loads the stored value
+    // from env and releases its ARC content (str / List / Map / Set / Record
+    // / Result / Option). Returns an empty FunctionCallee when the return
+    // type is non-ARC (primitive) — callers pass null env_dtor in that case.
+    // Cached by retTyName (the source-level Ry type string).
+    llvm::FunctionCallee getOrCreateValueReturnEnvDestructor(
+        llvm::Type *retTy, const std::string &retTyName);
+    std::unordered_map<std::string, llvm::FunctionCallee> value_return_env_dtor_cache_;
+
+    // Emit ARC retain on a value-return result at the current insert point.
+    // Used by getOrCreateValueReturnThunk (per-call retain handed to caller)
+    // and emitMockReturnValueOnceCall (register-time retain handed to env).
+    // Dispatches on the source-level type name (str / List / Map / Set /
+    // Record / Result<T,E> / Option<T> / T?). Primitives are no-ops.
+    void retainValueReturnResult(llvm::Value *val,
+                                  llvm::Type *retTy,
+                                  const std::string &retTyName);
+    // Symmetric to retainValueReturnResult; used by the env destructor body.
+    void releaseValueReturnResult(llvm::Value *val,
+                                   llvm::Type *retTy,
+                                   const std::string &retTyName);
+
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_set<std::string> spied_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;

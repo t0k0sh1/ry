@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <random>
 #include <string>
 #include <unistd.h>
@@ -150,14 +151,33 @@ struct MockFnSnapshot {
     void *env_ptr;
 };
 
+// One mock binding: a function pointer plus an optional capture env.
+// Used for both the default mock (set by mock()) and per-call queue entries
+// (set by mockReturnValueOnce()).
+struct MockBinding {
+    void *fn_ptr = nullptr;
+    void *env_ptr = nullptr;
+    void (*env_dtor)(void *) = nullptr;
+};
+
 // Mock registry. fn_ptr is the replacement function pointer (plain fn ptr
 // or closure thunk). env_ptr / env_dtor are non-null only for capture-based
 // closures (#1678): the dispatch site reads env_ptr via __ry_mock_get_env
 // and calls thunk(env, args...) instead of thunk(args...).
+//
+// once_queue (#1681) is a FIFO of per-call bindings populated by
+// mockReturnValueOnce. Each pop happens inside __ry_mock_get; the popped
+// binding is stashed in current_binding so __ry_mock_get_env (called
+// immediately after) returns the matching env. The queue owns each env's
+// ARC reference; current_owned tracks whether current_binding must be
+// released when it is replaced (queue pop / clear / reset).
 struct MockEntry {
     void *fn_ptr = nullptr;
     void *env_ptr = nullptr;
     void (*env_dtor)(void *) = nullptr;
+    std::deque<MockBinding> once_queue;
+    MockBinding current_binding;
+    bool current_owned = false;
     int64_t call_count = 0;
     std::vector<MockCallRecord> calls;
     std::vector<char *> retained_str_args;
@@ -499,6 +519,23 @@ static void releaseMockEntryRetainedArgs(MockEntry &entry) {
     entry.call_count = 0;
 }
 
+// Release the once-queue (mockReturnValueOnce bindings) and the
+// currently-popped binding when it owns its env. mockReset / mockClearAll
+// call this; mockClear does NOT (Jest semantics — clear() preserves the
+// queue).
+static void releaseMockOnceQueue(MockEntry &entry) {
+    if (entry.current_owned) {
+        mockReleaseClosureEnv(entry.current_binding.env_ptr,
+                              entry.current_binding.env_dtor);
+        entry.current_binding = MockBinding{};
+        entry.current_owned = false;
+    }
+    for (auto &binding : entry.once_queue) {
+        mockReleaseClosureEnv(binding.env_ptr, binding.env_dtor);
+    }
+    entry.once_queue.clear();
+}
+
 extern "C" {
 
 void __ry_test_describe_begin(const char *name) {
@@ -612,6 +649,18 @@ void __ry_mock_set_closure(const char *name, void *thunk_ptr,
     entry.env_dtor = env_dtor;
 }
 
+// Append a per-call binding to the once-queue (#1681). Ownership of env_ptr
+// transfers to the queue; mockReleaseClosureEnv will be invoked when the
+// binding is popped-then-replaced, or when the queue is released by
+// mockReset / mockClearAll.
+void __ry_mock_register_once(const char *name, void *thunk_ptr,
+                              void *env_ptr, void (*env_dtor)(void *)) {
+    auto &entry = g_mock_registry[name];
+    entry.once_queue.push_back(MockBinding{thunk_ptr, env_ptr, env_dtor});
+}
+
+// Jest-compatible mockClear: reset call log/count, preserve default mock
+// AND once-queue. Use mockReset to wipe the queue.
 void __ry_mock_clear(const char *name) {
     auto it = g_mock_registry.find(name);
     if (it == g_mock_registry.end()) return;
@@ -622,20 +671,49 @@ void __ry_mock_reset(const char *name) {
     auto it = g_mock_registry.find(name);
     if (it == g_mock_registry.end()) return;
     mockReleaseClosureEnv(it->second.env_ptr, it->second.env_dtor);
+    releaseMockOnceQueue(it->second);
     releaseMockEntryRetainedArgs(it->second);
     g_mock_registry.erase(it);
 }
 
+// Queue-consuming dispatch (#1681). Each call pops one binding from
+// once_queue and stashes it in current_binding so __ry_mock_get_env can
+// return the matching env. When the queue is empty, fall back to the
+// default mock binding (set by mock()/mockClosure); current_binding aliases
+// the default slot (no ownership transfer). Returns null when neither
+// queue nor default mock exists (caller falls through to original fn).
 void *__ry_mock_get(const char *name) {
     auto it = g_mock_registry.find(name);
-    if (it != g_mock_registry.end()) return it->second.fn_ptr;
-    return nullptr;
+    if (it == g_mock_registry.end()) return nullptr;
+    auto &entry = it->second;
+    // Release previously popped queue binding before advancing.
+    if (entry.current_owned) {
+        mockReleaseClosureEnv(entry.current_binding.env_ptr,
+                              entry.current_binding.env_dtor);
+        entry.current_binding = MockBinding{};
+        entry.current_owned = false;
+    }
+    if (!entry.once_queue.empty()) {
+        entry.current_binding = entry.once_queue.front();
+        entry.once_queue.pop_front();
+        entry.current_owned = true;
+    } else {
+        entry.current_binding.fn_ptr = entry.fn_ptr;
+        entry.current_binding.env_ptr = entry.env_ptr;
+        entry.current_binding.env_dtor = entry.env_dtor;
+        entry.current_owned = false;
+    }
+    return entry.current_binding.fn_ptr;
 }
 
+// Companion to __ry_mock_get — returns env for the binding most recently
+// popped (or aliased) by __ry_mock_get. The dispatch site always calls
+// __ry_mock_get immediately before __ry_mock_get_env, so current_binding
+// matches the fn_ptr the dispatcher is about to invoke.
 void *__ry_mock_get_env(const char *name) {
     auto it = g_mock_registry.find(name);
-    if (it != g_mock_registry.end()) return it->second.env_ptr;
-    return nullptr;
+    if (it == g_mock_registry.end()) return nullptr;
+    return it->second.current_binding.env_ptr;
 }
 
 int64_t __ry_mock_get_call_count(const char *name) {
@@ -1080,6 +1158,7 @@ void __ry_mock_clear_all() {
     for (auto &kv : g_mock_registry) {
         auto &entry = kv.second;
         mockReleaseClosureEnv(entry.env_ptr, entry.env_dtor);
+        releaseMockOnceQueue(entry);
         releaseMockEntryRetainedArgs(entry);
     }
     g_mock_registry.clear();

@@ -20,6 +20,13 @@ extern "C" {
     void    __ry_mock_set(const char *name, void *fn_ptr);
     void    __ry_mock_set_closure(const char *name, void *thunk_ptr,
                                    void *env_ptr, void (*env_dtor)(void *));
+    // Append a per-call binding to the once-queue (#1681). thunk_ptr is a
+    // (origParams..., env) -> R thunk that ignores its user params and loads
+    // the return value from env; env_ptr is the ARC-managed env holding the
+    // pre-stored return value; env_dtor releases inner ARC ownership before
+    // the env itself is freed.
+    void    __ry_mock_register_once(const char *name, void *thunk_ptr,
+                                     void *env_ptr, void (*env_dtor)(void *));
     void    __ry_spy_register(const char *name);
     void   *__ry_mock_get(const char *name);
     void   *__ry_mock_get_env(const char *name);
