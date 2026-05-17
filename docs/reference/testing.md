@@ -1145,6 +1145,76 @@ fn mockOverloadSigTests():
 
 The signature key is the parameter type list inside parentheses, exactly as it appears in the function declaration. `verify("addNum")` (bare name) aggregates the call counts across all overloads; `verify("addNum(int, int)")` returns the count for that overload only. See [Mocking overloaded functions](#mocking-overloaded-functions).
 
+### Per-test mock setup with `@beforeEach`
+
+Use when several `@it` blocks in the same describe need a freshly-installed mock with a zeroed call counter. Hoisting `mock(...)` into `@beforeEach` reuses every `@it`'s auto-restore boundary, so each test sees a clean slate without manual `mockReset` / `mockClear`.
+
+```ry
+from testing import describe, it, beforeEach, mock, verify, expect
+
+fn fetchValue() -> int:
+    return 7
+
+@describe("mock installed via beforeEach is fresh per it")
+fn mockInBeforeEach():
+    @beforeEach
+    fn be():
+        mock(fetchValue, () => 42)
+
+    @it("first it sees the mocked value")
+    fn firstIt():
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+
+    @it("second it sees re-installed mock with fresh call count")
+    fn secondIt():
+        expect(verify("fetchValue")).toEq(0)
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+```
+
+The Feature interactions section's [`mock` / `spy` inside `@beforeEach`](#mock--spy-inside-beforeeach) entry shows the same fixture as the canonical evidence that this combination is supported and documents the auto-restore mechanics. Compare with [Scope `mock` as tightly as possible](#scope-mock-as-tightly-as-possible) below — describe-wide setup is only the right choice when every `@it` really does need the same mocked baseline.
+
+### Setup patterns for `@each` parameterized tests
+
+Use when an `@each` parameterized `@it` needs per-iteration or once-per-describe setup. `@each` cannot coexist with `@beforeEach` (compile error — see [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property)), so the workarounds below are the canonical alternatives.
+
+```ry
+from testing import describe, it, each, beforeAll, expect
+
+fn freshCounter() -> int:
+    return 0
+
+
+# Pattern A: per-iteration setup invoked at the top of the @it body
+@describe("per-iteration setup invoked at the top of the @it body")
+fn perIterationInBody():
+    @each([(2,), (3,), (5,)])
+    @it("iteration {0} starts with a freshly-zeroed counter")
+    fn iter(seed: int):
+        counter = freshCounter()
+        counter = counter + seed
+        expect(counter).toEq(seed)
+
+
+# Pattern B: shared setup hoisted into @beforeAll
+@describe("shared setup hoisted into @beforeAll, reused across @each iterations")
+fn sharedSetupInBeforeAll():
+    factor = 0
+
+    @beforeAll
+    fn ba():
+        factor = 10
+
+    @each([(1,), (2,), (3,)])
+    @it("iteration {0} multiplies the hoisted factor by the parameter")
+    fn iter(x: int):
+        expect(factor).toEq(10)
+        expect(x * factor).toEq(x * 10)
+```
+
+Pattern A places setup that must run fresh each iteration (call counters, allocations, mutable scratch state) at the top of the `@it` body — or in a helper, as shown with `freshCounter()`. Pattern B hoists work that does not vary per iteration (loading a reference value, opening a shared connection) into `@beforeAll`, which fires once before the `@each` loop. Both patterns are exercised by `tests/spec/parameterized_lifecycle.test.ry`.
+
 ---
 
 ## Best Practices
