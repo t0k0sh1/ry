@@ -351,6 +351,118 @@ When `@timeout` fires (the SIGALRM path), the test is aborted via `siglongjmp` p
 
 ---
 
+## Feature interactions
+
+Testing directives compose in specific ways. This section documents every supported (and intentionally rejected) combination so behavior need not be discovered by trial. Worked examples are taken from `tests/spec/feature_combinations.test.ry`.
+
+### Summary matrix
+
+| Combination | Status | Behavior / where to look |
+|---|---|---|
+| `@each` + `@beforeEach` | Compile error | [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property) |
+| `@each` + `@afterEach` | Compile error | [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property) |
+| `@property` + `@beforeEach` | Compile error | [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property) |
+| `@property` + `@afterEach` | Compile error | [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property) |
+| `@each` + `@timeout` | Compile error | [Mutually exclusive: `@each` / `@property` + `@timeout`](#mutually-exclusive-each--property--timeout) |
+| `@property` + `@timeout` | Compile error | [Mutually exclusive: `@each` / `@property` + `@timeout`](#mutually-exclusive-each--property--timeout) |
+| `mock` in `@beforeEach` | Supported | [`mock` / `spy` inside `@beforeEach`](#mock--spy-inside-beforeeach) |
+| `spy` in `@beforeEach` | Supported | [`mock` / `spy` inside `@beforeEach`](#mock--spy-inside-beforeeach) |
+| `mock` + `spy` in same `@it` | Supported | `mock` takes precedence; see [`spy(name)`](#spyname) |
+| `@beforeAll` + `@each` | Supported | [`@beforeAll` / `@afterAll` with `@each` / `@property`](#beforeall--afterall-with-each--property) |
+| `@afterAll` + `@each` | Supported | [`@beforeAll` / `@afterAll` with `@each` / `@property`](#beforeall--afterall-with-each--property) |
+| Nested `@describe` lifecycle inheritance | Unsupported | [Nested `@describe` lifecycle](#nested-describe-lifecycle) |
+
+The same matrix entries apply when `@property` is substituted for `@each` and vice versa (and for `@afterAll` paired with `@each` / `@property`); the table lists `@each` only to keep the row count manageable.
+
+### Lifecycle hooks with `@each` / `@property`
+
+`@beforeEach` and `@afterEach` cannot decorate an `@it` that also carries `@each` or `@property`. The codegen path (`src/codegen_test.cpp`) raises the compile error verbatim:
+
+```text
+error: @beforeEach / @afterEach are not yet supported with @each on @it '<fn>'
+error: @beforeEach / @afterEach are not yet supported with @property on @it '<fn>'
+```
+
+This is a deliberate MVP limitation (#1686): inlining hooks per iteration would require additional codegen scaffolding to thread hook state through the runtime loop. Workarounds:
+
+- Move per-iteration setup / teardown into the `@it` body itself (or call a helper).
+- Hoist work that is shared across iterations into `@beforeAll`; see [`@beforeAll` / `@afterAll` with `@each` / `@property`](#beforeall--afterall-with-each--property).
+
+### Mutually exclusive: `@each` / `@property` + `@timeout`
+
+The compiler rejects this combination, again from `src/codegen_test.cpp`:
+
+```text
+error: @timeout cannot be combined with @each on fn '<fn>'
+error: @timeout cannot be combined with @property on fn '<fn>'
+```
+
+`@timeout` measures the wall-clock duration of one invocation of the test body; loop-style runners cannot share a single timer budget across iterations without ambiguity. See [`@timeout` in the Directives reference](directives.md#timeout) and the [Troubleshooting entry](#each-or-property-combined-with-timeout-is-rejected-at-compile-time) for the user-facing diagnostic.
+
+### `mock` / `spy` inside `@beforeEach`
+
+Installing a `mock` or `spy` in the describe's `@beforeEach` produces a fresh installation for each `@it`: the hook body is inlined per `@it`, and the auto-restore at `@it` end clears both the implementation override and the call counter.
+
+```ry
+from testing import describe, it, beforeEach, mock, verify, expect
+
+fn fetchValue() -> int:
+    return 7
+
+@describe("mock installed via beforeEach is fresh per it")
+fn mockInBeforeEach():
+    @beforeEach
+    fn be():
+        mock(fetchValue, () => 42)
+
+    @it("first it sees the mocked value")
+    fn firstIt():
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+
+    @it("second it sees re-installed mock with fresh call count")
+    fn secondIt():
+        expect(verify("fetchValue")).toEq(0)
+        expect(fetchValue()).toEq(42)
+        expect(verify("fetchValue")).toEq(1)
+```
+
+`spy("name")` works the same way — the call count resets to 0 at the start of every `@it`. When `mock` and `spy` are both active on the same function inside one `@it`, `mock` takes precedence: see [`spy(name)`](#spyname).
+
+### `@beforeAll` / `@afterAll` with `@each` / `@property`
+
+`@beforeAll` fires once before the iteration loop begins, and `@afterAll` once after every iteration of every `@it` in the describe completes:
+
+```ry
+from testing import describe, it, each, beforeAll, expect
+
+@describe("beforeAll runs once before all each iterations")
+fn beforeAllRunsOncePerEach():
+    baCount = 0
+
+    @beforeAll
+    fn ba():
+        baCount = baCount + 1
+
+    @each([(1,), (2,), (3,)])
+    @it("iteration {0} sees baCount == 1")
+    fn iter(x: int):
+        expect(baCount).toEq(1)
+        expect(x > 0).toEq(true)
+
+    @it("after iterations baCount is still 1")
+    fn checker():
+        expect(baCount).toEq(1)
+```
+
+The same single-fire semantics apply to `@property` and to `@afterAll`. Because hooks are describe-local, `@afterAll`'s execution is not observable from any `@it` inside the same describe; `tests/spec/feature_combinations.test.ry` verifies the negative — `@afterAll` has not yet fired during any iteration or trailing `@it`.
+
+### Nested `@describe` lifecycle
+
+Each `@describe` owns its own lifecycle hooks. An outer describe's `@beforeEach` / `@afterEach` / `@beforeAll` / `@afterAll` **does not run** before or after the inner describe's `@it` blocks — see the third [Limitations](#limitations) bullet ("Nested-describe inheritance of lifecycle hooks is not supported").
+
+---
+
 ## Mocking
 
 ### mock(fnName, replacement)
@@ -527,6 +639,7 @@ fn spyTests():
 - `verify(name)` and `verifyCalledWith(name, args...)` work uniformly on spied functions (same call-recording mechanism as `mock`)
 - `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply to spied functions identically — they share the same internal registry
 - A function may be both mocked and spied across different `it` blocks within the same describe. When both are active in the same block (mock+spy coexistence), `mock` takes precedence: the replacement runs and the call is counted; the real implementation is bypassed
+- See [Feature interactions](#feature-interactions) for installing `mock` / `spy` from `@beforeEach` (auto-restore semantics, fresh per-`it` state)
 
 ### mockReturnValueOnce(name, value)
 
@@ -737,6 +850,8 @@ fn testAdd(a: int, b: int, expected: int):
 - Each tuple generates an independent test case
 - Supported parameter types: `int`, `float`, `bool`, `str`
 
+See [Feature interactions](#feature-interactions) for combinations with lifecycle hooks and `@timeout` (the lifecycle and `@timeout` combinations are compile errors in the current MVP).
+
 ---
 
 ## Property-Based Tests (@property)
@@ -756,6 +871,8 @@ fn testCommutative(a: int, b: int):
 - On failure, the counterexample (failing inputs) is printed
 - The test stops at the first failure
 - Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
+
+See [Feature interactions](#feature-interactions) for combinations with lifecycle hooks and `@timeout` (the lifecycle and `@timeout` combinations are compile errors in the current MVP).
 
 ---
 
@@ -1072,7 +1189,7 @@ If you do need shared mock state, reset it explicitly in `@afterEach` to avoid a
 ## Limitations
 
 - File top-level lifecycle hooks (outside any `@describe`) are not supported
-- Nested-describe inheritance of lifecycle hooks is not supported (each `@describe` owns its own hooks)
+- Nested-describe inheritance of lifecycle hooks is not supported (each `@describe` owns its own hooks) — see [Nested @describe lifecycle](#nested-describe-lifecycle) under Feature interactions
 - A test fired by `@timeout` (i.e. the test body did not finish within the budget) skips its `@afterEach` — see [Directives reference](directives.md#timeout) for details
 
 ---
