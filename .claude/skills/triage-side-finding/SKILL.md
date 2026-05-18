@@ -157,6 +157,8 @@ gh search issues --repo t0k0sh1/ry "<keywords>" --state open
 
 例: parser bug と codegen 改善が同時に見つかった → 2 issue / 同じ runtime 関数の正しさ修正と性能改善 → 2 issue。
 
+分割すると判断した場合の **分割理由の分類 (機能境界 / 依存関係 / 規模) と対称性チェック (typed↔any / wrap↔unwrap / read↔write / base↔derived)、3 段目派生の警戒** は `/scope-decomposition` REQ-1〜3 を参照。
+
 ### Step 5: issue を作成する
 
 ```bash
