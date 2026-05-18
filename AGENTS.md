@@ -92,6 +92,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
 - **リポジトリ**: `t0k0sh1/ry`
 - **開始**: ユーザーが issue 番号 / URL を指定 → 内容把握 → Plan モード。「次の issue を探して」指示時は open issue 取得 (`wip` 除外)・バグ優先で候補提示 → 選択後に Plan モード
 - **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-merge-pr` Step 5 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
+- **issue 分割時のスコープ検証**: 派生 issue を起票・分離する判断は `/scope-decomposition` で対称性 (4 軸) / 分割理由 (3 分類) / 派生連鎖警戒 (3 段目以降) を確認する
 
 ## Plan モードのルール
 
