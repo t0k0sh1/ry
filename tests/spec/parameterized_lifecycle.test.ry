@@ -1,0 +1,37 @@
+from testing import describe, it, each, beforeAll, expect
+
+# #1788 — companion to the "Setup patterns for @each parameterized tests"
+# recipe in docs/reference/testing.md. The combination @each + @beforeEach
+# is a compile error (see the "Lifecycle hooks with @each / @property"
+# section in docs/reference/testing.md), so callers reach for one of the
+# two workarounds covered below.
+
+fn freshCounter() -> int:
+    return 0
+
+
+# ─── Pattern A: per-iteration setup invoked at the top of the @it body ───
+@describe("per-iteration setup invoked at the top of the @it body")
+fn perIterationInBody():
+    @each([(2,), (3,), (5,)])
+    @it("iteration {0} starts with a freshly-zeroed counter")
+    fn iter(seed: int):
+        counter = freshCounter()
+        counter = counter + seed
+        expect(counter).toEq(seed)
+
+
+# ─── Pattern B: shared setup hoisted into @beforeAll ───
+@describe("shared setup hoisted into @beforeAll, reused across @each iterations")
+fn sharedSetupInBeforeAll():
+    factor = 0
+
+    @beforeAll
+    fn ba():
+        factor = 10
+
+    @each([(1,), (2,), (3,)])
+    @it("iteration {0} multiplies the hoisted factor by the parameter")
+    fn iter(x: int):
+        expect(factor).toEq(10)
+        expect(x * factor).toEq(x * 10)
