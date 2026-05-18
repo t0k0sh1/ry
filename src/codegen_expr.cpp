@@ -1478,15 +1478,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try set
         llvm::Type *setElemTy = getSetElementType(container);
         if (setElemTy) {
+            std::string inElemName = getSetElemName(container);
             if (elem->getType() != setElemTy) {
                 if (isAnyType(setElemTy))
                     elem = wrapInAny(elem);
                 else if (isAnyType(elem->getType()) && canAnyHoldType(setElemTy))
-                    elem = unwrapFromAny(elem, setElemTy);
+                    elem = unwrapFromAny(elem, setElemTy, inElemName);
                 else
                     codegenError("'" + e->op + "' operator: element type mismatch");
             }
-            std::string inElemName = getSetElemName(container);
             validateSetElemType(inElemName, elem, "'" + e->op + "' operator");
             llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy, inElemName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
@@ -1498,17 +1498,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try map (key lookup)
         llvm::Type *mapKeyTy = getMapKeyType(container);
         if (mapKeyTy) {
+            std::string inKeyName;
+            if (const ValueMetadata *meta = getMeta(container))
+                inKeyName = meta->map_key_type_name;
             if (elem->getType() != mapKeyTy) {
                 if (isAnyType(mapKeyTy))
                     elem = wrapInAny(elem);
                 else if (isAnyType(elem->getType()) && canAnyHoldType(mapKeyTy))
-                    elem = unwrapFromAny(elem, mapKeyTy);
+                    elem = unwrapFromAny(elem, mapKeyTy, inKeyName);
                 else
                     codegenError("'" + e->op + "' operator: key type mismatch");
             }
-            std::string inKeyName;
-            if (const ValueMetadata *meta = getMeta(container))
-                inKeyName = meta->map_key_type_name;
             llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy, inKeyName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
             if (e->op == "not in")
@@ -1519,11 +1519,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try list (linear search)
         llvm::Type *listElemTy = getListElementType(container);
         if (listElemTy) {
+            std::string listElemName;
+            if (const ValueMetadata *meta = getMeta(container))
+                listElemName = meta->list_elem_type_name;
             if (elem->getType() != listElemTy) {
                 if (isAnyType(listElemTy))
                     elem = wrapInAny(elem);
                 else if (isAnyType(elem->getType()) && canAnyHoldType(listElemTy))
-                    elem = unwrapFromAny(elem, listElemTy);
+                    elem = unwrapFromAny(elem, listElemTy, listElemName);
                 else
                     codegenError("'" + e->op + "' operator: element type mismatch");
             }
@@ -1617,12 +1620,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try str (substring check) — #1032
         if (isStringValue(container)) {
             if (!isStringValue(elem)) {
-                // Safety: wrapInAny() rejects non-str pointers (List/Map/Set) at
-                // compile time, so any<ptrTy_> can only carry a str handle.
-                // unwrapFromAny also performs a runtime RyAnyTag::Str check and
-                // aborts on mismatch, providing a second layer of defense.
+                // From #1697 onwards `wrapInAny` accepts List/Map/Set
+                // pointers, so we must request the str tag explicitly at
+                // unwrap time. `unwrapFromAny` aborts at runtime on tag
+                // mismatch (e.g. an `any` carrying a List passed where a
+                // str is required).
                 if (isAnyType(elem->getType()) && canAnyHoldType(ptrTy_))
-                    elem = unwrapFromAny(elem, ptrTy_);
+                    elem = unwrapFromAny(elem, ptrTy_, "str");
                 else
                     codegenError("'" + e->op + "' operator: left side must be str when right side is str");
             }

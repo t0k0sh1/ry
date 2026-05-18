@@ -488,6 +488,13 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
+    // #1697: Capture the pre-wrap source-level type name so that, when the
+    // declaration coerces the initializer into `any`, scope cleanup can pick
+    // a destructor that matches the wrapped value (e.g. `List<int>` rather
+    // than the destination annotation `any`).
+    std::string anyWrapSourceName;
+    if (val && val->getType() != anyTy_)
+        anyWrapSourceName = buildTypeNameFromMeta(val);
 
     if (annot) {
         if (constraint) {
@@ -535,7 +542,10 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = wrapInAny(val);
                     newTy = anyTy_;
                 } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
-                    val = unwrapFromAny(val, annotTy);
+                    // Thread the annotation's source-level type name so the
+                    // unwrap can pick the right tag (str / List / Map / Set)
+                    // and retain when the target is a collection. (#1697)
+                    val = unwrapFromAny(val, annotTy, *annot);
                     newTy = annotTy;
                 } else if (isUnionType(resolvedAnnot)) {
                     val = wrapInUnion(val, resolvedAnnot);
@@ -550,6 +560,29 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
+
+    // any-managed alloca registration (#1697). Track every `any`-typed
+    // alloca so scope cleanup can release the active collection slot if
+    // the runtime tag is List / Map / Set. Prefer the pre-wrap source-level
+    // type name (e.g. "List<int>") over the destination annotation `any` —
+    // the annotation tells us nothing about the wrapped value's kind, but
+    // the pre-wrap metadata does. Falls back to the annotation only when
+    // the initializer was already `any` (no wrap happened).
+    if (newTy == anyTy_) {
+        std::string anySrcName = anyWrapSourceName;
+        if (anySrcName.empty() && annot)
+            anySrcName = *annot;
+        registerAnyManagedVar(ptr, anySrcName);
+        // When the initializer was already `any` (no `wrapInAny` ran),
+        // the alloca becomes a second owner of any collection payload
+        // the value carries. Without an explicit retain here, both
+        // owners would release the inner header at scope exit and
+        // double-free. `anyWrapSourceName.empty()` is the precise
+        // "no wrap" signal because `buildTypeNameFromMeta` is skipped
+        // exactly when `val->getType() == anyTy_` before coercion.
+        if (anyWrapSourceName.empty())
+            emitAnyRetainPayload(val, name);
+    }
 
     // Record ARC field retain (#854 Layer 2). When declaring a variable
     // of a record type that has at least one ARC-managed field, the
@@ -1208,6 +1241,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
+    // #1697: Track whether `wrapInAny` ran during coercion. `wrapInAny`
+    // already retains the inner collection header, so the post-coercion
+    // any-managed reassign block must skip its own retain on this path
+    // (else double-retain → leak).
+    bool didWrapToAny = false;
+
     if (ptr->getAllocatedType() != newTy) {
         if (llvm::Value *coerced = coerceToLowLevelType(
                 val, ptr->getAllocatedType(), getLowLevelTypeName(ptr),
@@ -1216,8 +1255,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
         } else if (isAnyType(ptr->getAllocatedType())) {
             val = wrapInAny(val);
             newTy = val->getType();
+            didWrapToAny = true;
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
-            val = unwrapFromAny(val, ptr->getAllocatedType());
+            // #1697: Thread the destination's source-level type name so the
+            // unwrap can pick the correct collection tag (List/Map/Set) and
+            // emit a retain when the target is a collection. Without this,
+            // reassigning an `any`-carrying-List back into a `List<int>`
+            // variable would mismatch on the str tag at runtime.
+            std::string destTypeName = buildTypeNameFromMeta(ptr);
+            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
             newTy = val->getType();
         } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
@@ -1311,6 +1357,34 @@ void CodeGen::emitStmt(AssignStmt &s) {
         builder_.CreateBr(storeBB);
 
         builder_.SetInsertPoint(storeBB);
+    }
+    // #1697: `any`-managed alloca reassign. Mirrors the ARC retain-new /
+    // release-old protocol but uses tag-dispatched helpers so primitive
+    // tags are no-ops while List/Map/Set tags release the inner header.
+    // - `any → any` (didWrapToAny == false): retain the new payload so
+    //   `let b: any = a; ... a = c;` doesn't free the header still held
+    //   via `b`. Then release the old payload of `ptr` to avoid leaking
+    //   what `ptr` previously owned.
+    // - `narrow → any` (didWrapToAny == true): `wrapInAny` already
+    //   retained the inner header, so skip retain. Release-old is still
+    //   needed for the prior collection payload in the slot.
+    else if (arc_any_managed_vars_.count(ptr)) {
+        if (!didWrapToAny)
+            emitAnyRetainPayload(val, s.name);
+        auto itAny = arc_any_managed_vars_.find(ptr);
+        const std::string &oldSrcName = (itAny != arc_any_managed_vars_.end())
+            ? itAny->second : std::string{};
+        auto *oldAny = builder_.CreateLoad(anyTy_, ptr, s.name + ".any_old");
+        emitAnyReleasePayload(oldAny, oldSrcName, s.name + ".any_old");
+        // Update the registered source-type name to match the new value's
+        // pre-wrap type when `wrapInAny` ran on this assignment; the
+        // narrow-side metadata is the authoritative source.
+        if (didWrapToAny && itAny != arc_any_managed_vars_.end()) {
+            // The pre-wrap source name was lost when wrapInAny returned;
+            // best-effort reset to empty so the generic destructor fires
+            // (still correct, just less precise).
+            itAny->second = std::string{};
+        }
     }
 
     builder_.CreateStore(val, ptr);
@@ -1424,6 +1498,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
+    // #1697: Track whether `wrapInAny` ran during coercion (mirrors the
+    // local-alloca path in `emitStmt(AssignStmt&)`). The any-managed
+    // reassign block below skips its own retain when `wrapInAny` already
+    // retained the inner header.
+    bool didWrapToAny = false;
+
     if (valueTy != newTy) {
         if (llvm::Value *coerced = coerceToLowLevelType(
                 val, valueTy, getLowLevelTypeName(anchor),
@@ -1432,8 +1512,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         } else if (isAnyType(valueTy)) {
             val = wrapInAny(val);
             newTy = val->getType();
+            didWrapToAny = true;
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
-            val = unwrapFromAny(val, valueTy);
+            // #1697: Thread the destination's source-level type name so the
+            // unwrap picks the matching collection tag and emits the retain.
+            std::string destTypeName = buildTypeNameFromMeta(anchor);
+            val = unwrapFromAny(val, valueTy, destTypeName);
             newTy = val->getType();
         } else if (isResultType(valueTy) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
@@ -1491,6 +1575,21 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         builder_.CreateBr(storeBB);
 
         builder_.SetInsertPoint(storeBB);
+    }
+    // #1697: Module-global `any`-typed reassign. Same retain-new /
+    // release-old protocol as the local AssignStmt path. We detect any-
+    // managed via `valueTy == anyTy_` because the per-function
+    // `arc_any_managed_vars_` table is cleared by `FnScope` and may be
+    // empty when this write-through runs from a non-`__ry_main__` callee.
+    // Use `buildTypeNameFromMeta(anchor)` to recover the registered
+    // source-type name (`value_metadata_` is persistent across FnScope).
+    else if (isAnyType(valueTy)) {
+        if (!didWrapToAny)
+            emitAnyRetainPayload(val, s.name);
+        std::string oldSrcName = buildTypeNameFromMeta(anchor);
+        auto *oldAny = builder_.CreateLoad(anyTy_, storagePtr,
+                                            s.name + ".any_old");
+        emitAnyReleasePayload(oldAny, oldSrcName, s.name + ".any_old");
     }
     // Module-global record-with-ARC-fields reassignment (#854 Layer 2).
     // Mirrors the local AssignStmt retain-then-release-old protocol so

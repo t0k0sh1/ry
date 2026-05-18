@@ -1255,6 +1255,7 @@ public:
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
         std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedArcTaggedUnion_;
+        std::unordered_map<llvm::AllocaInst*, std::string> savedArcAnyManaged_;
         std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
@@ -2122,14 +2123,55 @@ public:
     llvm::Value *wrapInUnion(llvm::Value *val, const std::string &unionTypeName);
 
     int64_t getAnyTypeTag(llvm::Type *ty);
+    // Metadata-aware tag selection. Reads `getMeta(val)` to detect List/Map/Set
+    // collection headers and returns the matching RyAnyTag value; falls back
+    // to the type-based `getAnyTypeTag(val->getType())` otherwise.
+    int64_t getAnyTypeTagForValue(llvm::Value *val);
     llvm::Value *wrapInAny(llvm::Value *val);
     llvm::Value *buildUnitAny();
-    llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy);
+    // `targetTypeName` is the declared Ry source-level type of the unwrap
+    // destination (e.g. "str", "List<int>", "Map<str,int>"). Required for
+    // collection unwraps so the runtime tag dispatch picks the right tag and
+    // the unwrapped pointer is retained for the new alias. Empty / "str" /
+    // primitive names keep the legacy behavior.
+    llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
+                                const std::string &targetTypeName = "");
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
+    // Side-table: `any`-typed allocas that may hold a collection (List / Map
+    // / Set) ARC pointer. The mapped string is the declared source-level
+    // type name at decl time (e.g. "List<int>") for destructor selection;
+    // dynamic content may differ (e.g. reassignment to a Map), in which
+    // case the cleanup falls back to the generic destructor for that tag.
+    // Released by `emitScopeCleanupToDepth` via `emitAnyReleaseVar`. (#1697)
+    std::unordered_map<llvm::AllocaInst*, std::string> arc_any_managed_vars_;
+    // Emit IR to release the active collection slot (if any) of an `any`
+    // alloca at scope exit. Reads the tag from struct field 0 and branches
+    // on List(5) / Map(6) / Set(7); all other tags (Int / Float / Bool /
+    // Str / Unit) emit no IR.
+    void emitAnyReleaseVar(const std::string &name, llvm::AllocaInst *alloca,
+                            const std::string &sourceTypeName);
+    // Tag-dispatched retain for an `any` SSA value's collection payload.
+    // List/Map/Set tags emit `__ry_arc_inc` on the inner header so two
+    // owners can release independently; other tags are no-ops. Used at
+    // `any → any` copy/reassign sites where wrapInAny did not just run.
+    void emitAnyRetainPayload(llvm::Value *anyVal,
+                               const std::string &siteLabel);
+    // Tag-dispatched release for an `any` SSA value's collection payload.
+    // Mirrors emitAnyReleaseVar but operates on a Value (e.g. a load from
+    // the old slot at reassignment time) rather than an alloca.
+    void emitAnyReleasePayload(llvm::Value *anyVal,
+                                const std::string &sourceTypeName,
+                                const std::string &siteLabel);
+    // Register `alloca` (must be of type `anyTy_`) in `arc_any_managed_vars_`
+    // so scope cleanup releases the active collection slot. Idempotent —
+    // safe to call repeatedly. `sourceTypeName` records the declared type
+    // at registration time for destructor selection.
+    void registerAnyManagedVar(llvm::AllocaInst *alloca,
+                                const std::string &sourceTypeName);
     static bool isNoneLiteral(const ExprNode &expr);
 
     friend class OptionNoneHintGuard;

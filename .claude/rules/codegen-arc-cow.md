@@ -3,6 +3,7 @@ paths:
   - "src/codegen_arc*.cpp"
   - "src/codegen_arc.cpp"
   - "src/codegen_arc_cow.cpp"
+  - "src/codegen_any.cpp"
   - "src/codegen_stmt_misc.cpp"
   - "src/codegen_stmt_loop.cpp"
   - "src/codegen_match.cpp"
@@ -58,6 +59,21 @@ Records emit as `{T1, T2, …}` value types in an alloca — there is no stable 
 ### `str` rejects `[]` syntax — guard with `isStringValue` before list/map dispatch
 
 `str` is `ptrTy_` and passes the "must be ptr" gate. After the "index operator requires list or map" gate and BEFORE Map dispatch, check `isStringValue(objPtr)` and emit targeted diagnostics: read path → `"str does not support index access; use charAt(s, i) instead"`, write path → `"str does not support index assignment; strings are immutable"`. The write-path guard MUST come before `emitCowCheck` — passing a `str` pointer with `CollectionKind::List` is unsafe.
+
+### `wrapInAny` / `unwrapFromAny` retain on collection wrap; `emitAnyReleaseVar` tag-dispatched scope-end release
+
+**Source**: #1697 (2026-05-18, feat)
+**Tags**: codegen, arc, any, collection, retain-release, scope-cleanup
+
+**Context**: Issue #1697 extended `any` to hold `List` / `Map` / `Set` headers in `data[8]` (tags 5/6/7). Without explicit ARC instrumentation, the inner header would be freed when the source binding's scope ended, leaving the `any` alloca with a dangling pointer. The 16-byte `RyAny` struct ABI is preserved.
+
+**Rule**: Every site that wraps a collection in `any` must emit an ARC retain on the header, and every `any`-typed alloca that may hold a collection must be registered in `arc_any_managed_vars_` so scope cleanup emits a tag-dispatched release. Element-type metadata is erased on wrap — register the declared source type at decl time so the release dispatcher can pick the right destructor.
+
+**How to apply**:
+- `wrapInAny` (`src/codegen_any.cpp`) detects collection inputs via `getMeta(val)->{list_elem,map_key,map_value,set_elem}` and emits `emitArcGetHeaderFromData` + `emitArcRetain` BEFORE storing the pointer into `any.data`. Primitive (int/float/bool) and str inputs are NOT retained (str is currently a non-retained slot — out of scope for this change). Non-collection pointer-shaped values (records, enums, resources, fn-pointers) are rejected via `isNonStrPointer(val) && !isCollection`.
+- `unwrapFromAny(anyVal, targetTy, targetTypeName)` emits the symmetric retain when the unwrapped pointer becomes a new alias: collection unwrap (driven by `targetTypeName` matching `isListTypeName` / `isMapTypeName` / `isSetTypeName`) calls `emitArcGetHeaderFromData` + `emitArcRetain` after the tag-match branch. Without this, two `any` values pointing at the same collection would each release the header once at scope exit and double-free.
+- `any`-typed allocas that may hold a collection must call `registerAnyManagedVar(alloca, sourceTypeName)` at decl time and `emitAnyReleaseVar(name, alloca, sourceTypeName)` at scope exit. `emitAnyReleaseVar` emits `switch (tag)` over `List=5 / Map=6 / Set=7` with `doneBB` default (Int/Float/Bool/Str/Unit are no-op); each case dispatches `emitArcReleaseLoadedElement(ptr, CollectionKind::{List,Map,Set}, sourceTypeName, ...)`. `emitArcReleaseLoadedElement` leaves the builder on its own continuation block — each switch arm must explicitly `CreateBr(doneBB)` after the helper call (else codegen emits a basic block without a terminator and LLVM verify fails).
+- When `sourceTypeName` is empty at registration time, `emitAnyReleaseVar` falls back to the generic destructor for the tag's kind (e.g. `"List"`). This is sufficient for collections of primitives but is approximate for nested ARC element types — that limitation is acknowledged in `docs/reference/types.md` and tracked as element-type metadata erasure (see [[codegen-type-and-metadata]] for the metadata-side rule).
 
 ### `threadSpawn` thunks emit no ARC ops; `parallel_for_depth_` is the atomic-ARC scope marker
 
