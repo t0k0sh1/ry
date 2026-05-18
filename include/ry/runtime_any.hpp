@@ -10,9 +10,24 @@ struct RyAny {
     alignas(8) char data[8];
 };
 
+using RyRecordBoxDtor = void (*)(void *dataPtr);
+using RyRecordBoxEq = int64_t (*)(const void *dataA, const void *dataB);
+
+struct RyRecordDescriptor {
+    RyRecordBoxDtor dtor;
+    RyRecordBoxEq eq;
+    const char *type_name;
+};
+
+static_assert(sizeof(RyRecordDescriptor) == 24,
+              "RyRecordDescriptor must be 3 pointers (24 bytes) — codegen emits "
+              "a global with this layout per record type");
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void __ry_arc_dtor_record_dispatch(void *dataPtr);
 
 void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b);
 

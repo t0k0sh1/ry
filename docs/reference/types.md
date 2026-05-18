@@ -745,8 +745,9 @@ The `any` type is a built-in dynamic type that can hold any primitive value or c
 | `List<T>` | 5 | List of any element type (element type is erased — see below) |
 | `Map<K, V>` | 6 | Map (key/value types are erased) |
 | `Set<T>` | 7 | Set (element type is erased) |
+| `record` | 8 | User-defined record type (carries a per-type descriptor — see [Records](#records-in-any) below) |
 
-`any` **cannot** hold resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or user-defined types (`record`, `enum`).
+`any` **cannot** hold resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or `enum` types.
 
 ### Internal Representation
 
@@ -756,7 +757,7 @@ The `any` type is a built-in dynamic type that can hold any primitive value or c
 { i64 tag, [8 x i8] data }   // 16 bytes total
 ```
 
-The `tag` field identifies the stored type. For value tags (`int`/`float`/`bool`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For `str` the `data` field holds a pointer to the StringHeader-prefixed buffer; for collection tags (`List`/`Map`/`Set`) it holds a pointer to the underlying collection header. In both reference-holding cases the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
+The `tag` field identifies the stored type. For value tags (`int`/`float`/`bool`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For `str` the `data` field holds a pointer to the StringHeader-prefixed buffer; for collection tags (`List`/`Map`/`Set`) it holds a pointer to the underlying collection header. For the `record` tag the `data` field holds a pointer to a heap-allocated box laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record struct ]` — the descriptor is a per-record-type global carrying the destructor, equality function, and type name, so type identity survives even when the static type is erased to `any` across function boundaries. In all reference-holding cases the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
 
 ### Element-Type Metadata is Erased
 
@@ -767,6 +768,31 @@ When a collection is wrapped in `any`, the element type (e.g. `List<int>` vs `Li
 - **String conversion** of a collection-holding `any` emits an opaque marker (`<List>`, `<Map>`, `<Set>`) rather than rendering elements. To get a typed printout, unwrap explicitly: `let xs: List<int> = anyVal; print(xs)`.
 
 These limitations are intentional for v0.0.25 and tracked in follow-up issues; for now, treat `any` as a transport mechanism for dynamic data (e.g. JSON-shaped values from #1698) and unwrap to a concrete type before doing per-element work.
+
+### Records in `any`
+
+User-defined `record` types can be assigned to `any`. Unlike collections, each record type carries a per-type descriptor that preserves the dynamic type identity across function boundaries:
+
+```ry
+record Point:
+  x: int
+  y: int
+
+p: any = Point(1, 2)        # wrap
+q: Point = p                # exact-type unwrap restores fields
+print(q.x)                  # 1
+
+# Cross-function boundary
+fn makePoint() -> any:
+  return Point(7, 9)
+a: any = makePoint()
+r: Point = a                # descriptor on the box drives correct release
+```
+
+- **Wrap cost**: ~24 bytes overhead per record value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the record struct itself, heap-allocated and reference-counted.
+- **Equality (`==`)** compares the two boxes' descriptor pointers first; if they match, the descriptor-resident equality function dispatches to a field-wise deep comparison, identical to the typed `Point == Point` path. Two `any` holding records of different types are always unequal.
+- **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Point>`) using the descriptor's type name — more informative than the opaque collection markers.
+- **Unwrap scope**: only **exact-type unwrap** is supported in v0.0.25 (`let q: Point = anyHoldingPoint`). Unwrapping to a parent record type (`let p: Parent = anyHoldingChild`) is intentionally out of scope and traps at runtime with a clear error; tracked as follow-up. Subtype coercion on the typed path (`fn f(a: Parent): ...; f(child)`) is unchanged.
 
 ### Wrapping and Unwrapping
 

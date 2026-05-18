@@ -57,15 +57,24 @@ inline constexpr int64_t STRING_BYTELEN_OFFSET = static_cast<int64_t>(STRING_HEA
 //                     the alloca holding the `any` is tracked in
 //                     `arc_any_managed_vars_` and released on scope exit
 //                     via a tag-dispatched runtime helper.
+//   Record          — pointer to a heap-allocated box laid out as
+//                     [ ArcHeader (16B) ][ descriptor ptr (8B) ][ record struct ].
+//                     `any.data[8]` holds the descriptor-region pointer
+//                     (the byte after ArcHeader). `emitArcGetHeaderFromData`
+//                     with offset -16 recovers the ArcHeader. The descriptor
+//                     (per record type) carries the dtor / eq / type name so
+//                     release and equality survive cross-function-boundary
+//                     where the static type name is lost.
 enum class RyAnyTag : int64_t {
-    Int   = 0,
-    Float = 1,
-    Bool  = 2,
-    Str   = 3,
-    Unit  = 4,
-    List  = 5,
-    Map   = 6,
-    Set   = 7,
+    Int    = 0,
+    Float  = 1,
+    Bool   = 2,
+    Str    = 3,
+    Unit   = 4,
+    List   = 5,
+    Map    = 6,
+    Set    = 7,
+    Record = 8,
 };
 
 } // namespace ry

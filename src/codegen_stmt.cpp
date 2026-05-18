@@ -541,10 +541,20 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(annotTy)) {
                     val = wrapInAny(val);
                     newTy = anyTy_;
-                } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
-                    // Thread the annotation's source-level type name so the
-                    // unwrap can pick the right tag (str / List / Map / Set)
-                    // and retain when the target is a collection. (#1697)
+                } else if (isAnyType(newTy) &&
+                           (canAnyHoldType(annotTy) ||
+                            (llvm::isa<llvm::StructType>(annotTy) &&
+                             findRecordInfoForType(
+                                 llvm::cast<llvm::StructType>(annotTy))))) {
+                    // Two parallel any → narrow unwrap paths share the same
+                    // body, distinguished only by what annotTy is allowed to
+                    // be: (a) canAnyHoldType primitives + ptr-shaped str /
+                    // List / Map / Set (#1697), (b) record StructType with a
+                    // registered descriptor (#1797). For (b) the descriptor
+                    // pointer identity in the box is compared against the
+                    // expected type's descriptor global at runtime; mismatch
+                    // traps. unwrapFromAny dispatches internally on the
+                    // annotation type name.
                     val = unwrapFromAny(val, annotTy, *annot);
                     newTy = annotTy;
                 } else if (isUnionType(resolvedAnnot)) {
@@ -1265,6 +1275,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
             std::string destTypeName = buildTypeNameFromMeta(ptr);
             val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
             newTy = val->getType();
+        } else if (isAnyType(newTy) &&
+                   llvm::isa<llvm::StructType>(ptr->getAllocatedType()) &&
+                   findRecordInfoForType(llvm::cast<llvm::StructType>(
+                       ptr->getAllocatedType()))) {
+            // #1797: any → record unwrap on reassignment.
+            std::string destTypeName = findRecordTypeName(
+                llvm::cast<llvm::StructType>(ptr->getAllocatedType()));
+            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
+            newTy = val->getType();
         } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
             llvm::Value *resCoerced = coerceResultType(val, dstResTy);
@@ -1517,6 +1536,14 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             // #1697: Thread the destination's source-level type name so the
             // unwrap picks the matching collection tag and emits the retain.
             std::string destTypeName = buildTypeNameFromMeta(anchor);
+            val = unwrapFromAny(val, valueTy, destTypeName);
+            newTy = val->getType();
+        } else if (isAnyType(newTy) &&
+                   llvm::isa<llvm::StructType>(valueTy) &&
+                   findRecordInfoForType(llvm::cast<llvm::StructType>(valueTy))) {
+            // #1797: any → record unwrap on reassignment / compound dst.
+            std::string destTypeName =
+                findRecordTypeName(llvm::cast<llvm::StructType>(valueTy));
             val = unwrapFromAny(val, valueTy, destTypeName);
             newTy = val->getType();
         } else if (isResultType(valueTy) && isResultType(newTy)) {

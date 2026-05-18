@@ -18,16 +18,27 @@ static_assert(offsetof(RyAny, data) == 8, "RyAny::data must be at offset 8");
 
 static const char *tagName(int64_t tag) {
     switch (tag) {
-    case static_cast<int64_t>(RyAnyTag::Int):   return "int";
-    case static_cast<int64_t>(RyAnyTag::Float): return "float";
-    case static_cast<int64_t>(RyAnyTag::Bool):  return "bool";
-    case static_cast<int64_t>(RyAnyTag::Str):   return "str";
-    case static_cast<int64_t>(RyAnyTag::Unit):  return "Unit";
-    case static_cast<int64_t>(RyAnyTag::List):  return "List";
-    case static_cast<int64_t>(RyAnyTag::Map):   return "Map";
-    case static_cast<int64_t>(RyAnyTag::Set):   return "Set";
+    case static_cast<int64_t>(RyAnyTag::Int):    return "int";
+    case static_cast<int64_t>(RyAnyTag::Float):  return "float";
+    case static_cast<int64_t>(RyAnyTag::Bool):   return "bool";
+    case static_cast<int64_t>(RyAnyTag::Str):    return "str";
+    case static_cast<int64_t>(RyAnyTag::Unit):   return "Unit";
+    case static_cast<int64_t>(RyAnyTag::List):   return "List";
+    case static_cast<int64_t>(RyAnyTag::Map):    return "Map";
+    case static_cast<int64_t>(RyAnyTag::Set):    return "Set";
+    case static_cast<int64_t>(RyAnyTag::Record): return "Record";
     default:        return "unknown";
     }
+}
+
+static const RyRecordDescriptor *recordBoxDescriptor(const void *dataPtr) {
+    const RyRecordDescriptor *desc = nullptr;
+    memcpy(&desc, dataPtr, sizeof(const RyRecordDescriptor *));
+    return desc;
+}
+
+static const void *recordBoxFieldsPtr(const void *dataPtr) {
+    return static_cast<const char *>(dataPtr) + sizeof(const RyRecordDescriptor *);
 }
 
 static int64_t extractInt(const RyAny *a) {
@@ -157,6 +168,21 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         return makeString("<Map>", 5);
     case static_cast<int64_t>(RyAnyTag::Set):
         return makeString("<Set>", 5);
+    case static_cast<int64_t>(RyAnyTag::Record): {
+        // The box layout is [descriptor ptr (8B)][record fields...]; the
+        // any.data[8] slot holds the data-region pointer, so the descriptor
+        // is the first 8 bytes at that address.
+        const void *dataPtr = nullptr;
+        memcpy(&dataPtr, a->data, sizeof(dataPtr));
+        const RyRecordDescriptor *desc = recordBoxDescriptor(dataPtr);
+        const char *typeName = desc->type_name;
+        size_t nameLen = strlen(typeName);
+        char *buf = makeStringUninit(nameLen + 2);
+        buf[0] = '<';
+        memcpy(buf + 1, typeName, nameLen); // NOLINT(bugprone-not-null-terminated-result) — buf[nameLen+2] NUL set by makeStringUninit
+        buf[nameLen + 1] = '>';
+        return buf;
+    }
     default:
         fprintf(stderr,
                 "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
@@ -172,6 +198,21 @@ extern "C" const char *__ry_any_to_string_in_collection(const RyAny *a) {
         return __ry_print_str_quote_escape(extractStr(a));
     }
     return __ry_any_to_string(a);
+}
+
+// ===== Record-in-any box destructor trampoline (#1797) =====
+//
+// `emitArcRelease` binds a compile-time FunctionCallee for the dtor. Per-record
+// dtors are emitted per type, so we cannot resolve them at the call site —
+// instead the codegen stores the per-type LLVM dtor into the record descriptor
+// at module-init time, and the ARC release path always points to this single
+// trampoline. The trampoline loads the descriptor from offset 0 of the data
+// region and dispatches to the per-type dtor.
+extern "C" void __ry_arc_dtor_record_dispatch(void *dataPtr) {
+    const RyRecordDescriptor *desc = recordBoxDescriptor(dataPtr);
+    if (desc && desc->dtor) {
+        desc->dtor(dataPtr);
+    }
 }
 
 // ===== Type error (#224) =====
@@ -363,6 +404,20 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
             memcpy(&pa, a->data, sizeof(const void *));
             memcpy(&pb, b->data, sizeof(const void *));
             return pa == pb ? 1 : 0;
+        }
+        case static_cast<int64_t>(RyAnyTag::Record): {
+            // Each record type has exactly one descriptor global, so descriptor
+            // pointer identity == record-type identity. Different record types
+            // therefore compare unequal even when their fields coincidentally
+            // hold the same bytes. Same-type values dispatch to the per-type
+            // field-wise eq function the codegen emits into desc->eq.
+            const void *dpa = nullptr, *dpb = nullptr;
+            memcpy(&dpa, a->data, sizeof(const void *));
+            memcpy(&dpb, b->data, sizeof(const void *));
+            const RyRecordDescriptor *descA = recordBoxDescriptor(dpa);
+            const RyRecordDescriptor *descB = recordBoxDescriptor(dpb);
+            if (descA != descB) return 0;
+            return descA->eq(recordBoxFieldsPtr(dpa), recordBoxFieldsPtr(dpb));
         }
         default:        return 0;
         }

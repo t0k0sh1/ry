@@ -779,3 +779,92 @@ fn anyHoldsCollectionTests():
     f2: str = "CCCCC" + "DDDDDD"
     t: str = a
     expect(t).toEq("hello world")
+
+record AnyRecPoint:
+  x: int
+  y: int
+
+record AnyRecUser:
+  name: str
+  age: int
+
+record AnyRecPlain:
+  value: int
+
+record AnyRecAnimal:
+  name: str
+  legs: int
+
+record AnyRecChildDog < AnyRecAnimal:
+  breed: str
+
+@describe("any holds record")
+fn anyHoldsRecordTests():
+  @it("should wrap plain record in any")
+  fn shouldWrapPlainRecordInAny():
+    p: any = AnyRecPoint(1, 2)
+    expect(true).toEq(true)
+  @it("should wrap record with str field in any")
+  fn shouldWrapRecordWithStrFieldInAny():
+    u: any = AnyRecUser("Alice", 30)
+    expect(true).toEq(true)
+  @it("should implicit-unwrap any back to plain record")
+  fn shouldImplicitUnwrapAnyBackToPlainRecord():
+    a: any = AnyRecPoint(1, 2)
+    q: AnyRecPoint = a
+    expect(q.x).toEq(1)
+    expect(q.y).toEq(2)
+  @it("should implicit-unwrap any back to record with str field")
+  fn shouldImplicitUnwrapAnyBackToRecordWithStrField():
+    a: any = AnyRecUser("Alice", 30)
+    u: AnyRecUser = a
+    expect(u.name).toEq("Alice")
+    expect(u.age).toEq(30)
+  @it("should compare two any holding records with equal fields with == (deep equality)")
+  fn shouldCompareTwoAnyHoldingRecordsWithEqualFieldsWithEq():
+    a: any = AnyRecPoint(1, 2)
+    b: any = AnyRecPoint(1, 2)
+    expect(a == b).toEq(true)
+  @it("should not consider two any holding records with different fields equal")
+  fn shouldNotConsiderTwoAnyHoldingRecordsWithDifferentFieldsEqual():
+    a: any = AnyRecPoint(1, 2)
+    b: any = AnyRecPoint(1, 3)
+    expect(a == b).toEq(false)
+  @it("should not consider two any holding records of different types equal")
+  fn shouldNotConsiderTwoAnyHoldingRecordsOfDifferentTypesEqual():
+    a: any = AnyRecPoint(1, 2)
+    b: any = AnyRecPlain(1)
+    expect(a == b).toEq(false)
+  @it("should render any holding a record as type-named marker")
+  fn shouldRenderAnyHoldingARecordAsTypeNamedMarker():
+    a: any = AnyRecPoint(1, 2)
+    expect(f"{a}").toEq("<AnyRecPoint>")
+  @it("should preserve record through any roundtrip in function return")
+  fn shouldPreserveRecordThroughAnyRoundtripInFnReturn():
+    fn makeAnyRec() -> any:
+      return AnyRecPoint(7, 9)
+    a: any = makeAnyRec()
+    q: AnyRecPoint = a
+    expect(q.x).toEq(7)
+    expect(q.y).toEq(9)
+  @it("should preserve record with str field through any-to-any copy")
+  fn shouldPreserveRecordWithStrFieldThroughAnyToAnyCopy():
+    a: any = AnyRecUser("Bob" + "by", 25)
+    b: any = a
+    u: AnyRecUser = b
+    expect(u.name).toEq("Bobby")
+    expect(u.age).toEq(25)
+  @it("should reassign any holding record to a different record")
+  fn shouldReassignAnyHoldingRecordToDifferentRecord():
+    a: any = AnyRecPoint(1, 2)
+    a = AnyRecPlain(99)
+    q: AnyRecPlain = a
+    expect(q.value).toEq(99)
+  @it("should wrap child record in any and exact-type unwrap as child (dynamic descriptor)")
+  fn shouldWrapChildRecordInAnyAndExactTypeUnwrapAsChild():
+    d: any = AnyRecChildDog("Rex", 4, "Labrador")
+    expect(f"{d}").toEq("<AnyRecChildDog>")
+    out: AnyRecChildDog = d
+    expect(out.name).toEq("Rex")
+    expect(out.legs).toEq(4)
+    expect(out.breed).toEq("Labrador")

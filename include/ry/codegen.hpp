@@ -400,6 +400,37 @@ public:
     // can walk and release the ARC fields before the record dies.
     std::unordered_set<llvm::AllocaInst*> arc_field_record_vars_;
 
+    // Per-record descriptor cache for `any` heap-boxing (#1797). Each record
+    // type stored in `any` carries a static descriptor `__ry_record_desc_<T>`
+    // holding `{ dtor, eq, type_name }`. The descriptor lives in the
+    // box's data region (first 8 bytes of `[desc_ptr | record_struct]`) so
+    // release / equality / to_string can dispatch by type even when the
+    // static type name is lost at function boundaries. Keyed by record
+    // source-level name.
+    std::unordered_map<std::string, llvm::GlobalVariable *> record_descriptor_cache_;
+    std::unordered_map<std::string, llvm::Function *> record_dtor_cache_;
+    std::unordered_map<std::string, llvm::Function *> record_eq_cache_;
+
+    // Get or create the per-record descriptor global (constant
+    // `{ ptr dtor, ptr eq, ptr type_name }`). Used by `any` box layout
+    // (#1797) so cross-function-boundary release / equality / to_string
+    // dispatch by descriptor pointer instead of stale annotation strings.
+    llvm::GlobalVariable *getOrCreateRecordDescriptor(const std::string &typeName,
+                                                        llvm::StructType *st);
+    // Get or create the dtor function called by `emitArcRelease` on the
+    // heap box. Body releases each ARC field of the inner record struct.
+    llvm::Function *getOrCreateRecordBoxDtor(const std::string &typeName,
+                                               llvm::StructType *st);
+    // Get or create the per-record equality function. Takes two box data
+    // region pointers (each pointing at `[desc | record_struct]`); returns
+    // i64 (1 = equal, 0 = not equal). Compares fields recursively.
+    llvm::Function *getOrCreateRecordBoxEq(const std::string &typeName,
+                                            llvm::StructType *st);
+    // Convenience: shape of the `any` record box data region:
+    //   { ptr descriptor, <record_struct> }
+    // Returns a packed struct type for clarity.
+    llvm::StructType *recordBoxLayoutType(llvm::StructType *recordStructTy);
+
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
     // join block on return so the caller can continue emitting the
