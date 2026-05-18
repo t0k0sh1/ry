@@ -535,7 +535,10 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = wrapInAny(val);
                     newTy = anyTy_;
                 } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
-                    val = unwrapFromAny(val, annotTy);
+                    // Thread the annotation's source-level type name so the
+                    // unwrap can pick the right tag (str / List / Map / Set)
+                    // and retain when the target is a collection. (#1697)
+                    val = unwrapFromAny(val, annotTy, *annot);
                     newTy = annotTy;
                 } else if (isUnionType(resolvedAnnot)) {
                     val = wrapInUnion(val, resolvedAnnot);
@@ -550,6 +553,16 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
+
+    // any-managed alloca registration (#1697). Track every `any`-typed
+    // alloca so scope cleanup can release the active collection slot if
+    // the runtime tag is List / Map / Set. The source-level annotation,
+    // when present, helps `emitAnyReleaseVar` pick the destructor that
+    // knows the element layout (best-effort — runtime content may differ).
+    if (newTy == anyTy_) {
+        std::string anySrcName = annot ? *annot : "";
+        registerAnyManagedVar(ptr, anySrcName);
+    }
 
     // Record ARC field retain (#854 Layer 2). When declaring a variable
     // of a record type that has at least one ARC-managed field, the

@@ -449,6 +449,7 @@ void CodeGen::popScope() {
             weak_inner_type_names_.erase(alloca);
             arc_field_record_vars_.erase(alloca);
             arc_tagged_union_vars_.erase(alloca);
+            arc_any_managed_vars_.erase(alloca);
             arc_managed_vars_.erase(alloca);
         }
     }
@@ -494,6 +495,14 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             if (auto tuIt = arc_tagged_union_vars_.find(alloca);
                 tuIt != arc_tagged_union_vars_.end()) {
                 emitTaggedUnionRelease(alloca, tuIt->second);
+                continue;
+            }
+            // any-typed alloca (#1697): release the active collection slot
+            // (List / Map / Set) via tag-dispatched switch. Non-collection
+            // tags (Int / Float / Bool / Str / Unit) emit no IR.
+            if (auto anyIt = arc_any_managed_vars_.find(alloca);
+                anyIt != arc_any_managed_vars_.end()) {
+                emitAnyReleaseVar(name, alloca, anyIt->second);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;

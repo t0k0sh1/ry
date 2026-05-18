@@ -501,44 +501,45 @@ TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
 }
 
 // ============================================================
-// Map<K, any>: collection / non-str-pointer types are rejected by wrapInAny
+// Map<K, any> / Set<any> / List<any>: #1697 lifts the old wrapInAny
+// rejection so List / Map / Set values can be assigned through an
+// `any` slot in any collection-mutating builtin. Flipped from
+// EXPECT_THROW to EXPECT_NO_THROW per "Relaxing a rejection branch
+// requires flipping (not deleting) existing EXPECT_THROW tests"
+// (.claude/rules/tests-rejection-tdd.md). The old "'any' can only
+// hold int/float/bool/str" error path is gone for collection inputs;
+// fn-ptr / resource still hit it (covered by
+// AnyTypeRejectionForFunctionPointer in test_codegen.cpp).
 // ============================================================
 
-TEST_F(CodeGenTest, MapAnyValueRejectsCollectionType) {
-    // wrapInAny rejects non-str pointers (collections, resources, etc.)
-    // with "any can only hold int/float/bool/str".
-    expectCompileError(
+TEST_F(CodeGenTest, MapAnyValueAcceptsCollectionType) {
+    EXPECT_NO_THROW(compileSource(
         "m: Map<str, any> = {}\n"
-        "m[\"bad\"] = [1, 2, 3]\n",
-        "'any' can only hold int/float/bool/str");
+        "m[\"ok\"] = [1, 2, 3]\n"));
 }
 
-TEST_F(CodeGenTest, SetAddAnyRejectsCollectionType) {
-    expectCompileError(
+TEST_F(CodeGenTest, SetAddAnyAcceptsCollectionType) {
+    EXPECT_NO_THROW(compileSource(
         "s: Set<any> = {}\n"
-        "add(s, [1, 2, 3])\n",
-        "'any' can only hold int/float/bool/str");
+        "add(s, [1, 2, 3])\n"));
 }
 
-TEST_F(CodeGenTest, ListAppendAnyRejectsCollectionType) {
-    expectCompileError(
+TEST_F(CodeGenTest, ListAppendAnyAcceptsCollectionType) {
+    EXPECT_NO_THROW(compileSource(
         "xs: List<any> = []\n"
-        "append!(xs, [1, 2, 3])\n",
-        "'any' can only hold int/float/bool/str");
+        "append!(xs, [1, 2, 3])\n"));
 }
 
-TEST_F(CodeGenTest, ListAppendedAnyRejectsCollectionType) {
-    expectCompileError(
+TEST_F(CodeGenTest, ListAppendedAnyAcceptsCollectionType) {
+    EXPECT_NO_THROW(compileSource(
         "xs: List<any> = []\n"
-        "ys = appended(xs, [1, 2, 3])\n",
-        "'any' can only hold int/float/bool/str");
+        "ys = appended(xs, [1, 2, 3])\n"));
 }
 
-TEST_F(CodeGenTest, ListInsertAnyRejectsCollectionType) {
-    expectCompileError(
+TEST_F(CodeGenTest, ListInsertAnyAcceptsCollectionType) {
+    EXPECT_NO_THROW(compileSource(
         "xs: List<any> = []\n"
-        "insert(xs, 0, [1, 2, 3])\n",
-        "'any' can only hold int/float/bool/str");
+        "insert(xs, 0, [1, 2, 3])\n"));
 }
 
 // ============================================================

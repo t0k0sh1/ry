@@ -757,19 +757,27 @@ TEST_F(CodeGenTest, CastFiniteFloatToIntStillWorks) {
     EXPECT_EQ(runSource("print(1e10 as int)"), "10000000000\n");
 }
 
-// ===== any type rejection =====
+// ===== any type acceptance / rejection =====
 
-TEST_F(CodeGenTest, AnyTypeRejection) {
-    EXPECT_THROW(runSource("x: any = [1, 2, 3]"), std::runtime_error);
-    EXPECT_THROW(runSource("x: any = {\"a\": 1}"), std::runtime_error);
-    EXPECT_THROW(runSource("x: any = {1, 2, 3}"), std::runtime_error);
-    EXPECT_THROW(runSource(
+TEST_F(CodeGenTest, AnyTypeAcceptsCollections) {
+    // #1697: `any` now holds List / Map / Set collections. Verify wrap and
+    // function-boundary roundtrip compile cleanly. Runtime behaviour for
+    // collection-holding `any` is exercised in tests/spec/any.test.ry.
+    EXPECT_NO_THROW(compileSource("x: any = [1, 2, 3]"));
+    EXPECT_NO_THROW(compileSource("x: any = {\"a\": 1}"));
+    EXPECT_NO_THROW(compileSource("x: any = {1, 2, 3}"));
+    EXPECT_NO_THROW(compileSource(
         "fn f(x):\n"
         "    return x\n"
-        "f([1, 2, 3])"), std::runtime_error);
-    EXPECT_THROW(runSource(
+        "f([1, 2, 3])"));
+    EXPECT_NO_THROW(compileSource(
         "fn f() -> any:\n"
-        "    return [1, 2, 3]"), std::runtime_error);
+        "    return [1, 2, 3]"));
+}
+
+TEST_F(CodeGenTest, AnyTypeRejectionForFunctionPointer) {
+    // Function pointers are still out of scope for `any` (#1697 covers
+    // collections only; record/enum/fn-ptr are tracked in follow-up issues).
     EXPECT_THROW(runSource(
         "fn f() -> int:\n"
         "    return 42\n"

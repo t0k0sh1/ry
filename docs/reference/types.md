@@ -729,7 +729,7 @@ a == b   # true (same tag, element-wise equal)
 
 ## any Type
 
-The `any` type is a built-in dynamic type that can hold any primitive value. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
+The `any` type is a built-in dynamic type that can hold any primitive value or collection. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
 
 ### Supported Types
 
@@ -742,8 +742,11 @@ The `any` type is a built-in dynamic type that can hold any primitive value. It 
 | `bool` | 2 | Boolean value |
 | `str` | 3 | String |
 | `Unit` | 4 | Unit value (for functions with no return value) |
+| `List<T>` | 5 | List of any element type (element type is erased — see below) |
+| `Map<K, V>` | 6 | Map (key/value types are erased) |
+| `Set<T>` | 7 | Set (element type is erased) |
 
-`any` **cannot** hold collection types (`List`, `Map`, `Set`), resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or user-defined types (`record`, `enum`).
+`any` **cannot** hold resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or user-defined types (`record`, `enum`).
 
 ### Internal Representation
 
@@ -753,7 +756,17 @@ The `any` type is a built-in dynamic type that can hold any primitive value. It 
 { i64 tag, [8 x i8] data }   // 16 bytes total
 ```
 
-The `tag` field identifies the stored type, and the `data` field holds the value (up to 8 bytes).
+The `tag` field identifies the stored type. For primitive tags (`int`/`float`/`bool`/`str`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For collection tags (`List`/`Map`/`Set`) the `data` field holds a pointer to the underlying collection header; the wrapped value is **retained** on wrap (incrementing the collection's ARC count) and released when the enclosing `any` slot goes out of scope.
+
+### Element-Type Metadata is Erased
+
+When a collection is wrapped in `any`, the element type (e.g. `List<int>` vs `List<str>`) is **not preserved** at runtime. Only the outer collection kind survives. This has two consequences:
+
+- **Implicit unwrap** trusts the static type annotation: `let xs: List<int> = anyVal` is accepted whenever the dynamic tag matches `List`, regardless of the original element type. If the elements are not actually `int` at runtime, the per-element operations later in the program will misbehave; the unwrap site itself does not catch this.
+- **Deep equality** (`anyA == anyB` where both hold a collection) compares length and the data buffer byte-by-byte at an 8-byte stride. This is exact for primitive lists (`List<int>` / `List<float>` / `List<bool>`); for `List<str>` and `List<nested-collection>` it reduces to header-pointer identity, which is conservative (may report `false` for two logically equal collections). For `Map` and `Set`, equality is **pointer identity only** — hashing requires the key/element type, which is erased.
+- **String conversion** of a collection-holding `any` emits an opaque marker (`<List>`, `<Map>`, `<Set>`) rather than rendering elements. To get a typed printout, unwrap explicitly: `let xs: List<int> = anyVal; print(xs)`.
+
+These limitations are intentional for v0.0.25 and tracked in follow-up issues; for now, treat `any` as a transport mechanism for dynamic data (e.g. JSON-shaped values from #1698) and unwrap to a concrete type before doing per-element work.
 
 ### Wrapping and Unwrapping
 
@@ -841,7 +854,7 @@ print(x)              # 42
 print(f"value: {x}")  # value: 42
 ```
 
-Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → `"true"`/`"false"`, `str` → as-is, `Unit` → `"Unit"`.
+Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → `"true"`/`"false"`, `str` → as-is, `Unit` → `"Unit"`, `List` / `Map` / `Set` → opaque marker (`<List>` / `<Map>` / `<Set>`) — see "Element-Type Metadata is Erased" above for the rationale.
 
 ### Passing any to Typed Functions
 

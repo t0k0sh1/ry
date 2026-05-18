@@ -19,6 +19,18 @@ int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
     codegenError("type error: 'any' can only hold int/float/bool/str");
 }
 
+int64_t CodeGen::getAnyTypeTagForValue(llvm::Value *val) {
+    if (val->getType() == ptrTy_) {
+        if (auto *meta = getMeta(val)) {
+            if (meta->list_elem) return static_cast<int64_t>(RyAnyTag::List);
+            if (meta->map_key || meta->map_value)
+                return static_cast<int64_t>(RyAnyTag::Map);
+            if (meta->set_elem) return static_cast<int64_t>(RyAnyTag::Set);
+        }
+    }
+    return getAnyTypeTag(val->getType());
+}
+
 bool CodeGen::isNonStrPointer(llvm::Value *val) {
     if (val->getType() != ptrTy_) return false;
     auto *meta = getMeta(val);
@@ -30,17 +42,36 @@ bool CodeGen::isStringValue(llvm::Value *val) {
 }
 
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
-    if (isNonStrPointer(val))
-        codegenError("type error: 'any' can only hold int/float/bool/str; "
-                     "non-str pointer types (collections, resources, function "
-                     "pointers, etc.) are not supported");
+    // Collections (List / Map / Set) are wrap-eligible from #1697; resources,
+    // function pointers, records and other non-collection pointer-shaped
+    // values remain rejected. Discriminate via metadata.
+    bool isCollection = false;
+    auto *meta = (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
+    if (meta) {
+        isCollection = meta->list_elem || meta->map_key || meta->map_value ||
+                       meta->set_elem;
+    }
+    if (isNonStrPointer(val) && !isCollection)
+        codegenError("type error: 'any' can only hold int/float/bool/str and "
+                     "List/Map/Set; non-collection pointer types (resources, "
+                     "function pointers, records, enums, etc.) are not "
+                     "supported");
 
-    int64_t tag = getAnyTypeTag(val->getType());
+    int64_t tag = isCollection ? getAnyTypeTagForValue(val)
+                               : getAnyTypeTag(val->getType());
 
     // Bool (i1) must be zero-extended to i64 so that the runtime's 8-byte
     // memcpy reads a well-defined 0/1 value instead of uninitialized bytes.
     if (val->getType()->isIntegerTy(1))
         val = builder_.CreateZExt(val, i64Ty_, "any.bool.zext");
+
+    // Collection wrap retains the underlying header so the inner List/Map/Set
+    // outlives the source binding even if the source goes out of scope first.
+    // Pairs with the scope-end release emitted by `emitAnyReleaseVar`.
+    if (isCollection) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        emitArcRetain(hdr);
+    }
 
     // alloca required: data field is [8 x i8], val type differs (type punning)
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
@@ -62,7 +93,8 @@ llvm::Value *CodeGen::buildUnitAny() {
     return builder_.CreateLoad(anyTy_, tmp, "any.unit.val");
 }
 
-llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
+llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
+                                     const std::string &targetTypeName) {
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
 
@@ -107,8 +139,25 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
         return phi;
     }
 
-    // Standard 2-way: exact tag match or error
+    // Standard 2-way: exact tag match or error. For collection unwraps the
+    // expected tag is derived from `targetTypeName` (List<…> / Map<…> /
+    // Set<…>); empty / "str" / primitive names use the type-driven default
+    // (Str tag for ptr).
     int64_t expectedTag = getAnyTypeTag(targetTy);
+    bool isCollectionUnwrap = false;
+    if (targetTy == ptrTy_ && !targetTypeName.empty()) {
+        std::string resolved = resolveTypeAlias(targetTypeName);
+        if (isListTypeName(resolved)) {
+            expectedTag = static_cast<int64_t>(RyAnyTag::List);
+            isCollectionUnwrap = true;
+        } else if (isMapTypeName(resolved)) {
+            expectedTag = static_cast<int64_t>(RyAnyTag::Map);
+            isCollectionUnwrap = true;
+        } else if (isSetTypeName(resolved)) {
+            expectedTag = static_cast<int64_t>(RyAnyTag::Set);
+            isCollectionUnwrap = true;
+        }
+    }
     llvm::Value *cmp = builder_.CreateICmpEQ(
         tag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(expectedTag)), "any.tag.check");
 
@@ -118,10 +167,15 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     builder_.CreateCondBr(cmp, matchBB, mismatchBB);
 
     builder_.SetInsertPoint(mismatchBB);
-    std::string typeName = (targetTy == i64Ty_) ? "int"
-                         : (targetTy == i1Ty_)  ? "bool"
-                         : (targetTy == ptrTy_) ? "str"
-                                                : "unknown";
+    std::string typeName;
+    if (!targetTypeName.empty()) {
+        typeName = targetTypeName;
+    } else {
+        typeName = (targetTy == i64Ty_) ? "int"
+                 : (targetTy == i1Ty_)  ? "bool"
+                 : (targetTy == ptrTy_) ? "str"
+                                        : "unknown";
+    }
     emitRuntimeError("runtime error: any type mismatch (expected " + typeName + ")\n",
                      ".any_type_err");
 
@@ -130,7 +184,75 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
     builder_.CreateStore(anyVal, tmp);
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.ptr");
-    return builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
+    llvm::Value *unwrapped = builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
+
+    // Collection unwrap creates a new alias to the inner header — retain so
+    // both the source `any` and the unwrapped destination can release
+    // independently at their respective scope exits.
+    if (isCollectionUnwrap) {
+        auto *hdr = emitArcGetHeaderFromData(unwrapped);
+        emitArcRetain(hdr);
+    }
+    return unwrapped;
+}
+
+void CodeGen::registerAnyManagedVar(llvm::AllocaInst *alloca,
+                                     const std::string &sourceTypeName) {
+    if (!alloca || alloca->getAllocatedType() != anyTy_) return;
+    auto it = arc_any_managed_vars_.find(alloca);
+    if (it == arc_any_managed_vars_.end()) {
+        arc_any_managed_vars_.emplace(alloca, sourceTypeName);
+    } else if (it->second.empty() && !sourceTypeName.empty()) {
+        // Upgrade from "unknown source" to a concrete type name when later
+        // declarations supply it.
+        it->second = sourceTypeName;
+    }
+}
+
+void CodeGen::emitAnyReleaseVar(const std::string &name,
+                                 llvm::AllocaInst *alloca,
+                                 const std::string &sourceTypeName) {
+    if (!alloca || alloca->getAllocatedType() != anyTy_) return;
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+
+    auto *loaded = builder_.CreateLoad(anyTy_, alloca, name + ".any.load");
+    auto *tagVal = builder_.CreateExtractValue(loaded, 0, name + ".any.tag");
+    auto *dataPtr = builder_.CreateStructGEP(anyTy_, alloca, 1, name + ".any.data");
+
+    auto *listBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.list", parentFn);
+    auto *mapBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.map",  parentFn);
+    auto *setBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.set",  parentFn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.done", parentFn);
+
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+
+    auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
+                           const std::string &fallbackTypeName) {
+        builder_.SetInsertPoint(bb);
+        auto *ptr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.ptr");
+        // Element-type metadata is erased once the value enters `any`; use the
+        // declared source type from registration when available, else fall
+        // back to the generic destructor for that kind.
+        std::string useTypeName = sourceTypeName;
+        if (useTypeName.empty()) {
+            useTypeName = fallbackTypeName;
+        }
+        emitArcReleaseLoadedElement(ptr, kind, useTypeName,
+                                     name + ".any." + fallbackTypeName);
+        // emitArcReleaseLoadedElement leaves builder_ on its own continuation
+        // block; branch from there to the merge.
+        builder_.CreateBr(doneBB);
+    };
+
+    releaseSlot(listBB, CollectionKind::List, "List");
+    releaseSlot(mapBB,  CollectionKind::Map,  "Map");
+    releaseSlot(setBB,  CollectionKind::Set,  "Set");
+
+    builder_.SetInsertPoint(doneBB);
 }
 
 llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal, bool inCollection) {

@@ -4,6 +4,7 @@ paths:
   - "src/codegen_type.cpp"
   - "src/codegen_builtin.cpp"
   - "src/codegen_metadata.cpp"
+  - "src/codegen_any.cpp"
   - "src/codegen_expr_literal.cpp"
 ---
 
@@ -52,6 +53,21 @@ Generic function inference must walk `TypeNode` structurally (`BasicType` / `Gen
 ### Empty collection literal early-return paths must propagate closure / nested-type metadata
 
 `codegen_stmt.cpp` has special early-return paths for empty literals (`a: Set<fn> = {}`, `a: List<fn> = []`) that allocate the header and return BEFORE the general `if (newTy == ptrTy_)` metadata-propagation block. Each such path must explicitly set `setTypeMeta(TypeMeta::SetElem / ListElem / MapKey / MapValue, ptr, elemTy)` AND `getOrCreateMeta(ptr).{set/list/map_*}_elem_type_name` (nested collection inner) AND `*_fn_type_info` (closure inner). Without these, downstream guards (e.g., `set_elem_fn_type_info` equality rejection in `codegen_expr.cpp`) silently don't fire and `Set<fn> == Set<fn>` compiles without error.
+
+### `any` collection wrap dispatches by metadata, not LLVM type; element-type erased on wrap
+
+**Source**: #1697 (2026-05-18, feat)
+**Tags**: codegen, any, metadata-erasure, collection, type-dispatch
+
+**Context**: Issue #1697 extended `any` to hold `List` / `Map` / `Set` headers in `data[8]` (tags 5/6/7). Under opaque pointers, `List<int>`, `Map<str,int>`, `Set<bool>`, and plain `str` all collapse to `ptrTy_` — `getAnyTypeTag(val->getType())` cannot pick the right tag from the LLVM type alone. The collection's element type (`List<int>` vs `List<List<str>>`) cannot be encoded in the 1-byte tag at all.
+
+**Rule**: Treat the `any` slot as element-type-erased. Wrap-side dispatch reads `getMeta(val)` to pick the collection tag from container metadata; unwrap-side dispatch trusts the static type annotation (`targetTypeName`) supplied by the caller.
+
+**How to apply**:
+- Use `getAnyTypeTagForValue(val)` (NOT `getAnyTypeTag(val->getType())`) when the input may be a collection. The `ForValue` variant inspects `getMeta(val)->{list_elem,map_key,map_value,set_elem}` for `ptrTy_` inputs and returns `RyAnyTag::{List,Map,Set}`; only when no collection metadata is present does it fall back to type-based dispatch (which still returns `Str` for `ptrTy_`).
+- `unwrapFromAny(anyVal, targetTy, targetTypeName)` requires the source-level target type name when `targetTy == ptrTy_`. It calls `resolveTypeAlias(targetTypeName)` and probes `isListTypeName` / `isMapTypeName` / `isSetTypeName` to pick the expected tag; empty / "str" / non-collection names keep the legacy `Str` tag behavior. Callers in `codegen_stmt.cpp` (var-decl, assign, reassign), `codegen_fn.cpp` (return), and `codegen_call_user.cpp` (arg coercion) MUST thread the declared type name through — without it, `let xs: List<int> = anyVal` would mismatch at runtime tag check against `Str=3`.
+- `wrapInAny` allow-list now includes collections: the rejection is `isNonStrPointer(val) && !isCollection`, where `isCollection` is computed from container metadata. Records / enums / fn-pointers / resources remain rejected because they carry no collection-element metadata. Do NOT widen `canAnyHoldType(ty)` — it still returns true only for `{i64, f64, i1, ptr}` and is used by sites that drive the static "can this fit in any?" question; collection eligibility is dynamic-metadata-driven and lives in `wrapInAny` itself.
+- Element-type erasure is the user-visible spec, documented in `docs/reference/types.md`: `any == any` deep equality is best-effort (List uses 8-byte slot byte-equality, Map/Set fall back to pointer identity — full deep equality across nested ARC element types would require either preserving metadata in `data[8]` or routing through type-name lookups at runtime, neither of which fits the 16-byte ABI); `to_string` returns opaque markers (`<List>` / `<Map>` / `<Set>`); arithmetic / order comparisons on collection-holding `any` surface "operator X not supported" at runtime. The complementary ARC-side rule for retain / release lives in [[codegen-arc-cow]].
 
 ### Collection element-access any-widening; `Set<any>` needs `emitAnyBinaryOp`; post-hoc Result coercion
 

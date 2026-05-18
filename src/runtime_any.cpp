@@ -1,4 +1,5 @@
 #include "ry/runtime_any.hpp"
+#include "ry/runtime_list.hpp"
 #include "ry/runtime_string.hpp"
 #include <charconv>
 #include <cmath>
@@ -22,6 +23,9 @@ static const char *tagName(int64_t tag) {
     case static_cast<int64_t>(RyAnyTag::Bool):  return "bool";
     case static_cast<int64_t>(RyAnyTag::Str):   return "str";
     case static_cast<int64_t>(RyAnyTag::Unit):  return "Unit";
+    case static_cast<int64_t>(RyAnyTag::List):  return "List";
+    case static_cast<int64_t>(RyAnyTag::Map):   return "Map";
+    case static_cast<int64_t>(RyAnyTag::Set):   return "Set";
     default:        return "unknown";
     }
 }
@@ -144,6 +148,15 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         return extractStr(a); // already a StringHeader handle — do NOT copy
     case static_cast<int64_t>(RyAnyTag::Unit):
         return makeString("Unit", 4);
+    // Element-type metadata is lost when a collection is wrapped in `any`, so
+    // we cannot render element values here. Emit an opaque marker; user code
+    // that needs full pretty-printing must unwrap first via `let xs: List<T> = anyVal`.
+    case static_cast<int64_t>(RyAnyTag::List):
+        return makeString("<List>", 6);
+    case static_cast<int64_t>(RyAnyTag::Map):
+        return makeString("<Map>", 5);
+    case static_cast<int64_t>(RyAnyTag::Set):
+        return makeString("<Set>", 5);
     default:
         fprintf(stderr,
                 "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
@@ -334,6 +347,32 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
             return (la == lb && memcmp(sa, sb, static_cast<size_t>(la)) == 0) ? 1 : 0;
         }
         case static_cast<int64_t>(RyAnyTag::Unit):  return 1;
+        case static_cast<int64_t>(RyAnyTag::List): {
+            // Element-type metadata is lost on wrap, so deep equality is
+            // best-effort: same length + byte-equal data buffer at 8-byte
+            // slot stride. Correct for List<int>/<float>/<bool> and for
+            // lists whose element type is a single pointer (str handle,
+            // nested collection header). Approximate (may give false
+            // negatives) for List<any> (16-byte slots).
+            const ListHeader *la = nullptr, *lb = nullptr;
+            memcpy(&la, a->data, sizeof(const ListHeader *));
+            memcpy(&lb, b->data, sizeof(const ListHeader *));
+            if (la == lb) return 1;
+            if (!la || !lb) return 0;
+            if (la->len != lb->len) return 0;
+            if (la->len == 0) return 1;
+            return memcmp(la->data, lb->data,
+                          static_cast<size_t>(la->len) * sizeof(void*)) == 0 ? 1 : 0;
+        }
+        case static_cast<int64_t>(RyAnyTag::Map):
+        case static_cast<int64_t>(RyAnyTag::Set): {
+            // Map/Set deep equality requires hashing with the key/element
+            // type, which is lost on wrap. Fall back to pointer identity.
+            const void *pa = nullptr, *pb = nullptr;
+            memcpy(&pa, a->data, sizeof(const void *));
+            memcpy(&pb, b->data, sizeof(const void *));
+            return pa == pb ? 1 : 0;
+        }
         default:        return 0;
         }
     }

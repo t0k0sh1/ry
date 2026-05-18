@@ -1617,12 +1617,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try str (substring check) — #1032
         if (isStringValue(container)) {
             if (!isStringValue(elem)) {
-                // Safety: wrapInAny() rejects non-str pointers (List/Map/Set) at
-                // compile time, so any<ptrTy_> can only carry a str handle.
-                // unwrapFromAny also performs a runtime RyAnyTag::Str check and
-                // aborts on mismatch, providing a second layer of defense.
+                // From #1697 onwards `wrapInAny` accepts List/Map/Set
+                // pointers, so we must request the str tag explicitly at
+                // unwrap time. `unwrapFromAny` aborts at runtime on tag
+                // mismatch (e.g. an `any` carrying a List passed where a
+                // str is required).
                 if (isAnyType(elem->getType()) && canAnyHoldType(ptrTy_))
-                    elem = unwrapFromAny(elem, ptrTy_);
+                    elem = unwrapFromAny(elem, ptrTy_, "str");
                 else
                     codegenError("'" + e->op + "' operator: left side must be str when right side is str");
             }

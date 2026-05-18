@@ -43,12 +43,25 @@ inline constexpr size_t  STRING_HEADER_SIZE   = ARC_HEADER_SIZE + STRING_HEADER_
 inline constexpr int64_t STRING_BYTELEN_OFFSET = static_cast<int64_t>(STRING_HEADER_EXTRA); // 8
 
 // ── RyAny type tag ─────────────────────────────────────
+// data[8] holds:
+//   Int/Bool        — i64 value (Bool zero-extended)
+//   Float           — f64 value
+//   Str             — char *  (StringHeader-prefixed handle)
+//   Unit            — zero
+//   List/Map/Set    — opaque collection ptr (ARC-managed). `wrapInAny`
+//                     emits an explicit retain on the header; the alloca
+//                     holding the `any` is tracked in
+//                     `arc_any_managed_vars_` and released on scope exit
+//                     via a tag-dispatched runtime helper.
 enum class RyAnyTag : int64_t {
     Int   = 0,
     Float = 1,
     Bool  = 2,
     Str   = 3,
     Unit  = 4,
+    List  = 5,
+    Map   = 6,
+    Set   = 7,
 };
 
 } // namespace ry
