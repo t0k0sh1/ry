@@ -215,6 +215,20 @@ extern "C" void __ry_arc_dtor_record_dispatch(void *dataPtr) {
     }
 }
 
+// Walk `actual->parent_desc` until either `expected` is found or the chain
+// terminates (nullptr). The same descriptor global is reused across all
+// instances of a record type, so pointer identity == record-type identity —
+// the walk therefore equates to a runtime answer to "is `actual` a subtype of
+// `expected`?" (#1802).
+extern "C" int64_t __ry_record_is_subtype_desc(const RyRecordDescriptor *actual,
+                                                const RyRecordDescriptor *expected) {
+    while (actual != nullptr) {
+        if (actual == expected) return 1;
+        actual = actual->parent_desc;
+    }
+    return 0;
+}
+
 // ===== Type error (#224) =====
 
 extern "C" void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b) {

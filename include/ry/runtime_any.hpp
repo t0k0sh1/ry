@@ -17,10 +17,14 @@ struct RyRecordDescriptor {
     RyRecordBoxDtor dtor;
     RyRecordBoxEq eq;
     const char *type_name;
+    // Parent record's descriptor, or nullptr if this record has no parent.
+    // Walked at unwrap time to support `let a: Parent = anyHoldingChild`
+    // (#1802 cross-type subtype unwrap from `any`).
+    const RyRecordDescriptor *parent_desc;
 };
 
-static_assert(sizeof(RyRecordDescriptor) == 24,
-              "RyRecordDescriptor must be 3 pointers (24 bytes) — codegen emits "
+static_assert(sizeof(RyRecordDescriptor) == 32,
+              "RyRecordDescriptor must be 4 pointers (32 bytes) — codegen emits "
               "a global with this layout per record type");
 
 #ifdef __cplusplus
@@ -28,6 +32,13 @@ extern "C" {
 #endif
 
 void __ry_arc_dtor_record_dispatch(void *dataPtr);
+
+// Walk the `parent_desc` chain of `actual` looking for `expected`. Returns 1
+// when `expected` is `actual` itself or any ancestor in the chain, 0 otherwise.
+// Used by `unwrapFromAny` to admit `let a: Parent = anyHoldingChild` while still
+// trapping on unrelated record types (#1802).
+int64_t __ry_record_is_subtype_desc(const RyRecordDescriptor *actual,
+                                    const RyRecordDescriptor *expected);
 
 void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b);
 
