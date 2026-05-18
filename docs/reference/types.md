@@ -756,7 +756,7 @@ The `any` type is a built-in dynamic type that can hold any primitive value or c
 { i64 tag, [8 x i8] data }   // 16 bytes total
 ```
 
-The `tag` field identifies the stored type. For primitive tags (`int`/`float`/`bool`/`str`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For collection tags (`List`/`Map`/`Set`) the `data` field holds a pointer to the underlying collection header; the wrapped value is **retained** on wrap (incrementing the collection's ARC count) and released when the enclosing `any` slot goes out of scope.
+The `tag` field identifies the stored type. For value tags (`int`/`float`/`bool`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For `str` the `data` field holds a pointer to the StringHeader-prefixed buffer; for collection tags (`List`/`Map`/`Set`) it holds a pointer to the underlying collection header. In both reference-holding cases the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
 
 ### Element-Type Metadata is Erased
 

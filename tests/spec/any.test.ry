@@ -744,3 +744,38 @@ fn anyHoldsCollectionTests():
     a = b
     zs: List<int> = a
     expect(zs[2]).toEq(5)
+  @it("should retain dynamic str payload across any-to-any copy (regression: #1799)")
+  fn shouldRetainDynamicStrPayloadAcrossAnyToAnyCopy():
+    s: str = "hello" + " world"
+    a: any = s
+    b: any = a
+    s = "overwritten"
+    t: str = b
+    expect(t).toEq("hello world")
+  @it("should retain dynamic str when unwrapped from a returned any (regression: #1799)")
+  fn shouldRetainDynamicStrWhenUnwrappedFromReturnedAny():
+    fn wrapDynStr() -> any:
+      inner: str = "hello" + " world"
+      result: any = inner
+      return result
+    t: str = wrapDynStr()
+    expect(t).toEq("hello world")
+  @it("should release prior dynamic str when reassigning any to a new str (regression: #1799)")
+  fn shouldReleasePriorDynamicStrWhenReassigningAny():
+    s1: str = "hello" + " world"
+    s2: str = "foo" + " bar"
+    a: any = s1
+    a = s2
+    s1 = "overwritten"
+    s2 = "also overwritten"
+    t: str = a
+    expect(t).toEq("foo bar")
+  @it("should preserve dynamic str content via any after source release and reuse (regression: #1799)")
+  fn shouldPreserveDynamicStrContentViaAnyAfterSourceReleaseAndReuse():
+    s: str = "hello" + " world"
+    a: any = s
+    s = "x"
+    f1: str = "AAAAA" + "BBBBBB"
+    f2: str = "CCCCC" + "DDDDDD"
+    t: str = a
+    expect(t).toEq("hello world")

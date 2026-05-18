@@ -46,11 +46,15 @@ inline constexpr int64_t STRING_BYTELEN_OFFSET = static_cast<int64_t>(STRING_HEA
 // data[8] holds:
 //   Int/Bool        — i64 value (Bool zero-extended)
 //   Float           — f64 value
-//   Str             — char *  (StringHeader-prefixed handle)
+//   Str             — char *  (StringHeader-prefixed handle, ARC-managed).
+//                     `wrapInAny` emits a retain on the StringHeader
+//                     (offset -24, NOT -16) so the inner buffer outlives
+//                     the source binding. Literals are ARC_IMMORTAL —
+//                     retain/release become no-ops via the immortal guard.
 //   Unit            — zero
 //   List/Map/Set    — opaque collection ptr (ARC-managed). `wrapInAny`
-//                     emits an explicit retain on the header; the alloca
-//                     holding the `any` is tracked in
+//                     emits an explicit retain on the header (offset -16);
+//                     the alloca holding the `any` is tracked in
 //                     `arc_any_managed_vars_` and released on scope exit
 //                     via a tag-dispatched runtime helper.
 enum class RyAnyTag : int64_t {

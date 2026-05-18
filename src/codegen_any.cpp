@@ -68,8 +68,15 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // Collection wrap retains the underlying header so the inner List/Map/Set
     // outlives the source binding even if the source goes out of scope first.
     // Pairs with the scope-end release emitted by `emitAnyReleaseVar`.
+    // str payloads are also retained — they are ARC-managed via StringHeader
+    // (offset -24, NOT -16 — use emitStrGetHeaderFromData not
+    // emitArcGetHeaderFromData). Literals are guarded by ARC_IMMORTAL inside
+    // emitArcRetain so the increment is a no-op.
     if (isCollection) {
         auto *hdr = emitArcGetHeaderFromData(val);
+        emitArcRetain(hdr);
+    } else if (isStringValue(val)) {
+        auto *hdr = emitStrGetHeaderFromData(val);
         emitArcRetain(hdr);
     }
 
@@ -158,6 +165,12 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
             isCollectionUnwrap = true;
         }
     }
+    // str unwrap creates a new alias to the inner StringHeader. Mirror the
+    // collection retain so the unwrapped destination can release at its own
+    // scope exit without double-freeing the source.
+    bool isStrUnwrap =
+        targetTy == ptrTy_ && !isCollectionUnwrap &&
+        expectedTag == static_cast<int64_t>(RyAnyTag::Str);
     llvm::Value *cmp = builder_.CreateICmpEQ(
         tag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(expectedTag)), "any.tag.check");
 
@@ -188,9 +201,14 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
 
     // Collection unwrap creates a new alias to the inner header — retain so
     // both the source `any` and the unwrapped destination can release
-    // independently at their respective scope exits.
+    // independently at their respective scope exits. str follows the same
+    // pattern but uses the StringHeader offset (-24) via
+    // emitStrGetHeaderFromData.
     if (isCollectionUnwrap) {
         auto *hdr = emitArcGetHeaderFromData(unwrapped);
+        emitArcRetain(hdr);
+    } else if (isStrUnwrap) {
+        auto *hdr = emitStrGetHeaderFromData(unwrapped);
         emitArcRetain(hdr);
     }
     return unwrapped;
@@ -219,16 +237,28 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto *tagVal = builder_.CreateExtractValue(loaded, 0, name + ".any.tag");
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, alloca, 1, name + ".any.data");
 
+    auto *strBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.str",  parentFn);
     auto *listBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.list", parentFn);
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.set",  parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),  strBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+
+    // str payload release: load the handle, get the StringHeader (offset -24
+    // via emitStrGetHeaderFromData — NOT emitArcGetHeaderFromData which would
+    // read the wrong word), and emitArcRelease without a destructor (str has
+    // no inner allocations). Mirrors emitArcReleaseVar's str path.
+    builder_.SetInsertPoint(strBB);
+    auto *strPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.str.ptr");
+    auto *strHdr = emitStrGetHeaderFromData(strPtr);
+    emitArcRelease(strHdr, isArcAtomic(strPtr), llvm::FunctionCallee{}, nullptr);
+    builder_.CreateBr(doneBB);
 
     auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
                            const std::string &fallbackTypeName) {
@@ -254,6 +284,9 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
                     break;
                 case CollectionKind::Set:
                     sourceMatchesKind = isSetTypeName(canon);
+                    break;
+                case CollectionKind::Str:
+                    sourceMatchesKind = false;
                     break;
             }
         }
@@ -289,19 +322,34 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
                                               siteLabel + ".any.retain.data");
 
+    auto *strBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.str",
+                                             parentFn);
     auto *collBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.coll",
                                              parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
                                              parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),
+                strBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),
                 collBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),
                 collBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),
                 collBB);
+
+    // str retain uses the StringHeader offset (-24) via
+    // emitStrGetHeaderFromData — distinct from collection retain which uses
+    // the ARC header offset (-16) via emitArcGetHeaderFromData. Confusing the
+    // two corrupts the StringHeader / ArcHeader words.
+    builder_.SetInsertPoint(strBB);
+    auto *strPtrR = builder_.CreateLoad(ptrTy_, dataPtr,
+                                         siteLabel + ".any.retain.str.ptr");
+    auto *strHdrR = emitStrGetHeaderFromData(strPtrR);
+    emitArcRetain(strHdrR);
+    builder_.CreateBr(doneBB);
 
     // All three collection tags route to the same retain block — the inner
     // header layout is identical (ARC_HEADER_SIZE prefix) for List / Map /
@@ -330,16 +378,27 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
                                               siteLabel + ".any.rel.data");
 
+    auto *strBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.str",  parentFn);
     auto *listBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.list", parentFn);
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.set",  parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),  strBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+
+    // str payload release: StringHeader offset (-24), no inner destructor.
+    // Mirrors emitArcReleaseVar's str path (codegen_arc.cpp:427-441).
+    builder_.SetInsertPoint(strBB);
+    auto *strPtrRel = builder_.CreateLoad(ptrTy_, dataPtr,
+                                           siteLabel + ".any.rel.str.ptr");
+    auto *strHdrRel = emitStrGetHeaderFromData(strPtrRel);
+    emitArcRelease(strHdrRel, isArcAtomic(strPtrRel), llvm::FunctionCallee{}, nullptr);
+    builder_.CreateBr(doneBB);
 
     auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
                            const std::string &fallbackTypeName) {
@@ -363,6 +422,9 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
                     break;
                 case CollectionKind::Set:
                     sourceMatchesKind = isSetTypeName(canon);
+                    break;
+                case CollectionKind::Str:
+                    sourceMatchesKind = false;
                     break;
             }
         }
