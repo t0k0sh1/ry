@@ -213,6 +213,13 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     val = wrapInAny(val);
                 } else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy)) {
                     val = unwrapFromAny(val, retTy);
+                } else if (isAnyType(val->getType()) && !isAnyType(retTy) &&
+                           llvm::isa<llvm::StructType>(retTy) &&
+                           findRecordInfoForType(llvm::cast<llvm::StructType>(retTy))) {
+                    // #1797: any → record unwrap on return.
+                    val = unwrapFromAny(val, retTy,
+                                        findRecordTypeName(
+                                            llvm::cast<llvm::StructType>(retTy)));
                 } else if (isUnionType(resolvedRetName)) {
                     val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {

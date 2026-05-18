@@ -42,8 +42,60 @@ bool CodeGen::isStringValue(llvm::Value *val) {
 }
 
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
+    // Record types are stored on the heap as `[ ArcHeader (16B) | descriptor ptr
+    // (8B) | record struct ]` because the inner struct is generally larger than
+    // the 8-byte `data[8]` slot. The slot holds the box's data-region pointer
+    // (i.e. headerPtr + 16). Cross-function-boundary type info is preserved by
+    // the per-type descriptor at offset 0 of the data region, so `any`-typed
+    // function returns / aliases survive even when the static type name is lost.
+    if (auto *recordStructTy = llvm::dyn_cast<llvm::StructType>(val->getType())) {
+        const RecordInfo *info = findRecordInfoForType(recordStructTy);
+        if (!info)
+            codegenError("type error: 'any' cannot hold this struct type — "
+                         "only record types declared with `record` are supported");
+        std::string typeName = findRecordTypeName(recordStructTy);
+        if (typeName.empty())
+            codegenError("type error: 'any' record wrap could not resolve "
+                         "source-level type name");
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        auto *layoutTy = recordBoxLayoutType(recordStructTy);
+        uint64_t boxDataSize = dl.getTypeAllocSize(layoutTy);
+        auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty_, boxDataSize);
+
+        auto *desc = getOrCreateRecordDescriptor(typeName, recordStructTy);
+        auto *headerPtr = emitArcAlloc(boxDataSizeC);
+        auto *dataPtr = emitArcGetDataPtr(headerPtr);
+
+        auto *descPtrSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
+                                                     "any.rec.desc.slot");
+        builder_.CreateStore(desc, descPtrSlot);
+        auto *fieldsSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
+                                                    "any.rec.fields.slot");
+        builder_.CreateStore(val, fieldsSlot);
+
+        // Per [[codegen-arc-cow]] "Record ARC reassignment guard": every value
+        // that is not a fresh `CallInst` / `InvokeInst` is treated as a view —
+        // including `InsertValueInst` chains from record literals. The helper
+        // internally skips inline-owned values via `arc_owned_values_` /
+        // `arc_str_owned_values_`, so plain literal field values (newly-built
+        // collections, fresh strings) are not over-retained.
+        if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+            emitRecordArcFieldsRetain(val, recordStructTy);
+        }
+
+        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.rec.tmp");
+        auto *tagSlot = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.rec.tag");
+        builder_.CreateStore(llvm::ConstantInt::get(
+                                 i64Ty_, static_cast<uint64_t>(RyAnyTag::Record)),
+                             tagSlot);
+        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.rec.data");
+        builder_.CreateStore(dataPtr, anyDataSlot);
+        return builder_.CreateLoad(anyTy_, tmp, "any.rec.val");
+    }
+
     // Collections (List / Map / Set) are wrap-eligible from #1697; resources,
-    // function pointers, records and other non-collection pointer-shaped
+    // function pointers, enums and other non-collection pointer-shaped
     // values remain rejected. Discriminate via metadata.
     bool isCollection = false;
     auto *meta = (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
@@ -52,10 +104,10 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
                        meta->set_elem;
     }
     if (isNonStrPointer(val) && !isCollection)
-        codegenError("type error: 'any' can only hold int/float/bool/str and "
-                     "List/Map/Set; non-collection pointer types (resources, "
-                     "function pointers, records, enums, etc.) are not "
-                     "supported");
+        codegenError("type error: 'any' can only hold int/float/bool/str, "
+                     "List/Map/Set, and record types; non-collection pointer "
+                     "types (resources, function pointers, enums, etc.) are "
+                     "not supported");
 
     int64_t tag = isCollection ? getAnyTypeTagForValue(val)
                                : getAnyTypeTag(val->getType());
@@ -104,6 +156,75 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                      const std::string &targetTypeName) {
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+
+    // Record unwrap must dispatch at entry: `getAnyTypeTag(targetTy)` below
+    // emits `codegenError` when `targetTy` is a `StructType`, so the standard
+    // 2-way path never sees record targets. Compare against the expected
+    // descriptor pointer to enforce exact-type unwrap; cross-type projection
+    // (`let p: Parent = anyHoldingChild`) is intentionally out of scope and
+    // traps at runtime via the descriptor-mismatch branch.
+    if (auto *recordStructTy = llvm::dyn_cast<llvm::StructType>(targetTy)) {
+        const RecordInfo *info = findRecordInfoForType(recordStructTy);
+        if (!info)
+            codegenError("type error: unwrapping 'any' to non-record struct "
+                         "type is not supported");
+        std::string typeName = findRecordTypeName(recordStructTy);
+        if (typeName.empty())
+            codegenError("type error: 'any' record unwrap could not resolve "
+                         "source-level type name");
+
+        auto *expectedDesc = getOrCreateRecordDescriptor(typeName, recordStructTy);
+        auto *layoutTy = recordBoxLayoutType(recordStructTy);
+
+        auto *tagMatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.tag_ok", fn);
+        auto *tagMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.tag_err", fn);
+        auto *descCheckBB = llvm::BasicBlock::Create(*ctx_, "any.rec.desc_check", fn);
+        auto *descMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.desc_err", fn);
+
+        llvm::Value *isRecord = builder_.CreateICmpEQ(
+            tag, llvm::ConstantInt::get(
+                     i64Ty_, static_cast<uint64_t>(RyAnyTag::Record)),
+            "any.is_record");
+        builder_.CreateCondBr(isRecord, tagMatchBB, tagMismatchBB);
+
+        builder_.SetInsertPoint(tagMismatchBB);
+        emitRuntimeError("runtime error: any type mismatch (expected " + typeName +
+                             ", got non-record)\n",
+                         ".any_type_err");
+
+        // Stash anyVal into an alloca so we can re-read the data field as ptr.
+        builder_.SetInsertPoint(tagMatchBB);
+        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.rec.tmp");
+        builder_.CreateStore(anyVal, tmp);
+        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.rec.data.ptr");
+        auto *dataPtr = builder_.CreateLoad(ptrTy_, anyDataSlot, "any.rec.data");
+        auto *descSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
+                                                  "any.rec.desc.slot");
+        auto *actualDesc = builder_.CreateLoad(ptrTy_, descSlot, "any.rec.desc");
+        llvm::Value *descEq = builder_.CreateICmpEQ(actualDesc, expectedDesc,
+                                                    "any.rec.desc.eq");
+        builder_.CreateCondBr(descEq, descCheckBB, descMismatchBB);
+
+        builder_.SetInsertPoint(descMismatchBB);
+        // Cross-type unwrap is out of scope for #1797; trap on mismatch.
+        // Descriptor pointer identity == record-type identity (one global per
+        // record type), so the mismatch text references the expected type.
+        emitRuntimeError("runtime error: any record type mismatch (expected " +
+                             typeName + ", got a different record type)\n",
+                         ".any_rec_err");
+
+        builder_.SetInsertPoint(descCheckBB);
+        auto *fieldsSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
+                                                    "any.rec.fields.slot");
+        llvm::Value *recordVal = builder_.CreateLoad(recordStructTy, fieldsSlot,
+                                                     "any.rec.unwrap.val");
+        // The unwrapped record becomes a new alias to the boxed value.
+        // ARC fields in the inner record need to be retained so the unwrapped
+        // value can release them independently from the box's own dtor when
+        // the box is later dropped.
+        emitRecordArcFieldsRetain(recordVal, recordStructTy);
+        return recordVal;
+    }
 
     // int→float auto-promotion: accept both static_cast<int64_t>(RyAnyTag::Float) and static_cast<int64_t>(RyAnyTag::Int)
     if (targetTy == f64Ty_) {
@@ -241,14 +362,16 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto *listBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.list", parentFn);
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.set",  parentFn);
+    auto *recBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.rec",  parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),  strBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),    strBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),   listBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),    mapBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),    setBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)), recBB);
 
     // str payload release: load the handle, get the StringHeader (offset -24
     // via emitStrGetHeaderFromData — NOT emitArcGetHeaderFromData which would
@@ -304,6 +427,23 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     releaseSlot(mapBB,  CollectionKind::Map,  "Map");
     releaseSlot(setBB,  CollectionKind::Set,  "Set");
 
+    // Record release: the box stores `[ArcHeader | descriptor ptr | record_struct]`,
+    // and the data slot holds the data-region pointer (= headerPtr + 16). Recover
+    // the ArcHeader via the standard `-16` offset and dispatch through the
+    // runtime trampoline `__ry_arc_dtor_record_dispatch`, which loads the
+    // descriptor and calls the per-type dtor. Sole indirection: `emitArcRelease`
+    // binds a compile-time FunctionCallee, so we cannot pass the per-type LLVM
+    // dtor directly — the descriptor mediation lets every record box share one
+    // ARC release call site.
+    builder_.SetInsertPoint(recBB);
+    auto *recPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.rec.ptr");
+    auto *recHdr = emitArcGetHeaderFromData(recPtr);
+    auto *trampolineTy = llvm::FunctionType::get(builder_.getVoidTy(), {ptrTy_}, false);
+    auto trampoline = mod_->getOrInsertFunction("__ry_arc_dtor_record_dispatch",
+                                                trampolineTy);
+    emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
+    builder_.CreateBr(doneBB);
+
     builder_.SetInsertPoint(doneBB);
 }
 
@@ -329,7 +469,7 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
                                              parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),
                 strBB);
@@ -338,6 +478,10 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),
                 collBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),
+                collBB);
+    // Record boxes use the same `-16` ARC header offset as collections, so a
+    // single retain block covers all four (List / Map / Set / Record).
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)),
                 collBB);
 
     // str retain uses the StringHeader offset (-24) via
@@ -382,14 +526,16 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto *listBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.list", parentFn);
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.set",  parentFn);
+    auto *recBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.rec",  parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 4);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),  strBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
-    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),    strBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),   listBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),    mapBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),    setBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)), recBB);
 
     // str payload release: StringHeader offset (-24), no inner destructor.
     // Mirrors emitArcReleaseVar's str path (codegen_arc.cpp:427-441).
@@ -439,6 +585,16 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     releaseSlot(listBB, CollectionKind::List, "List");
     releaseSlot(mapBB,  CollectionKind::Map,  "Map");
     releaseSlot(setBB,  CollectionKind::Set,  "Set");
+
+    // Record release path — see emitAnyReleaseVar for the same reasoning.
+    builder_.SetInsertPoint(recBB);
+    auto *recPtr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.rec.ptr");
+    auto *recHdr = emitArcGetHeaderFromData(recPtr);
+    auto *trampolineTy = llvm::FunctionType::get(builder_.getVoidTy(), {ptrTy_}, false);
+    auto trampoline = mod_->getOrInsertFunction("__ry_arc_dtor_record_dispatch",
+                                                trampolineTy);
+    emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
+    builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }

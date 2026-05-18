@@ -1580,4 +1580,99 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
     builder_.SetInsertPoint(loop.post);
 }
 
+// ===== Record-in-any heap-box helpers (#1797) =====
+//
+// Each record type stored in `any` needs a static descriptor global that
+// drives release / equality / to_string dispatch when the static type is
+// lost at function boundaries. The descriptor is laid out as
+//   { ptr dtor, ptr eq, ptr type_name }  (24 bytes, see RyRecordDescriptor)
+// and lives at offset 0 of the box's data region; the inner record struct
+// starts at +8. The runtime trampoline `__ry_arc_dtor_record_dispatch`
+// is what `emitArcRelease` actually invokes; it loads the descriptor and
+// fans out to the per-type LLVM dtor in this cache.
+
+llvm::StructType *CodeGen::recordBoxLayoutType(llvm::StructType *recordStructTy) {
+    return llvm::StructType::get(*ctx_, {ptrTy_, recordStructTy});
+}
+
+llvm::Function *CodeGen::getOrCreateRecordBoxDtor(const std::string &typeName,
+                                                    llvm::StructType *st) {
+    if (auto it = record_dtor_cache_.find(typeName); it != record_dtor_cache_.end())
+        return it->second;
+
+    FnScope scope(*this);
+    auto *fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto *fn = llvm::Function::Create(fnTy, llvm::Function::InternalLinkage,
+                                       "__ry_record_box_dtor_" + typeName, mod_.get());
+    record_dtor_cache_[typeName] = fn;
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    builder_.SetInsertPoint(entry);
+    auto *dataPtr = fn->getArg(0);
+    auto *layoutTy = recordBoxLayoutType(st);
+    auto *fieldsPtr = builder_.CreateStructGEP(layoutTy, dataPtr, 1, "fields_ptr");
+    auto *recordVal = builder_.CreateLoad(st, fieldsPtr, "record_val");
+    emitRecordArcFieldsRelease(recordVal, st);
+    builder_.CreateRetVoid();
+    return fn;
+}
+
+llvm::Function *CodeGen::getOrCreateRecordBoxEq(const std::string &typeName,
+                                                  llvm::StructType *st) {
+    if (auto it = record_eq_cache_.find(typeName); it != record_eq_cache_.end())
+        return it->second;
+
+    auto recIt = record_types_.find(typeName);
+    if (recIt == record_types_.end())
+        codegenError("record-in-any: unknown record type '" + typeName + "'");
+    const RecordInfo &info = recIt->second;
+
+    FnScope scope(*this);
+    auto *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+    auto *fn = llvm::Function::Create(fnTy, llvm::Function::InternalLinkage,
+                                       "__ry_record_box_eq_" + typeName, mod_.get());
+    record_eq_cache_[typeName] = fn;
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    builder_.SetInsertPoint(entry);
+    // Args point at the record-struct region inside the box (i.e. data + 8).
+    auto *recA = builder_.CreateLoad(st, fn->getArg(0), "rec.a");
+    auto *recB = builder_.CreateLoad(st, fn->getArg(1), "rec.b");
+    llvm::Value *eq = emitRecordComparison("==", recA, recB, info);
+    builder_.CreateRet(builder_.CreateZExt(eq, i64Ty_, "rec.eq.i64"));
+    return fn;
+}
+
+llvm::GlobalVariable *
+CodeGen::getOrCreateRecordDescriptor(const std::string &typeName, llvm::StructType *st) {
+    if (auto it = record_descriptor_cache_.find(typeName);
+        it != record_descriptor_cache_.end())
+        return it->second;
+
+    // Body emission depends on the active IRBuilder insertion point. Snapshot
+    // before recursing so the caller's emission point survives the per-type
+    // dtor / eq body generation below.
+    auto *savedBB = builder_.GetInsertBlock();
+    llvm::IRBuilder<>::InsertPoint savedIP = builder_.saveIP();
+
+    auto *dtor = getOrCreateRecordBoxDtor(typeName, st);
+    auto *eq = getOrCreateRecordBoxEq(typeName, st);
+    auto *typeNameConst = cachedGlobalString(typeName, ".record_type_name");
+
+    auto *descTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+    auto *initVal = llvm::ConstantStruct::get(
+        descTy, {dtor, eq, llvm::cast<llvm::Constant>(typeNameConst)});
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, descTy, /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, initVal,
+        "__ry_record_desc_" + typeName);
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    gv->setAlignment(llvm::Align(8));
+    record_descriptor_cache_[typeName] = gv;
+
+    if (savedBB)
+        builder_.restoreIP(savedIP);
+    return gv;
+}
+
 } // namespace ry

@@ -309,6 +309,20 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
             continue;
         }
 
+        if (isAnyType(args[i]->getType()) &&
+            llvm::isa<llvm::StructType>(info.paramTypes[i]) &&
+            findRecordInfoForType(
+                llvm::cast<llvm::StructType>(info.paramTypes[i]))) {
+            // #1797: any → record unwrap on function call argument coercion.
+            std::string paramName =
+                i < info.paramTypeNames.size() ? info.paramTypeNames[i]
+                                               : findRecordTypeName(
+                                                     llvm::cast<llvm::StructType>(
+                                                         info.paramTypes[i]));
+            args[i] = unwrapFromAny(args[i], info.paramTypes[i], paramName);
+            continue;
+        }
+
         if (i < info.paramTypeNames.size()) {
             std::string resolvedPName = resolveTypeAlias(info.paramTypeNames[i]);
             if (isUnionType(resolvedPName)) {

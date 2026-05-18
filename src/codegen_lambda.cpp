@@ -394,6 +394,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 val = wrapInAny(val);
             else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy))
                 val = unwrapFromAny(val, retTy);
+            else if (isAnyType(val->getType()) && !isAnyType(retTy) &&
+                     llvm::isa<llvm::StructType>(retTy) &&
+                     findRecordInfoForType(llvm::cast<llvm::StructType>(retTy)))
+                val = unwrapFromAny(
+                    val, retTy,
+                    findRecordTypeName(llvm::cast<llvm::StructType>(retTy)));
             else if (val->getType() != retTy) {
                 std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
                 if (isUnionType(resolvedRetTypeStr))
