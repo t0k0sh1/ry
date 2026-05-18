@@ -6,6 +6,233 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.24] - 2026-05-18
+
+### Added
+
+- Added `mockReturnValueOnce(name, value)` to the testing framework for
+  Jest-compatible per-call queued mock returns. Each call to
+  `mockReturnValueOnce` enqueues `value` for the named function; the next
+  call to that function dequeues and returns the head of the queue.
+  When the queue empties, calls fall back to the function set via
+  `mock(name, replacement)` (if any), then to the original implementation
+  — matching Jest's fallback chain. All return types are supported
+  (primitives, `str`, `List` / `Map` / `Set`, records, `Result`,
+  `Option` including bare `None`). The first argument must be a string
+  literal naming the function; overloaded functions, unknown names,
+  Unit-returning functions, and value type mismatches are rejected at
+  compile time. `mockClear(name)` preserves the queue (only resets the
+  call counter), while `mockReset(name)` and `mockResetAll()` discard
+  the queue. Queues are auto-cleared at the end of each `it` block.
+  Note: `verify(name)` counts only queue-served and default-mock-served
+  calls; calls that fall through to the original implementation are not
+  counted (matching `mockReset` semantics). (#1681)
+- Added per-overload mocking, spying, and verification for overloaded
+  functions across the testing framework. The mock registry is now
+  keyed by canonical signature `"name(T1, T2)"` instead of bare name,
+  so each overload has an independent slot. `mock` /
+  `mockReturnValueOnce` / `spy` / `verify` / `verifyCalledWith` /
+  `mockClear` / `mockReset` all accept the signature-form string
+  (e.g. `mock("add(int, int)", ...)`, `verify("digits(int, int)")`).
+  Custom-emitter `@native` overloads — including the math overload
+  set (`abs`, `floor`, `ceil`, `round`, `log`, `pow`, `digits`) —
+  are now mockable / spy-able via the same signature form; argument
+  recording for `verifyCalledWith` on those natives is not supported
+  in v1 (count-based `verify` works). Whitespace inside the signature
+  is normalized; type aliases are resolved automatically. (#1682)
+- Added `spy(name)` to the testing framework for recording calls
+  without replacing the implementation. Unlike `mock(name, replacement)`
+  which fully replaces the function body, `spy` keeps the original
+  implementation running and only adds call-count and argument-recording
+  instrumentation around it. The argument is the function's name as a
+  string literal; overloaded functions and non-existent names are
+  rejected at compile time. `verify(name)` and
+  `verifyCalledWith(name, args...)` work uniformly on spied functions
+  (same internal call-recording registry as `mock`), and
+  `mockClear(name)` / `mockReset(name)` / `mockResetAll()` apply
+  identically. A function may be both mocked and spied across different
+  `it` blocks; when both are active in the same block, `mock` takes
+  precedence and the real implementation is bypassed. Spy registrations
+  are automatically cleared at the end of each `it` block. (#1683)
+- Added `mockClear(name)`, `mockReset(name)`, and `mockResetAll()` to
+  the testing framework for partial mock state reset within an `it`
+  block (Jest / Vitest compatible). `mockClear` resets the call count
+  while keeping the mock active; `mockReset` removes a single mock and
+  restores the original implementation; `mockResetAll` removes every
+  mock currently registered, equivalent to the automatic cleanup that
+  runs at the end of each `it` block but explicit and usable
+  mid-block. All three accept the function name as a string (same
+  convention as `verify`) and are no-ops when the name is not
+  currently mocked. (#1684)
+- Added IEEE 754 special-value matchers `toBeNaN()`, `toBeInfinity()`,
+  and `toBeFinite()` to the testing framework. Because `NaN == NaN` is
+  false in IEEE 754, `expect(0.0/0.0).toEq(NAN)` always failed and
+  tests had to rely on indirect idioms such as
+  `expect(x == x).toBeFalse()`. The new matchers express the intent
+  directly: `expect(0.0/0.0).toBeNaN()`,
+  `expect(1.0/0.0).toBeInfinity()` (matches both `+∞` and `-∞`), and
+  `expect(3.14).toBeFinite()`. All three accept `float` only and emit
+  a `codegenError` for other types. Complements stdlib `math.isNan` /
+  `math.isInf` (assertion vs. conditional branch). (#1685)
+- Added `@beforeEach` / `@afterEach` / `@beforeAll` / `@afterAll`
+  lifecycle hook directives for the testing framework. Each hook is
+  declared on a parameterless, return-typeless function inside a
+  `@describe` block and runs at the corresponding point in the
+  describe's lifecycle: `@beforeAll` once before the first `@it`,
+  `@beforeEach` before every `@it`, `@afterEach` after every `@it`
+  that completes normally, and `@afterAll` once after the last `@it`.
+  Hook bodies are inlined into the describe scope rather than emitted
+  as standalone functions, so they may freely read and reassign
+  describe-scope variables (`@it` bodies, by contrast, capture those
+  variables read-only). `@describe` bodies execute once, so
+  `@beforeEach` mutations accumulate across tests — write an explicit
+  reset if per-test isolation is required. Constraints: at most one
+  hook of each kind per describe; lifecycle hooks cannot coexist with
+  `@it` / `@describe` / `@timeout` / `@skip` / `@only` / `@todo` /
+  `@each` / `@property` on the same function; hooks declared outside
+  a `@describe` are rejected; and hook bodies cannot contain
+  top-level declarations (`fn` / `record` / `enum` / type alias /
+  directive / `import`) because re-emission per `@it` would
+  duplicate-register them. Known limitation: a test fired by
+  `@timeout` unwinds via `siglongjmp` past the inlined `@afterEach`
+  body, so cleanup runs only on normal completion. (#1686)
+- Added `@skip`, `@only`, and `@todo` testing directives for
+  individual test selection within a file. `@skip @it("...")` skips
+  the test entirely and counts it as `skipped`. `@only @it("...")`
+  causes every non-`@only` test in the same file to be implicitly
+  skipped — useful for focused TDD on a single failing case.
+  `@todo @it("...")` is a placeholder that never emits a body (so
+  the function may reference undefined identifiers and still
+  compile) and counts as `todo`. All three directives compose with
+  `@each` and `@property` and are rejected on `@describe` in this
+  release (MVP scope; tracked for future expansion). The test
+  summary now always prints the 4-item form
+  `N passed, M failed, K skipped, T todo`; only `failed` influences
+  the exit code. Outline mode (`ry test --outline`) renders the
+  directive as a suffix, e.g. `it foo (@skip)`,
+  `it foo (@only @each)`. Mutual combinations
+  (`@skip @only`, `@skip @todo`, `@only @todo`) are codegen errors.
+  (#1687)
+- Added `@timeout(ms)` testing directive for per-test millisecond-precision
+  timeouts. `@timeout(N) @it("...")` aborts the test if its body runs
+  longer than `N` milliseconds, marks it as `failed` with a
+  "(timeout after Nms)" suffix, and continues execution with the next
+  test. This replaces the previous "alarm + `_exit(124)`" behavior for
+  affected tests, which terminated the entire test process and lost all
+  subsequent test results. The `ms` argument must be a **positive integer
+  literal**; zero, negative, non-literal, or non-integer arguments are
+  rejected at compile time. Combining `@timeout` with `@each` or
+  `@property` is a compile error in this release (MVP scope). The timer
+  is delivered via `setitimer(ITIMER_REAL, ms)` and `siglongjmp` from the
+  signal handler — the test runner stays single-threaded and TSan-safe.
+  Known limitation: on timeout, ARC release is skipped for objects
+  allocated inside the test body (leaks are reclaimed at process exit
+  but may be flagged by leak detectors). (#1688)
+- Added ergonomic matchers `toBeBetween(min, max)` and
+  `toBeOneOf(list)` to the testing framework. Both express common
+  assertion patterns that previously required verbose combinations:
+  `expect(x).toBeBetween(1, 10)` replaces
+  `expect(x).toBeGreaterThanOrEq(1)` plus
+  `expect(x).toBeLessThanOrEq(10)`, and
+  `expect(status).toBeOneOf([200, 201, 204])` replaces the
+  argument-order-reversed `expect([200, 201, 204]).toContain(status)`.
+  `toBeBetween` is inclusive on both bounds and accepts `int` /
+  `float` operands (mixed int/float is allowed); `toBeOneOf` accepts a
+  `List` whose element type matches the actual value (`int`, `float`,
+  `str`, or `bool`). Both emit `codegenError` for type or shape
+  mismatches. (#1689)
+- Added Troubleshooting, Recipes, and Best Practices sections to
+  `docs/reference/testing.md` covering common errors (missing
+  `from testing import`, `verify` returning 0, `toEq` vs `toBeCloseTo`
+  for floats, `@afterEach` skipped on `@timeout`,
+  `@each` / `@property` + `@timeout` compile error), worked patterns for
+  `mockReturnValueOnce` / `spy` / `toBeCloseTo` / `@property` /
+  overloaded mock, and conventions to prevent footguns
+  (`@only` in committed code, mock scope, `verify` paired with
+  behavioral assertion, `@beforeAll` weight, `should ...` form). (#1783)
+- Added a `Feature interactions` section to
+  `docs/reference/testing.md` documenting how v0.0.24 testing features
+  combine: `@beforeAll` / `@afterAll` with `@each` / `@property`
+  (parameterized-aware lifecycle), `mock` / `spy` installed from
+  `@beforeEach` (fresh per-`it` state via auto-restore), mutually
+  exclusive combinations (`@beforeEach` / `@afterEach` with `@each` /
+  `@property`, `@timeout` with `@each` / `@property`) with verbatim
+  compile-error messages, and nested-`@describe` lifecycle
+  (hooks are describe-local, not inherited). Adds
+  `tests/spec/feature_combinations.test.ry` covering the four supported
+  combinations, plus verbatim error text in
+  `docs/reference/directives.md` for the `@timeout` mutual exclusion.
+  (#1784)
+- Added two follow-up Recipes to `docs/reference/testing.md`:
+  "Per-test mock setup with `@beforeEach`" (reusing the
+  `mockInBeforeEach` fixture from
+  `tests/spec/feature_combinations.test.ry`) and
+  "Setup patterns for `@each` parameterized tests" (backed by new
+  `tests/spec/parameterized_lifecycle.test.ry`, covering both
+  inline per-iteration setup and `@beforeAll` hoist workarounds for
+  the `@each` + `@beforeEach` compile-error case). Completes the
+  recipes deferred from #1783. (#1788)
+
+### Changed
+
+- Bare-name semantics for the testing API on overloaded functions are
+  defined as follows (no change for single-overload functions):
+  `mock(n, repl)` auto-dispatches when the replacement lambda's
+  signature uniquely matches one overload, otherwise errors with the
+  candidate list; `mockReturnValueOnce(n, v)` errors (return-value
+  alone cannot disambiguate); `spy(n)` registers spy for **all**
+  overloads aggregately; `verify(n)` returns the **sum** of call
+  counts across all overloads; `verifyCalledWith(n, ...)` dispatches
+  to the arity-matching overload or errors when ambiguous;
+  `mockClear(n)` / `mockReset(n)` clear / remove every overload. As
+  a consequence, if existing code calls `verify("foo")` and `foo`
+  later gains a second overload, the return value silently becomes
+  the aggregate count — switch to `verify("foo(int)")` to preserve
+  per-overload counting through such a change. (#1682)
+
+### Fixed
+
+- Fixed the formatter dropping extra arguments on `expect` matchers
+  with more than one argument. Previously `expect(x).toBeCloseTo(1.0,
+  4)` was reformatted as `expect(x).toBeCloseTo(1.0)`, silently
+  discarding the `decimals` argument; the same gap would have affected
+  the new `toBeBetween(min, max)`. The formatter now emits every
+  argument in `ExpectStmt.extra_args` alongside the primary
+  `expected`. (#1689)
+- Fixed undefined behavior in `expect(x).toContain(y)` and
+  `expect(x).toNotContain(y)` where pointer-typed list/set elements
+  were unconditionally compared with `strcmp`. Under opaque pointers
+  `elemTy == ptrTy_` matches not only `List<str>` / `Set<str>` but
+  also `List<List<T>>` / `List<Map<K, V>>` / `List<Set<T>>` /
+  `List<fn>` / `Set<List<T>>` / `Set<Map<K, V>>` / `Set<fn>`, so the
+  previous code read the bytes of a collection / closure header as a
+  C string — UB that could silently report two distinct length-N
+  lists as "equal" because their headers begin with the same length
+  prefix. These shapes are now rejected at compile time with a clear
+  diagnostic (`list element type must be int, float, str, or bool` /
+  `set element type must be int, float, str, or bool`), mirroring the
+  positive-allowlist guard previously applied to `toBeOneOf`
+  (#1689) and `emitListRemove`. (#1763)
+- `mock()` / `spy()` pre-scan now walks lambda bodies inside every
+  `ExprPtr` slot, not just `CallStmt.args`. Targets defined inside a
+  lambda stored in `AssignStmt.value`, `ReturnStmt.value`,
+  `CallExpr.args` (nested at any depth), `IfStmt.condition`, or any
+  other AST position are now detected, so the mock dispatch gate fires
+  for callsites compiled before the lambda runs. (#1765)
+- Fixed a JIT crash / use-after-free when calling a higher-order
+  function whose return value is an `fn(...) -> T` typed value loaded
+  from a parameter (e.g. `fn pick(f: fn() -> Unit) -> fn() -> Unit:
+  return f` invoked inline and then called via the bound local).
+  Fn-typed parameter allocas are not registered in `arc_managed_vars_`
+  because callers own the uniform-closure wrap temp via
+  `releaseUniformClosureTemps`. Returning such a value out of the
+  callee made the caller's post-call release free the storage while
+  the caller still held the returned handle. A new
+  `retainFnTypedParamForReturn` helper, called from `emitStmt(ReturnStmt)`,
+  retains the value when the source alloca's metadata flags it as a
+  uniform-closure fn-typed parameter; non-return load sites
+  (pass-through fn args, two-level nesting) are unaffected. (#1770)
+
 ## [0.0.23] - 2026-05-15
 
 ### Added
@@ -2141,7 +2368,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.23...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.24...HEAD
+[0.0.24]: https://github.com/t0k0sh1/ry/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/t0k0sh1/ry/compare/v0.0.22...v0.0.23
 [0.0.22]: https://github.com/t0k0sh1/ry/compare/v0.0.21...v0.0.22
 [0.0.21]: https://github.com/t0k0sh1/ry/compare/v0.0.20...v0.0.21
