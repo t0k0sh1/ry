@@ -851,6 +851,7 @@ fn anyHoldsRecordTests():
   fn shouldPreserveRecordWithStrFieldThroughAnyToAnyCopy():
     a: any = AnyRecUser("Bob" + "by", 25)
     b: any = a
+    a = AnyRecUser("Replaced" + "Name", 99)
     u: AnyRecUser = b
     expect(u.name).toEq("Bobby")
     expect(u.age).toEq(25)

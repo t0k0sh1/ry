@@ -757,7 +757,14 @@ The `any` type is a built-in dynamic type that can hold any primitive value or c
 { i64 tag, [8 x i8] data }   // 16 bytes total
 ```
 
-The `tag` field identifies the stored type. For value tags (`int`/`float`/`bool`/`Unit`) the `data` field holds the value directly (up to 8 bytes). For `str` the `data` field holds a pointer to the StringHeader-prefixed buffer; for collection tags (`List`/`Map`/`Set`) it holds a pointer to the underlying collection header. For the `record` tag the `data` field holds a pointer to a heap-allocated box laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record struct ]` — the descriptor is a per-record-type global carrying the destructor, equality function, and type name, so type identity survives even when the static type is erased to `any` across function boundaries. In all reference-holding cases the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
+The `tag` field identifies the stored type, and the `data` field is interpreted accordingly:
+
+- **Value tags (`int` / `float` / `bool` / `Unit`)** — `data` holds the value directly (up to 8 bytes); no heap allocation.
+- **`str` tag** — `data` holds a pointer to the StringHeader-prefixed buffer.
+- **Collection tags (`List` / `Map` / `Set`)** — `data` holds a pointer to the underlying collection header.
+- **`record` tag** — `data` holds a pointer to a heap-allocated box laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record struct ]`. The descriptor is a per-record-type global carrying the destructor, equality function, and type name, so type identity survives even when the static type is erased to `any` across function boundaries.
+
+**ARC retention semantics**: in all reference-holding cases (`str`, collections, `record` box) the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
 
 ### Element-Type Metadata is Erased
 
@@ -786,13 +793,13 @@ print(q.x)                  # 1
 fn makePoint() -> any:
   return Point(7, 9)
 a: any = makePoint()
-r: Point = a                # descriptor on the box drives correct release
+r: Point = a                # the descriptor in the box ensures correct release
 ```
 
 - **Wrap cost**: ~24 bytes overhead per record value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the record struct itself, heap-allocated and reference-counted.
 - **Equality (`==`)** compares the two boxes' descriptor pointers first; if they match, the descriptor-resident equality function dispatches to a field-wise deep comparison, identical to the typed `Point == Point` path. Two `any` holding records of different types are always unequal.
 - **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Point>`) using the descriptor's type name — more informative than the opaque collection markers.
-- **Unwrap scope**: only **exact-type unwrap** is supported in v0.0.25 (`let q: Point = anyHoldingPoint`). Unwrapping to a parent record type (`let p: Parent = anyHoldingChild`) is intentionally out of scope and traps at runtime with a clear error; tracked as follow-up. Subtype coercion on the typed path (`fn f(a: Parent): ...; f(child)`) is unchanged.
+- **Unwrap scope**: only **exact-type unwrap** is supported in v0.0.25 (`let q: Point = anyHoldingPoint`). Unwrapping to a parent record type (`let p: Parent = anyHoldingChild`) is intentionally out of scope and traps at runtime with a clear error; tracked as #1802. Subtype coercion on the typed path (`fn f(a: Parent): ...; f(child)`) is unchanged.
 
 ### Wrapping and Unwrapping
 
