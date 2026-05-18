@@ -1659,9 +1659,23 @@ CodeGen::getOrCreateRecordDescriptor(const std::string &typeName, llvm::StructTy
     auto *eq = getOrCreateRecordBoxEq(typeName, st);
     auto *typeNameConst = cachedGlobalString(typeName, ".record_type_name");
 
-    auto *descTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+    // Resolve parent descriptor (or null) so `unwrapFromAny` can walk the
+    // chain to admit `let a: Parent = anyHoldingChild` (#1802).
+    llvm::Constant *parentDesc =
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    if (const RecordInfo *info = findRecordType(typeName);
+        info && !info->parentName.empty()) {
+        if (const RecordInfo *parentInfo = findRecordType(info->parentName);
+            parentInfo && parentInfo->llvmType) {
+            parentDesc = getOrCreateRecordDescriptor(info->parentName,
+                                                     parentInfo->llvmType);
+        }
+    }
+
+    auto *descTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
     auto *initVal = llvm::ConstantStruct::get(
-        descTy, {dtor, eq, llvm::cast<llvm::Constant>(typeNameConst)});
+        descTy,
+        {dtor, eq, llvm::cast<llvm::Constant>(typeNameConst), parentDesc});
     auto *gv = new llvm::GlobalVariable(
         *mod_, descTy, /*isConstant=*/true,
         llvm::GlobalValue::PrivateLinkage, initVal,

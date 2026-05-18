@@ -201,14 +201,24 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         auto *descSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
                                                   "any.rec.desc.slot");
         auto *actualDesc = builder_.CreateLoad(ptrTy_, descSlot, "any.rec.desc");
-        llvm::Value *descEq = builder_.CreateICmpEQ(actualDesc, expectedDesc,
-                                                    "any.rec.desc.eq");
-        builder_.CreateCondBr(descEq, descCheckBB, descMismatchBB);
+        // Walk the runtime descriptor `parent_desc` chain to admit subtype
+        // unwrap (`let a: Parent = anyHoldingChild`) (#1802). Exact-type
+        // unwrap stays valid: actual == expected returns true on the first
+        // iteration; unrelated records walk to null and return false.
+        llvm::FunctionType *isSubtypeTy =
+            llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee isSubtypeFn = mod_->getOrInsertFunction(
+            "__ry_record_is_subtype_desc", isSubtypeTy);
+        llvm::Value *chainOk = builder_.CreateCall(
+            isSubtypeFn, {actualDesc, expectedDesc}, "any.rec.chain.ok");
+        llvm::Value *chainBool = builder_.CreateICmpNE(
+            chainOk, llvm::ConstantInt::get(i64Ty_, 0), "any.rec.chain.bool");
+        builder_.CreateCondBr(chainBool, descCheckBB, descMismatchBB);
 
         builder_.SetInsertPoint(descMismatchBB);
-        // Cross-type unwrap is out of scope for #1797; trap on mismatch.
-        // Descriptor pointer identity == record-type identity (one global per
-        // record type), so the mismatch text references the expected type.
+        // Unrelated record types still trap. Descriptor pointer identity ==
+        // record-type identity (one global per record type), and the chain
+        // walk reaches null without finding `expectedDesc`.
         emitRuntimeError("runtime error: any record type mismatch (expected " +
                              typeName + ", got a different record type)\n",
                          ".any_rec_err");

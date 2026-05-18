@@ -798,6 +798,9 @@ record AnyRecAnimal:
 record AnyRecChildDog < AnyRecAnimal:
   breed: str
 
+record AnyRecGuideDog < AnyRecChildDog:
+  trainerId: int
+
 @describe("any holds record")
 fn anyHoldsRecordTests():
   @it("should wrap plain record in any")
@@ -869,3 +872,29 @@ fn anyHoldsRecordTests():
     expect(out.name).toEq("Rex")
     expect(out.legs).toEq(4)
     expect(out.breed).toEq("Labrador")
+  @it("should unwrap any holding child record as parent type (subtype projection)")
+  fn shouldUnwrapAnyHoldingChildRecordAsParentType():
+    d: any = AnyRecChildDog("Rex", 4, "Labrador")
+    a: AnyRecAnimal = d
+    expect(a.name).toEq("Rex")
+    expect(a.legs).toEq(4)
+  @it("should unwrap any holding grandchild record as grandparent type (multi-level chain walk)")
+  fn shouldUnwrapAnyHoldingGrandchildRecordAsGrandparentType():
+    g: any = AnyRecGuideDog("Buddy", 4, "GoldenRetriever", 42)
+    a: AnyRecAnimal = g
+    expect(a.name).toEq("Buddy")
+    expect(a.legs).toEq(4)
+  @it("should unwrap any holding grandchild record as intermediate parent type")
+  fn shouldUnwrapAnyHoldingGrandchildRecordAsIntermediateParentType():
+    g: any = AnyRecGuideDog("Buddy", 4, "GoldenRetriever", 42)
+    c: AnyRecChildDog = g
+    expect(c.name).toEq("Buddy")
+    expect(c.legs).toEq(4)
+    expect(c.breed).toEq("GoldenRetriever")
+  @it("should subtype-unwrap across function boundary (any return -> parent type)")
+  fn shouldSubtypeUnwrapAcrossFunctionBoundary():
+    fn makeAnyDog() -> any:
+      return AnyRecChildDog("Spot", 4, "Beagle")
+    a: AnyRecAnimal = makeAnyDog()
+    expect(a.name).toEq("Spot")
+    expect(a.legs).toEq(4)

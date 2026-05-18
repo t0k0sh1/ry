@@ -797,9 +797,38 @@ r: Point = a                # the descriptor in the box ensures correct release
 ```
 
 - **Wrap cost**: ~24 bytes overhead per record value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the record struct itself, heap-allocated and reference-counted.
-- **Equality (`==`)** compares the two boxes' descriptor pointers first; if they match, the descriptor-resident equality function dispatches to a field-wise deep comparison, identical to the typed `Point == Point` path. Two `any` holding records of different types are always unequal.
+- **Equality (`==`)** compares the two boxes' descriptor pointers first; if they match, the descriptor-resident equality function dispatches to a field-wise deep comparison, identical to the typed `Point == Point` path. Two `any` holding records of different types are always unequal — `Dog == Animal` is `false` even when the `Dog` carries the same `name` / `legs` as the `Animal`, because identity is keyed on the dynamic descriptor.
 - **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Point>`) using the descriptor's type name — more informative than the opaque collection markers.
-- **Unwrap scope**: only **exact-type unwrap** is supported in v0.0.25 (`let q: Point = anyHoldingPoint`). Unwrapping to a parent record type (`let p: Parent = anyHoldingChild`) is intentionally out of scope and traps at runtime with a clear error; tracked as #1802. Subtype coercion on the typed path (`fn f(a: Parent): ...; f(child)`) is unchanged.
+- **Subtype unwrap**: a child record stored in `any` can be unwrapped as any of its ancestor types. The descriptor carries a `parent_desc` chain that the runtime walks at unwrap time; if the expected type appears anywhere in the chain the unwrap succeeds and projects the ancestor's fields out of the box, otherwise the unwrap traps with a clear `any record type mismatch` error.
+
+```ry
+record Animal:
+  name: str
+  legs: int
+
+record Dog < Animal:
+  breed: str
+
+record GuideDog < Dog:
+  trainerId: int
+
+g: any = GuideDog("Buddy", 4, "GoldenRetriever", 42)
+a: Animal = g               # walks GuideDog -> Dog -> Animal; reads name / legs only
+d: Dog = g                  # walks GuideDog -> Dog; reads name / legs / breed
+print(a.name)               # "Buddy"
+
+# Cross-function boundary still works — descriptor lives in the box
+fn makeAnyDog() -> any:
+  return Dog("Spot", 4, "Beagle")
+spotted: Animal = makeAnyDog()
+print(spotted.name)         # "Spot"
+
+# Unrelated types still trap at runtime
+p: any = Point(1, 2)
+# let nope: Animal = p      # runtime error: any record type mismatch
+```
+
+Subtype coercion on the typed path (`fn f(a: Animal): ...; f(dogValue)`) is unchanged — the runtime walk only applies to `any → record` unwrap sites.
 
 ### Wrapping and Unwrapping
 
