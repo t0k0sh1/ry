@@ -713,3 +713,34 @@ fn anyHoldsCollectionTests():
     add(s, 1)
     a: any = s
     expect(f"{a}").toEq("<Set>")
+  @it("should retain payload across any-to-any copy (regression: #1697 double-free)")
+  fn shouldRetainPayloadAcrossAnyToAnyCopy():
+    xs: List<int> = [10, 20, 30]
+    a: any = xs
+    b: any = a
+    ys: List<int> = b
+    expect(ys[0]).toEq(10)
+    expect(ys[2]).toEq(30)
+  @it("should retain payload when an any holds a map and is copied to another any")
+  fn shouldRetainPayloadOnAnyToAnyMapCopy():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    a: any = m
+    b: any = a
+    expect(f"{b}").toEq("<Map>")
+  @it("should retain payload when an any holds a set and is copied to another any")
+  fn shouldRetainPayloadOnAnyToAnySetCopy():
+    s: Set<int> = {}
+    add(s, 7)
+    add(s, 8)
+    a: any = s
+    b: any = a
+    expect(f"{b}").toEq("<Set>")
+  @it("should reassign any-to-any without leaking the prior payload")
+  fn shouldReassignAnyToAnyWithoutLeak():
+    xs: List<int> = [1, 2]
+    ys: List<int> = [3, 4, 5]
+    a: any = xs
+    b: any = ys
+    a = b
+    zs: List<int> = a
+    expect(zs[2]).toEq(5)

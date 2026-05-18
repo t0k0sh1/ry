@@ -2154,6 +2154,18 @@ public:
     // Str / Unit) emit no IR.
     void emitAnyReleaseVar(const std::string &name, llvm::AllocaInst *alloca,
                             const std::string &sourceTypeName);
+    // Tag-dispatched retain for an `any` SSA value's collection payload.
+    // List/Map/Set tags emit `__ry_arc_inc` on the inner header so two
+    // owners can release independently; other tags are no-ops. Used at
+    // `any → any` copy/reassign sites where wrapInAny did not just run.
+    void emitAnyRetainPayload(llvm::Value *anyVal,
+                               const std::string &siteLabel);
+    // Tag-dispatched release for an `any` SSA value's collection payload.
+    // Mirrors emitAnyReleaseVar but operates on a Value (e.g. a load from
+    // the old slot at reassignment time) rather than an alloca.
+    void emitAnyReleasePayload(llvm::Value *anyVal,
+                                const std::string &sourceTypeName,
+                                const std::string &siteLabel);
     // Register `alloca` (must be of type `anyTy_`) in `arc_any_managed_vars_`
     // so scope cleanup releases the active collection slot. Idempotent —
     // safe to call repeatedly. `sourceTypeName` records the declared type

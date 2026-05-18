@@ -274,6 +274,113 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     builder_.SetInsertPoint(doneBB);
 }
 
+void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
+                                    const std::string &siteLabel) {
+    if (!anyVal || anyVal->getType() != anyTy_) return;
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+
+    // Stash the value into a fresh alloca so we can re-GEP the data field as
+    // a ptr regardless of the original tag.
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr,
+                                                  siteLabel + ".any.retain.tmp");
+    builder_.CreateStore(anyVal, tmp);
+    auto *tagVal = builder_.CreateExtractValue(anyVal, 0,
+                                                siteLabel + ".any.retain.tag");
+    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
+                                              siteLabel + ".any.retain.data");
+
+    auto *collBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.coll",
+                                             parentFn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
+                                             parentFn);
+
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),
+                collBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),
+                collBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),
+                collBB);
+
+    // All three collection tags route to the same retain block — the inner
+    // header layout is identical (ARC_HEADER_SIZE prefix) for List / Map /
+    // Set, so a single `emitArcGetHeaderFromData` + `emitArcRetain` covers
+    // every kind.
+    builder_.SetInsertPoint(collBB);
+    auto *ptr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.retain.ptr");
+    auto *hdr = emitArcGetHeaderFromData(ptr);
+    emitArcRetain(hdr);
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+}
+
+void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
+                                     const std::string &sourceTypeName,
+                                     const std::string &siteLabel) {
+    if (!anyVal || anyVal->getType() != anyTy_) return;
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr,
+                                                   siteLabel + ".any.rel.tmp");
+    builder_.CreateStore(anyVal, tmp);
+    auto *tagVal = builder_.CreateExtractValue(anyVal, 0,
+                                                siteLabel + ".any.rel.tag");
+    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
+                                              siteLabel + ".any.rel.data");
+
+    auto *listBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.list", parentFn);
+    auto *mapBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.map",  parentFn);
+    auto *setBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.set",  parentFn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.done", parentFn);
+
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 3);
+    auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)), listBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),  mapBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),  setBB);
+
+    auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
+                           const std::string &fallbackTypeName) {
+        builder_.SetInsertPoint(bb);
+        auto *ptr = builder_.CreateLoad(ptrTy_, dataPtr,
+                                         siteLabel + ".any.rel.ptr");
+        // Mirror emitAnyReleaseVar: only use the supplied source name when
+        // its kind matches the runtime tag, else fall back to the generic
+        // destructor for that kind. This guards against stale names from
+        // reassigned `any` slots.
+        std::string useTypeName = sourceTypeName;
+        bool sourceMatchesKind = false;
+        if (!useTypeName.empty()) {
+            std::string canon = resolveTypeAlias(useTypeName);
+            switch (kind) {
+                case CollectionKind::List:
+                    sourceMatchesKind = isListTypeName(canon);
+                    break;
+                case CollectionKind::Map:
+                    sourceMatchesKind = isMapTypeName(canon);
+                    break;
+                case CollectionKind::Set:
+                    sourceMatchesKind = isSetTypeName(canon);
+                    break;
+            }
+        }
+        if (!sourceMatchesKind) {
+            useTypeName = fallbackTypeName;
+        }
+        emitArcReleaseLoadedElement(ptr, kind, useTypeName,
+                                     siteLabel + ".any." + fallbackTypeName);
+        builder_.CreateBr(doneBB);
+    };
+
+    releaseSlot(listBB, CollectionKind::List, "List");
+    releaseSlot(mapBB,  CollectionKind::Map,  "Map");
+    releaseSlot(setBB,  CollectionKind::Set,  "Set");
+
+    builder_.SetInsertPoint(doneBB);
+}
+
 llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal, bool inCollection) {
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.ts");
     builder_.CreateStore(anyVal, tmp);
