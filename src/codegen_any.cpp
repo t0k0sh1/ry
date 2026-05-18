@@ -236,9 +236,28 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
         auto *ptr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.ptr");
         // Element-type metadata is erased once the value enters `any`; use the
         // declared source type from registration when available, else fall
-        // back to the generic destructor for that kind.
+        // back to the generic destructor for that kind. Only use the source
+        // name when its collection kind matches the runtime tag — an `any`
+        // alloca may be reassigned to a different collection kind (e.g.
+        // declared with a List value then later assigned a Map), and using
+        // the stale source name would route through the wrong destructor.
         std::string useTypeName = sourceTypeName;
-        if (useTypeName.empty()) {
+        bool sourceMatchesKind = false;
+        if (!useTypeName.empty()) {
+            std::string canon = resolveTypeAlias(useTypeName);
+            switch (kind) {
+                case CollectionKind::List:
+                    sourceMatchesKind = isListTypeName(canon);
+                    break;
+                case CollectionKind::Map:
+                    sourceMatchesKind = isMapTypeName(canon);
+                    break;
+                case CollectionKind::Set:
+                    sourceMatchesKind = isSetTypeName(canon);
+                    break;
+            }
+        }
+        if (!sourceMatchesKind) {
             useTypeName = fallbackTypeName;
         }
         emitArcReleaseLoadedElement(ptr, kind, useTypeName,

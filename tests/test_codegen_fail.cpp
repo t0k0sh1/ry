@@ -513,15 +513,39 @@ TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
 // ============================================================
 
 TEST_F(CodeGenTest, MapAnyValueAcceptsCollectionType) {
-    EXPECT_NO_THROW(compileSource(
+    // Verify wrap → store → load → to_string round-trip (#1697): printing
+    // a collection-holding `any` emits the opaque `<List>` marker (element
+    // metadata is erased on wrap, see docs/reference/types.md).
+    EXPECT_EQ(runSource(
         "m: Map<str, any> = {}\n"
-        "m[\"ok\"] = [1, 2, 3]\n"));
+        "m[\"ok\"] = [1, 2, 3]\n"
+        "print(m[\"ok\"])\n"),
+        "<List>\n");
 }
 
 TEST_F(CodeGenTest, SetAddAnyAcceptsCollectionType) {
     EXPECT_NO_THROW(compileSource(
         "s: Set<any> = {}\n"
         "add(s, [1, 2, 3])\n"));
+}
+
+// Map / Set markers for the wrap → store → to_string round-trip (#1697).
+// Element metadata is erased on wrap, so these render as opaque markers.
+TEST_F(CodeGenTest, AnyHoldingMapPrintsAsOpaqueMarker) {
+    EXPECT_EQ(runSource(
+        "m: Map<str, int> = {\"a\": 1}\n"
+        "x: any = m\n"
+        "print(x)\n"),
+        "<Map>\n");
+}
+
+TEST_F(CodeGenTest, AnyHoldingSetPrintsAsOpaqueMarker) {
+    EXPECT_EQ(runSource(
+        "s: Set<int> = {}\n"
+        "add(s, 1)\n"
+        "x: any = s\n"
+        "print(x)\n"),
+        "<Set>\n");
 }
 
 TEST_F(CodeGenTest, ListAppendAnyAcceptsCollectionType) {

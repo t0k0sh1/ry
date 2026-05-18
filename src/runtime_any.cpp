@@ -347,27 +347,18 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
             return (la == lb && memcmp(sa, sb, static_cast<size_t>(la)) == 0) ? 1 : 0;
         }
         case static_cast<int64_t>(RyAnyTag::Unit):  return 1;
-        case static_cast<int64_t>(RyAnyTag::List): {
-            // Element-type metadata is lost on wrap, so deep equality is
-            // best-effort: same length + byte-equal data buffer at 8-byte
-            // slot stride. Correct for List<int>/<float>/<bool> and for
-            // lists whose element type is a single pointer (str handle,
-            // nested collection header). Approximate (may give false
-            // negatives) for List<any> (16-byte slots).
-            const ListHeader *la = nullptr, *lb = nullptr;
-            memcpy(&la, a->data, sizeof(const ListHeader *));
-            memcpy(&lb, b->data, sizeof(const ListHeader *));
-            if (la == lb) return 1;
-            if (!la || !lb) return 0;
-            if (la->len != lb->len) return 0;
-            if (la->len == 0) return 1;
-            return memcmp(la->data, lb->data,
-                          static_cast<size_t>(la->len) * sizeof(void*)) == 0 ? 1 : 0;
-        }
+        case static_cast<int64_t>(RyAnyTag::List):
         case static_cast<int64_t>(RyAnyTag::Map):
         case static_cast<int64_t>(RyAnyTag::Set): {
-            // Map/Set deep equality requires hashing with the key/element
-            // type, which is lost on wrap. Fall back to pointer identity.
+            // Element-type metadata is erased on wrap, so the runtime
+            // cannot recover the per-element stride (1 / 8 / 16 bytes)
+            // needed for a safe byte-equality check on the data buffer.
+            // List<bool> would read 8x too much (OOB) and List<any>
+            // would under-compare (16-byte slots compared at 8-byte
+            // stride). All three container kinds therefore unify on
+            // pointer identity: two `any` values compare equal iff
+            // they hold the *same* underlying header. Deep equality
+            // requires unwrapping back to a typed binding.
             const void *pa = nullptr, *pb = nullptr;
             memcpy(&pa, a->data, sizeof(const void *));
             memcpy(&pb, b->data, sizeof(const void *));

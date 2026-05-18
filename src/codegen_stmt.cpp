@@ -488,6 +488,13 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
+    // #1697: Capture the pre-wrap source-level type name so that, when the
+    // declaration coerces the initializer into `any`, scope cleanup can pick
+    // a destructor that matches the wrapped value (e.g. `List<int>` rather
+    // than the destination annotation `any`).
+    std::string anyWrapSourceName;
+    if (val && val->getType() != anyTy_)
+        anyWrapSourceName = buildTypeNameFromMeta(val);
 
     if (annot) {
         if (constraint) {
@@ -556,11 +563,15 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     // any-managed alloca registration (#1697). Track every `any`-typed
     // alloca so scope cleanup can release the active collection slot if
-    // the runtime tag is List / Map / Set. The source-level annotation,
-    // when present, helps `emitAnyReleaseVar` pick the destructor that
-    // knows the element layout (best-effort — runtime content may differ).
+    // the runtime tag is List / Map / Set. Prefer the pre-wrap source-level
+    // type name (e.g. "List<int>") over the destination annotation `any` —
+    // the annotation tells us nothing about the wrapped value's kind, but
+    // the pre-wrap metadata does. Falls back to the annotation only when
+    // the initializer was already `any` (no wrap happened).
     if (newTy == anyTy_) {
-        std::string anySrcName = annot ? *annot : "";
+        std::string anySrcName = anyWrapSourceName;
+        if (anySrcName.empty() && annot)
+            anySrcName = *annot;
         registerAnyManagedVar(ptr, anySrcName);
     }
 
@@ -1230,7 +1241,13 @@ void CodeGen::emitStmt(AssignStmt &s) {
             val = wrapInAny(val);
             newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
-            val = unwrapFromAny(val, ptr->getAllocatedType());
+            // #1697: Thread the destination's source-level type name so the
+            // unwrap can pick the correct collection tag (List/Map/Set) and
+            // emit a retain when the target is a collection. Without this,
+            // reassigning an `any`-carrying-List back into a `List<int>`
+            // variable would mismatch on the str tag at runtime.
+            std::string destTypeName = buildTypeNameFromMeta(ptr);
+            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
             newTy = val->getType();
         } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
@@ -1446,7 +1463,10 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             val = wrapInAny(val);
             newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
-            val = unwrapFromAny(val, valueTy);
+            // #1697: Thread the destination's source-level type name so the
+            // unwrap picks the matching collection tag and emits the retain.
+            std::string destTypeName = buildTypeNameFromMeta(anchor);
+            val = unwrapFromAny(val, valueTy, destTypeName);
             newTy = val->getType();
         } else if (isResultType(valueTy) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);

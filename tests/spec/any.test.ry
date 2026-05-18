@@ -664,13 +664,19 @@ fn anyHoldsCollectionTests():
     ys: List<int> = a
     expect(ys[0]).toEq(10)
     expect(ys[1]).toEq(20)
-  @it("should compare two any holding equal lists with ==")
-  fn shouldCompareTwoAnyHoldingEqualListsWithEq():
+  @it("should compare two any aliasing the same list with == (pointer identity)")
+  fn shouldCompareTwoAnyAliasingSameListWithEq():
+    xs: List<int> = [1, 2, 3]
+    a: any = xs
+    b: any = xs
+    expect(a == b).toEq(true)
+  @it("should not consider two any holding distinct equal-content lists equal")
+  fn shouldNotConsiderTwoAnyHoldingDistinctEqualListsEqual():
     xs: List<int> = [1, 2, 3]
     ys: List<int> = [1, 2, 3]
     a: any = xs
     b: any = ys
-    expect(a == b).toEq(true)
+    expect(a == b).toEq(false)
   @it("should compare two any holding different lists with ==")
   fn shouldCompareTwoAnyHoldingDifferentListsWithEq():
     xs: List<int> = [1, 2, 3]
@@ -678,9 +684,32 @@ fn anyHoldsCollectionTests():
     a: any = xs
     b: any = ys
     expect(a == b).toEq(false)
-  @it("should print any holding a list")
-  fn shouldPrintAnyHoldingAList():
+  @it("should compare two any aliasing the same map with ==")
+  fn shouldCompareTwoAnyAliasingSameMapWithEq():
+    m: Map<str, int> = {"k": 1}
+    a: any = m
+    b: any = m
+    expect(a == b).toEq(true)
+  @it("should compare two any aliasing the same set with ==")
+  fn shouldCompareTwoAnyAliasingSameSetWithEq():
+    s: Set<int> = {}
+    add(s, 1)
+    a: any = s
+    b: any = s
+    expect(a == b).toEq(true)
+  @it("should render any holding a list as <List> marker")
+  fn shouldRenderAnyHoldingAListAsMarker():
     xs: List<int> = [1, 2, 3]
     a: any = xs
-    print(a)
-    expect(true).toEq(true)
+    expect(f"{a}").toEq("<List>")
+  @it("should render any holding a map as <Map> marker")
+  fn shouldRenderAnyHoldingAMapAsMarker():
+    m: Map<str, int> = {"a": 1}
+    a: any = m
+    expect(f"{a}").toEq("<Map>")
+  @it("should render any holding a set as <Set> marker")
+  fn shouldRenderAnyHoldingASetAsMarker():
+    s: Set<int> = {}
+    add(s, 1)
+    a: any = s
+    expect(f"{a}").toEq("<Set>")

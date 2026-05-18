@@ -1255,6 +1255,7 @@ public:
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
         std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedArcTaggedUnion_;
+        std::unordered_map<llvm::AllocaInst*, std::string> savedArcAnyManaged_;
         std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
