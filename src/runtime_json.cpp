@@ -210,24 +210,52 @@ struct JsonAnyParser {
                     case 'r': out += '\r'; break;
                     case 't': out += '\t'; break;
                     case 'u': {
-                        if (pos + 4 > src_len) { error = "incomplete unicode escape"; return false; }
-                        char hex[5] = {src[pos], src[pos+1], src[pos+2], src[pos+3], 0};
-                        for (int hi = 0; hi < 4; hi++) {
-                            char hc = hex[hi];
-                            if (!((hc >= '0' && hc <= '9') || (hc >= 'a' && hc <= 'f') || (hc >= 'A' && hc <= 'F'))) {
-                                error = "invalid hex digit in unicode escape";
+                        auto parse_hex4 = [&](unsigned &cp_out) -> bool {
+                            if (pos + 4 > src_len) { error = "incomplete unicode escape"; return false; }
+                            char hex[5] = {src[pos], src[pos+1], src[pos+2], src[pos+3], 0};
+                            for (int hi = 0; hi < 4; hi++) {
+                                char hc = hex[hi];
+                                if (!((hc >= '0' && hc <= '9') || (hc >= 'a' && hc <= 'f') || (hc >= 'A' && hc <= 'F'))) {
+                                    error = "invalid hex digit in unicode escape";
+                                    return false;
+                                }
+                            }
+                            pos += 4;
+                            cp_out = (unsigned)strtoul(hex, nullptr, 16);
+                            return true;
+                        };
+                        unsigned cp;
+                        if (!parse_hex4(cp)) return false;
+                        // High surrogate: expect a following \uXXXX low surrogate.
+                        if (cp >= 0xD800 && cp <= 0xDBFF) {
+                            if (pos + 2 > src_len || src[pos] != '\\' || src[pos+1] != 'u') {
+                                error = "unpaired high surrogate in unicode escape";
                                 return false;
                             }
+                            pos += 2;
+                            unsigned low;
+                            if (!parse_hex4(low)) return false;
+                            if (low < 0xDC00 || low > 0xDFFF) {
+                                error = "invalid low surrogate in unicode escape";
+                                return false;
+                            }
+                            cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                            error = "unpaired low surrogate in unicode escape";
+                            return false;
                         }
-                        pos += 4;
-                        unsigned cp = (unsigned)strtoul(hex, nullptr, 16);
                         if (cp < 0x80) {
                             out += (char)cp;
                         } else if (cp < 0x800) {
                             out += (char)(0xC0 | (cp >> 6));
                             out += (char)(0x80 | (cp & 0x3F));
-                        } else {
+                        } else if (cp < 0x10000) {
                             out += (char)(0xE0 | (cp >> 12));
+                            out += (char)(0x80 | ((cp >> 6) & 0x3F));
+                            out += (char)(0x80 | (cp & 0x3F));
+                        } else {
+                            out += (char)(0xF0 | (cp >> 18));
+                            out += (char)(0x80 | ((cp >> 12) & 0x3F));
                             out += (char)(0x80 | ((cp >> 6) & 0x3F));
                             out += (char)(0x80 | (cp & 0x3F));
                         }
@@ -312,13 +340,13 @@ struct JsonAnyParser {
     }
 
     bool parse_bool(RyAny &out) {
-        if (strncmp(src + pos, "true", 4) == 0 &&
+        if (src_len - pos >= 4 && memcmp(src + pos, "true", 4) == 0 &&
             (pos+4 >= src_len || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
             out = anyFromBool(1);
             return true;
         }
-        if (strncmp(src + pos, "false", 5) == 0 &&
+        if (src_len - pos >= 5 && memcmp(src + pos, "false", 5) == 0 &&
             (pos+5 >= src_len || !isalnum((unsigned char)src[pos+5]))) {
             pos += 5;
             out = anyFromBool(0);
@@ -329,7 +357,7 @@ struct JsonAnyParser {
     }
 
     bool parse_null(RyAny &out) {
-        if (strncmp(src + pos, "null", 4) == 0 &&
+        if (src_len - pos >= 4 && memcmp(src + pos, "null", 4) == 0 &&
             (pos+4 >= src_len || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
             out = anyFromUnit();
@@ -501,6 +529,11 @@ static void stringify_any(const RyAny *v, std::string &out,
         case RyAnyTag::Float: {
             double fv;
             memcpy(&fv, v->data, sizeof(fv));
+            if (!std::isfinite(fv)) {
+                fprintf(stderr,
+                        "json stringify: non-finite float is not representable in JSON\n");
+                exit(1);
+            }
             char buf[64];
             snprintf(buf, sizeof(buf), "%.17g", fv);
             out += buf;

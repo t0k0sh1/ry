@@ -235,6 +235,15 @@ fn jsonStringifyAnyPrettyTests():
       Err(e):
         fail("load {a:1} failed: " + e.message)
 
+  @it("should fall back to compact form when indent is negative")
+  fn shouldCompactWhenIndentNegative():
+    case load("[1, 2]"):
+      Ok(v):
+        expect(stringify(v, -1)).toEq("[1,2]")
+        expect(stringify(v, -100)).toEq("[1,2]")
+      Err(e):
+        fail("load [1,2] failed: " + e.message)
+
 @describe("json loadAs<T> — primitives")
 fn jsonLoadAsPrimitiveTests():
   @it("should parse int directly via loadAs<int>")

@@ -11,8 +11,12 @@
   - `loadAs[T](text: str) -> Result<T, Error>` is a generic wrapper that
     parses and then coerces to `T` via the existing
     `let v: T = anyVal` slot-coercion path. Supported `T` in this
-    release: `int` / `float` / `str` / `bool` and homogeneous
-    `List<...>` / `Map<str, ...>` of those primitives. `T = record`,
+    release: `int` / `float` / `str` / `bool`, plus the element-erased
+    forms `List<any>` and `Map<str, any>` (the parser materializes
+    container payloads as `any`; element-typed collections such as
+    `List<int>` / `Map<str, str>` are rejected by the generic
+    substitution guard in `unwrapFromAny` and must be unwrapped
+    element-by-element from `List<any>` / `Map<str, any>`). `T = record`,
     `T = Set<...>`, `T = Option<...>`, and `T = Result<...>` are not
     supported in this release and surface as a runtime type-mismatch
     `Err` from the coerce step.

@@ -14,12 +14,16 @@
 # storage — the source's element stride is 8 bytes, not 16. This is
 # UNDEFINED BEHAVIOR in v0.0.25.
 #
-# Safe inputs to `stringify(value: any)`:
+# Memory-safe inputs to `stringify(value: any)` (do not segfault — but Set /
+# Record / Enum / non-`str` Map keys still panic at runtime because JSON has
+# no native representation for them; see "stringify panics" in the
+# section below):
 #   - The `any` returned by `load(text)` (always `List<any>` / `Map<str, any>`)
 #   - Primitive `any` slots (int / float / bool / str / null)
 #   - `List<any>` / `Map<str, any>` / `Set<any>` constructed by the user
 #
-# Unsafe inputs (UB — may segfault):
+# Memory-unsafe inputs (UB — may segfault — distinct from the runtime
+# panics above):
 #   - `any` constructed from `List<int>` / `List<str>` / `Map<str, int>` /
 #     any other typed collection. Box each element with `as any` into a
 #     `List<any>` / `Map<str, any>` first, or use `json.load` output.

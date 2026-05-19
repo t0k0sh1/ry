@@ -33,37 +33,10 @@ struct MsCleanupEnv : public ::testing::Environment {
 static const ::testing::Environment *const kMsCleanup =
     ::testing::AddGlobalTestEnvironment(new MsCleanupEnv);
 
-// Releases the ARC payload backing a RyAny when one is owned (str / list / map).
-// Mirrors the release dispatch emitAnyReleaseVar emits on the codegen side.
-static void releaseAny(RyAny &v) {
-    switch (static_cast<RyAnyTag>(v.tag)) {
-        case RyAnyTag::Str: {
-            const char *handle = nullptr;
-            std::memcpy(&handle, v.data, sizeof(handle));
-            if (handle) freeStringSlot(const_cast<char *>(handle));
-            break;
-        }
-        case RyAnyTag::List: {
-            void *header = nullptr;
-            std::memcpy(&header, v.data, sizeof(header));
-            if (header) {
-                // The list contains RyAny elements; releasing requires walking.
-                // For smoke tests we leak the payload — list/map smoke tests
-                // verify size only, not full ARC balance (the codegen path
-                // releases through emitAnyReleaseVar with proper tracking).
-            }
-            break;
-        }
-        case RyAnyTag::Map: {
-            void *header = nullptr;
-            std::memcpy(&header, v.data, sizeof(header));
-            (void)header;
-            break;
-        }
-        default:
-            break;
-    }
-}
+// Releases the ARC payload backing a RyAny via the exported runtime helper,
+// matching what emitAnyReleaseVar dispatches on the codegen side. This walks
+// nested list/map elements so list/map smoke tests stay ASan/LSan clean.
+static void releaseAny(RyAny &v) { __ry_json_release_any(&v); }
 
 // ---- Primitives ----
 
@@ -133,6 +106,7 @@ TEST(JsonParseToAny, ParsesArrayToListTag) {
     ASSERT_NE(header, nullptr);
     auto *list = static_cast<ListHeader *>(header);
     EXPECT_EQ(list->len, 3);
+    releaseAny(out);
 }
 
 TEST(JsonParseToAny, ParsesEmptyArrayToListTag) {
@@ -140,6 +114,7 @@ TEST(JsonParseToAny, ParsesEmptyArrayToListTag) {
     int64_t status = __ry_json_parse_to_any(ms("[]"), &out);
     ASSERT_EQ(status, 0);
     EXPECT_EQ(out.tag, static_cast<int64_t>(RyAnyTag::List));
+    releaseAny(out);
 }
 
 // ---- Objects ----
@@ -154,6 +129,7 @@ TEST(JsonParseToAny, ParsesObjectToMapTag) {
     ASSERT_NE(header, nullptr);
     auto *map = static_cast<MapHeader *>(header);
     EXPECT_EQ(map->len, 2);
+    releaseAny(out);
 }
 
 TEST(JsonParseToAny, ParsesEmptyObjectToMapTag) {
@@ -161,6 +137,7 @@ TEST(JsonParseToAny, ParsesEmptyObjectToMapTag) {
     int64_t status = __ry_json_parse_to_any(ms("{}"), &out);
     ASSERT_EQ(status, 0);
     EXPECT_EQ(out.tag, static_cast<int64_t>(RyAnyTag::Map));
+    releaseAny(out);
 }
 
 // ---- Errors ----
@@ -192,6 +169,7 @@ TEST(JsonParseToAny, AcceptsMaxNestingDepth) {
     RyAny out{};
     int64_t status = __ry_json_parse_to_any(ms(deep.c_str()), &out);
     EXPECT_EQ(status, 0);
+    if (status == 0) releaseAny(out);
 }
 
 TEST(JsonParseToAny, RejectsTooDeepNesting) {

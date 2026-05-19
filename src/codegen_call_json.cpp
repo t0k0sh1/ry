@@ -43,7 +43,7 @@ static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("stringify() takes 1 or 2 arguments");
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (val->getType() != cg.anyTy_)
-        cg.codegenError("stringify() requires an any argument");
+        val = cg.wrapInAny(val);
 
     llvm::AllocaInst *slot =
         cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_any_in");
@@ -56,6 +56,8 @@ static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
         callName = "json_stringify_any";
     } else {
         indent = cg.emitExpr(*e.args[1]);
+        if (indent->getType() != cg.i64Ty_)
+            cg.codegenError("stringify() indent must be an int");
         callName = "json_stringify_any_pretty";
     }
     llvm::Type *paramTys[] = {cg.ptrTy_, cg.i64Ty_};
