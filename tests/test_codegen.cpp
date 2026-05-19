@@ -846,6 +846,62 @@ TEST_F(CodeGenTest, AnyEnumUnwrapNonEnumPayloadTraps) {
         "any type mismatch \\(expected Option<int>, got non-enum\\)");
 }
 
+TEST_F(CodeGenTest, CoerceResultOkSimpleEnumMismatchTraps) {
+    // #1808: coerceResultType Ok slot dispatches to unwrapFromAny via the
+    // enum path; a wrong target simple-enum type must trap with the
+    // descriptor-pointer-equality check inside unwrapEnumFromAny.
+    EXPECT_EXIT(runSource(
+        "enum CoerceResEnumA:\n"
+        "  X\n"
+        "  Y\n"
+        "enum CoerceResEnumB:\n"
+        "  P\n"
+        "  Q\n"
+        "a: any = CoerceResEnumA::X\n"
+        "r: Result<CoerceResEnumB, str> = Ok(a)\n"
+        "case r:\n"
+        "  Ok(v): print(v == CoerceResEnumB::P)\n"
+        "  Err(e): print(e)\n"),
+        ::testing::ExitedWithCode(1),
+        "any enum type mismatch \\(expected CoerceResEnumB");
+}
+
+TEST_F(CodeGenTest, CoerceResultOkOptionGenericMismatchTraps) {
+    // #1808: coerceResultType Ok slot mismatch on Option<T> generic
+    // parameterization. Descriptor cache keys include the inner type so
+    // Option<int> and Option<str> have distinct descriptors.
+    EXPECT_EXIT(runSource(
+        "o: Option<str> = Some(\"x\")\n"
+        "a: any = o\n"
+        "r: Result<Option<int>, str> = Ok(a)\n"
+        "case r:\n"
+        "  Ok(v):\n"
+        "    case v:\n"
+        "      Some(n): print(n)\n"
+        "      None: print(\"none\")\n"
+        "  Err(e): print(e)\n"),
+        ::testing::ExitedWithCode(1),
+        "any enum type mismatch \\(expected Option<int>");
+}
+
+TEST_F(CodeGenTest, CoerceResultOkNestedResultMismatchTraps) {
+    // #1808: coerceResultType Ok slot mismatch on nested Result. Inner
+    // Result<int, bool> vs target Result<int, str> have distinct
+    // descriptors at the Err parameter.
+    EXPECT_EXIT(runSource(
+        "inner: Result<int, bool> = Ok(1)\n"
+        "a: any = inner\n"
+        "r: Result<Result<int, str>, bool> = Ok(a)\n"
+        "case r:\n"
+        "  Ok(v):\n"
+        "    case v:\n"
+        "      Ok(n): print(n)\n"
+        "      Err(e): print(e)\n"
+        "  Err(e): print(e)\n"),
+        ::testing::ExitedWithCode(1),
+        "any enum type mismatch \\(expected Result<int, str>");
+}
+
 // ===== Low-level numeric types (i16, i32, f32) =====
 
 TEST_F(CodeGenTest, LowLevelI32Basics) {
