@@ -8,11 +8,10 @@ namespace ry {
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // toInt(s) → Result<int, Error> — fall through for JsonValue to let JSON dispatcher handle it
+    // toInt(s) → Result<int, Error>
     if (e.callee == "toInt") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
-        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("toInt() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
@@ -31,11 +30,10 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // toFloat(s) → Result<float, Error> — fall through for JsonValue to let JSON dispatcher handle it
+    // toFloat(s) → Result<float, Error>
     if (e.callee == "toFloat") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
-        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("toFloat() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
@@ -53,11 +51,10 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // toStr(v) → str — fall through for JsonValue to let JSON dispatcher handle it
+    // toStr(v) → str
     if (e.callee == "toStr") {
         requireArgs(e, 1);
         llvm::Value *v = emitExpr(*e.args[0]);
-        if (isJsonValue(v)) return nullptr;
         return valueToString(v);
     }
 
@@ -166,11 +163,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     if (e.callee == "typeOf") {
         return emitTypeOf(e);
     }
-    // ===== keys(map) — fall through for JsonValue =====
+    // ===== keys(map) =====
     if (e.callee == "keys") {
         requireArgs(e, 1);
         llvm::Value *mapVal = emitExpr(*e.args[0]);
-        if (isJsonValue(mapVal)) return nullptr;
         llvm::Type *keyTy = getMapKeyType(mapVal);
         if (!keyTy) codegenError("keys() requires a map");
 
@@ -830,11 +826,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // len(xs) → list/map/array/set/str length — fall through for JsonValue
+    // len(xs) → list/map/array/set/str length
     if (e.callee == "len") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
-        if (isJsonValue(ptr)) return nullptr;
         // Fixed-length array: return compile-time constant
         if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(ptr)) {
             if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType()))

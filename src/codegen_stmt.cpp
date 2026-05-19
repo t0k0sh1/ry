@@ -87,7 +87,12 @@ bool CodeGen::tryGetStaticResultDisc(llvm::Value *val, int *staticDisc) {
 
 llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
                                         llvm::StructType *dstResTy,
-                                        const std::string &dstResTypeName) {
+                                        const std::string &rawDstResTypeName) {
+    // Substitute generic type-parameter names at the helper's entry so the
+    // slot-name extraction below (which threads the per-slot type name into
+    // `unwrapFromAny`) sees the concrete `Result<int, str>` rather than
+    // `Result<T, E>`. No-op when `type_param_scope_` is empty.
+    const std::string dstResTypeName = substituteTypeParamsInName(rawDstResTypeName);
     auto *srcResTy = llvm::cast<llvm::StructType>(val->getType());
 
     llvm::Type *srcOkTy  = srcResTy->getElementType(1);
@@ -794,7 +799,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                         inner_is_str = true;
                     } else if (inner != "int" && inner != "float" && inner != "bool") {
                         // Preserve named non-primitive inner types
-                        // (records/enums/resources/JsonValue/low-level aliases/etc.)
+                        // (records/enums/resources/low-level aliases/etc.)
                         // so index loads can rebuild downstream metadata.
                         letn = inner;
                     }

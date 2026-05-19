@@ -120,6 +120,55 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
     makeStr(result, buf);
 }
 
+// ===== C++ constructors for runtime-side `any` synthesis (#1698) =====
+
+RyAny anyFromUnit() {
+    RyAny r{};
+    r.tag = static_cast<int64_t>(RyAnyTag::Unit);
+    memset(r.data, 0, sizeof(r.data));
+    return r;
+}
+
+RyAny anyFromInt(int64_t v) {
+    RyAny r{};
+    makeInt(&r, v);
+    return r;
+}
+
+RyAny anyFromFloat(double v) {
+    RyAny r{};
+    makeFloat(&r, v);
+    return r;
+}
+
+RyAny anyFromBool(int64_t v) {
+    RyAny r{};
+    r.tag = static_cast<int64_t>(RyAnyTag::Bool);
+    int64_t bv = v ? 1 : 0;
+    memcpy(r.data, &bv, sizeof(bv));
+    return r;
+}
+
+RyAny anyFromStr(const char *handle) {
+    RyAny r{};
+    makeStr(&r, handle);
+    return r;
+}
+
+RyAny anyFromListOfAny(void *list_header) {
+    RyAny r{};
+    r.tag = static_cast<int64_t>(RyAnyTag::List);
+    memcpy(r.data, &list_header, sizeof(list_header));
+    return r;
+}
+
+RyAny anyFromMapStrAny(void *map_header) {
+    RyAny r{};
+    r.tag = static_cast<int64_t>(RyAnyTag::Map);
+    memcpy(r.data, &map_header, sizeof(map_header));
+    return r;
+}
+
 // ===== String conversion (#225) =====
 
 // Common implementation for float/double shortest-round-trip formatting.

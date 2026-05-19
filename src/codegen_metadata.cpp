@@ -13,7 +13,7 @@ bool CodeGen::ValueMetadata::hasAnyCollectionType() const {
 }
 
 bool CodeGen::ValueMetadata::hasAnyResourceKind() const {
-    return !resource_kinds.empty() || json_type_only;
+    return !resource_kinds.empty();
 }
 
 bool CodeGen::ValueMetadata::hasAnyMeta() const {
@@ -179,8 +179,6 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
     // Resource kinds
     for (int rk : srcMeta.resource_kinds)
         dstMeta.addResourceKind(rk);
-    if (srcMeta.json_type_only)
-        dstMeta.json_type_only = true;
     if (srcMeta.str_elem)
         dstMeta.str_elem = true;
     if (srcMeta.list_elem_is_str)

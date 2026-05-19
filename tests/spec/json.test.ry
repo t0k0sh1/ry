@@ -1,599 +1,385 @@
 from testing import it, describe, expect, fail
 
-from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool, len, keys, jsonFree
-from str import contains, repeat
+from json import load, loadAs, stringify
+from str import contains, repeat, byteLen
 
-@describe("json parse")
-fn jsonParseTests():
-  @it("should parse an object")
-  fn shouldParseAnObject():
-    case parse("{\"name\": \"Alice\", \"age\": 30}"):
-      Ok(data):
-        expect(kind(data)).toEq("object")
-        jsonFree(data)
-      Err(e):
-        fail("parse failed: " + e.message)
-
-  @it("should parse an array")
-  fn shouldParseAnArray():
-    case parse("[1, 2, 3]"):
-      Ok(data):
-        expect(kind(data)).toEq("array")
-        expect(len(data)).toEq(3)
-        jsonFree(data)
-      Err(e):
-        fail("parse failed: " + e.message)
-
-  @it("should return Err for invalid JSON")
-  fn shouldReturnErrForInvalidJson():
-    expect(parse("{invalid}")).toBeErr()
-
-  @it("should return Err for trailing content")
-  fn shouldReturnErrForTrailingContent():
-    expect(parse("123 456")).toBeErr()
-
-  @it("should return Err for raw control character in string")
-  fn shouldReturnErrForRawControlCharacterInString():
-    expect(parse("\"a\0b\"")).toBeErr()
-    expect(parse("\"a\nb\"")).toBeErr()
-  @it("should preserve JsonValue metadata through helper-returned Result")
-  fn shouldPreserveJsonvalueMetadataThroughHelperReturnedResult():
-    fn parseObj() -> Result<JsonValue, Error>:
-      return parse("{\"x\": 42}")
-
-    case parseObj():
-      Ok(data):
-        expect(kind(data)).toEq("object")
-        jsonFree(data)
-      Err(e):
-        fail("parse failed: " + e.message)
-  @it("should preserve JsonValue metadata through helper-returned Option")
-  fn shouldPreserveJsonvalueMetadataThroughHelperReturnedOption():
-    fn maybeObj() -> Option<JsonValue>:
-      case parse("{\"x\": 7}"):
-        Ok(data):
-          return Some(data)
-        Err(e):
-          return None()
-
-    case maybeObj():
-      Some(data):
-        expect(kind(data)).toEq("object")
-        jsonFree(data)
-      None:
-        fail("unexpected None")
-
-  @it("should accept lambda typed as fn() -> Result<JsonValue, Error>")
-  fn shouldAcceptLambdaTypedAsFnResultJsonvalueError():
-    parseObj: fn() -> Result<JsonValue, Error> = () => parse("{\"x\": 1}")
-
-    case parseObj():
-      Ok(data):
-        expect(kind(data)).toEq("object")
-        jsonFree(data)
-      Err(e):
-        fail("parse failed: " + e.message)
-
-  @it("should preserve JsonValue metadata through Result.andThen")
-  fn shouldPreserveJsonvalueMetadataThroughResultAndthen():
-    fn parseObj() -> Result<JsonValue, Error>:
-      return parse("{\"x\": 42}")
-
-    r = parseObj().andThen((v: JsonValue) -> Result<JsonValue, Error>:
-      expect(kind(v)).toEq("object")
-      return Ok(v)
-    )
-
-    case r:
+@describe("json load — primitives")
+fn jsonLoadPrimitivesTests():
+  @it("should load null as any")
+  fn shouldLoadNullAsAny():
+    case load("null"):
       Ok(v):
-        expect(kind(v)).toEq("object")
-        jsonFree(v)
+        s: str = stringify(v)
+        expect(s).toEq("null")
       Err(e):
-        fail("andThen failed: " + e.message)
+        fail("load null failed: " + e.message)
 
-  @it("should preserve JsonValue metadata through Result.map")
-  fn shouldPreserveJsonvalueMetadataThroughResultMap():
-    fn parseObj() -> Result<JsonValue, Error>:
-      return parse("{\"x\": 42}")
-
-    r = parseObj().map((v: JsonValue) -> JsonValue:
-      expect(kind(v)).toEq("object")
-      return v
-    )
-
-    case r:
+  @it("should load true as any")
+  fn shouldLoadTrueAsAny():
+    case load("true"):
       Ok(v):
-        expect(kind(v)).toEq("object")
-        jsonFree(v)
+        s: str = stringify(v)
+        expect(s).toEq("true")
       Err(e):
-        fail("map failed: " + e.message)
+        fail("load true failed: " + e.message)
 
-  @it("should preserve JsonValue metadata through closure capture")
-  fn shouldPreserveJsonvalueMetadataThroughClosureCapture():
-    fn parseObj() -> Result<JsonValue, Error>:
-      return parse("{\"x\": 42}")
-
-    case parseObj():
+  @it("should load false as any")
+  fn shouldLoadFalseAsAny():
+    case load("false"):
       Ok(v):
-        f = () => v
-        x = f()
-        expect(kind(x)).toEq("object")
-        jsonFree(x)
+        s: str = stringify(v)
+        expect(s).toEq("false")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load false failed: " + e.message)
 
-@describe("json access")
-fn jsonAccessTests():
-  @it("should get string field")
-  fn shouldGetStringField():
-    case parse("{\"name\": \"Alice\"}"):
-      Ok(data):
-        case get(data, "name"):
-          Ok(val):
-            case toStr(val):
-              Ok(name):
-                expect(name).toEq("Alice")
-              Err(e):
-                fail("toStr failed: " + e.message)
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should load int as any")
+  fn shouldLoadIntAsAny():
+    case load("42"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("42")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load int failed: " + e.message)
 
-  @it("should get int field")
-  fn shouldGetIntField():
-    case parse("{\"age\": 30}"):
-      Ok(data):
-        case get(data, "age"):
-          Ok(val):
-            case toInt(val):
-              Ok(age):
-                expect(age).toEq(30)
-              Err(e):
-                fail("toInt failed: " + e.message)
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should load negative int as any")
+  fn shouldLoadNegativeIntAsAny():
+    case load("-7"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("-7")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load negative int failed: " + e.message)
 
-  @it("should get float field")
-  fn shouldGetFloatField():
-    case parse("{\"pi\": 3.14}"):
-      Ok(data):
-        case get(data, "pi"):
-          Ok(val):
-            case toFloat(val):
-              Ok(pi):
-                expect(pi > 3.13).toBeTrue()
-                expect(pi < 3.15).toBeTrue()
-              Err(e):
-                fail("toFloat failed: " + e.message)
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should load float as any")
+  fn shouldLoadFloatAsAny():
+    case load("3.5"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("3.5")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load float failed: " + e.message)
 
-  @it("should get bool field")
-  fn shouldGetBoolField():
-    case parse("{\"active\": true}"):
-      Ok(data):
-        case get(data, "active"):
-          Ok(val):
-            case toBool(val):
-              Ok(b):
-                expect(b).toBeTrue()
-              Err(e):
-                fail("toBool failed: " + e.message)
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should load str as any")
+  fn shouldLoadStrAsAny():
+    case load("\"hi\""):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("\"hi\"")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load str failed: " + e.message)
 
-  @it("should get null type")
-  fn shouldGetNullType():
-    case parse("{\"value\": null}"):
-      Ok(data):
-        case get(data, "value"):
-          Ok(val):
-            expect(kind(val)).toEq("null")
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should reject malformed input")
+  fn shouldRejectMalformedInput():
+    case load("{not json}"):
+      Ok(_):
+        fail("expected Err but got Ok")
       Err(e):
-        fail("parse failed: " + e.message)
+        expect(contains(e.message, "expected string key")).toEq(true)
 
-  @it("should access array by index")
-  fn shouldAccessArrayByIndex():
-    case parse("[10, 20, 30]"):
-      Ok(data):
-        case at(data, 0):
-          Ok(first):
-            case toInt(first):
-              Ok(n):
-                expect(n).toEq(10)
-              Err(e):
-                fail("toInt failed: " + e.message)
-          Err(e):
-            fail("at failed: " + e.message)
-        case at(data, 2):
-          Ok(last):
-            case toInt(last):
-              Ok(n):
-                expect(n).toEq(30)
-              Err(e):
-                fail("toInt failed: " + e.message)
-          Err(e):
-            fail("at failed: " + e.message)
-        jsonFree(data)
+  @it("should reject trailing content")
+  fn shouldRejectTrailingContent():
+    case load("42 extra"):
+      Ok(_):
+        fail("expected Err but got Ok")
       Err(e):
-        fail("parse failed: " + e.message)
+        expect(contains(e.message, "trailing")).toEq(true)
 
-  @it("should return Err for missing key")
-  fn shouldReturnErrForMissingKey():
-    case parse("{\"a\": 1}"):
-      Ok(data):
-        expect(get(data, "missing")).toBeErr()
-        jsonFree(data)
+  @it("should reject raw NUL inside a string")
+  fn shouldRejectRawNulInsideString():
+    case load("\"a\0b\""):
+      Ok(_):
+        fail("expected Err but got Ok")
       Err(e):
-        fail("parse failed: " + e.message)
+        expect(byteLen(e.message) > 0).toEq(true)
 
-  @it("should return Err for out-of-bounds index")
-  fn shouldReturnErrForOutOfBoundsIndex():
-    case parse("[1, 2]"):
-      Ok(data):
-        expect(at(data, 5)).toBeErr()
-        jsonFree(data)
+  @it("should reject raw newline inside a string")
+  fn shouldRejectRawNewlineInsideString():
+    case load("\"a\nb\""):
+      Ok(_):
+        fail("expected Err but got Ok")
       Err(e):
-        fail("parse failed: " + e.message)
+        expect(byteLen(e.message) > 0).toEq(true)
 
-  @it("should return Err for type mismatch")
-  fn shouldReturnErrForTypeMismatch():
-    case parse("{\"name\": \"Alice\"}"):
-      Ok(data):
-        case get(data, "name"):
-          Ok(val):
-            expect(toInt(val)).toBeErr()
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+@describe("json load — array")
+fn jsonLoadArrayTests():
+  @it("should load empty array")
+  fn shouldLoadEmptyArray():
+    case load("[]"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("[]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load empty array failed: " + e.message)
 
-@describe("json nested")
-fn jsonNestedTests():
-  @it("should access nested objects")
-  fn shouldAccessNestedObjects():
-    case parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
-      Ok(data):
-        case get(data, "user"):
-          Ok(user):
-            case get(user, "name"):
-              Ok(nameVal):
-                case toStr(nameVal):
-                  Ok(name):
-                    expect(name).toEq("Bob")
-                  Err(e):
-                    fail("toStr failed: " + e.message)
-              Err(e):
-                fail("get(name) failed: " + e.message)
-            case get(user, "age"):
-              Ok(ageVal):
-                case toInt(ageVal):
-                  Ok(age):
-                    expect(age).toEq(25)
-                  Err(e):
-                    fail("toInt failed: " + e.message)
-              Err(e):
-                fail("get(age) failed: " + e.message)
-          Err(e):
-            fail("get(user) failed: " + e.message)
-        jsonFree(data)
+  @it("should load array of ints")
+  fn shouldLoadArrayOfInts():
+    case load("[1, 2, 3]"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("[1,2,3]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load array failed: " + e.message)
 
-  @it("should access array of objects")
-  fn shouldAccessArrayOfObjects():
-    case parse("[{\"id\": 1}, {\"id\": 2}]"):
-      Ok(data):
-        case at(data, 1):
-          Ok(second):
-            case get(second, "id"):
-              Ok(idVal):
-                case toInt(idVal):
-                  Ok(id):
-                    expect(id).toEq(2)
-                  Err(e):
-                    fail("toInt failed: " + e.message)
-              Err(e):
-                fail("get failed: " + e.message)
-          Err(e):
-            fail("at failed: " + e.message)
-        jsonFree(data)
+  @it("should load mixed-type array round-trip")
+  fn shouldLoadMixedArrayRoundTrip():
+    case load("[1, \"two\", true, null]"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("[1,\"two\",true,null]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load mixed array failed: " + e.message)
 
-@describe("json keys and len")
-fn jsonKeysAndLenTests():
-  @it("should get object keys")
-  fn shouldGetObjectKeys():
-    case parse("{\"a\": 1, \"b\": 2}"):
-      Ok(data):
-        case keys(data):
-          Ok(ks):
-            expect(len(ks)).toEq(2)
-            expect(ks[0]).toEq("a")
-            expect(ks[1]).toEq("b")
-          Err(e):
-            fail("keys failed: " + e.message)
-        jsonFree(data)
+  @it("should load nested array")
+  fn shouldLoadNestedArray():
+    case load("[[1, 2], [3]]"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("[[1,2],[3]]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load nested array failed: " + e.message)
 
-  @it("should return Err for non-object keys")
-  fn shouldReturnErrForNonObjectKeys():
-    case parse("[1, 2, 3]"):
-      Ok(data):
-        case keys(data):
-          Ok(ks):
-            fail("expected Err for non-object")
-          Err(e):
-            expect(e.message).toEq("json_keys: value is not an object")
-        jsonFree(data)
+@describe("json load — object")
+fn jsonLoadObjectTests():
+  @it("should load empty object")
+  fn shouldLoadEmptyObject():
+    case load("{}"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("{}")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load empty object failed: " + e.message)
 
-  @it("should get object len")
-  fn shouldGetObjectLen():
-    case parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
-      Ok(data):
-        expect(len(data)).toEq(3)
-        jsonFree(data)
+  @it("should load object round-trip preserving insertion order")
+  fn shouldLoadObjectRoundTrip():
+    case load("{\"a\": 1, \"b\": 2}"):
+      Ok(v):
+        s: str = stringify(v)
+        # Map iteration order = insertion order, so a-then-b
+        expect(s).toEq("{\"a\":1,\"b\":2}")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load object failed: " + e.message)
 
-@describe("json stringify")
-fn jsonStringifyTests():
-  @it("should round-trip an object")
-  fn shouldRoundTripAnObject():
-    case parse("{\"name\":\"Alice\",\"age\":30}"):
-      Ok(data):
-        text = stringify(data)
-        case parse(text):
-          Ok(data2):
-            case get(data2, "name"):
-              Ok(nameVal):
-                case toStr(nameVal):
-                  Ok(name):
-                    expect(name).toEq("Alice")
-                  Err(e):
-                    fail("toStr failed: " + e.message)
-              Err(e):
-                fail("get failed: " + e.message)
-            jsonFree(data2)
-          Err(e):
-            fail("re-parse failed: " + e.message)
-        jsonFree(data)
+  @it("should load nested object round-trip")
+  fn shouldLoadNestedObjectRoundTrip():
+    case load("{\"outer\": {\"inner\": 7}}"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("{\"outer\":{\"inner\":7}}")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load nested object failed: " + e.message)
 
-  @it("should pretty print with indent")
-  fn shouldPrettyPrintWithIndent():
-    case parse("{\"a\":1}"):
-      Ok(data):
-        text = stringify(data, 2)
-        expect(contains(text, "\n")).toBeTrue()
-        jsonFree(data)
+@describe("json load — nested mixed")
+fn jsonLoadNestedMixedTests():
+  @it("should load object containing array round-trip")
+  fn shouldLoadObjectContainingArrayRoundTrip():
+    case load("{\"xs\": [1, 2, 3]}"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("{\"xs\":[1,2,3]}")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load object-array failed: " + e.message)
 
-@describe("json child value ownership")
-fn jsonChildValueOwnershipTests():
-  @it("should not cause double-free on scope exit for get() child")
-  fn shouldNotCauseDoubleFreeOnScopeExitForGetChild():
-    case parse("{\"name\": \"Alice\", \"age\": 30}"):
-      Ok(data):
-        case get(data, "name"):
-          Ok(val):
-            case toStr(val):
-              Ok(name):
-                expect(name).toEq("Alice")
-              Err(e):
-                fail("toStr failed: " + e.message)
-          Err(e):
-            fail("get failed: " + e.message)
-        jsonFree(data)
+  @it("should load array containing object round-trip")
+  fn shouldLoadArrayContainingObjectRoundTrip():
+    case load("[{\"k\": 1}, {\"k\": 2}]"):
+      Ok(v):
+        s: str = stringify(v)
+        expect(s).toEq("[{\"k\":1},{\"k\":2}]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load array-object failed: " + e.message)
 
-  @it("should not cause double-free on scope exit for at() child")
-  fn shouldNotCauseDoubleFreeOnScopeExitForAtChild():
-    case parse("[\"hello\", \"world\"]"):
-      Ok(data):
-        case at(data, 0):
-          Ok(val):
-            case toStr(val):
-              Ok(s):
-                expect(s).toEq("hello")
-              Err(e):
-                fail("toStr failed: " + e.message)
-          Err(e):
-            fail("at failed: " + e.message)
-        jsonFree(data)
+@describe("json stringify — primitives")
+fn jsonStringifyAnyPrimitivesTests():
+  @it("should round-trip int via load and stringify")
+  fn shouldRoundTripIntPrimitive():
+    case load("123"):
+      Ok(v):
+        expect(stringify(v)).toEq("123")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load 123 failed: " + e.message)
 
-  @it("should not cause double-free on scope exit for nested get() children")
-  fn shouldNotCauseDoubleFreeOnScopeExitForNestedGetChildren():
-    case parse("{\"user\": {\"name\": \"Bob\"}}"):
-      Ok(data):
-        case get(data, "user"):
-          Ok(user):
-            case get(user, "name"):
-              Ok(nameVal):
-                case toStr(nameVal):
-                  Ok(name):
-                    expect(name).toEq("Bob")
-                  Err(e):
-                    fail("toStr failed: " + e.message)
-              Err(e):
-                fail("get(name) failed: " + e.message)
-          Err(e):
-            fail("get(user) failed: " + e.message)
-        jsonFree(data)
+  @it("should round-trip float via load and stringify")
+  fn shouldRoundTripFloatPrimitive():
+    case load("1.5"):
+      Ok(v):
+        expect(stringify(v)).toEq("1.5")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load 1.5 failed: " + e.message)
 
-@describe("json type checks")
-fn jsonTypeChecksTests():
-  @it("should identify string type")
-  fn shouldIdentifyStringType():
-    case parse("\"hello\""):
-      Ok(data):
-        expect(kind(data)).toEq("string")
-        jsonFree(data)
+  @it("should round-trip bool via load and stringify")
+  fn shouldRoundTripBoolPrimitive():
+    case load("true"):
+      Ok(v):
+        expect(stringify(v)).toEq("true")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load true failed: " + e.message)
 
-  @it("should identify number type")
-  fn shouldIdentifyNumberType():
-    case parse("42"):
-      Ok(data):
-        expect(kind(data)).toEq("number")
-        jsonFree(data)
+@describe("json stringify — pretty (indent)")
+fn jsonStringifyAnyPrettyTests():
+  @it("should pretty-print array with indent=2")
+  fn shouldPrettyPrintArray():
+    case load("[1, 2]"):
+      Ok(v):
+        # 2-space indent
+        expected = "[\n  1,\n  2\n]"
+        expect(stringify(v, 2)).toEq(expected)
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load [1,2] failed: " + e.message)
 
-  @it("should identify boolean type")
-  fn shouldIdentifyBooleanType():
-    case parse("true"):
-      Ok(data):
-        expect(kind(data)).toEq("boolean")
-        jsonFree(data)
+  @it("should pretty-print object with indent=2")
+  fn shouldPrettyPrintObject():
+    case load("{\"a\": 1}"):
+      Ok(v):
+        expected = "{\n  \"a\": 1\n}"
+        expect(stringify(v, 2)).toEq(expected)
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load {a:1} failed: " + e.message)
 
-  @it("should identify null type")
-  fn shouldIdentifyNullType():
-    case parse("null"):
-      Ok(data):
-        expect(kind(data)).toEq("null")
-        jsonFree(data)
+@describe("json loadAs<T> — primitives")
+fn jsonLoadAsPrimitiveTests():
+  @it("should parse int directly via loadAs<int>")
+  fn shouldLoadAsInt():
+    case loadAs[int]("42"):
+      Ok(n):
+        expect(n).toEq(42)
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("loadAs<int> failed: " + e.message)
+
+  @it("should parse negative int via loadAs<int>")
+  fn shouldLoadAsNegativeInt():
+    case loadAs[int]("-7"):
+      Ok(n):
+        expect(n).toEq(-7)
+      Err(e):
+        fail("loadAs<int> -7 failed: " + e.message)
+
+  @it("should parse float via loadAs<float>")
+  fn shouldLoadAsFloat():
+    case loadAs[float]("3.5"):
+      Ok(f):
+        expect(f).toEq(3.5)
+      Err(e):
+        fail("loadAs<float> failed: " + e.message)
+
+  @it("should parse str via loadAs<str>")
+  fn shouldLoadAsStr():
+    case loadAs[str]("\"hello\""):
+      Ok(s):
+        expect(s).toEq("hello")
+      Err(e):
+        fail("loadAs<str> failed: " + e.message)
+
+  @it("should parse bool true via loadAs<bool>")
+  fn shouldLoadAsBoolTrue():
+    case loadAs[bool]("true"):
+      Ok(b):
+        expect(b).toEq(true)
+      Err(e):
+        fail("loadAs<bool> true failed: " + e.message)
+
+  @it("should parse bool false via loadAs<bool>")
+  fn shouldLoadAsBoolFalse():
+    case loadAs[bool]("false"):
+      Ok(b):
+        expect(b).toEq(false)
+      Err(e):
+        fail("loadAs<bool> false failed: " + e.message)
+
+  @it("should propagate parse error via loadAs<int>")
+  fn shouldPropagateParseError():
+    case loadAs[int]("{not json}"):
+      Ok(_):
+        fail("expected parse error for invalid JSON")
+      Err(e):
+        # loadAs propagates the load() error via `?`, so the message
+        # comes from the parser. Only assert that an error returned
+        # with a non-empty message.
+        expect(byteLen(e.message) > 0).toEq(true)
+
+@describe("json loadAs<T> — collections")
+fn jsonLoadAsCollectionTests():
+  @it("should parse List<any> via loadAs")
+  fn shouldLoadAsListOfAny():
+    case loadAs[List<any>]("[1, 2, 3]"):
+      Ok(xs):
+        expect(len(xs)).toEq(3)
+      Err(e):
+        fail("loadAs<List<any>> failed: " + e.message)
+
+  @it("should parse empty List<any> via loadAs")
+  fn shouldLoadAsEmptyList():
+    case loadAs[List<any>]("[]"):
+      Ok(xs):
+        expect(len(xs)).toEq(0)
+      Err(e):
+        fail("loadAs<List<any>> [] failed: " + e.message)
+
+  @it("should parse Map<str, any> via loadAs")
+  fn shouldLoadAsMapStrAny():
+    case loadAs[Map<str, any>]("{\"a\": 1, \"b\": 2}"):
+      Ok(m):
+        expect(len(m)).toEq(2)
+      Err(e):
+        fail("loadAs<Map<str, any>> failed: " + e.message)
+
+  @it("should parse empty Map<str, any> via loadAs")
+  fn shouldLoadAsEmptyMap():
+    case loadAs[Map<str, any>]("{}"):
+      Ok(m):
+        expect(len(m)).toEq(0)
+      Err(e):
+        fail("loadAs<Map<str, any>> {} failed: " + e.message)
 
 @describe("json NUL round-trip")
 fn jsonNulRoundTripTests():
-  @it("should parse \\u0000 in a string value")
+  @it("should parse \\u0000 in a string value via loadAs<str>")
   fn shouldParseU0000InAStringValue():
-    case parse("\"a\\u0000b\""):
-      Ok(data):
-        case toStr(data):
-          Ok(s):
-            expect(byteLen(s)).toEq(3)
-            expect(s == "a\0b").toEq(true)
-          Err(e):
-            fail("toStr failed: " + e.message)
-        jsonFree(data)
+    case loadAs[str]("\"a\\u0000b\""):
+      Ok(s):
+        expect(byteLen(s)).toEq(3)
+        expect(s == "a\0b").toEq(true)
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("loadAs<str> failed: " + e.message)
 
   @it("should stringify NUL back to \\u0000")
   fn shouldStringifyNulBackToU0000():
-    case parse("\"a\\u0000b\""):
-      Ok(data):
-        expect(stringify(data)).toEq("\"a\\u0000b\"")
-        jsonFree(data)
+    case load("\"a\\u0000b\""):
+      Ok(v):
+        expect(stringify(v)).toEq("\"a\\u0000b\"")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load failed: " + e.message)
 
   @it("should round-trip NUL in object value")
   fn shouldRoundTripNulInObjectValue():
-    case parse("{\"k\":\"a\\u0000b\"}"):
-      Ok(data):
-        expect(stringify(data)).toEq("{\"k\":\"a\\u0000b\"}")
-        jsonFree(data)
+    case load("{\"k\":\"a\\u0000b\"}"):
+      Ok(v):
+        expect(stringify(v)).toEq("{\"k\":\"a\\u0000b\"}")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load failed: " + e.message)
 
   @it("should round-trip NUL in object key")
   fn shouldRoundTripNulInObjectKey():
-    case parse("{\"k\\u0000x\":1}"):
-      Ok(data):
-        expect(stringify(data)).toEq("{\"k\\u0000x\":1}")
-        case keys(data):
-          Ok(ks):
-            expect(byteLen(ks[0])).toEq(3)
-            expect(ks[0] == "k\0x").toEq(true)
-          Err(e):
-            fail("keys failed: " + e.message)
-        jsonFree(data)
+    case load("{\"k\\u0000x\":1}"):
+      Ok(v):
+        expect(stringify(v)).toEq("{\"k\\u0000x\":1}")
       Err(e):
-        fail("parse failed: " + e.message)
-
-  @it("should look up a NUL-containing key with get()")
-  fn shouldLookUpANulContainingKeyWithGet():
-    case parse("{\"k\\u0000x\":42}"):
-      Ok(data):
-        case keys(data):
-          Ok(ks):
-            case get(data, ks[0]):
-              Ok(val):
-                case toInt(val):
-                  Ok(n):
-                    expect(n).toEq(42)
-                  Err(e):
-                    fail("toInt failed: " + e.message)
-              Err(e):
-                fail("get failed: " + e.message)
-          Err(e):
-            fail("keys failed: " + e.message)
-        jsonFree(data)
-      Err(e):
-        fail("parse failed: " + e.message)
+        fail("load failed: " + e.message)
 
   @it("should round-trip NUL in array element")
   fn shouldRoundTripNulInArrayElement():
-    case parse("[\"a\\u0000b\",\"c\"]"):
-      Ok(data):
-        expect(stringify(data)).toEq("[\"a\\u0000b\",\"c\"]")
-        jsonFree(data)
+    case load("[\"a\\u0000b\",\"c\"]"):
+      Ok(v):
+        expect(stringify(v)).toEq("[\"a\\u0000b\",\"c\"]")
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("load failed: " + e.message)
 
   @it("should disambiguate keys that share prefix up to NUL")
   fn shouldDisambiguateKeysThatSharePrefixUpToNul():
-    case parse("{\"k\\u0000a\":1,\"k\\u0000b\":2}"):
-      Ok(data):
-        case keys(data):
-          Ok(ks):
-            expect(len(ks)).toEq(2)
-            case get(data, ks[0]):
-              Ok(v0):
-                case toInt(v0):
-                  Ok(n):
-                    expect(n).toEq(1)
-                  Err(e):
-                    fail("toInt ks[0] failed: " + e.message)
-              Err(e):
-                fail("get ks[0] failed: " + e.message)
-            case get(data, ks[1]):
-              Ok(v1):
-                case toInt(v1):
-                  Ok(n):
-                    expect(n).toEq(2)
-                  Err(e):
-                    fail("toInt ks[1] failed: " + e.message)
-              Err(e):
-                fail("get ks[1] failed: " + e.message)
-          Err(e):
-            fail("keys failed: " + e.message)
-        jsonFree(data)
+    case loadAs[Map<str, any>]("{\"k\\u0000a\":1,\"k\\u0000b\":2}"):
+      Ok(m):
+        expect(len(m)).toEq(2)
       Err(e):
-        fail("parse failed: " + e.message)
+        fail("loadAs<Map<str, any>> failed: " + e.message)
 
 @describe("json parse depth limit")
 fn jsonParseDepthLimitTests():
@@ -601,9 +387,8 @@ fn jsonParseDepthLimitTests():
   fn shouldRejectDeeplyNestedArrays():
     # depth 257 = MAX_NESTING_DEPTH (256) + 1
     deep = repeat("[", 257) + repeat("]", 257)
-    case parse(deep):
-      Ok(data):
-        jsonFree(data)
+    case load(deep):
+      Ok(_):
         fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
@@ -612,9 +397,8 @@ fn jsonParseDepthLimitTests():
   fn shouldRejectDeeplyNestedObjects():
     # depth 257 of {"a": ... } nesting
     deep = repeat("{\"a\":", 257) + "1" + repeat("}", 257)
-    case parse(deep):
-      Ok(data):
-        jsonFree(data)
+    case load(deep):
+      Ok(_):
         fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
@@ -626,9 +410,8 @@ fn jsonParseDepthLimitTests():
     open = repeat("[{\"a\":", pairs)
     close = repeat("}]", pairs)
     deep = open + "1" + close
-    case parse(deep):
-      Ok(data):
-        jsonFree(data)
+    case load(deep):
+      Ok(_):
         fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
@@ -637,9 +420,8 @@ fn jsonParseDepthLimitTests():
   fn shouldAcceptNestingAtExactlyTheDepthLimit():
     # depth 256 = MAX_NESTING_DEPTH (boundary - 1, inclusive)
     deep = repeat("[", 256) + repeat("]", 256)
-    case parse(deep):
-      Ok(data):
-        expect(kind(data)).toEq("array")
-        jsonFree(data)
+    case load(deep):
+      Ok(_):
+        0
       Err(e):
         fail("expected Ok at depth 256 but got Err: " + e.message)

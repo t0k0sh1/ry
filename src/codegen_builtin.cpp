@@ -316,8 +316,6 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
     auto *meta = getMeta(val);
     if (!meta) return "";
 
-    if (meta->json_type_only)
-        return "JsonValue";
     if (!meta->resource_kinds.empty()) {
         if (const auto *info = ResourceKindRegistry::instance().getInfo(meta->resource_kinds[0]))
             return info->typeName;

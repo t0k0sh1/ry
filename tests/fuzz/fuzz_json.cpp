@@ -1,3 +1,4 @@
+#include "ry/runtime_any.hpp"
 #include "ry/runtime_json.hpp"
 #include "ry/runtime_string.hpp"
 
@@ -7,13 +8,12 @@
 using namespace ry;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    // __ry_json_parse expects a Ry string handle (StringHeader-prefixed allocation).
-    // makeString allocates such a handle from a raw byte buffer.
     char *input = makeString(reinterpret_cast<const char *>(data), size);
-    void *h = __ry_json_parse(input);
+    RyAny out{};
+    int64_t status = __ry_json_parse_to_any(input, &out);
     freeStringSlot(input);
-    if (h != nullptr) {
-        __ry_json_free(h);
+    if (status == 0) {
+        __ry_json_release_any(&out);
     }
     return 0;
 }

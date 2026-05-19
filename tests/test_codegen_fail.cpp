@@ -566,6 +566,61 @@ TEST_F(CodeGenTest, ListInsertAnyAcceptsCollectionType) {
         "insert(xs, 0, [1, 2, 3])\n"));
 }
 
+// #1698: collection unwrap of `any` inside generic monomorphization with a
+// non-`any` element type produces silent corruption because the `any` data
+// slot is 16 bytes per element while the unwrap target strides 8 bytes per
+// element. The guard rejects at compile time after substitution rewrites the
+// type parameter to its concrete shape. Direct (non-generic) unwraps remain
+// legitimate (covered by any.test.ry "should implicit-unwrap any back to
+// List<int>") and are not blocked.
+TEST_F(CodeGenTest, AnyUnwrapToListIntInGenericRejected) {
+    expectCompileError(
+        "fn convert<T>(a: any) -> T:\n"
+        "  v: T = a\n"
+        "  return v\n"
+        "xs: List<int> = [1, 2, 3]\n"
+        "boxed: any = xs\n"
+        "out: List<int> = convert[List<int>](boxed)\n"
+        "print(out[0])\n",
+        "unwrapping 'any' to 'List<int>' is not supported");
+}
+
+TEST_F(CodeGenTest, AnyUnwrapToMapStrIntInGenericRejected) {
+    expectCompileError(
+        "fn convert<T>(a: any) -> T:\n"
+        "  v: T = a\n"
+        "  return v\n"
+        "m: Map<str, int> = {}\n"
+        "m[\"x\"] = 42\n"
+        "boxed: any = m\n"
+        "out: Map<str, int> = convert[Map<str, int>](boxed)\n"
+        "print(out[\"x\"])\n",
+        "unwrapping 'any' to 'Map<str,int>' is not supported");
+}
+
+TEST_F(CodeGenTest, AnyUnwrapToSetIntInGenericRejected) {
+    expectCompileError(
+        "fn convert<T>(a: any) -> T:\n"
+        "  v: T = a\n"
+        "  return v\n"
+        "s: Set<int> = {}\n"
+        "add(s, 1)\n"
+        "boxed: any = s\n"
+        "out: Set<int> = convert[Set<int>](boxed)\n"
+        "print(1 in out)\n",
+        "unwrapping 'any' to 'Set<int>' is not supported");
+}
+
+TEST_F(CodeGenTest, AnyUnwrapToListAnyInGenericAccepted) {
+    EXPECT_NO_THROW(compileSource(
+        "fn convert<T>(a: any) -> T:\n"
+        "  v: T = a\n"
+        "  return v\n"
+        "xs: List<any> = []\n"
+        "boxed: any = xs\n"
+        "out: List<any> = convert[List<any>](boxed)\n"));
+}
+
 // ============================================================
 // fold(): seed/return-type mismatch must still fire for typed lambda
 // ============================================================
