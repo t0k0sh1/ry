@@ -1689,4 +1689,464 @@ CodeGen::getOrCreateRecordDescriptor(const std::string &typeName, llvm::StructTy
     return gv;
 }
 
+// =====================================================================
+// Enum-in-`any` heap-box helpers (#1798).
+// =====================================================================
+//
+// Enums (simple, ADT, `Option<T>`, `Result<V, E>`) cannot fit in the
+// 8-byte `data[8]` slot of `any` as SSA values, so we heap-box them with
+// the same descriptor-driven layout as records (#1797):
+//
+//   [ ArcHeader (16B) ][ descriptor ptr (8B) ][ payload ]
+//
+// Payload type is per enum kind:
+//   - simple enum: i64
+//   - ADT enum: `{ i64 disc, [N x i8] payload }`
+//   - Option<T>: `{ i1 has_value, T inner }`
+//   - Result<V,E>: `{ i1 is_ok, V ok, E err }`
+//
+// The descriptor `{ dtor, eq, type_name }` (3 ptrs = 24B; no parent_desc
+// since enums have no inheritance) is stored at box+0 so the runtime
+// trampoline `__ry_arc_dtor_enum_dispatch` can reach the right dtor and
+// `__ry_any_eq` can deep-compare by descriptor identity + per-type eq.
+
+llvm::StructType *CodeGen::enumBoxLayoutType(llvm::Type *payloadTy) {
+    return llvm::StructType::get(*ctx_, {ptrTy_, payloadTy});
+}
+
+bool CodeGen::isSimpleEnumTypeName(const std::string &name) {
+    const std::string resolved = const_cast<CodeGen *>(this)->resolveTypeAlias(name);
+    const EnumInfo *info = findEnumType(resolved);
+    return info && !info->isADT;
+}
+
+std::string CodeGen::findEnumLikeTypeNameForBoxing(llvm::Value *val) {
+    if (!val) return {};
+    llvm::Type *ty = val->getType();
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        // ADT enum payload struct.
+        std::string adtName = findAdtEnumName(st);
+        if (!adtName.empty())
+            return adtName;
+        // Resolve source-level type name from val's metadata. When val is a
+        // direct LoadInst from an alloca declared with a source-level annotation
+        // (e.g. `r: Result<List<int>, str> = ...`), fall back to the alloca's
+        // metadata — `source_type_name` from `propagateMeta` may not have flowed
+        // through the Load because Result/Option-typed allocas hold the meta on
+        // the storage slot, not on each loaded SSA value (#1798).
+        auto resolveSourceTypeName = [&]() -> std::string {
+            if (auto *meta = getMeta(val); meta && !meta->source_type_name.empty())
+                return meta->source_type_name;
+            if (auto *li = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                llvm::Value *ptr = li->getPointerOperand();
+                if (auto *aMeta = getMeta(ptr); aMeta && !aMeta->source_type_name.empty())
+                    return aMeta->source_type_name;
+            }
+            return {};
+        };
+        // Option<T>
+        if (auto it = reverse_option_types_.find(st); it != reverse_option_types_.end()) {
+            std::string innerName;
+            std::string src = resolveSourceTypeName();
+            if (!src.empty()) {
+                if (src.size() > 8 && src.compare(0, 7, "Option<") == 0 &&
+                    src.back() == '>')
+                    innerName = src.substr(7, src.size() - 8);
+                else if (!src.empty() && src.back() == '?')
+                    innerName = src.substr(0, src.size() - 1);
+            }
+            if (innerName.empty())
+                innerName = reverseResolveTypeName(it->second);
+            return "Option<" + innerName + ">";
+        }
+        // Result<V, E>
+        if (auto it = reverse_result_types_.find(st); it != reverse_result_types_.end()) {
+            std::string okName, errName;
+            std::string src = resolveSourceTypeName();
+            if (!src.empty()) {
+                if (src.size() > 9 && src.compare(0, 7, "Result<") == 0 &&
+                    src.back() == '>') {
+                    // Split on the top-level comma.
+                    std::string inside = src.substr(7, src.size() - 8);
+                    int depth = 0;
+                    size_t splitAt = std::string::npos;
+                    for (size_t i = 0; i < inside.size(); ++i) {
+                        char c = inside[i];
+                        if (c == '<') ++depth;
+                        else if (c == '>') --depth;
+                        else if (c == ',' && depth == 0) {
+                            splitAt = i;
+                            break;
+                        }
+                    }
+                    if (splitAt != std::string::npos) {
+                        okName = inside.substr(0, splitAt);
+                        errName = inside.substr(splitAt + 1);
+                        // Trim
+                        auto trim = [](std::string &s) {
+                            while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+                            while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+                        };
+                        trim(okName);
+                        trim(errName);
+                    }
+                }
+            }
+            if (okName.empty()) okName = reverseResolveTypeName(it->second.first);
+            if (errName.empty()) errName = reverseResolveTypeName(it->second.second);
+            return "Result<" + okName + ", " + errName + ">";
+        }
+        return {};
+    }
+    if (ty == i64Ty_) {
+        if (auto *meta = getMeta(val); meta && !meta->enum_value_type.empty())
+            return meta->enum_value_type;
+    }
+    return {};
+}
+
+// Helper: parse "Option<T>" or "Result<V, E>" canonical names; for ADT/simple
+// enum names, both outputs stay empty.
+static void splitEnumLikeName(const std::string &canonical,
+                              std::string *outHead,
+                              std::vector<std::string> *outArgs) {
+    if (outHead) outHead->clear();
+    if (outArgs) outArgs->clear();
+    auto lt = canonical.find('<');
+    if (lt == std::string::npos || canonical.back() != '>')
+        return;
+    if (outHead) *outHead = canonical.substr(0, lt);
+    std::string inside = canonical.substr(lt + 1, canonical.size() - lt - 2);
+    int depth = 0;
+    std::string cur;
+    for (char c : inside) {
+        if (c == ',' && depth == 0) {
+            // Trim leading/trailing spaces.
+            while (!cur.empty() && (cur.front() == ' ' || cur.front() == '\t')) cur.erase(cur.begin());
+            while (!cur.empty() && (cur.back() == ' ' || cur.back() == '\t')) cur.pop_back();
+            if (outArgs) outArgs->push_back(cur);
+            cur.clear();
+            continue;
+        }
+        if (c == '<') ++depth;
+        else if (c == '>') --depth;
+        cur += c;
+    }
+    while (!cur.empty() && (cur.front() == ' ' || cur.front() == '\t')) cur.erase(cur.begin());
+    while (!cur.empty() && (cur.back() == ' ' || cur.back() == '\t')) cur.pop_back();
+    if (!cur.empty() && outArgs) outArgs->push_back(cur);
+}
+
+llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
+                                                  llvm::Type *payloadTy) {
+    if (auto it = enum_dtor_cache_.find(typeName); it != enum_dtor_cache_.end())
+        return it->second;
+
+    FnScope scope(*this);
+    auto *fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto *fn = llvm::Function::Create(fnTy, llvm::Function::InternalLinkage,
+                                       "__ry_enum_box_dtor_" + typeName, mod_.get());
+    enum_dtor_cache_[typeName] = fn;
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    builder_.SetInsertPoint(entry);
+    auto *dataPtr = fn->getArg(0);
+    auto *layoutTy = enumBoxLayoutType(payloadTy);
+    auto *payloadPtr = builder_.CreateStructGEP(layoutTy, dataPtr, 1, "payload_ptr");
+
+    std::string head;
+    std::vector<std::string> args;
+    splitEnumLikeName(typeName, &head, &args);
+
+    if (head == "Option" && args.size() == 1) {
+        // payload = {i1 has_value, T inner}
+        auto *payloadSt = llvm::cast<llvm::StructType>(payloadTy);
+        auto *payload = builder_.CreateLoad(payloadSt, payloadPtr, "opt.payload");
+        CollectionKind innerKind;
+        if (fieldTypeIsArcManaged(args[0], &innerKind)) {
+            auto *tag = builder_.CreateExtractValue(payload, 0, "opt.has");
+            auto *someBB = llvm::BasicBlock::Create(*ctx_, "opt.some.dtor", fn);
+            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "opt.done.dtor", fn);
+            builder_.CreateCondBr(tag, someBB, doneBB);
+            builder_.SetInsertPoint(someBB);
+            auto *inner = builder_.CreateExtractValue(payload, 1, "opt.inner");
+            emitArcReleaseLoadedElement(inner, innerKind, args[0], "opt.dtor");
+            builder_.CreateBr(doneBB);
+            builder_.SetInsertPoint(doneBB);
+        }
+    } else if (head == "Result" && args.size() == 2) {
+        auto *payloadSt = llvm::cast<llvm::StructType>(payloadTy);
+        auto *payload = builder_.CreateLoad(payloadSt, payloadPtr, "res.payload");
+        CollectionKind okKind, errKind;
+        bool okArc = fieldTypeIsArcManaged(args[0], &okKind);
+        bool errArc = fieldTypeIsArcManaged(args[1], &errKind);
+        if (okArc || errArc) {
+            auto *tag = builder_.CreateExtractValue(payload, 0, "res.is_ok");
+            auto *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok.dtor", fn);
+            auto *errBB = llvm::BasicBlock::Create(*ctx_, "res.err.dtor", fn);
+            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res.done.dtor", fn);
+            builder_.CreateCondBr(tag, okBB, errBB);
+            builder_.SetInsertPoint(okBB);
+            if (okArc) {
+                auto *okVal = builder_.CreateExtractValue(payload, 1, "res.ok_val");
+                emitArcReleaseLoadedElement(okVal, okKind, args[0], "res.ok.dtor");
+            }
+            builder_.CreateBr(doneBB);
+            builder_.SetInsertPoint(errBB);
+            if (errArc) {
+                auto *errVal = builder_.CreateExtractValue(payload, 2, "res.err_val");
+                emitArcReleaseLoadedElement(errVal, errKind, args[1], "res.err.dtor");
+            }
+            builder_.CreateBr(doneBB);
+            builder_.SetInsertPoint(doneBB);
+        }
+    } else {
+        // Organic enum (simple or ADT).
+        const EnumInfo *info = findEnumType(typeName);
+        if (info && info->isADT && info->adtType && payloadTy == info->adtType) {
+            // Switch on disc; release per-variant ARC fields.
+            auto *adtSt = info->adtType;
+            auto *tagPtr = builder_.CreateStructGEP(adtSt, payloadPtr, 0, "adt.tag.ptr");
+            auto *tag = builder_.CreateLoad(i64Ty_, tagPtr, "adt.tag");
+            auto *payloadBytesPtr = builder_.CreateStructGEP(adtSt, payloadPtr, 1,
+                                                              "adt.payload.ptr");
+
+            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "adt.dtor.done", fn);
+            auto *sw = builder_.CreateSwitch(tag, doneBB,
+                                              static_cast<unsigned>(info->variantOrder.size()));
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            for (const std::string &vname : info->variantOrder) {
+                auto vfIt = info->variantFields.find(vname);
+                int64_t tagVal = info->variants.at(vname);
+                bool hasArc = false;
+                if (vfIt != info->variantFields.end()) {
+                    for (const auto &ftn : vfIt->second.fieldTypeNames)
+                        if (fieldTypeIsArcManaged(ftn)) { hasArc = true; break; }
+                }
+                auto *tagConst = llvm::cast<llvm::ConstantInt>(
+                    llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal)));
+                if (!hasArc) {
+                    sw->addCase(tagConst, doneBB);
+                    continue;
+                }
+                auto *caseBB = llvm::BasicBlock::Create(
+                    *ctx_, "adt.dtor." + vname, fn);
+                sw->addCase(tagConst, caseBB);
+                builder_.SetInsertPoint(caseBB);
+                const VariantFieldInfo &vfi = vfIt->second;
+                size_t offset = 0;
+                for (size_t fi = 0; fi < vfi.fieldTypes.size(); ++fi) {
+                    llvm::Type *fieldTy = vfi.fieldTypes[fi];
+                    const std::string &fieldTypeName = vfi.fieldTypeNames[fi];
+                    uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                    if (align > 0)
+                        offset = (offset + align - 1) / align * align;
+                    CollectionKind fk;
+                    if (fieldTypeIsArcManaged(fieldTypeName, &fk)) {
+                        auto *fieldPtr = builder_.CreateGEP(
+                            i8Ty_, payloadBytesPtr,
+                            llvm::ConstantInt::get(i64Ty_, offset),
+                            "adt.field.dtor." + std::to_string(fi));
+                        auto *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr,
+                                                              "adt.field.val");
+                        emitArcReleaseLoadedElement(fieldVal, fk, fieldTypeName,
+                                                     "adt.dtor." + vname);
+                    }
+                    offset += dl.getTypeAllocSize(fieldTy);
+                }
+                builder_.CreateBr(doneBB);
+            }
+            builder_.SetInsertPoint(doneBB);
+        }
+        // Simple enum (i64 payload): no-op.
+    }
+    builder_.CreateRetVoid();
+    return fn;
+}
+
+llvm::Function *CodeGen::getOrCreateEnumBoxEq(const std::string &typeName,
+                                                llvm::Type *payloadTy) {
+    if (auto it = enum_eq_cache_.find(typeName); it != enum_eq_cache_.end())
+        return it->second;
+
+    FnScope scope(*this);
+    auto *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+    auto *fn = llvm::Function::Create(fnTy, llvm::Function::InternalLinkage,
+                                       "__ry_enum_box_eq_" + typeName, mod_.get());
+    enum_eq_cache_[typeName] = fn;
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    builder_.SetInsertPoint(entry);
+    // Args point at the payload region (box+8).
+    auto *payloadA = builder_.CreateLoad(payloadTy, fn->getArg(0), "enum.eq.a");
+    auto *payloadB = builder_.CreateLoad(payloadTy, fn->getArg(1), "enum.eq.b");
+
+    // For Option/Result/ADT, propagate the source-level name so
+    // emitComparisonOp recurses correctly through the nested ARC slots.
+    getOrCreateMeta(payloadA).source_type_name = typeName;
+    getOrCreateMeta(payloadB).source_type_name = typeName;
+
+    // emitComparisonOp handles i64, Option, Result, ADT (via findAdtEnumName).
+    llvm::Value *eq = emitComparisonOp("==", payloadA, payloadB, typeName, typeName);
+    builder_.CreateRet(builder_.CreateZExt(eq, i64Ty_, "enum.eq.i64"));
+    return fn;
+}
+
+llvm::GlobalVariable *
+CodeGen::getOrCreateEnumDescriptor(const std::string &typeName,
+                                    llvm::Type *payloadTy) {
+    if (auto it = enum_descriptor_cache_.find(typeName);
+        it != enum_descriptor_cache_.end())
+        return it->second;
+
+    auto *savedBB = builder_.GetInsertBlock();
+    llvm::IRBuilder<>::InsertPoint savedIP = builder_.saveIP();
+
+    auto *dtor = getOrCreateEnumBoxDtor(typeName, payloadTy);
+    auto *eq = getOrCreateEnumBoxEq(typeName, payloadTy);
+    auto *typeNameConst = cachedGlobalString(typeName, ".enum_type_name");
+
+    auto *descTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+    auto *initVal = llvm::ConstantStruct::get(
+        descTy,
+        {dtor, eq, llvm::cast<llvm::Constant>(typeNameConst)});
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, descTy, /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, initVal,
+        "__ry_enum_desc_" + typeName);
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    gv->setAlignment(llvm::Align(8));
+    enum_descriptor_cache_[typeName] = gv;
+
+    if (savedBB)
+        builder_.restoreIP(savedIP);
+    return gv;
+}
+
+void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
+                                          const std::string &enumTypeName,
+                                          llvm::Type *payloadTy) {
+    // Field-wise retain for heap-box reassignment paths. Counterpart to
+    // emitRecordArcFieldsRetain. Walks the payload struct per-variant
+    // (ADT) or per-slot (Option/Result) and retains ARC pointers.
+    if (!payloadVal) return;
+    std::string head;
+    std::vector<std::string> args;
+    splitEnumLikeName(enumTypeName, &head, &args);
+
+    auto retainSlot = [&](llvm::Value *slot, const std::string &innerName,
+                          CollectionKind kind) {
+        if (slot->getType() != ptrTy_) return;
+        auto *isNull = builder_.CreateICmpEQ(
+            slot, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "enum.retain.null");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *retainBB = llvm::BasicBlock::Create(*ctx_, "enum.field_retain", parentFn);
+        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "enum.field_retain_skip", parentFn);
+        builder_.CreateCondBr(isNull, skipBB, retainBB);
+        builder_.SetInsertPoint(retainBB);
+        auto *hdr = (kind == CollectionKind::Str) ? emitStrGetHeaderFromData(slot)
+                                                    : emitArcGetHeaderFromData(slot);
+        emitArcRetain(hdr, /*atomic=*/false);
+        builder_.CreateBr(skipBB);
+        builder_.SetInsertPoint(skipBB);
+        (void)innerName;
+    };
+
+    if (head == "Option" && args.size() == 1) {
+        CollectionKind innerKind;
+        if (!fieldTypeIsArcManaged(args[0], &innerKind)) return;
+        auto *tag = builder_.CreateExtractValue(payloadVal, 0, "opt.retain.tag");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *someBB = llvm::BasicBlock::Create(*ctx_, "opt.retain.some", parentFn);
+        auto *doneBB = llvm::BasicBlock::Create(*ctx_, "opt.retain.done", parentFn);
+        builder_.CreateCondBr(tag, someBB, doneBB);
+        builder_.SetInsertPoint(someBB);
+        auto *inner = builder_.CreateExtractValue(payloadVal, 1, "opt.retain.inner");
+        retainSlot(inner, args[0], innerKind);
+        builder_.CreateBr(doneBB);
+        builder_.SetInsertPoint(doneBB);
+        return;
+    }
+    if (head == "Result" && args.size() == 2) {
+        CollectionKind okKind, errKind;
+        bool okArc = fieldTypeIsArcManaged(args[0], &okKind);
+        bool errArc = fieldTypeIsArcManaged(args[1], &errKind);
+        if (!okArc && !errArc) return;
+        auto *tag = builder_.CreateExtractValue(payloadVal, 0, "res.retain.tag");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *okBB = llvm::BasicBlock::Create(*ctx_, "res.retain.ok", parentFn);
+        auto *errBB = llvm::BasicBlock::Create(*ctx_, "res.retain.err", parentFn);
+        auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res.retain.done", parentFn);
+        builder_.CreateCondBr(tag, okBB, errBB);
+        builder_.SetInsertPoint(okBB);
+        if (okArc) {
+            auto *okVal = builder_.CreateExtractValue(payloadVal, 1, "res.retain.ok_val");
+            retainSlot(okVal, args[0], okKind);
+        }
+        builder_.CreateBr(doneBB);
+        builder_.SetInsertPoint(errBB);
+        if (errArc) {
+            auto *errVal = builder_.CreateExtractValue(payloadVal, 2, "res.retain.err_val");
+            retainSlot(errVal, args[1], errKind);
+        }
+        builder_.CreateBr(doneBB);
+        builder_.SetInsertPoint(doneBB);
+        return;
+    }
+    // Organic enum.
+    const EnumInfo *info = findEnumType(enumTypeName);
+    if (!info || !info->isADT || !info->adtType || payloadTy != info->adtType)
+        return;
+    auto *adtSt = info->adtType;
+    auto *tag = builder_.CreateExtractValue(payloadVal, 0, "adt.retain.tag");
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "adt.retain.done", parentFn);
+    // Stack-spill the payload struct so we can GEP into the byte array.
+    auto *spill = builder_.CreateAlloca(adtSt, nullptr, "adt.retain.spill");
+    builder_.CreateStore(payloadVal, spill);
+    auto *payloadBytesPtr = builder_.CreateStructGEP(adtSt, spill, 1, "adt.retain.bytes_ptr");
+    auto *sw = builder_.CreateSwitch(tag, doneBB,
+                                      static_cast<unsigned>(info->variantOrder.size()));
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    for (const std::string &vname : info->variantOrder) {
+        auto vfIt = info->variantFields.find(vname);
+        int64_t tagVal = info->variants.at(vname);
+        bool hasArc = false;
+        if (vfIt != info->variantFields.end())
+            for (const auto &ftn : vfIt->second.fieldTypeNames)
+                if (fieldTypeIsArcManaged(ftn)) { hasArc = true; break; }
+        auto *tagConst = llvm::cast<llvm::ConstantInt>(
+            llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal)));
+        if (!hasArc) { sw->addCase(tagConst, doneBB); continue; }
+        auto *caseBB = llvm::BasicBlock::Create(
+            *ctx_, "adt.retain." + vname, parentFn);
+        sw->addCase(tagConst, caseBB);
+        builder_.SetInsertPoint(caseBB);
+        const VariantFieldInfo &vfi = vfIt->second;
+        size_t offset = 0;
+        for (size_t fi = 0; fi < vfi.fieldTypes.size(); ++fi) {
+            llvm::Type *fieldTy = vfi.fieldTypes[fi];
+            const std::string &fieldTypeName = vfi.fieldTypeNames[fi];
+            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+            if (align > 0)
+                offset = (offset + align - 1) / align * align;
+            CollectionKind fk;
+            if (fieldTypeIsArcManaged(fieldTypeName, &fk)) {
+                auto *fieldPtr = builder_.CreateGEP(
+                    i8Ty_, payloadBytesPtr,
+                    llvm::ConstantInt::get(i64Ty_, offset),
+                    "adt.retain.field." + std::to_string(fi));
+                auto *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr,
+                                                      "adt.retain.field.val");
+                retainSlot(fieldVal, fieldTypeName, fk);
+            }
+            offset += dl.getTypeAllocSize(fieldTy);
+        }
+        builder_.CreateBr(doneBB);
+    }
+    builder_.SetInsertPoint(doneBB);
+}
+
 } // namespace ry

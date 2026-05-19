@@ -431,6 +431,56 @@ public:
     // Returns a packed struct type for clarity.
     llvm::StructType *recordBoxLayoutType(llvm::StructType *recordStructTy);
 
+    // Per-enum descriptor cache for `any` heap-boxing (#1798). Parallel to
+    // record_descriptor_cache_ but for enum types (simple, ADT,
+    // Option<T>, Result<V,E>). Each enum type stored in `any` carries
+    // a singleton `__ry_enum_desc_<name>` holding
+    // `{ dtor, eq, type_name }` (no parent_desc — enums have no inheritance).
+    // Keyed by canonical source-level name (e.g. `Color`, `Maybe<int>`,
+    // `Option<str>`, `Result<int, str>`).
+    std::unordered_map<std::string, llvm::GlobalVariable *> enum_descriptor_cache_;
+    std::unordered_map<std::string, llvm::Function *> enum_dtor_cache_;
+    std::unordered_map<std::string, llvm::Function *> enum_eq_cache_;
+
+    // Get or create the per-enum descriptor global (constant
+    // `{ ptr dtor, ptr eq, ptr type_name }`). Used by `any` box layout
+    // (#1798) so cross-function-boundary release / equality / to_string
+    // dispatch by descriptor pointer instead of stale annotation strings.
+    // `payloadTy` is the LLVM payload type (i64 for simple enums, ADT
+    // struct for ADT enums, Option struct for `Option<T>`, Result struct
+    // for `Result<V,E>`).
+    llvm::GlobalVariable *getOrCreateEnumDescriptor(const std::string &typeName,
+                                                      llvm::Type *payloadTy);
+    // Get or create the dtor function called by `__ry_arc_dtor_enum_dispatch`
+    // on the heap box. Simple enums get a no-op body; ADT enums switch on
+    // the discriminant and release per-variant ARC fields; Option/Result
+    // gate on the discriminant and release the active payload slot.
+    llvm::Function *getOrCreateEnumBoxDtor(const std::string &typeName,
+                                             llvm::Type *payloadTy);
+    // Get or create the per-enum equality function. Takes two box data
+    // region pointers (each pointing at `[desc | enum_payload]`); returns
+    // i64 (1 = equal, 0 = not equal). Compares discriminant + payload.
+    llvm::Function *getOrCreateEnumBoxEq(const std::string &typeName,
+                                           llvm::Type *payloadTy);
+    // Shape of the `any` enum box data region:
+    //   { ptr descriptor, <payload> }
+    llvm::StructType *enumBoxLayoutType(llvm::Type *payloadTy);
+    // Returns the source-level enum-like name for a value if it is an
+    // organic enum (ADT or simple), `Option<T>`, or `Result<V,E>`.
+    // Returns empty if the value is not an enum-like SSA struct/i64.
+    // Used by `wrapInAny` to decide whether to take the enum-box path
+    // before falling through to the record box / primitive paths.
+    std::string findEnumLikeTypeNameForBoxing(llvm::Value *val);
+    // Returns true if `name` is a registered simple (non-ADT) enum.
+    bool isSimpleEnumTypeName(const std::string &name);
+    // Field-wise retain for enum box payloads on heap-box reassignment
+    // paths (#1798) — mirrors `emitRecordArcFieldsRetain`. Walks the
+    // payload struct per-variant (ADT) or per-slot (Option/Result) and
+    // retains ARC pointers.
+    void emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
+                                    const std::string &enumTypeName,
+                                    llvm::Type *payloadTy);
+
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
     // join block on return so the caller can continue emitting the
@@ -659,6 +709,12 @@ public:
     std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
+    // Reverse lookup: Option/Result LLVM struct type → inner element type(s).
+    // Populated alongside the forward maps so wrapInAny / unwrapFromAny can
+    // reconstruct the source-level name (`Option<T>` / `Result<V, E>`) from
+    // a struct value without scanning the forward map (#1798).
+    std::unordered_map<llvm::StructType*, llvm::Type*> reverse_option_types_;
+    std::unordered_map<llvm::StructType*, std::pair<llvm::Type*, llvm::Type*>> reverse_result_types_;
     enum class TypeMeta {
         ListElem, MapKey, MapValue, SetElem,
         NestedListElem, TaskResult, ThreadResult, IteratorElem, COUNT
@@ -2167,6 +2223,13 @@ public:
     // primitive names keep the legacy behavior.
     llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                 const std::string &targetTypeName = "");
+    // Enum (organic / Option<T> / Result<V,E> / simple) unwrap from `any`.
+    // `targetTy` may be a `StructType` for ADT / Option / Result or `i64Ty_`
+    // for simple enums; `targetTypeName` is the source-level Ry type name
+    // used to look up the descriptor and (for simple enums) to discriminate
+    // from plain `int`. Symmetric to wrapInAny's enum-box path.
+    llvm::Value *unwrapEnumFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
+                                    const std::string &targetTypeName);
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);

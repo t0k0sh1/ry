@@ -267,6 +267,7 @@ llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
     llvm::StructType *optTy = llvm::StructType::create(
         *ctx_, {i1Ty_, innerTy}, "Option");
     option_types_[innerTy] = optTy;
+    reverse_option_types_[optTy] = innerTy;
     return optTy;
 }
 
@@ -308,6 +309,7 @@ llvm::StructType *CodeGen::getResultType(llvm::Type *okTy, llvm::Type *errTy) {
     llvm::StructType *resTy = llvm::StructType::create(
         *ctx_, {i1Ty_, okTy, errTy}, "Result");
     result_types_[key] = resTy;
+    reverse_result_types_[resTy] = key;
     return resTy;
 }
 

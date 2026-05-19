@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from testing import it, describe, expect, fail
 
 @describe("any type")
 fn anyTypeTests():
@@ -898,3 +898,185 @@ fn anyHoldsRecordTests():
     a: AnyRecAnimal = makeAnyDog()
     expect(a.name).toEq("Spot")
     expect(a.legs).toEq(4)
+
+enum AnyEnumColor:
+  Red
+  Green
+  Blue
+
+enum AnyEnumMode:
+  On
+  Off
+
+enum AnyEnumShape:
+  Circle(float)
+  Rect(int, int)
+  Dot
+
+enum AnyEnumLabel:
+  Tag(str)
+  Empty
+
+enum AnyEnumBag:
+  Items(List<int>)
+  Nothing
+
+@describe("any holds enum")
+fn anyHoldsEnumTests():
+  @it("should wrap simple enum in any and unwrap back")
+  fn shouldWrapSimpleEnumInAnyAndUnwrapBack():
+    a: any = AnyEnumColor::Red
+    c: AnyEnumColor = a
+    expect(c == AnyEnumColor::Red).toEq(true)
+  @it("should compare two any holding same simple enum value")
+  fn shouldCompareTwoAnyHoldingSameSimpleEnumValue():
+    a: any = AnyEnumColor::Green
+    b: any = AnyEnumColor::Green
+    expect(a == b).toEq(true)
+  @it("should not consider two any holding different simple enum variants equal")
+  fn shouldNotConsiderTwoAnyHoldingDifferentSimpleEnumVariantsEqual():
+    a: any = AnyEnumColor::Red
+    b: any = AnyEnumColor::Blue
+    expect(a == b).toEq(false)
+  @it("should not consider two any holding different simple enum types equal")
+  fn shouldNotConsiderTwoAnyHoldingDifferentSimpleEnumTypesEqual():
+    a: any = AnyEnumColor::Red
+    b: any = AnyEnumMode::On
+    expect(a == b).toEq(false)
+  @it("should wrap ADT enum (no payload variant) in any and unwrap back")
+  fn shouldWrapAdtEnumNoPayloadVariantInAnyAndUnwrapBack():
+    a: any = AnyEnumShape::Dot
+    s: AnyEnumShape = a
+    expect(s == AnyEnumShape::Dot).toEq(true)
+  @it("should wrap ADT enum with float payload in any and unwrap back")
+  fn shouldWrapAdtEnumWithFloatPayloadInAnyAndUnwrapBack():
+    a: any = AnyEnumShape::Circle(2.5)
+    s: AnyEnumShape = a
+    expect(s == AnyEnumShape::Circle(2.5)).toEq(true)
+  @it("should wrap ADT enum with int-pair payload in any and unwrap back")
+  fn shouldWrapAdtEnumWithIntPairPayloadInAnyAndUnwrapBack():
+    a: any = AnyEnumShape::Rect(3, 4)
+    s: AnyEnumShape = a
+    expect(s == AnyEnumShape::Rect(3, 4)).toEq(true)
+  @it("should compare two any holding equal ADT payloads as equal")
+  fn shouldCompareTwoAnyHoldingEqualAdtPayloadsAsEqual():
+    a: any = AnyEnumShape::Rect(5, 7)
+    b: any = AnyEnumShape::Rect(5, 7)
+    expect(a == b).toEq(true)
+  @it("should not consider two any holding ADT with different payloads equal")
+  fn shouldNotConsiderTwoAnyHoldingAdtWithDifferentPayloadsEqual():
+    a: any = AnyEnumShape::Rect(5, 7)
+    b: any = AnyEnumShape::Rect(5, 8)
+    expect(a == b).toEq(false)
+  @it("should wrap ADT enum with str payload in any and unwrap (ARC field)")
+  fn shouldWrapAdtEnumWithStrPayloadInAnyAndUnwrap():
+    a: any = AnyEnumLabel::Tag("hello" + "!")
+    l: AnyEnumLabel = a
+    expect(l == AnyEnumLabel::Tag("hello!")).toEq(true)
+  @it("should preserve ADT with str payload through any-to-any copy")
+  fn shouldPreserveAdtWithStrPayloadThroughAnyToAnyCopy():
+    a: any = AnyEnumLabel::Tag("orig" + "Val")
+    b: any = a
+    a = AnyEnumLabel::Tag("replaced")
+    l: AnyEnumLabel = b
+    expect(l == AnyEnumLabel::Tag("origVal")).toEq(true)
+  @it("should wrap ADT enum with List payload in any (ARC field)")
+  fn shouldWrapAdtEnumWithListPayloadInAny():
+    a: any = AnyEnumBag::Items([1, 2, 3])
+    b: AnyEnumBag = a
+    expect(b == AnyEnumBag::Items([1, 2, 3])).toEq(true)
+  @it("should reassign any holding enum to different enum value")
+  fn shouldReassignAnyHoldingEnumToDifferentEnumValue():
+    a: any = AnyEnumColor::Red
+    a = AnyEnumShape::Dot
+    s: AnyEnumShape = a
+    expect(s == AnyEnumShape::Dot).toEq(true)
+  @it("should wrap Option<int> in any and unwrap back")
+  fn shouldWrapOptionIntInAnyAndUnwrapBack():
+    a: any = Some(42)
+    o: Option<int> = a
+    case o:
+      Some(v): expect(v).toEq(42)
+      None: fail("expected Some")
+  @it("should wrap None in any and unwrap back as Option<int>")
+  fn shouldWrapNoneInAnyAndUnwrapBackAsOptionInt():
+    n: Option<int> = None
+    a: any = n
+    o: Option<int> = a
+    gotNone = false
+    case o:
+      Some(_): fail("expected None")
+      None: gotNone = true
+    expect(gotNone).toEq(true)
+  @it("should wrap Option<str> in any and unwrap back")
+  fn shouldWrapOptionStrInAnyAndUnwrapBack():
+    a: any = Some("hi" + "!")
+    o: Option<str> = a
+    case o:
+      Some(v): expect(v).toEq("hi!")
+      None: fail("expected Some")
+  @it("should wrap Result Ok int in any and unwrap back")
+  fn shouldWrapResultOkIntInAnyAndUnwrapBack():
+    r: Result<int, str> = Ok(7)
+    a: any = r
+    out: Result<int, str> = a
+    case out:
+      Ok(v): expect(v).toEq(7)
+      Err(_): fail("expected Ok")
+  @it("should wrap Result Err str in any and unwrap back")
+  fn shouldWrapResultErrStrInAnyAndUnwrapBack():
+    r: Result<int, str> = Err("oops")
+    a: any = r
+    out: Result<int, str> = a
+    case out:
+      Ok(_): fail("expected Err")
+      Err(e): expect(e).toEq("oops")
+  @it("should wrap Result<List<int>, str> in any and unwrap back (ARC payload)")
+  fn shouldWrapResultListIntStrInAnyAndUnwrapBack():
+    r: Result<List<int>, str> = Ok([10, 20, 30])
+    a: any = r
+    out: Result<List<int>, str> = a
+    case out:
+      Ok(v):
+        expect(v[0]).toEq(10)
+        expect(v[1]).toEq(20)
+        expect(v[2]).toEq(30)
+      Err(e): fail("expected Ok: " + e)
+  @it("should store enum elements in List<any>")
+  fn shouldStoreEnumElementsInListAny():
+    xs: List<any> = []
+    append!(xs, AnyEnumColor::Red)
+    append!(xs, AnyEnumShape::Dot)
+    expect(xs[0] == AnyEnumColor::Red).toEq(true)
+    expect(xs[1] == AnyEnumShape::Dot).toEq(true)
+  @it("should store enum values in Map<str, any>")
+  fn shouldStoreEnumValuesInMapStrAny():
+    m: Map<str, any> = {}
+    m["c"] = AnyEnumColor::Blue
+    m["m"] = AnyEnumMode::Off
+    expect(m["c"] == AnyEnumColor::Blue).toEq(true)
+    expect(m["m"] == AnyEnumMode::Off).toEq(true)
+  @it("should render any holding simple enum as type-named marker")
+  fn shouldRenderAnyHoldingSimpleEnumAsTypeNamedMarker():
+    a: any = AnyEnumColor::Red
+    expect(f"{a}").toEq("<AnyEnumColor>")
+  @it("should render any holding ADT enum as type-named marker")
+  fn shouldRenderAnyHoldingAdtEnumAsTypeNamedMarker():
+    a: any = AnyEnumShape::Circle(1.5)
+    expect(f"{a}").toEq("<AnyEnumShape>")
+  @it("should render any holding Option as type-named marker")
+  fn shouldRenderAnyHoldingOptionAsTypeNamedMarker():
+    a: any = Some(1)
+    expect(f"{a}").toEq("<Option<int>>")
+  @it("should render any holding Result as type-named marker")
+  fn shouldRenderAnyHoldingResultAsTypeNamedMarker():
+    r: Result<int, str> = Ok(5)
+    a: any = r
+    expect(f"{a}").toEq("<Result<int, str>>")
+  @it("should preserve enum through any roundtrip in function return")
+  fn shouldPreserveEnumThroughAnyRoundtripInFnReturn():
+    fn makeAnyEnum() -> any:
+      return AnyEnumShape::Rect(2, 3)
+    a: any = makeAnyEnum()
+    s: AnyEnumShape = a
+    expect(s == AnyEnumShape::Rect(2, 3)).toEq(true)

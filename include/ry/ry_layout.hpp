@@ -65,6 +65,14 @@ inline constexpr int64_t STRING_BYTELEN_OFFSET = static_cast<int64_t>(STRING_HEA
 //                     (per record type) carries the dtor / eq / type name so
 //                     release and equality survive cross-function-boundary
 //                     where the static type name is lost.
+//   Enum            — pointer to a heap-allocated box laid out identically
+//                     to Record: [ ArcHeader (16B) ][ descriptor ptr (8B) ]
+//                     [ enum payload (i64 for simple enums, { i64 disc,
+//                     [N x i8] } for ADT enums, { i1, T } for Option<T>,
+//                     { i1, V, E } for Result<V, E>) ]. The descriptor
+//                     carries the dtor / eq / type name. Simple enums are
+//                     boxed (not stored inline as Int) so that the original
+//                     enum identity survives unwrap-time descriptor checks.
 enum class RyAnyTag : int64_t {
     Int    = 0,
     Float  = 1,
@@ -75,6 +83,7 @@ enum class RyAnyTag : int64_t {
     Map    = 6,
     Set    = 7,
     Record = 8,
+    Enum   = 9,
 };
 
 } // namespace ry

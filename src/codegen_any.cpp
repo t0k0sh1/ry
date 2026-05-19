@@ -42,6 +42,47 @@ bool CodeGen::isStringValue(llvm::Value *val) {
 }
 
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
+    // Enum types (simple, ADT, `Option<T>`, `Result<V,E>`) share the
+    // record-style heap-box layout (#1798): `[ ArcHeader | descriptor ptr |
+    // payload ]`. Detect first so an organic-enum / Option / Result struct
+    // does not fall into the record path's `findRecordInfoForType` rejection.
+    // Simple enums (LLVM i64 with `enum_value_type` metadata) are boxed too —
+    // tagging them as Int would lose enum identity and break equality / unwrap.
+    if (std::string enumName = findEnumLikeTypeNameForBoxing(val); !enumName.empty()) {
+        llvm::Type *payloadTy = val->getType();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        auto *layoutTy = enumBoxLayoutType(payloadTy);
+        uint64_t boxDataSize = dl.getTypeAllocSize(layoutTy);
+        auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty_, boxDataSize);
+
+        auto *desc = getOrCreateEnumDescriptor(enumName, payloadTy);
+        auto *headerPtr = emitArcAlloc(boxDataSizeC);
+        auto *dataPtr = emitArcGetDataPtr(headerPtr);
+
+        auto *descPtrSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
+                                                     "any.enum.desc.slot");
+        builder_.CreateStore(desc, descPtrSlot);
+        auto *payloadSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
+                                                     "any.enum.payload.slot");
+        builder_.CreateStore(val, payloadSlot);
+
+        // Field-wise retain on existing aliases. Fresh constructions (Call /
+        // Invoke) are sole owners and need no retain — mirror the record
+        // ARC reassignment guard.
+        if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+            emitEnumBoxArcFieldsRetain(val, enumName, payloadTy);
+        }
+
+        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.enum.tmp");
+        auto *tagSlot = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.enum.tag");
+        builder_.CreateStore(llvm::ConstantInt::get(
+                                 i64Ty_, static_cast<uint64_t>(RyAnyTag::Enum)),
+                             tagSlot);
+        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.enum.data");
+        builder_.CreateStore(dataPtr, anyDataSlot);
+        return builder_.CreateLoad(anyTy_, tmp, "any.enum.val");
+    }
+
     // Record types are stored on the heap as `[ ArcHeader (16B) | descriptor ptr
     // (8B) | record struct ]` because the inner struct is generally larger than
     // the 8-byte `data[8]` slot. The slot holds the box's data-region pointer
@@ -105,8 +146,8 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     }
     if (isNonStrPointer(val) && !isCollection)
         codegenError("type error: 'any' can only hold int/float/bool/str, "
-                     "List/Map/Set, and record types; non-collection pointer "
-                     "types (resources, function pointers, enums, etc.) are "
+                     "List/Map/Set, record, and enum types; non-collection "
+                     "pointer types (resources, function pointers, etc.) are "
                      "not supported");
 
     int64_t tag = isCollection ? getAnyTypeTagForValue(val)
@@ -156,6 +197,21 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                      const std::string &targetTypeName) {
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+
+    // Enum (organic / Option / Result) unwrap. Detect BEFORE the record
+    // StructType branch so an enum-struct target does not error out via
+    // `findRecordInfoForType` rejection. Symmetric to wrapInAny.
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(targetTy)) {
+        bool isEnumStruct = !findAdtEnumName(st).empty() ||
+                            isOptionType(st) || isResultType(st);
+        if (isEnumStruct) {
+            return unwrapEnumFromAny(anyVal, st, targetTypeName);
+        }
+    }
+    if (targetTy == i64Ty_ && !targetTypeName.empty() &&
+        isSimpleEnumTypeName(targetTypeName)) {
+        return unwrapEnumFromAny(anyVal, targetTy, targetTypeName);
+    }
 
     // Record unwrap must dispatch at entry: `getAnyTypeTag(targetTy)` below
     // emits `codegenError` when `targetTy` is a `StructType`, so the standard
@@ -345,6 +401,94 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
     return unwrapped;
 }
 
+llvm::Value *CodeGen::unwrapEnumFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
+                                          const std::string &targetTypeName) {
+    // Enum unwrap path. Symmetric to wrapInAny's enum-box arm: the box
+    // stores `[ArcHeader 16B][descriptor ptr 8B][payload]`. The data
+    // pointer in `any.data[8]` is the data-region pointer (= headerPtr +
+    // 16); descriptor identity at offset +0 is the runtime type check.
+    // Cross-type unwrap is intentionally rejected — enums have no
+    // inheritance, so descriptor pointer equality is the type identity.
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.enum.tag.val");
+
+    std::string typeName = targetTypeName;
+    if (typeName.empty()) {
+        // Recover the source-level enum name from the target LLVM type.
+        if (auto *st = llvm::dyn_cast<llvm::StructType>(targetTy)) {
+            typeName = findAdtEnumName(st);
+            if (typeName.empty()) {
+                auto optIt = reverse_option_types_.find(st);
+                if (optIt != reverse_option_types_.end()) {
+                    std::string inner = reverseResolveTypeName(optIt->second);
+                    if (!inner.empty())
+                        typeName = "Option<" + inner + ">";
+                }
+            }
+            if (typeName.empty()) {
+                auto resIt = reverse_result_types_.find(st);
+                if (resIt != reverse_result_types_.end()) {
+                    std::string okName = reverseResolveTypeName(resIt->second.first);
+                    std::string errName = reverseResolveTypeName(resIt->second.second);
+                    if (!okName.empty() && !errName.empty())
+                        typeName = "Result<" + okName + ", " + errName + ">";
+                }
+            }
+        }
+    }
+    if (typeName.empty())
+        codegenError("type error: 'any' enum unwrap could not resolve "
+                     "source-level type name");
+
+    auto *expectedDesc = getOrCreateEnumDescriptor(typeName, targetTy);
+    auto *layoutTy = enumBoxLayoutType(targetTy);
+
+    auto *tagMatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.tag_ok", fn);
+    auto *tagMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.tag_err", fn);
+    auto *descMatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.desc_ok", fn);
+    auto *descMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.desc_err", fn);
+
+    llvm::Value *isEnum = builder_.CreateICmpEQ(
+        tag, llvm::ConstantInt::get(
+                 i64Ty_, static_cast<uint64_t>(RyAnyTag::Enum)),
+        "any.is_enum");
+    builder_.CreateCondBr(isEnum, tagMatchBB, tagMismatchBB);
+
+    builder_.SetInsertPoint(tagMismatchBB);
+    emitRuntimeError("runtime error: any type mismatch (expected " + typeName +
+                         ", got non-enum)\n",
+                     ".any_enum_type_err");
+
+    builder_.SetInsertPoint(tagMatchBB);
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.enum.tmp");
+    builder_.CreateStore(anyVal, tmp);
+    auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.enum.data.ptr");
+    auto *dataPtr = builder_.CreateLoad(ptrTy_, anyDataSlot, "any.enum.data");
+    auto *descSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
+                                              "any.enum.desc.slot");
+    auto *actualDesc = builder_.CreateLoad(ptrTy_, descSlot, "any.enum.desc");
+    llvm::Value *descEq = builder_.CreateICmpEQ(actualDesc, expectedDesc,
+                                                "any.enum.desc.eq");
+    builder_.CreateCondBr(descEq, descMatchBB, descMismatchBB);
+
+    builder_.SetInsertPoint(descMismatchBB);
+    emitRuntimeError("runtime error: any enum type mismatch (expected " +
+                         typeName + ", got a different enum type)\n",
+                     ".any_enum_desc_err");
+
+    builder_.SetInsertPoint(descMatchBB);
+    auto *payloadSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
+                                                 "any.enum.payload.slot");
+    llvm::Value *payloadVal = builder_.CreateLoad(targetTy, payloadSlot,
+                                                  "any.enum.payload");
+    // Field-wise retain on ARC payload fields — the unwrapped enum becomes a
+    // new alias to the boxed value, so any inner str / List / Map / Set must
+    // be retained independently so both the box dtor (when the box is later
+    // released) and the unwrapped enum's owner can release safely.
+    emitEnumBoxArcFieldsRetain(payloadVal, typeName, targetTy);
+    return payloadVal;
+}
+
 void CodeGen::registerAnyManagedVar(llvm::AllocaInst *alloca,
                                      const std::string &sourceTypeName) {
     if (!alloca || alloca->getAllocatedType() != anyTy_) return;
@@ -373,15 +517,17 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.set",  parentFn);
     auto *recBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.rec",  parentFn);
+    auto *enumBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.enum", parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),    strBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),   listBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),    mapBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),    setBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)), recBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Enum)),   enumBB);
 
     // str payload release: load the handle, get the StringHeader (offset -24
     // via emitStrGetHeaderFromData — NOT emitArcGetHeaderFromData which would
@@ -454,6 +600,22 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
     builder_.CreateBr(doneBB);
 
+    // Enum release path — symmetric to Record. The box layout
+    // `[ArcHeader 16B | descriptor ptr 8B | payload]` matches Record's
+    // (only the descriptor type differs: enum is 3 ptrs vs record's 4).
+    // The data slot holds the data-region pointer (= headerPtr + 16);
+    // recover the ArcHeader via the standard `-16` offset and dispatch
+    // through `__ry_arc_dtor_enum_dispatch`, which loads the descriptor
+    // and calls the per-type enum dtor (no-op for simple enums, ARC
+    // field release for ADT / Option / Result with ARC payload).
+    builder_.SetInsertPoint(enumBB);
+    auto *enumPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.enum.ptr");
+    auto *enumHdr = emitArcGetHeaderFromData(enumPtr);
+    auto enumTrampoline = mod_->getOrInsertFunction(
+        "__ry_arc_dtor_enum_dispatch", trampolineTy);
+    emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
+    builder_.CreateBr(doneBB);
+
     builder_.SetInsertPoint(doneBB);
 }
 
@@ -479,7 +641,7 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
                                              parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),
                 strBB);
@@ -489,9 +651,13 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
                 collBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),
                 collBB);
-    // Record boxes use the same `-16` ARC header offset as collections, so a
-    // single retain block covers all four (List / Map / Set / Record).
+    // Record and Enum boxes use the same `-16` ARC header offset as
+    // collections, so a single retain block covers all five (List / Map /
+    // Set / Record / Enum). The retain only increments the box's strong
+    // count — inner ARC field retains happen at unwrap time, not here.
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)),
+                collBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Enum)),
                 collBB);
 
     // str retain uses the StringHeader offset (-24) via
@@ -537,15 +703,17 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto *mapBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.map",  parentFn);
     auto *setBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.set",  parentFn);
     auto *recBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.rec",  parentFn);
+    auto *enumBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.enum", parentFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.done", parentFn);
 
-    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 5);
+    auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Str)),    strBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::List)),   listBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Map)),    mapBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Set)),    setBB);
     sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Record)), recBB);
+    sw->addCase(llvm::ConstantInt::get(intTy, static_cast<uint64_t>(RyAnyTag::Enum)),   enumBB);
 
     // str payload release: StringHeader offset (-24), no inner destructor.
     // Mirrors emitArcReleaseVar's str path (codegen_arc.cpp:427-441).
@@ -604,6 +772,15 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto trampoline = mod_->getOrInsertFunction("__ry_arc_dtor_record_dispatch",
                                                 trampolineTy);
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
+    builder_.CreateBr(doneBB);
+
+    // Enum release path — symmetric to Record.
+    builder_.SetInsertPoint(enumBB);
+    auto *enumPtr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.enum.ptr");
+    auto *enumHdr = emitArcGetHeaderFromData(enumPtr);
+    auto enumTrampoline = mod_->getOrInsertFunction(
+        "__ry_arc_dtor_enum_dispatch", trampolineTy);
+    emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(doneBB);
