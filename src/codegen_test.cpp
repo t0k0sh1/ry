@@ -1439,7 +1439,9 @@ void CodeGen::emitNativeMockReturnValueOnceCall(
             valTy = retTy;
         } else if (isResultType(retTy) && isResultType(valTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(retTy);
-            llvm::Value *coerced = coerceResultType(value, dstResTy);
+            // #1808: thread source-level return type name so Ok/Err enum
+            // unwrap path can dispatch through the descriptor check.
+            llvm::Value *coerced = coerceResultType(value, dstResTy, retTyName);
             if (!coerced)
                 codegenError("mockReturnValueOnce(): return value type does not match '"
                              + fnName + "'");
@@ -1924,7 +1926,9 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
             valTy = retTy;
         } else if (isResultType(retTy) && isResultType(valTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(retTy);
-            llvm::Value *coerced = coerceResultType(value, dstResTy);
+            // #1808: thread source-level return type name so Ok/Err enum
+            // unwrap path can dispatch through the descriptor check.
+            llvm::Value *coerced = coerceResultType(value, dstResTy, retTyName);
             if (!coerced)
                 codegenError("mockReturnValueOnce(): return value type does not match '"
                              + fnName + "'");

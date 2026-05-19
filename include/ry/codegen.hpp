@@ -1847,7 +1847,14 @@ public:
     // Coerce a Result value to a different Result struct type by rebuilding it
     // with the destination layout.  Returns null if both payload types differ
     // (genuine type error).
-    llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
+    // `dstResTypeName` is the declared source-level type of the destination
+    // (e.g. "Result<MyEnum, str>", "Result<Option<int>, str>"). Required when
+    // the Ok / Err slot is an enum struct (organic / Option<T> / Result<T,E>)
+    // or a simple-enum i64 so the per-slot `unwrapFromAny` call can dispatch
+    // through the descriptor-driven enum-unwrap path; empty string keeps the
+    // legacy primitive-only behavior.
+    llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy,
+                                    const std::string &dstResTypeName = "");
     // Walk the InsertValueInst chain of val to find the index-{0} (disc) slot.
     // Returns true and writes 0 or 1 to *staticDisc when the disc was inserted
     // with a ConstantInt.  For PHINodes, recurses into all incoming values and

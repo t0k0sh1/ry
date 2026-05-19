@@ -776,6 +776,16 @@ fn fetchOnceOpt() -> int?:
 fn fetchOnceRes() -> Result<int, str>:
   return Ok(0)
 
+# #1808: mockReturnValueOnce must route through coerceResultType with the
+# return-type name threaded so an Ok(any) source can be unwrapped to a
+# Result with an enum Ok slot.
+enum MockResEnum:
+  X
+  Y
+
+fn fetchOnceResEnum() -> Result<MockResEnum, str>:
+  return Ok(MockResEnum::X)
+
 fn fetchOnceArg(label: str) -> int:
   return -1
 
@@ -907,6 +917,15 @@ fn mockReturnValueOnceTests():
     case fetchOnceRes():
       Ok(v): expect(v).toEq(20)
       Err(e): fail("expected Ok(20)")
+
+  @it("should queue Ok(any-holding-enum) for Result<Enum, str> return")
+  fn shouldQueueResultOkAnyHoldingEnum():
+    e: MockResEnum = MockResEnum::Y
+    a: any = e
+    mockReturnValueOnce("fetchOnceResEnum", Ok(a))
+    case fetchOnceResEnum():
+      Ok(v): expect(v == MockResEnum::Y).toEq(true)
+      Err(_): fail("expected Ok")
 
   @it("should ignore arguments and still return queued value")
   fn shouldIgnoreArgs():

@@ -86,7 +86,8 @@ bool CodeGen::tryGetStaticResultDisc(llvm::Value *val, int *staticDisc) {
 // ===== Result coercion helper =====
 
 llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
-                                        llvm::StructType *dstResTy) {
+                                        llvm::StructType *dstResTy,
+                                        const std::string &dstResTypeName) {
     auto *srcResTy = llvm::cast<llvm::StructType>(val->getType());
 
     llvm::Type *srcOkTy  = srcResTy->getElementType(1);
@@ -97,95 +98,139 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     if (srcOkTy == dstOkTy && srcErrTy == dstErrTy)
         return val; // no rebuild needed
 
+    // Extract source-level Ok / Err slot names from `dstResTypeName` so the
+    // per-slot `unwrapFromAny` calls below can dispatch through the enum
+    // descriptor path (`unwrapEnumFromAny`) when the slot is a simple enum
+    // (i64) or an enum struct (Option / Result / ADT). Empty / malformed
+    // annotations leave both names empty — `unwrapFromAny` then keeps the
+    // legacy primitive-only behavior, preserving back-compat with callers
+    // that haven't been threaded yet.
+    std::string dstOkTypeName;
+    std::string dstErrTypeName;
+    if (!dstResTypeName.empty()) {
+        constexpr std::string_view kPrefix = "Result<";
+        const std::string resolved = resolveTypeAlias(dstResTypeName);
+        if (resolved.size() > kPrefix.size() &&
+            resolved.compare(0, kPrefix.size(), kPrefix) == 0 &&
+            resolved.back() == '>') {
+            const std::string inner = resolved.substr(
+                kPrefix.size(), resolved.size() - kPrefix.size() - 1);
+            auto parts = splitTypeArgs(inner);
+            if (parts.size() == 2) {
+                dstOkTypeName  = trimTypeNameSpaces(parts[0]);
+                dstErrTypeName = trimTypeNameSpaces(parts[1]);
+            }
+        }
+    }
+
+    // A slot is enum-unwrap-eligible when its destination LLVM type is a
+    // simple-enum i64 (named via `dstSlotTypeName`) or an enum struct (organic
+    // ADT / Option<T> / Result<T, E>). This is parallel to `canAnyHoldType` —
+    // `canAnyHoldType` is intentionally NOT widened (it gates the
+    // primitive-only static "fits in any" question; enum eligibility is
+    // descriptor-driven and lives in its own branch).
+    auto canRuntimeUnwrapAsEnum = [&](llvm::Type *dstTy,
+                                       const std::string &dstTyName) {
+        if (dstTy == i64Ty_)
+            return !dstTyName.empty() && isSimpleEnumTypeName(dstTyName);
+        if (auto *st = llvm::dyn_cast<llvm::StructType>(dstTy))
+            return isOptionType(st) || isResultType(st) ||
+                   !findAdtEnumName(st).empty();
+        return false;
+    };
+
     // Determine which slots need runtime anyTy_→concrete unwrapping before
     // deciding whether a mismatch can be resolved or is a genuine type error.
     // These booleans must be computed before the bailout so both-slot anyTy_
     // cases (e.g. Result<any,any> → Result<int,str>) are handled correctly.
     const bool okNeedsRuntimeBranch =
         srcOkTy != dstOkTy && isAnyType(srcOkTy) &&
-        !isAnyType(dstOkTy) && dstOkTy != i8Ty_ && canAnyHoldType(dstOkTy);
+        !isAnyType(dstOkTy) && dstOkTy != i8Ty_ &&
+        (canAnyHoldType(dstOkTy) ||
+         canRuntimeUnwrapAsEnum(dstOkTy, dstOkTypeName));
     const bool errNeedsRuntimeBranch =
         srcErrTy != dstErrTy && isAnyType(srcErrTy) &&
-        !isAnyType(dstErrTy) && dstErrTy != i8Ty_ && canAnyHoldType(dstErrTy);
+        !isAnyType(dstErrTy) && dstErrTy != i8Ty_ &&
+        (canAnyHoldType(dstErrTy) ||
+         canRuntimeUnwrapAsEnum(dstErrTy, dstErrTypeName));
 
-    // Single-slot mismatches (i8Ty_ placeholder or errorTy_ inactive slot) are
-    // handled below by compile-time zero-fill.  Both-slot mismatches are only
-    // valid when both can be resolved by runtime anyTy_ unwrap (e.g.
-    // Result<any,any> → Result<int,int>); otherwise it's a genuine type error.
-    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy &&
-        (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch))
-        return nullptr;
+    const bool okCoercible = (srcOkTy == dstOkTy) || okNeedsRuntimeBranch;
+    const bool errCoercible = (srcErrTy == dstErrTy) || errNeedsRuntimeBranch;
+
+    // Try compile-time slot selection FIRST when the source discriminator is
+    // statically provable. The static path only needs the *active* slot to be
+    // coercible — the inactive slot is zero-filled, so its type mismatch is
+    // harmless. This handles `r: Result<MyEnum, str> = Ok(anyVal)` where the
+    // source Err slot is `errorTy_` (from default Ok constructor context) but
+    // the destination Err slot is `ptrTy_` (the runtime branch can't bridge
+    // that mismatch, but static-Ok ignores it because Err slot is zero).
+    int staticDisc = -1;
+    const bool isStatic = tryGetStaticResultDisc(val, &staticDisc);
+    if (isStatic) {
+        llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
+        coerced = builder_.CreateInsertValue(
+            coerced, llvm::ConstantInt::get(i1Ty_, static_cast<uint64_t>(staticDisc)), 0);
+        if (staticDisc == 1) {
+            if (!okCoercible) return nullptr;
+            llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok");
+            if (okNeedsRuntimeBranch)
+                okPayload = unwrapFromAny(okPayload, dstOkTy, dstOkTypeName);
+            coerced = builder_.CreateInsertValue(coerced, okPayload, 1);
+        } else {
+            if (!errCoercible) return nullptr;
+            llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err");
+            if (errNeedsRuntimeBranch)
+                errPayload = unwrapFromAny(errPayload, dstErrTy, dstErrTypeName);
+            coerced = builder_.CreateInsertValue(coerced, errPayload, 2);
+        }
+        propagateMeta(val, coerced);
+        return coerced;
+    }
+
+    // Runtime-disc path: both slots must be coercible because both arms emit
+    // an InsertValue with the destination slot type.
+    if (!okCoercible || !errCoercible) return nullptr;
 
     llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
+    // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
+    llvm::Value *isOk = builder_.CreateICmpEQ(
+        disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
 
-    if (okNeedsRuntimeBranch || errNeedsRuntimeBranch) {
-        // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
-        llvm::Value *isOk = builder_.CreateICmpEQ(
-            disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
+    llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+    llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
+    llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
+    builder_.CreateCondBr(isOk, okBB, errBB);
 
-        llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
-        llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
-        llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
-        builder_.CreateCondBr(isOk, okBB, errBB);
+    // Ok path
+    builder_.SetInsertPoint(okBB);
+    llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok.raw");
+    if (okNeedsRuntimeBranch)
+        okPayload = unwrapFromAny(okPayload, dstOkTy, dstOkTypeName);
+    llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
+    coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
+    coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
+    builder_.CreateBr(mergeBB);
+    llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
-        // Ok path
-        builder_.SetInsertPoint(okBB);
-        llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok.raw");
-        if (okNeedsRuntimeBranch)
-            okPayload = unwrapFromAny(okPayload, dstOkTy);
-        llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
-        coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
-        coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
-        builder_.CreateBr(mergeBB);
-        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+    // Err path
+    builder_.SetInsertPoint(errBB);
+    llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err.raw");
+    if (errNeedsRuntimeBranch)
+        errPayload = unwrapFromAny(errPayload, dstErrTy, dstErrTypeName);
+    llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
+    coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
+    coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
+    builder_.CreateBr(mergeBB);
+    llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
 
-        // Err path
-        builder_.SetInsertPoint(errBB);
-        llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err.raw");
-        if (errNeedsRuntimeBranch)
-            errPayload = unwrapFromAny(errPayload, dstErrTy);
-        llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
-        coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
-        coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
-        builder_.CreateBr(mergeBB);
-        llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
+    phi->addIncoming(coercedOk, okEndBB);
+    phi->addIncoming(coercedErr, errEndBB);
 
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
-        phi->addIncoming(coercedOk, okEndBB);
-        phi->addIncoming(coercedErr, errEndBB);
-
-        propagateMeta(val, phi);
-        return phi;
-    }
-
-    // Compile-time slot selection: only valid when the source discriminator is
-    // statically provable (literal Ok/Err constructor, or PHI where every
-    // incoming branch has the same constant disc).  Runtime-disc sources —
-    // function call results, loads, mixed Ok/Err PHI — are rejected here to
-    // prevent silently zero-filling the active payload slot (#1157).
-    int staticDisc = -1;
-    if (!tryGetStaticResultDisc(val, &staticDisc))
-        return nullptr;
-
-    llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
-    coerced = builder_.CreateInsertValue(
-        coerced, llvm::ConstantInt::get(i1Ty_, static_cast<uint64_t>(staticDisc)), 0);
-    if (staticDisc == 1) {
-        // Source is statically Ok — copy slot 1; zero-fill slot 2 is correct.
-        if (srcOkTy != dstOkTy) return nullptr;
-        coerced = builder_.CreateInsertValue(
-            coerced, builder_.CreateExtractValue(val, 1, "res.ok"), 1);
-    } else {
-        // Source is statically Err — copy slot 2; zero-fill slot 1 is correct.
-        if (srcErrTy != dstErrTy) return nullptr;
-        coerced = builder_.CreateInsertValue(
-            coerced, builder_.CreateExtractValue(val, 2, "res.err"), 2);
-    }
-
-    propagateMeta(val, coerced);
-    return coerced;
+    propagateMeta(val, phi);
+    return phi;
 }
 
 // ===== B3: emitVarDecl =====
@@ -532,7 +577,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     newTy = annotTy;
                 } else if (isResultType(annotTy) && isResultType(newTy)) {
                     auto *dstResTy = llvm::cast<llvm::StructType>(annotTy);
-                    llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+                    llvm::Value *resCoerced = coerceResultType(val, dstResTy, *annot);
                     if (resCoerced) {
                         val = resCoerced;
                         newTy = annotTy;
@@ -1337,7 +1382,17 @@ void CodeGen::emitStmt(AssignStmt &s) {
             newTy = val->getType();
         } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
-            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            // #1808: read source-level type name from metadata so the Ok/Err
+            // slot enum-aware unwrap path can dispatch through the descriptor
+            // check. buildTypeNameFromMeta does NOT read source_type_name on
+            // Result allocas, so go to getMeta directly.
+            auto *ptrMeta = getMeta(ptr);
+            std::string dstResName =
+                (ptrMeta && !ptrMeta->source_type_name.empty())
+                    ? ptrMeta->source_type_name
+                    : std::string();
+            llvm::Value *resCoerced =
+                coerceResultType(val, dstResTy, dstResName);
             if (resCoerced)
                 val = resCoerced;
             else
@@ -1617,7 +1672,16 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             newTy = val->getType();
         } else if (isResultType(valueTy) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
-            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            // #1808: see paired function-local reassign site above for
+            // rationale — propagate source_type_name from the anchor's
+            // metadata for enum-aware Ok/Err unwrap.
+            auto *anchorMeta = getMeta(anchor);
+            std::string dstResName =
+                (anchorMeta && !anchorMeta->source_type_name.empty())
+                    ? anchorMeta->source_type_name
+                    : std::string();
+            llvm::Value *resCoerced =
+                coerceResultType(val, dstResTy, dstResName);
             if (resCoerced)
                 val = resCoerced;
             else

@@ -1080,3 +1080,33 @@ fn anyHoldsEnumTests():
     a: any = makeAnyEnum()
     s: AnyEnumShape = a
     expect(s == AnyEnumShape::Rect(2, 3)).toEq(true)
+  @it("should coerce Result Ok any to Result Ok simple enum")
+  fn shouldCoerceResultOkAnyToResultOkSimpleEnum():
+    e: AnyEnumColor = AnyEnumColor::Green
+    a: any = e
+    r: Result<AnyEnumColor, str> = Ok(a)
+    case r:
+      Ok(v): expect(v == AnyEnumColor::Green).toEq(true)
+      Err(_): fail("expected Ok")
+  @it("should coerce Result Ok any to Result Ok Option")
+  fn shouldCoerceResultOkAnyToResultOkOption():
+    o: Option<int> = Some(7)
+    a: any = o
+    r: Result<Option<int>, str> = Ok(a)
+    case r:
+      Ok(v):
+        case v:
+          Some(n): expect(n).toEq(7)
+          None: fail("expected Some")
+      Err(_): fail("expected Ok")
+  @it("should coerce Result Ok any to Result Ok nested Result")
+  fn shouldCoerceResultOkAnyToResultOkNestedResult():
+    inner: Result<int, str> = Ok(42)
+    a: any = inner
+    r: Result<Result<int, str>, bool> = Ok(a)
+    case r:
+      Ok(v):
+        case v:
+          Ok(n): expect(n).toEq(42)
+          Err(_): fail("expected inner Ok")
+      Err(_): fail("expected outer Ok")
