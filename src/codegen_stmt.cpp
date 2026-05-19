@@ -517,8 +517,11 @@ void CodeGen::emitVarDecl(const std::string &name,
                     // Allow none coercion to target Option type
                     val = buildNoneValue(annotTy);
                     newTy = annotTy;
-                } else if (isOptionType(annotTy) && !isOptionType(newTy)) {
-                    // Auto-wrap non-Option value in Some() (e.g., x: int? = 42)
+                } else if (isOptionType(annotTy) && !isOptionType(newTy) &&
+                           !isAnyType(newTy)) {
+                    // Auto-wrap non-Option value in Some() (e.g., x: int? = 42).
+                    // Skip when source is `any` — the enum-struct unwrap branch
+                    // below handles `o: Option<int> = anyVal` (#1798).
                     auto *optTy = llvm::cast<llvm::StructType>(annotTy);
                     llvm::Type *innerTy = optTy->getElementType(1);
                     if (val->getType() != innerTy)
@@ -541,6 +544,27 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(annotTy)) {
                     val = wrapInAny(val);
                     newTy = anyTy_;
+                } else if (isAnyType(newTy) &&
+                           (annotTy == i64Ty_ &&
+                            isSimpleEnumTypeName(resolvedAnnot))) {
+                    // Simple enum (LLVM i64) unwrap from any. Must dispatch
+                    // BEFORE the canAnyHoldType branch — i64 passes that
+                    // gate as "Int" but simple enums are tagged Enum in the
+                    // box, so the standard 2-way unwrap would mismatch
+                    // tags. The enum path checks descriptor identity.
+                    val = unwrapFromAny(val, annotTy, *annot);
+                    newTy = annotTy;
+                } else if (isAnyType(newTy) &&
+                           llvm::isa<llvm::StructType>(annotTy) &&
+                           (isOptionType(llvm::cast<llvm::StructType>(annotTy)) ||
+                            isResultType(llvm::cast<llvm::StructType>(annotTy)) ||
+                            !findAdtEnumName(llvm::cast<llvm::StructType>(annotTy)).empty())) {
+                    // Enum struct (ADT / Option / Result) unwrap from any.
+                    // Must come BEFORE the record StructType branch so the
+                    // enum-tag path runs (record's findRecordInfoForType
+                    // would otherwise mis-route). #1798.
+                    val = unwrapFromAny(val, annotTy, *annot);
+                    newTy = annotTy;
                 } else if (isAnyType(newTy) &&
                            (canAnyHoldType(annotTy) ||
                             (llvm::isa<llvm::StructType>(annotTy) &&
@@ -654,6 +678,14 @@ void CodeGen::emitVarDecl(const std::string &name,
     // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
     if (isOptionType(newTy) || isResultType(newTy)) {
         propagateMeta(val, ptr);
+        // #1798: stamp the source-level type name on the alloca so
+        // wrapInAny → findEnumLikeTypeNameForBoxing can recover the full
+        // "Result<List<int>, str>" / "Option<List<int>>" name across the
+        // LoadInst boundary. Without this the fallback path resolves the
+        // inner ptr to "str" (lossy) and the descriptor cache key diverges
+        // from the unwrap-side key.
+        if (annot && !annot->empty())
+            getOrCreateMeta(ptr).source_type_name = *annot;
         // Extract inner collection type from Option/Result wrapping a collection
         if (annot &&
             !getTypeMeta(TypeMeta::MapKey, ptr) &&
@@ -1266,6 +1298,26 @@ void CodeGen::emitStmt(AssignStmt &s) {
             val = wrapInAny(val);
             newTy = val->getType();
             didWrapToAny = true;
+        } else if (isAnyType(newTy) && ptr->getAllocatedType() == i64Ty_) {
+            // #1798: any → simple enum unwrap on reassignment.
+            std::string destTypeName = buildTypeNameFromMeta(ptr);
+            if (!destTypeName.empty() && isSimpleEnumTypeName(destTypeName)) {
+                val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
+                newTy = val->getType();
+            } else if (canAnyHoldType(ptr->getAllocatedType())) {
+                val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
+                newTy = val->getType();
+            }
+        } else if (isAnyType(newTy) &&
+                   llvm::isa<llvm::StructType>(ptr->getAllocatedType()) &&
+                   (isOptionType(ptr->getAllocatedType()) ||
+                    isResultType(ptr->getAllocatedType()) ||
+                    !findAdtEnumName(llvm::cast<llvm::StructType>(
+                        ptr->getAllocatedType())).empty())) {
+            // #1798: any → enum (Option/Result/ADT) unwrap on reassignment.
+            std::string destTypeName = buildTypeNameFromMeta(ptr);
+            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
+            newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
             // #1697: Thread the destination's source-level type name so the
             // unwrap can pick the correct collection tag (List/Map/Set) and
@@ -1532,6 +1584,26 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             val = wrapInAny(val);
             newTy = val->getType();
             didWrapToAny = true;
+        } else if (isAnyType(newTy) && valueTy == i64Ty_) {
+            // #1798: any → simple enum unwrap on module-global reassignment.
+            std::string destTypeName = buildTypeNameFromMeta(anchor);
+            if (!destTypeName.empty() && isSimpleEnumTypeName(destTypeName)) {
+                val = unwrapFromAny(val, valueTy, destTypeName);
+                newTy = val->getType();
+            } else if (canAnyHoldType(valueTy)) {
+                val = unwrapFromAny(val, valueTy, destTypeName);
+                newTy = val->getType();
+            }
+        } else if (isAnyType(newTy) &&
+                   llvm::isa<llvm::StructType>(valueTy) &&
+                   (isOptionType(valueTy) || isResultType(valueTy) ||
+                    !findAdtEnumName(llvm::cast<llvm::StructType>(valueTy))
+                         .empty())) {
+            // #1798: any → enum (Option/Result/ADT) unwrap on module-global
+            // reassignment.
+            std::string destTypeName = buildTypeNameFromMeta(anchor);
+            val = unwrapFromAny(val, valueTy, destTypeName);
+            newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
             // #1697: Thread the destination's source-level type name so the
             // unwrap picks the matching collection tag and emits the retain.

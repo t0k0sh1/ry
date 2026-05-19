@@ -27,11 +27,26 @@ static_assert(sizeof(RyRecordDescriptor) == 32,
               "RyRecordDescriptor must be 4 pointers (32 bytes) — codegen emits "
               "a global with this layout per record type");
 
+using RyEnumBoxDtor = void (*)(void *dataPtr);
+using RyEnumBoxEq = int64_t (*)(const void *dataA, const void *dataB);
+
+struct RyEnumDescriptor {
+    RyEnumBoxDtor dtor;
+    RyEnumBoxEq eq;
+    const char *type_name;
+};
+
+static_assert(sizeof(RyEnumDescriptor) == 24,
+              "RyEnumDescriptor must be 3 pointers (24 bytes) — codegen emits "
+              "a global with this layout per enum type. Enums have no subtype "
+              "relation so no parent_desc field is needed (cf. RyRecordDescriptor).");
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void __ry_arc_dtor_record_dispatch(void *dataPtr);
+void __ry_arc_dtor_enum_dispatch(void *dataPtr);
 
 // Walk the `parent_desc` chain of `actual` looking for `expected`. Returns 1
 // when `expected` is `actual` itself or any ancestor in the chain, 0 otherwise.

@@ -19,7 +19,7 @@
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
 | `Type` | `{ i64, ptr }` | `typeOf(42)` | Compile-time type identity returned by `typeOf`. See [Type](#type) |
-| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
+| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive, collection, record, or enum value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint). The handle points to an immortal `StringHeader` global. |
@@ -77,7 +77,7 @@ a: any = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
-| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit`. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`), `Unit`, collections (`List<T>`, `Map<K, V>`, `Set<T>`), records, or enum values (organic enums plus built-in `Option<T>` / `Result<T, E>`). Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | `i8` | Low-level 8-bit signed integer (no implicit conversion) |
 | `i16` | Low-level 16-bit signed integer (no implicit conversion) |
@@ -729,7 +729,7 @@ a == b   # true (same tag, element-wise equal)
 
 ## any Type
 
-The `any` type is a built-in dynamic type that can hold any primitive value or collection. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
+The `any` type is a built-in dynamic type that can hold any primitive value, collection, record, or enum value. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
 
 ### Supported Types
 
@@ -746,8 +746,9 @@ The `any` type is a built-in dynamic type that can hold any primitive value or c
 | `Map<K, V>` | 6 | Map (key/value types are erased) |
 | `Set<T>` | 7 | Set (element type is erased) |
 | `record` | 8 | User-defined record type (carries a per-type descriptor — see [Records](#records-in-any) below) |
+| `enum` | 9 | Enum value — organic `enum` types plus built-in `Option<T>` / `Result<T, E>` (carries a per-type descriptor — see [Enums](#enums-in-any) below) |
 
-`any` **cannot** hold resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or `enum` types.
+`any` **cannot** hold resource types (`TcpListener`, `TcpStream`, etc.) or function pointers.
 
 ### Internal Representation
 
@@ -763,8 +764,9 @@ The `tag` field identifies the stored type, and the `data` field is interpreted 
 - **`str` tag** — `data` holds a pointer to the StringHeader-prefixed buffer.
 - **Collection tags (`List` / `Map` / `Set`)** — `data` holds a pointer to the underlying collection header.
 - **`record` tag** — `data` holds a pointer to a heap-allocated box laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record struct ]`. The descriptor is a per-record-type global carrying the destructor, equality function, and type name, so type identity survives even when the static type is erased to `any` across function boundaries.
+- **`enum` tag** — `data` holds a pointer to a heap-allocated box laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ enum payload ]`, identical in shape to the `record` box. The payload is the enum's native representation (`i64` discriminant for simple enums; ADT discriminated-union struct for ADT / `Option<T>` / `Result<T, E>`). The descriptor carries the destructor (releases ARC fields per active variant), equality function (variant-wise deep compare), and type name (e.g. `Option<int>`, `Result<List<int>, str>`, or the user-declared enum name). Even simple enums use this boxed form so the source-level enum identity is preserved across `any` round-trips.
 
-**ARC retention semantics**: in all reference-holding cases (`str`, collections, `record` box) the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
+**ARC retention semantics**: in all reference-holding cases (`str`, collections, `record` box, `enum` box) the wrapped value is **retained** on wrap (incrementing the underlying ARC count) and released when the enclosing `any` slot goes out of scope. Literal-backed strings are marked `ARC_IMMORTAL`, so retain/release on those become no-ops.
 
 ### Element-Type Metadata is Erased
 
@@ -829,6 +831,47 @@ p: any = Point(1, 2)
 ```
 
 Subtype coercion on the typed path (`fn f(a: Animal): ...; f(dogValue)`) is unchanged — the runtime walk only applies to `any → record` unwrap sites.
+
+### Enums in `any`
+
+Enum values can be assigned to `any` — including organic `enum` declarations (with or without payloads) and the built-in `Option<T>` / `Result<T, E>` types. The box layout is the same as for records: a per-enum descriptor preserves the dynamic type identity (including the full generic parameterization, e.g. `Option<int>` is distinct from `Option<str>`) across function boundaries.
+
+```ry
+enum Color:
+  Red
+  Green
+  Blue
+
+enum Shape:
+  Circle(float)
+  Rect(int, int)
+  Dot
+
+c: any = Color::Red             # wrap a simple enum
+back: Color = c                 # unwrap restores the original enum value
+print(back == Color::Red)       # true
+
+s: any = Shape::Rect(3, 4)      # wrap an ADT enum with payload
+sBack: Shape = s
+print(sBack == Shape::Rect(3, 4))  # true
+
+# Option<T> and Result<T, E> round-trip preserves their generic parameters
+o: any = Some(42)
+backOpt: Option<int> = o        # exact-type unwrap restores the Option
+res: Result<int, str> = Ok(7)
+r: any = res
+backRes: Result<int, str> = r   # unwrapping into Result<int, str>
+
+# Cross-function boundary
+fn makeAnyShape() -> any:
+  return Shape::Circle(1.5)
+sh: Shape = makeAnyShape()
+```
+
+- **Wrap cost**: ~24 bytes overhead per enum value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the enum payload, heap-allocated and reference-counted. Simple enums (no payload) are also boxed for consistency, so the source-level enum identity survives the round trip.
+- **Equality (`==`)** compares the two boxes' descriptor pointers first; only matching descriptors proceed to the descriptor-resident equality function, which switches on the discriminant and compares per-variant payloads. Two `any` holding enums of different types are always unequal — `Color::Red == Mode::On` is `false` even when their underlying discriminant value would coincide, because identity is keyed on the dynamic descriptor.
+- **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Color>`, `<Option<int>>`, `<Result<int, str>>`) using the descriptor's type name — parallel to the record markers.
+- **Type-mismatch unwrap** traps with `runtime error: any enum type mismatch (expected <Expected>, got a different enum type)`. Enums do not participate in record-style subtype unwrap chains — there is no `parent_desc` walk, only descriptor identity.
 
 ### Wrapping and Unwrapping
 

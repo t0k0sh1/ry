@@ -27,6 +27,7 @@ static const char *tagName(int64_t tag) {
     case static_cast<int64_t>(RyAnyTag::Map):    return "Map";
     case static_cast<int64_t>(RyAnyTag::Set):    return "Set";
     case static_cast<int64_t>(RyAnyTag::Record): return "Record";
+    case static_cast<int64_t>(RyAnyTag::Enum):   return "Enum";
     default:        return "unknown";
     }
 }
@@ -39,6 +40,16 @@ static const RyRecordDescriptor *recordBoxDescriptor(const void *dataPtr) {
 
 static const void *recordBoxFieldsPtr(const void *dataPtr) {
     return static_cast<const char *>(dataPtr) + sizeof(const RyRecordDescriptor *);
+}
+
+static const RyEnumDescriptor *enumBoxDescriptor(const void *dataPtr) {
+    const RyEnumDescriptor *desc = nullptr;
+    memcpy(&desc, dataPtr, sizeof(const RyEnumDescriptor *));
+    return desc;
+}
+
+static const void *enumBoxFieldsPtr(const void *dataPtr) {
+    return static_cast<const char *>(dataPtr) + sizeof(const RyEnumDescriptor *);
 }
 
 static int64_t extractInt(const RyAny *a) {
@@ -183,6 +194,22 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         buf[nameLen + 1] = '>';
         return buf;
     }
+    case static_cast<int64_t>(RyAnyTag::Enum): {
+        // Same `<TypeName>` shape as Record. Enum payload metadata is opaque
+        // here — the descriptor's type_name is the only reliable identity
+        // post-erasure, so pretty-printing the payload requires unwrapping
+        // back to the typed binding first.
+        const void *dataPtr = nullptr;
+        memcpy(&dataPtr, a->data, sizeof(dataPtr));
+        const RyEnumDescriptor *desc = enumBoxDescriptor(dataPtr);
+        const char *typeName = desc->type_name;
+        size_t nameLen = strlen(typeName);
+        char *buf = makeStringUninit(nameLen + 2);
+        buf[0] = '<';
+        memcpy(buf + 1, typeName, nameLen); // NOLINT(bugprone-not-null-terminated-result) — buf[nameLen+2] NUL set by makeStringUninit
+        buf[nameLen + 1] = '>';
+        return buf;
+    }
     default:
         fprintf(stderr,
                 "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
@@ -227,6 +254,21 @@ extern "C" int64_t __ry_record_is_subtype_desc(const RyRecordDescriptor *actual,
         actual = actual->parent_desc;
     }
     return 0;
+}
+
+// ===== Enum-in-any box destructor trampoline (#1798) =====
+//
+// Mirrors `__ry_arc_dtor_record_dispatch`: the codegen stores the per-type
+// LLVM enum dtor into the descriptor at module-init time, and the ARC release
+// path always points to this single trampoline. The trampoline loads the
+// descriptor from offset 0 of the data region and dispatches to the per-type
+// dtor — no-op for simple enums (no payload to release), per-variant ARC
+// field release for ADT / Option / Result.
+extern "C" void __ry_arc_dtor_enum_dispatch(void *dataPtr) {
+    const RyEnumDescriptor *desc = enumBoxDescriptor(dataPtr);
+    if (desc && desc->dtor) {
+        desc->dtor(dataPtr);
+    }
 }
 
 // ===== Type error (#224) =====
@@ -432,6 +474,20 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
             const RyRecordDescriptor *descB = recordBoxDescriptor(dpb);
             if (descA != descB) return 0;
             return descA->eq(recordBoxFieldsPtr(dpa), recordBoxFieldsPtr(dpb));
+        }
+        case static_cast<int64_t>(RyAnyTag::Enum): {
+            // Same descriptor-identity rule as Record: each enum type has one
+            // descriptor global, so distinct enum types compare unequal. The
+            // codegen-emitted per-type eq fn does the deep payload compare
+            // (discriminant + per-variant fields for ADT, has_value + payload
+            // for Option, is_ok + ok/err for Result, plain i64 eq for simple).
+            const void *dpa = nullptr, *dpb = nullptr;
+            memcpy(&dpa, a->data, sizeof(const void *));
+            memcpy(&dpb, b->data, sizeof(const void *));
+            const RyEnumDescriptor *descA = enumBoxDescriptor(dpa);
+            const RyEnumDescriptor *descB = enumBoxDescriptor(dpb);
+            if (descA != descB) return 0;
+            return descA->eq(enumBoxFieldsPtr(dpa), enumBoxFieldsPtr(dpb));
         }
         default:        return 0;
         }
