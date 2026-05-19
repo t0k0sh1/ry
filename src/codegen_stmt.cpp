@@ -674,8 +674,19 @@ void CodeGen::emitVarDecl(const std::string &name,
         // LoadInst boundary. Without this the fallback path resolves the
         // inner ptr to "str" (lossy) and the descriptor cache key diverges
         // from the unwrap-side key.
-        if (annot && !annot->empty())
+        if (annot && !annot->empty()) {
             getOrCreateMeta(ptr).source_type_name = *annot;
+        } else {
+            // Inferred locals (`let o = Some(xs)`, `let r = Ok(xs)`) still
+            // need the stamp — `wrapInAny` on a later `let a: any = o`
+            // would otherwise descriptor-key as `Option<str>` and miss
+            // the `Option<List<int>>` cache entry. Recover the source-level
+            // shaped name from the RHS AST.
+            std::string inferredName =
+                inferExprTypeName(value, {}, {});
+            if (!inferredName.empty())
+                getOrCreateMeta(ptr).source_type_name = inferredName;
+        }
         // Extract inner collection type from Option/Result wrapping a collection
         if (annot &&
             !getTypeMeta(TypeMeta::MapKey, ptr) &&
