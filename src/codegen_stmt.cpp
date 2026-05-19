@@ -545,40 +545,30 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = wrapInAny(val);
                     newTy = anyTy_;
                 } else if (isAnyType(newTy) &&
-                           (annotTy == i64Ty_ &&
-                            isSimpleEnumTypeName(resolvedAnnot))) {
-                    // Simple enum (LLVM i64) unwrap from any. Must dispatch
-                    // BEFORE the canAnyHoldType branch — i64 passes that
-                    // gate as "Int" but simple enums are tagged Enum in the
-                    // box, so the standard 2-way unwrap would mismatch
-                    // tags. The enum path checks descriptor identity.
-                    val = unwrapFromAny(val, annotTy, *annot);
-                    newTy = annotTy;
-                } else if (isAnyType(newTy) &&
-                           llvm::isa<llvm::StructType>(annotTy) &&
-                           (isOptionType(llvm::cast<llvm::StructType>(annotTy)) ||
-                            isResultType(llvm::cast<llvm::StructType>(annotTy)) ||
-                            !findAdtEnumName(llvm::cast<llvm::StructType>(annotTy)).empty())) {
-                    // Enum struct (ADT / Option / Result) unwrap from any.
-                    // Must come BEFORE the record StructType branch so the
-                    // enum-tag path runs (record's findRecordInfoForType
-                    // would otherwise mis-route). #1798.
-                    val = unwrapFromAny(val, annotTy, *annot);
-                    newTy = annotTy;
-                } else if (isAnyType(newTy) &&
-                           (canAnyHoldType(annotTy) ||
+                           ((annotTy == i64Ty_ &&
+                             isSimpleEnumTypeName(resolvedAnnot)) ||
+                            (llvm::isa<llvm::StructType>(annotTy) &&
+                             (isOptionType(llvm::cast<llvm::StructType>(annotTy)) ||
+                              isResultType(llvm::cast<llvm::StructType>(annotTy)) ||
+                              !findAdtEnumName(llvm::cast<llvm::StructType>(annotTy)).empty())) ||
+                            canAnyHoldType(annotTy) ||
                             (llvm::isa<llvm::StructType>(annotTy) &&
                              findRecordInfoForType(
                                  llvm::cast<llvm::StructType>(annotTy))))) {
-                    // Two parallel any → narrow unwrap paths share the same
-                    // body, distinguished only by what annotTy is allowed to
-                    // be: (a) canAnyHoldType primitives + ptr-shaped str /
-                    // List / Map / Set (#1697), (b) record StructType with a
-                    // registered descriptor (#1797). For (b) the descriptor
-                    // pointer identity in the box is compared against the
-                    // expected type's descriptor global at runtime; mismatch
-                    // traps. unwrapFromAny dispatches internally on the
-                    // annotation type name.
+                    // any → narrow unwrap. The gate accepts every shape
+                    // unwrapFromAny knows how to dispatch on annotTy:
+                    //   - i64 + simple-enum metadata → descriptor-checked
+                    //     enum path (#1798). Must precede the canAnyHoldType
+                    //     arm because i64 also matches the standard Int
+                    //     unwrap, which would mismatch the Enum tag.
+                    //   - StructType + Option/Result/ADT → enum descriptor
+                    //     path (#1798). Must precede the record arm because
+                    //     findRecordInfoForType would otherwise mis-route.
+                    //   - canAnyHoldType (#1697) covers primitives plus the
+                    //     ptr-shaped str / List / Map / Set.
+                    //   - StructType + record descriptor (#1797) compares
+                    //     descriptor-pointer identity at runtime.
+                    // unwrapFromAny dispatches internally on annotTy.
                     val = unwrapFromAny(val, annotTy, *annot);
                     newTy = annotTy;
                 } else if (isUnionType(resolvedAnnot)) {
@@ -1299,15 +1289,13 @@ void CodeGen::emitStmt(AssignStmt &s) {
             newTy = val->getType();
             didWrapToAny = true;
         } else if (isAnyType(newTy) && ptr->getAllocatedType() == i64Ty_) {
-            // #1798: any → simple enum unwrap on reassignment.
+            // #1798 / #1697: any → i64 unwrap. unwrapFromAny dispatches
+            // internally: a destTypeName naming a simple enum routes to the
+            // descriptor-checked Enum path, otherwise it falls back to the
+            // standard Int unwrap (canAnyHoldType(i64) is always true).
             std::string destTypeName = buildTypeNameFromMeta(ptr);
-            if (!destTypeName.empty() && isSimpleEnumTypeName(destTypeName)) {
-                val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-                newTy = val->getType();
-            } else if (canAnyHoldType(ptr->getAllocatedType())) {
-                val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-                newTy = val->getType();
-            }
+            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
+            newTy = val->getType();
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(ptr->getAllocatedType()) &&
                    (isOptionType(ptr->getAllocatedType()) ||
@@ -1585,15 +1573,13 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             newTy = val->getType();
             didWrapToAny = true;
         } else if (isAnyType(newTy) && valueTy == i64Ty_) {
-            // #1798: any → simple enum unwrap on module-global reassignment.
+            // #1798 / #1697: any → i64 unwrap on module-global reassignment.
+            // unwrapFromAny dispatches internally: destTypeName naming a
+            // simple enum routes to the descriptor-checked Enum path,
+            // otherwise the standard Int unwrap (canAnyHoldType(i64) holds).
             std::string destTypeName = buildTypeNameFromMeta(anchor);
-            if (!destTypeName.empty() && isSimpleEnumTypeName(destTypeName)) {
-                val = unwrapFromAny(val, valueTy, destTypeName);
-                newTy = val->getType();
-            } else if (canAnyHoldType(valueTy)) {
-                val = unwrapFromAny(val, valueTy, destTypeName);
-                newTy = val->getType();
-            }
+            val = unwrapFromAny(val, valueTy, destTypeName);
+            newTy = val->getType();
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(valueTy) &&
                    (isOptionType(valueTy) || isResultType(valueTy) ||
