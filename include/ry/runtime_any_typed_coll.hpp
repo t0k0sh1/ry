@@ -4,17 +4,18 @@
 // collection at the moment it is wrapped in `any`. Looked up at JSON
 // stringify time to convert what would otherwise be an OOB read on an
 // 8-byte-stride buffer (e.g. `List<int>` walked as `RyAny[]`) into a
-// deterministic panic with an actionable message. Entries are erased from
-// `__ry_arc_free_counted` so the table never outlives the collection
-// header it keys on.
+// deterministic panic with an actionable message.
 //
-// Keying: the table is keyed by the **collection data pointer** — i.e. the
-// pointer value stored in `any.data[8]` (== `arc_header_ptr + ARC_HEADER_SIZE`).
-// This is the same pointer the JSON stringify path holds at lookup time, so
-// the key never crosses an offset boundary. Callers that have an ARC
-// header pointer instead must shift it forward by `ry::ARC_HEADER_SIZE`
-// before calling any of the three helpers (see `__ry_arc_free_counted`
-// in `src/runtime_arc_counter.cpp` for the canonical example).
+// **Register-only design (#1811)**: the table is keyed by the **collection
+// data pointer** — i.e. the pointer value stored in `any.data[8]`
+// (== `arc_header_ptr + ARC_HEADER_SIZE`). Entries are never erased;
+// re-registration at the same address simply overwrites the previous entry
+// via `insert_or_assign`. An earlier draft erased entries from
+// `__ry_arc_free_counted` to keep the table in lockstep with header
+// lifetime, but that hook deterministically triggered a Linux glibc heap
+// check crash that local ASan/UBSan/TSan could not reproduce. See
+// `src/runtime_any_typed_coll.cpp` for the false-positive caveat the
+// register-only design accepts in exchange.
 //
 // Pure C++ runtime side data — no ARC, no GC. Returns nullptr on miss.
 
@@ -24,7 +25,6 @@ extern "C" {
 
 void __ry_any_register_typed_coll(void *data_ptr, const char *type_name);
 const char *__ry_any_lookup_typed_coll(void *data_ptr);
-void __ry_any_unregister_typed_coll(void *data_ptr);
 
 #ifdef __cplusplus
 }

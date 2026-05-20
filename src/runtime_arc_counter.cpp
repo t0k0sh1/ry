@@ -1,6 +1,4 @@
 #include "ry/runtime_alloc.hpp"
-#include "ry/runtime_any_typed_coll.hpp"
-#include "ry/ry_layout.hpp"
 #include <cstdint>
 #include <cstdlib>
 
@@ -34,17 +32,15 @@ void *__ry_arc_alloc_counted(int64_t total_size) {
 
 void __ry_arc_free_counted(void *header_ptr) {
     if (!header_ptr) return;
-    // Erase the typed-collection side-table entry (if any) BEFORE freeing
-    // the header — once `std::free` returns, the address could be reused
-    // by a different allocation and a stale entry would mislead
-    // `__ry_json_stringify_any`. The side-table is keyed by the inner
-    // *data* pointer (the value stored in `any.data[8]`), which is
-    // `header_ptr + ARC_HEADER_SIZE`, not the header pointer itself.
-    // Erase-if-present, no-op for the common case where the header was
-    // never registered.
-    void *data_ptr = static_cast<char *>(header_ptr) + ry::ARC_HEADER_SIZE;
-    (void)data_ptr; // bisect(#1811): temporarily disable side-table hook
-    // __ry_any_unregister_typed_coll(data_ptr);
+    // Historical note (#1811): an earlier draft of the typed-collection
+    // side-table called `__ry_any_unregister_typed_coll(data_ptr)` here so
+    // entries would be erased in sync with the collection header's free.
+    // That call deterministically triggered a Linux glibc heap-check
+    // crash in the C++ test suite even though local ASan/UBSan/TSan were
+    // clean. The side-table now uses a register-only design (overwrite on
+    // re-register via `insert_or_assign`) so this free-path hook is no
+    // longer needed — see `src/runtime_any_typed_coll.cpp` for the
+    // false-positive caveat.
     __atomic_fetch_sub(&g_arc_live_count, 1, __ATOMIC_RELAXED);
     std::free(header_ptr);
 }
