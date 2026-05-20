@@ -6,29 +6,33 @@
 # JSON-decoded values directly as `any`, leveraging the `any`-holds-collection
 # / -record / -enum extensions from #1697 / #1797 / #1798 / #1808.
 #
-# UB caveat for `stringify(value: any)`:
-# `stringify` walks the inner List/Map/Set buffer as `RyAny[]` (16-byte
-# stride). The `any` slot preserves the original collection header pointer
-# untouched on wrap, so passing a value constructed from a typed collection
-# (e.g. `xs: List<int>; v: any = xs; stringify(v)`) reads past valid
-# storage — the source's element stride is 8 bytes, not 16. This is
-# UNDEFINED BEHAVIOR in v0.0.25.
+# Runtime panic for `stringify(value: any)` on typed collections (#1811):
+# `stringify` walks the inner List/Map buffer assuming a 16-byte `RyAny[]`
+# element stride. The `any` slot preserves the original collection header
+# pointer untouched on wrap, so passing a value constructed from a typed
+# collection (e.g. `xs: List<int>; v: any = xs; stringify(v)`) would read
+# past valid storage — the source's element stride is 8 bytes, not 16.
+# The runtime detects this case via a side-table populated at wrap time
+# and exits with a deterministic diagnostic to stderr:
 #
-# Memory-safe inputs to `stringify(value: any)` (do not segfault — but Set /
-# Record / Enum / non-`str` Map keys still panic at runtime because JSON has
-# no native representation for them; see "stringify panics" in the
-# section below):
+#   stringify: any holds typed collection 'List<int>' — use List<any> /
+#   Map<str, any> / Set<any> instead
+#
+# followed by `exit(1)`.
+#
+# Safe inputs to `stringify(value: any)`:
 #   - The `any` returned by `load(text)` (always `List<any>` / `Map<str, any>`)
 #   - Primitive `any` slots (int / float / bool / str / null)
-#   - `List<any>` / `Map<str, any>` / `Set<any>` constructed by the user
+#   - `List<any>` / `Map<str, any>` constructed directly by the user
 #
-# Memory-unsafe inputs (UB — may segfault — distinct from the runtime
-# panics above):
+# Inputs that exit(1) with the side-table message:
 #   - `any` constructed from `List<int>` / `List<str>` / `Map<str, int>` /
-#     any other typed collection. Box each element with `as any` into a
-#     `List<any>` / `Map<str, any>` first, or use `json.load` output.
+#     any other typed (non-`any`-element) collection. Box each element into
+#     a `List<any>` / `Map<str, any>` first, or use `json.load` output.
 #
-# A runtime panic discriminator is tracked as a follow-up issue (#1811).
+# Set / Record / Enum / non-`str` Map keys still panic at runtime via the
+# existing "json stringify: ..." diagnostics because JSON has no native
+# representation for them — these are unrelated to the side-table guard.
 
 @public
 @native("json")

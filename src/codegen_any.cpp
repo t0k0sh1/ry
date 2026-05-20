@@ -167,6 +167,26 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // emitArcRetain so the increment is a no-op.
     if (isCollection) {
         auto *hdr = emitArcGetHeaderFromData(val);
+        // Element-type-erasure (#1697) means the stringify_any path cannot
+        // see whether the inner buffer uses 16-byte RyAny stride or a
+        // narrower native stride. For typed-non-any collections, record
+        // the source-level type name in a side-table keyed by the inner
+        // header pointer so `__ry_json_stringify_any` can panic with an
+        // actionable message instead of reading OOB (#1811).
+        bool typedNonAnyList = meta->list_elem && meta->list_elem != anyTy_;
+        bool typedNonAnyMapVal = meta->map_value && meta->map_value != anyTy_;
+        bool typedNonAnySet = meta->set_elem && meta->set_elem != anyTy_;
+        if (typedNonAnyList || typedNonAnyMapVal || typedNonAnySet) {
+            std::string typeName = buildTypeNameFromMeta(val);
+            if (!typeName.empty()) {
+                auto *nameGlobal = cachedGlobalString(typeName, ".any.typed_coll.name");
+                llvm::FunctionType *regTy = llvm::FunctionType::get(
+                    builder_.getVoidTy(), {ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee regFn = mod_->getOrInsertFunction(
+                    "__ry_any_register_typed_coll", regTy);
+                builder_.CreateCall(regFn, {val, nameGlobal});
+            }
+        }
         emitArcRetain(hdr);
     } else if (isStringValue(val)) {
         auto *hdr = emitStrGetHeaderFromData(val);

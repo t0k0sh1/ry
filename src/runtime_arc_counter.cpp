@@ -1,4 +1,6 @@
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_any_typed_coll.hpp"
+#include "ry/ry_layout.hpp"
 #include <cstdint>
 #include <cstdlib>
 
@@ -32,6 +34,16 @@ void *__ry_arc_alloc_counted(int64_t total_size) {
 
 void __ry_arc_free_counted(void *header_ptr) {
     if (!header_ptr) return;
+    // Erase the typed-collection side-table entry (if any) BEFORE freeing
+    // the header — once `std::free` returns, the address could be reused
+    // by a different allocation and a stale entry would mislead
+    // `__ry_json_stringify_any`. The side-table is keyed by the inner
+    // *data* pointer (the value stored in `any.data[8]`), which is
+    // `header_ptr + ARC_HEADER_SIZE`, not the header pointer itself.
+    // Erase-if-present, no-op for the common case where the header was
+    // never registered.
+    void *data_ptr = static_cast<char *>(header_ptr) + ry::ARC_HEADER_SIZE;
+    __ry_any_unregister_typed_coll(data_ptr);
     __atomic_fetch_sub(&g_arc_live_count, 1, __ATOMIC_RELAXED);
     std::free(header_ptr);
 }
