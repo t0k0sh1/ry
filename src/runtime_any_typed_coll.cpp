@@ -8,11 +8,12 @@
 
 namespace {
 
-// Maps inner-collection header pointer (the value stored in `any.data[8]`)
-// to the source-level type name recorded at wrap time. Entry lifetime is
-// bounded by the collection header itself — `__ry_arc_free_counted` calls
-// `__ry_any_unregister_typed_coll` before `std::free`, so a fresh allocation
-// at the same address cannot pick up a stale entry.
+// Maps collection data pointer (the value stored in `any.data[8]`, which is
+// `arc_header_ptr + ARC_HEADER_SIZE`) to the source-level type name recorded
+// at wrap time. Entry lifetime is bounded by the collection header itself —
+// `__ry_arc_free_counted` shifts the header pointer to the data pointer and
+// calls `__ry_any_unregister_typed_coll` before `std::free`, so a fresh
+// allocation at the same address cannot pick up a stale entry.
 std::unordered_map<void *, std::string> g_typed_coll_names;
 std::mutex g_typed_coll_mu;
 
@@ -26,28 +27,28 @@ std::atomic<std::size_t> g_typed_coll_count{0};
 
 extern "C" {
 
-void __ry_any_register_typed_coll(void *header_ptr, const char *type_name) {
-    if (!header_ptr || !type_name) return;
+void __ry_any_register_typed_coll(void *data_ptr, const char *type_name) {
+    if (!data_ptr || !type_name) return;
     std::lock_guard<std::mutex> lock(g_typed_coll_mu);
-    auto [it, inserted] = g_typed_coll_names.try_emplace(header_ptr, type_name);
+    auto [it, inserted] = g_typed_coll_names.try_emplace(data_ptr, type_name);
     if (inserted) {
         g_typed_coll_count.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
-const char *__ry_any_lookup_typed_coll(void *header_ptr) {
-    if (!header_ptr) return nullptr;
+const char *__ry_any_lookup_typed_coll(void *data_ptr) {
+    if (!data_ptr) return nullptr;
     if (g_typed_coll_count.load(std::memory_order_relaxed) == 0) return nullptr;
     std::lock_guard<std::mutex> lock(g_typed_coll_mu);
-    auto it = g_typed_coll_names.find(header_ptr);
+    auto it = g_typed_coll_names.find(data_ptr);
     return it == g_typed_coll_names.end() ? nullptr : it->second.c_str();
 }
 
-void __ry_any_unregister_typed_coll(void *header_ptr) {
-    if (!header_ptr) return;
+void __ry_any_unregister_typed_coll(void *data_ptr) {
+    if (!data_ptr) return;
     if (g_typed_coll_count.load(std::memory_order_relaxed) == 0) return;
     std::lock_guard<std::mutex> lock(g_typed_coll_mu);
-    if (g_typed_coll_names.erase(header_ptr) > 0) {
+    if (g_typed_coll_names.erase(data_ptr) > 0) {
         g_typed_coll_count.fetch_sub(1, std::memory_order_relaxed);
     }
 }

@@ -26,9 +26,11 @@
 #   - `List<any>` / `Map<str, any>` constructed directly by the user
 #
 # Inputs that exit(1) with the side-table message:
-#   - `any` constructed from `List<int>` / `List<str>` / `Map<str, int>` /
-#     any other typed (non-`any`-element) collection. Box each element into
-#     a `List<any>` / `Map<str, any>` first, or use `json.load` output.
+#   - `any` constructed from typed `List<T>` (T != `any`) or typed
+#     `Map<K, V>` (K != `str` or V != `any`). Examples: `List<int>`,
+#     `List<str>`, `Map<str, int>`, `Map<int, any>`. Box each element
+#     into `List<any>` / `Map<str, any>` first, or use `json.load`
+#     output.
 #
 # Set / Record / Enum / non-`str` Map keys still panic at runtime via the
 # existing "json stringify: ..." diagnostics because JSON has no native
