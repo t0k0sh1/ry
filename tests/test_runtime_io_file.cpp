@@ -50,6 +50,7 @@ TEST(RuntimeIoFileTest, OpenNonexistentPathReturnsNull) {
     const char *err = __ry_get_last_error();
     EXPECT_NE(err, nullptr);
     EXPECT_NE(std::strstr(err, "open"), nullptr);
+    freeRyStr(err);
     freeRyStr(path);
     freeRyStr(mode);
 }
