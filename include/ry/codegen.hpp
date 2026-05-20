@@ -2131,6 +2131,7 @@ public:
     bool isAtomicInt(llvm::Value *val);
     bool isAtomicBool(llvm::Value *val);
     bool isRegex(llvm::Value *val);
+    bool isFile(llvm::Value *val);
     void propagateTypeMeta(const std::string &typeName, llvm::Value *val);
     void propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val);
     void propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result);

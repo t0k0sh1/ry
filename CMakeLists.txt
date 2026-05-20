@@ -371,6 +371,7 @@ add_executable(ry_tests
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
     tests/test_spec_timeout.cpp
+    tests/test_runtime_io_file.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
@@ -445,4 +446,7 @@ if(ENABLE_FUZZER)
     # not ry_lib) so the JSON parser symbols are available without dlopen.
     add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime_json.cpp)
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
+    # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
+    # not ry_lib) so the File handle symbols are available without dlopen.
+    add_ry_fuzz_target(fuzz_io_open tests/fuzz/fuzz_io_open.cpp src/runtime_io.cpp)
 endif()

@@ -256,4 +256,134 @@ extern "C" const char *__ry_bytes_to_str(void *list) {
                       static_cast<size_t>(header->len));
 }
 
+// ===== File handle API =====
+
+struct IoFileHandle {
+    FILE *fp;
+};
+
+extern "C" void *__ry_io_file_open(const char *path, const char *mode) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("open: path contains an embedded NUL byte");
+        return nullptr;
+    }
+    if (hasEmbeddedNul(mode)) {
+        setLastError("open: mode contains an embedded NUL byte");
+        return nullptr;
+    }
+    if (strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 && strcmp(mode, "a") != 0) {
+        setLastError("open: invalid mode '%s' (must be \"r\", \"w\", or \"a\")", mode);
+        return nullptr;
+    }
+    FILE *fp = fopen_nofollow(path, mode);
+    if (!fp) {
+        setLastError("open: cannot open '%s' in mode '%s'", path, mode);
+        return nullptr;
+    }
+    auto *h = static_cast<IoFileHandle *>(arc_alloc(sizeof(IoFileHandle)));
+    h->fp = fp;
+    return h;
+}
+
+extern "C" const char *__ry_io_file_read_all(void *handle) {
+    auto *h = static_cast<IoFileHandle *>(handle);
+    if (!h || !h->fp) {
+        setLastError("readAll: file handle is not open");
+        return nullptr;
+    }
+    // Seek-based fast path for regular files
+    if (fseek(h->fp, 0, SEEK_END) == 0) {
+        long size = ftell(h->fp);
+        if (size > MAX_READ_SIZE) {
+            setLastError("readAll: file too large (%ld bytes, max %ld)", size, MAX_READ_SIZE);
+            return nullptr;
+        }
+        if (size >= 0) {
+            fseek(h->fp, 0, SEEK_SET);
+            char *buf = (char *)checked_malloc((size_t)size + 1);
+            size_t nread = fread(buf, 1, (size_t)size, h->fp);
+            const char *result = makeString(buf, nread);
+            free(buf);
+            return result;
+        }
+    }
+    // Chunk-based fallback for non-seekable handles
+    size_t cap = 4096, len = 0;
+    char *buf = (char *)checked_malloc(cap);
+    for (;;) {
+        if (len + 1 >= cap) {
+            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(cap); }
+            cap *= 2;
+            buf = (char *)checked_realloc(buf, cap);
+        }
+        size_t n = fread(buf + len, 1, cap - len - 1, h->fp);
+        if (n == 0) break;
+        len += n;
+        if (len > (size_t)MAX_READ_SIZE) {
+            free(buf);
+            setLastError("readAll: file too large (max %ld bytes)", MAX_READ_SIZE);
+            return nullptr;
+        }
+    }
+    const char *result = makeString(buf, len);
+    free(buf);
+    return result;
+}
+
+// Returns: 0 = line read, 1 = EOF (no data), -1 = error
+// *out_line is set to a Ry string handle on success (0-return only)
+extern "C" int64_t __ry_io_file_read_line(void *handle, const char **out_line) {
+    *out_line = nullptr;
+    auto *h = static_cast<IoFileHandle *>(handle);
+    if (!h || !h->fp) {
+        setLastError("readLine: file handle is not open");
+        return -1;
+    }
+    char *line = nullptr;
+    size_t len = 0;
+    ssize_t nread = getline(&line, &len, h->fp);
+    if (nread == -1) {
+        free(line);
+        if (feof(h->fp)) return 1;
+        setLastError("readLine: I/O error reading file");
+        return -1;
+    }
+    if (nread > 0 && line[nread - 1] == '\n') --nread;
+    *out_line = makeString(line, (size_t)nread);
+    free(line);
+    return 0;
+}
+
+extern "C" int64_t __ry_io_file_write_text(void *handle, const char *s) {
+    auto *h = static_cast<IoFileHandle *>(handle);
+    if (!h || !h->fp) {
+        setLastError("writeText: file handle is not open");
+        return -1;
+    }
+    int64_t byteLen = stringByteLen(s);
+    size_t written = fwrite(s, 1, (size_t)byteLen, h->fp);
+    if ((int64_t)written != byteLen) {
+        setLastError("writeText: failed to write to file");
+        return -1;
+    }
+    return 0;
+}
+
+extern "C" void __ry_io_file_close(void *handle) {
+    auto *h = static_cast<IoFileHandle *>(handle);
+    if (h && h->fp) {
+        fclose(h->fp);
+        h->fp = nullptr;
+    }
+}
+
+extern "C" void __ry_io_file_cleanup(void *handle) {
+    auto *h = static_cast<IoFileHandle *>(handle);
+    if (h && h->fp) {
+        fclose(h->fp);
+        h->fp = nullptr;
+    }
+    // ARC machinery calls arc_free after this
+}
+
 } // namespace ry

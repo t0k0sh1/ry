@@ -1,0 +1,121 @@
+from testing import it, describe, expect, fail
+
+from io import open, readAll, readLine, writeText, close, deleteFile
+
+@describe("file handle API")
+fn fileHandleTests():
+  @it("should open, readAll, and close a file")
+  fn shouldOpenReadAllAndCloseAFile():
+    writeText("/tmp/ry_fh_readall.txt", "hello file")
+    case open("/tmp/ry_fh_readall.txt", "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s):
+            expect(s).toEq("hello file")
+          Err(e):
+            fail("readAll failed: " + e.message)
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_readall.txt")
+
+  @it("should return Err when opening nonexistent file")
+  fn shouldReturnErrWhenOpeningNonexistentFile():
+    expect(open("/tmp/ry_fh_no_such_file_xyzzy.txt", "r")).toBeErr()
+
+  @it("should return Err for invalid mode")
+  fn shouldReturnErrForInvalidMode():
+    writeText("/tmp/ry_fh_badmode.txt", "x")
+    expect(open("/tmp/ry_fh_badmode.txt", "z")).toBeErr()
+    deleteFile("/tmp/ry_fh_badmode.txt")
+
+  @it("should write and read back via file handle")
+  fn shouldWriteAndReadBackViaFileHandle():
+    case open("/tmp/ry_fh_write.txt", "w"):
+      Ok(fw):
+        case writeText(fw, "roundtrip"):
+          Ok(_): 0
+          Err(e): fail("writeText failed: " + e.message)
+        close(fw)
+      Err(e):
+        fail("open w failed: " + e.message)
+    case open("/tmp/ry_fh_write.txt", "r"):
+      Ok(fr):
+        case readAll(fr):
+          Ok(s):
+            expect(s).toEq("roundtrip")
+          Err(e):
+            fail("readAll failed: " + e.message)
+        close(fr)
+      Err(e):
+        fail("open r failed: " + e.message)
+    deleteFile("/tmp/ry_fh_write.txt")
+
+  @it("should detect EOF with readLine returning Ok(None)")
+  fn shouldDetectEofWithReadLineReturningOkNone():
+    writeText("/tmp/ry_fh_eof.txt", "")
+    case open("/tmp/ry_fh_eof.txt", "r"):
+      Ok(f):
+        case readLine(f):
+          Ok(opt):
+            case opt:
+              Some(_): fail("expected EOF but got a line")
+              None: expect(true).toEq(true)
+          Err(e):
+            fail("readLine failed: " + e.message)
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_eof.txt")
+
+  @it("should read lines one by one until EOF")
+  fn shouldReadLinesOneByOneUntilEof():
+    writeText("/tmp/ry_fh_lines.txt", "alpha\nbeta\ngamma")
+    case open("/tmp/ry_fh_lines.txt", "r"):
+      Ok(f):
+        gotAlpha = false
+        gotBeta = false
+        gotGamma = false
+        case readLine(f):
+          Ok(opt):
+            case opt:
+              Some(s): gotAlpha = s == "alpha"
+              None: fail("expected alpha line, got EOF")
+          Err(e): fail("readLine 1 failed: " + e.message)
+        case readLine(f):
+          Ok(opt):
+            case opt:
+              Some(s): gotBeta = s == "beta"
+              None: fail("expected beta line, got EOF")
+          Err(e): fail("readLine 2 failed: " + e.message)
+        case readLine(f):
+          Ok(opt):
+            case opt:
+              Some(s): gotGamma = s == "gamma"
+              None: fail("expected gamma line, got EOF")
+          Err(e): fail("readLine 3 failed: " + e.message)
+        case readLine(f):
+          Ok(opt):
+            case opt:
+              Some(_): fail("expected EOF after 3 lines")
+              None: expect(true).toEq(true)
+          Err(e): fail("readLine 4 failed: " + e.message)
+        expect(gotAlpha).toEq(true)
+        expect(gotBeta).toEq(true)
+        expect(gotGamma).toEq(true)
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines.txt")
+
+  @it("close should be idempotent")
+  fn closeShouldBeIdempotent():
+    writeText("/tmp/ry_fh_idem.txt", "x")
+    case open("/tmp/ry_fh_idem.txt", "r"):
+      Ok(f):
+        close(f)
+        close(f)
+        expect(true).toEq(true)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_idem.txt")
