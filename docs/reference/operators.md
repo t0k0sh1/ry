@@ -127,7 +127,12 @@ shifted = 1 << 8          # 256
 
 ## Error Propagation Operator (`?`)
 
-The postfix `?` operator unwraps a `Result` or `Option` value on the happy path and short-circuits on the unhappy path.
+The postfix `?` operator has two forms:
+
+1. **Unwrap / short-circuit form**: applied to a `Result<T, E>` or `Option<T>` expression — unwraps the inner value on the happy path and short-circuits on the unhappy path.
+2. **Option-returning index form**: applied directly to a Map or List index expression `m[k]?` / `xs[i]?` — returns `Option<V>` / `Option<T>` instead of aborting on missing key / out-of-range index.
+
+### Unwrap / short-circuit form
 
 | Operand | Happy path | Unhappy path |
 |---|---|---|
@@ -159,6 +164,52 @@ fn firstPlusSecond(xs: List<int>) -> Option<int>:
     a = safeGet(xs, 0)?    # returns None early if out of range
     b = safeGet(xs, 1)?
     return Some(a + b)
+```
+
+### Option-returning index form (`m[k]?` / `xs[i]?`)
+
+When `?` immediately follows a Map or List index expression, it changes the semantics from "abort on miss" to "produce an `Option`":
+
+| Receiver | `m[k]` / `xs[i]` (no `?`) | `m[k]?` / `xs[i]?` |
+|---|---|---|
+| `Map<K, V>` — key present | `V` | `Some(v): Option<V>` |
+| `Map<K, V>` — key missing | runtime abort | `None: Option<V>` |
+| `List<T>` — index in range | `T` (after negative-index wrap) | `Some(v): Option<T>` |
+| `List<T>` — index out of range (after wrap) | runtime abort | `None: Option<T>` |
+
+```ry
+m = {"a": 1, "b": 2}
+case m["a"]?:
+  Some(v): print(v)        # 1
+  None:    print("none")
+case m["z"]?:
+  Some(v): print(v)
+  None:    print("none")   # none
+
+# Combine with the `??` null-coalescing operator for a default value.
+# IMPORTANT: leave a space between the two operators.
+print(m["z"]? ?? -1)       # -1
+
+xs = [10, 20, 30]
+print(xs[1]?)              # Some(20)
+print(xs[100]?)            # None
+print(xs[-1]?)             # Some(30)  — negative-index wrap is preserved
+print(xs[-100]?)           # None       — wrap result still out of range
+```
+
+Scope and restrictions (v0.0.25):
+
+- Receivers supported: `Map<K, V>` and `List<T>`.
+- Receivers rejected at compile time: `str` (use `charAt(s, i)`), fixed-length arrays (use `as int` cast on the bounds-checked index), range slice `xs[a..b]?` (no Option-wrapped slice yet), `any`-typed nested `v[k]?` (tracked as #1701).
+- Write-form `m[k]? = v` (and `m[k]?.field = v`, `mm[k]?[k2] = v`) is a compile error — `?` produces an Option, not a slot.
+- Negative-index wrap applies first; the `?` only catches the post-wrap out-of-range case (so `xs[-1]?` on a non-empty list always returns `Some(last)`).
+
+**Footgun — `??` greedy tokenization**: The lexer tokenizes `??` greedily as a single `QuestionQuestion` token. Writing `m["k"]?? default` (no space between `?` and `?`) parses as `m["k"]` (which aborts on a missing key) followed by `?? default`. To get the Option-returning form coalesced with a default, **always leave a space**: `m["k"]? ?? default`.
+
+```ry
+m = {"a": 1}
+print(m["a"]? ?? 99)       # 1   — Option-returning form coalesces missing → 99
+# print(m["z"]?? 99)       # ABORT — `m["z"]` aborts before `??` is reached
 ```
 
 ### At the top level

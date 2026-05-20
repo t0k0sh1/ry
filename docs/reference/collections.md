@@ -131,6 +131,21 @@ print(xs[-3])   # 10
 
 Out-of-bounds access (including negative indices that exceed the list length) raises a runtime error.
 
+### Safe Index Access (`xs[i]?`)
+
+`xs[i]?` returns `Option<T>` instead of aborting on out-of-range access. Negative-index wrap is applied first; only when the wrap result is still out of range does the expression evaluate to `None`. See [operators.md](operators.md#option-returning-index-form-mk--xsi) for the cross-collection spec.
+
+```ry
+xs = [10, 20, 30]
+print(xs[1]?)        # Some(20)
+print(xs[100]?)      # None
+print(xs[-1]?)       # Some(30)   — negative wrap to last
+print(xs[-100]?)     # None        — wrap result still out of range
+print(xs[100]? ?? 0) # 0           — coalesce with default (note the space before ??)
+```
+
+Restrictions: read-only — `xs[i]? = v` is a compile error; range-index `xs[a..b]?` is a compile error.
+
 ### Index Assignment
 
 ```ry
@@ -751,6 +766,24 @@ Maps support `==` and `!=`. Two maps are equal when they have the same number of
 m = {"a": 1, "b": 2}
 print(m["a"])   # 1
 ```
+
+Accessing a missing key aborts at runtime. Use `m[k]?` or `get(m, k)` for safe lookup.
+
+### Safe Key Access (`m[k]?`)
+
+`m[k]?` returns `Option<V>` instead of aborting on a missing key. This is a dedicated postfix syntax — not a sugar for `get(m, k)` — and follows the same shape on `List<T>`. See [operators.md](operators.md#option-returning-index-form-mk--xsi) for the cross-collection spec.
+
+```ry
+m = {"a": 1, "b": 2}
+case m["a"]?:
+  Some(v): print(v)            # 1
+  None:    print("missing")
+print(m["z"]? ?? -1)            # -1 — coalesce with default (note the space before ??)
+```
+
+Restrictions: read-only — `m[k]? = v` is a compile error (use `m[k] = v` to insert / update).
+
+For an explicit named-function alternative with the same Option-returning semantics, use [`get(m, k)`](#get).
 
 ### Insert and Update
 

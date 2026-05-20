@@ -383,6 +383,11 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
     // and privatize the child stored there.
     if (auto *idxPtr = std::get_if<std::unique_ptr<IndexExpr>>(&chain.data)) {
         IndexExpr *idx = idxPtr->get();
+        // #1699: a try-mode IndexExpr in the write-side path-CoW chain
+        // (`m[k]?[i] = v`, `arr[i]?[j] = v`) produces an Option<T> mid-chain
+        // with no writable slot; reject before any CoW work is emitted.
+        if (idx->try_mode)
+            codegenError("'?' index cannot be used as assignment target");
         if (idx->indices.size() != 1)
             codegenError("path CoW: multi-index hop not supported");
         llvm::Value *parent = emitPathCowForChain(*idx->object);

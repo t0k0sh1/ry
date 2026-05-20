@@ -1846,3 +1846,74 @@ TEST_F(CodeGenTest, U64AnnotationFormatterRoundtrip) {
         "print(h)"),
         "18446744073709551615\n");
 }
+
+// ===== Option-returning index `m[k]?` / `xs[i]?` rejections (#1699) =====
+
+TEST_F(CodeGenTest, OptionIndexRejectsMapAssignmentTarget) {
+    // Write-form `m[k]? = v` must be a compile error — `?` returns Option, not a slot.
+    expectCompileError(
+        "m: Map<str, int> = {}\nm[\"k\"]? = 1\n",
+        "'?' index cannot be used as assignment target");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsListAssignmentTarget) {
+    // List write-form is rejected the same way.
+    expectCompileError(
+        "xs = [1, 2, 3]\nxs[0]? = 99\n",
+        "'?' index cannot be used as assignment target");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsCompoundAssignmentTarget) {
+    // Compound assignment routes through the same lvalue path.
+    expectCompileError(
+        "m: Map<str, int> = {\"a\": 1}\nm[\"a\"]? += 1\n",
+        "'?' index cannot be used as assignment target");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsFieldAssignmentChain) {
+    // `m[k]?.x = v` must be rejected at the CoW-chain layer.
+    expectCompileError(
+        "record P:\n  x: int\n"
+        "m: Map<str, P> = {}\nm[\"k\"]?.x = 1\n",
+        "'?' index cannot be used as assignment target");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsNestedIndexAssignment) {
+    // Nested `mm[k]?[k2] = v` likewise rejected via path-CoW guard.
+    expectCompileError(
+        "mm: Map<str, Map<str, int>> = {}\nmm[\"a\"]?[\"b\"] = 1\n",
+        "'?' index cannot be used as assignment target");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsFixedLengthArray) {
+    // Fixed-length arrays already abort on OOB statically; `?` is meaningless.
+    expectCompileError(
+        "a: i32[3] = [1, 2, 3]\nx = a[0]?\n",
+        "'?' index not supported for fixed-length arrays");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsString) {
+    // str does not support `[]` at all; the diagnostic is redirected to charAt(),
+    // but `?` short-circuits to a dedicated message first.
+    expectCompileError(
+        "s = \"hi\"\nx = s[0]?\n",
+        "'?' index not supported for str");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsRangeSlice) {
+    // Range slice `xs[a..b]` returns a new list, not a single element — Option<List<T>>
+    // is intentionally out of scope for v0.0.25.
+    expectCompileError(
+        "xs = [1, 2, 3]\nys = xs[0..1]?\n",
+        "'?' index not supported for range slice");
+}
+
+TEST_F(CodeGenTest, OptionIndexRejectsAnyTypedNested) {
+    // `any`-typed nested `v[k]?` falls through to the existing list/map gate (#1701
+    // will lift this restriction). The compile error is "index operator requires list
+    // or map", not the dedicated try_mode message, but it's a compile error either way.
+    expectCompileError(
+        "a: any = 1\nv = a[\"x\"]?\n",
+        "index operator requires list or map");
+}
+

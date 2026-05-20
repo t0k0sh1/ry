@@ -243,6 +243,7 @@ struct ListExpr {
 struct IndexExpr {
     ExprPtr object;
     std::vector<ExprPtr> indices;
+    bool try_mode = false;
 };
 
 struct MapExpr {
