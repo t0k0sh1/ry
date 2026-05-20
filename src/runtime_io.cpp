@@ -263,6 +263,14 @@ struct IoFileHandle {
 };
 
 extern "C" void *__ry_io_file_open(const char *path, const char *mode) {
+    if (!path) {
+        setLastError("open: path is null");
+        return nullptr;
+    }
+    if (!mode) {
+        setLastError("open: mode is null");
+        return nullptr;
+    }
     if (hasEmbeddedNul(path)) {
         setLastError("open: path contains an embedded NUL byte");
         return nullptr;
