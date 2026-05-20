@@ -43,7 +43,8 @@ void __ry_arc_free_counted(void *header_ptr) {
     // Erase-if-present, no-op for the common case where the header was
     // never registered.
     void *data_ptr = static_cast<char *>(header_ptr) + ry::ARC_HEADER_SIZE;
-    __ry_any_unregister_typed_coll(data_ptr);
+    (void)data_ptr; // bisect(#1811): temporarily disable side-table hook
+    // __ry_any_unregister_typed_coll(data_ptr);
     __atomic_fetch_sub(&g_arc_live_count, 1, __ATOMIC_RELAXED);
     std::free(header_ptr);
 }
