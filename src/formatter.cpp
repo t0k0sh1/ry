@@ -309,7 +309,9 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 if (i > 0) idxStr += ", ";
                 idxStr += formatExpr(*v->indices[i]);
             }
-            return formatExpr(*v->object) + "[" + idxStr + "]";
+            // #1699: round-trip the Option-returning postfix `?` modifier.
+            return formatExpr(*v->object) + "[" + idxStr + "]" +
+                   (v->try_mode ? "?" : "");
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
             std::string pairs;
             for (size_t i = 0; i < v->keys.size(); ++i) {

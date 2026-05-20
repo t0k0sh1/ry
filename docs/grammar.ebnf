@@ -351,9 +351,9 @@ unary_expr       ::= ( '-' | '+' | '~' | 'not' | 'await' | 'weak' ) unary_expr
 postfix_expression ::= primary_expression { postfix_op }
 
 postfix_op       ::= '(' [ argument_list ] ')'                       // call
-                   | '[' expression { ',' expression } ']'           // index
+                   | '[' expression { ',' expression } ']'           // index; if immediately followed by '?', returns Option<elem> on Map<K,V> / List<T> (#1699)
                    | '.' IDENT                                        // field / method
-                   | '?'                                              // unwrap
+                   | '?'                                              // unwrap Result/Option; after '[..]' becomes the Option-returning index above
                    | '++' | '--'                                      // post-inc/dec
                    | 'as' type_expr                                   // cast
 

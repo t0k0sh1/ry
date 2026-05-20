@@ -1,0 +1,147 @@
+from testing import it, describe, expect, fail
+
+fn lookup(m: Map<str, int>, k: str) -> Option<int>:
+  return m[k]?
+
+fn lookupAt(xs: List<int>, i: int) -> Option<int>:
+  return xs[i]?
+
+@describe("Option-returning index m[k]? / xs[i]?")
+fn indexOptionTests():
+  @describe("Map<str, int>")
+  fn mapStrIntTests():
+    @it("returns Some for existing key")
+    fn mapHit():
+      m = {"a": 1, "b": 2}
+      expect(m["a"]?).toEq(Some(1))
+      expect(m["b"]?).toEq(Some(2))
+    @it("returns None for missing key")
+    fn mapMiss():
+      m = {"a": 1, "b": 2}
+      expect(m["z"]?).toBeNone()
+    @it("combines with ?? default (space-separated)")
+    fn mapWithCoalesce():
+      m = {"a": 1, "b": 2}
+      expect(m["a"]? ?? -1).toEq(1)
+      expect(m["z"]? ?? -1).toEq(-1)
+    @it("works on empty map")
+    fn mapEmpty():
+      m: Map<str, int> = {}
+      expect(m["a"]?).toBeNone()
+
+  @describe("List<int>")
+  fn listIntTests():
+    @it("returns Some for in-range positive index")
+    fn listHit():
+      xs = [10, 20, 30]
+      expect(xs[0]?).toEq(Some(10))
+      expect(xs[1]?).toEq(Some(20))
+      expect(xs[2]?).toEq(Some(30))
+    @it("returns None for positive out-of-bounds index")
+    fn listPositiveOob():
+      xs = [10, 20, 30]
+      expect(xs[3]?).toBeNone()
+      expect(xs[100]?).toBeNone()
+    @it("wraps negative index in-range to Some")
+    fn listNegativeHit():
+      xs = [10, 20, 30]
+      expect(xs[-1]?).toEq(Some(30))
+      expect(xs[-2]?).toEq(Some(20))
+      expect(xs[-3]?).toEq(Some(10))
+    @it("returns None for negative out-of-bounds index")
+    fn listNegativeOob():
+      xs = [10, 20, 30]
+      expect(xs[-4]?).toBeNone()
+      expect(xs[-100]?).toBeNone()
+    @it("returns None on empty list for any index")
+    fn listEmpty():
+      xs: List<int> = []
+      expect(xs[0]?).toBeNone()
+      expect(xs[-1]?).toBeNone()
+    @it("combines with ?? default")
+    fn listWithCoalesce():
+      xs = [10, 20, 30]
+      expect(xs[1]? ?? -1).toEq(20)
+      expect(xs[100]? ?? -1).toEq(-1)
+      expect(xs[-100]? ?? -1).toEq(-1)
+
+  @describe("Function and lambda return-type inference")
+  fn returnTypeTests():
+    @it("propagates as tail return Option<int>")
+    fn tailReturn():
+      m = {"a": 1}
+      case lookup(m, "a"):
+        Some(v): expect(v).toEq(1)
+        None: fail("expected Some")
+      case lookup(m, "z"):
+        Some(v): fail("expected None")
+        None: expect(true).toEq(true)
+    @it("works for List tail return Option<int>")
+    fn tailReturnList():
+      xs = [10, 20, 30]
+      case lookupAt(xs, 1):
+        Some(v): expect(v).toEq(20)
+        None: fail("expected Some")
+      case lookupAt(xs, 99):
+        Some(v): fail("expected None")
+        None: expect(true).toEq(true)
+    @it("works with explicit type annotation")
+    fn typeAnnotation():
+      m = {"a": 7}
+      x: Option<int> = m["a"]?
+      expect(x).toEq(Some(7))
+      y: Option<int> = m["z"]?
+      expect(y).toBeNone()
+    @it("works as lambda body with explicit Option<int> return type")
+    fn lambdaInference():
+      m = {"a": 100, "b": 200}
+      f = (k: str) -> Option<int> => m[k]?
+      case f("a"):
+        Some(v): expect(v).toEq(100)
+        None: fail("expected Some")
+      case f("z"):
+        Some(v): fail("expected None")
+        None: expect(true).toEq(true)
+
+  @describe("ARC: Map<str, str> and List<str>")
+  fn arcStrTests():
+    @it("Map<str, str> retains string element correctly via Some(v)")
+    fn mapStrStr():
+      m = {"k1": "hello", "k2": "world"}
+      case m["k1"]?:
+        Some(v): expect(v).toEq("hello")
+        None: fail("expected Some")
+      case m["zzz"]?:
+        Some(v): fail("expected None")
+        None: expect(true).toEq(true)
+      # ensure the original map is still usable after Some(v) extraction
+      expect(m["k2"]?).toEq(Some("world"))
+    @it("List<str> wraps element into Some without leaking")
+    fn listStr():
+      xs = ["foo", "bar", "baz"]
+      case xs[0]?:
+        Some(v): expect(v).toEq("foo")
+        None: fail("expected Some")
+      case xs[-1]?:
+        Some(v): expect(v).toEq("baz")
+        None: fail("expected Some")
+      case xs[10]?:
+        Some(v): fail("expected None")
+        None: expect(true).toEq(true)
+
+  @describe("Embedded NUL keys (byte-keyed Map)")
+  fn embeddedNulTests():
+    @it("distinguishes keys with embedded NUL bytes")
+    fn nulKey():
+      m = {"a\0b": 1, "a\0c": 2}
+      expect(m["a\0b"]?).toEq(Some(1))
+      expect(m["a\0c"]?).toEq(Some(2))
+      expect(m["a\0z"]?).toBeNone()
+
+  @describe("Coalesce footgun documentation pin")
+  fn coalesceFootgunTests():
+    @it("space-separated ?? coalesces None to default")
+    fn spaceSeparated():
+      m = {"a": 1}
+      expect(m["z"]? ?? 99).toEq(99)
+      expect(m["a"]? ?? 99).toEq(1)

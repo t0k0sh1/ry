@@ -749,6 +749,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // invalid IR (ICmp ptr vs i64). Route to the shared slice helper instead.
     if (e->indices.size() == 1 && objPtr->getType() == ptrTy_) {
         if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
+            if (e->try_mode)
+                codegenError("'?' index not supported for range slice");
             if (isStringValue(objPtr))
                 codegenError("str does not support range index; use substr(s, a, b) instead");
             llvm::Type *elemTy = getListElementType(objPtr);
@@ -776,8 +778,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     for (auto &idx : e->indices)
         indexValues.push_back(emitExpr(*idx));
 
-    if (llvm::Value *result = trySubscriptOperatorCall(objPtr, indexValues))
+    if (llvm::Value *result = trySubscriptOperatorCall(objPtr, indexValues)) {
+        if (e->try_mode)
+            codegenError("'?' index not supported for operator[] overload");
         return result;
+    }
     if (indexValues.size() > 1)
         codegenError("multi-index requires operator[] overload");
 
@@ -802,6 +807,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     }
     if (ai) {
         if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            if (e->try_mode)
+                codegenError("'?' index not supported for fixed-length arrays");
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
@@ -823,8 +830,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (objPtr->getType() != ptrTy_)
         codegenError("index operator requires list or map");
 
-    if (isStringValue(objPtr))
+    if (isStringValue(objPtr)) {
+        if (e->try_mode)
+            codegenError("'?' index not supported for str");
         codegenError("str does not support index access; use charAt(s, i) instead");
+    }
 
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
@@ -837,8 +847,54 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         if (index->getType() != mapKeyTy)
             codegenError("map key type mismatch");
 
+        // Snapshot the value type name before any call that may rehash
+        // value_metadata_ and invalidate getMeta(objPtr).
+        std::string mapValTypeName;
+        if (auto *mvtnMeta = getMeta(objPtr))
+            mapValTypeName = mvtnMeta->map_value_type_name;
+
         // Lookup key
         llvm::Value *idx = emitMapKeyLookup(objPtr, index, mapKeyTy);
+
+        if (e->try_mode) {
+            // #1699: m[k]? returns Option<V> instead of aborting on missing key.
+            llvm::StructType *optTy = getOptionType(mapValTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "trymap_found");
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "trymap.found", fn_);
+            llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "trymap.notfound", fn_);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "trymap.merge", fn_);
+            builder_.CreateCondBr(found, foundBB, notFoundBB);
+
+            builder_.SetInsertPoint(foundBB);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "trymap_vals_field");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "trymap_vals");
+            llvm::Value *valPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "trymap_val_ptr");
+            llvm::Value *foundVal = builder_.CreateLoad(mapValTy, valPtr, "trymap_val");
+            // Propagate element metadata onto foundVal BEFORE buildSomeValue,
+            // so the retain inside buildSomeValue picks the right kind
+            // (e.g. str_elem → StringHeader at -24).
+            if (!mapValTypeName.empty()) {
+                propagateTypeMeta(mapValTypeName, foundVal);
+                if (mapValTypeName == "str")
+                    getOrCreateMeta(foundVal).str_elem = true;
+            }
+            llvm::Value *someVal = buildSomeValue(foundVal, optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(notFoundBB);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "trymap_result");
+            phi->addIncoming(someVal, foundEndBB);
+            phi->addIncoming(noneVal, notFoundEndBB);
+            propagateMeta(someVal, phi);
+            return phi;
+        }
 
         // Check if found
         llvm::Value *notFound = builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0), "not_found");
@@ -859,9 +915,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
         llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
 
-        auto *mvtnMeta = getMeta(objPtr);
-        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty()) {
-            propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
+        if (!mapValTypeName.empty()) {
+            propagateTypeMeta(mapValTypeName, mapVal);
             // Map<K,str>: stamp str_elem locally so Case 4 retains via
             // StringHeader (-24). MUST be stamped only in the indexer
             // paths, never from a shared helper like propagateTypeMeta —
@@ -870,7 +925,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             // makes retain dispatch through emitStrGetHeaderFromData
             // (val - 24) on a pointer that does not own a StringHeader,
             // corrupting adjacent heap state.
-            if (mvtnMeta->map_value_type_name == "str")
+            if (mapValTypeName == "str")
                 getOrCreateMeta(mapVal).str_elem = true;
         }
 
@@ -885,30 +940,25 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
-    emitBoundsCheck(index, length,
-                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_err", "index");
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
-    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
-    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
-    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
-
-    // Without this, chained indexing like matrix[i][j] loses element type metadata.
+    // Snapshot list element metadata BEFORE any call (propagateTypeMeta,
+    // setTypeMeta, buildSomeValue) that may rehash value_metadata_ and
+    // invalidate the pointer returned by getMeta(objPtr).
+    std::string elemTypeName;
+    std::optional<FnTypeInfo> elemFnTypeInfo;
+    bool listElemIsStr = false;
+    if (auto *listMeta = getMeta(objPtr)) {
+        elemTypeName   = listMeta->list_elem_type_name;
+        elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+        listElemIsStr  = listMeta->list_elem_is_str;
+    }
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
-    if (nestedElemTy)
-        setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
 
-    // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>)
-    // Copy metadata fields before any call that may rehash value_metadata_ and invalidate
-    // the pointer returned by getMeta().
-    {
-        std::string elemTypeName;
-        std::optional<FnTypeInfo> elemFnTypeInfo;
-        bool listElemIsStr = false;
-        if (auto *listMeta = getMeta(objPtr)) {
-            elemTypeName   = listMeta->list_elem_type_name;
-            elemFnTypeInfo = listMeta->list_elem_fn_type_info;
-            listElemIsStr  = listMeta->list_elem_is_str;
-        }
+    auto stampLoadedElem = [&](llvm::Value *elem) {
+        // Without this, chained indexing like matrix[i][j] loses element type metadata.
+        if (nestedElemTy)
+            setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+
+        // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>).
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
         // #1664: Stamp tuple sig (e.g. "(int, T)" from enumerate / zip /
@@ -937,7 +987,57 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         // discriminant. (#1266, #1576)
         if (listElemIsStr)
             getOrCreateMeta(elem).str_elem = true;
+    };
+
+    if (e->try_mode) {
+        // #1699: xs[i]? returns Option<T> instead of aborting on OOB.
+        // Apply the existing negative-index wrap (matches the abort path),
+        // then ICmp-only bounds check (no abort) → PHI Some/None.
+        if (index->getType() == i1Ty_)
+            index = builder_.CreateZExt(index, i64Ty_, "tryidx_ext");
+        llvm::Value *wrapped = emitNegativeIndexWrap(index, length, "tryidx");
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *negCheck = builder_.CreateICmpSLT(wrapped, zero, "tryidx_neg");
+        llvm::Value *overCheck = builder_.CreateICmpSGE(wrapped, length, "tryidx_over");
+        llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "tryidx_oob");
+
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "trylist.oob", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "trylist.ok", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "trylist.merge", fn_);
+        builder_.CreateCondBr(oob, oobBB, okBB);
+
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
+        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {wrapped}, "tryelem_ptr");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "tryelem");
+        stampLoadedElem(elem);
+        llvm::Value *someVal = buildSomeValue(elem, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(oobBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *oobEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "trylist_result");
+        phi->addIncoming(someVal, okEndBB);
+        phi->addIncoming(noneVal, oobEndBB);
+        propagateMeta(someVal, phi);
+        return phi;
     }
+
+    emitBoundsCheck(index, length,
+                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_err", "index");
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
+    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
+    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
+
+    stampLoadedElem(elem);
 
     return elem;
 }

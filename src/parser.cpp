@@ -199,6 +199,10 @@ StmtNode Parser::finishChainedLhs(ExprPtr chain, const Token &first) {
     auto buildStmt = [&](ExprPtr value, std::optional<std::string> op) -> StmtNode {
         if (tailKindIsIndex(*chain)) {
             auto &idx = std::get<std::unique_ptr<IndexExpr>>(chain->data);
+            // #1699: `m[k]?` and `xs[i]?` are read-only Option-returning forms;
+            // they cannot be used as an assignment target (plain or compound).
+            if (idx->try_mode)
+                parseError(first.line, "'?' index cannot be used as assignment target");
             IndexAssignStmt s;
             s.object = std::move(idx->object);
             s.indices = std::move(idx->indices);
@@ -855,6 +859,14 @@ StmtNode Parser::parseStatement() {
         auto idxExpr = std::make_unique<IndexExpr>();
         idxExpr->object = std::move(varExpr);
         idxExpr->indices = std::move(indices);
+        // #1699: absorb a trailing `?` as the Option-returning index modifier,
+        // matching parsePostfixContinuation. Without this, `m[k]? = v` would
+        // parse as `ErrorPropagateExpr(IndexExpr)` and reach the generic
+        // "not an lvalue" path instead of the targeted try-mode rejection.
+        if (lex_.peek().kind == TokenKind::Question) {
+            lex_.next(); // consume '?'
+            idxExpr->try_mode = true;
+        }
         auto chain = std::make_unique<ExprNode>();
         chain->data = std::move(idxExpr);
         chain->loc = locFromToken(lbTok);

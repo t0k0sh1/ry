@@ -1096,6 +1096,10 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             auto idx = std::make_unique<IndexExpr>();
             idx->object = std::move(expr);
             idx->indices = std::move(indices);
+            if (lex_.peek().kind == TokenKind::Question) {
+                lex_.next(); // consume '?' as Option-returning index modifier (#1699)
+                idx->try_mode = true;
+            }
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(idx);
             node->loc = locFromToken(lbTok);

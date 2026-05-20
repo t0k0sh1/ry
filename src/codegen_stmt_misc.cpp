@@ -380,6 +380,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     // through record / nested-collection chains is tracked by issue #854.
     if (auto *idxPtr = std::get_if<std::unique_ptr<IndexExpr>>(&s.object->data)) {
         IndexExpr *idxExpr = idxPtr->get();
+        // #1699: `m[k]?.field = v` would produce an Option<V> mid-chain; that
+        // shape has no addressable field slot, so reject the construction
+        // before any CoW / load is emitted.
+        if (idxExpr->try_mode)
+            codegenError("'?' index cannot be used as assignment target");
         llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*idxExpr->object);
         llvm::Value *containerPtr = emitExpr(*idxExpr->object);
         if (idxExpr->indices.size() != 1)
