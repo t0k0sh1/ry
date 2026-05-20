@@ -1,52 +1,55 @@
-# JSON parsing and serialization
-@public
-@native("json")
-fn parse(text: str) -> Result<JsonValue, Error>
+# JSON parsing and serialization (any-based API, #1698)
+#
+# The opaque `JsonValue` handle and its 13 low-level accessors (parse / get /
+# at / toStr / toInt / toFloat / toBool / kind / len / keys / jsonFree / two
+# stringify overloads) were removed in #1698. The new API materializes
+# JSON-decoded values directly as `any`, leveraging the `any`-holds-collection
+# / -record / -enum extensions from #1697 / #1797 / #1798 / #1808.
+#
+# UB caveat for `stringify(value: any)`:
+# `stringify` walks the inner List/Map/Set buffer as `RyAny[]` (16-byte
+# stride). The `any` slot preserves the original collection header pointer
+# untouched on wrap, so passing a value constructed from a typed collection
+# (e.g. `xs: List<int>; v: any = xs; stringify(v)`) reads past valid
+# storage — the source's element stride is 8 bytes, not 16. This is
+# UNDEFINED BEHAVIOR in v0.0.25.
+#
+# Memory-safe inputs to `stringify(value: any)` (do not segfault — but Set /
+# Record / Enum / non-`str` Map keys still panic at runtime because JSON has
+# no native representation for them; see "stringify panics" in the
+# section below):
+#   - The `any` returned by `load(text)` (always `List<any>` / `Map<str, any>`)
+#   - Primitive `any` slots (int / float / bool / str / null)
+#   - `List<any>` / `Map<str, any>` / `Set<any>` constructed by the user
+#
+# Memory-unsafe inputs (UB — may segfault — distinct from the runtime
+# panics above):
+#   - `any` constructed from `List<int>` / `List<str>` / `Map<str, int>` /
+#     any other typed collection. Box each element with `as any` into a
+#     `List<any>` / `Map<str, any>` first, or use `json.load` output.
+#
+# A runtime panic discriminator is tracked as a follow-up issue (#1811).
 
 @public
 @native("json")
-fn stringify(value: JsonValue) -> str
+fn load(text: str) -> Result<any, Error>
 
 @public
 @native("json")
-fn stringify(value: JsonValue, indent: int) -> str
+fn stringify(value: any) -> str
 
 @public
 @native("json")
-fn kind(value: JsonValue) -> str
+fn stringify(value: any, indent: int) -> str
 
+# User-defined generic wrapper that monomorphizes per T and routes through
+# the unwrapFromAny coerce path. Supported T (this PR): int / float / str /
+# bool / List<any> / Map<str, any>. Element-level coerce (List<int>,
+# Map<str, int>, etc.) is rejected at compile time (#1698 guard) because the
+# `any` slot stride is 16 bytes while the target's element stride is 8;
+# unwrap individual elements after `loadAs<List<any>>`. record / Set /
+# Option / Result reconstruction is out of scope for this release.
 @public
-@native("json")
-fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
-
-@public
-@native("json")
-fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
-
-@public
-@native("json")
-fn toStr(value: JsonValue) -> Result<str, Error>
-
-@public
-@native("json")
-fn toInt(value: JsonValue) -> Result<int, Error>
-
-@public
-@native("json")
-fn toFloat(value: JsonValue) -> Result<float, Error>
-
-@public
-@native("json")
-fn toBool(value: JsonValue) -> Result<bool, Error>
-
-@public
-@native("json")
-fn len(value: JsonValue) -> int
-
-@public
-@native("json")
-fn keys(value: JsonValue) -> Result<List<str>, Error>
-
-@public
-@native("json")
-fn jsonFree(value: JsonValue) -> Unit
+fn loadAs<T>(text: str) -> Result<T, Error>:
+  v: T = load(text)?
+  return Ok(v)

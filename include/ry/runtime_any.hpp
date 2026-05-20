@@ -80,4 +80,19 @@ int64_t __ry_any_ge(const RyAny *a, const RyAny *b);
 }
 #endif
 
+// C++-only constructors used by runtime modules that synthesize `any` values
+// from C (e.g. JSON parser building Map<str, any> / List<any> from text).
+// Callers are responsible for the ARC initial refcount: the pre-existing
+// refcount of the passed handle (1 for fresh `makeString` / `arc_alloc`
+// results) flows into the resulting RyAny without an extra retain. Pair
+// with `emitAnyReleaseVar` on the codegen side which decrements that
+// refcount when the `any` slot leaves scope.
+RyAny anyFromUnit();
+RyAny anyFromInt(int64_t v);
+RyAny anyFromFloat(double v);
+RyAny anyFromBool(int64_t v);
+RyAny anyFromStr(const char *handle);
+RyAny anyFromListOfAny(void *list_header);
+RyAny anyFromMapStrAny(void *map_header);
+
 } // namespace ry

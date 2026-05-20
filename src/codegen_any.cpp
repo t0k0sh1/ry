@@ -194,7 +194,69 @@ llvm::Value *CodeGen::buildUnitAny() {
 }
 
 llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
-                                     const std::string &targetTypeName) {
+                                     const std::string &rawTargetTypeName) {
+    // Substitute generic type-parameter names at the helper's entry so every
+    // downstream dispatch (collection-arm via `isListTypeName` /
+    // `isMapTypeName` / `isSetTypeName`, enum-descriptor cache key in
+    // `unwrapEnumFromAny`, error message, record `findRecordTypeName`) sees
+    // the concrete type rather than the raw "T". No-op when `type_param_scope_`
+    // is empty, so non-generic call sites stay byte-identical. Mirrors the
+    // entry-point substitution in `resolveType` (codegen_type.cpp:18).
+    const std::string targetTypeName = substituteTypeParamsInName(rawTargetTypeName);
+
+    // Collection element-type guard (#1698): `any` slots are 16 bytes (RyAny);
+    // collection unwrap currently does not coerce per-element, so a
+    // `List<int>` unwrap of a `List<any>` payload strides 8-byte ints over a
+    // 16-byte buffer and silently produces garbage (outcome b in the original
+    // advisor analysis). The only context where this PR newly exposes the
+    // hazard is generic monomorphization of `loadAs<T>` (and any user-defined
+    // `fn f<T>(a: any) -> T` analog): the JSON parser materializes
+    // `List<any>` but the substituted `T` claims `List<int>`. Direct unwraps
+    // like `let ys: List<int> = a` where the source was actually a `List<int>`
+    // remain legitimate (covered by the any.test.ry roundtrip tests), so we
+    // only reject when substitution rewrote a type parameter — i.e. the
+    // user-written annotation referred to a generic `T` rather than the
+    // concrete shape.
+    const bool fromGenericSubstitution =
+        targetTypeName != rawTargetTypeName;
+    if (fromGenericSubstitution && targetTy == ptrTy_ && !targetTypeName.empty()) {
+        std::string resolved = resolveTypeAlias(targetTypeName);
+        if (isListTypeName(resolved)) {
+            std::string inner = trimTypeNameSpaces(
+                resolved.substr(5, resolved.size() - 6));
+            if (inner != "any") {
+                codegenError(
+                    "unwrapping 'any' to '" + targetTypeName +
+                    "' is not supported in this release: element type must "
+                    "be 'any' (use 'List<any>' and unwrap elements "
+                    "individually)");
+            }
+        } else if (isSetTypeName(resolved)) {
+            std::string inner = trimTypeNameSpaces(
+                resolved.substr(4, resolved.size() - 5));
+            if (inner != "any") {
+                codegenError(
+                    "unwrapping 'any' to '" + targetTypeName +
+                    "' is not supported in this release: element type must "
+                    "be 'any' (use 'Set<any>' and unwrap elements "
+                    "individually)");
+            }
+        } else if (isMapTypeName(resolved)) {
+            std::string innerArgs = resolved.substr(4, resolved.size() - 5);
+            auto parts = splitTypeArgs(innerArgs);
+            if (parts.size() == 2) {
+                std::string k = trimTypeNameSpaces(parts[0]);
+                std::string v = trimTypeNameSpaces(parts[1]);
+                if (k != "str" || v != "any") {
+                    codegenError(
+                        "unwrapping 'any' to '" + targetTypeName +
+                        "' is not supported in this release: must be "
+                        "'Map<str, any>' (unwrap values individually)");
+                }
+            }
+        }
+    }
+
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
 

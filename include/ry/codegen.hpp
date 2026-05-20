@@ -1202,7 +1202,6 @@ public:
 
         // Resource tracking: list of resource kind IDs this value belongs to
         llvm::SmallVector<int, 2> resource_kinds;
-        bool json_type_only = false;
 
         // Set when propagateTypeMeta receives the type name "str". Allows
         // tryRetainArcSource Case 4 to discriminate str container elements
@@ -2124,7 +2123,6 @@ public:
     bool isHttpRequest(llvm::Value *val);
     bool isHttpResponse(llvm::Value *val);
     bool isHttpClientResponse(llvm::Value *val);
-    bool isJsonValue(llvm::Value *val);
     bool isThread(llvm::Value *val);
     bool isLock(llvm::Value *val);
     bool isRWLock(llvm::Value *val);
