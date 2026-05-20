@@ -171,6 +171,7 @@ add_library(ry_lib STATIC
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
+    src/runtime_any_typed_coll.cpp
     src/codegen_arc.cpp
     src/codegen_arc_cow.cpp
     src/codegen_call_runtime_internal.cpp
@@ -352,6 +353,7 @@ add_executable(ry_tests
     tests/test_coverage_runtime.cpp
     tests/test_dotenv.cpp
     tests/test_runtime_json.cpp
+    tests/test_runtime_json_any_panic.cpp
     tests/test_runtime_any.cpp
     tests/test_runtime_print.cpp
     tests/test_runtime_string.cpp

@@ -1,6 +1,7 @@
 #include "ry/runtime_json.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_any_typed_coll.hpp"
 #include "ry/runtime_list.hpp"
 #include "ry/runtime_string.hpp"
 #include "ry/runtime_http_types.hpp" // MapHeader + __ry_ht_rehash_str
@@ -550,6 +551,19 @@ static void stringify_any(const RyAny *v, std::string &out,
         case RyAnyTag::List: {
             void *hdr_ptr;
             memcpy(&hdr_ptr, v->data, sizeof(hdr_ptr));
+            // Element-type erasure (#1697): the `any` slot does not record
+            // whether the wrapped List is `List<any>` (16-byte RyAny stride)
+            // or a typed `List<T>` (native-T stride). Walking a `List<int>`
+            // as `RyAny[]` is OOB UB. The side-table records the source-level
+            // type name at wrap time (#1811); a hit means the user wrapped a
+            // typed collection and stringify cannot proceed.
+            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr)) {
+                fprintf(stderr,
+                    "stringify: any holds typed collection '%s' "
+                    "— use List<any> / Map<str, any> / Set<any> instead\n",
+                    coll_type);
+                exit(1);
+            }
             auto *hdr = static_cast<ListHeader *>(hdr_ptr);
             if (hdr->len == 0) { out += "[]"; break; }
             auto *items = reinterpret_cast<RyAny *>(hdr->data);
@@ -566,6 +580,16 @@ static void stringify_any(const RyAny *v, std::string &out,
         case RyAnyTag::Map: {
             void *hdr_ptr;
             memcpy(&hdr_ptr, v->data, sizeof(hdr_ptr));
+            // Map element-type erasure: only the value side strides — keys
+            // are always `char**`. A typed `Map<str, int>` walked as
+            // `Map<str, any>` reads 8-byte ints as 16-byte RyAny → OOB.
+            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr)) {
+                fprintf(stderr,
+                    "stringify: any holds typed collection '%s' "
+                    "— use List<any> / Map<str, any> / Set<any> instead\n",
+                    coll_type);
+                exit(1);
+            }
             auto *hdr = static_cast<MapHeader *>(hdr_ptr);
             if (hdr->len == 0) { out += "{}"; break; }
             auto *vals = reinterpret_cast<RyAny *>(hdr->vals);
@@ -585,6 +609,9 @@ static void stringify_any(const RyAny *v, std::string &out,
             break;
         }
         case RyAnyTag::Set:
+            // Set is never JSON-representable regardless of element type,
+            // so the side-table lookup would be redundant — keep the
+            // existing message which is already actionable.
             fprintf(stderr, "json stringify: Set is not representable in JSON\n");
             exit(1);
         case RyAnyTag::Record:

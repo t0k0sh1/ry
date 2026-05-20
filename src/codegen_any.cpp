@@ -167,6 +167,40 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // emitArcRetain so the increment is a no-op.
     if (isCollection) {
         auto *hdr = emitArcGetHeaderFromData(val);
+        // Element-type-erasure (#1697) means the stringify_any path cannot
+        // see whether the inner buffer uses 16-byte RyAny stride or a
+        // narrower native stride. For typed-non-any collections, record
+        // the source-level type name in a side-table keyed by the inner
+        // header pointer so `__ry_json_stringify_any` can panic with an
+        // actionable message instead of reading OOB (#1811).
+        bool typedNonAnyList = meta->list_elem && meta->list_elem != anyTy_;
+        bool typedNonAnyMapVal = meta->map_value && meta->map_value != anyTy_;
+        // Map keys collapse to `ptrTy_` for both `Map<str, V>` and
+        // `Map<List<_>, V>` / `Map<Map<_,_>, V>` / `Map<Set<_>, V>` under
+        // opaque pointers, so LLVM-type equality cannot pick `str` keys out.
+        // `stringify_any`'s Map arm reads `hdr->keys[i]` as `char**` and
+        // calls `stringByteLen(keys[i])` on it, which is OOB for `int` keys
+        // (8-byte int read as pointer) and for any non-`str` pointer key.
+        // Use the stamped source-level type name as the discriminator;
+        // require a non-empty name so unknown / unstamped cases keep their
+        // existing behavior (no false-positive register on legitimate
+        // `Map<str, any>` whose name happened to be lost).
+        bool typedNonStrMapKey = meta->map_key &&
+                                 !meta->map_key_type_name.empty() &&
+                                 meta->map_key_type_name != "str";
+        bool typedNonAnySet = meta->set_elem && meta->set_elem != anyTy_;
+        if (typedNonAnyList || typedNonAnyMapVal || typedNonStrMapKey ||
+            typedNonAnySet) {
+            std::string typeName = buildTypeNameFromMeta(val);
+            if (!typeName.empty()) {
+                auto *nameGlobal = cachedGlobalString(typeName, ".any.typed_coll.name");
+                llvm::FunctionType *regTy = llvm::FunctionType::get(
+                    builder_.getVoidTy(), {ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee regFn = mod_->getOrInsertFunction(
+                    "__ry_any_register_typed_coll", regTy);
+                builder_.CreateCall(regFn, {val, nameGlobal});
+            }
+        }
         emitArcRetain(hdr);
     } else if (isStringValue(val)) {
         auto *hdr = emitStrGetHeaderFromData(val);

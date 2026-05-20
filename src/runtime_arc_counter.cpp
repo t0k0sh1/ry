@@ -32,6 +32,15 @@ void *__ry_arc_alloc_counted(int64_t total_size) {
 
 void __ry_arc_free_counted(void *header_ptr) {
     if (!header_ptr) return;
+    // Historical note (#1811): an earlier draft of the typed-collection
+    // side-table called `__ry_any_unregister_typed_coll(data_ptr)` here so
+    // entries would be erased in sync with the collection header's free.
+    // That call deterministically triggered a Linux glibc heap-check
+    // crash in the C++ test suite even though local ASan/UBSan/TSan were
+    // clean. The side-table now uses a register-only design (overwrite on
+    // re-register via `insert_or_assign`) so this free-path hook is no
+    // longer needed — see `src/runtime_any_typed_coll.cpp` for the
+    // false-positive caveat.
     __atomic_fetch_sub(&g_arc_live_count, 1, __ATOMIC_RELAXED);
     std::free(header_ptr);
 }
