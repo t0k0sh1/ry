@@ -291,15 +291,17 @@ extern "C" const char *__ry_io_file_read_all(void *handle) {
         setLastError("readAll: file handle is not open");
         return nullptr;
     }
-    // Seek-based fast path for regular files
-    if (fseek(h->fp, 0, SEEK_END) == 0) {
-        long size = ftell(h->fp);
+    // Seek-based fast path for regular files: read from current cursor to EOF
+    long start = ftell(h->fp);
+    if (start >= 0 && fseek(h->fp, 0, SEEK_END) == 0) {
+        long end = ftell(h->fp);
+        long size = end - start;
         if (size > MAX_READ_SIZE) {
             setLastError("readAll: file too large (%ld bytes, max %ld)", size, MAX_READ_SIZE);
             return nullptr;
         }
         if (size >= 0) {
-            fseek(h->fp, 0, SEEK_SET);
+            fseek(h->fp, start, SEEK_SET);
             char *buf = (char *)checked_malloc((size_t)size + 1);
             size_t nread = fread(buf, 1, (size_t)size, h->fp);
             const char *result = makeString(buf, nread);

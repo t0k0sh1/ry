@@ -24,30 +24,46 @@ static const char *ryStr(const char *s) {
     return makeString(s, strlen(s));
 }
 
+// Release a Ry str handle produced by makeString. The test harness has no
+// ARC codegen wrapping these, so the StringHeader slot must be released
+// manually to keep the test memory-clean under ASan.
+static void freeRyStr(const char *s) {
+    if (s) freeStringSlot(const_cast<char *>(s));
+}
+
 static std::string tmpPath(const char *suffix) {
     return std::string("/tmp/ry_rt_io_file_") + suffix;
 }
 
 TEST(RuntimeIoFileTest, OpenNullPathReturnsNull) {
-    void *h = __ry_io_file_open(nullptr, ryStr("r"));
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(nullptr, mode);
     EXPECT_EQ(h, nullptr);
+    freeRyStr(mode);
 }
 
 TEST(RuntimeIoFileTest, OpenNonexistentPathReturnsNull) {
     const char *path = ryStr("/tmp/ry_rt_io_no_such_file_xyzzy.txt");
-    void *h = __ry_io_file_open(path, ryStr("r"));
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
     EXPECT_EQ(h, nullptr);
     const char *err = __ry_get_last_error();
     EXPECT_NE(err, nullptr);
     EXPECT_NE(std::strstr(err, "open"), nullptr);
+    freeRyStr(path);
+    freeRyStr(mode);
 }
 
 TEST(RuntimeIoFileTest, OpenInvalidModeReturnsNull) {
     std::string p = tmpPath("badmode.txt");
     FILE *f = fopen(p.c_str(), "w");
     if (f) fclose(f);
-    void *h = __ry_io_file_open(ryStr(p.c_str()), ryStr("z"));
+    const char *path = ryStr(p.c_str());
+    const char *mode = ryStr("z");
+    void *h = __ry_io_file_open(path, mode);
     EXPECT_EQ(h, nullptr);
+    freeRyStr(path);
+    freeRyStr(mode);
     std::remove(p.c_str());
 }
 
@@ -55,19 +71,30 @@ TEST(RuntimeIoFileTest, OpenWriteReadRoundtrip) {
     std::string p = tmpPath("rw.txt");
     std::remove(p.c_str());
 
-    void *hw = __ry_io_file_open(ryStr(p.c_str()), ryStr("w"));
+    const char *path_w = ryStr(p.c_str());
+    const char *mode_w = ryStr("w");
+    void *hw = __ry_io_file_open(path_w, mode_w);
     ASSERT_NE(hw, nullptr);
-    EXPECT_EQ(__ry_io_file_write_text(hw, ryStr("hello")), 0);
+    const char *payload = ryStr("hello");
+    EXPECT_EQ(__ry_io_file_write_text(hw, payload), 0);
     __ry_io_file_close(hw);
     arc_free(hw);
+    freeRyStr(path_w);
+    freeRyStr(mode_w);
+    freeRyStr(payload);
 
-    void *hr = __ry_io_file_open(ryStr(p.c_str()), ryStr("r"));
+    const char *path_r = ryStr(p.c_str());
+    const char *mode_r = ryStr("r");
+    void *hr = __ry_io_file_open(path_r, mode_r);
     ASSERT_NE(hr, nullptr);
     const char *content = __ry_io_file_read_all(hr);
     ASSERT_NE(content, nullptr);
-    EXPECT_EQ(std::strncmp(content, "hello", 5), 0);
+    EXPECT_STREQ(content, "hello");
     __ry_io_file_close(hr);
     arc_free(hr);
+    freeRyStr(path_r);
+    freeRyStr(mode_r);
+    freeRyStr(content);
 
     std::remove(p.c_str());
 }
@@ -78,7 +105,9 @@ TEST(RuntimeIoFileTest, ReadLineEofOnEmptyFile) {
     ASSERT_NE(f, nullptr);
     fclose(f);
 
-    void *h = __ry_io_file_open(ryStr(p.c_str()), ryStr("r"));
+    const char *path = ryStr(p.c_str());
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
     ASSERT_NE(h, nullptr);
     const char *line = nullptr;
     int64_t status = __ry_io_file_read_line(h, &line);
@@ -86,6 +115,8 @@ TEST(RuntimeIoFileTest, ReadLineEofOnEmptyFile) {
     EXPECT_EQ(line, nullptr);
     __ry_io_file_close(h);
     arc_free(h);
+    freeRyStr(path);
+    freeRyStr(mode);
     std::remove(p.c_str());
 }
 
@@ -96,18 +127,20 @@ TEST(RuntimeIoFileTest, ReadLineReturnsLines) {
     fputs("alpha\nbeta\n", f);
     fclose(f);
 
-    void *h = __ry_io_file_open(ryStr(p.c_str()), ryStr("r"));
+    const char *path = ryStr(p.c_str());
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
     ASSERT_NE(h, nullptr);
 
     const char *line1 = nullptr;
     EXPECT_EQ(__ry_io_file_read_line(h, &line1), 0);
     ASSERT_NE(line1, nullptr);
-    EXPECT_EQ(std::strncmp(line1, "alpha", 5), 0);
+    EXPECT_STREQ(line1, "alpha");
 
     const char *line2 = nullptr;
     EXPECT_EQ(__ry_io_file_read_line(h, &line2), 0);
     ASSERT_NE(line2, nullptr);
-    EXPECT_EQ(std::strncmp(line2, "beta", 4), 0);
+    EXPECT_STREQ(line2, "beta");
 
     const char *eof_line = nullptr;
     EXPECT_EQ(__ry_io_file_read_line(h, &eof_line), 1);  // EOF
@@ -115,6 +148,10 @@ TEST(RuntimeIoFileTest, ReadLineReturnsLines) {
 
     __ry_io_file_close(h);
     arc_free(h);
+    freeRyStr(path);
+    freeRyStr(mode);
+    freeRyStr(line1);
+    freeRyStr(line2);
     std::remove(p.c_str());
 }
 
@@ -124,10 +161,14 @@ TEST(RuntimeIoFileTest, DoubleCleanupIsSafe) {
     ASSERT_NE(f, nullptr);
     fclose(f);
 
-    void *h = __ry_io_file_open(ryStr(p.c_str()), ryStr("r"));
+    const char *path = ryStr(p.c_str());
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
     ASSERT_NE(h, nullptr);
     __ry_io_file_cleanup(h);
     __ry_io_file_cleanup(h);  // second call must be a no-op
     arc_free(h);
+    freeRyStr(path);
+    freeRyStr(mode);
     std::remove(p.c_str());
 }

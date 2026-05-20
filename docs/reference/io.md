@@ -40,7 +40,7 @@ from io import readText, writeText, exists
 `File` is an opaque resource handle managed by ARC. The file is closed automatically when the handle goes out of scope; calling `close` explicitly allows earlier release.
 
 > **Note**: `readAll` / `readLine` / `writeText` without a `File` first argument route to the path-based or stdin variants above. The compiler dispatches on the argument type at compile time.
-
+>
 > **Future**: `using` automatic release (#1700-B) and `lines()` iterator (#1700-C) are tracked as separate issues.
 
 ### Byte Conversions

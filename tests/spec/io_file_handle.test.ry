@@ -29,6 +29,16 @@ fn fileHandleTests():
     expect(open("/tmp/ry_fh_badmode.txt", "z")).toBeErr()
     deleteFile("/tmp/ry_fh_badmode.txt")
 
+  @it("should return Err when path contains an embedded NUL byte")
+  fn shouldReturnErrWhenPathContainsEmbeddedNul():
+    expect(open("/tmp/ry_fh_nul\0path.txt", "r")).toBeErr()
+
+  @it("should return Err when mode contains an embedded NUL byte")
+  fn shouldReturnErrWhenModeContainsEmbeddedNul():
+    writeText("/tmp/ry_fh_nul_mode.txt", "x")
+    expect(open("/tmp/ry_fh_nul_mode.txt", "r\0")).toBeErr()
+    deleteFile("/tmp/ry_fh_nul_mode.txt")
+
   @it("should write and read back via file handle")
   fn shouldWriteAndReadBackViaFileHandle():
     case open("/tmp/ry_fh_write.txt", "w"):

@@ -302,6 +302,8 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
             return emitFileWriteText(cg, e, arg0);
         // Non-File: inline str-based writeText (arg0 already emitted)
         llvm::Value *content = cg.emitExpr(*e.args[1]);
+        if (!cg.isStringValue(arg0) || !cg.isStringValue(content))
+            cg.codegenError("writeText(path, content) requires str arguments");
         auto fn = cg.mod_->getOrInsertFunction("__ry_write_text",
             llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
