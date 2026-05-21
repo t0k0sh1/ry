@@ -103,7 +103,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Extended `any` record unwrap to admit subtype projection. Given
   `record Dog < Animal: ...`, `let a: Animal = anyHoldingDog` now
   succeeds and reads the Animal-prefix fields from the boxed `Dog`,
-  rather than trapping as in v0.0.25. `RyRecordDescriptor` gains a
+  rather than trapping as in v0.0.24. `RyRecordDescriptor` gains a
   fourth pointer `parent_desc` that links each record's descriptor to
   its parent's descriptor (or `null` for root records); the unwrap site
   walks this chain at runtime via a new
