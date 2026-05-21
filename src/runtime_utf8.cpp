@@ -71,7 +71,7 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
     }
     // Safety net: codegen should have caught this via emitBoundsCheck
     fprintf(stderr, "runtime error: charAt() index out of bounds\n");
-    exit(1);
+    ry_runtime_trap_exit();
 }
 
 char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
@@ -92,7 +92,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
         fprintf(stderr,
                 "runtime error: index %lld out of bounds for string of length %lld\n",
                 (long long)i, (long long)idx);
-        exit(1);
+        ry_runtime_trap_exit();
     }
 
     // Negative index: count all codepoints to resolve wrap.
@@ -106,7 +106,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
         fprintf(stderr,
                 "runtime error: index %lld out of bounds for string of length %lld\n",
                 (long long)i, (long long)count);
-        exit(1);
+        ry_runtime_trap_exit();
     }
     int64_t resolved = i + count;
 

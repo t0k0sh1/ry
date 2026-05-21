@@ -1,4 +1,5 @@
 #include "ry/runtime_json.hpp"
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_any_typed_coll.hpp"
@@ -533,7 +534,7 @@ static void stringify_any(const RyAny *v, std::string &out,
             if (!std::isfinite(fv)) {
                 fprintf(stderr,
                         "json stringify: non-finite float is not representable in JSON\n");
-                exit(1);
+                ry_runtime_trap_exit();
             }
             char buf[64];
             snprintf(buf, sizeof(buf), "%.17g", fv);
@@ -562,7 +563,7 @@ static void stringify_any(const RyAny *v, std::string &out,
                     "stringify: any holds typed collection '%s' "
                     "— use List<any> / Map<str, any> / Set<any> instead\n",
                     coll_type);
-                exit(1);
+                ry_runtime_trap_exit();
             }
             auto *hdr = static_cast<ListHeader *>(hdr_ptr);
             if (hdr->len == 0) { out += "[]"; break; }
@@ -588,7 +589,7 @@ static void stringify_any(const RyAny *v, std::string &out,
                     "stringify: any holds typed collection '%s' "
                     "— use List<any> / Map<str, any> / Set<any> instead\n",
                     coll_type);
-                exit(1);
+                ry_runtime_trap_exit();
             }
             auto *hdr = static_cast<MapHeader *>(hdr_ptr);
             if (hdr->len == 0) { out += "{}"; break; }
@@ -613,13 +614,13 @@ static void stringify_any(const RyAny *v, std::string &out,
             // so the side-table lookup would be redundant — keep the
             // existing message which is already actionable.
             fprintf(stderr, "json stringify: Set is not representable in JSON\n");
-            exit(1);
+            ry_runtime_trap_exit();
         case RyAnyTag::Record:
             fprintf(stderr, "json stringify: record is not representable in JSON\n");
-            exit(1);
+            ry_runtime_trap_exit();
         case RyAnyTag::Enum:
             fprintf(stderr, "json stringify: enum is not representable in JSON\n");
-            exit(1);
+            ry_runtime_trap_exit();
     }
 }
 

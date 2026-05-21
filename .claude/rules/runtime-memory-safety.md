@@ -309,18 +309,31 @@ if the crash re-appears, revert to the diagnostic checklist above.
 
 ---
 
-### Ry runtime panics bypass C++ exceptions — they `fprintf + exit(1)`
+### Ry runtime panics bypass C++ exceptions — they `fprintf + _Exit(1)`
 
-**Source**: #828
-**Tags**: panic, runtime, exception, thread, gotcha
+**Source**: #828, #1838 (2026-05-21 codegen trap path), #1840 (2026-05-21 runtime trap-path unification)
+**Tags**: panic, runtime, exception, thread, trap-path, _Exit, fflush, atexit, managed-static, gotcha
 
 **Rule**: Every `CodeGen::emitRuntimeError` call site emits IR that
-runs `fprintf(stderr, ...)` followed by `exit(1)` +
-`CreateUnreachable` (`src/codegen_call_user.cpp:600-618`). Ry's user-level
-panics (divide-by-zero, array OOB, range/contract violations,
-integer overflow, etc.) therefore **terminate the entire process
-immediately** — they do not propagate as C++ exceptions. Any
-feature that plans to "catch a worker panic and report it as a
+runs `fprintf(stderr, ...)`, then `fflush(stdout)` + `fflush(stderr)`,
+followed by `_Exit(1)` + `CreateUnreachable`
+(`src/codegen_call_user.cpp:740-778`). Ry's user-level panics
+(divide-by-zero, array OOB, range/contract violations, integer
+overflow, etc.) therefore **terminate the entire process immediately
+via `_Exit`** — they do not propagate as C++ exceptions, and they
+bypass `atexit` handlers (including LLVM `ManagedStatic` destructors).
+
+The C++ runtime trap-path counterpart — used when JIT'd code calls
+out to a runtime function that panics (e.g. `__ry_utf8_char_at`
+out-of-bounds, JSON parse error, ARC misuse) — is the shared helper
+`ry_runtime_trap_exit()` in `include/ry/runtime_alloc.hpp`. It does
+the same `fflush(stdout); fflush(stderr); std::_Exit(1);`. Any new
+trap path emitted from runtime C++ MUST call this helper, never
+`exit(1)` or `std::exit(1)`. The `lint` job in `.github/workflows/ci.yml`
+("Check for banned direct exit() calls in runtime") blocks
+regressions automatically.
+
+Any feature that plans to "catch a worker panic and report it as a
 value" (e.g. `threadJoin(t) -> Err` for a panicking worker,
 `blockOn(task) -> Err` for a panicking async body) cannot rely on
 existing defensive `try { ... } catch (std::exception &)` blocks
@@ -329,13 +342,33 @@ that escape from LLVM-generated code, which never happens for
 user panics. The existing catch in `__ry_thread_spawn`
 (`src/runtime_thread.cpp`) is dormant defensive code, not an
 active error-propagation path. Fixing this requires refactoring
-`emitRuntimeError` to `throw std::runtime_error(...)` + installing
-a top-level catch in `ry run` / `ry test` — tracked in #880.
-Before writing tests that trigger a panic and expect
-`Err(error_msg)`, verify that the panic *actually* throws a C++
-exception; the only current throw path from runtime code is
+both `emitRuntimeError` and `ry_runtime_trap_exit` to a throw-based
+path + installing a top-level catch in `ry run` / `ry test` —
+tracked in #880. Before writing tests that trigger a panic and
+expect `Err(error_msg)`, verify that the panic *actually* throws a
+C++ exception; the only current throw path from runtime code is
 `__ry_task_join` double-join (`src/runtime_parallel.cpp:292`) and a
 handful of compile-time lexer/loader errors.
+
+**Why `_Exit` and not `exit`** (#1838): `exit(1)` invokes the
+`atexit` chain, which on Linux glibc runs LLVM `ManagedStatic`
+destructors (`PassRegistry::~PassRegistry`, etc.) on a heap still
+referenced by the JIT'd module that triggered the trap.
+`free(): invalid pointer` SIGABRT replaces the expected
+`ExitedWithCode(1)` before death-test assertions can observe it.
+`_Exit` bypasses `atexit` entirely; no static destructor runs.
+ASan's allocator interceptor masks the issue, so the symptom only
+reproduces on default (non-ASan) Linux builds — macOS libSystem
+malloc tolerates the same pattern silently. The explicit
+`fflush(stdout); fflush(stderr)` immediately before `_Exit` recovers
+the libc buffer flush that `exit` would have done via `atexit`, so
+panic messages and any preceding `print` output are not lost.
+
+**Why `llvm_shutdown` / RAII don't apply**: those would only help on
+the *normal* exit path (process returns from `main`). The trap path
+runs **inside** a JIT'd thread that has no way to unwind back to
+`main` — `_Exit` from within the JIT is the only correct semantic
+for "abort this process immediately without disturbing the JIT heap".
 
 ### `ListHeader` / `IOListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
 
@@ -460,10 +493,10 @@ check to the codegen emitter.
 - Result-returning functions: call `setLastError("fn: argument contains an embedded NUL byte")` before returning `nullptr` / `1`.
 - This matches the split used in `src/runtime_io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
 
-### Forbidden heap allocation functions in new C++ code
+### Forbidden heap allocation functions and trap-path exits in new C++ code
 
-**Source**: #1498 (migrated from AGENTS.md, 2026-05-02)
-**Tags**: runtime, memory-safety, malloc, oom, checked_malloc, forbidden-functions, lint
+**Source**: #1498 (migrated from AGENTS.md, 2026-05-02), #1840 (2026-05-21 trap-path unification)
+**Tags**: runtime, memory-safety, malloc, oom, checked_malloc, forbidden-functions, lint, exit, _Exit, trap-path
 
 **Rule**: Use the safe wrappers from `include/ry/runtime_alloc.hpp`.
 The following functions must **not** be called directly in new code:
@@ -476,6 +509,7 @@ The following functions must **not** be called directly in new code:
 | `strdup` | `checked_strdup` | OOM → null |
 | `strndup` | `checked_strndup` | OOM → null |
 | `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | integer overflow → heap buffer overflow |
+| `exit` / `std::exit` (in `src/runtime_*.cpp`) | `ry_runtime_trap_exit()` | `exit()` runs `atexit` → LLVM `ManagedStatic` destructors on JIT-live heap → SIGABRT (#1838) |
 
 Additional rules:
 - On OOM, call `oom_abort(n)` with the requested size and abort
@@ -483,5 +517,15 @@ Additional rules:
 - Before passing external input (HTTP request body, JSON parse result,
   etc.) to `strcmp` / `strlen`, check for NULL.
 - The CI `lint` job detects direct calls to forbidden functions and
-  auto-blocks new additions.
+  auto-blocks new additions. Two grep-based steps live in
+  `.github/workflows/ci.yml`: "Check for banned unsafe allocation
+  functions" (scans `src/`+`include/` for raw `malloc`/`realloc`/etc.)
+  and "Check for banned direct exit() calls in runtime" (scans
+  `src/runtime_*.cpp` for direct `exit(...)` / `std::exit(...)`).
+- The `exit` ban is scoped to `src/runtime_*.cpp` deliberately: user-visible
+  exit-builtin codegen (`src/codegen_call_user.cpp` `getStdlibExit`,
+  `src/codegen_match.cpp:1172`) and shutdown paths in `main.cpp` still
+  use `exit()` legitimately. The `_Exit`, `_exit`, and `quick_exit`
+  forms are also allowed everywhere — the regex word-boundary in the
+  lint step doesn't match those identifiers.
 

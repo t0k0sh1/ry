@@ -1,4 +1,5 @@
 #include "ry/runtime_regex.hpp"
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_regex_error_sentinels.hpp"
 #include "ry/runtime_error.hpp"
 #include "ry/runtime_regex_internal.hpp"
@@ -232,7 +233,7 @@ public:
         }
         // unreachable
         fprintf(stderr, "regex internal error: unknown node kind\n");
-        exit(1);
+        ry_runtime_trap_exit();
     }
 
     void patch(NFAFragment &frag, NFAState *target) {

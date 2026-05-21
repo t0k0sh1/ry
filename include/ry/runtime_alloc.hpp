@@ -27,6 +27,15 @@ namespace ry {
     abort();
 }
 
+// JIT trap path: bypass atexit / static destructors to avoid the LLVM
+// ManagedStatic double-free observed on JIT teardown (#1838). stdio
+// buffers are flushed explicitly so panic messages are not lost.
+[[noreturn]] inline void ry_runtime_trap_exit() {
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::_Exit(1);
+}
+
 inline void *checked_malloc(size_t n) {
     void *p = malloc(n);
     if (!p && n > 0) oom_abort(n);
