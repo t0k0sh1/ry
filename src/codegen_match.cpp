@@ -802,7 +802,7 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
                 // observe a freed handle (#1818 PR review).
                 if (pattern_binding_in_guard_depth_ > 0) {
                     auto *hdr = emitArcGetHeaderFromData(val);
-                    emitArcRetain(hdr, /*atomic=*/false);
+                    emitArcRetain(hdr, isArcAtomic(val));
                 }
                 markArcManaged(bindAlloca);
                 resource_managed_vars_[bindAlloca] = rk;
