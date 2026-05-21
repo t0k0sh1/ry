@@ -169,6 +169,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedArcTaggedUnion_ = std::move(cg_.arc_tagged_union_vars_);
     savedArcAnyManaged_ = std::move(cg_.arc_any_managed_vars_);
     savedIteratorMallocs_ = std::move(cg_.iterator_malloc_stack_);
+    savedIteratorReleaseHooks_ = std::move(cg_.iterator_release_hooks_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -192,6 +193,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.arc_tagged_union_vars_.clear();
     cg_.arc_any_managed_vars_.clear();
     cg_.iterator_malloc_stack_.clear();
+    cg_.iterator_release_hooks_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -213,6 +215,7 @@ CodeGen::FnScope::~FnScope() noexcept {
     cg_.arc_tagged_union_vars_ = std::move(savedArcTaggedUnion_);
     cg_.arc_any_managed_vars_ = std::move(savedArcAnyManaged_);
     cg_.iterator_malloc_stack_ = std::move(savedIteratorMallocs_);
+    cg_.iterator_release_hooks_ = std::move(savedIteratorReleaseHooks_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
@@ -435,6 +438,7 @@ void CodeGen::pushScope() {
     scope_stack_.emplace_back();
     immutable_scope_stack_.emplace_back();
     iterator_malloc_stack_.emplace_back();
+    iterator_release_hooks_.emplace_back();
     if (fn_nesting_depth_ > 0)
         fn_scope_stack_.emplace_back();
 }
@@ -459,6 +463,7 @@ void CodeGen::popScope() {
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
     iterator_malloc_stack_.pop_back();
+    iterator_release_hooks_.pop_back();
     if (fn_nesting_depth_ > 0 && !fn_scope_stack_.empty())
         fn_scope_stack_.pop_back();
 }
@@ -510,6 +515,18 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             }
             if (!arc_managed_vars_.count(alloca)) continue;
             emitArcReleaseVar(name, alloca);
+        }
+        // Iterator-retained resources (#1818): release ARC handles that the
+        // iterator state holds (e.g. io.File.lines() retains the File handle).
+        // Hooks store the data ptr directly so order vs the state free below
+        // is irrelevant, but we emit them first to mirror the conventional
+        // "release contents, then free container" pattern.
+        auto &iterHooks = iterator_release_hooks_[i - 1];
+        for (auto &hook : iterHooks) {
+            auto *hdr = emitArcGetHeaderFromData(hook.data_ptr);
+            bool atomic = isArcAtomic(hook.data_ptr);
+            emitArcRelease(hdr, atomic,
+                           getOrCreateResourceDestructor(hook.resource_kind));
         }
         auto &iterMallocs = iterator_malloc_stack_[i - 1];
         if (!iterMallocs.empty()) {

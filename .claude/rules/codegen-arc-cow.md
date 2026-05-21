@@ -134,6 +134,127 @@ init runs the destructor on a partially-initialized binding. The
 load-bearing nature of this ordering is documented at
 `src/codegen_stmt_loop.cpp:834-837`.
 
+### Resource-handle `close()` is decoupled from ARC release so live iterators survive
+
+**Source**: #1818 (2026-05-21, feat — `lines()` iterator)
+**Tags**: codegen, resource, close, arc, iterator, lifetime, file
+
+**Rule**: For `File` and any future resource that exposes a user-facing
+`close(handle)` together with a long-lived iterator over the same
+handle (`lines(f) -> Iterator<str>`), do **not** route `close()` through
+`emitResourceFree`. `emitResourceFree` combines the runtime
+cleanup call (`__ry_io_file_cleanup`) with an immediate
+`__ry_arc_release` on the ARC header — that releases the box even
+though a live `Iterator<File>` is still pointing at it via its `state`
+field. The next iteration loads `fp` from freed memory → heap-UAF.
+
+Instead, `close(File)` must call only the user-facing
+`__ry_io_file_close` runtime helper, which sets
+`IoFileHandle::fp = nullptr` inside the still-alive ARC box. The
+File's ARC header is released exactly once at scope exit (or when
+the last alias drops). The `lines()` iterator's `next_fn` checks
+`fp == nullptr` at the top of every step and terminates the
+iteration cleanly (no error raised — Python-compatible).
+
+**Why**: Tcp resources (`TcpListener` / `TcpStream` / `TlsStream`)
+historically used `emitResourceFree` because they have no
+long-lived iterator companion — close = the end. File is the first
+resource where close and iterate must coexist, so the contract
+changes shape: close = invalidate the handle inside the box; ARC
+release = drop the box. Bundling the two breaks iterator safety.
+
+**How to apply**:
+- `src/codegen_call.cpp` — `close(File)` dispatch emits a direct
+  call to `__ry_io_file_close` (returns Unit), not
+  `emitResourceFree`.
+- `src/runtime_io.cpp` — keep `__ry_io_file_close` (user-facing,
+  `fp = nullptr`) and `__ry_io_file_cleanup` (ARC destructor,
+  `fclose` + `arc_free`) as separate functions. Never collapse
+  them. The destructor calls `fclose` only if `fp != nullptr`, so
+  close-then-destructor is correct and idempotent.
+- New resources following this pattern must adopt the same
+  split as soon as a streaming iterator API lands. Until then,
+  `emitResourceFree` is acceptable for fire-and-forget close
+  (no iterator companion).
+
+### Resource handles bound through pattern matching need explicit `resource_managed_vars_` registration
+
+**Source**: #1818 (2026-05-21, feat — `lines()` iterator UAF debug)
+**Tags**: codegen, resource, pattern, arc, file, ok-bind, using-alias
+
+**Rule**: When a resource handle (`File`, `TcpListener`, etc.) is
+extracted from a `Result<Resource, Error>` via `Ok(f):` (or similar
+pattern), `emitPatternBindingArc` must (a) call `markArcManaged`
+on the bind alloca, (b) insert into `resource_managed_vars_`
+keyed by the alloca with the kind looked up via
+`ResourceKindRegistry::lookupByTypeName(resolved)`, and (c) call
+`addResourceKind(bindAlloca, rk)`. Without all three,
+`emitScopeCleanupToDepth` will not invoke the resource cleanup
+function on scope exit, and `nullifyResourceVar` (called from
+`close(f)`) will be a no-op (only zeros allocas in
+`resource_managed_vars_`).
+
+A subtle complication: `Result<File, Error>` is **not** in
+`arc_tagged_union_vars_` because `fieldTypeIsArcManaged("File")`
+returns false (File is a resource, not an ARC-payload struct).
+That means the subject of the `case` does NOT emit an ARC release
+at scope exit. Consequently, `emitPatternBindingArc` for File must
+NOT emit a balancing `emitArcRetain` — the strong=1 from
+`__ry_io_file_open` transfers directly to the bind through the
+ExtractValue without a refcount adjustment. Adding a retain in
+that path leaks.
+
+**Why**: The `arc_tagged_union_vars_` registration filter and the
+`emitPatternBindingArc` retain logic must agree on whether the
+subject will release at scope end. Mismatches cause leak (retain
+without release) or double-free (no retain but the subject did
+release).
+
+**How to apply**:
+- In `emitPatternBindingArc` (path 2a — record-typed bind), when
+  `resolved` is a known resource type name (`File`, `TcpListener`,
+  `TcpStream`, `TlsStream`), look up the kind via
+  `ResourceKindRegistry`, register all three side-tables, and
+  return WITHOUT emitting retain.
+- Aliasing the bind via `using fh = f` then requires a one-time
+  retain at the `using` site (next entry), because `popScope`
+  will release the alias and would underflow without the retain.
+
+### `using <alias> = <variable>` retains when the source is a tracked binding
+
+**Source**: #1818 (2026-05-21, feat — `lines()` iterator UAF debug)
+**Tags**: codegen, using, alias, arc, resource, retain
+
+**Rule**: `using fh = f` where `f` is already in
+`resource_managed_vars_` (e.g. `f` came from `Ok(f):` and was
+registered per the previous entry) MUST emit a one-time
+`emitArcRetain` on the source's ARC header before storing it into
+the alias alloca. Without this retain, the alias's scope-end
+release runs `__ry_io_file_cleanup` on a handle that the source
+still holds; when the source then scope-exits, it releases a
+zero-refcount box → double-free.
+
+The retain is conditional: `using f = open(...)` (the fresh-temp
+case) does NOT need a retain because the runtime allocator already
+returns strong=1 and the alias is the sole owner. Only the
+variable-source case adds an aliasing reference.
+
+**Why**: The `using` statement's contract is "scope-bound release".
+For fresh temps the source is anonymous, so the alias inherits the
+sole ownership and one release is correct. For aliased
+variable-source bindings, both the source and the alias must
+release independently, requiring one retain.
+
+**How to apply**: In `emitStmt(UsingStmt)`
+(`src/codegen_stmt_loop.cpp`), after evaluating the init expression
+but before any pointer store, check whether the init was a
+`VariableExpr` whose alloca is in `resource_managed_vars_`. If yes,
+call `emitArcGetHeaderFromData(val)` + `emitArcRetain(hdr, /*atomic=*/false)`.
+Skip the retain for any other init shape (call expression, field
+access, etc.). When generalising to other resource kinds, keep this
+predicate purely structural — do not rely on the resource kind
+itself; only on whether the source is a tracked variable.
+
 ### `threadSpawn` thunks emit no ARC ops; `parallel_for_depth_` is the atomic-ARC scope marker
 
 `threadSpawn` thunks do NOT retain/release captures — env stores raw pointer copies and the thunk's `FnScope` is destroyed at codegen without `popScope()`. Caller MUST call `threadJoin` before the captured value's owning scope exits. `parallel_for_depth_` counter (`isArcAtomic() → atomicrmw seqcst`) covers ARC ops emitted directly inside `@parallel for` thunk bodies; it does NOT propagate to helper-function calls. Decision: keep the scope-counter design; whole-program "may cross threads" analysis was rejected as too expensive.

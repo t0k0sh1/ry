@@ -67,3 +67,7 @@ fn writeText(f: File, s: str) -> Result<Unit, Error>
 @public
 @native("io")
 fn close(f: File) -> Unit
+
+@public
+@native("io")
+fn lines(f: File) -> Iterator<str>

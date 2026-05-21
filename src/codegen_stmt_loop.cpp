@@ -861,6 +861,24 @@ void CodeGen::emitStmt(std::unique_ptr<UsingStmt> &s) {
     resource_managed_vars_[ptr] = rk;
     propagateMetaWide(val, ptr);
 
+    // Alias semantics: retain when the source is itself a tracked binding
+    // (e.g. `using fh = f` where f came from `Ok(f)`). Without the retain,
+    // the source's scope-end release would underflow the strong count and
+    // double-free. Fresh temps (`using f = open(...)`) are already at
+    // strong=1 from the runtime alloc, so no retain is needed.
+    if (auto *varExpr = std::get_if<VariableExpr>(&s->value->data)) {
+        if (auto *srcAlloca = findVar(varExpr->name)) {
+            if (resource_managed_vars_.count(srcAlloca)) {
+                auto *hdr = emitArcGetHeaderFromData(val);
+                // Match the ARC mode of the surrounding scope so a
+                // @parallel-for worker (atomic ARC) does not race the
+                // scope-end release. isArcAtomic falls back to the worker
+                // scope counter when no per-value flag is set.
+                emitArcRetain(hdr, isArcAtomic(val));
+            }
+        }
+    }
+
     for (auto &stmt : s->body)
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
 

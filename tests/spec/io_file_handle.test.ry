@@ -1,6 +1,6 @@
 from testing import it, describe, expect, fail
 
-from io import open, readAll, readLine, writeText, close, deleteFile
+from io import open, readAll, readLine, writeText, close, deleteFile, lines
 
 @describe("file handle API")
 fn fileHandleTests():
@@ -117,6 +117,98 @@ fn fileHandleTests():
       Err(e):
         fail("open failed: " + e.message)
     deleteFile("/tmp/ry_fh_lines.txt")
+
+  @it("should iterate lines via lines() iterator")
+  fn shouldIterateLinesViaLinesIterator():
+    writeText("/tmp/ry_fh_lines_iter.txt", "alpha\nbeta\ngamma")
+    case open("/tmp/ry_fh_lines_iter.txt", "r"):
+      Ok(f):
+        gotLines: List<str> = []
+        for line in lines(f):
+          append!(gotLines, line)
+        expect(gotLines).toEq(["alpha", "beta", "gamma"])
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_iter.txt")
+
+  @it("should iterate lines() with trailing newline")
+  fn shouldIterateLinesWithTrailingNewline():
+    writeText("/tmp/ry_fh_lines_trail.txt", "one\ntwo\n")
+    case open("/tmp/ry_fh_lines_trail.txt", "r"):
+      Ok(f):
+        gotLines: List<str> = []
+        for line in lines(f):
+          append!(gotLines, line)
+        expect(gotLines).toEq(["one", "two"])
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_trail.txt")
+
+  @it("should iterate empty file with lines() yielding nothing")
+  fn shouldIterateEmptyFileWithLines():
+    writeText("/tmp/ry_fh_lines_empty.txt", "")
+    case open("/tmp/ry_fh_lines_empty.txt", "r"):
+      Ok(f):
+        count = 0
+        for line in lines(f):
+          count = count + 1
+        expect(count).toEq(0)
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_empty.txt")
+
+  @it("should continue iteration across two lines() calls on the same file")
+  fn shouldContinueAcrossTwoLinesCalls():
+    writeText("/tmp/ry_fh_lines_cont.txt", "a\nb\nc\nd")
+    case open("/tmp/ry_fh_lines_cont.txt", "r"):
+      Ok(f):
+        first: List<str> = []
+        nTaken = 0
+        for line in lines(f):
+          append!(first, line)
+          nTaken = nTaken + 1
+          if nTaken >= 2:
+            break
+        expect(first).toEq(["a", "b"])
+        rest: List<str> = []
+        for line in lines(f):
+          append!(rest, line)
+        expect(rest).toEq(["c", "d"])
+        close(f)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_cont.txt")
+
+  @it("should yield no lines after the file is closed")
+  fn shouldYieldNoLinesAfterClose():
+    writeText("/tmp/ry_fh_lines_closed.txt", "x\ny")
+    case open("/tmp/ry_fh_lines_closed.txt", "r"):
+      Ok(f):
+        close(f)
+        count = 0
+        for line in lines(f):
+          count = count + 1
+        expect(count).toEq(0)
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_closed.txt")
+
+  @it("should auto-close file via using when iterating with lines()")
+  fn shouldAutoCloseFileViaUsingWithLines():
+    writeText("/tmp/ry_fh_lines_using.txt", "p\nq\nr")
+    case open("/tmp/ry_fh_lines_using.txt", "r"):
+      Ok(f):
+        using fh = f:
+          gotLines: List<str> = []
+          for line in lines(fh):
+            append!(gotLines, line)
+          expect(gotLines).toEq(["p", "q", "r"])
+      Err(e):
+        fail("open failed: " + e.message)
+    deleteFile("/tmp/ry_fh_lines_using.txt")
 
   @it("close should be idempotent")
   fn closeShouldBeIdempotent():

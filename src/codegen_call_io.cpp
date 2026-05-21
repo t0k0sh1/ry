@@ -221,6 +221,94 @@ static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::
         });
 }
 
+static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle, int fileRk) {
+    // State struct: { ptr file } — iterator holds a retained reference to the
+    // File handle so the underlying FILE* stays alive even if the user lets
+    // their `f` binding go out of scope before iteration finishes.
+    llvm::StructType *stateTy = llvm::StructType::get(*cg.ctx_,
+        llvm::ArrayRef<llvm::Type *>{cg.ptrTy_});
+    const llvm::DataLayout &dl = cg.mod_->getDataLayout();
+    uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+    // Emit the next function: reads one line via __ry_io_file_read_line,
+    // returns Some(line) on status==0, None on EOF / error / closed.
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    static int file_lines_counter = 0;
+    std::string fnName = "__iter_file_lines_next." + std::to_string(file_lines_counter++);
+    llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {cg.ptrTy_}, false);
+    llvm::Function *nextFn = llvm::Function::Create(
+        nextFnTy, llvm::Function::ExternalLinkage, fnName, *cg.mod_);
+
+    {
+        CodeGen::FnScope guard(cg);
+        cg.fn_ = nextFn;
+        cg.pushScope();
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*cg.ctx_, "entry", nextFn);
+        cg.builder_.SetInsertPoint(entry);
+
+        llvm::Value *statePtr = nextFn->getArg(0);
+        llvm::Value *file = cg.builder_.CreateLoad(cg.ptrTy_,
+            cg.builder_.CreateStructGEP(stateTy, statePtr, 0), "file");
+
+        llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "fl_out");
+        cg.builder_.CreateStore(
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)),
+            outAlloca);
+
+        auto readLineFn = cg.mod_->getOrInsertFunction(
+            "__ry_io_file_read_line",
+            llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+        llvm::Value *status = cg.builder_.CreateCall(
+            readLineFn, {file, outAlloca}, "fl_status");
+        llvm::Value *isLine = cg.builder_.CreateICmpEQ(
+            status, llvm::ConstantInt::get(cg.i64Ty_, 0), "fl_isline");
+
+        llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*cg.ctx_, "some", nextFn);
+        llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*cg.ctx_, "none", nextFn);
+        cg.builder_.CreateCondBr(isLine, someBB, noneBB);
+
+        cg.builder_.SetInsertPoint(someBB);
+        llvm::Value *line = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "fl_line");
+        cg.builder_.CreateRet(cg.buildSomeValue(line, optTy));
+
+        cg.builder_.SetInsertPoint(noneBB);
+        cg.builder_.CreateRet(cg.buildNoneValue(optTy));
+        cg.popScope();
+    }
+
+    // Allocate the iterator state and retain the File handle into it.
+    auto mallocFn = cg.getStdlibMalloc();
+    llvm::Value *stateAlloc = cg.builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(cg.i64Ty_, stateSize)}, "lines_state");
+    cg.iterator_malloc_stack_.back().push_back(stateAlloc);
+
+    // ARC retain: the iterator must outlive the user's `f` binding.
+    llvm::Value *fileHdr = cg.emitArcGetHeaderFromData(fileHandle);
+    bool atomic = cg.isArcAtomic(fileHandle);
+    cg.emitArcRetain(fileHdr, atomic);
+    cg.iterator_release_hooks_.back().push_back({fileHandle, fileRk});
+
+    cg.builder_.CreateStore(fileHandle,
+        cg.builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+
+    llvm::Value *header = nullptr;
+    {
+        uint64_t headerSize = dl.getTypeAllocSize(cg.iteratorHeaderTy_);
+        header = cg.builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(cg.i64Ty_, headerSize)}, "lines_header");
+        cg.builder_.CreateStore(nextFn,
+            cg.builder_.CreateStructGEP(cg.iteratorHeaderTy_, header, 0));
+        cg.builder_.CreateStore(stateAlloc,
+            cg.builder_.CreateStructGEP(cg.iteratorHeaderTy_, header, 1));
+        cg.setTypeMeta(CodeGen::TypeMeta::IteratorElem, header, cg.ptrTy_);
+        cg.iterator_malloc_stack_.back().push_back(header);
+    }
+    // Tag the iterator's element type as str so downstream consumers
+    // (`for line in ...`, `toList`) treat each value as a Ry string handle.
+    cg.getOrCreateMeta(header).list_elem_type_name = "str";
+    return header;
+}
+
 static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Value *fileHandle) {
     llvm::Value *s = cg.emitExpr(*e.args[1]);
     if (!cg.isStringValue(s))
@@ -293,6 +381,14 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
             cg.codegenError("readLine(f): argument must be a File handle; "
                             "use readLine() with no arguments to read from stdin");
         return emitFileReadLine(cg, e, arg0);
+    }
+
+    // lines(f: File) -> Iterator<str>
+    if (n == "lines" && sz == 1) {
+        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
+        if (!cg.isFile(arg0))
+            cg.codegenError("lines(f): argument must be a File handle");
+        return emitFileLines(cg, e, arg0, rk_file);
     }
 
     // writeText — 2-arg: check if arg0 is File or str

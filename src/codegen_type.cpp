@@ -183,6 +183,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // Iterator<T> parsing — IteratorHeader { ptr next_fn, ptr state }
+    if (typeName.size() > 9 && typeName.compare(0, 9, "Iterator<") == 0 && typeName.back() == '>') {
+        return ptrTy_;
+    }
+
     // Opaque resource handle types (dynamically registered)
     if (ResourceKindRegistry::instance().lookupByTypeName(typeName) != ResourceKindRegistry::NONE)
         return ptrTy_;
