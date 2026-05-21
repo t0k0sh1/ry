@@ -6,6 +6,215 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.25] - 2026-05-21
+
+### Added
+
+- Extended the `any` type to hold `List`, `Map`, and `Set` collections
+  in addition to the existing primitive types. `RyAnyTag` gains
+  `List=5`, `Map=6`, and `Set=7`; the 16-byte struct layout is
+  preserved by storing the collection header pointer in `data[8]`.
+  Wrap-in-`any` now emits an ARC retain on the collection, and the
+  enclosing variable's scope-end cleanup emits a tag-dispatched
+  release. Implicit unwrap (`let xs: List<int> = anyVal`) succeeds
+  whenever the dynamic tag matches the target collection kind, trusting
+  the static type annotation for element-type narrowing. `any == any`
+  on two collection-holding values does best-effort deep equality
+  (length + 8-byte-slot byte-equal data buffer) for `List` and pointer
+  identity for `Map` / `Set`; `to_string` returns opaque markers
+  (`<List>`, `<Map>`, `<Set>`) since element-type metadata is erased on
+  wrap. Order comparisons and arithmetic on collection-holding `any`
+  values continue to surface the existing "operator X not supported"
+  runtime error. Record / enum / function-pointer / resource types
+  remain unsupported and are tracked as follow-ups. (#1697)
+- `m[k]?` and `xs[i]?` postfix syntax for safe collection access.
+  Applied directly to a Map or List index expression, the trailing `?`
+  changes the semantics from "abort on miss" to "produce an `Option`":
+  `m["a"]?` returns `Some(v): Option<V>` when the key is present and
+  `None` otherwise; `xs[i]?` returns `Some(v): Option<T>` when the
+  (possibly negative-wrapped) index is in range and `None` otherwise.
+  This is a postfix syntax rather than sugar for `get(m, k)` — it
+  parses as `IndexExpr` with a new `try_mode` flag and flows through
+  the same codegen path on both Map and List. The negative-index wrap
+  established by `xs[-1]` is preserved (so `xs[-1]?` on a non-empty
+  list always returns `Some(last)`); only the post-wrap out-of-range
+  case yields `None`. Write-form `m[k]? = v` (including `m[k]?.x = v`
+  and `mm[k]?[k2] = v`), `?` on fixed-length arrays, on `str`, on
+  range slice `xs[a..b]?`, and on `any`-typed nested access are
+  rejected at compile time. The lexer's greedy tokenization of `??`
+  means `m["k"]?? default` (no space) still parses as `m["k"]` +
+  `?? default` — write `m["k"]? ?? default` (with a space) for the
+  Option-returning form coalesced with a default value. (#1699)
+- Extended the `any` type to hold user-defined `record` values.
+  `RyAnyTag` gains `Record=8`; the 16-byte struct layout is preserved
+  by heap-boxing the record so `any.data[8]` holds a pointer to a box
+  laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record
+  struct ]`. Each record type emits a singleton
+  `__ry_record_desc_<typename>` global carrying the destructor,
+  equality function, and type name, so the dynamic type survives
+  erasure across function boundaries — release / equality / `toStr`
+  all dispatch through the descriptor word inside the box rather than
+  the (possibly stale) static type name at the call site. Wrap-in-`any`
+  emits an ARC retain on the box (and field-wise retains for ARC fields
+  when the source is an existing record alias), and the enclosing
+  variable's scope-end cleanup releases the box through a descriptor
+  trampoline. `any == any` on two record-holding values does field-wise
+  deep equality when the descriptor pointers match (different record
+  types always compare unequal); `toStr` emits a `<TypeName>` marker
+  (e.g. `<Point>`) using the descriptor's type name. Implicit unwrap
+  is gated by a descriptor-pointer-equality check against the expected
+  type's descriptor global, so only **exact-type unwrap**
+  (`let q: Point = anyVal` where `anyVal` holds a `Point`) is
+  permitted; cross-type unwrap to a parent record traps at runtime and
+  is tracked as a follow-up. The typed-path subtype coercion
+  (`fn f(p: Parent): ...; f(child)`) is unchanged. Function-pointer
+  and `enum` types remain unsupported. (#1797)
+- Extended the `any` type to hold `enum` values — organic `enum`
+  declarations (with or without payloads) plus the built-in
+  `Option<T>` / `Result<T, E>` types. `RyAnyTag` gains `Enum=9`; the
+  16-byte struct layout is preserved by heap-boxing the enum so
+  `any.data[8]` holds a pointer to a box laid out as
+  `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ enum payload ]`. The
+  payload is the enum's native representation (`i64` discriminant for
+  simple enums; the ADT discriminated-union struct for ADT / `Option<T>`
+  / `Result<T, E>`). Each enum type emits a singleton
+  `__ry_enum_desc_<typename>` global carrying the destructor (which
+  switches on the discriminant and releases the active variant's ARC
+  fields), the equality function (variant-wise deep compare), and the
+  type name — including the full generic parameterization, so
+  `Option<int>` is distinct from `Option<str>` and `Result<List<int>,
+  str>` is distinct from `Result<int, str>`. Even simple enums (no
+  payload) flow through the new `Enum` tag rather than the prior
+  `Int=0` shortcut, so the source-level enum identity survives the
+  round-trip and `let c: Color = anyVal` only accepts an `any` that
+  actually carries a `Color`. Wrap-in-`any` emits an ARC retain on the
+  box (and field-wise retains for ARC fields in the active variant
+  when the source is an existing enum alias); the enclosing variable's
+  scope-end cleanup releases the box through a descriptor trampoline.
+  `any == any` on two enum-holding values matches descriptor pointers
+  first, then dispatches through the descriptor's equality function;
+  enums of different types always compare unequal. `toStr` /
+  f-string interpolation emits a `<TypeName>` marker (e.g. `<Color>`,
+  `<Option<int>>`, `<Result<int, str>>`). Implicit unwrap is gated by
+  descriptor-pointer equality, so only exact-type unwrap is permitted
+  — enums do not participate in record-style subtype unwrap chains.
+  Function-pointer and resource types (`TcpListener`, `TcpStream`,
+  etc.) remain unsupported. (#1798)
+- Extended `any` record unwrap to admit subtype projection. Given
+  `record Dog < Animal: ...`, `let a: Animal = anyHoldingDog` now
+  succeeds and reads the Animal-prefix fields from the boxed `Dog`,
+  rather than trapping as in v0.0.25. `RyRecordDescriptor` gains a
+  fourth pointer `parent_desc` that links each record's descriptor to
+  its parent's descriptor (or `null` for root records); the unwrap site
+  walks this chain at runtime via a new
+  `__ry_record_is_subtype_desc(actual, expected)` helper instead of
+  doing a single descriptor-pointer equality check, so the actual
+  dynamic type inside `any` is matched against the expected type's
+  entire ancestor chain. Multi-level inheritance
+  (`GuideDog < Dog < Animal`) and cross-function boundaries
+  (`fn make() -> any: return Dog(...)` then `let a: Animal = make()`)
+  both work because the descriptor stored in the box is the authoritative
+  dynamic-type record. Parent-prefix ARC fields (e.g. `Animal.name: str`)
+  are retained when projecting and released independently at scope end;
+  Child-only fields keep being released through the box destructor, so
+  no leak or double-free occurs. Unwrapping `any` to an unrelated record
+  type (e.g. a `Point` held in `any` to an `Animal` slot) still traps at
+  runtime. The typed-path subtype coercion
+  (`fn f(p: Parent); f(child)`) is unchanged. (#1802)
+- File handle API for the `io` module: `open(path, mode)`,
+  `readAll(f)`, `readLine(f)`, `writeText(f, s)`, and `close(f)`.
+  `open` returns `Result<File, Error>`; valid modes are `"r"`, `"w"`,
+  and `"a"`. `readLine` returns `Result<Option<str>, Error>` — `Ok(None)`
+  signals EOF cleanly. `File` is an opaque ARC resource handle: the file
+  is closed automatically when the last reference drops; calling `close`
+  explicitly allows earlier release and is idempotent. Path and mode
+  arguments are checked for embedded NUL bytes at the runtime boundary.
+  (#1816)
+
+### Changed
+
+- **BREAKING**: Redesigned the `json` module around the `any` type. The
+  opaque `JsonValue` handle and its 13 low-level accessors (`parse`,
+  `get`, `at`, `toStr`, `toInt`, `toFloat`, `toBool`, `kind`, `len`,
+  `keys`, `stringify(JsonValue, ...)`, `jsonFree`) are removed without a
+  deprecation period. The new API consists of four entry points:
+  - `load(text: str) -> Result<any, Error>` parses JSON into a tag-typed
+    `any` payload (`Null` / `Bool` / `Int` / `Float` / `Str` /
+    `List<any>` / `Map<str, any>`).
+  - `loadAs[T](text: str) -> Result<T, Error>` is a generic wrapper that
+    parses and then coerces to `T` via the existing
+    `let v: T = anyVal` slot-coercion path. Supported `T` in this
+    release: `int` / `float` / `str` / `bool`, plus the element-erased
+    forms `List<any>` and `Map<str, any>` (the parser materializes
+    container payloads as `any`; element-typed collections such as
+    `List<int>` / `Map<str, str>` are rejected by the generic
+    substitution guard in `unwrapFromAny` and must be unwrapped
+    element-by-element from `List<any>` / `Map<str, any>`). `T = record`,
+    `T = Set<...>`, `T = Option<...>`, and `T = Result<...>` are not
+    supported in this release and surface as a runtime type-mismatch
+    `Err` from the coerce step.
+  - `stringify(value: any) -> str` produces compact JSON.
+  - `stringify(value: any, indent: int) -> str` pretty-prints with the
+    given indent width (`indent < 0` falls back to compact form).
+  Lifetime of the parsed payload is now driven by codegen's standard ARC
+  machinery — the `jsonFree` early-return discipline is no longer
+  required. Map iteration order for `stringify` is the underlying map's
+  insertion order. Tags that JSON cannot represent (`Set`, `Record`,
+  `Enum`, and `Map` keyed by non-`str`) panic from `stringify` since the
+  return type is `-> str` and offers no `Result` channel. File-handle
+  overloads (`load(f: File)` / `dump(value, f: File)`) are intentionally
+  out of scope for this PR and will land alongside `io.File`. (#1698)
+
+### Fixed
+
+- Fixed a use-after-free when storing a dynamically-allocated `str`
+  (from `+` concatenation, `toString`, runtime construction, etc.) in
+  an `any` value. Wrapping a `str` in `any` now retains the underlying
+  `StringHeader` so the inner buffer outlives the source binding;
+  unwrapping back to `str`, copying `any` to `any`, and reassigning
+  `any` to a different `str` all emit symmetric retain/release calls.
+  Literal-backed strings remain unaffected (they are marked
+  `ARC_IMMORTAL` and the retain/release become no-ops). Previously,
+  `let s = "a" + "b"; let a: any = s; s = "..."` left `a` pointing at
+  freed heap; this is now sound. Closes the str half of the broader
+  `any` ARC integration started in #1697. (#1799)
+- `coerceResultType` now handles `Result<any, X>` → `Result<E, X>`
+  coercion when the destination Ok or Err slot is an enum type (simple
+  enum, `Option<T>`, `Result<T, E>`, or ADT). Previously the per-slot
+  `unwrapFromAny` call passed an empty `targetTypeName`, and the
+  `canAnyHoldType` gate rejected enum struct destinations entirely, so
+  the coercion fell back to "type error: variable '...' cannot be
+  reassigned to a different type" or silently took the wrong runtime
+  branch. `coerceResultType` gains an optional `dstResTypeName`
+  argument (defaulting to `""` for backward compatibility); the five
+  call sites — `emitVarDecl`, function-local reassignment,
+  module-global reassignment, and the two `mockReturnValueOnce`
+  emitters — thread the destination's source-level Result type name so
+  the Ok / Err slot can dispatch through the descriptor-driven enum
+  unwrap path. Cross-type mismatches continue to trap at runtime via
+  the existing `any enum type mismatch` diagnostic from
+  `unwrapEnumFromAny`. The `canAnyHoldType` gate remains restricted to
+  primitives, preserving the parallel-branch design from #1797 /
+  #1798. (#1808)
+- `json.stringify(any)` no longer reads out-of-bounds memory when `any`
+  holds a typed (non-`any`-element) collection (`List<int>`,
+  `Map<str, int>`, etc.). `wrapInAny` previously preserved the original
+  collection header pointer untouched, so passing the resulting `any`
+  to `stringify` walked the 8-byte-stride inner buffer as
+  `RyAny[16]` — undefined behavior that could segfault. The runtime
+  now records the source-level type name at `wrapInAny` time in a
+  register-only side-table (`std::unordered_map<void *, std::string>`
+  guarded by `std::mutex`, with an `std::atomic<size_t>` fast-path
+  counter; entries are overwritten on re-register via
+  `insert_or_assign`), and `stringify_any`'s List / Map arms look up
+  the inner data pointer before walking the buffer. On hit the runtime
+  exits deterministically with
+  `stringify: any holds typed collection 'List<int>' — use List<any> /
+  Map<str, any> / Set<any> instead` and `exit(1)`. ABI is unchanged;
+  the happy path for `List<any>` / `Map<str, any>` pays nothing because
+  the wrap arm only registers when at least one element type differs
+  from `any`. (#1811)
+
 ## [0.0.24] - 2026-05-18
 
 ### Added
@@ -2368,7 +2577,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.24...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.25...HEAD
+[0.0.25]: https://github.com/t0k0sh1/ry/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/t0k0sh1/ry/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/t0k0sh1/ry/compare/v0.0.22...v0.0.23
 [0.0.22]: https://github.com/t0k0sh1/ry/compare/v0.0.21...v0.0.22
