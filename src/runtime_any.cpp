@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_any.hpp"
 #include "ry/runtime_list.hpp"
 #include "ry/runtime_string.hpp"
@@ -110,7 +111,7 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
     if (len > 0 && (static_cast<uint64_t>(n) > SIZE_MAX ||
                     static_cast<size_t>(n) > SIZE_MAX / len)) {
         fprintf(stderr, "runtime error: string repeat overflow\n");
-        exit(1);
+        ry_runtime_trap_exit();
     }
     size_t count = static_cast<size_t>(n);
     char *buf = makeStringUninit(len * count);
@@ -263,7 +264,7 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         fprintf(stderr,
                 "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
                 (long long)a->tag);
-        exit(1);
+        ry_runtime_trap_exit();
     }
 }
 
@@ -325,7 +326,7 @@ extern "C" void __ry_arc_dtor_enum_dispatch(void *dataPtr) {
 extern "C" void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b) {
     fprintf(stderr, "runtime error: operator %s not supported for %s and %s\n",
             op, tagName(tag_a), tagName(tag_b));
-    exit(1);
+    ry_runtime_trap_exit();
 }
 
 // ===== Arithmetic operators (#221) =====
@@ -412,7 +413,7 @@ extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
         int64_t bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: modulo by zero\n");
-            exit(1);
+            ry_runtime_trap_exit();
         }
         // Floor modulo: r = a % b; if (r != 0 && sign(r) != sign(b)) r += b
         int64_t av = extractInt(a);
@@ -439,7 +440,7 @@ extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b)
         int64_t av = extractInt(a), bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: division by zero\n");
-            exit(1);
+            ry_runtime_trap_exit();
         }
         int64_t q = av / bv;
         if ((av ^ bv) < 0 && q * bv != av) q--;
@@ -475,7 +476,7 @@ extern "C" void __ry_any_neg(RyAny *result, const RyAny *a) {
         makeFloat(result, -extractFloat(a));
     } else {
         fprintf(stderr, "runtime error: unary - not supported for %s\n", tagName(a->tag));
-        exit(1);
+        ry_runtime_trap_exit();
     }
 }
 

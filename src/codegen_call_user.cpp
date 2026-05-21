@@ -742,8 +742,10 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
     auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
 #ifdef __APPLE__
+    const char *stdoutName = "__stdoutp";
     const char *stderrName = "__stderrp";
 #else
+    const char *stdoutName = "stdout";
     const char *stderrName = "stderr";
 #endif
     auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
@@ -760,6 +762,14 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     // atexit entirely so no static destructor runs. ASan's allocator
     // interceptor masks the issue, so this only repros on the default Linux
     // build. macOS libSystem malloc tolerates the same pattern silently.
+    // fflush(stdout/stderr) before _Exit since _Exit skips the atexit-driven
+    // libc buffer flush that exit() would have performed.
+    auto fflushTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, false);
+    auto fflushFn = mod_->getOrInsertFunction("fflush", fflushTy);
+    auto *stdoutGlobal = mod_->getOrInsertGlobal(stdoutName, ptrTy_);
+    llvm::Value *stdoutVal = builder_.CreateLoad(ptrTy_, stdoutGlobal, "stdout");
+    builder_.CreateCall(fflushFn, {stdoutVal});
+    builder_.CreateCall(fflushFn, {stderrVal});
     auto exitFn = getStdlibImmediateExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
