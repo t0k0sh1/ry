@@ -621,6 +621,15 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<UsingStmt>>) {
+                // Treat the using binding as a new local in its own scope so
+                // assignments inside the body are checked against outer
+                // variables (#1842 review).
+                localScopes.push_back({});
+                localScopes.back().insert(node->name);
+                for (const auto &innerStmt : node->body)
+                    scanStmt(innerStmt);
+                localScopes.pop_back();
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 codegenError(node->loc, "parallel for does not allow nested function definitions");
             }

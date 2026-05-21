@@ -916,7 +916,7 @@ If the body explicitly calls `close(name)`, the implicit close on block exit is 
 ### Example
 
 ```ry
-from std.io import writeText, open, readAll
+from io import writeText, open, readAll
 
 fn loadGreeting(path: str) -> Result<str, Error>:
     using f = open(path, "r")?:
