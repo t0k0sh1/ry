@@ -82,7 +82,7 @@ case deleteFile("hello.txt"):
 ### File Handle API
 
 ```ry
-from io import open, readAll, readLine, writeText, close, deleteFile
+from io import open, readAll, readLine, writeText, close, deleteFile, lines
 
 # Write then read back via handle
 case open("/tmp/hello.txt", "w"):

@@ -667,6 +667,13 @@ public:
     std::vector<std::unordered_map<std::string, std::vector<OverloadEntry>>> fn_scope_stack_;
     int nested_fn_counter_ = 0;   // monotonic counter for unique IR names
     int fn_nesting_depth_ = 0;    // 0 = top-level, incremented per FnScope
+    // Bumped while emitPatternBindings is producing the *guard*-scope copy of
+    // an arm's pattern (see codegen_match.cpp). Guard bindings live in a
+    // throwaway scope that pops between the pattern test and the body's
+    // re-bind, so resource-handle binds need a balancing retain to keep the
+    // scrutinee alive across the guard-scope popScope cleanup (#1818 PR
+    // review — CodeRabbit "guarded arms can free File scrutinee").
+    int pattern_binding_in_guard_depth_ = 0;
     std::vector<OverloadEntry> *findFunction(const std::string &name);
     void forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool validateOperatorReturn);
     void forwardDeclareNestedFunctions(std::vector<StmtNode> &body);

@@ -706,6 +706,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             // happens at scope exit (or when the last alias drops); decoupling
             // the user-facing close from refcount-drop keeps lines()/readLine()
             // iterators valid after close (they observe fp==nullptr and finish).
+            // The io runtime symbol lives in libry_io — register the library so
+            // bare close(f) calls (no enclosing io import path) resolve.
+            used_native_libraries_.insert("io");
             auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
             auto fn = mod_->getOrInsertFunction("__ry_io_file_close", fnTy);
             builder_.CreateCall(fn, {val});

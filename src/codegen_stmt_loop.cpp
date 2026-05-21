@@ -870,7 +870,11 @@ void CodeGen::emitStmt(std::unique_ptr<UsingStmt> &s) {
         if (auto *srcAlloca = findVar(varExpr->name)) {
             if (resource_managed_vars_.count(srcAlloca)) {
                 auto *hdr = emitArcGetHeaderFromData(val);
-                emitArcRetain(hdr, /*atomic=*/false);
+                // Match the ARC mode of the surrounding scope so a
+                // @parallel-for worker (atomic ARC) does not race the
+                // scope-end release. isArcAtomic falls back to the worker
+                // scope counter when no per-value flag is set.
+                emitArcRetain(hdr, isArcAtomic(val));
             }
         }
     }

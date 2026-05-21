@@ -795,6 +795,15 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
         if (resolved == "File") {
             int rk = ResourceKindRegistry::instance().lookupByTypeName(resolved);
             if (rk != ResourceKindRegistry::NONE) {
+                // Guarded-arm copy of the binding lives in a throwaway scope
+                // that pops between the pattern test and the body re-bind.
+                // Without a retain, the popScope cleanup runs
+                // __ry_io_file_cleanup on the File and the body bind would
+                // observe a freed handle (#1818 PR review).
+                if (pattern_binding_in_guard_depth_ > 0) {
+                    auto *hdr = emitArcGetHeaderFromData(val);
+                    emitArcRetain(hdr, /*atomic=*/false);
+                }
                 markArcManaged(bindAlloca);
                 resource_managed_vars_[bindAlloca] = rk;
                 addResourceKind(bindAlloca, rk);
@@ -887,8 +896,10 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
+            pattern_binding_in_guard_depth_++;
             emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
                                 subjectEnumName, subjectSourceTypeName);
+            pattern_binding_in_guard_depth_--;
 
             llvm::Value *guardVal = emitExpr(*arm.guard);
             guardVal = toBool(guardVal);
@@ -973,8 +984,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
+            pattern_binding_in_guard_depth_++;
             emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
                                 subjectEnumName, subjectSourceTypeName);
+            pattern_binding_in_guard_depth_--;
 
             llvm::Value *guardVal = emitExpr(*arm.guard);
             guardVal = toBool(guardVal);
