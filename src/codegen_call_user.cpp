@@ -732,6 +732,11 @@ llvm::FunctionCallee CodeGen::getStdlibExit() {
     return mod_->getOrInsertFunction("exit", ty);
 }
 
+llvm::FunctionCallee CodeGen::getStdlibImmediateExit() {
+    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    return mod_->getOrInsertFunction("_Exit", ty);
+}
+
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName,
                                 llvm::ArrayRef<llvm::Value *> extraArgs) {
     auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
@@ -747,7 +752,15 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     llvm::SmallVector<llvm::Value *, 4> args = {stderrVal, errMsg};
     args.append(extraArgs.begin(), extraArgs.end());
     builder_.CreateCall(fprintfFn, args);
-    auto exitFn = getStdlibExit();
+    // #1838: trap path must use _Exit(1) (C11), not exit(1). exit() runs the
+    // atexit chain, which on Linux glibc invokes LLVM ManagedStatic
+    // destructors (PassRegistry::~PassRegistry, etc.) on a heap still
+    // referenced by the JIT'd module — `free(): invalid pointer` SIGABRT
+    // before the expected ExitedWithCode(1) is observed. _Exit bypasses
+    // atexit entirely so no static destructor runs. ASan's allocator
+    // interceptor masks the issue, so this only repros on the default Linux
+    // build. macOS libSystem malloc tolerates the same pattern silently.
+    auto exitFn = getStdlibImmediateExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
 }

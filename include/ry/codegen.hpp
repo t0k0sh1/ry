@@ -1928,6 +1928,7 @@ public:
     llvm::FunctionCallee getBufferedPrintf();
     llvm::FunctionCallee getSprintPrintf();
     llvm::FunctionCallee getStdlibExit();
+    llvm::FunctionCallee getStdlibImmediateExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy,
