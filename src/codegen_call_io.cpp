@@ -20,6 +20,18 @@ struct NetResourceReg { NetResourceReg() {
 }} net_resource_reg;
 }
 
+static int rk_file;
+namespace {
+struct FileResourceReg { FileResourceReg() {
+    rk_file = ResourceKindRegistry::instance().registerKind(
+        "File", "__ry_arc_dtor_file", "__ry_io_file_cleanup", "io");
+}} file_resource_reg;
+}
+
+bool CodeGen::isFile(llvm::Value *val) {
+    return isResourceKind(rk_file, val);
+}
+
 // ===== Builtin Regex =====
 
 llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
@@ -164,6 +176,62 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== File handle emitters =====
+
+static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 2);
+    llvm::Value *path = cg.emitExpr(*e.args[0]);
+    llvm::Value *mode = cg.emitExpr(*e.args[1]);
+    if (!cg.isStringValue(path) || !cg.isStringValue(mode))
+        cg.codegenError("open() requires str arguments (path, mode)");
+    auto fn = cg.mod_->getOrInsertFunction(
+        "__ry_io_file_open",
+        llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_}, false));
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
+    return cg.emitPtrToResult(ptr, "open", "open failed", rk_file);
+}
+
+static llvm::Value *emitFileReadAll(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
+    auto fn = cg.mod_->getOrInsertFunction(
+        "__ry_io_file_read_all",
+        llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_}, false));
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {fileHandle}, "file_read_all_ptr");
+    return cg.wrapPtrAsResult(ptr);
+}
+
+static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
+    llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "rl_out");
+    cg.builder_.CreateStore(
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
+    auto fn = cg.mod_->getOrInsertFunction(
+        "__ry_io_file_read_line",
+        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+    llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, outAlloca}, "rl_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpSLT(
+        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "rl_iserr");
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
+    return cg.emitResultBranch(isErr, resTy,
+        [&]() -> llvm::Value * {
+            llvm::Value *linePtr = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "rl_line");
+            return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
+        },
+        [&]() -> llvm::Value * {
+            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+        });
+}
+
+static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Value *fileHandle) {
+    llvm::Value *s = cg.emitExpr(*e.args[1]);
+    if (!cg.isStringValue(s))
+        cg.codegenError("writeText(file, s): second argument must be str");
+    auto fn = cg.mod_->getOrInsertFunction(
+        "__ry_io_file_write_text",
+        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+    llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, s}, "file_wt_status");
+    return cg.wrapStatusAsResult(status);
+}
+
 // ===== Builtin IO =====
 
 static constexpr const char *IO_ERR = "__ry_get_last_error";
@@ -202,6 +270,46 @@ static const CodeGen::NativeDispatchEntry io_table[] = {
 
 RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
+    const auto &n = e.callee;
+    const auto sz = e.args.size();
+
+    // open(path, mode) — new name, always File
+    if (n == "open" && sz == 2)
+        return emitFileOpen(cg, e);
+
+    // readAll(f: File) — 1-arg (0-arg stdin handled by table)
+    if (n == "readAll" && sz == 1) {
+        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
+        if (!cg.isFile(arg0))
+            cg.codegenError("readAll(f): argument must be a File handle; "
+                            "use readAll() with no arguments to read from stdin");
+        return emitFileReadAll(cg, e, arg0);
+    }
+
+    // readLine(f: File) — 1-arg (0-arg stdin handled by table)
+    if (n == "readLine" && sz == 1) {
+        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
+        if (!cg.isFile(arg0))
+            cg.codegenError("readLine(f): argument must be a File handle; "
+                            "use readLine() with no arguments to read from stdin");
+        return emitFileReadLine(cg, e, arg0);
+    }
+
+    // writeText — 2-arg: check if arg0 is File or str
+    if (n == "writeText" && sz == 2) {
+        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
+        if (cg.isFile(arg0))
+            return emitFileWriteText(cg, e, arg0);
+        // Non-File: inline str-based writeText (arg0 already emitted)
+        llvm::Value *content = cg.emitExpr(*e.args[1]);
+        if (!cg.isStringValue(arg0) || !cg.isStringValue(content))
+            cg.codegenError("writeText(path, content) requires str arguments");
+        auto fn = cg.mod_->getOrInsertFunction("__ry_write_text",
+            llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+        llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
+        return cg.wrapStatusAsResult(status);
+    }
+
     return cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table));
 }
 

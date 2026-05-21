@@ -27,6 +27,22 @@ from io import readText, writeText, exists
 | `readBytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
 | `writeBytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
 
+### File Handle API
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `open` | `(str, str) -> Result<File, Error>` | Opens a file; mode must be `"r"`, `"w"`, or `"a"` |
+| `readAll` | `(File) -> Result<str, Error>` | Reads the entire file content into a string |
+| `readLine` | `(File) -> Result<Option<str>, Error>` | Reads one line; returns `Ok(None)` at EOF |
+| `writeText` | `(File, str) -> Result<Unit, Error>` | Writes a string to the file |
+| `close` | `(File) -> Unit` | Closes the file handle (idempotent) |
+
+`File` is an opaque resource handle managed by ARC. The file is closed automatically when the handle goes out of scope; calling `close` explicitly allows earlier release.
+
+> **Note**: `readAll` / `readLine` / `writeText` without a `File` first argument route to the path-based or stdin variants above. The compiler dispatches on the argument type at compile time.
+>
+> **Future**: `using` automatic release (#1700-B) and `lines()` iterator (#1700-C) are tracked as separate issues.
+
 ### Byte Conversions
 
 | Function | Signature | Description |
@@ -58,6 +74,49 @@ case deleteFile("hello.txt"):
         print(exists("hello.txt"))   # false
     Err(e):
         print(e.message)
+```
+
+### File Handle API
+
+```ry
+from io import open, readAll, readLine, writeText, close, deleteFile
+
+# Write then read back via handle
+case open("/tmp/hello.txt", "w"):
+    Ok(fw):
+        writeText(fw, "hello handle")
+        close(fw)
+    Err(e):
+        print(e.message)
+
+case open("/tmp/hello.txt", "r"):
+    Ok(fr):
+        case readAll(fr):
+            Ok(s):
+                print(s)   # hello handle
+            Err(e):
+                print(e.message)
+        close(fr)
+    Err(e):
+        print(e.message)
+
+# Read lines one by one
+case open("/tmp/hello.txt", "r"):
+    Ok(f):
+        loop:
+            case readLine(f):
+                Ok(opt):
+                    case opt:
+                        Some(line): print(line)
+                        None: break
+                Err(e):
+                    print(e.message)
+                    break
+        close(f)
+    Err(e):
+        print(e.message)
+
+deleteFile("/tmp/hello.txt")
 ```
 
 ### Byte Operations
@@ -110,6 +169,10 @@ case readText("missing.txt"):
 | `writeText` / `writeBytes` / `appendText` | File cannot be opened for writing |
 | `deleteFile` | File cannot be deleted |
 | `readText` / `writeText` / `appendText` / `deleteFile` / `readBytes` / `writeBytes` | Path contains an embedded NUL byte |
+| `open` | File does not exist (mode `"r"`), cannot be created/opened (mode `"w"` / `"a"`), or mode is not `"r"` / `"w"` / `"a"` |
+| `readAll` (File) | Read error after opening |
+| `readLine` (File) | Read error (I/O failure, not EOF — EOF is `Ok(None)`) |
+| `writeText` (File, str) | Write error |
 
 ## Notes
 

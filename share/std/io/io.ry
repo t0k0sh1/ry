@@ -46,3 +46,24 @@ fn toBytes(string: str) -> List<u8>
 @public
 @native("io")
 fn bytesToStr(bytes: List<u8>) -> Result<str, Error>
+
+# File handle API
+@public
+@native("io")
+fn open(path: str, mode: str) -> Result<File, Error>
+
+@public
+@native("io")
+fn readAll(f: File) -> Result<str, Error>
+
+@public
+@native("io")
+fn readLine(f: File) -> Result<Option<str>, Error>
+
+@public
+@native("io")
+fn writeText(f: File, s: str) -> Result<Unit, Error>
+
+@public
+@native("io")
+fn close(f: File) -> Unit

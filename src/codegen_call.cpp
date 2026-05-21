@@ -701,7 +701,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
         if (isTlsStream(val))
             return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
-        codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
+        if (isFile(val))
+            return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
+        codegenError("close() requires a File, TcpStream, TlsStream, or TcpListener argument");
     }
 
     // range(n), range(start, end), or range(start, end, step) → List<int>
