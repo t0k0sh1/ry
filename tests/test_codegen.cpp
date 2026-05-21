@@ -902,6 +902,26 @@ TEST_F(CodeGenTest, CoerceResultOkNestedResultMismatchTraps) {
         "any enum type mismatch \\(expected Result<int, str>");
 }
 
+TEST_F(CodeGenTest, CoerceResultOkNestedResultMismatchTrapsArcPayload) {
+    // #1838: sibling of CoerceResultOkNestedResultMismatchTraps with an
+    // ARC-bearing inner Ok payload (str instead of int). Exercises the
+    // unwrapEnumFromAny trap path while the inner enum carries an ARC
+    // field — used to detect double-free during the abort sequence on
+    // Linux glibc (issue was masked under macOS and ASan).
+    EXPECT_EXIT(runSource(
+        "inner: Result<str, bool> = Ok(\"payload\")\n"
+        "a: any = inner\n"
+        "r: Result<Result<str, int>, bool> = Ok(a)\n"
+        "case r:\n"
+        "  Ok(v):\n"
+        "    case v:\n"
+        "      Ok(s): print(s)\n"
+        "      Err(e): print(e)\n"
+        "  Err(e): print(e)\n"),
+        ::testing::ExitedWithCode(1),
+        "any enum type mismatch \\(expected Result<str, int>");
+}
+
 // ===== Low-level numeric types (i16, i32, f32) =====
 
 TEST_F(CodeGenTest, LowLevelI32Basics) {
