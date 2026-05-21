@@ -103,6 +103,37 @@ Each enum type has a singleton `__ry_enum_desc_<typename>` LLVM global carrying 
 - `any`-typed allocas must call `registerAnyManagedVar(alloca, sourceTypeName)` at decl time and `emitAnyReleaseVar(name, alloca, sourceTypeName)` at scope exit. `emitAnyReleaseVar` emits `switch (tag)` over `Str=3 / List=5 / Map=6 / Set=7 / Record=8 / Enum=9` with `doneBB` default (Int/Float/Bool/Unit are no-op); the Str arm uses `emitStrGetHeaderFromData` + `emitArcRelease(hdr, isArcAtomic(ptr), FunctionCallee{}, nullptr)`; collection arms dispatch `emitArcReleaseLoadedElement(ptr, CollectionKind::{List,Map,Set}, sourceTypeName, ...)`; the **Record arm** dispatches through the descriptor trampoline `__ry_arc_dtor_record_dispatch` and the **Enum arm** dispatches through `__ry_arc_dtor_enum_dispatch` so a stale `sourceTypeName` does not misroute the dtor — the descriptor pointer inside the box is the source of truth. `emitArcReleaseLoadedElement` leaves the builder on its own continuation block — each switch arm must explicitly `CreateBr(doneBB)` after the helper call (else codegen emits a basic block without a terminator and LLVM verify fails). The same pattern applies to `emitAnyRetainPayload` and `emitAnyReleasePayload` (any-to-any copy and reassignment paths) — both must include Str, Record, and Enum arms symmetric to the collection arms.
 - When `sourceTypeName` is empty at registration time, `emitAnyReleaseVar` falls back to the generic destructor for the tag's kind (e.g. `"List"`). This is sufficient for collections of primitives but is approximate for nested ARC element types — that limitation is acknowledged in `docs/reference/types.md` and tracked as element-type metadata erasure (see [[codegen-type-and-metadata]] for the metadata-side rule). str, record, and enum need no per-type fallback because the StringHeader / descriptor word carries enough information to release correctly without consulting `sourceTypeName`.
 
+### `using` statement: evaluate init **before** `pushScope` so `?`-Err in the initializer skips auto-close
+
+**Source**: #1817 (2026-05-21, feat)
+**Tags**: codegen, using, scope-cleanup, resource, question-mark, ordering, arc
+
+**Rule**: In `emitStmt(UsingStmt)` (`src/codegen_stmt_loop.cpp`), call
+`emitExpr(*s->value)` **before** `pushScope()` and **before** writing
+to `resource_managed_vars_`. The expression may contain `?`
+propagation that emits an early `return` via `emitScopeCleanupToDepth(0)`;
+that early-return must observe a scope stack that does **not** yet
+contain the `using` binding, otherwise it would emit
+`__ry_io_file_cleanup` on a value that was never successfully bound.
+
+Once `detectResourceKind(val)` confirms `rk_file`, push the new scope,
+create the alloca, store the value, mark it ARC-managed, and add it to
+`resource_managed_vars_[ptr] = rk_file`. From that point on,
+`popScope()` / early `return` / `?` / `break` / `continue` all reach
+`emitScopeCleanupToDepth` and the existing ARC release path drops the
+File's strong count to zero, invoking `__ry_io_file_cleanup` →
+`fclose`. No explicit close emission is needed in the `using` codegen
+itself.
+
+**How to apply**: When introducing a new scope-binding construct that
+guards a resource (TCP stream, lock handle, etc.), follow the same
+ordering: evaluate the init expression, validate the kind, **then**
+push the scope and register the variable. Adding `pushScope()` before
+the init evaluation — even briefly — creates a window where `?` in the
+init runs the destructor on a partially-initialized binding. The
+load-bearing nature of this ordering is documented at
+`src/codegen_stmt_loop.cpp:834-837`.
+
 ### `threadSpawn` thunks emit no ARC ops; `parallel_for_depth_` is the atomic-ARC scope marker
 
 `threadSpawn` thunks do NOT retain/release captures — env stores raw pointer copies and the thunk's `FnScope` is destroyed at codegen without `popScope()`. Caller MUST call `threadJoin` before the captured value's owning scope exits. `parallel_for_depth_` counter (`isArcAtomic() → atomicrmw seqcst`) covers ARC ops emitted directly inside `@parallel for` thunk bodies; it does NOT propagate to helper-function calls. Decision: keep the scope-counter design; whole-program "may cross threads" analysis was rejected as too expensive.

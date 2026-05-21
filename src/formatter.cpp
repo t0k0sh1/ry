@@ -614,6 +614,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             return v->loc.line;
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) return v->loc.line;
+        else if constexpr (std::is_same_v<T, std::unique_ptr<UsingStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, AssignStmt>) { // NOLINT(bugprone-branch-clone)
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -683,6 +684,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) formatFor(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) formatFn(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) formatCase(*v);
+        else if constexpr (std::is_same_v<T, std::unique_ptr<UsingStmt>>) formatUsing(*v);
     }, stmt);
 }
 

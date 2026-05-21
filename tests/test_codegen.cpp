@@ -1730,6 +1730,22 @@ TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
         "f()")), std::runtime_error);
 }
 
+// `using` body in @parallel for must be scanned for outer mutations — without
+// the UsingStmt arm in validateParallelFor, the assignment below would be
+// silently accepted and codegen would later trip on the io.File kind check
+// (different error). Asserting the specific message proves the new scan arm
+// fires.
+TEST_F(CodeGenTest, ParallelForRejectsOuterMutationInsideUsingBody) {
+    expectCompileError(withStdlibDirectiveDecls(
+        "x: int = 100\n"
+        "fn f():\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        using h = 0:\n"
+        "            x = i\n"
+        "f()"), "parallel for cannot assign to outer variable");
+}
+
 // Top-level fixed-length array (`i32[N]`) must be indexable from a function
 // body. Before the fix, the array GEP path in IndexExpr only fired for
 // `llvm::AllocaInst` object pointers, so loading through the module-global

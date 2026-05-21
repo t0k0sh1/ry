@@ -346,6 +346,7 @@ struct FnStmt;
 struct CaseStmt;
 struct CaseCondStmt;
 struct AwaitStmt;
+struct UsingStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
@@ -374,7 +375,8 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<CaseStmt>>;
+                              std::unique_ptr<CaseStmt>,
+                              std::unique_ptr<UsingStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct QualifiedImportStmt {
@@ -449,6 +451,13 @@ struct ForStmt {
     ExprPtr iterable;
     std::vector<StmtNode> body;
     std::vector<Directive> directives;
+    SourceLocation loc;
+};
+
+struct UsingStmt {
+    std::string name;                  // bound variable name; auto-closed at every block exit path
+    ExprPtr value;                     // init expression; must evaluate to a value that provides close() -> Unit (today: io.File)
+    std::vector<StmtNode> body;
     SourceLocation loc;
 };
 

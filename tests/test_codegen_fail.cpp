@@ -1177,3 +1177,31 @@ TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNegativeDecimals) {
             << "got: " << msg;
     }
 }
+
+// ============================================================
+// `using` statement (#1817): init expression must produce an
+// `io.File` value.  Codegen rejects int, str, List, and any
+// other non-File type at the `detectResourceKind` / `isFile`
+// gate in `emitStmt(UsingStmt)`.
+// ============================================================
+
+TEST_F(CodeGenTest, UsingRejectsIntInit) {
+    expectCompileError(
+        "using x = 5:\n"
+        "    print(x)\n",
+        "using requires an io.File value");
+}
+
+TEST_F(CodeGenTest, UsingRejectsStringInit) {
+    expectCompileError(
+        "using x = \"hello\":\n"
+        "    print(x)\n",
+        "using requires an io.File value");
+}
+
+TEST_F(CodeGenTest, UsingRejectsListInit) {
+    expectCompileError(
+        "using x = [1, 2, 3]:\n"
+        "    print(x)\n",
+        "using requires an io.File value");
+}

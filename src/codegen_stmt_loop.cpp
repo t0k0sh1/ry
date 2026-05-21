@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/stdlib_registry.hpp"
 
 
 namespace ry {
@@ -620,6 +621,15 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<UsingStmt>>) {
+                // Treat the using binding as a new local in its own scope so
+                // assignments inside the body are checked against outer
+                // variables (#1842 review).
+                localScopes.push_back({});
+                localScopes.back().insert(node->name);
+                for (const auto &innerStmt : node->body)
+                    scanStmt(innerStmt);
+                localScopes.pop_back();
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 codegenError(node->loc, "parallel for does not allow nested function definitions");
             }
@@ -824,6 +834,37 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         llvm::Type::getVoidTy(*ctx_), {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
     llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
     builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
+}
+
+void CodeGen::emitStmt(std::unique_ptr<UsingStmt> &s) {
+    emitCoverage(s->loc);
+    current_loc_ = s->loc;
+
+    // Evaluate the init expression BEFORE pushScope.  This ordering is
+    // load-bearing: if the init contains `?` propagation and produces Err,
+    // the early `return` fires here while no `using` binding exists, so
+    // the resource's auto-close is correctly skipped.
+    llvm::Value *val = emitExpr(*s->value);
+
+    int rk = detectResourceKind(val);
+    if (rk == ResourceKindRegistry::NONE || !isFile(val))
+        codegenError(s->loc, "using requires an io.File value");
+
+    pushScope();
+
+    if (scope_stack_.back().count(s->name))
+        codegenError(s->loc, "redeclared variable: " + s->name);
+
+    llvm::AllocaInst *ptr = getOrCreateVar(s->name, ptrTy_);
+    builder_.CreateStore(val, ptr);
+    markArcManaged(ptr);
+    resource_managed_vars_[ptr] = rk;
+    propagateMetaWide(val, ptr);
+
+    for (auto &stmt : s->body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+    popScope();
 }
 
 } // namespace ry

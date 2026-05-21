@@ -228,6 +228,7 @@ compound_statement ::= if_stmt
                      | while_stmt
                      | for_stmt
                      | case_stmt
+                     | using_stmt
 
 if_stmt          ::= 'if' expression ':' block
                      { 'else' 'if' expression ':' block }
@@ -236,6 +237,11 @@ if_stmt          ::= 'if' expression ':' block
 while_stmt       ::= 'while' expression ':' block
 
 for_stmt         ::= 'for' for_target 'in' expression ':' block
+
+using_stmt       ::= 'using' IDENT '=' expression ':' block
+                                                          // resource-management; init expression's type must provide close() -> Unit
+                                                          // (currently restricted to io.File). The bound variable is auto-closed
+                                                          // on every block exit path (normal end, return, `?`, break, continue).
 
 for_target       ::= IDENT
                    | '(' IDENT { ',' IDENT } ')'
@@ -461,6 +467,7 @@ KEYWORD          ::= 'and'    | 'or'     | 'not'
                    | 'require'| 'ensure' | 'invariant'
                    | 'Error'
                    | 'async'  | 'await'
+                   | 'using'
 
 /* Soft keywords (NOT in lexer keyword_map; recognized contextually):
    weak, Some, None, Ok, Err, _, Unit, any */

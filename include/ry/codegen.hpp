@@ -1472,6 +1472,7 @@ public:
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
+    void emitStmt(std::unique_ptr<UsingStmt> &s);
     void forwardDeclareFunctions(Program &prog);
     llvm::Function *declareFunction(
         const std::string &name,

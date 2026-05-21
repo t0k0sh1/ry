@@ -65,6 +65,7 @@ private:
     void formatFor(const ForStmt &s);
     void formatFn(const FnStmt &s);
     void formatCase(const CaseStmt &s);
+    void formatUsing(const UsingStmt &s);
     void formatIndexAssign(const IndexAssignStmt &s);
     void formatFieldAssign(const FieldAssignStmt &s);
     void formatBreak(const BreakStmt &s);

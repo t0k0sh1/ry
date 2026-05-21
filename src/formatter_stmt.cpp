@@ -299,6 +299,14 @@ void Formatter::formatWhile(const WhileStmt &s) {
     formatBlock(s.body);
 }
 
+void Formatter::formatUsing(const UsingStmt &s) {
+    emit("using " + s.name + " = " + formatExpr(*s.value) + ":");
+    emitInlineComment(s.loc.line);
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+    formatBlock(s.body);
+}
+
 void Formatter::formatFor(const ForStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();
