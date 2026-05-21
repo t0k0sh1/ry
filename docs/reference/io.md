@@ -36,6 +36,7 @@ from io import readText, writeText, exists
 | `readLine` | `(File) -> Result<Option<str>, Error>` | Reads one line; returns `Ok(None)` at EOF |
 | `writeText` | `(File, str) -> Result<Unit, Error>` | Writes a string to the file |
 | `close` | `(File) -> Unit` | Closes the file handle (idempotent) |
+| `lines` | `(File) -> Iterator<str>` | Returns a lazy line iterator usable with `for ... in` |
 
 `File` is an opaque resource handle managed by ARC. The file is closed automatically when the handle goes out of scope; calling `close` explicitly allows earlier release.
 
@@ -43,7 +44,7 @@ from io import readText, writeText, exists
 >
 > **Scope-based release**: A `File` can be bound with the `using` statement to have `close` called automatically on every exit path of a block (`return`, `?`, `break`, `continue`, or normal block end). See [`control-flow.md` § using](control-flow.md#using).
 >
-> **Future**: `lines()` iterator (#1700-C) is tracked as a separate issue.
+> **`lines()` iterator**: `for line in lines(f) { ... }` yields one line at a time without loading the file into memory — suitable for large logs. The iterator retains the underlying `File` for its lifetime and shares the file position with subsequent `readLine` / `lines` calls. After `close(f)`, iteration terminates at the next step (no error is raised, mirroring Python).
 
 ### Byte Conversions
 
@@ -115,6 +116,15 @@ case open("/tmp/hello.txt", "r"):
                     print(e.message)
                     break
         close(f)
+    Err(e):
+        print(e.message)
+
+# Lazy line iteration with lines() — suitable for large files
+case open("/tmp/hello.txt", "r"):
+    Ok(f):
+        using fh = f:
+            for line in lines(fh):
+                print(line)
     Err(e):
         print(e.message)
 

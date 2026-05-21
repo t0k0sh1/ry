@@ -561,6 +561,15 @@ public:
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
+    // Parallel stack: per-scope ARC release hooks attached to iterators that
+    // retain external resources in their state (e.g. io.File.lines() retains
+    // the File handle). Each entry holds (data_ptr, resource_kind); cleanup
+    // emits arc release IR before the iterator state malloc is freed.
+    struct IteratorReleaseHook {
+        llvm::Value *data_ptr;
+        int resource_kind;
+    };
+    std::vector<std::vector<IteratorReleaseHook>> iterator_release_hooks_;
 
     // ======== Module-level bindings (#817) ========
     // Top-level `let` and `@const` declarations are stored as alloca in
@@ -1343,6 +1352,7 @@ public:
         std::unordered_map<llvm::AllocaInst*, std::string> savedArcTaggedUnion_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedArcAnyManaged_;
         std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
+        std::vector<std::vector<IteratorReleaseHook>> savedIteratorReleaseHooks_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;

@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/stdlib_registry.hpp"
 #include <cassert>
 
 
@@ -782,8 +783,24 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
             arc_str_managed_vars_.insert(bindAlloca);
             return;
         }
-        // Resource types, enum values stored as ptr, and other non-ARC types:
-        // no ARC management here.
+        // Resource handles (currently File only) — register so scope exit
+        // releases the ARC ref. Required for `Ok(f): close(f); lines(f)` to
+        // work safely: with this registration, scope cleanup releases the
+        // File's strong count exactly once. No retain on bind because the
+        // enclosing Result<File, Error> subject is not in
+        // arc_tagged_union_vars_ (File does not qualify as
+        // fieldTypeIsArcManaged), so the original strong count from
+        // __ry_io_file_open transfers through the Ok-arm extract without
+        // a balancing subject-side release.
+        if (resolved == "File") {
+            int rk = ResourceKindRegistry::instance().lookupByTypeName(resolved);
+            if (rk != ResourceKindRegistry::NONE) {
+                markArcManaged(bindAlloca);
+                resource_managed_vars_[bindAlloca] = rk;
+                addResourceKind(bindAlloca, rk);
+                return;
+            }
+        }
         return;
     }
 
