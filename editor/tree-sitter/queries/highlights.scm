@@ -49,6 +49,7 @@
   "record"
   "enum"
   "type"
+  "using"
 ] @keyword
 
 "return" @keyword.return

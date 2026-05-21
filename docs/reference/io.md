@@ -41,7 +41,9 @@ from io import readText, writeText, exists
 
 > **Note**: `readAll` / `readLine` / `writeText` without a `File` first argument route to the path-based or stdin variants above. The compiler dispatches on the argument type at compile time.
 >
-> **Future**: `using` automatic release (#1700-B) and `lines()` iterator (#1700-C) are tracked as separate issues.
+> **Scope-based release**: A `File` can be bound with the `using` statement to have `close` called automatically on every exit path of a block (`return`, `?`, `break`, `continue`, or normal block end). See [`control-flow.md` § using](control-flow.md#using).
+>
+> **Future**: `lines()` iterator (#1700-C) is tracked as a separate issue.
 
 ### Byte Conversions
 

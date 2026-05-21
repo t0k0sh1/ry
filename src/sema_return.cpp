@@ -121,6 +121,8 @@ bool stmtReturnsOnAllPaths(const StmtNode &stmt,
                 if (!allPathsReturn(arm.body, registry)) return false;
             }
             return true;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<UsingStmt>>) {
+            return allPathsReturn(s->body, registry);
         } else {
             return false;
         }

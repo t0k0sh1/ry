@@ -58,7 +58,9 @@ tests/spec/top_level_bindings.test.ry
 
 # === Other surface coverage gaps ===
 # (relative imports, trailing commas, records, case unification / arm bindings,
-#  ARC iolist patterns, Result type inference, enum with discriminant value)
+#  ARC iolist patterns, Result type inference, enum with discriminant value,
+#  type-application brackets at call sites — `loadAs[T](...)`)
+tests/spec/json.test.ry
 tests/spec/arc_iolist.test.ry
 tests/spec/case_unification.test.ry
 tests/spec/nul_safety_http.test.ry

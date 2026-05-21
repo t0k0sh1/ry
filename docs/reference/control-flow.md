@@ -884,6 +884,68 @@ sum = case t:
 
 ---
 
+## using
+
+- Binds a resource to a variable that is scoped to the indented block, and automatically calls the resource's `close()` when control leaves the block.
+- The initializer expression must evaluate to an `io.File` (see `docs/reference/io.md`). Passing any other type produces a compile error.
+- The current scope is intentionally narrow: only `io.File` is accepted. Other resource types (TCP sockets, locks, etc.) will be added in future issues.
+
+### Statement Syntax
+
+```ry
+using <name> = <expression>:
+    # block body — <name> is bound here
+```
+
+`<expression>` is evaluated first; if it propagates an error via `?` (or otherwise fails), the binding never takes effect and no `close()` is called. Otherwise the value is bound to `<name>`, the block body runs, and `close()` is invoked at every exit path.
+
+### Semantics
+
+`close()` is called automatically on the following exit paths:
+
+| Exit path                                  | `close()` runs |
+|--------------------------------------------|----------------|
+| Block body reaches its end                 | Yes            |
+| `return` inside the block                  | Yes            |
+| `?` propagates an error inside the block   | Yes            |
+| `break` / `continue` inside the block      | Yes            |
+| `?` on the initializer of `using` itself   | No (binding not yet established) |
+
+If the body explicitly calls `close(name)`, the implicit close on block exit is idempotent — calling `close()` twice on the same `io.File` is safe.
+
+### Example
+
+```ry
+from std.io import writeText, open, readAll
+
+fn loadGreeting(path: str) -> Result<str, Error>:
+    using f = open(path, "r")?:
+        return Ok(readAll(f)?)
+```
+
+Nested `using` releases resources in reverse order (innermost first):
+
+```ry
+fn copy(src: str, dst: str) -> Result<int, Error>:
+    using r = open(src, "r")?:
+        using w = open(dst, "w")?:
+            content = readAll(r)?
+            return Ok(0)
+    # On normal exit:  w is closed first, then r.
+```
+
+### Restrictions
+
+- The initializer must be an `io.File`. `using x = 5: ...` and `using x = "hello": ...` are compile errors:
+
+```text
+error: using requires an io.File value
+```
+
+- `using` is only valid as a statement inside a block; it has no expression form.
+
+---
+
 ## Scope Rules
 
 ### Block Scope

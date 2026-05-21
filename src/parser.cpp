@@ -132,6 +132,7 @@ bool Parser::isFieldNameTokenKind(TokenKind k) {
         case TokenKind::ErrorKw:
         case TokenKind::Async:
         case TokenKind::Await:
+        case TokenKind::Using:
             return true;
         default:
             return false;
@@ -771,6 +772,9 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::For)
         return parseForStatement();
 
+    if (first.kind == TokenKind::Using)
+        return parseUsingStatement();
+
     if (first.kind == TokenKind::Break) {
         lex_.next();
         return BreakStmt{locFromToken(first)};
@@ -1153,6 +1157,33 @@ StmtNode Parser::parseForStatement() {
     forStmt->body = parseBlock();
     forStmt->loc = locFromToken(forTok);
     return forStmt;
+}
+
+StmtNode Parser::parseUsingStatement() {
+    Token usingTok = lex_.next(); // consume 'using'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        parseError(nameTok.line, "expected variable name after 'using'");
+    rejectImportShadowing(nameTok);
+    lex_.next(); // consume identifier
+
+    if (lex_.peek().kind != TokenKind::Equals)
+        parseError(lex_.peek().line, "expected '=' after 'using' variable name");
+    lex_.next(); // consume '='
+
+    ExprPtr value = parseConditional();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError(lex_.peek().line, "expected ':' after 'using' init expression");
+    lex_.next(); // consume ':'
+
+    auto usingStmt = std::make_unique<UsingStmt>();
+    usingStmt->name = nameTok.value;
+    usingStmt->value = std::move(value);
+    usingStmt->body = parseBlock();
+    usingStmt->loc = locFromToken(usingTok);
+    return usingStmt;
 }
 
 StmtNode Parser::parseIfStatement() {

@@ -531,6 +531,35 @@ TEST(ParserTest, WhileMissingColonThrows) {
     EXPECT_THROW(parseStr("while true\n    print(1)"), std::runtime_error);
 }
 
+// ===== using statement (#1817) =====
+
+TEST(ParserTest, UsingSimple) {
+    Program prog = parseStr("using f = open(p, \"r\"):\n    readAll(f)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<UsingStmt>>(prog[0]));
+    const auto &us = *std::get<std::unique_ptr<UsingStmt>>(prog[0]);
+    EXPECT_EQ(us.name, "f");
+    ASSERT_EQ(us.body.size(), 1u);
+}
+
+TEST(ParserTest, UsingMissingNameThrows) {
+    // `using = expr:` → expected variable name after 'using'
+    EXPECT_THROW(parseStr("using = open(p, \"r\"):\n    readAll(f)"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, UsingMissingEqualsThrows) {
+    // `using f open(...):` → expected '=' after using variable name
+    EXPECT_THROW(parseStr("using f open(p, \"r\"):\n    readAll(f)"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, UsingMissingColonThrows) {
+    // `using f = expr` (no colon) → expected ':' after init expression
+    EXPECT_THROW(parseStr("using f = open(p, \"r\")\n    readAll(f)"),
+                 std::runtime_error);
+}
+
 // ===== function / return / CallExpr パーサーテスト =====
 
 TEST(ParserTest, FnSimple) {

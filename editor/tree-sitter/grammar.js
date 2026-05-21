@@ -524,6 +524,7 @@ export default grammar({
       $.while_statement,
       $.for_statement,
       $.case_statement,
+      $.using_statement,
     ),
 
     // Live-editing tolerance (#1623): the consequence / alt_consequence /
@@ -587,6 +588,16 @@ export default grammar({
       seq('(', sep1($.identifier, ','), ')'),
       // bare-comma destructure: `for a, b in iter:`
       seq($.identifier, ',', sep1($.identifier, ',')),
+    ),
+
+    // Live-editing tolerance (#1623): see if_statement note above.
+    using_statement: $ => seq(
+      'using',
+      field('name', $.identifier),
+      '=',
+      field('value', $._expression),
+      ':',
+      optional(field('body', $.block)),
     ),
 
     // Two forms: `case <expr>:` (scrutinee form, pattern-matching) and

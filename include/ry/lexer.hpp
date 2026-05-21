@@ -114,6 +114,8 @@ enum class TokenKind {
     Await,          // await
     // --- regex literal ---
     RegexLiteral,   // /pattern/
+    // --- resource management ---
+    Using,          // using
 };
 
 struct Token {

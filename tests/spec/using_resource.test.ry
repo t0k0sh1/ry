@@ -1,0 +1,150 @@
+from testing import it, describe, expect, fail
+
+from io import open, readAll, writeText, close, deleteFile
+
+# Helper: open path for write, write content under `using`, let block exit close it.
+fn writeViaUsing(path: str, content: str) -> Result<Unit, Error>:
+  using f = open(path, "w")?:
+    case writeText(f, content):
+      Ok(_): 0
+      Err(e): return Err(e)
+  return Ok(0 as u8)
+
+# Helper: open path for write under `using`, return early after writing.
+# Close must still fire on the `return` path.
+fn writeViaUsingThenReturn(path: str, content: str) -> Result<Unit, Error>:
+  using f = open(path, "w")?:
+    case writeText(f, content):
+      Ok(_): 0
+      Err(e): return Err(e)
+    return Ok(0 as u8)
+
+# Helper: `?` early-exit from inside the `using` body must still close.
+fn writeThenFailViaQuestion(writePath: str, failPath: str, content: str) -> Result<Unit, Error>:
+  using f = open(writePath, "w")?:
+    case writeText(f, content):
+      Ok(_): 0
+      Err(e): return Err(e)
+    # This `?` fires inside the using body — failPath is a nonexistent file
+    # so open Err propagates.  Close on f must still fire on the way out.
+    g = open(failPath, "r")?
+    return Ok(0 as u8)
+
+# Helper: nested using.  Both files must be visible after the outer block exits.
+fn writeViaNestedUsing(pathA: str, pathB: str, contentA: str, contentB: str) -> Result<Unit, Error>:
+  using fa = open(pathA, "w")?:
+    using fb = open(pathB, "w")?:
+      case writeText(fa, contentA):
+        Ok(_): 0
+        Err(e): return Err(e)
+      case writeText(fb, contentB):
+        Ok(_): 0
+        Err(e): return Err(e)
+  return Ok(0 as u8)
+
+# Helper: using-init `?` returning Err must propagate without binding.
+fn cannotOpen(path: str) -> Result<str, Error>:
+  using f = open(path, "r")?:
+    case readAll(f):
+      Ok(s): return Ok(s)
+      Err(e): return Err(e)
+  return Err(Error("unreachable"))
+
+# Helper: explicit close inside body must not double-close at block exit.
+fn writeThenManualClose(path: str, content: str) -> Result<Unit, Error>:
+  using f = open(path, "w")?:
+    case writeText(f, content):
+      Ok(_): 0
+      Err(e): return Err(e)
+    close(f)
+  return Ok(0 as u8)
+
+@describe("using statement")
+fn usingStatementTests():
+  @it("should auto-close file at block exit so content is flushed")
+  fn shouldAutoCloseFileAtBlockExitSoContentIsFlushed():
+    path = "/tmp/ry_using_basic.txt"
+    case writeViaUsing(path, "hello using"):
+      Ok(_): 0
+      Err(e): fail("writeViaUsing failed: " + e.message)
+    case open(path, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("hello using")
+          Err(e): fail("readAll failed: " + e.message)
+        close(f)
+      Err(e): fail("open r failed: " + e.message)
+    deleteFile(path)
+
+  @it("should close file when using body returns early")
+  fn shouldCloseFileWhenUsingBodyReturnsEarly():
+    path = "/tmp/ry_using_return.txt"
+    case writeViaUsingThenReturn(path, "early return content"):
+      Ok(_): 0
+      Err(e): fail("writeViaUsingThenReturn failed: " + e.message)
+    case open(path, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("early return content")
+          Err(e): fail("readAll failed: " + e.message)
+        close(f)
+      Err(e): fail("open r failed: " + e.message)
+    deleteFile(path)
+
+  @it("should close file when using body propagates Err via ?")
+  fn shouldCloseFileWhenUsingBodyPropagatesErrVia():
+    path = "/tmp/ry_using_qmark.txt"
+    failPath = "/tmp/ry_using_nonexistent_xyzzy.txt"
+    deleteFile(failPath)
+    expect(writeThenFailViaQuestion(path, failPath, "before ?")).toBeErr()
+    case open(path, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("before ?")
+          Err(e): fail("readAll failed: " + e.message)
+        close(f)
+      Err(e): fail("open r failed: " + e.message)
+    deleteFile(path)
+
+  @it("should support nested using with both files closed")
+  fn shouldSupportNestedUsingWithBothFilesClosed():
+    pathA = "/tmp/ry_using_nest_a.txt"
+    pathB = "/tmp/ry_using_nest_b.txt"
+    case writeViaNestedUsing(pathA, pathB, "alpha", "beta"):
+      Ok(_): 0
+      Err(e): fail("writeViaNestedUsing failed: " + e.message)
+    case open(pathA, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("alpha")
+          Err(e): fail("readAll a failed: " + e.message)
+        close(f)
+      Err(e): fail("open a failed: " + e.message)
+    case open(pathB, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("beta")
+          Err(e): fail("readAll b failed: " + e.message)
+        close(f)
+      Err(e): fail("open b failed: " + e.message)
+    deleteFile(pathA)
+    deleteFile(pathB)
+
+  @it("should propagate Err from using-init ? without binding")
+  fn shouldPropagateErrFromUsingInitWithoutBinding():
+    expect(cannotOpen("/tmp/ry_using_no_such_file_qwerty.txt")).toBeErr()
+
+  @it("should tolerate explicit close inside using body (no double-close crash)")
+  fn shouldTolerateExplicitCloseInsideUsingBodyNoDoubleCloseCrash():
+    path = "/tmp/ry_using_double_close.txt"
+    case writeThenManualClose(path, "manual close ok"):
+      Ok(_): 0
+      Err(e): fail("writeThenManualClose failed: " + e.message)
+    case open(path, "r"):
+      Ok(f):
+        case readAll(f):
+          Ok(s): expect(s).toEq("manual close ok")
+          Err(e): fail("readAll failed: " + e.message)
+        close(f)
+      Err(e): fail("open r failed: " + e.message)
+    deleteFile(path)
