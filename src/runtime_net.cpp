@@ -109,9 +109,13 @@ extern "C" void *__ry_accept(void *listener) {
     }
 
     // Use poll() for cross-platform timeout (SO_RCVTIMEO doesn't work
-    // for accept() on macOS).
+    // for accept() on macOS). Retry on EINTR so a benign signal doesn't
+    // surface as a spurious accept failure.
     struct pollfd pfd = {handle->fd, POLLIN, 0};
-    int poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
+    int poll_ret;
+    do {
+        poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
+    } while (poll_ret < 0 && errno == EINTR);
     if (poll_ret == 0) {
         setLastError("accept: timed out waiting for connection");
         errno = ETIMEDOUT;
