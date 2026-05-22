@@ -468,7 +468,9 @@ static llvm::Value *emitNetAccept(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("accept() requires TcpListener argument");
     auto fn = cg.mod_->getOrInsertFunction("__ry_accept", cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {listener}, "accept_result");
-    return cg.emitPtrToResult(result, "accept", "accept failed", rk_tcp_stream);
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
+    cg.addResourceKind(res, rk_tcp_stream);
+    return res;
 }
 
 static llvm::Value *emitNetListenerPort(CodeGen &cg, const CallExpr &e) {
@@ -499,7 +501,9 @@ static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
     if (isTls) {
-        return cg.emitPtrToResult(result, "tlsConnect", "TLS connection failed", rk_tls_stream);
+        llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_tls_get_last_error");
+        cg.addResourceKind(res, rk_tls_stream);
+        return res;
     }
     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
     cg.addResourceKind(res, rk_tcp_stream);

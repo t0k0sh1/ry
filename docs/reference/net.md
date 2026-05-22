@@ -166,6 +166,24 @@ Pass `0` to disable the timeout (wait indefinitely).
 - `receive()` returns `Ok` with an empty `List<u8>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 
+### Detailed error messages
+
+`Err(e).message` carries the runtime error message describing the failure cause, not a static placeholder. Examples:
+
+| Function | Failure | Example `e.message` |
+|---|---|---|
+| `bind` | host has embedded NUL | `"bind: host argument contains an embedded NUL byte"` |
+| `bind` | port out of range | `"bind: port 70000 is out of range [0, 65535]"` |
+| `connect` | connection refused | `"connect: failed to connect to 127.0.0.1:9999: Connection refused"` |
+| `accept` | no client within 1 s | `"accept: timed out waiting for connection"` |
+| `accept` | listener shut down | `"accept: listener shut down"` |
+| `accept` | underlying `accept` syscall failed | `"accept: <strerror>"` |
+| `tlsConnect` | TCP connection failed | `"tlsConnect: cannot connect to host:port: <strerror>"` |
+| `tlsConnect` | TLS handshake failed | `"tlsConnect: TLS handshake failed: <openssl>"` |
+| `tlsConnect` | certificate verification failed | `"tlsConnect: certificate verification failed: <reason>"` |
+
+Use `e.message` to surface actionable diagnostics to the user. Prior to #1858, `accept` and `tlsConnect` returned static strings (`"accept failed"` / `"TLS connection failed"`); since #1858 they preserve the runtime message just like `bind` / `connect` already did.
+
 ## Byte Conversion
 
 TCP operations work with `List<u8>`. Use `toBytes()` and `bytesToStr()` from `io` to convert between strings and byte lists.
