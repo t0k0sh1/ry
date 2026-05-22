@@ -165,7 +165,7 @@ print(f"Hello, {name}!")
 
 ## Error Handling
 
-File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
+File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors. The `Error.message` field carries a runtime-supplied detail string describing the failure:
 
 ```ry
 case readText("missing.txt"):
@@ -173,6 +173,12 @@ case readText("missing.txt"):
         print(content)
     Err(e):
         print(e.message)   # cannot open file 'missing.txt' for reading
+
+case open("missing.txt", "r"):
+    Ok(f):
+        close(f)
+    Err(e):
+        print(e.message)   # open: cannot open 'missing.txt' in mode 'r'
 ```
 
 | Operation | Error Condition |
