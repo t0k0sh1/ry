@@ -358,6 +358,12 @@ static const CodeGen::NativeDispatchEntry io_table[] = {
 
 RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
+    // Register libry_io.dylib for JIT loading. The custom emitters and
+    // inline paths below (open / readAll(File) / readLine(File) / lines /
+    // writeText File and str/str overloads) bypass emitTableDrivenNativeCall
+    // and therefore miss the sig.library-driven insert.
+    cg.used_native_libraries_.insert("io");
+
     const auto &n = e.callee;
     const auto sz = e.args.size();
 
