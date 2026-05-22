@@ -1,0 +1,9 @@
+from testing import it, describe, expect
+
+from io import writeText
+
+@describe("partial import: writeText(path, content) only (regression for #1856)")
+fn ioPartialImportWriteTextTests():
+  @it("should write text to path with writeText-only import (JIT resolves __ry_write_text)")
+  fn shouldWriteTextWithWriteTextOnlyImport():
+    expect(writeText("/tmp/ry_partial_import_writetext_zzzz.txt", "regression test for #1856")).toBeOk()
