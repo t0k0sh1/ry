@@ -103,25 +103,36 @@ extern "C" int64_t __ry_listen(void *listener, int64_t backlog) {
 extern "C" void *__ry_accept(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
     if (handle->shutdown.load(std::memory_order_relaxed)) {
+        setLastError("accept: listener shut down");
         errno = ECANCELED;
         return nullptr;
     }
 
     // Use poll() for cross-platform timeout (SO_RCVTIMEO doesn't work
-    // for accept() on macOS).
+    // for accept() on macOS). Retry on EINTR so a benign signal doesn't
+    // surface as a spurious accept failure.
     struct pollfd pfd = {handle->fd, POLLIN, 0};
-    int poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
+    int poll_ret;
+    do {
+        poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
+    } while (poll_ret < 0 && errno == EINTR);
     if (poll_ret == 0) {
+        setLastError("accept: timed out waiting for connection");
         errno = ETIMEDOUT;
         return nullptr;
     }
-    if (poll_ret < 0)
+    if (poll_ret < 0) {
+        setLastError("accept: poll error: %s", strerror(errno));
         return nullptr;
-    if (pfd.revents & (POLLERR | POLLNVAL | POLLHUP))
+    }
+    if (pfd.revents & (POLLERR | POLLNVAL | POLLHUP)) {
+        setLastError("accept: poll reported listener error");
         return nullptr;
+    }
 
     // Shutdown may have been requested while poll() was blocking.
     if (handle->shutdown.load(std::memory_order_relaxed)) {
+        setLastError("accept: listener shut down");
         errno = ECANCELED;
         return nullptr;
     }
@@ -129,8 +140,10 @@ extern "C" void *__ry_accept(void *listener) {
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
     int client_fd = ::accept(handle->fd, reinterpret_cast<struct sockaddr *>(&client_addr), &addr_len);
-    if (client_fd < 0)
+    if (client_fd < 0) {
+        setLastError("accept: %s", strerror(errno));
         return nullptr;
+    }
 #ifdef SO_NOSIGPIPE
     int nosig = 1;
     ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
@@ -138,6 +151,7 @@ extern "C" void *__ry_accept(void *listener) {
 
     void *smem = arc_alloc(sizeof(TcpStreamHandle));
     if (!smem) {
+        setLastError("accept: memory allocation failed");
         ::close(client_fd);
         return nullptr;
     }

@@ -1,4 +1,5 @@
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_error.hpp"
 #include "ry/runtime_tls.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_net_utils.hpp"
@@ -8,7 +9,9 @@
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
 
+#include <cerrno>
 #include <climits>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -19,6 +22,8 @@
 
 
 namespace ry {
+
+DEFINE_LAST_ERROR(tls)
 
 struct TlsStreamHandle {
     int fd;
@@ -34,6 +39,18 @@ static std::once_flag g_tls_init;
 
 static SSL_CTX *get_global_tls_ctx() {
     std::call_once(g_tls_init, []() {
+        // OpenSSL's SSL_connect / SSL_write call raw write(2) without
+        // MSG_NOSIGNAL, so a peer that closes the connection mid-handshake
+        // (e.g. plain TCP listener receiving a ClientHello) kills the
+        // process with SIGPIPE on Linux. macOS uses SO_NOSIGPIPE at the
+        // socket layer, but ignoring the signal is harmless there.
+        // Preserve any custom SIGPIPE disposition installed by an embedding
+        // host so library users aren't forced into our policy when they
+        // already have their own.
+        auto prev = std::signal(SIGPIPE, SIG_IGN);
+        if (prev != SIG_DFL && prev != SIG_IGN && prev != SIG_ERR) {
+            std::signal(SIGPIPE, prev);
+        }
         g_tls_ctx = SSL_CTX_new(TLS_client_method());
         if (!g_tls_ctx) return;
         SSL_CTX_set_default_verify_paths(g_tls_ctx);
@@ -75,12 +92,16 @@ ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len) {
 static void *tls_handshake(const char *host, int fd) {
     SSL_CTX *ctx = get_global_tls_ctx();
     if (!ctx) {
+        setLastError("tlsConnect: SSL context initialization failed");
         ::close(fd);
         return nullptr;
     }
 
     SSL *ssl = SSL_new(ctx);
     if (!ssl) {
+        char ebuf[256];
+        ERR_error_string_n(ERR_get_error(), ebuf, sizeof(ebuf));
+        setLastError("tlsConnect: SSL_new failed: %s", ebuf);
         ::close(fd);
         return nullptr;
     }
@@ -94,6 +115,9 @@ static void *tls_handshake(const char *host, int fd) {
     // Perform TLS handshake
     int ret = SSL_connect(ssl);
     if (ret != 1) {
+        char ebuf[256];
+        ERR_error_string_n(ERR_get_error(), ebuf, sizeof(ebuf));
+        setLastError("tlsConnect: TLS handshake failed: %s", ebuf);
         SSL_free(ssl);
         ::close(fd);
         return nullptr;
@@ -102,6 +126,8 @@ static void *tls_handshake(const char *host, int fd) {
     // Certificate verification is enforced by SSL_VERIFY_PEER + SSL_set1_host
     long verify_result = SSL_get_verify_result(ssl);
     if (verify_result != X509_V_OK) {
+        setLastError("tlsConnect: certificate verification failed: %s",
+                     X509_verify_cert_error_string(verify_result));
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
@@ -110,6 +136,7 @@ static void *tls_handshake(const char *host, int fd) {
 
     void *mem = arc_alloc(sizeof(TlsStreamHandle));
     if (!mem) {
+        setLastError("tlsConnect: memory allocation failed");
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
@@ -123,14 +150,21 @@ static void *tls_handshake(const char *host, int fd) {
 
 extern "C" void *__ry_tls_connect_resolved(const char *host, const ::addrinfo *info) {
     void *tcp = ry_net_connect_resolved(info);
-    if (!tcp) return nullptr;
+    if (!tcp) {
+        setLastError("tlsConnect: cannot connect to %s: %s", host, strerror(errno));
+        return nullptr;
+    }
     int fd = ry_net_tcp_take_fd(tcp);
     return tls_handshake(host, fd);
 }
 
 extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     void *tcp = ry_net_connect(host, port);
-    if (!tcp) return nullptr;
+    if (!tcp) {
+        setLastError("tlsConnect: cannot connect to %s:%lld: %s",
+                     host, (long long)port, strerror(errno));
+        return nullptr;
+    }
     int fd = ry_net_tcp_take_fd(tcp);
     return tls_handshake(host, fd);
 }

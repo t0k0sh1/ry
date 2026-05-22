@@ -25,7 +25,7 @@ fn tcpSocketApiTests():
         close(server)
       Err(e):
         fail("unexpected error: " + e.message)
-  @it("should return Err when tlsConnect to closed port")
+  @it("should return Err with detailed message when tlsConnect to closed port")
   fn shouldReturnErrWhenTlsconnectToClosedPort():
     case bind("127.0.0.1", 0):
       Ok(server):
@@ -36,10 +36,38 @@ fn tcpSocketApiTests():
             close(conn)
             fail("expected Err but got Ok")
           Err(e):
-            expect(true).toEq(true)
+            expect(e.message).toContain("tlsConnect")
       Err(e):
         fail("unexpected error: " + e.message)
-  @it("should return Err when connect to closed port")
+  @it("should return Err with handshake message when tlsConnect to plain TCP listener")
+  fn shouldReturnErrWithHandshakeMessageWhenTlsconnectToPlainTcpListener():
+    async fn plainServer(server: TcpListener) -> str:
+      case accept(server):
+        Ok(conn):
+          sleep(200)
+          close(conn)
+        Err(e):
+          ...
+      close(server)
+      return "done"
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
+            port = listenerPort(server)
+            t = plainServer(server)
+            case tlsConnect("127.0.0.1", port):
+              Ok(conn):
+                close(conn)
+                fail("expected Err but got Ok")
+              Err(e):
+                expect(e.message).toContain("handshake")
+            blockOn(t)
+          Err(e):
+            fail("unexpected error: " + e.message)
+      Err(e):
+        fail("unexpected error: " + e.message)
+  @it("should return Err with detailed message when connect to closed port")
   fn shouldReturnErrWhenConnectToClosedPort():
     case bind("127.0.0.1", 0):
       Ok(server):
@@ -50,7 +78,24 @@ fn tcpSocketApiTests():
             close(conn)
             fail("expected Err but got Ok")
           Err(e):
-            expect(true).toEq(true)
+            expect(e.message).toContain("connect")
+      Err(e):
+        fail("unexpected error: " + e.message)
+  @it("should return Err with detailed timeout message when accept has no client")
+  fn shouldReturnErrWithDetailedTimeoutMessageWhenAcceptHasNoClient():
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
+            case accept(server):
+              Ok(conn):
+                close(conn)
+                fail("expected Err but got Ok")
+              Err(e):
+                expect(e.message).toContain("timed out")
+          Err(e):
+            fail("unexpected error: " + e.message)
+        close(server)
       Err(e):
         fail("unexpected error: " + e.message)
   @it("should preserve TcpListener metadata through helper-returned Result")
