@@ -11,6 +11,7 @@
 
 #include <cerrno>
 #include <climits>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -38,6 +39,12 @@ static std::once_flag g_tls_init;
 
 static SSL_CTX *get_global_tls_ctx() {
     std::call_once(g_tls_init, []() {
+        // OpenSSL's SSL_connect / SSL_write call raw write(2) without
+        // MSG_NOSIGNAL, so a peer that closes the connection mid-handshake
+        // (e.g. plain TCP listener receiving a ClientHello) kills the
+        // process with SIGPIPE on Linux. macOS uses SO_NOSIGPIPE at the
+        // socket layer, but ignoring the signal is harmless there.
+        std::signal(SIGPIPE, SIG_IGN);
         g_tls_ctx = SSL_CTX_new(TLS_client_method());
         if (!g_tls_ctx) return;
         SSL_CTX_set_default_verify_paths(g_tls_ctx);
