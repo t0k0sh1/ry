@@ -191,6 +191,8 @@ case open("missing.txt", "r"):
 | `readAll` (File) | Read error after opening |
 | `readLine` (File) | Read error (I/O failure, not EOF — EOF is `Ok(None)`) |
 | `writeText` (File, str) | Write error |
+| `open` / `readText` / `writeText` / `appendText` / `readBytes` / `writeBytes` | Path refers to a symbolic link (rejected by `O_NOFOLLOW`; security hardening) |
+| `readText` / `readBytes` / `readAll` (File) | File exceeds the 256 MiB read limit |
 
 ## Notes
 
@@ -200,3 +202,5 @@ case open("missing.txt", "r"):
 - `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
 - `writeText` and `writeBytes` overwrite existing files. Use `appendText` to add content to existing files.
 - `writeText`, `appendText`, and `readText` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).
+- Symbolic links are rejected by all file-opening operations (`open`, `readText`, `writeText`, `appendText`, `readBytes`, `writeBytes`) via `O_NOFOLLOW` as a security hardening measure. Opening a symlinked path fails with the standard "cannot open file ..." error; the message does not currently distinguish symlinks from other open failures (e.g. missing file, permission denied). (#1849)
+- `readText`, `readBytes`, and `readAll(File)` reject files larger than 256 MiB and return `Err`. The error message includes the actual size, e.g. `file 'big.bin' is too large (300000000 bytes, max 268435456)` for the path-based variants, or `readAll: file too large (300000000 bytes, max 268435456)` for the File-handle variant. `writeText`, `writeBytes`, and `appendText` have no equivalent upper bound. (#1849)
