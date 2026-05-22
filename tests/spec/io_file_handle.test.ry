@@ -19,24 +19,44 @@ fn fileHandleTests():
         fail("open failed: " + e.message)
     deleteFile("/tmp/ry_fh_readall.txt")
 
-  @it("should return Err when opening nonexistent file")
+  @it("should return Err with detailed message when opening nonexistent file")
   fn shouldReturnErrWhenOpeningNonexistentFile():
-    expect(open("/tmp/ry_fh_no_such_file_xyzzy.txt", "r")).toBeErr()
+    case open("/tmp/ry_fh_no_such_file_xyzzy.txt", "r"):
+      Ok(f):
+        close(f)
+        fail("expected Err for nonexistent file, got Ok")
+      Err(e):
+        expect(e.message).toContain("cannot open")
 
-  @it("should return Err for invalid mode")
+  @it("should return Err with detailed message for invalid mode")
   fn shouldReturnErrForInvalidMode():
     writeText("/tmp/ry_fh_badmode.txt", "x")
-    expect(open("/tmp/ry_fh_badmode.txt", "z")).toBeErr()
+    case open("/tmp/ry_fh_badmode.txt", "z"):
+      Ok(f):
+        close(f)
+        fail("expected Err for invalid mode, got Ok")
+      Err(e):
+        expect(e.message).toContain("invalid mode")
     deleteFile("/tmp/ry_fh_badmode.txt")
 
-  @it("should return Err when path contains an embedded NUL byte")
+  @it("should return Err with detailed message when path contains an embedded NUL byte")
   fn shouldReturnErrWhenPathContainsEmbeddedNul():
-    expect(open("/tmp/ry_fh_nul\0path.txt", "r")).toBeErr()
+    case open("/tmp/ry_fh_nul\0path.txt", "r"):
+      Ok(f):
+        close(f)
+        fail("expected Err for NUL in path, got Ok")
+      Err(e):
+        expect(e.message).toContain("path contains an embedded NUL byte")
 
-  @it("should return Err when mode contains an embedded NUL byte")
+  @it("should return Err with detailed message when mode contains an embedded NUL byte")
   fn shouldReturnErrWhenModeContainsEmbeddedNul():
     writeText("/tmp/ry_fh_nul_mode.txt", "x")
-    expect(open("/tmp/ry_fh_nul_mode.txt", "r\0")).toBeErr()
+    case open("/tmp/ry_fh_nul_mode.txt", "r\0"):
+      Ok(f):
+        close(f)
+        fail("expected Err for NUL in mode, got Ok")
+      Err(e):
+        expect(e.message).toContain("mode contains an embedded NUL byte")
     deleteFile("/tmp/ry_fh_nul_mode.txt")
 
   @it("should write and read back via file handle")

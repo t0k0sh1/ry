@@ -188,7 +188,9 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
         "__ry_io_file_open",
         llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_}, false));
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
-    return cg.emitPtrToResult(ptr, "open", "open failed", rk_file);
+    llvm::Value *res = cg.wrapPtrAsResult(ptr);
+    cg.addResourceKind(res, rk_file);
+    return res;
 }
 
 static llvm::Value *emitFileReadAll(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
