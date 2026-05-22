@@ -44,7 +44,13 @@ static SSL_CTX *get_global_tls_ctx() {
         // (e.g. plain TCP listener receiving a ClientHello) kills the
         // process with SIGPIPE on Linux. macOS uses SO_NOSIGPIPE at the
         // socket layer, but ignoring the signal is harmless there.
-        std::signal(SIGPIPE, SIG_IGN);
+        // Preserve any custom SIGPIPE disposition installed by an embedding
+        // host so library users aren't forced into our policy when they
+        // already have their own.
+        auto prev = std::signal(SIGPIPE, SIG_IGN);
+        if (prev != SIG_DFL && prev != SIG_IGN && prev != SIG_ERR) {
+            std::signal(SIGPIPE, prev);
+        }
         g_tls_ctx = SSL_CTX_new(TLS_client_method());
         if (!g_tls_ctx) return;
         SSL_CTX_set_default_verify_paths(g_tls_ctx);
