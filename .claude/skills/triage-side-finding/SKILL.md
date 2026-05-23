@@ -190,6 +190,8 @@ gh search issues --repo t0k0sh1/ry "<keywords>" --state open
 
 Step 2 で得た許可と milestone 決定を入力に、`/git-create-issue` skill 経由で起票する。コマンド本体と本文テンプレートは `/git-create-issue` に集約されている。
 
+**重複した許可確認を避けるため**: `/git-create-issue` Step 1 は許可ゲートだが、本 skill 経由で呼ぶ場合は Step 2 で同等の 6 項目プレビューと承認が完了しているため、`/git-create-issue` 側は **Step 1 を skip し Step 2 (重複確認) から開始**する。Step 2 で承認された 6 項目 (起票理由 / 概要 / 粒度 / 解決確度 / ラベル案 / 採用 milestone) をそのまま `gh issue create` の入力にする。`/git-create-issue` 側にも同等の skip 条件が明記されている。
+
 ### Step 6: 報告する
 
 ユーザーに issue 番号・タイトル・設定したマイルストーンを報告する。複数 issue を起票したらすべて列挙する。fold / escalate を選択した場合はその旨と対象 OPEN PR 番号を報告する。

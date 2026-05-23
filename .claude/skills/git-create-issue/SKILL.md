@@ -33,6 +33,10 @@ The previous failure mode (#1851 self-verification): Claude Code presented "別 
 
 ### Step 1: Present the proposal and wait for explicit permission
 
+> **When invoked from `/triage-side-finding`**: Step 2 of that skill already presents the same 6-item proposal and obtains user approval. To avoid double-prompting, **skip this Step 1 and jump straight to Step 2 (duplicate check)**, carrying forward the approved reason / summary / granularity / confidence / labels / milestone from triage-side-finding Step 2. Re-prompting is required only if those parameters changed during Step 4 splitting (in which case triage-side-finding Step 4 itself re-asks).
+>
+> Run Step 1 only for **direct invocations** (the user typed `/git-create-issue` themselves, or another flow without a prior permission step).
+
 Show the user the following 6 items as a single preview. Do **not** run `gh issue create` yet.
 
 | Item | What to include |
@@ -50,7 +54,7 @@ To fetch the current open milestone:
 gh api repos/t0k0sh1/ry/milestones?state=open --jq '.[] | {title, number, due_on}'
 ```
 
-Take the latest version-numbered milestone as the default candidate (e.g. if `v0.0.25` and `v0.1.0` are both open, the lower one usually represents the active development cycle — confirm with the user).
+Pick the **active development milestone** — typically the nearest upcoming version — as the candidate to present, and **ask the user to confirm** rather than auto-deciding. The project's convention does not always match semver ordering: when multiple open milestones look plausible (e.g. both `v0.0.25` and `v0.1.0` are open), surface both to the user and let them say which is the current development cycle. When in doubt, present "未設定" as an equally valid choice.
 
 #### Presentation template
 
