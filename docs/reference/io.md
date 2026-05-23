@@ -170,7 +170,7 @@ case readLine():
         print(e.message)
 ```
 
-`readLine()` returns `Ok(Some(line))` for a successful read (trailing newline removed), `Ok(None)` at EOF (e.g. when stdin is closed), and `Err(e)` on I/O failure. For convenience scripts where EOF / error handling is unnecessary, the `input()` builtin returns a bare `str` (empty string on EOF / error).
+`readLine()` returns `Ok(Some(line))` for a successful read (trailing newline removed), `Ok(None)` at EOF (e.g. when stdin is closed), and `Err(e)` on I/O failure. The `input()` builtin returns the same `Result<Option<str>, Error>` shape with the same semantics and is available without an `import`.
 
 ## Error Handling
 

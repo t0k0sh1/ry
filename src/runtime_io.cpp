@@ -46,21 +46,6 @@ static void setLastError(const char *fmt, ...) {
 
 // ===== Standard input =====
 
-extern "C" const char *__ry_read_line() {
-    char *line = nullptr;
-    size_t len = 0;
-    ssize_t nread = getline(&line, &len, stdin);
-    if (nread == -1) {
-        free(line);
-        return makeString("", 0);
-    }
-    if (nread > 0 && line[nread - 1] == '\n')
-        --nread;
-    const char *result = makeString(line, static_cast<size_t>(nread));
-    free(line);
-    return result;
-}
-
 // Returns: 0 = line read, 1 = EOF (no data), -1 = error
 // *out_line is set to a Ry string handle on success (0-return only).
 // stdin counterpart of __ry_io_file_read_line.
@@ -85,12 +70,16 @@ extern "C" int64_t __ry_io_read_line(const char **out_line) {
     return 0;
 }
 
-extern "C" const char *__ry_input_prompt(const char *prompt) {
+// Tri-state stdin reader with an optional prompt written to stdout first.
+// Same return contract as __ry_io_read_line. Failures writing the prompt to
+// stdout are intentionally swallowed (a broken stdout should not kill an
+// interactive read) — only the getline outcome drives the return code.
+extern "C" int64_t __ry_io_input_prompt(const char *prompt, const char **out_line) {
     size_t promptLen = static_cast<size_t>(stringByteLen(prompt));
     if (promptLen > 0)
         fwrite(prompt, 1, promptLen, stdout);
     fflush(stdout);
-    return __ry_read_line();
+    return __ry_io_read_line(out_line);
 }
 
 extern "C" const char *__ry_read_all() {

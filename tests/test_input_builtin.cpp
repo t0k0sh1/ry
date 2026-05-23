@@ -105,45 +105,91 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
     return {output, exit_code};
 }
 
+// Common driver: prints "line:<s>" / "EOF" / "ERR:<msg>" for one input() call.
+static const char *kInputDriver_PrintLine = R"(case input():
+    Ok(opt):
+        case opt:
+            Some(s): print("line:" + s)
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)";
+
 TEST(InputBuiltin, NoArg_BasicLine) {
-    auto [out, rc] = runRyWithStdin("print(input())\n", "hello\n");
-    EXPECT_EQ(out, "hello\n");
+    auto [out, rc] = runRyWithStdin(kInputDriver_PrintLine, "hello\n");
+    EXPECT_EQ(out, "line:hello\n");
     EXPECT_EQ(rc, 0);
 }
 
-TEST(InputBuiltin, NoArg_EOFReturnsEmpty) {
-    auto [out, rc] = runRyWithStdin("print(input())\n", "");
-    EXPECT_EQ(out, "\n");
+TEST(InputBuiltin, NoArg_EOFReturnsOkNone) {
+    auto [out, rc] = runRyWithStdin(kInputDriver_PrintLine, "");
+    EXPECT_EQ(out, "EOF\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, NoArg_EmptyLineReturnsOkSomeEmpty) {
+    // Core breaking-change guarantee: an empty input line is Ok(Some("")),
+    // distinct from EOF which is Ok(None).
+    auto [out, rc] = runRyWithStdin(R"(case input():
+    Ok(opt):
+        case opt:
+            Some(s): print(len(s))
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
+        "\n");
+    EXPECT_EQ(out, "0\n");
     EXPECT_EQ(rc, 0);
 }
 
 TEST(InputBuiltin, NoArg_TrailingNewlineStripped) {
-    auto [out, rc] = runRyWithStdin(
-        "line = input()\nprint(len(line))\n",
+    auto [out, rc] = runRyWithStdin(R"(case input():
+    Ok(opt):
+        case opt:
+            Some(s): print(len(s))
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
         "foo\n");
     EXPECT_EQ(out, "3\n");
     EXPECT_EQ(rc, 0);
 }
 
 TEST(InputBuiltin, NoArg_NoTrailingNewline) {
-    auto [out, rc] = runRyWithStdin(
-        "line = input()\nprint(line)\nprint(len(line))\n",
+    auto [out, rc] = runRyWithStdin(R"(case input():
+    Ok(opt):
+        case opt:
+            Some(s):
+                print(s)
+                print(len(s))
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
         "bar");
     EXPECT_EQ(out, "bar\n3\n");
     EXPECT_EQ(rc, 0);
 }
 
 TEST(InputBuiltin, Prompt_WritesToStdoutBeforeRead) {
-    auto [out, rc] = runRyWithStdin(
-        "name = input(\"Q: \")\nprint(name)\n",
+    auto [out, rc] = runRyWithStdin(R"(case input("Q: "):
+    Ok(opt):
+        case opt:
+            Some(s): print(s)
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
         "answer\n");
     EXPECT_EQ(out, "Q: answer\n");
     EXPECT_EQ(rc, 0);
 }
 
 TEST(InputBuiltin, Prompt_NoTrailingNewlineOnPrompt) {
-    auto [out, rc] = runRyWithStdin(
-        "_ignored = input(\"prefix\")\nprint(\"done\")\n",
+    auto [out, rc] = runRyWithStdin(R"(case input("prefix"):
+    Ok(opt):
+        case opt:
+            Some(_s): print("done")
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
         "x\n");
     // The prompt "prefix" must not be followed by a newline before "done".
     EXPECT_EQ(out, "prefixdone\n");
@@ -151,17 +197,29 @@ TEST(InputBuiltin, Prompt_NoTrailingNewlineOnPrompt) {
 }
 
 TEST(InputBuiltin, Prompt_EmptyPromptBehavesLikeNoArg) {
-    auto [out, rc] = runRyWithStdin("print(input(\"\"))\n", "zzz\n");
+    auto [out, rc] = runRyWithStdin(R"(case input(""):
+    Ok(opt):
+        case opt:
+            Some(s): print(s)
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
+        "zzz\n");
     EXPECT_EQ(out, "zzz\n");
     EXPECT_EQ(rc, 0);
 }
 
-TEST(InputBuiltin, StatementForm_NoReturnValueUsed) {
-    // input() called as a statement (discarding return value) should not crash.
-    auto [out, rc] = runRyWithStdin(
-        "input()\nprint(\"after\")\n",
-        "discarded\n");
-    EXPECT_EQ(out, "after\n");
+TEST(InputBuiltin, Prompt_EOFReturnsOkNone) {
+    // EOF distinction works for the prompt variant too.
+    auto [out, rc] = runRyWithStdin(R"(case input("> "):
+    Ok(opt):
+        case opt:
+            Some(s): print("line:" + s)
+            None: print("EOF")
+    Err(e): print("ERR:" + e.message)
+)",
+        "");
+    EXPECT_EQ(out, "> EOF\n");
     EXPECT_EQ(rc, 0);
 }
 
