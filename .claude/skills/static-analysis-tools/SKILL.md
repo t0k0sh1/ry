@@ -27,10 +27,9 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
   - **push to main**: `cmake --build build --parallel` で full build (all target)
   - **注意**: `--target ry` は **build step のみ** narrowing する。clang-tidy 解析は両 event とも `find src -name '*.cpp'` で得られる全 90 ファイル (ry_lib に含まれない 14 TU を含む) を並列解析する
 - 解析は `xargs -0 -n 1 -P "$(nproc)"` で TU 並列実行 (#1741)。`-n 1` は必須 — 省くと xargs が全 .cpp を 1 つの clang-tidy 呼び出しにまとめてしまい、`-P` の並列度が無効化される
-- ローカル実行 (macOS は `sysctl -n hw.ncpu`、Linux は `nproc`):
+- ローカル実行は Docker 経由に統一する (issue #1865 — macOS で PCH 互換性問題 / Homebrew LLVM PATH を回避):
   ```bash
-  find src -name '*.cpp' -print0 \
-    | xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)" clang-tidy -p build --quiet
+  ./docker/run.sh static-analysis clang-tidy
   ```
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 
@@ -48,7 +47,7 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 
 **抑制すべきでないケース**: 通常の関数で例外を投げうるコードを noexcept と宣言・抑制すること。例外発生で `std::terminate` するため、プロセス境界以外では呼び出し側が捕捉できる例外設計を維持する。
 
-**ローカル検証**: macOS では Homebrew clang で build しないと clang-tidy 21 が PCH を読めない。`CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ cmake --preset default -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path)` で reconfigure する。
+**ローカル検証**: `./docker/run.sh static-analysis clang-tidy` で Linux + libstdc++ 環境を再現する (issue #1865)。Docker 経由なら toolchain を Apple clang ↔ Homebrew LLVM ↔ Linux LLVM で揃える必要がなく PCH 互換性問題も発生しない。
 
 **参照例**:
 - `src/codegen.cpp` の `CodeGen::FnScope::~FnScope() noexcept` — `noexcept` 明示 + NOLINTNEXTLINE 併用（destructor 末尾の `resize()` を libc++ が throwing と推論）
@@ -65,7 +64,10 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 
 - `compile_commands.json` は使用しない（ビルド不要で高速実行）
 - ソースコード内の `// cppcheck-suppress <id>` コメントも有効（`--inline-suppr`）
-- ローカル実行: `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/`
+- ローカル実行は Docker 経由に統一する (issue #1865):
+  ```bash
+  ./docker/run.sh static-analysis cppcheck
+  ```
 - 新規コードは Cppcheck 警告ゼロを維持すること
 
 ## Clang Static Analyzer (scan-build)
@@ -78,30 +80,14 @@ CI は event に応じて分析スコープを切り替える (#1738):
 
 両 event とも `continue-on-error: true` (warn-only) 運用中。
 
-- `scan-build` は CI コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`) の LLVM 21 source build に同梱されており、`/usr/local/llvm/bin/scan-build` から利用可能。ローカル Linux ホストでは `sudo apt-get install clang-tools-21`、macOS では `brew install llvm@21` で入手する
+- `scan-build` は CI コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`) の LLVM 21 source build に同梱されており、`/usr/local/llvm/bin/scan-build` から利用可能
 - `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
-- ローカル実行 — fast scan (`ry` target のみ、PR と同等):
+- ローカル実行は Docker 経由に統一する (issue #1865 — macOS で scan-build が PATH 外 / Homebrew 依存を回避)。fast scan (`ry` target のみ、PR と同等) を実行:
   ```bash
-  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
-             --use-cc=/usr/local/llvm/bin/clang \
-             --use-c++=/usr/local/llvm/bin/clang++ \
-             cmake --preset default
-  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
-             --use-cc=/usr/local/llvm/bin/clang \
-             --use-c++=/usr/local/llvm/bin/clang++ \
-             -o /tmp/scan-build-report \
-             --status-bugs \
-             cmake --build build --target ry --parallel
+  ./docker/run.sh static-analysis scan-build
   ```
-- ローカル実行 — full scan (push-to-main と同等の広いカバレッジ):
-  ```bash
-  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
-             --use-cc=/usr/local/llvm/bin/clang \
-             --use-c++=/usr/local/llvm/bin/clang++ \
-             -o /tmp/scan-build-report \
-             --status-bugs \
-             cmake --build build --parallel
-  ```
-  HTML レポートが `/tmp/scan-build-report/<timestamp>/index.html` に生成される
+  HTML レポートは bind-mount 経由でホスト側の `build-scan-docker/scan-build-report/<timestamp>/index.html` に生成される（コンテナ内 path は `/workspace/build-scan/scan-build-report/`）。コンテナ終了後もホストに残るので、ブラウザ等で直接開いて確認できる
+- 全 3 ツールを一括実行する場合: `./docker/run.sh static-analysis all`
+- `scan-build` および `all` は専用の `build-scan-docker/`（host）↔ `build-scan/`（container）で analyzer wrapper ビルドを行うため、`build-docker/` は無傷で残る。続けて `./docker/run.sh default ...` を実行する際に `rm -rf` 等は不要。レポートだけ捨てたい場合は `build-scan-docker/` を削除する
 - false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
 - CI は warn-only 運用 (`continue-on-error: true`)。新規 null-dereference / use-after-free / division-by-zero などが検出されたら同 PR で対処することを強く推奨する

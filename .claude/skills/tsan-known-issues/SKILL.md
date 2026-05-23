@@ -15,10 +15,10 @@ Reference for ThreadSanitizer policy and known infrastructure limitations in the
 **Source**: #868 (warn-only landed), #874 (split policy)
 **Tags**: tsan, sanitizer, ci, concurrency
 
-**Rule**: The C++ TSan step (`./build-tsan/ry_tests`) is required
+**Rule**: The C++ TSan step (`./docker/run.sh tsan ry_tests`) is required
 and gates #630's P0 race fixes via `ConcurrencySpecSuite` (which
 runs `tests/spec/concurrency.test.ry`). The Ry self-test TSan step
-(`./build-tsan/ry test -p`) runs as `continue-on-error: true`
+(`./docker/run.sh tsan ry test -p`) runs as `continue-on-error: true`
 until upstream https://github.com/google/sanitizers/issues/1716
 is fixed — see the separate `LargeMmapAllocator` entry. A PR that
 introduces a new race must fix it in the same PR; warn-only is a
@@ -34,12 +34,12 @@ surfaces, widen via #872 rather than blindly expanding the flag.
 **Source**: #868 / #874
 **Tags**: tsan, sanitizer, ci, ubuntu, gotcha
 
-**Rule**: Keep `./build-tsan/ry test -p` as `continue-on-error: true`
+**Rule**: Keep `./docker/run.sh tsan ry test -p` as `continue-on-error: true`
 until upstream https://github.com/google/sanitizers/issues/1716
 is fixed: the self-test driver aborts inside TSan's
 `LargeMmapAllocator::Deallocate` — a runtime bug, not a race in
 ry code. Pinning `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28`
-were both tried. `./build-tsan/ry_tests` (which includes
+were both tried. `./docker/run.sh tsan ry_tests` (which includes
 `ConcurrencySpecSuite`) runs cleanly on the same binary, so that
 is the required gate for #630's race fixes. macOS is unaffected
 **by this specific upstream LargeMmapAllocator CHECK** — but the

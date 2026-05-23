@@ -153,12 +153,13 @@ cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry 
 >
 > 出力が空ならスキップ可。スキップ時は PR description に `Skipped §3.5 — no source code change` を記録。
 
+> **macOS 注意**: ASan / UBSan / TSan のローカル実行は Docker に統一する。`fuzz_json` の ASan 下ハングや TSan `LargeMmapAllocator` の Darwin upstream バグなど macOS-host 固有の問題を避けるため (issue #1865)。サニタイザー環境変数は `docker/run.sh` がプリセットに応じて自動設定する。
+
 **ASan + UBSan**（メモリ安全性 + 未定義動作）:
 
 ```bash
-cmake --preset asan && cmake --build build-asan && \
-  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry_tests && \
-  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry test -p
+./docker/run.sh asan ry_tests
+./docker/run.sh asan ry test -p
 ```
 
 ASan / UBSan が検出した問題は原因を修正してから作業完了とする。これらのエラーを残したままコミットしてはならない。
@@ -166,9 +167,8 @@ ASan / UBSan が検出した問題は原因を修正してから作業完了と�
 **TSan**（スレッド安全性）:
 
 ```bash
-cmake --preset tsan && cmake --build build-tsan && \
-  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests && \
-  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
+./docker/run.sh tsan ry_tests
+./docker/run.sh tsan ry test -p
 ```
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716、Linux 限定) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。LLVM ORC teardown family の crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) は両 OS で観測されうるが `src/jit_runner.cpp` の三段階 leak (#1187 + #1657) で suppress 済み — このパターンの再発は新規 issue として起票する。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること (`/triage-side-finding` Q1 該当 = CI 検出の再現困難問題 → 即時修正)。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry および ORC teardown entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
@@ -177,73 +177,35 @@ C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `te
 
 CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカルで再現する。設定・抑制ルール・誤検知対処の詳細は `/static-analysis-tools` に委譲。
 
+> **macOS 注意**: clang-tidy の PCH 互換性問題 (Apple clang ↔ Homebrew LLVM clang) / scan-build PATH 不在 / Homebrew LLVM 依存を避けるため、ローカル実行は Docker に統一する (issue #1865)。
+
 **clang-tidy** (required):
 
 ```bash
-# macOS: sysctl -n hw.ncpu / Linux: nproc
-# -n 1 is required — xargs otherwise batches all .cpp paths into a single
-# clang-tidy invocation, defeating the -P parallelism.
-find src -name '*.cpp' -print0 \
-  | xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)" /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
+./docker/run.sh static-analysis clang-tidy
 ```
-
-**PCH 互換性**: macOS で `cmake --preset default` (Apple clang が PCH 生成) の後に LLVM clang-tidy を実行すると `PCH file built from a different branch` で失敗することがある。`build/` を削除して LLVM clang を CC/CXX に明示してから再 configure する (`SDKROOT` も必須):
-
-```bash
-rm -rf build
-SDKROOT=$(xcrun --show-sdk-path) \
-CC=/opt/homebrew/opt/llvm@21/bin/clang \
-CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    cmake --preset default && cmake --build build
-```
-
-詳細は `/commands-environment-gotchas` の PCH entry を参照。
 
 **cppcheck** (required):
 
 ```bash
-cppcheck --enable=warning,performance,portability --std=c++17 --error-exitcode=1 \
-    --suppressions-list=.cppcheck-suppressions --inline-suppr \
-    -i build -i build-asan -i build-tsan \
-    -j "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)" --quiet \
-    src/ include/
+./docker/run.sh static-analysis cppcheck
 ```
 
 **scan-build** (warn-only — 強く推奨):
 
-CI は `continue-on-error: true` で warn-only 運用中。ローカルでも警告即修正は不要だが、新規 null-dereference / use-after-free / division-by-zero が検出された場合は同 PR で対処することを強く推奨する。
-
-CI は event ごとに分析スコープを切り替える (#1738): PR では `--target ry`、push-to-main では全 target。ローカルでも同じ使い分けが可能。scan-build は Homebrew LLVM 21 に同梱されているが PATH には入らない。フルパス `/opt/homebrew/opt/llvm@21/bin/scan-build` で呼び出す。configure ステップは fast / full とも共通:
+CI は `continue-on-error: true` で warn-only 運用中。ローカルでも警告即修正は不要だが、新規 null-dereference / use-after-free / division-by-zero が検出された場合は同 PR で対処することを強く推奨する。CI は event ごとに分析スコープを切り替える (#1738): PR では `--target ry`、push-to-main では全 target — Docker 側は PR 相当の fast scan (`--target ry`) を実行する。
 
 ```bash
-/opt/homebrew/opt/llvm@21/bin/scan-build \
-    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    cmake --preset default
+./docker/run.sh static-analysis scan-build
 ```
 
-build + analyze — **高速確認のみ** (PR 相当、`ry` target ≒ ~76 TU):
+3 ツールを一括実行する場合:
 
 ```bash
-/opt/homebrew/opt/llvm@21/bin/scan-build \
-    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    -o /tmp/scan-build-report --status-bugs cmake --build build --target ry --parallel
+./docker/run.sh static-analysis all
 ```
 
-build + analyze — **deep verification (推奨)** (push-to-main 相当、全 target):
-
-```bash
-/opt/homebrew/opt/llvm@21/bin/scan-build \
-    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
-    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    -o /tmp/scan-build-report --status-bugs cmake --build build --parallel
-```
-
-scan-build はビルドをラップするため `build/` の状態が変わる場合がある。以降のステップでビルドが必要なら §3 のコマンドで再ビルドする。
+> `scan-build` および `all` は専用の `build-scan-docker/`（host）↔ `build-scan/`（container）で analyzer wrapper ビルドを行うため、`build-docker/` を汚染しない。直後に `./docker/run.sh default ...` を実行する際の cleanup は不要。HTML レポートは `build-scan-docker/scan-build-report/<timestamp>/index.html` に出力される — 不要になったら `build-scan-docker/` ごと削除して構わない。
 
 clang-tidy / cppcheck で失敗した場合は原因を修正してから作業完了とする。よくある失敗パターン (`performance-inefficient-string-concatenation` 等) と canonical workaround は `.claude/rules/build-warning-flags.md` を参照。
 
@@ -266,24 +228,16 @@ clang-tidy / cppcheck で失敗した場合は原因を修正してから作業�
 
 **CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。** ハーネス要件・既知制限の詳細は `/libfuzzer-harness` を参照。
 
-```bash
-# macOS（build-fuzz/ が既にある場合はビルドをスキップ可）
-SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    cmake --preset fuzz && cmake --build build-fuzz
+> **macOS 注意**: `fuzz_json` は macOS native の ASan 下でハングするため Docker 実行が必須 (issue #1865)。`docker/run.sh` がプリセットに応じてサニタイザー環境変数を自動設定する。
 
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
+```bash
+./docker/run.sh fuzz fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
     -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
 
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_json -max_total_time=60 -rss_limit_mb=512 \
+./docker/run.sh fuzz fuzz_json -max_total_time=60 -rss_limit_mb=512 \
     -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
 
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
+./docker/run.sh fuzz fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
     -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
 ```
 
