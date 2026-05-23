@@ -674,9 +674,56 @@ fn pairName<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
 
+### Overloading by Argument Type
+
+Multiple generic functions with the same name may be declared as long as their parameter signatures differ in arity or in concrete argument types. At each call site the compiler picks the matching overload using a two-pass resolution:
+
+1. **Pass 1 — exact match.** Every parameter must equal the inferred argument type. Type variables match any single concrete type.
+2. **Pass 2 — widening fallback** (only when Pass 1 yields zero matches). Top-level numeric parameters accept the same widening conversions as `@native` dispatch: `u8 → int`, `u8 → float`, and `int → float`. Nested element positions inside `List<T>` / `Map<K, V>` / `Set<T>` / tuples / function types stay exact regardless of pass.
+
+```ry
+fn label<T>(kind: int, x: T) -> str:
+    return "intKind"
+
+fn label<T>(kind: str, x: T) -> str:
+    return "strKind"
+
+label(7, 42)         # "intKind"  — int parameter wins exact match
+label("hi", 3.14)    # "strKind"  — str parameter wins exact match
+```
+
+```ry
+fn first<T>(xs: List<T>) -> str:
+    return "list"
+
+fn first<T>(s: Set<T>) -> str:
+    return "set"
+
+first([1, 2, 3])     # "list"  — List<int> shape matches the first overload
+first({1, 2, 3})     # "set"   — Set<int> shape matches the second overload
+```
+
+If exactly one template matches in a given pass, that overload is selected. If more than one template matches in the same pass the compiler reports an ambiguous-overload error naming the function. If no template matches in either pass and multiple templates are declared, a no-matching-overload error is reported.
+
+Two templates whose parameter signatures normalize to the same shape after renaming type variables to positional `__T0`, `__T1`, ... are rejected at declaration time as duplicates:
+
+```ry
+fn id<T>(x: T) -> T:    # OK
+    return x
+
+fn id<U>(x: U) -> U:    # error: duplicate generic function declaration 'id'
+    return x
+```
+
+The check is structural — both `<T>(x: T)` and `<U>(x: U)` normalize to `__T0`, so the compiler treats them as the same signature even though the type-variable spellings differ.
+
+Out of scope for now: overloading non-generic functions, overloading record methods, and dispatch driven by return type.
+
 ### How It Works
 
 Generic functions use **monomorphization**: a specialized version of the function is generated for each unique combination of type arguments. The same instantiation is cached and reused across multiple calls. When type constraints are present, they are validated at instantiation time.
+
+For overloaded generic functions, the monomorphized symbol name includes a per-template fingerprint that normalizes type variables to positional `__T0`, `__T1`, ..., so two templates that resolve to the same surface type arguments (for example `first<T>(xs: List<T>)` and `first<T>(s: Set<T>)`, both instantiated with `T = int`) are compiled into distinct IR functions and cached independently.
 
 ---
 

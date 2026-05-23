@@ -441,13 +441,121 @@ bool CodeGen::unifyTypeParam(
     }, paramType.data);
 }
 
-std::vector<std::string> CodeGen::inferTypeArgs(
-    const std::string &baseName, const std::vector<ExprPtr> &args) {
+// Name-level widening permitted at the top-level BasicType leaf only.
+// Mirrors `isWideningConversion` (codegen.cpp:1225) but operates on
+// type-name strings rather than LLVM values, since `argMatchesParam`
+// runs before any IR is emitted. Nested generic / tuple / fn / optional
+// inner types stay exact — `List<u8>` does NOT match `List<int>`.
+static bool isNameWidening(const std::string &fromName,
+                            const std::string &toName) {
+    if (fromName == toName) return true;
+    if (fromName == "u8" && (toName == "int" || toName == "float")) return true;
+    if (fromName == "int" && toName == "float") return true;
+    return false;
+}
 
-    auto it = generic_fn_templates_.find(baseName);
-    if (it == generic_fn_templates_.end()) return {};
+// Structural pre-check: returns true iff the call-site argument's
+// type-name is structurally compatible with the template parameter's
+// TypeNode. Type variables match anything; concrete leaves must equal
+// the arg name exactly (or widen, if `allowWidening` is true at the
+// top-level BasicType); generic / tuple / fn / optional shapes recurse.
+// Empty arg name is treated leniently (the caller may still bind type
+// vars via the fallback path).
+//
+// `allowWidening` is only honored at top-level BasicType concrete-leaf
+// comparisons. Recursive calls into GenericType / TupleType / FnType /
+// OptionalType inner positions always disable widening so nested
+// element types stay exact (Pass 2 widens `u8 -> int` for `(x: int)`
+// but not for `xs: List<int>` given `List<u8>`).
+static bool argMatchesParam(CodeGen &cg,
+                             const TypeNode &paramType,
+                             const std::string &argTypeName,
+                             const std::unordered_set<std::string> &typeParamSet,
+                             bool allowWidening = false) {
+    if (argTypeName.empty()) return true;
 
-    const FnStmt &tmpl = *it->second.fnStmt;
+    return std::visit([&](const auto &v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, BasicType>) {
+            if (typeParamSet.count(v.name)) return true;
+            if (argTypeName == v.name) return true;
+            return allowWidening && isNameWidening(argTypeName, v.name);
+        } else if constexpr (std::is_same_v<T, GenericType>) {
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (!cg.splitGenericTypeName(argTypeName, head, innerArgs))
+                return false;
+            if (head != v.name) return false;
+            if (innerArgs.size() != v.type_args.size()) return false;
+            for (size_t k = 0; k < v.type_args.size(); ++k)
+                if (!argMatchesParam(cg, *v.type_args[k], innerArgs[k], typeParamSet))
+                    return false;
+            return true;
+        } else if constexpr (std::is_same_v<T, TupleType>) {
+            std::vector<std::string> elems;
+            if (!splitTupleTypeName(argTypeName, elems)) return false;
+            if (elems.size() != v.elements.size()) return false;
+            for (size_t k = 0; k < v.elements.size(); ++k)
+                if (!argMatchesParam(cg, *v.elements[k], elems[k], typeParamSet))
+                    return false;
+            return true;
+        } else if constexpr (std::is_same_v<T, FnType>) {
+            std::vector<std::string> fparams;
+            std::string fret;
+            if (!splitFunctionTypeName(argTypeName, fparams, fret))
+                return false;
+            if (fparams.size() != v.param_types.size()) return false;
+            for (size_t k = 0; k < v.param_types.size(); ++k)
+                if (!argMatchesParam(cg, *v.param_types[k], fparams[k], typeParamSet))
+                    return false;
+            if (v.return_type && !fret.empty())
+                if (!argMatchesParam(cg, *v.return_type, fret, typeParamSet))
+                    return false;
+            return true;
+        } else if constexpr (std::is_same_v<T, OptionalType>) {
+            std::string t = trimWs(argTypeName);
+            if (!t.empty() && t.back() == '?') {
+                return argMatchesParam(cg, *v.inner,
+                                       trimWs(t.substr(0, t.size() - 1)),
+                                       typeParamSet);
+            }
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (cg.splitGenericTypeName(t, head, innerArgs) &&
+                head == "Option" && innerArgs.size() == 1) {
+                return argMatchesParam(cg, *v.inner, innerArgs[0], typeParamSet);
+            }
+            return false;
+        } else {
+            return true;
+        }
+    }, paramType.data);
+}
+
+// Try to infer type-args for a single template against call-site args.
+// Returns an empty vector when args.size() does not match, any type
+// parameter cannot be resolved, or any arg's type-name does not
+// structurally match the template's param type (concrete-leaf mismatch).
+// The caller then continues to the next candidate template instead of
+// raising codegenError.
+//
+// `emitErrorOnUnbound`: when true and the sole failure mode is an
+// unbound type parameter (structural pre-check and arity both passed),
+// raise `codegenError("could not infer type parameter ...")`. Used by
+// `resolveGenericOverload` for the single-template fallback so the
+// user-facing diagnostic matches the pre-overload behavior.
+//
+// `allowWidening`: when true, top-level concrete BasicType leaves accept
+// widening (`u8 -> int`, `u8 -> float`, `int -> float`). Pass 2 of
+// `resolveGenericOverload` enables this; Pass 1 keeps exact-match
+// semantics. Nested element positions (`List<int>` vs `List<u8>`) always
+// stay exact regardless of this flag.
+static std::vector<std::string> tryInferTypeArgsForTemplate(
+    CodeGen &cg, const FnStmt &tmpl, const std::vector<ExprPtr> &args,
+    const std::string &fnNameForError,
+    bool emitErrorOnUnbound = false,
+    bool allowWidening = false) {
+
     if (args.size() != tmpl.params.size()) return {};
 
     std::unordered_map<std::string, std::string> inferred;
@@ -457,13 +565,26 @@ std::vector<std::string> CodeGen::inferTypeArgs(
 
     std::unordered_map<std::string, llvm::Type*> emptyParamMap;
     std::unordered_map<std::string, std::string> emptyParamNameMap;
+
+    // Pre-check: every arg must structurally match its param. Rejects
+    // overloads where a concrete leaf (e.g. `int`, `str`) disagrees
+    // with the arg's inferred type-name.
     for (size_t i = 0; i < args.size(); ++i) {
         const TypeNode &pt = *tmpl.params[i].type;
-        std::string argName = inferExprTypeName(*args[i], emptyParamMap,
-                                                 emptyParamNameMap);
+        std::string argName = cg.inferExprTypeName(*args[i], emptyParamMap,
+                                                    emptyParamNameMap);
+        if (!argMatchesParam(cg, pt, argName, typeParamSet, allowWidening))
+            return {};
+    }
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        const TypeNode &pt = *tmpl.params[i].type;
+        std::string argName = cg.inferExprTypeName(*args[i], emptyParamMap,
+                                                    emptyParamNameMap);
 
         if (!argName.empty()) {
-            if (unifyTypeParam(pt, argName, typeParamSet, inferred, baseName))
+            if (cg.unifyTypeParam(pt, argName, typeParamSet, inferred,
+                                  fnNameForError))
                 continue;
         }
 
@@ -472,64 +593,265 @@ std::vector<std::string> CodeGen::inferTypeArgs(
         // Ry-level name equals their LLVM type).
         if (auto *bt = std::get_if<BasicType>(&pt.data);
             bt && typeParamSet.count(bt->name)) {
-            llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
+            llvm::Type *argTy = cg.inferExprType(*args[i], emptyParamMap);
             std::string resolved;
-            if (argTy == i64Ty_)  resolved = "int";
-            else if (argTy == f64Ty_) resolved = "float";
-            else if (argTy == i1Ty_)  resolved = "bool";
-            else if (argTy == i8Ty_)  resolved = "u8";
-            else if (argTy == ptrTy_) resolved = "str";
-            else if (argTy == typeTy_) resolved = "Type";
-            else if (isAnyType(argTy)) resolved = "any"; // NOLINT(bugprone-branch-clone)
+            if (argTy == cg.i64Ty_)  resolved = "int";
+            else if (argTy == cg.f64Ty_) resolved = "float";
+            else if (argTy == cg.i1Ty_)  resolved = "bool";
+            else if (argTy == cg.i8Ty_)  resolved = "u8";
+            else if (argTy == cg.ptrTy_) resolved = "str";
+            else if (argTy == cg.typeTy_) resolved = "Type";
+            else if (cg.isAnyType(argTy)) resolved = "any"; // NOLINT(bugprone-branch-clone)
             else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
                 std::string sname = st->getName().str();
-                if (record_types_.count(sname))
+                if (cg.record_types_.count(sname))
                     resolved = sname;
                 else {
-                    std::string n = findAdtEnumName(st);
+                    std::string n = cg.findAdtEnumName(st);
                     resolved = n.empty() ? "any" : n;
                 }
             }
             else resolved = "any";
-            mergeInferredBinding(inferred, bt->name, resolved, baseName);
+            cg.mergeInferredBinding(inferred, bt->name, resolved,
+                                    fnNameForError);
         }
     }
 
-    // Build result in template parameter order
+    // Build result in template parameter order; return empty on missing
+    // bindings so the caller can try the next overload candidate.
     std::vector<std::string> result;
     result.reserve(tmpl.type_params.size());
     for (auto &tp : tmpl.type_params) {
         auto found = inferred.find(tp.name);
-        if (found == inferred.end())
-            codegenError("could not infer type parameter '" + tp.name +
-                         "' in call to generic function '" + baseName + "'");
+        if (found == inferred.end()) {
+            if (emitErrorOnUnbound) {
+                cg.codegenError(
+                    "could not infer type parameter '" + tp.name +
+                    "' in call to generic function '" + fnNameForError + "'");
+            }
+            return {};
+        }
         result.push_back(found->second);
     }
     return result;
 }
 
-// ===== Generic function instantiation =====
+std::optional<CodeGen::GenericFnResolution> CodeGen::resolveGenericOverload(
+    const std::string &baseName, const std::vector<ExprPtr> &args) {
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end() || it->second.empty())
+        return std::nullopt;
 
-void CodeGen::instantiateGenericFn(const std::string &baseName,
-                                    const std::vector<std::string> &typeArgs) {
-    // Build full name: "identity<int>" or "map<int,str>"
+    // Two-pass overload resolution mirroring `@native` dispatch
+    // (see `.claude/rules/codegen-fn-and-generic.md` "@native dispatch:
+    // exact-match Pass 1 before widening Pass 2"):
+    //
+    //   Pass 1: exact match — concrete leaves must equal arg type-names
+    //   Pass 2: widening fallback (`u8 -> int`, `u8 -> float`, `int ->
+    //           float`) at top-level BasicType only; runs only when Pass
+    //           1 yields zero matches.
+    //
+    // Each pass collects ALL candidates; >1 match → ambiguous error;
+    // exactly 1 → return it. Pass 2 ambiguity also errors. Zero matches
+    // overall fall through to either the multi-template no-match error
+    // or the single-template diagnostic fallback.
+    auto runPass = [&](bool allowWidening)
+        -> std::vector<std::pair<size_t, std::vector<std::string>>> {
+        std::vector<std::pair<size_t, std::vector<std::string>>> matches;
+        for (size_t idx = 0; idx < it->second.size(); ++idx) {
+            const FnStmt &tmpl = *it->second[idx].fnStmt;
+            auto typeArgs = tryInferTypeArgsForTemplate(
+                *this, tmpl, args, baseName,
+                /*emitErrorOnUnbound=*/false, allowWidening);
+            if (typeArgs.empty()) continue;
+            matches.emplace_back(idx, std::move(typeArgs));
+        }
+        return matches;
+    };
+
+    auto pass1 = runPass(/*allowWidening=*/false);
+    if (pass1.size() == 1)
+        return GenericFnResolution{pass1[0].first, std::move(pass1[0].second)};
+    if (pass1.size() > 1) {
+        codegenError("ambiguous overload for generic function '" + baseName +
+                     "': multiple templates match the same argument types");
+    }
+
+    auto pass2 = runPass(/*allowWidening=*/true);
+    if (pass2.size() == 1)
+        return GenericFnResolution{pass2[0].first, std::move(pass2[0].second)};
+    if (pass2.size() > 1) {
+        codegenError("ambiguous overload for generic function '" + baseName +
+                     "': multiple templates match after widening conversions");
+    }
+
+    // No candidate matched. With multiple templates, report no-match
+    // explicitly so the user sees the overload set is exhausted; with a
+    // single template, fall back to the original diagnostic so
+    // "could not infer type parameter" surfaces for legacy callers.
+    if (it->second.size() == 1) {
+        const FnStmt &tmpl = *it->second[0].fnStmt;
+        tryInferTypeArgsForTemplate(*this, tmpl, args, baseName,
+                                    /*emitErrorOnUnbound=*/true);
+    } else {
+        codegenError("no matching overload for generic function '" + baseName +
+                     "': none of the " + std::to_string(it->second.size()) +
+                     " declared templates accept the given argument types");
+    }
+    return std::nullopt;
+}
+
+// Recursively serialize a TypeNode with type-variable names rewritten to
+// canonical positional placeholders (`__T0`, `__T1`, ...). Two templates
+// with alpha-equivalent signatures produce equal output (`fn id<T>(x: T)`
+// and `fn id<U>(x: U)` both serialize a single param to `"__T0"`). Used
+// as a stable per-template fingerprint to disambiguate overloads whose
+// inferred type arguments collide on the surface name.
+static std::string normalizeTypeNodeForFingerprint(
+    const TypeNode &node,
+    const std::unordered_map<std::string, size_t> &typeParamIndex) {
+    return std::visit([&](const auto &v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, BasicType>) {
+            auto it = typeParamIndex.find(v.name);
+            if (it != typeParamIndex.end())
+                return "__T" + std::to_string(it->second);
+            return v.name;
+        } else if constexpr (std::is_same_v<T, GenericType>) {
+            std::string out = v.name + "<";
+            for (size_t i = 0; i < v.type_args.size(); ++i) {
+                if (i > 0) out += ",";
+                out += normalizeTypeNodeForFingerprint(*v.type_args[i],
+                                                       typeParamIndex);
+            }
+            out += ">";
+            return out;
+        } else if constexpr (std::is_same_v<T, TupleType>) {
+            std::string out = "(";
+            for (size_t i = 0; i < v.elements.size(); ++i) {
+                if (i > 0) out += ",";
+                out += normalizeTypeNodeForFingerprint(*v.elements[i],
+                                                       typeParamIndex);
+            }
+            if (v.elements.size() == 1) out += ",";
+            out += ")";
+            return out;
+        } else if constexpr (std::is_same_v<T, FnType>) {
+            std::string out = "fn(";
+            for (size_t i = 0; i < v.param_types.size(); ++i) {
+                if (i > 0) out += ",";
+                out += normalizeTypeNodeForFingerprint(*v.param_types[i],
+                                                       typeParamIndex);
+            }
+            out += ")";
+            if (v.return_type)
+                out += "->" + normalizeTypeNodeForFingerprint(*v.return_type,
+                                                               typeParamIndex);
+            return out;
+        } else if constexpr (std::is_same_v<T, OptionalType>) {
+            return normalizeTypeNodeForFingerprint(*v.inner, typeParamIndex) + "?";
+        } else if constexpr (std::is_same_v<T, WeakType>) {
+            return "weak " + normalizeTypeNodeForFingerprint(*v.inner,
+                                                              typeParamIndex);
+        } else if constexpr (std::is_same_v<T, UnionType>) {
+            std::string out;
+            for (size_t i = 0; i < v.components.size(); ++i) {
+                if (i > 0) out += "|";
+                out += normalizeTypeNodeForFingerprint(*v.components[i],
+                                                        typeParamIndex);
+            }
+            return out;
+        } else {
+            return node.toString();
+        }
+    }, node.data);
+}
+
+// Compute the per-template fingerprint as a comma-joined normalized
+// signature of every parameter type. Empty when the template has no
+// parameters (vacuous overload — rejected later by dedup, but the
+// fingerprint stays well-defined).
+static std::string buildParamFingerprint(const FnStmt &tmpl) {
+    std::unordered_map<std::string, size_t> tpIdx;
+    for (size_t i = 0; i < tmpl.type_params.size(); ++i)
+        tpIdx[tmpl.type_params[i].name] = i;
+    std::string sig;
+    for (size_t i = 0; i < tmpl.params.size(); ++i) {
+        if (i > 0) sig += ",";
+        sig += normalizeTypeNodeForFingerprint(*tmpl.params[i].type, tpIdx);
+    }
+    return sig;
+}
+
+void CodeGen::registerGenericFnTemplate(const std::string &name,
+                                          GenericFnTemplate tmpl) {
+    if (!tmpl.fnStmt)
+        codegenError("internal: registerGenericFnTemplate called with empty template");
+
+    std::string newFp = buildParamFingerprint(*tmpl.fnStmt);
+    size_t newArity = tmpl.fnStmt->params.size();
+
+    auto &vec = generic_fn_templates_[name];
+    for (auto &existing : vec) {
+        if (!existing.fnStmt) continue;
+        if (existing.fnStmt->params.size() != newArity) continue;
+        std::string existingFp = buildParamFingerprint(*existing.fnStmt);
+        if (existingFp == newFp) {
+            codegenError("duplicate generic function declaration '" + name +
+                         "': another template with the same parameter "
+                         "signature (after renaming type variables) is "
+                         "already declared");
+        }
+    }
+    vec.push_back(std::move(tmpl));
+}
+
+std::string CodeGen::mangleGenericFnName(
+    const std::string &baseName, size_t templateIndex,
+    const std::vector<std::string> &typeArgs) {
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end() ||
+        templateIndex >= it->second.size())
+        codegenError("undefined generic function: " + baseName);
+
     std::string fullName = baseName;
     fullName += '<';
     for (size_t i = 0; i < typeArgs.size(); ++i) {
         if (i > 0) fullName += ",";
         fullName += typeArgs[i];
     }
-    fullName += ">";
+    fullName += '>';
 
-    // Check cache
+    const FnStmt &tmpl = *it->second[templateIndex].fnStmt;
+    std::string fp = buildParamFingerprint(tmpl);
+    if (!fp.empty()) {
+        fullName += "__";
+        fullName += fp;
+    }
+    return fullName;
+}
+
+// ===== Generic function instantiation =====
+
+void CodeGen::instantiateGenericFn(const std::string &baseName,
+                                    size_t templateIndex,
+                                    const std::vector<std::string> &typeArgs) {
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end() ||
+        templateIndex >= it->second.size())
+        codegenError("undefined generic function: " + baseName);
+
+    // Build full name including a per-template param-type fingerprint so
+    // overloads with the same typeArgs but different param shapes
+    // (e.g. `first<T>(xs: List<T>)` and `first<T>(s: Set<T>)` both
+    // resolving to `T=int`) get distinct cache keys and IR names.
+    std::string fullName = mangleGenericFnName(baseName, templateIndex,
+                                                typeArgs);
+
     if (generic_fn_instantiated_.count(fullName))
         return;
 
-    auto it = generic_fn_templates_.find(baseName);
-    if (it == generic_fn_templates_.end())
-        codegenError("undefined generic function: " + baseName);
-
-    FnStmt &s = *it->second.fnStmt;
+    FnStmt &s = *it->second[templateIndex].fnStmt;
 
     if (typeArgs.size() != s.type_params.size())
         codegenError("generic function '" + baseName + "' expects " +
@@ -556,10 +878,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
-    std::string irName = fullName;
     llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
     llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::InternalLinkage, irName, *mod_);
+        ft, llvm::Function::InternalLinkage, fullName, *mod_);
 
     std::vector<std::string> paramNames;
     paramNames.reserve(s.params.size());

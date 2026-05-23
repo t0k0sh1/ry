@@ -1,0 +1,87 @@
+from testing import it, describe, expect
+
+fn pickOne<T>(a: T) -> T:
+    return a
+
+fn pickOne<T>(a: T, b: T) -> T:
+    return a
+
+@describe("generic fn overload by arity")
+fn genericOverloadByArityTests():
+    @it("should dispatch single-arg to single-arg overload")
+    fn singleArgInt():
+        expect(pickOne(42)).toEq(42)
+    @it("should dispatch two-arg to two-arg overload")
+    fn twoArgsStr():
+        expect(pickOne("hello", "world")).toEq("hello")
+
+fn label<T>(kind: int, x: T) -> str:
+    return "intKind"
+
+fn label<T>(kind: str, x: T) -> str:
+    return "strKind"
+
+fn label<T>(kind: bool, x: T) -> str:
+    return "boolKind"
+
+@describe("generic fn overload by concrete arg type")
+fn genericOverloadByConcreteTypeTests():
+    @it("should pick the int-kind overload when first arg is int")
+    fn intKindRoute():
+        expect(label(7, 42)).toEq("intKind")
+    @it("should pick the str-kind overload when first arg is str")
+    fn strKindRoute():
+        expect(label("hi", 3.14)).toEq("strKind")
+    @it("should pick the bool-kind overload when first arg is bool")
+    fn boolKindRoute():
+        expect(label(true, "payload")).toEq("boolKind")
+
+fn firstKind<T>(xs: List<T>) -> str:
+    return "listKind"
+
+fn firstKind<T>(s: Set<T>) -> str:
+    return "setKind"
+
+@describe("generic fn overload by type-var container shape")
+fn genericOverloadByContainerShapeTests():
+    @it("should pick the List overload when arg is List<int>")
+    fn listShapeRoute():
+        xs: List<int> = [1, 2, 3]
+        expect(firstKind(xs)).toEq("listKind")
+    @it("should pick the Set overload when arg is Set<int>")
+    fn setShapeRoute():
+        s: Set<int> = {1, 2, 3}
+        expect(firstKind(s)).toEq("setKind")
+    @it("should still pick the List overload after the Set overload was instantiated for the same T")
+    fn listShapeAfterSet():
+        s: Set<int> = {10, 20}
+        expect(firstKind(s)).toEq("setKind")
+        xs: List<int> = [10, 20]
+        expect(firstKind(xs)).toEq("listKind")
+
+fn floatOnly<T>(x: float, t: T) -> str:
+    return "floatOnly"
+
+@describe("generic fn overload widening fallback")
+fn genericOverloadWideningFallbackTests():
+    @it("should widen int to float when only the float overload exists")
+    fn wideningIntToFloat():
+        expect(floatOnly(1, "tag")).toEq("floatOnly")
+    @it("should accept float literally without widening")
+    fn nativeFloatStillWorks():
+        expect(floatOnly(2.5, "tag")).toEq("floatOnly")
+
+fn pickByNumKind<T>(x: int, t: T) -> str:
+    return "intExact"
+
+fn pickByNumKind<T>(x: float, t: T) -> str:
+    return "floatExact"
+
+@describe("generic fn overload Pass 1 exact wins over Pass 2 widening")
+fn genericOverloadExactWinsTests():
+    @it("should pick the int overload for an int arg without considering widening")
+    fn exactIntWins():
+        expect(pickByNumKind(7, "tag")).toEq("intExact")
+    @it("should pick the float overload for a float arg")
+    fn exactFloatWins():
+        expect(pickByNumKind(2.5, "tag")).toEq("floatExact")
