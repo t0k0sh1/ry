@@ -445,7 +445,10 @@ if(ENABLE_FUZZER)
     add_ry_fuzz_target(fuzz_parser tests/fuzz/fuzz_parser.cpp)
     # fuzz_json compiles runtime_json.cpp directly (it lives in ry_json SHARED lib,
     # not ry_lib) so the JSON parser symbols are available without dlopen.
-    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime_json.cpp)
+    # runtime_io.cpp is also embedded because __ry_json_load_file /
+    # __ry_json_dump_file (#1854) reference __ry_io_file_read_all /
+    # __ry_io_file_write_text from runtime_io.cpp.
+    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime_json.cpp src/runtime_io.cpp)
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
     # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
     # not ry_lib) so the File handle symbols are available without dlopen.

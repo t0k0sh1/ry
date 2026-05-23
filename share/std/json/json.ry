@@ -35,10 +35,24 @@
 # Set / Record / Enum / non-`str` Map keys still panic at runtime via the
 # existing "json stringify: ..." diagnostics because JSON has no native
 # representation for them — these are unrelated to the side-table guard.
+#
+# File handle overloads (#1854):
+# `load(f: File)` reads a JSON document from an open `File` handle and returns
+# the `any`-decoded result — equivalent to `load(io.readAll(f)?)?`. `dump(f,
+# value, [indent])` stringifies and writes to the file in one step, equivalent
+# to `io.writeText(f, stringify(value [, indent]))?`. The file must be opened
+# in a writable mode for `dump`. Both overloads propagate io errors via the
+# returned `Result` (`__ry_io_get_last_error` is surfaced as `Error.message`).
+# `stringify`'s runtime exit(1) behavior on typed collections / Set / Record /
+# Enum / non-`str` Map keys is inherited by `dump` unchanged.
 
 @public
 @native("json")
 fn load(text: str) -> Result<any, Error>
+
+@public
+@native("json")
+fn load(f: File) -> Result<any, Error>
 
 @public
 @native("json")
@@ -48,6 +62,14 @@ fn stringify(value: any) -> str
 @native("json")
 fn stringify(value: any, indent: int) -> str
 
+@public
+@native("json")
+fn dump(f: File, value: any) -> Result<Unit, Error>
+
+@public
+@native("json")
+fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
+
 # User-defined generic wrapper that monomorphizes per T and routes through
 # the unwrapFromAny coerce path. Supported T (this PR): int / float / str /
 # bool / List<any> / Map<str, any>. Element-level coerce (List<int>,
@@ -55,6 +77,18 @@ fn stringify(value: any, indent: int) -> str
 # `any` slot stride is 16 bytes while the target's element stride is 8;
 # unwrap individual elements after `loadAs<List<any>>`. record / Set /
 # Option / Result reconstruction is out of scope for this release.
+#
+# Note (#1854): a `loadAs<T>(f: File)` overload is intentionally NOT
+# provided. Ry currently does not support overload-by-arg-type for
+# generic user-defined functions — a second `fn loadAs<T>(...)` silently
+# replaces the first. For File inputs, use the `any → T` coerce after
+# `load(f)`:
+#
+#   case load(f):
+#     Ok(v):
+#       c: Map<str, any> = v   # any → T coerce
+#       ...
+#     Err(e): ...
 @public
 fn loadAs<T>(text: str) -> Result<T, Error>:
   v: T = load(text)?
