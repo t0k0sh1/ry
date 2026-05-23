@@ -3,7 +3,7 @@
 # Standard input
 @public
 @native("io")
-fn readLine() -> str
+fn readLine() -> Result<Option<str>, Error>
 
 @public
 @native("io")

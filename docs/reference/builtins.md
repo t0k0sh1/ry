@@ -228,7 +228,7 @@ print("a", "b", sep="-", end="!\n")  # a-b!
 
 Reads one line from standard input and returns it as a string with the trailing newline (`\n`) removed. Returns an empty string when EOF is reached. When `prompt` is provided, it is written to standard output (with no appended newline) and stdout is flushed before blocking on stdin — mirroring Python's `input(prompt)`.
 
-Equivalent to `io.readLine()` but available as a bare builtin without `import`. Use `input` for short scripts and competitive-programming snippets; use `io.readLine` when explicitly scoping I/O through the `io` module.
+Similar to `io.readLine()`, but returns a bare `str` instead of `Result<Option<str>, Error>` — convenient for short scripts and competitive-programming snippets where EOF / I/O error handling is unnecessary. EOF and read errors both yield `""`, so `input` cannot distinguish them; use `io.readLine` when that distinction matters.
 
 ```ry
 name = input("Enter your name: ")

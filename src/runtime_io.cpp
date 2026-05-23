@@ -61,6 +61,26 @@ extern "C" const char *__ry_read_line() {
     return result;
 }
 
+// Returns: 0 = line read, 1 = EOF (no data), -1 = error
+// *out_line is set to a Ry string handle on success (0-return only).
+// stdin counterpart of __ry_io_file_read_line.
+extern "C" int64_t __ry_io_read_line(const char **out_line) {
+    *out_line = nullptr;
+    char *line = nullptr;
+    size_t len = 0;
+    ssize_t nread = getline(&line, &len, stdin);
+    if (nread == -1) {
+        free(line);
+        if (feof(stdin)) return 1;
+        setLastError("readLine: I/O error reading from stdin");
+        return -1;
+    }
+    if (nread > 0 && line[nread - 1] == '\n') --nread;
+    *out_line = makeString(line, (size_t)nread);
+    free(line);
+    return 0;
+}
+
 extern "C" const char *__ry_input_prompt(const char *prompt) {
     size_t promptLen = static_cast<size_t>(stringByteLen(prompt));
     if (promptLen > 0)

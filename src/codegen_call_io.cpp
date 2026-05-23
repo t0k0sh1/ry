@@ -223,6 +223,28 @@ static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::
         });
 }
 
+static llvm::Value *emitStdinReadLine(CodeGen &cg, const CallExpr & /*e*/) {
+    llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "srl_out");
+    cg.builder_.CreateStore(
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
+    auto fn = cg.mod_->getOrInsertFunction(
+        "__ry_io_read_line",
+        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_}, false));
+    llvm::Value *status = cg.builder_.CreateCall(fn, {outAlloca}, "srl_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpSLT(
+        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "srl_iserr");
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
+    return cg.emitResultBranch(isErr, resTy,
+        [&]() -> llvm::Value * {
+            llvm::Value *linePtr = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "srl_line");
+            return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
+        },
+        [&]() -> llvm::Value * {
+            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+        });
+}
+
 static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle, int fileRk) {
     // State struct: { ptr file } — iterator holds a retained reference to the
     // File handle so the underlying FILE* stays alive even if the user lets
@@ -327,9 +349,8 @@ static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Valu
 static constexpr const char *IO_ERR = "__ry_get_last_error";
 
 static const CodeGen::NativeDispatchEntry io_table[] = {
-    // 0-arg -> str (stdin)
-    {"readLine",    nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
-     nullptr, "__ry_read_line"},
+    // 0-arg -> str (stdin). readLine() is handled by dispatchIO's custom
+    // intercept (returns Result<Option<str>, Error>), not via this table.
     {"readAll",     nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
      nullptr, "__ry_read_all"},
     // 1-arg -> Result<str, Error>
@@ -382,7 +403,11 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         return emitFileReadAll(cg, e, arg0);
     }
 
-    // readLine(f: File) — 1-arg (0-arg stdin handled by table)
+    // readLine() — 0-arg stdin reader, returns Result<Option<str>, Error>
+    if (n == "readLine" && sz == 0)
+        return emitStdinReadLine(cg, e);
+
+    // readLine(f: File) — 1-arg
     if (n == "readLine" && sz == 1) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (!cg.isFile(arg0))
