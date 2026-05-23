@@ -27,4 +27,5 @@
 
   The `input()` builtin is unchanged and still returns a bare `str`,
   so short scripts that do not need EOF distinction can continue using
-  it. (#1850)
+  it; whether to give `input()` the same EOF distinction is tracked
+  separately in #1868. (#1850)

@@ -65,6 +65,10 @@ extern "C" const char *__ry_read_line() {
 // *out_line is set to a Ry string handle on success (0-return only).
 // stdin counterpart of __ry_io_file_read_line.
 extern "C" int64_t __ry_io_read_line(const char **out_line) {
+    if (!out_line) {
+        setLastError("readLine: output pointer is null");
+        return -1;
+    }
     *out_line = nullptr;
     char *line = nullptr;
     size_t len = 0;
@@ -364,6 +368,10 @@ extern "C" const char *__ry_io_file_read_all(void *handle) {
 // Returns: 0 = line read, 1 = EOF (no data), -1 = error
 // *out_line is set to a Ry string handle on success (0-return only)
 extern "C" int64_t __ry_io_file_read_line(void *handle, const char **out_line) {
+    if (!out_line) {
+        setLastError("readLine: output pointer is null");
+        return -1;
+    }
     *out_line = nullptr;
     auto *h = static_cast<IoFileHandle *>(handle);
     if (!h || !h->fp) {
