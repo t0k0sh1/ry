@@ -135,6 +135,26 @@ struct JsonAnyParser {
     char advance() { return src[pos++]; }
     bool at_end() const { return pos >= src_len; }
 
+    // Format byte_pos as "line L, column C (offset O)".
+    // line/column are 1-based; offset is the original 0-based byte index.
+    // column counts UTF-8 codepoints (continuation bytes 0x80-0xBF are skipped),
+    // matching Python's JSONDecodeError convention.
+    std::string formatPosition(size_t byte_pos) const {
+        size_t line = 1, col = 1;
+        for (size_t i = 0; i < byte_pos && i < src_len; ++i) {
+            unsigned char c = (unsigned char)src[i];
+            if (c == '\n') {
+                line++;
+                col = 1;
+            } else if ((c & 0xC0) != 0x80) {
+                col++;
+            }
+        }
+        return "line " + std::to_string(line)
+             + ", column " + std::to_string(col)
+             + " (offset " + std::to_string(byte_pos) + ")";
+    }
+
     void skip_ws() {
         while (!at_end() && (src[pos] == ' ' || src[pos] == '\t' ||
                              src[pos] == '\n' || src[pos] == '\r'))
@@ -146,8 +166,7 @@ struct JsonAnyParser {
         if (at_end() || src[pos] != c) {
             error = "expected '";
             error += c;
-            error += "' at position ";
-            error += std::to_string(pos);
+            error += "' at " + formatPosition(pos);
             return false;
         }
         pos++;
@@ -166,8 +185,7 @@ struct JsonAnyParser {
         if (c == '-' || (c >= '0' && c <= '9')) return parse_number(out);
         error = "unexpected character '";
         error += c;
-        error += "' at position ";
-        error += std::to_string(pos);
+        error += "' at " + formatPosition(pos);
         return false;
     }
 
@@ -180,7 +198,7 @@ struct JsonAnyParser {
         size_t scan = pos;
         while (scan < src_len && src[scan] != '"' && src[scan] != '\\') {
             if (static_cast<unsigned char>(src[scan]) < 0x20) {
-                error = "unescaped control character in string at position " + std::to_string(scan);
+                error = "unescaped control character in string at " + formatPosition(scan);
                 return false;
             }
             scan++;
@@ -271,7 +289,7 @@ struct JsonAnyParser {
                 }
             } else {
                 if (static_cast<unsigned char>(c) < 0x20) {
-                    error = "unescaped control character in string at position " + std::to_string(pos - 1);
+                    error = "unescaped control character in string at " + formatPosition(pos - 1);
                     return false;
                 }
                 out += c;
@@ -294,11 +312,11 @@ struct JsonAnyParser {
         bool is_float = false;
         if (src[pos] == '-') pos++;
         if (at_end() || !isdigit((unsigned char)src[pos])) {
-            error = "invalid number at position " + std::to_string(start);
+            error = "invalid number at " + formatPosition(start);
             return false;
         }
         if (src[pos] == '0' && pos + 1 < src_len && isdigit((unsigned char)src[pos + 1])) {
-            error = "leading zeros not allowed at position " + std::to_string(start);
+            error = "leading zeros not allowed at " + formatPosition(start);
             return false;
         }
         while (!at_end() && isdigit((unsigned char)src[pos])) pos++;
@@ -325,7 +343,7 @@ struct JsonAnyParser {
             errno = 0;
             double d = strtod(src + start, nullptr);
             if (!std::isfinite(d)) {
-                error = "number out of range at position " + std::to_string(start);
+                error = "number out of range at " + formatPosition(start);
                 return false;
             }
             out = anyFromFloat(d);
@@ -333,7 +351,7 @@ struct JsonAnyParser {
             errno = 0;
             int64_t i = strtoll(src + start, nullptr, 10);
             if (errno == ERANGE) {
-                error = "integer overflow at position " + std::to_string(start);
+                error = "integer overflow at " + formatPosition(start);
                 return false;
             }
             out = anyFromInt(i);
@@ -354,7 +372,7 @@ struct JsonAnyParser {
             out = anyFromBool(0);
             return true;
         }
-        error = "invalid literal at position " + std::to_string(pos);
+        error = "invalid literal at " + formatPosition(pos);
         return false;
     }
 
@@ -365,7 +383,7 @@ struct JsonAnyParser {
             out = anyFromUnit();
             return true;
         }
-        error = "invalid literal at position " + std::to_string(pos);
+        error = "invalid literal at " + formatPosition(pos);
         return false;
     }
 
@@ -460,7 +478,7 @@ struct JsonAnyParser {
         while (true) {
             skip_ws();
             if (at_end() || peek() != '"') {
-                error = "expected string key at position " + std::to_string(pos);
+                error = "expected string key at " + formatPosition(pos);
                 cleanup();
                 return false;
             }
