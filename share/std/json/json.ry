@@ -78,18 +78,20 @@ fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 # unwrap individual elements after `loadAs<List<any>>`. record / Set /
 # Option / Result reconstruction is out of scope for this release.
 #
-# Note (#1854): a `loadAs<T>(f: File)` overload is intentionally NOT
-# provided. Ry currently does not support overload-by-arg-type for
-# generic user-defined functions — a second `fn loadAs<T>(...)` silently
-# replaces the first. For File inputs, use the `any → T` coerce after
-# `load(f)`:
-#
-#   case load(f):
-#     Ok(v):
-#       c: Map<str, any> = v   # any → T coerce
-#       ...
-#     Err(e): ...
 @public
 fn loadAs<T>(text: str) -> Result<T, Error>:
-  v: T = load(text)?
-  return Ok(v)
+  case load(text):
+    Ok(a):
+      v: T = a
+      return Ok(v)
+    Err(e):
+      return Err(e)
+
+@public
+fn loadAs<T>(f: File) -> Result<T, Error>:
+  case load(f):
+    Ok(a):
+      v: T = a
+      return Ok(v)
+    Err(e):
+      return Err(e)

@@ -866,6 +866,19 @@ public:
     std::optional<GenericFnResolution> resolveGenericOverload(
         const std::string &baseName, const std::vector<ExprPtr> &args);
 
+    // Explicit-type-args overload resolution (#1854 Cycle 2): when the
+    // call site supplies `<T1, T2, ...>` directly (e.g. `loadAs[int](f)`),
+    // substitute the type args into each candidate template's parameter
+    // signature via `type_param_scope_` and compare the substituted
+    // parameter type-names against the call-site argument type-names.
+    // Mirrors `resolveGenericOverload`'s two-pass shape (Pass 1 exact,
+    // Pass 2 widening). Single-template programs skip dispatch entirely
+    // and return template index 0 to preserve legacy behaviour.
+    std::optional<GenericFnResolution> resolveGenericOverloadExplicit(
+        const std::string &baseName,
+        const std::vector<std::string> &typeArgs,
+        const std::vector<ExprPtr> &args);
+
     // Build the fully-mangled instance name for a generic-fn template
     // and a specific set of type arguments. Two overloads with the same
     // typeArgs (e.g. `first<T>(xs: List<T>)` and `first<T>(s: Set<T>)`

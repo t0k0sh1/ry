@@ -701,6 +701,101 @@ std::optional<CodeGen::GenericFnResolution> CodeGen::resolveGenericOverload(
     return std::nullopt;
 }
 
+// Explicit-type-args dispatch (#1854 Cycle 2). Mirrors
+// `resolveGenericOverload`'s two-pass shape but uses the call-site-supplied
+// type arguments to substitute each template's parameter type-names via
+// `type_param_scope_`, then compares the substituted concrete names against
+// the inferred argument type-names from `inferExprTypeName`. The inferred
+// path's `tryInferTypeArgsForTemplate` cannot be reused as-is because it
+// matches against TypeNode AST and binds type-vars from argument types — the
+// explicit path inverts the direction (types are given; we test whether the
+// substituted signature accepts the call-site args).
+//
+// Pass 1: exact concrete-name match per parameter
+// Pass 2: top-level `u8 -> int`, `u8 -> float`, `int -> float` widening only
+//
+// Single-template legacy programs skip dispatch and return template index 0
+// so calls like `id<int>(42)` against `fn id<T>(x: T) -> T` continue to
+// compile without paying the dispatch cost.
+std::optional<CodeGen::GenericFnResolution>
+CodeGen::resolveGenericOverloadExplicit(
+    const std::string &baseName,
+    const std::vector<std::string> &typeArgs,
+    const std::vector<ExprPtr> &args) {
+
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end() || it->second.empty())
+        return std::nullopt;
+
+    if (it->second.size() == 1) {
+        return GenericFnResolution{0, typeArgs};
+    }
+
+    std::unordered_map<std::string, llvm::Type *> emptyTypeMap;
+    std::unordered_map<std::string, std::string> emptyNameMap;
+
+    auto runPass = [&](bool allowWidening) -> std::vector<size_t> {
+        std::vector<size_t> matches;
+        for (size_t idx = 0; idx < it->second.size(); ++idx) {
+            const FnStmt &tmpl = *it->second[idx].fnStmt;
+
+            if (tmpl.type_params.size() != typeArgs.size()) continue;
+            if (tmpl.params.size() != args.size()) continue;
+
+            auto savedScope = type_param_scope_;
+            type_param_scope_.clear();
+            for (size_t i = 0; i < tmpl.type_params.size(); ++i)
+                type_param_scope_[tmpl.type_params[i].name] = typeArgs[i];
+
+            bool allMatch = true;
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (!tmpl.params[i].type) { allMatch = false; break; }
+                std::string concreteParam = substituteTypeParamsInName(
+                    tmpl.params[i].type->toString());
+                std::string argName =
+                    inferExprTypeName(*args[i], emptyTypeMap, emptyNameMap);
+
+                if (argName.empty()) continue;
+                if (concreteParam == argName) continue;
+                if (allowWidening && isNameWidening(argName, concreteParam))
+                    continue;
+
+                allMatch = false;
+                break;
+            }
+
+            type_param_scope_ = std::move(savedScope);
+
+            if (allMatch) matches.push_back(idx);
+        }
+        return matches;
+    };
+
+    auto pass1 = runPass(/*allowWidening=*/false);
+    if (pass1.size() == 1)
+        return GenericFnResolution{pass1[0], typeArgs};
+    if (pass1.size() > 1) {
+        codegenError("ambiguous overload for generic function '" + baseName +
+                     "' with explicit type arguments: multiple templates "
+                     "match the same argument types");
+    }
+
+    auto pass2 = runPass(/*allowWidening=*/true);
+    if (pass2.size() == 1)
+        return GenericFnResolution{pass2[0], typeArgs};
+    if (pass2.size() > 1) {
+        codegenError("ambiguous overload for generic function '" + baseName +
+                     "' with explicit type arguments: multiple templates "
+                     "match after widening conversions");
+    }
+
+    codegenError("no matching overload for generic function '" + baseName +
+                 "' with explicit type arguments: none of the " +
+                 std::to_string(it->second.size()) +
+                 " declared templates accept the given argument types");
+    return std::nullopt;
+}
+
 // Recursively serialize a TypeNode with type-variable names rewritten to
 // canonical positional placeholders (`__T0`, `__T1`, ...). Two templates
 // with alpha-equivalent signatures produce equal output (`fn id<T>(x: T)`
