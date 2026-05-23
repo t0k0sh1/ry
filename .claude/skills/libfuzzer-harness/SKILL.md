@@ -23,9 +23,9 @@ Reference for libFuzzer toolchain requirements and harness conventions in the ry
 
 3. **Split `-fsanitize=fuzzer-no-link` vs `-fsanitize=fuzzer`**: `ENABLE_FUZZER` adds `-fsanitize=fuzzer-no-link` globally (coverage-only; no `main` injection) and the `add_ry_fuzz_target` CMake helper adds `-fsanitize=fuzzer` at link time **only on fuzz executables**. If `-fsanitize=fuzzer` were applied globally it would inject a competing `main` into `ry` and `ry_tests`, causing link errors.
 
-**macOS extra**: Homebrew LLVM Clang needs `SDKROOT=$(xcrun --show-sdk-path)` to find system C headers; without it the PCH compilation for `ry_lib` fails with libc++ `<cstdio>` not found. The `fuzz` preset does **not** hardcode this path (not portable); callers must set it as an env var.
+**macOS note**: macOS-native libFuzzer builds historically required `SDKROOT=$(xcrun --show-sdk-path)` plus explicit `CC` / `CXX` exports, and `fuzz_json` hung under ASan on Darwin. Local fuzzer runs are now expected to go through `./docker/run.sh fuzz <binary> ...`, which uses the Linux toolchain in `ry-ci:llvm-21` and bypasses these issues entirely (issue #1865).
 
-**How to apply**: When adding a new fuzz harness target, use `add_ry_fuzz_target(name sources...)` in CMakeLists.txt (inside `if(ENABLE_FUZZER)`). Never apply `-fsanitize=fuzzer` globally. When building locally on macOS, always prepend `SDKROOT=$(xcrun --show-sdk-path) CC=<llvm-clang> CXX=<llvm-clang++>`.
+**How to apply**: When adding a new fuzz harness target, use `add_ry_fuzz_target(name sources...)` in CMakeLists.txt (inside `if(ENABLE_FUZZER)`). Never apply `-fsanitize=fuzzer` globally. Run locally via `./docker/run.sh fuzz <binary> -max_total_time=<sec> -artifact_prefix=tests/fuzz/regressions/<name>/ tests/fuzz/corpus/<name>` — the container handles `SDKROOT` / toolchain selection automatically.
 
 ---
 
