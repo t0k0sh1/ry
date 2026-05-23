@@ -434,3 +434,47 @@ fn jsonParseDepthLimitTests():
         0
       Err(e):
         fail("expected Ok at depth 256 but got Err: " + e.message)
+
+@describe("json load — error position (line:column)")
+fn jsonLoadErrorPositionTests():
+  @it("should report line/column/offset for malformed input")
+  fn shouldReportLineColumnOffsetForMalformedInput():
+    # {not json}: parse_object sees 'n' at byte offset 1 (column 2)
+    case load("{not json}"):
+      Ok(_):
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "line 1, column 2")).toEq(true)
+        expect(contains(e.message, "offset 1")).toEq(true)
+
+  @it("should report line 3 for multi-line malformed input")
+  fn shouldReportLine3ForMultiLineMalformedInput():
+    # 'invalid' starts at byte 13, on line 3, column 3
+    case load("{\n  \"key\":\n  invalid\n}"):
+      Ok(_):
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "line 3")).toEq(true)
+        expect(contains(e.message, "column 3")).toEq(true)
+        expect(contains(e.message, "offset 13")).toEq(true)
+
+  @it("should count column in codepoints not bytes")
+  fn shouldCountColumnInCodepointsNotBytes():
+    # ["日本語", invalid]
+    # codepoint columns: [ " 日 本 語 " , space i → 'i' at column 9
+    # byte offset: 0 1 2-4 5-7 8-10 11 12 13 14 → 'i' at byte 14
+    case load("[\"日本語\", invalid]"):
+      Ok(_):
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "column 9")).toEq(true)
+        expect(contains(e.message, "offset 14")).toEq(true)
+
+  @it("should report line 1 column 1 offset 0 at start of input")
+  fn shouldReportLine1Column1Offset0AtStartOfInput():
+    case load("x"):
+      Ok(_):
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "line 1, column 1")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
