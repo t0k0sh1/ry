@@ -251,18 +251,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
 
         if (generic_fn_templates_.count(baseName)) {
-            if (typeArgs.empty() && !functions_.count(baseName))
-                typeArgs = inferTypeArgs(baseName, e->args);
+            // Explicit type args path: keep legacy single-template behavior
+            // for now. Cycle 2+ will extend this to pick the right overload
+            // when multiple templates share the same arity.
             if (!typeArgs.empty()) {
-                instantiateGenericFn(baseName, typeArgs);
-                // Build fullName matching instantiateGenericFn's key format
-                std::string fullName = baseName + "<";
-                for (size_t i = 0; i < typeArgs.size(); ++i) {
-                    if (i > 0) fullName += ",";
-                    fullName += typeArgs[i];
-                }
-                fullName += ">";
+                instantiateGenericFn(baseName, /*templateIndex=*/0, typeArgs);
+                std::string fullName = mangleGenericFnName(
+                    baseName, /*templateIndex=*/0, typeArgs);
                 return emitUserFnCall(fullName, e->args);
+            }
+
+            // Inferred type args path: multi-candidate overload resolution.
+            if (!functions_.count(baseName)) {
+                auto resolution = resolveGenericOverload(baseName, e->args);
+                if (resolution) {
+                    instantiateGenericFn(baseName, resolution->templateIndex,
+                                         resolution->typeArgs);
+                    std::string fullName = mangleGenericFnName(
+                        baseName, resolution->templateIndex,
+                        resolution->typeArgs);
+                    return emitUserFnCall(fullName, e->args);
+                }
             }
         }
     }

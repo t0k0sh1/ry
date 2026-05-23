@@ -1953,3 +1953,86 @@ TEST_F(CodeGenTest, OptionIndexRejectsAnyTypedNested) {
         "index operator requires list or map");
 }
 
+// #1874: generic fn overload resolution rejection branches.
+// Two templates that both match exactly trigger Pass 1 ambiguity.
+TEST_F(CodeGenTest, GenericFnOverloadAmbiguousPass1) {
+    expectCompileError(
+        "fn pick<T>(x: T, y: int) -> int:\n"
+        "    return y\n"
+        "fn pick<U>(x: int, y: U) -> int:\n"
+        "    return x\n"
+        "print(pick(1, 2))\n",
+        "ambiguous overload for generic function 'pick'");
+}
+
+// Pass 2 widening promotes a u8 arg to BOTH the int and float overloads,
+// producing ambiguity after widening.
+TEST_F(CodeGenTest, GenericFnOverloadAmbiguousAfterWidening) {
+    expectCompileError(
+        "fn route<T>(x: int, t: T) -> int:\n"
+        "    return x\n"
+        "fn route<T>(x: float, t: T) -> int:\n"
+        "    return 0\n"
+        "b: u8 = 5\n"
+        "print(route(b, \"tag\"))\n",
+        "ambiguous overload for generic function 'route'");
+}
+
+// With multiple templates declared but none accepting the given arg types
+// (even after widening), the overload set is reported as exhausted.
+TEST_F(CodeGenTest, GenericFnOverloadNoMatchMultipleTemplates) {
+    expectCompileError(
+        "fn process<T>(x: int, t: T) -> int:\n"
+        "    return x\n"
+        "fn process<T>(x: float, t: T) -> int:\n"
+        "    return 0\n"
+        "print(process(\"hello\", 1))\n",
+        "no matching overload for generic function 'process'");
+}
+
+// Single-template backward-compat path keeps the original
+// "could not infer type parameter" diagnostic.
+TEST_F(CodeGenTest, GenericFnSingleTemplateUnboundTypeParamPreserved) {
+    expectCompileError(
+        "fn identity<T>(x: int) -> int:\n"
+        "    return x\n"
+        "print(identity(1))\n",
+        "could not infer type parameter 'T'");
+}
+
+// Cycle 5: literal duplicate (same type-variable names, same arity, same
+// parameter types) must be rejected at registration time so the user
+// gets a real error instead of silent shadowing.
+TEST_F(CodeGenTest, GenericFnDuplicateLiteralSignatureRejected) {
+    expectCompileError(
+        "fn dupId<T>(x: T) -> T:\n"
+        "    return x\n"
+        "fn dupId<T>(x: T) -> T:\n"
+        "    return x\n",
+        "duplicate generic function declaration 'dupId'");
+}
+
+// Alpha-equivalent declarations (`<T>` vs `<U>` for an identical-shape
+// signature) collide once parameter types are normalized to positional
+// `__T0` placeholders.
+TEST_F(CodeGenTest, GenericFnAlphaEquivalentSignatureRejected) {
+    expectCompileError(
+        "fn alphaId<T>(x: T) -> T:\n"
+        "    return x\n"
+        "fn alphaId<U>(x: U) -> U:\n"
+        "    return x\n",
+        "duplicate generic function declaration 'alphaId'");
+}
+
+// Alpha-equivalence must look through nested generic positions too:
+// `List<T>` and `List<U>` normalize identically and the second
+// declaration is rejected.
+TEST_F(CodeGenTest, GenericFnAlphaEquivalentNestedSignatureRejected) {
+    expectCompileError(
+        "fn alphaList<T>(xs: List<T>) -> int:\n"
+        "    return 0\n"
+        "fn alphaList<U>(xs: List<U>) -> int:\n"
+        "    return 1\n",
+        "duplicate generic function declaration 'alphaList'");
+}
+

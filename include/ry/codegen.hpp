@@ -828,21 +828,55 @@ public:
     // themselves so they can emit a caller-specific error.
     void rejectIfTypeNameTakenByOtherKind(const std::string &name);
 
-    // Generic function templates
+    // Generic function templates. Multiple templates with the same name are
+    // allowed as overloads — they must differ in arity or argument types
+    // (alpha-equivalent signatures are rejected at registration time).
     struct GenericFnTemplate {
         std::unique_ptr<FnStmt> fnStmt;
     };
-    std::unordered_map<std::string, GenericFnTemplate> generic_fn_templates_;
+    std::unordered_map<std::string, std::vector<GenericFnTemplate>> generic_fn_templates_;
     std::unordered_set<std::string> generic_fn_instantiated_;
     std::unordered_map<std::string, std::string> type_param_scope_;
 
+    // Result of overload resolution for a generic-fn call site.
+    // templateIndex points into generic_fn_templates_[baseName].
+    struct GenericFnResolution {
+        size_t templateIndex;
+        std::vector<std::string> typeArgs;
+    };
+
     void instantiateGenericFn(const std::string &baseName,
+                              size_t templateIndex,
                               const std::vector<std::string> &typeArgs);
+
+    // Append `tmpl` to `generic_fn_templates_[name]` after rejecting
+    // alpha-equivalent duplicates. Two templates collide when their
+    // parameter signatures normalize to the same string with type
+    // variables rewritten as positional `__T0`, `__T1`... — so
+    // `fn id<T>(x: T)` and `fn id<U>(x: U)` are treated as the same
+    // signature and the second declaration raises a codegenError.
+    void registerGenericFnTemplate(const std::string &name,
+                                   GenericFnTemplate tmpl);
     void validateTypeBounds(const std::vector<TypeParam> &typeParams,
                             const std::vector<std::string> &typeArgs,
                             const std::string &context);
-    std::vector<std::string> inferTypeArgs(const std::string &baseName,
-                                           const std::vector<ExprPtr> &args);
+    // Resolve which overload to use for the given call-site arguments.
+    // Returns std::nullopt when no template matches.
+    // Emits codegenError on ambiguous matches.
+    std::optional<GenericFnResolution> resolveGenericOverload(
+        const std::string &baseName, const std::vector<ExprPtr> &args);
+
+    // Build the fully-mangled instance name for a generic-fn template
+    // and a specific set of type arguments. Two overloads with the same
+    // typeArgs (e.g. `first<T>(xs: List<T>)` and `first<T>(s: Set<T>)`
+    // both invoked with `T=int`) produce distinct names so the
+    // generic_fn_instantiated_ cache and `functions_` table can hold
+    // both side by side. Type variables are normalized to `__T0`, `__T1`
+    // ... in declaration order so alpha-equivalent templates collapse
+    // to the same suffix.
+    std::string mangleGenericFnName(const std::string &baseName,
+                                    size_t templateIndex,
+                                    const std::vector<std::string> &typeArgs);
 
     // Recursively unify the declared parameter type (an AST TypeNode,
     // which may reference type parameters like `T`) against the
