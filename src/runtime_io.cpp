@@ -21,7 +21,7 @@ static FILE *fopen_nofollow(const char *path, const char *mode) {
         flags |= O_RDONLY;
     else if (strcmp(mode, "w") == 0 || strcmp(mode, "wb") == 0)
         flags |= O_WRONLY | O_CREAT | O_TRUNC;
-    else if (strcmp(mode, "a") == 0)
+    else if (strcmp(mode, "a") == 0 || strcmp(mode, "ab") == 0)
         flags |= O_WRONLY | O_CREAT | O_APPEND;
     int fd = open(path, flags, 0644);
     if (fd < 0) return nullptr;
@@ -295,8 +295,8 @@ extern "C" void *__ry_io_file_open(const char *path, const char *mode) {
         return nullptr;
     }
     if (strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 && strcmp(mode, "a") != 0 &&
-        strcmp(mode, "rb") != 0 && strcmp(mode, "wb") != 0) {
-        setLastError("open: invalid mode '%s' (must be \"r\", \"w\", \"a\", \"rb\", or \"wb\")", mode);
+        strcmp(mode, "rb") != 0 && strcmp(mode, "wb") != 0 && strcmp(mode, "ab") != 0) {
+        setLastError("open: invalid mode '%s' (must be \"r\", \"w\", \"a\", \"rb\", \"wb\", or \"ab\")", mode);
         return nullptr;
     }
     FILE *fp = fopen_nofollow(path, mode);

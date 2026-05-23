@@ -39,6 +39,7 @@ fn fileHandleTests():
         expect(e.message).toContain("invalid mode")
         expect(e.message).toContain("rb")
         expect(e.message).toContain("wb")
+        expect(e.message).toContain("ab")
     deleteFile("/tmp/ry_fh_badmode.txt")
 
   @it("should return Err with detailed message when path contains an embedded NUL byte")
@@ -119,6 +120,37 @@ fn fileHandleTests():
       Err(e):
         fail("open rb failed: " + e.message)
     deleteFile("/tmp/ry_fh_wb.txt")
+
+  @it("should append via 'ab' binary append mode")
+  fn shouldAppendViaAbBinaryAppendMode():
+    deleteFile("/tmp/ry_fh_ab.bin")
+    case open("/tmp/ry_fh_ab.bin", "ab"):
+      Ok(fw):
+        case writeText(fw, "first"):
+          Ok(_): 0
+          Err(e): fail("writeText first failed: " + e.message)
+        close(fw)
+      Err(e):
+        fail("open ab (1) failed: " + e.message)
+    case open("/tmp/ry_fh_ab.bin", "ab"):
+      Ok(fw):
+        case writeText(fw, "second"):
+          Ok(_): 0
+          Err(e): fail("writeText second failed: " + e.message)
+        close(fw)
+      Err(e):
+        fail("open ab (2) failed: " + e.message)
+    case open("/tmp/ry_fh_ab.bin", "r"):
+      Ok(fr):
+        case readAll(fr):
+          Ok(s):
+            expect(s).toEq("firstsecond")
+          Err(e):
+            fail("readAll failed: " + e.message)
+        close(fr)
+      Err(e):
+        fail("open r failed: " + e.message)
+    deleteFile("/tmp/ry_fh_ab.bin")
 
   @it("should detect EOF with readLine returning Ok(None)")
   fn shouldDetectEofWithReadLineReturningOkNone():
