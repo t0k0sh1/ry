@@ -37,6 +37,8 @@ fn fileHandleTests():
         fail("expected Err for invalid mode, got Ok")
       Err(e):
         expect(e.message).toContain("invalid mode")
+        expect(e.message).toContain("rb")
+        expect(e.message).toContain("wb")
     deleteFile("/tmp/ry_fh_badmode.txt")
 
   @it("should return Err with detailed message when path contains an embedded NUL byte")
@@ -80,6 +82,43 @@ fn fileHandleTests():
       Err(e):
         fail("open r failed: " + e.message)
     deleteFile("/tmp/ry_fh_write.txt")
+
+  @it("should open in 'rb' binary read mode and readAll")
+  fn shouldOpenInRbBinaryReadMode():
+    writeText("/tmp/ry_fh_rb.txt", "binary read")
+    case open("/tmp/ry_fh_rb.txt", "rb"):
+      Ok(f):
+        case readAll(f):
+          Ok(s):
+            expect(s).toEq("binary read")
+          Err(e):
+            fail("readAll failed: " + e.message)
+        close(f)
+      Err(e):
+        fail("open rb failed: " + e.message)
+    deleteFile("/tmp/ry_fh_rb.txt")
+
+  @it("should round-trip through 'wb' write and 'rb' read")
+  fn shouldRoundTripThroughWbWriteAndRbRead():
+    case open("/tmp/ry_fh_wb.txt", "wb"):
+      Ok(fw):
+        case writeText(fw, "binary roundtrip"):
+          Ok(_): 0
+          Err(e): fail("writeText failed: " + e.message)
+        close(fw)
+      Err(e):
+        fail("open wb failed: " + e.message)
+    case open("/tmp/ry_fh_wb.txt", "rb"):
+      Ok(fr):
+        case readAll(fr):
+          Ok(s):
+            expect(s).toEq("binary roundtrip")
+          Err(e):
+            fail("readAll failed: " + e.message)
+        close(fr)
+      Err(e):
+        fail("open rb failed: " + e.message)
+    deleteFile("/tmp/ry_fh_wb.txt")
 
   @it("should detect EOF with readLine returning Ok(None)")
   fn shouldDetectEofWithReadLineReturningOkNone():
