@@ -57,7 +57,12 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
         close(pipeIn[0]);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr);
+        // argv[0] must be the full path: find_share_dir uses
+        // fs::path(exe_path).parent_path(), and on Linux fs::canonical("") fails
+        // (unlike macOS), breaking stdlib resolution under RY_ENV=internal where
+        // the global ~/.ry/share fallback is skipped. See PR #1869 / issue
+        // discussion.
+        execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
         _exit(127);
     }
 

@@ -198,3 +198,27 @@ failure that may or may not set the buffer. For NUL-safety tests, assert only th
 is `Err` and that `e.message` contains the expected string. Never assert the message is
 *absent* across test boundaries.
 
+### Subprocess tests: `execl` の argv[0] にフルパスを渡す (`"ry"` 短縮は Linux で stdlib 解決を壊す)
+
+**Source**: #1869 (2026-05-23, fix — `/ci-investigate` 経由で発見)
+**Tags**: testing, subprocess, execl, fork, stdlib-resolution, linux, macos, blind-spot
+
+**Context**: `tests/test_*.cpp` の fork+pipe subprocess helper で `execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr)` のように argv[0] に bare `"ry"` を渡すと、子プロセス側で `argv[0] = "ry"` (slash なし) が見える。`src/paths.cpp:94` の `find_share_dir` は `fs::path(exe_path).parent_path()` で exe_dir を導出するため、bare `"ry"` だと `parent_path() = ""` → `fs::canonical("", ec)` の挙動が **macOS では CWD を返して成功 (CWD = repo root → `share/std/` 命中)**、**Linux glibc では失敗** → exe-adjacent share lookup (step 3) が機能しない。`setenv("RY_ENV", "internal", 1)` が同時に存在すると global `~/.ry/share` lookup (step 2) もスキップされ、`/tmp/<script>` を referrer に持つ subprocess は `findProjectRoot` も nullopt を返すので step 1 (project override) も塞がる — 結果 `find_share_dir = {}` で「`module not found: io`」になる。macOS native では発生せず Linux CI / Docker でのみ再現するため、ローカル `./build/ry_tests` パスでも CI で FAIL する非対称性が罠。
+
+**Rule**: subprocess を起動する `execl(RY_BINARY_PATH, ...)` 形式では、argv[0] にも **フルパス (`RY_BINARY_PATH`)** を渡す:
+
+```cpp
+// 禁止 (macOS では動くが Linux で fs::canonical("") が失敗し stdlib 解決が壊れる)
+execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr);
+
+// 正しい
+execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
+```
+
+**Why**: `RY_BINARY_PATH` は CMake `target_compile_definitions` で `$<TARGET_FILE:ry>` (フルパス) として注入されるため、argv[0] にそのまま流用すれば exe path resolution が両 OS で安定する。kernel の exec 解決は第 1 引数の `RY_BINARY_PATH` (path) を使うため、argv[0] の変更は子プロセス側の自己認識のみに影響する (安全)。
+
+**How to apply**:
+- 新規 subprocess test を追加する時、`execl(RY_BINARY_PATH, ?, ...)` の `?` は **常に `RY_BINARY_PATH`** にする。`"ry"` / `argv[0]` / 任意の短縮形を使わない
+- import を含む Ry source を subprocess で実行するテストでのみ症状が顕在化するが、import を含まないテスト (bare builtin `input()` など) も将来 import を足された瞬間に再発するため、**全 subprocess test に予防適用**する
+- canonical 例: `tests/test_read_line_builtin.cpp` (#1869 で導入), `tests/test_input_builtin.cpp` / `tests/test_help.cpp` / `tests/test_stdin.cpp` (#1869 で予防修正)
+
