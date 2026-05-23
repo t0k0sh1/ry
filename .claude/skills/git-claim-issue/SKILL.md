@@ -10,6 +10,10 @@ metadata:
 
 Mark a GitHub issue as in-progress by adding the `wip` label. This is the counterpart of `git-merge-pr` Step 5, which removes `wip` after merge.
 
+## Scope (what this skill does NOT do)
+
+This skill only adds the `wip` label to an **existing** GitHub issue. Creating a brand-new issue is **out of scope** — see `/git-create-issue`, which enforces an explicit user-permission gate before running `gh issue create` (AGENTS.md §責務の分離「ユーザーが明示的に指示すること」). Do not use this skill to file new issues, even if the user references both flows in the same message.
+
 ## When to use
 
 - As **Task 1** of the implementation plan, immediately after Plan approval (before creating the feature branch)
