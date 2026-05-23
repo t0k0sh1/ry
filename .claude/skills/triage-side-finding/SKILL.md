@@ -1,7 +1,7 @@
 ---
 name: triage-side-finding
 description: 副次的な発見 (side finding) の扱いを判定するときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー指示 → Q3 bug-forensics-analyst → Q4 3 択判定 [即時修正 / 別 issue 起票 / ユーザー確認])。Use when 副次的な発見 / side finding / scope / ついでに直したい / 別 issue 起票 / 即時修正 / OPEN PR 依存 / fold-only / orphan issue 防止 / triage / 判定フロー のとき。実装中・セルフ検証中・PR レビュー対応中に副次的な問題が見つかった場合に呼び出す。**起源判定 (回帰 vs 既存バグ) そのものは `bug-forensics-analyst` agent の領域なので、本 skill は Q3 経由でのみ agent を呼ぶ。**
-allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Agent
+allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Bash(gh api:*), Agent
 ---
 
 # Triage Side Finding
@@ -108,6 +108,8 @@ Q3 の分析結果と PR サイズ規律 (`plan-rubric` の 1 issue ≒ 1 PR) �
 
 Q4 = (b) と判定した場合に実行する。
 
+> **重要**: 新規 issue の起票 (`gh issue create`) は **ユーザーの明示許可必須** (AGENTS.md §責務の分離「ユーザーが明示的に指示すること」)。Step 2 で起票内容を提示し、許可を得てから Step 3 以降を実行する。Claude Code は許可なしに `gh issue create` を実行してはならない。
+
 ### Step 1: 依存 PR を確認し、fold または escalate する
 
 このルールは **fold-only** である。「依存 PR がマージされてから再起票する」案は**採らない** — 着手不可な orphan issue は backlog 上で「open かつ着手可能」と区別がつかず tracker の signal を低下させ、依存関係も暗黙化してしまうため。
@@ -134,14 +136,37 @@ gh pr view <number> --json files,state,headRefName --jq '{state, branch: .headRe
 
 **Motivating example (#1692)**: PR #1693 (`verifyCalledWith` v1) が未マージのまま、その v2 拡張として #1692 が起票された。#1692 は PR #1693 で導入される `__ry_mock_store_arg` / kind tag enum / `mockArgEqual` / `__ry_mock_count_matching_calls` を**前提**とするため、PR #1693 マージ前は実装に進めない orphan issue となった。本ゲートにより、今後は同種の起票は fold (PR #1693 への scope 追加) または escalate に振り分けられる。
 
-### Step 2: マイルストーンを特定する
+### Step 2: ユーザー許可確認 (起票内容のプレビュー提示)
 
-新規 issue は現在の PR / ベース issue と同じマイルストーンに揃える。
+Step 1 で「依存なし」と判定された場合のみ実行する (fold / escalate ケースは Step 1 で完結)。
 
-```bash
-gh pr view --json milestone --jq '.milestone.title'
-gh issue list --milestone <title> --limit 1
+ユーザーに以下の 6 項目を提示し、明示の起票許可 (「起票して」 / 「OK」等) を待つ。**許可が得られるまで `gh issue create` を実行しない**。
+
+| 項目 | 内容 |
+|---|---|
+| **起票理由** | なぜこの発見を現 PR で対応せず別 issue にするのか (関心事分離 / scope 規模 / pre-existing 等、Q4(b) の判定根拠) |
+| **概要** | 1〜3 行の要点 (本文ではなく要旨) |
+| **粒度の妥当性** | 1 issue ≒ 1 PR に収まるか、Step 4 の分割対象になりうるか |
+| **解決確度** | High (再現手順あり) / Medium (仮説 + 検証手順あり) / Low (仮説のみ) のいずれかと根拠 |
+| **ラベル案** | 自動判断 (例: `bug` / `enhancement` / `documentation` / `refactor` 等)。**最低 1 個は必須、空にしない** |
+| **マイルストーン候補** | `gh api repos/t0k0sh1/ry/milestones?state=open` で現在 open な milestone を取得し、現開発バージョンの milestone を「候補」として提示。**自動継承しない** — ユーザーが採用 / 別指定 / 未設定を判断する |
+
+提示例:
+
+```text
+別 issue 起票の許可をお願いします:
+
+- 起票理由: パーサ修正 (現 PR) と直交する codegen 側のエラーメッセージ改善で、関心事が異なる
+- 概要: <module>.<fn> でエラー時の line/column が出ない (仮説あり、修正方針も見えている)
+- 粒度: 1 PR で収まる規模 (推定 50〜100 行)
+- 解決確度: High (ローカルで再現済み、修正パスも特定済み)
+- ラベル案: bug, enhancement
+- マイルストーン候補: v0.0.25 (現開発バージョン) / 未設定も可
+
+起票してよろしいですか?
 ```
+
+ユーザーが許可したら、その回答 (採用 milestone を含む) を Step 3 以降の入力とする。許可されなかった場合は起票せず終了する。
 
 ### Step 3: 重複を確認する
 
@@ -149,7 +174,7 @@ gh issue list --milestone <title> --limit 1
 gh search issues --repo t0k0sh1/ry "<keywords>" --state open
 ```
 
-重複があれば追加 context を comment で添え、必要に応じて `gh issue edit <number> --milestone "<title>"` でマイルストーンを揃える。Step 4 を skip して Step 6 へ進む。
+重複があれば追加 context を comment で添え、必要に応じて `gh issue edit <number> --milestone "<title>"` でマイルストーンを揃える (milestone 変更もユーザー確認後)。Step 4 を skip して Step 6 へ進む。
 
 ### Step 4: 分割を判断する
 
@@ -159,34 +184,11 @@ gh search issues --repo t0k0sh1/ry "<keywords>" --state open
 
 分割すると判断した場合の **分割理由の分類 (機能境界 / 依存関係 / 規模) と対称性チェック (typed↔any / wrap↔unwrap / read↔write / base↔derived)、3 段目派生の警戒** は `/scope-decomposition` REQ-1〜3 を参照。
 
+分割が必要になった場合は分割案 (各 issue のタイトル・粒度) を再度ユーザーに提示し、改めて許可を得る (Step 2 と同等)。
+
 ### Step 5: issue を作成する
 
-```bash
-gh issue create \
-  --title "<明確で記述的なタイトル>" \
-  --milestone "<milestone-title>" \
-  --body "$(cat <<'EOF'
-## Context
-
-<!-- どのファイル / 関数 / コードパスが関与したか、どの PR / issue 作業中に発見したか -->
-
-## Reproduction
-
-<!-- 最小再現スニペットまたは手順 -->
-
-## Expected vs Actual
-
-**Expected:** <!-- 期待動作 -->
-**Actual:** <!-- 実際動作 -->
-
-## Discovery timing
-
-<!-- いずれか: 実装中 / セルフ検証中 / PR レビュー対応中 -->
-EOF
-)"
-```
-
-bug 以外の項目では **Expected vs Actual** を省略してよい。それ以外のセクションは必須。
+Step 2 で得た許可と milestone 決定を入力に、`/git-create-issue` skill 経由で起票する。コマンド本体と本文テンプレートは `/git-create-issue` に集約されている。
 
 ### Step 6: 報告する
 
