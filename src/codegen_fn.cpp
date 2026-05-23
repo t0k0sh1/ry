@@ -606,7 +606,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         codegenError("generic functions in qualified-imported user-defined modules are not yet supported; use 'from <mod> import <fn>' instead");
     }
 
-    // Generic function: save as template, don't instantiate yet
+    // Generic function: save as template, don't instantiate yet.
+    // Multiple templates with the same name are allowed as overloads;
+    // alpha-equivalent duplicates are rejected in registerGenericFnTemplate.
     if (!s->type_params.empty()) {
         for (auto &p : s->params) {
             if (p.default_value)
@@ -615,7 +617,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         GenericFnTemplate tmpl;
         std::string name = s->name;
         tmpl.fnStmt = std::move(s);
-        generic_fn_templates_[name] = std::move(tmpl);
+        registerGenericFnTemplate(name, std::move(tmpl));
         return;
     }
 
