@@ -31,7 +31,7 @@ from io import readText, writeText, exists
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `open` | `(str, str) -> Result<File, Error>` | Opens a file; mode must be `"r"`, `"w"`, or `"a"` |
+| `open` | `(str, str) -> Result<File, Error>` | Opens a file; mode must be `"r"`, `"w"`, `"a"`, `"rb"`, or `"wb"` |
 | `readAll` | `(File) -> Result<str, Error>` | Reads the entire file content into a string |
 | `readLine` | `(File) -> Result<Option<str>, Error>` | Reads one line; returns `Ok(None)` at EOF |
 | `writeText` | `(File, str) -> Result<Unit, Error>` | Writes a string to the file |
@@ -187,7 +187,7 @@ case open("missing.txt", "r"):
 | `writeText` / `writeBytes` / `appendText` | File cannot be opened for writing |
 | `deleteFile` | File cannot be deleted |
 | `readText` / `writeText` / `appendText` / `deleteFile` / `readBytes` / `writeBytes` | Path contains an embedded NUL byte |
-| `open` | File does not exist (mode `"r"`), cannot be created/opened (mode `"w"` / `"a"`), or mode is not `"r"` / `"w"` / `"a"` |
+| `open` | File does not exist (mode `"r"` / `"rb"`), cannot be created/opened (mode `"w"` / `"a"` / `"wb"`), or mode is not `"r"` / `"w"` / `"a"` / `"rb"` / `"wb"` |
 | `readAll` (File) | Read error after opening |
 | `readLine` (File) | Read error (I/O failure, not EOF — EOF is `Ok(None)`) |
 | `writeText` (File, str) | Write error |

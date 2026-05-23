@@ -279,8 +279,9 @@ extern "C" void *__ry_io_file_open(const char *path, const char *mode) {
         setLastError("open: mode contains an embedded NUL byte");
         return nullptr;
     }
-    if (strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 && strcmp(mode, "a") != 0) {
-        setLastError("open: invalid mode '%s' (must be \"r\", \"w\", or \"a\")", mode);
+    if (strcmp(mode, "r") != 0 && strcmp(mode, "w") != 0 && strcmp(mode, "a") != 0 &&
+        strcmp(mode, "rb") != 0 && strcmp(mode, "wb") != 0) {
+        setLastError("open: invalid mode '%s' (must be \"r\", \"w\", \"a\", \"rb\", or \"wb\")", mode);
         return nullptr;
     }
     FILE *fp = fopen_nofollow(path, mode);
