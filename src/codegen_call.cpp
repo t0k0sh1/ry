@@ -606,21 +606,42 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() > 1)
             codegenError("input() takes 0 or 1 arguments");
         // Runtime lives in libry_io — without this insert the JIT fails to
-        // resolve __ry_read_line / __ry_input_prompt for programs that
+        // resolve __ry_io_read_line / __ry_io_input_prompt for programs that
         // never `import` from io. Bare builtins are not declared as
         // @native("io"), so library registration must happen here.
         used_native_libraries_.insert("io");
+
+        llvm::Value *outAlloca = builder_.CreateAlloca(ptrTy_, nullptr, "inp_out");
+        builder_.CreateStore(
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            outAlloca);
+
+        llvm::Value *status;
         if (e.args.size() == 1) {
             llvm::Value *prompt = emitExpr(*e.args[0]);
             if (prompt->getType() != ptrTy_)
                 codegenError("input() prompt must be str");
-            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_input_prompt", fnTy);
-            return builder_.CreateCall(fn, {prompt}, "input_result");
+            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_io_input_prompt", fnTy);
+            status = builder_.CreateCall(fn, {prompt, outAlloca}, "inp_status");
+        } else {
+            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_io_read_line", fnTy);
+            status = builder_.CreateCall(fn, {outAlloca}, "inp_status");
         }
-        auto fnTy = llvm::FunctionType::get(ptrTy_, false);
-        auto fn = mod_->getOrInsertFunction("__ry_read_line", fnTy);
-        return builder_.CreateCall(fn, {}, "input_result");
+
+        llvm::Value *isErr = builder_.CreateICmpSLT(
+            status, llvm::ConstantInt::get(i64Ty_, 0), "inp_iserr");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::StructType *resTy = getResultType(optTy, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() -> llvm::Value * {
+                llvm::Value *linePtr = builder_.CreateLoad(ptrTy_, outAlloca, "inp_line");
+                return buildOkValue(wrapPtrAsOption(linePtr, "input"), resTy);
+            },
+            [&]() -> llvm::Value * {
+                return buildErrValue(buildErrorFromRuntime(), resTy);
+            });
     }
 
     if (e.callee == "env") {
