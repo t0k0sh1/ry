@@ -75,10 +75,12 @@ extern "C" int64_t __ry_io_read_line(const char **out_line) {
 // stdout are intentionally swallowed (a broken stdout should not kill an
 // interactive read) — only the getline outcome drives the return code.
 extern "C" int64_t __ry_io_input_prompt(const char *prompt, const char **out_line) {
-    size_t promptLen = static_cast<size_t>(stringByteLen(prompt));
-    if (promptLen > 0)
-        fwrite(prompt, 1, promptLen, stdout);
-    fflush(stdout);
+    if (prompt) {
+        size_t promptLen = static_cast<size_t>(stringByteLen(prompt));
+        if (promptLen > 0)
+            fwrite(prompt, 1, promptLen, stdout);
+        fflush(stdout);
+    }
     return __ry_io_read_line(out_line);
 }
 
