@@ -1,7 +1,8 @@
 from testing import it, describe, expect, fail
 
-from json import load, loadAs, stringify
+from json import load, loadAs, stringify, dump
 from str import contains, repeat, byteLen
+from io import open, close, writeText, readText
 
 @describe("json load — primitives")
 fn jsonLoadPrimitivesTests():
@@ -478,3 +479,251 @@ fn jsonLoadErrorPositionTests():
       Err(e):
         expect(contains(e.message, "line 1, column 1")).toEq(true)
         expect(contains(e.message, "offset 0")).toEq(true)
+
+@describe("json File overloads — #1854")
+fn jsonFileOverloadsTests():
+  @it("should load JSON object from a File handle")
+  fn shouldLoadObjectFromFileHandle():
+    case writeText("/tmp/ry_1854_load_object.json", "{\"name\":\"alice\",\"age\":30}"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_load_object.json", "r"):
+      Ok(file):
+        case load(file):
+          Ok(v):
+            s: str = stringify(v)
+            expect(s).toEq("{\"name\":\"alice\",\"age\":30}")
+            close(file)
+          Err(e):
+            close(file)
+            fail("load(File) failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should load JSON array from a File handle")
+  fn shouldLoadArrayFromFileHandle():
+    case writeText("/tmp/ry_1854_load_array.json", "[1,2,3]"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_load_array.json", "r"):
+      Ok(file):
+        case load(file):
+          Ok(v):
+            s: str = stringify(v)
+            expect(s).toEq("[1,2,3]")
+            close(file)
+          Err(e):
+            close(file)
+            fail("load(File) array failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should propagate parser line/column error from a File handle")
+  fn shouldPropagateParserErrorFromFileHandle():
+    case writeText("/tmp/ry_1854_load_bad.json", "{\n  invalid\n}"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_load_bad.json", "r"):
+      Ok(file):
+        case load(file):
+          Ok(_):
+            close(file)
+            fail("expected Err but got Ok")
+          Err(e):
+            close(file)
+            expect(contains(e.message, "line 2")).toEq(true)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should reject load on a closed File handle")
+  fn shouldRejectLoadOnClosedHandle():
+    case writeText("/tmp/ry_1854_closed.json", "{}"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_closed.json", "r"):
+      Ok(file):
+        close(file)
+        case load(file):
+          Ok(_):
+            fail("expected Err but got Ok after close")
+          Err(e):
+            expect(contains(e.message, "not open")).toEq(true)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should dump value compactly to a File handle")
+  fn shouldDumpCompactToFileHandle():
+    case open("/tmp/ry_1854_dump_compact.json", "w"):
+      Ok(file):
+        v: Map<str, any> = {}
+        v["k"] = "v"
+        case dump(file, v):
+          Ok(_):
+            close(file)
+          Err(e):
+            close(file)
+            fail("dump compact failed: " + e.message)
+      Err(e):
+        fail("open w failed: " + e.message)
+    case readText("/tmp/ry_1854_dump_compact.json"):
+      Ok(s):
+        expect(s).toEq("{\"k\":\"v\"}")
+      Err(e):
+        fail("verify readText failed: " + e.message)
+
+  @it("should dump value pretty-printed when indent > 0")
+  fn shouldDumpPrettyWhenIndentGiven():
+    case open("/tmp/ry_1854_dump_pretty.json", "w"):
+      Ok(file):
+        v: List<any> = []
+        append!(v, 1)
+        append!(v, 2)
+        case dump(file, v, 2):
+          Ok(_):
+            close(file)
+          Err(e):
+            close(file)
+            fail("dump pretty failed: " + e.message)
+      Err(e):
+        fail("open w failed: " + e.message)
+    case readText("/tmp/ry_1854_dump_pretty.json"):
+      Ok(s):
+        # Pretty output contains newlines and indented elements.
+        expect(contains(s, "\n")).toEq(true)
+        expect(contains(s, "  1")).toEq(true)
+      Err(e):
+        fail("verify readText failed: " + e.message)
+
+  @it("should round-trip via dump then load")
+  fn shouldRoundTripDumpThenLoad():
+    case open("/tmp/ry_1854_roundtrip.json", "w"):
+      Ok(file):
+        original: Map<str, any> = {}
+        original["hello"] = "world"
+        original["name"] = "alice"
+        case dump(file, original):
+          Ok(_):
+            close(file)
+          Err(e):
+            close(file)
+            fail("dump failed: " + e.message)
+      Err(e):
+        fail("open w failed: " + e.message)
+    case open("/tmp/ry_1854_roundtrip.json", "r"):
+      Ok(file):
+        case load(file):
+          Ok(v):
+            s: str = stringify(v)
+            expect(s).toEq("{\"hello\":\"world\",\"name\":\"alice\"}")
+            close(file)
+          Err(e):
+            close(file)
+            fail("load roundtrip failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+@describe("json loadAs<T> — File overloads (#1854 + #1874)")
+fn jsonLoadAsFileOverloadsTests():
+  @it("should parse int directly via loadAs<int>(File)")
+  fn shouldLoadAsIntFromFile():
+    case writeText("/tmp/ry_1854_loadas_int.json", "42"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_loadas_int.json", "r"):
+      Ok(file):
+        case loadAs[int](file):
+          Ok(n):
+            expect(n).toEq(42)
+            close(file)
+          Err(e):
+            close(file)
+            fail("loadAs<int>(File) failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should parse str via loadAs<str>(File)")
+  fn shouldLoadAsStrFromFile():
+    case writeText("/tmp/ry_1854_loadas_str.json", "\"hello\""):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_loadas_str.json", "r"):
+      Ok(file):
+        case loadAs[str](file):
+          Ok(s):
+            expect(s).toEq("hello")
+            close(file)
+          Err(e):
+            close(file)
+            fail("loadAs<str>(File) failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should parse Map<str, any> via loadAs<Map<str, any>>(File)")
+  fn shouldLoadAsMapFromFile():
+    case writeText("/tmp/ry_1854_loadas_map.json", "{\"name\":\"alice\",\"age\":30}"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_loadas_map.json", "r"):
+      Ok(file):
+        case loadAs[Map<str, any>](file):
+          Ok(m):
+            s: str = stringify(m)
+            expect(s).toEq("{\"name\":\"alice\",\"age\":30}")
+            close(file)
+          Err(e):
+            close(file)
+            fail("loadAs<Map>(File) failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should propagate parse error from File via loadAs<int>(File)")
+  fn shouldPropagateParseErrorViaLoadAsFile():
+    case writeText("/tmp/ry_1854_loadas_bad.json", "{not json}"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_loadas_bad.json", "r"):
+      Ok(file):
+        case loadAs[int](file):
+          Ok(_):
+            close(file)
+            fail("expected Err but got Ok")
+          Err(e):
+            close(file)
+            expect(contains(e.message, "line 1")).toEq(true)
+      Err(e):
+        fail("open r failed: " + e.message)
+
+  @it("should keep loadAs<T>(str) overload working alongside File overload")
+  fn shouldRouteStrOverloadAlongsideFileOverload():
+    case loadAs[int]("99"):
+      Ok(n):
+        expect(n).toEq(99)
+      Err(e):
+        fail("loadAs<int>(str) regression: " + e.message)
+
+# Diagnostic non-generic wrapper to isolate whether the bug is in
+# generic monomorphization or in @native overload-by-arg-type resolution
+# within an ordinary fn body.
+fn diagLoadIntFromFile(f: File) -> Result<int, Error>:
+  v: int = load(f)?
+  return Ok(v)
+
+@describe("json diag — load(File) from non-generic fn body")
+fn jsonDiagLoadFromFnBodyTests():
+  @it("should resolve load(f: File) when called from a non-generic fn body")
+  fn shouldResolveLoadFileFromFnBody():
+    case writeText("/tmp/ry_1854_diag.json", "777"):
+      Ok(_): 0
+      Err(e): fail("setup writeText failed: " + e.message)
+    case open("/tmp/ry_1854_diag.json", "r"):
+      Ok(file):
+        case diagLoadIntFromFile(file):
+          Ok(n):
+            expect(n).toEq(777)
+            close(file)
+          Err(e):
+            close(file)
+            fail("diagLoadIntFromFile failed: " + e.message)
+      Err(e):
+        fail("open r failed: " + e.message)
+

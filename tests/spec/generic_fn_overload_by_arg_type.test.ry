@@ -85,3 +85,26 @@ fn genericOverloadExactWinsTests():
     @it("should pick the float overload for a float arg")
     fn exactFloatWins():
         expect(pickByNumKind(2.5, "tag")).toEq("floatExact")
+
+# Explicit type-args dispatch (#1854 Cycle 2): previously the explicit
+# `f[T](...)` path always routed to template index 0 regardless of
+# arg types, masking the second overload.  Now the call-site arg types
+# disambiguate across the same-arity overload set after the type-arg
+# substitution is applied to each template's parameter signature.
+@describe("generic fn overload by explicit type args")
+fn genericOverloadByExplicitTypeArgsTests():
+    @it("should pick the int-kind overload when explicit [str] + (int, str) args are passed")
+    fn explicitIntKindRoute():
+        expect(label[str](7, "payload")).toEq("intKind")
+    @it("should pick the str-kind overload when explicit [int] + (str, int) args are passed")
+    fn explicitStrKindRoute():
+        expect(label[int]("hi", 42)).toEq("strKind")
+    @it("should pick the bool-kind overload when explicit [str] + (bool, str) args are passed")
+    fn explicitBoolKindRoute():
+        expect(label[str](true, "payload")).toEq("boolKind")
+    @it("should pick the int exact overload when explicit [str] + (int, str) args are passed to pickByNumKind")
+    fn explicitExactIntWins():
+        expect(pickByNumKind[str](7, "tag")).toEq("intExact")
+    @it("should pick the float exact overload when explicit [str] + (float, str) args are passed to pickByNumKind")
+    fn explicitExactFloatWins():
+        expect(pickByNumKind[str](2.5, "tag")).toEq("floatExact")

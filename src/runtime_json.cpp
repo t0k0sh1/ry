@@ -680,6 +680,67 @@ const char *__ry_json_stringify_any(const RyAny *value, int64_t indent_or_neg1) 
     return makeString(out.data(), out.size());
 }
 
+// File handle overloads (#1854). Mirror __ry_json_parse_to_any's status-return
+// contract (0 ok / non-zero err) so the codegen-side reuses emitResultBranch /
+// buildErrorFromRuntime / wrapStatusAsResult — no new IR patterns needed.
+
+int64_t __ry_json_load_file(void *handle, RyAny *out) {
+    if (!handle) {
+        __ry_set_last_error("json load: file handle is null");
+        return 1;
+    }
+    if (!out) {
+        __ry_set_last_error("json load: out is null");
+        return 1;
+    }
+    const char *text = __ry_io_file_read_all(handle);
+    if (!text) {
+        // io side already populated __ry_set_last_error via setLastError().
+        return 1;
+    }
+    JsonAnyParser parser(text);
+    RyAny v{};
+    bool ok = parser.parse_value(v);
+    if (ok) {
+        parser.skip_ws();
+        if (!parser.at_end()) {
+            releaseOwnedAny(v);
+            __ry_set_last_error("json parse: unexpected trailing content");
+            ok = false;
+        }
+    } else {
+        __ry_set_last_error(parser.error.c_str());
+    }
+    freeStringSlot(const_cast<char *>(text));
+    if (!ok) return 1;
+    *out = v;
+    return 0;
+}
+
+int64_t __ry_json_dump_file(void *handle, const RyAny *value,
+                            int64_t indent_or_neg1) {
+    if (!handle) {
+        __ry_set_last_error("json dump: file handle is null");
+        return 1;
+    }
+    if (!value) {
+        __ry_set_last_error("json dump: value is null");
+        return 1;
+    }
+    // __ry_json_stringify_any may call ry_runtime_trap_exit() for unsupported
+    // types (Set / Record / Enum / non-str Map keys / typed-collection side
+    // table). That panic semantics is inherited intentionally — dump cannot
+    // recover from those at the JSON layer.
+    const char *s = __ry_json_stringify_any(value, indent_or_neg1);
+    int64_t status = __ry_io_file_write_text(handle, s);
+    freeStringSlot(const_cast<char *>(s));
+    if (status != 0) {
+        // io side already populated __ry_set_last_error via setLastError().
+        return 1;
+    }
+    return 0;
+}
+
 } // extern "C"
 
 } // namespace ry

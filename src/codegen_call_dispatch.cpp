@@ -251,14 +251,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
 
         if (generic_fn_templates_.count(baseName)) {
-            // Explicit type args path: keep legacy single-template behavior
-            // for now. Cycle 2+ will extend this to pick the right overload
-            // when multiple templates share the same arity.
+            // Explicit type args path (#1854 Cycle 2): when multiple
+            // templates declare the same baseName + typeparam arity,
+            // pick the overload whose substituted parameter signature
+            // matches the call-site argument types. Single-template
+            // programs fall through to legacy templateIndex=0 inside
+            // the helper so existing code is unaffected.
             if (!typeArgs.empty()) {
-                instantiateGenericFn(baseName, /*templateIndex=*/0, typeArgs);
-                std::string fullName = mangleGenericFnName(
-                    baseName, /*templateIndex=*/0, typeArgs);
-                return emitUserFnCall(fullName, e->args);
+                auto resolution = resolveGenericOverloadExplicit(
+                    baseName, typeArgs, e->args);
+                if (resolution) {
+                    instantiateGenericFn(baseName, resolution->templateIndex,
+                                         resolution->typeArgs);
+                    std::string fullName = mangleGenericFnName(
+                        baseName, resolution->templateIndex,
+                        resolution->typeArgs);
+                    return emitUserFnCall(fullName, e->args);
+                }
             }
 
             // Inferred type args path: multi-candidate overload resolution.
