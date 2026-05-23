@@ -7,7 +7,7 @@
 | Function | Description |
 |------|------|
 | `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")` | Prints values to standard output. `sep` controls the separator (default: space), `end` controls the line ending (default: newline) |
-| `input()` / `input(prompt)` | Reads one line from standard input and returns it as `str` with the trailing newline removed. With `prompt`, writes it to standard output first (no trailing newline) and flushes. Returns `""` on EOF |
+| `input()` / `input(prompt)` | Reads one line from standard input as `Result<Option<str>, Error>` (trailing newline stripped). `Ok(Some(line))` on a successful read, `Ok(None)` at EOF, `Err(e)` on I/O failure. With `prompt`, writes it to standard output first (no trailing newline) and flushes before reading |
 | `len(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
@@ -224,18 +224,25 @@ print("a", "b", sep="-", end="!\n")  # a-b!
 
 ## input
 
-**Signature:** `input() -> str` / `input(prompt: str) -> str`
+**Signature:** `input() -> Result<Option<str>, Error>` / `input(prompt: str) -> Result<Option<str>, Error>`
 
-Reads one line from standard input and returns it as a string with the trailing newline (`\n`) removed. Returns an empty string when EOF is reached. When `prompt` is provided, it is written to standard output (with no appended newline) and stdout is flushed before blocking on stdin — mirroring Python's `input(prompt)`.
-
-Similar to `io.readLine()`, but returns a bare `str` instead of `Result<Option<str>, Error>` — convenient for short scripts and competitive-programming snippets where EOF / I/O error handling is unnecessary. EOF and read errors both yield `""`, so `input` cannot distinguish them; use `io.readLine` when that distinction matters.
+Reads one line from standard input. Returns `Ok(Some(line))` on a successful read (trailing `\n` stripped), `Ok(None)` at EOF (e.g. when stdin is closed), and `Err(e)` on I/O failure. An empty input line (the user pressed Enter without typing anything) is `Ok(Some(""))` — distinct from EOF. When `prompt` is provided, it is written to standard output (with no appended newline) and stdout is flushed before blocking on stdin — mirroring Python's `input(prompt)`. Equivalent to `io.readLine()`, but available without an `import`.
 
 ```ry
-name = input("Enter your name: ")
-print(f"Hello, {name}!")
+case input("Enter your name: "):
+    Ok(opt):
+        case opt:
+            Some(name): print(f"Hello, {name}!")
+            None: print("(EOF)")
+    Err(e): print(e.message)
 
 # No prompt — reads one line from stdin as-is
-line = input()
+case input():
+    Ok(opt):
+        case opt:
+            Some(line): print(line)
+            None: print("(EOF)")
+    Err(e): print(e.message)
 ```
 
 ---

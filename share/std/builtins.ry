@@ -7,11 +7,11 @@ fn print(value: str) -> Unit
 
 @public
 @native
-fn input() -> str
+fn input() -> Result<Option<str>, Error>
 
 @public
 @native
-fn input(prompt: str) -> str
+fn input(prompt: str) -> Result<Option<str>, Error>
 
 @public
 @native
