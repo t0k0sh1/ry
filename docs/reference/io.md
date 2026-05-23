@@ -12,7 +12,7 @@ from io import readText, writeText, exists
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `readLine` | `() -> str` | Reads one line from stdin (trailing newline removed) |
+| `readLine` | `() -> Result<Option<str>, Error>` | Reads one line from stdin; `Ok(Some(line))` on success (trailing newline removed), `Ok(None)` at EOF, `Err(e)` on I/O error |
 | `readAll` | `() -> str` | Reads all of stdin until EOF |
 
 ### File I/O
@@ -159,9 +159,18 @@ case writeBytes("data.bin", bs):
 ```ry
 from io import readLine
 
-name = readLine()
-print(f"Hello, {name}!")
+case readLine():
+    Ok(opt):
+        case opt:
+            Some(name):
+                print(f"Hello, {name}!")
+            None:
+                print("(no input)")
+    Err(e):
+        print(e.message)
 ```
+
+`readLine()` returns `Ok(Some(line))` for a successful read (trailing newline removed), `Ok(None)` at EOF (e.g. when stdin is closed), and `Err(e)` on I/O failure. For convenience scripts where EOF / error handling is unnecessary, the `input()` builtin returns a bare `str` (empty string on EOF / error).
 
 ## Error Handling
 
@@ -189,7 +198,7 @@ case open("missing.txt", "r"):
 | `readText` / `writeText` / `appendText` / `deleteFile` / `readBytes` / `writeBytes` | Path contains an embedded NUL byte |
 | `open` | File does not exist (mode `"r"` / `"rb"`), cannot be created/opened (mode `"w"` / `"a"` / `"wb"`), or mode is not `"r"` / `"w"` / `"a"` / `"rb"` / `"wb"` |
 | `readAll` (File) | Read error after opening |
-| `readLine` (File) | Read error (I/O failure, not EOF — EOF is `Ok(None)`) |
+| `readLine` (stdin) / `readLine` (File) | Read error (I/O failure, not EOF — EOF is `Ok(None)`) |
 | `writeText` (File, str) | Write error |
 | `open` / `readText` / `writeText` / `appendText` / `readBytes` / `writeBytes` | Path refers to a symbolic link (rejected by `O_NOFOLLOW`; security hardening) |
 | `readText` / `readBytes` / `readAll` (File) | File exceeds the 256 MiB read limit |
