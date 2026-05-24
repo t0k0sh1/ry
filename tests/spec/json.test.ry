@@ -727,3 +727,242 @@ fn jsonDiagLoadFromFnBodyTests():
       Err(e):
         fail("open r failed: " + e.message)
 
+# Records for #1852 — loadAs<T> reconstruction of user-defined records and
+# typed collections. Prefixed with Json1852 to avoid colliding with other
+# record names in this file or in tests imported alongside it.
+
+record Json1852Person:
+  name: str
+  age: int
+
+record Json1852Address:
+  person: Json1852Person
+  city: str
+
+@describe("json loadAs<T> — flat record reconstruction (#1852)")
+fn jsonLoadAsFlatRecordTests():
+  @it("should reconstruct a flat record from a JSON object")
+  fn shouldReconstructFlatRecord():
+    case loadAs[Json1852Person]("{\"name\": \"alice\", \"age\": 30}"):
+      Ok(p):
+        expect(p.name).toEq("alice")
+        expect(p.age).toEq(30)
+      Err(e):
+        fail("loadAs<Json1852Person> failed: " + e.message)
+
+  @it("should accept fields in any order")
+  fn shouldAcceptFieldsInAnyOrder():
+    case loadAs[Json1852Person]("{\"age\": 7, \"name\": \"bob\"}"):
+      Ok(p):
+        expect(p.name).toEq("bob")
+        expect(p.age).toEq(7)
+      Err(e):
+        fail("loadAs<Json1852Person> reorder failed: " + e.message)
+
+  @it("should return Err when a required field is missing")
+  fn shouldReturnErrWhenRequiredFieldMissing():
+    case loadAs[Json1852Person]("{\"name\": \"carol\"}"):
+      Ok(_):
+        fail("expected Err for missing 'age' field")
+      Err(e):
+        expect(e.message).toContain("'age'")
+        expect(e.message).toContain("missing")
+
+  @it("should return Err when a field has the wrong type")
+  fn shouldReturnErrWhenFieldHasWrongType():
+    case loadAs[Json1852Person]("{\"name\": 42, \"age\": 1}"):
+      Ok(_):
+        fail("expected Err for wrong-typed 'name' field")
+      Err(e):
+        expect(e.message).toContain("'name'")
+
+  @it("should return Err when input is not a JSON object")
+  fn shouldReturnErrWhenInputNotObject():
+    case loadAs[Json1852Person]("[1, 2, 3]"):
+      Ok(_):
+        fail("expected Err for array input")
+      Err(e):
+        expect(e.message).toContain("JSON object")
+
+  @it("should return Err when input is a primitive")
+  fn shouldReturnErrWhenInputIsPrimitive():
+    case loadAs[Json1852Person]("42"):
+      Ok(_):
+        fail("expected Err for primitive input")
+      Err(e):
+        expect(e.message).toContain("JSON object")
+
+@describe("json loadAs<T> — nested record reconstruction (#1852)")
+fn jsonLoadAsNestedRecordTests():
+  @it("should reconstruct a record whose field is itself a record")
+  fn shouldReconstructNestedRecord():
+    text = "{\"person\": {\"name\": \"dan\", \"age\": 9}, \"city\": \"tokyo\"}"
+    case loadAs[Json1852Address](text):
+      Ok(a):
+        expect(a.city).toEq("tokyo")
+        expect(a.person.name).toEq("dan")
+        expect(a.person.age).toEq(9)
+      Err(e):
+        fail("loadAs<Json1852Address> failed: " + e.message)
+
+  @it("should return Err when the nested record is missing a field")
+  fn shouldReturnErrWhenNestedFieldMissing():
+    text = "{\"person\": {\"name\": \"eve\"}, \"city\": \"tokyo\"}"
+    case loadAs[Json1852Address](text):
+      Ok(_):
+        fail("expected Err for nested missing 'age'")
+      Err(e):
+        expect(e.message).toContain("'age'")
+        expect(e.message).toContain("missing")
+
+  @it("should return Err when the nested record is the wrong shape")
+  fn shouldReturnErrWhenNestedRecordWrongShape():
+    text = "{\"person\": [1, 2], \"city\": \"tokyo\"}"
+    case loadAs[Json1852Address](text):
+      Ok(_):
+        fail("expected Err for non-object nested 'person'")
+      Err(e):
+        expect(e.message).toContain("'person'")
+
+  @it("should return Err when the outer field is missing")
+  fn shouldReturnErrWhenOuterFieldMissing():
+    text = "{\"person\": {\"name\": \"fay\", \"age\": 1}}"
+    case loadAs[Json1852Address](text):
+      Ok(_):
+        fail("expected Err for missing 'city'")
+      Err(e):
+        expect(e.message).toContain("'city'")
+        expect(e.message).toContain("missing")
+
+@describe("json loadAs<T> — typed List<Record> (#1852)")
+fn jsonLoadAsListRecordTests():
+  @it("should reconstruct a List<Record> from a JSON array of objects")
+  fn shouldReconstructListOfRecords():
+    text = "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2}]"
+    case loadAs[List<Json1852Person>](text):
+      Ok(xs):
+        expect(len(xs)).toEq(2)
+        expect(xs[0].name).toEq("a")
+        expect(xs[0].age).toEq(1)
+        expect(xs[1].name).toEq("b")
+        expect(xs[1].age).toEq(2)
+      Err(e):
+        fail("loadAs<List<Json1852Person>> failed: " + e.message)
+
+  @it("should reconstruct an empty List<Record>")
+  fn shouldReconstructEmptyListOfRecords():
+    case loadAs[List<Json1852Person>]("[]"):
+      Ok(xs):
+        expect(len(xs)).toEq(0)
+      Err(e):
+        fail("loadAs<List<Json1852Person>> [] failed: " + e.message)
+
+  @it("should return Err when an element is missing a field")
+  fn shouldReturnErrWhenListElementMissingField():
+    text = "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\"}]"
+    case loadAs[List<Json1852Person>](text):
+      Ok(_):
+        fail("expected Err for element missing 'age'")
+      Err(e):
+        expect(e.message).toContain("'age'")
+        expect(e.message).toContain("missing")
+
+  @it("should return Err when the JSON value is not an array")
+  fn shouldReturnErrWhenInputNotArrayForListOfRecord():
+    case loadAs[List<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
+      Ok(_):
+        fail("expected Err for non-array input")
+      Err(e):
+        expect(e.message).toContain("JSON array")
+
+@describe("json loadAs<T> — typed Map<str, Record> (#1852)")
+fn jsonLoadAsMapRecordTests():
+  @it("should reconstruct a Map<str, Record> from a JSON object of objects")
+  fn shouldReconstructMapOfRecords():
+    text = "{\"x\":{\"name\":\"a\",\"age\":1},\"y\":{\"name\":\"b\",\"age\":2}}"
+    case loadAs[Map<str, Json1852Person>](text):
+      Ok(m):
+        expect(len(m)).toEq(2)
+        expect(m["x"].name).toEq("a")
+        expect(m["x"].age).toEq(1)
+        expect(m["y"].name).toEq("b")
+        expect(m["y"].age).toEq(2)
+      Err(e):
+        fail("loadAs<Map<str, Json1852Person>> failed: " + e.message)
+
+  @it("should reconstruct an empty Map<str, Record>")
+  fn shouldReconstructEmptyMapOfRecords():
+    case loadAs[Map<str, Json1852Person>]("{}"):
+      Ok(m):
+        expect(len(m)).toEq(0)
+      Err(e):
+        fail("loadAs<Map<str, Json1852Person>> {} failed: " + e.message)
+
+  @it("should return Err when a value is missing a field")
+  fn shouldReturnErrWhenMapValueMissingField():
+    text = "{\"x\":{\"name\":\"a\",\"age\":1},\"y\":{\"name\":\"b\"}}"
+    case loadAs[Map<str, Json1852Person>](text):
+      Ok(_):
+        fail("expected Err for value missing 'age'")
+      Err(e):
+        expect(e.message).toContain("'age'")
+        expect(e.message).toContain("missing")
+
+  @it("should return Err when the JSON value is not an object")
+  fn shouldReturnErrWhenInputNotObjectForMapOfRecord():
+    case loadAs[Map<str, Json1852Person>]("[1, 2, 3]"):
+      Ok(_):
+        fail("expected Err for non-object input")
+      Err(e):
+        expect(e.message).toContain("JSON object")
+
+@describe("json loadAs<T> — Option<Record> (#1852)")
+fn jsonLoadAsOptionRecordTests():
+  @it("should reconstruct Some(Record) when JSON value is an object")
+  fn shouldReconstructSomeRecord():
+    case loadAs[Option<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
+      Ok(opt):
+        gotSome = false
+        case opt:
+          Some(p):
+            gotSome = true
+            expect(p.name).toEq("a")
+            expect(p.age).toEq(1)
+          None:
+            fail("expected Some(...) but got None")
+        expect(gotSome).toEq(true)
+      Err(e):
+        fail("loadAs<Option<Json1852Person>> failed: " + e.message)
+
+  @it("should reconstruct None when JSON value is null")
+  fn shouldReconstructNoneFromNull():
+    case loadAs[Option<Json1852Person>]("null"):
+      Ok(opt):
+        gotNone = false
+        case opt:
+          Some(_):
+            fail("expected None but got Some(...)")
+          None:
+            gotNone = true
+        expect(gotNone).toEq(true)
+      Err(e):
+        fail("loadAs<Option<Json1852Person>> null failed: " + e.message)
+
+  @it("should return Err when JSON value is neither object nor null")
+  fn shouldReturnErrWhenInputNeitherObjectNorNullForOption():
+    case loadAs[Option<Json1852Person>]("42"):
+      Ok(_):
+        fail("expected Err for primitive input")
+      Err(e):
+        expect(e.message).toContain("null")
+        expect(e.message).toContain("JSON object")
+
+  @it("should return Err when the inner object is missing a field")
+  fn shouldReturnErrWhenInnerOptionRecordMissingField():
+    case loadAs[Option<Json1852Person>]("{\"name\":\"a\"}"):
+      Ok(_):
+        fail("expected Err for inner missing 'age'")
+      Err(e):
+        expect(e.message).toContain("'age'")
+        expect(e.message).toContain("missing")
+

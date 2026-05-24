@@ -80,6 +80,60 @@ static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
     return cg.builder_.CreateCall(fn, {slot, indent}, callName);
 }
 
+// loadAs<T>(text: str) -> Result<T, Error>                   (#1852)
+// loadAs<T>(f: File) -> Result<T, Error>
+//
+// Parses JSON via the same runtime entry as `load`, then coerces the resulting
+// `any` to the concrete target type via `tryUnwrapFromAny` — which returns
+// `Err(Error)` on tag mismatch instead of panicking. The interceptor receives
+// the type-arg as a literal string (e.g. "Person", "List<Person>") extracted
+// from `e.callee` by `dispatchJson`.
+static llvm::Value *emitJsonLoadAs(CodeGen &cg, const CallExpr &e,
+                                    const std::string &typeArg) {
+    cg.requireArgs(e, 1);
+    llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
+
+    const char *runtimeFn;
+    if (cg.isFile(arg0)) {
+        runtimeFn = "__ry_json_load_file";
+    } else {
+        if (arg0->getType() != cg.ptrTy_)
+            cg.codegenError("loadAs() requires a str or File argument");
+        runtimeFn = "__ry_json_parse_to_any";
+    }
+
+    llvm::Type *targetTy = cg.resolveType(typeArg);
+    llvm::StructType *resTy = cg.getResultType(targetTy, cg.errorTy_);
+
+    llvm::AllocaInst *outSlot =
+        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_loadas_out");
+    llvm::Type *paramTys[] = {cg.ptrTy_, cg.ptrTy_};
+    auto *fnTy = llvm::FunctionType::get(cg.i64Ty_, paramTys, false);
+    auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
+    llvm::Value *status =
+        cg.builder_.CreateCall(fn, {arg0, outSlot}, "json_loadas_status");
+    llvm::Value *isParseErr = cg.builder_.CreateICmpNE(
+        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "json_loadas_parse_err");
+
+    llvm::Value *result = cg.emitResultBranch(
+        isParseErr, resTy,
+        [&]() -> llvm::Value * {
+            llvm::Value *anyVal = cg.builder_.CreateLoad(
+                cg.anyTy_, outSlot, "json_loadas_any");
+            return cg.tryUnwrapFromAny(anyVal, targetTy, typeArg);
+        },
+        [&]() -> llvm::Value * {
+            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+        });
+    // Stamp the lossless source-level Result type onto the outer PHI so the
+    // `case` subject alloca propagates it to OkPattern via
+    // `getMeta(subjectAlloca)->source_type_name`. Without this, the
+    // OkPattern arm falls back to lossy `reverseResolveTypeName(ptrTy_) = "str"`
+    // and `xs[0]` is dispatched against `isStringValue(xs) == true`.
+    cg.propagateTypeMeta("Result<" + typeArg + ", Error>", result);
+    return result;
+}
+
 // dump(f: File, value: any) -> Result<Unit, Error>           (#1854)
 // dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 //
@@ -141,6 +195,23 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     // library is loaded before any early codegenError path can fire (per
     // codegen-stdlib-dispatcher.md #1856).
     cg.used_native_libraries_.insert("json");
+
+    // Intercept `loadAs<T>(...)` calls (#1852). The parser concatenates the
+    // type-arg literally into `e.callee` (e.g. "loadAs<Person>",
+    // "loadAs<List<Person>>"), so we strip the `loadAs<` prefix and trailing
+    // `>` to recover the type-name. The interceptor runs before
+    // `emitTableDrivenNativeCall` because the table's name-keyed exact match
+    // does not handle the parametric suffix.
+    constexpr const char kLoadAsPrefix[] = "loadAs<";
+    constexpr size_t kLoadAsPrefixLen = sizeof(kLoadAsPrefix) - 1;
+    if (e.callee.size() > kLoadAsPrefixLen + 1 &&
+        e.callee.compare(0, kLoadAsPrefixLen, kLoadAsPrefix) == 0 &&
+        e.callee.back() == '>') {
+        std::string typeArg = e.callee.substr(
+            kLoadAsPrefixLen,
+            e.callee.size() - kLoadAsPrefixLen - 1);
+        return emitJsonLoadAs(cg, e, typeArg);
+    }
 
     return cg.emitTableDrivenNativeCall(e, "json", json_table, std::size(json_table));
 }
