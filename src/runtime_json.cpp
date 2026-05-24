@@ -7,13 +7,16 @@
 #include "ry/runtime_string.hpp"
 #include "ry/runtime_http_types.hpp" // MapHeader + __ry_ht_rehash_str
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <numeric>
 #include <string>
+#include <vector>
 
 
 namespace ry {
@@ -529,35 +532,63 @@ struct JsonAnyParser {
     }
 };
 
-static void stringify_any(const RyAny *v, std::string &out,
-                          size_t indent, size_t depth, bool pretty) {
-    if (!v) { out += "null"; return; }
+// #1853: when error_out == nullptr, unsupported inputs trap via
+// ry_runtime_trap_exit() (existing `stringify` / `stringifySorted` contract).
+// When non-null, the message is written to *error_out and the function
+// returns false; the caller then surfaces it as `Err(Error)`.
+[[nodiscard]] static bool report_stringify_error(std::string *error_out,
+                                                  const char *msg) {
+    if (error_out) {
+        *error_out = msg;
+        return false;
+    }
+    fprintf(stderr, "%s\n", msg);
+    ry_runtime_trap_exit();
+}
+
+[[nodiscard]] static bool report_typed_coll_error(std::string *error_out,
+                                                   const char *coll_type) {
+    std::string buf = "stringify: any holds typed collection '";
+    buf += coll_type;
+    buf += "' — use List<any> / Map<str, any> / Set<any> instead";
+    if (error_out) {
+        *error_out = std::move(buf);
+        return false;
+    }
+    fprintf(stderr, "%s\n", buf.c_str());
+    ry_runtime_trap_exit();
+}
+
+[[nodiscard]] static bool stringify_any(const RyAny *v, std::string &out,
+                                         size_t indent, size_t depth,
+                                         bool pretty, bool sort_keys,
+                                         std::string *error_out) {
+    if (!v) { out += "null"; return true; }
     switch (static_cast<RyAnyTag>(v->tag)) {
-        case RyAnyTag::Unit: out += "null"; break;
+        case RyAnyTag::Unit: out += "null"; return true;
         case RyAnyTag::Bool: {
             int64_t bv;
             memcpy(&bv, v->data, sizeof(bv));
             out += bv ? "true" : "false";
-            break;
+            return true;
         }
         case RyAnyTag::Int: {
             int64_t iv;
             memcpy(&iv, v->data, sizeof(iv));
             out += std::to_string(iv);
-            break;
+            return true;
         }
         case RyAnyTag::Float: {
             double fv;
             memcpy(&fv, v->data, sizeof(fv));
             if (!std::isfinite(fv)) {
-                fprintf(stderr,
-                        "json stringify: non-finite float is not representable in JSON\n");
-                ry_runtime_trap_exit();
+                return report_stringify_error(error_out,
+                    "json stringify: non-finite float is not representable in JSON");
             }
             char buf[64];
             snprintf(buf, sizeof(buf), "%.17g", fv);
             out += buf;
-            break;
+            return true;
         }
         case RyAnyTag::Str: {
             char *handle;
@@ -565,7 +596,7 @@ static void stringify_any(const RyAny *v, std::string &out,
             out += '"';
             escape_string(handle, stringByteLen(handle), out);
             out += '"';
-            break;
+            return true;
         }
         case RyAnyTag::List: {
             void *hdr_ptr;
@@ -576,25 +607,22 @@ static void stringify_any(const RyAny *v, std::string &out,
             // as `RyAny[]` is OOB UB. The side-table records the source-level
             // type name at wrap time (#1811); a hit means the user wrapped a
             // typed collection and stringify cannot proceed.
-            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr)) {
-                fprintf(stderr,
-                    "stringify: any holds typed collection '%s' "
-                    "— use List<any> / Map<str, any> / Set<any> instead\n",
-                    coll_type);
-                ry_runtime_trap_exit();
-            }
+            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr))
+                return report_typed_coll_error(error_out, coll_type);
             auto *hdr = static_cast<ListHeader *>(hdr_ptr);
-            if (hdr->len == 0) { out += "[]"; break; }
+            if (hdr->len == 0) { out += "[]"; return true; }
             auto *items = reinterpret_cast<RyAny *>(hdr->data);
             out += '[';
             for (int64_t i = 0; i < hdr->len; i++) {
                 if (i > 0) out += ',';
                 if (pretty) { out += '\n'; out.append((depth + 1) * indent, ' '); }
-                stringify_any(&items[i], out, indent, depth + 1, pretty);
+                if (!stringify_any(&items[i], out, indent, depth + 1, pretty,
+                                    sort_keys, error_out))
+                    return false;
             }
             if (pretty) { out += '\n'; out.append(depth * indent, ' '); }
             out += ']';
-            break;
+            return true;
         }
         case RyAnyTag::Map: {
             void *hdr_ptr;
@@ -602,44 +630,63 @@ static void stringify_any(const RyAny *v, std::string &out,
             // Map element-type erasure: only the value side strides — keys
             // are always `char**`. A typed `Map<str, int>` walked as
             // `Map<str, any>` reads 8-byte ints as 16-byte RyAny → OOB.
-            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr)) {
-                fprintf(stderr,
-                    "stringify: any holds typed collection '%s' "
-                    "— use List<any> / Map<str, any> / Set<any> instead\n",
-                    coll_type);
-                ry_runtime_trap_exit();
-            }
+            if (const char *coll_type = __ry_any_lookup_typed_coll(hdr_ptr))
+                return report_typed_coll_error(error_out, coll_type);
             auto *hdr = static_cast<MapHeader *>(hdr_ptr);
-            if (hdr->len == 0) { out += "{}"; break; }
+            if (hdr->len == 0) { out += "{}"; return true; }
             auto *vals = reinterpret_cast<RyAny *>(hdr->vals);
+            // sort_keys: byte-level memcmp on NUL-terminated keys. For valid
+            // UTF-8 this is equivalent to Python json.dumps(sort_keys=True)
+            // codepoint order; the spec test "should sort keys that share a
+            // NUL-containing prefix" pins NUL-aware tie-breaking via stringByteLen.
+            std::vector<int64_t> order(static_cast<size_t>(hdr->len));
+            std::iota(order.begin(), order.end(), int64_t{0});
+            if (sort_keys) {
+                std::sort(order.begin(), order.end(),
+                    [&](int64_t a, int64_t b) {
+                        const char *ka = hdr->keys[a];
+                        const char *kb = hdr->keys[b];
+                        size_t la = static_cast<size_t>(stringByteLen(ka));
+                        size_t lb = static_cast<size_t>(stringByteLen(kb));
+                        int c = std::memcmp(ka, kb, std::min(la, lb));
+                        if (c != 0) return c < 0;
+                        return la < lb;
+                    });
+            }
             out += '{';
             for (int64_t i = 0; i < hdr->len; i++) {
+                int64_t idx = order[static_cast<size_t>(i)];
                 if (i > 0) out += ',';
                 if (pretty) { out += '\n'; out.append((depth + 1) * indent, ' '); }
                 out += '"';
-                escape_string(hdr->keys[i], stringByteLen(hdr->keys[i]), out);
+                escape_string(hdr->keys[idx], stringByteLen(hdr->keys[idx]), out);
                 out += '"';
                 out += ':';
                 if (pretty) out += ' ';
-                stringify_any(&vals[i], out, indent, depth + 1, pretty);
+                if (!stringify_any(&vals[idx], out, indent, depth + 1, pretty,
+                                    sort_keys, error_out))
+                    return false;
             }
             if (pretty) { out += '\n'; out.append(depth * indent, ' '); }
             out += '}';
-            break;
+            return true;
         }
         case RyAnyTag::Set:
             // Set is never JSON-representable regardless of element type,
             // so the side-table lookup would be redundant — keep the
             // existing message which is already actionable.
-            fprintf(stderr, "json stringify: Set is not representable in JSON\n");
-            ry_runtime_trap_exit();
+            return report_stringify_error(error_out,
+                "json stringify: Set is not representable in JSON");
         case RyAnyTag::Record:
-            fprintf(stderr, "json stringify: record is not representable in JSON\n");
-            ry_runtime_trap_exit();
+            return report_stringify_error(error_out,
+                "json stringify: record is not representable in JSON");
         case RyAnyTag::Enum:
-            fprintf(stderr, "json stringify: enum is not representable in JSON\n");
-            ry_runtime_trap_exit();
+            return report_stringify_error(error_out,
+                "json stringify: enum is not representable in JSON");
     }
+    // All RyAnyTag values are handled above; this is unreachable but
+    // satisfies compilers that cannot prove the switch is exhaustive.
+    return true;
 }
 
 
@@ -676,7 +723,53 @@ const char *__ry_json_stringify_any(const RyAny *value, int64_t indent_or_neg1) 
     std::string out;
     bool pretty = indent_or_neg1 >= 0;
     size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
-    stringify_any(value, out, indent, 0, pretty);
+    (void)stringify_any(value, out, indent, 0, pretty,
+                         /*sort_keys=*/false, /*error_out=*/nullptr);
+    return makeString(out.data(), out.size());
+}
+
+// Sorted variant of __ry_json_stringify_any (#1853). Same trap-on-error
+// contract — use __ry_json_stringify_any_sorted_safe to surface errors as
+// Result<str, Error>.
+const char *__ry_json_stringify_any_sorted(const RyAny *value,
+                                            int64_t indent_or_neg1) {
+    std::string out;
+    bool pretty = indent_or_neg1 >= 0;
+    size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
+    (void)stringify_any(value, out, indent, 0, pretty,
+                         /*sort_keys=*/true, /*error_out=*/nullptr);
+    return makeString(out.data(), out.size());
+}
+
+// Safe (Result-returning) variants (#1853). Return a non-NULL ARC string on
+// success and NULL on failure with __ry_set_last_error populated — same
+// nullable-ptr contract as other safe entry points so the codegen can wrap
+// via wrapPtrAsResult.
+const char *__ry_json_stringify_any_safe(const RyAny *value,
+                                          int64_t indent_or_neg1) {
+    std::string out;
+    bool pretty = indent_or_neg1 >= 0;
+    size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
+    std::string err;
+    if (!stringify_any(value, out, indent, 0, pretty,
+                        /*sort_keys=*/false, &err)) {
+        __ry_set_last_error(err.c_str());
+        return nullptr;
+    }
+    return makeString(out.data(), out.size());
+}
+
+const char *__ry_json_stringify_any_sorted_safe(const RyAny *value,
+                                                 int64_t indent_or_neg1) {
+    std::string out;
+    bool pretty = indent_or_neg1 >= 0;
+    size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
+    std::string err;
+    if (!stringify_any(value, out, indent, 0, pretty,
+                        /*sort_keys=*/true, &err)) {
+        __ry_set_last_error(err.c_str());
+        return nullptr;
+    }
     return makeString(out.data(), out.size());
 }
 

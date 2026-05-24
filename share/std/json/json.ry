@@ -62,6 +62,41 @@ fn stringify(value: any) -> str
 @native("json")
 fn stringify(value: any, indent: int) -> str
 
+# Result-returning variant of `stringify` (#1853). Unsupported inputs
+# (non-finite float, typed collection wrapped as `any`, Set / Record /
+# Enum / non-`str` Map keys) surface as `Err(Error)` instead of
+# trapping the process. Otherwise produces the same bytes as
+# `stringify`.
+@public
+@native("json")
+fn stringifySafe(value: any) -> Result<str, Error>
+
+@public
+@native("json")
+fn stringifySafe(value: any, indent: int) -> Result<str, Error>
+
+# Sorted-key variant of `stringify` (#1853). `Map<str, any>` entries
+# (including those nested inside lists / other maps) are emitted in
+# byte-lexicographic key order so the result is reproducible across
+# runs regardless of insertion order. Trap behavior on unsupported
+# inputs matches the existing `stringify` — use `stringifySortedSafe`
+# for the Result-returning equivalent.
+@public
+@native("json")
+fn stringifySorted(value: any) -> str
+
+@public
+@native("json")
+fn stringifySorted(value: any, indent: int) -> str
+
+@public
+@native("json")
+fn stringifySortedSafe(value: any) -> Result<str, Error>
+
+@public
+@native("json")
+fn stringifySortedSafe(value: any, indent: int) -> Result<str, Error>
+
 @public
 @native("json")
 fn dump(f: File, value: any) -> Result<Unit, Error>
