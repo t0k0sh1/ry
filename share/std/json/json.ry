@@ -70,28 +70,23 @@ fn dump(f: File, value: any) -> Result<Unit, Error>
 @native("json")
 fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 
-# User-defined generic wrapper that monomorphizes per T and routes through
-# the unwrapFromAny coerce path. Supported T (this PR): int / float / str /
-# bool / List<any> / Map<str, any>. Element-level coerce (List<int>,
-# Map<str, int>, etc.) is rejected at compile time (#1698 guard) because the
-# `any` slot stride is 16 bytes while the target's element stride is 8;
-# unwrap individual elements after `loadAs<List<any>>`. record / Set /
-# Option / Result reconstruction is out of scope for this release.
+# Typed deserialization (#1852). Each call site monomorphizes per T and the
+# JSON dispatcher intercepts `loadAs<T>(...)` to route through the
+# `tryUnwrapFromAny` coerce path — tag/structure mismatches surface as
+# `Err(Error)` instead of panicking via `_Exit(1)`.
 #
+# Supported T: primitive (int / float / str / bool), homogeneous container
+# (List<int|float|str|bool>, Map<str, int|float|str|bool>), List<any> /
+# Map<str, any>, user-defined records (flat and nested), typed collections
+# of records (List<Record>, Map<str, Record>), and Option<T>. Missing
+# fields, wrong-typed fields, and unsupported source shapes surface as
+# `Err(Error{message})` with a `loadAs<T>: ...` prefix that locates the
+# failure. See docs/reference/json.md for the full T table and error
+# message format.
 @public
-fn loadAs<T>(text: str) -> Result<T, Error>:
-  case load(text):
-    Ok(a):
-      v: T = a
-      return Ok(v)
-    Err(e):
-      return Err(e)
+@native("json")
+fn loadAs<T>(text: str) -> Result<T, Error>
 
 @public
-fn loadAs<T>(f: File) -> Result<T, Error>:
-  case load(f):
-    Ok(a):
-      v: T = a
-      return Ok(v)
-    Err(e):
-      return Err(e)
+@native("json")
+fn loadAs<T>(f: File) -> Result<T, Error>

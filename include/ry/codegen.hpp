@@ -2295,6 +2295,62 @@ public:
     // primitive names keep the legacy behavior.
     llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                 const std::string &targetTypeName = "");
+    // Result-returning sibling of `unwrapFromAny` for typed deserialization
+    // (#1852). On tag/structure mismatch, returns `Err(Error{message:"..."})`
+    // instead of panicking via `_Exit(1)`. Primitives (int/float/bool/str),
+    // `List<any>` / `Map<str,any>` / `Set<any>`, user-defined records (flat
+    // and nested) are fully supported. Result / enum / typed-Set / typed-Map
+    // with non-str keys still return a runtime "not yet supported" Err.
+    llvm::Value *tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
+                                   const std::string &targetTypeName = "");
+    // Map<str,any> → record reconstruction sub-path (#1852). Called from
+    // `tryUnwrapFromAny` when the target is a record `StructType` registered
+    // in `record_types_`. Looks each field up by name via `__ry_ht_find_str`,
+    // recursively `tryUnwrapFromAny`s each value, and builds the record via
+    // an `InsertValue` chain. On any field miss / sub-Err, releases every
+    // ARC-bearing field collected so far (per advisor's ARC-leak guard) and
+    // returns `Err(Error{message:"loadAs<RecordName>: ..."})`.
+    llvm::Value *tryUnwrapRecordFromAny(llvm::Value *anyVal,
+                                          llvm::StructType *recordStructTy,
+                                          const RecordInfo &info,
+                                          const std::string &targetTypeName,
+                                          llvm::StructType *resTy);
+    // Typed `List<T>` reconstruction from a `List<any>`-tagged source (#1852).
+    // The JSON parser emits arrays as `List<any>` with 16B per slot; the
+    // target list expects native stride for `T`, so a fresh header + data
+    // buffer is allocated and each element is recursively unwrapped via
+    // `tryUnwrapFromAny`. On any sub-Err, every ARC-bearing element collected
+    // so far is released and a prefixed Err is returned. `elemTypeName` is
+    // the source-level Ry name (e.g. "Person" or "int") used to recurse and
+    // to stamp `list_elem_type_name` on the result header.
+    llvm::Value *tryUnwrapListFromAny(llvm::Value *anyVal,
+                                        llvm::Type *elemTy,
+                                        const std::string &elemTypeName,
+                                        const std::string &targetTypeName,
+                                        llvm::StructType *resTy);
+    // Typed `Map<str, V>` reconstruction from a `Map<str,any>`-tagged source
+    // (#1852). Keys are always `str` (JSON object keys); values are recursively
+    // unwrapped via `tryUnwrapFromAny`. The fresh map allocates header + keys
+    // buffer (str ptr) + vals buffer (native stride for V) and re-runs
+    // `__ry_ht_rehash_str` so the hash index is valid for the new layout.
+    // On any sub-Err, every ARC-bearing key / value collected so far is
+    // released and a prefixed Err is returned.
+    llvm::Value *tryUnwrapMapFromAny(llvm::Value *anyVal,
+                                       llvm::Type *valTy,
+                                       const std::string &valTypeName,
+                                       const std::string &targetTypeName,
+                                       llvm::StructType *resTy);
+    // Typed `Option<T>` reconstruction from `any` (#1852). Accepts two source
+    // shapes: Unit (JSON null) maps to `Ok(None)`; any other tag is forwarded
+    // to `tryUnwrapFromAny` for the inner type and on success wrapped in
+    // `Some(_)`. Inner err messages are prefixed with `loadAs<Option<X>>: ...`
+    // so the test asserting "null" + "JSON object" simultaneously can match.
+    llvm::Value *tryUnwrapOptionFromAny(llvm::Value *anyVal,
+                                          llvm::StructType *optTy,
+                                          llvm::Type *innerTy,
+                                          const std::string &innerTypeName,
+                                          const std::string &targetTypeName,
+                                          llvm::StructType *resTy);
     // Enum (organic / Option<T> / Result<V,E> / simple) unwrap from `any`.
     // `targetTy` may be a `StructType` for ADT / Option / Result or `i64Ty_`
     // for simple enums; `targetTypeName` is the source-level Ry type name
