@@ -87,8 +87,10 @@ if [[ -n "$SCAN_BUILD_DIR_HOST" ]]; then
   mkdir -p "$PROJECT_DIR/$SCAN_BUILD_DIR_HOST"
 fi
 
-# Sanitizer env vars matching CI jobs
-ENV_ARGS=()
+# Sanitizer env vars matching CI jobs.
+# RY_HOST_BUILD_DIR is consumed by entrypoint.sh to print host-side rm -rf
+# recovery commands when its leak/contamination guards fire.
+ENV_ARGS=(-e "RY_HOST_BUILD_DIR=$BUILD_DIR_HOST")
 case "$PRESET" in
   asan|fuzz)
     ENV_ARGS+=(
@@ -117,8 +119,24 @@ fi
 # Docker Desktop gRPC-FUSE) transparently translate bind-mount UIDs.
 # --tmpfs /tmp keeps test-created temp dirs and analyzer scratch off the overlay
 # (Docker storage pools fill up; /workspace bind-mount uses host disk).
+#
+# Per-entry bind mounts (issue #1876): the previous "-v PROJECT_DIR:/workspace"
+# outer mount let host build/, build-asan/, etc. (macOS Mach-O) leak into the
+# container alongside the inner build-*-docker/ mount, which caused clang-tidy
+# to fail when compile_commands.json referenced /Users/... paths. The mount
+# list below exposes only what the build, tests, and static analysis actually
+# read; adding a new top-level source dir or config file requires updating
+# this list AND entrypoint.sh's required-mount guard.
 MOUNT_ARGS=(
-  -v "$PROJECT_DIR:/workspace"
+  -v "$PROJECT_DIR/src:/workspace/src"
+  -v "$PROJECT_DIR/include:/workspace/include"
+  -v "$PROJECT_DIR/tests:/workspace/tests"
+  -v "$PROJECT_DIR/share:/workspace/share"
+  -v "$PROJECT_DIR/CMakeLists.txt:/workspace/CMakeLists.txt"
+  -v "$PROJECT_DIR/CMakePresets.json:/workspace/CMakePresets.json"
+  -v "$PROJECT_DIR/package.toml:/workspace/package.toml"
+  -v "$PROJECT_DIR/.clang-tidy:/workspace/.clang-tidy"
+  -v "$PROJECT_DIR/.cppcheck-suppressions:/workspace/.cppcheck-suppressions"
   -v "$PROJECT_DIR/$BUILD_DIR_HOST:/workspace/$BUILD_DIR_CONTAINER"
   -v "$CCACHE_VOLUME:/home/ubuntu/.cache/ccache"
 )

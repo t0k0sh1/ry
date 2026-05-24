@@ -395,6 +395,7 @@ endif()
 
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_compile_definitions(ry_tests PRIVATE RY_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(ry_tests PRIVATE RY_BINARY_DIR="${CMAKE_BINARY_DIR}")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 target_compile_options(ry_tests PRIVATE ${RY_WARNING_FLAGS})
 

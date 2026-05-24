@@ -62,7 +62,10 @@ See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-
 
 ## Notes
 
-- Host build dirs (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`, `build-fuzz-docker/`, `build-scan-docker/`) are separate from native macOS builds (`build/`, `build-asan/`, `build-tsan/`, `build-fuzz/`). They will not interfere with each other.
+- Host build dirs (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`, `build-fuzz-docker/`, `build-scan-docker/`) are separate from native macOS builds (`build/`, `build-asan/`, `build-tsan/`, `build-fuzz/`). The container only sees the per-preset Docker build dir, never the host macOS ones.
+- `run.sh` bind-mounts source/config entries individually (`src/`, `include/`, `tests/`, `share/`, `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, analyzer configs) rather than the whole project root, preventing host macOS build artifacts from appearing inside the container.
+- `entrypoint.sh` fails fast (exit codes 70/71/72) if a required mount is missing, a macOS Mach-O binary slips into the per-preset build dir, or `/Users/...` paths appear in `compile_commands.json`.
+- See [`Mount strategy`](../.claude/skills/linux-docker-dev/SKILL.md#mount-strategy) for the full rationale (issue #1876).
 - On Apple Silicon the container runs arm64 Linux natively (no x86_64 QEMU emulation).
 - ccache is persisted in a named Docker volume (`ry-ccache-docker`). The first build compiles everything; subsequent runs reuse the cache.
 - Image name: `ry-linux-dev:latest`. Built locally; not pushed to any registry.
