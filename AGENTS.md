@@ -152,6 +152,9 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 ## Git ブランチ運用ルール
 
 - フィーチャーブランチは `main` から作成し、PR は `main` に向けて作成する。`main` への直接コミットは禁止
+- フィーチャーブランチに main の最新を取り込む際は **`git rebase origin/main`** を使う (履歴の線形性を保つため)。merge commit による合流はしない。具体手順は `/git-commit-push` / `/git-commit-push-pr` / `/git-resolve-conflicts` を参照
+- rebase 後の push は **`git push --force-with-lease`** を使う (二回目以降は SHA が書き換わるため force push が必要。`--force-with-lease` は remote の予期しない進行を検知して上書きをブロックする)。`fetch` と `push` の間で `git fetch` を再実行しない (lease 保護が緩む)
+- 上記の rebase 方針はフィーチャーブランチへの main 取り込みに限る。`/preparing-for-release` での main 自体の更新は別系統で、`git pull --ff-only origin main` のまま (線形性が保証されているため変更不要)
 - PR マージ前に、未追跡ファイルや未コミットの変更がないか確認すること。ある場合はマージ前にユーザーに報告し、コミットの要否を確認する
 - `.serena/` ディレクトリに差分がある場合は、他の変更と一緒にコミットすること
 
