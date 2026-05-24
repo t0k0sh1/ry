@@ -75,11 +75,14 @@ fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 # `tryUnwrapFromAny` coerce path — tag/structure mismatches surface as
 # `Err(Error)` instead of panicking via `_Exit(1)`.
 #
-# Supported T (current iteration): int / float / str / bool /
-# List<any> / Map<str, any> / Set<any>. Record / typed collection
-# (`List<Person>` / `Map<str, Person>`) / `Option<T>` are accepted at compile
-# time but currently return a runtime `Err` with a "not yet supported"
-# message; their full coerce paths land in follow-up iterations of #1852.
+# Supported T: primitive (int / float / str / bool), homogeneous container
+# (List<int|float|str|bool>, Map<str, int|float|str|bool>), List<any> /
+# Map<str, any>, user-defined records (flat and nested), typed collections
+# of records (List<Record>, Map<str, Record>), and Option<T>. Missing
+# fields, wrong-typed fields, and unsupported source shapes surface as
+# `Err(Error{message})` with a `loadAs<T>: ...` prefix that locates the
+# failure. See docs/reference/json.md for the full T table and error
+# message format.
 @public
 @native("json")
 fn loadAs<T>(text: str) -> Result<T, Error>
