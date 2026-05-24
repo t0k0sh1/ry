@@ -1,26 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Guard stage 1 (issue #1876): required source mounts must be present.
-# run.sh switched to per-entry bind mounts to keep the host's macOS Mach-O
-# build/ from leaking via an outer PROJECT_DIR:/workspace mount; if its
-# MOUNT_ARGS drifts (e.g. a new top-level config file is added without
-# updating run.sh), fail loudly here instead of silently producing a
-# misconfigured CMake cache.
-for _required in \
+# Guard stage 1 (issue #1876): required source mounts must be present and of
+# the expected type. run.sh switched to per-entry bind mounts to keep the
+# host's macOS Mach-O build/ from leaking via an outer PROJECT_DIR:/workspace
+# mount; if its MOUNT_ARGS drifts (e.g. a new top-level config file is added
+# without updating run.sh, or a file mount is accidentally written as a dir
+# mount), fail loudly here instead of silently producing a misconfigured CMake
+# cache. Type-checking with -f / -d (rather than -e) catches a directory
+# mounted where a file was expected, which would otherwise pass -e and break
+# later in less obvious ways.
+for _required_file in \
     /workspace/CMakeLists.txt \
     /workspace/CMakePresets.json \
-    /workspace/package.toml \
+    /workspace/package.toml; do
+  if [[ ! -f "$_required_file" ]]; then
+    echo "fatal: required file mount $_required_file is missing or not a regular file — docker/run.sh MOUNT_ARGS drifted" >&2
+    exit 70
+  fi
+done
+for _required_dir in \
     /workspace/src \
     /workspace/include \
     /workspace/tests \
     /workspace/share; do
-  if [[ ! -e "$_required" ]]; then
-    echo "fatal: required mount $_required is missing — docker/run.sh MOUNT_ARGS drifted" >&2
+  if [[ ! -d "$_required_dir" ]]; then
+    echo "fatal: required directory mount $_required_dir is missing or not a directory — docker/run.sh MOUNT_ARGS drifted" >&2
     exit 70
   fi
 done
-unset _required
+unset _required_file _required_dir
 
 # Ensure ccache dir exists (volume may be new or owned by a previous root-run)
 mkdir -p "${CCACHE_DIR:-/home/ubuntu/.cache/ccache}"
@@ -58,7 +67,7 @@ for _bin in "$BUILD_DIR/ry" "$BUILD_DIR/ry_tests"; do
 done
 unset _bin _magic
 if [[ -f "$BUILD_DIR/compile_commands.json" ]] \
-    && grep -q '"directory": "/Users/' "$BUILD_DIR/compile_commands.json"; then
+    && grep -Eq '"directory"[[:space:]]*:[[:space:]]*"/Users/' "$BUILD_DIR/compile_commands.json"; then
   echo "fatal: $BUILD_DIR/compile_commands.json references macOS host paths" >&2
   echo "  recovery: rm -rf $_host_build_dir/ (on host) and rerun" >&2
   exit 72
