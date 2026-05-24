@@ -131,9 +131,13 @@ protected:
     void SetUp() override {
         // Test files must live under a directory whose upward search reaches
         // the repo's package.toml — otherwise dev stdlib resolution fails
-        // and `from testing import timeout` cannot be satisfied.  Use a
-        // per-pid subdir under build/ so parallel test runs don't collide.
-        tmpDir_ = fs::path(RY_SOURCE_ROOT) / "build" /
+        // and `from testing import timeout` cannot be satisfied.  Use the
+        // per-preset CMake binary dir (e.g. build/, build-asan/) so the
+        // directory is host-backed under docker per-preset bind mounts —
+        // a hard-coded `RY_SOURCE_ROOT/build` would route asan/tsan/fuzz
+        // writes to the docker overlay and ENOSPC there.  Per-pid subdir
+        // avoids parallel test-run collisions.
+        tmpDir_ = fs::path(RY_BINARY_DIR) /
                   ("test_spec_timeout_" +
                    std::to_string(static_cast<long>(getpid())));
         fs::create_directories(tmpDir_);

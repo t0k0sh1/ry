@@ -64,6 +64,28 @@ See [`docker/README.md`](../../../docker/README.md) for a quick-start reference.
 | `static-analysis` clang-tidy / cppcheck | — | — | `build-docker/` (shared with `default`) |
 | `static-analysis` scan-build / all | — | — | `build-scan-docker/` (dedicated; `build-docker/` also mounted for clang-tidy step in `all` mode) |
 
+## Mount strategy
+
+`docker/run.sh` bind-mounts each top-level entry the build/tests/static analysis actually read, instead of the entire project root. This closes the cross-OS contamination path that issue #1876 documents: the old `-v PROJECT_DIR:/workspace` outer mount let host `build/`, `build-asan/`, `build-fuzz/` (macOS Mach-O binaries, macOS paths in `compile_commands.json`) appear inside the container alongside the per-preset `-v build-asan-docker:/workspace/build-asan` inner mount. Under OrbStack VirtioFS this leak intermittently surfaced as `clang-tidy` chdir failures into `/Users/...` directories and as `rm -rf build-fuzz-docker/` recovery cycles — see PR #1873 for the failure log.
+
+What gets mounted, per invocation:
+
+- Directories: `src/`, `include/`, `tests/`, `share/`
+- Config files (individual file mounts): `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, `.clang-tidy`, `.cppcheck-suppressions`
+- Per-preset build output: `$BUILD_DIR_HOST` (host) → `$BUILD_DIR_CONTAINER` (container) — unchanged from before
+- ccache: named volume `ry-ccache-docker` → `/home/ubuntu/.cache/ccache`
+- scan-build subcommand additionally mounts `build-scan-docker/` → `/workspace/build-scan`
+
+What is **not** mounted (and therefore invisible inside the container): everything else under the project root — `docker/`, `scripts/`, `editor/`, `docs/`, `.git/`, `.serena/`, `.github/`, `.claude/`, `changelog.d/`, all top-level Markdown / LICENSE / install.sh, and all top-level dotfiles other than the two static analysis configs listed above. Host macOS native build dirs (`build/`, `build-asan/`, `build-tsan/`, `build-fuzz/`) are likewise invisible — recovery no longer needs to `mv build/ build.host-bak/` or `rm -rf` macOS build artifacts to keep the container clean.
+
+`entrypoint.sh` adds three fail-fast guards on startup, all consulting `$RY_HOST_BUILD_DIR` (set by `run.sh`) so the recovery hint names the host-side directory the user can `rm -rf`:
+
+1. **Required-mount presence** (`exit 70`) — verifies `/workspace/{CMakeLists.txt,CMakePresets.json,package.toml,src,include,tests,share}` all exist. Trips when `run.sh`'s mount list drifts (e.g. a new top-level config file is referenced from CMake without being added to `MOUNT_ARGS`).
+2. **ELF magic** (`exit 71`) — if `BUILD_DIR/ry` or `BUILD_DIR/ry_tests` exists, the first four bytes must be `\x7fELF`. Catches Mach-O binaries that a developer copied into the per-preset build dir or that leaked through a misconfigured mount.
+3. **macOS path in `compile_commands.json`** (`exit 72`) — refuses to run when `BUILD_DIR/compile_commands.json` lists any `"directory": "/Users/..."` entry, since that is exactly what previously broke clang-tidy.
+
+**Maintenance rule when adding a new top-level entry to the repo**: if your change adds (a) a new source / test / stdlib subdirectory at the repo root, (b) a new top-level config file that CMake or a static analyser reads, or (c) a new top-level dotfile that the build consumes, you **must** update both `docker/run.sh`'s `MOUNT_ARGS` list and `docker/entrypoint.sh`'s stage-1 required-mount loop in the same PR. Without the mount, the container sees the source tree without the new file and either silently skips it or fails late inside CMake configure; without the guard update, the silent skip slips past CI.
+
 ## Known limitations
 
 - **First image build takes ~30 seconds** because `docker/Dockerfile` inherits from `ghcr.io/<owner>/ry-ci:llvm-21` — the heavy toolchain (LLVM 21, cmake, ninja, ccache, OpenSSL, cppcheck, gtest tarball) is pulled, not built. The first compile of ry itself takes 1-2 minutes; subsequent runs use ccache and complete in ~10-30 seconds. If GHCR is unreachable, Docker falls back to whatever image layers are already cached locally.

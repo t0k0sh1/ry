@@ -39,6 +39,12 @@ ENV HOME=/home/${DEV_USER}
 ENV CCACHE_DIR=/home/${DEV_USER}/.cache/ccache
 
 WORKDIR /workspace
+# WORKDIR creates /workspace as root:root 0755 before USER drops to ubuntu.
+# Issue #1876 switched run.sh to per-entry bind mounts, so /workspace is no
+# longer overlaid by a project-root mount — without this chown,
+# test_spec_timeout creates /workspace/build/test_spec_timeout_* under asan/
+# tsan/fuzz presets (where /workspace/build is not mounted) and EACCES.
+RUN chown ${DEV_UID}:${DEV_GID} /workspace
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
