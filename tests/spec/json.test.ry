@@ -1,8 +1,9 @@
 from testing import it, describe, expect, fail
 
-from json import load, loadAs, stringify, dump
+from json import load, loadAs, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
 from str import contains, repeat, byteLen
 from io import open, close, writeText, readText
+from math import NAN, INF
 
 @describe("json load — primitives")
 fn jsonLoadPrimitivesTests():
@@ -965,4 +966,236 @@ fn jsonLoadAsOptionRecordTests():
       Err(e):
         expect(e.message).toContain("'age'")
         expect(e.message).toContain("missing")
+
+# #1853 — stringifySafe / stringifySorted / stringifySortedSafe.
+#
+# Safe variants return Result<str, Error> instead of trapping on inputs
+# that have no JSON representation (non-finite float, typed collection
+# wrapped in `any`, Set / Record / Enum). Sorted variants emit Map keys
+# in byte-lexicographic order so the output is reproducible regardless
+# of insertion order.
+
+@describe("json stringifySafe — happy path matches stringify")
+fn jsonStringifySafeHappyPathTests():
+  @it("should Ok with same output as stringify for primitives")
+  fn shouldStringifySafeMatchPrimitive():
+    v: any = 42
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("42")
+      Err(e): fail("stringifySafe int failed: " + e.message)
+
+  @it("should Ok with same output as stringify for str")
+  fn shouldStringifySafeMatchStr():
+    v: any = "hello"
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("\"hello\"")
+      Err(e): fail("stringifySafe str failed: " + e.message)
+
+  @it("should Ok with same output as stringify for finite float")
+  fn shouldStringifySafeMatchFiniteFloat():
+    v: any = 1.5
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("1.5")
+      Err(e): fail("stringifySafe float failed: " + e.message)
+
+  @it("should Ok for List<any> matching stringify")
+  fn shouldStringifySafeMatchListAny():
+    case load("[1,2,3]"):
+      Ok(v):
+        case stringifySafe(v):
+          Ok(s): expect(s).toEq(stringify(v))
+          Err(e): fail("stringifySafe list failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should Ok for Map<str, any> matching stringify")
+  fn shouldStringifySafeMatchMapAny():
+    case load("{\"a\":1,\"b\":2}"):
+      Ok(v):
+        case stringifySafe(v):
+          Ok(s): expect(s).toEq(stringify(v))
+          Err(e): fail("stringifySafe map failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should accept indent argument like stringify")
+  fn shouldStringifySafeAcceptIndent():
+    case load("[1,2]"):
+      Ok(v):
+        case stringifySafe(v, 2):
+          Ok(s): expect(s).toEq("[\n  1,\n  2\n]")
+          Err(e): fail("stringifySafe indent failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
+
+@describe("json stringifySafe — rejects non-finite floats")
+fn jsonStringifySafeNonFiniteTests():
+  @it("should Err on NaN")
+  fn shouldErrOnNaN():
+    v: any = NAN
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for NaN")
+      Err(e):
+        expect(e.message).toContain("non-finite")
+
+  @it("should Err on positive Infinity")
+  fn shouldErrOnPositiveInfinity():
+    v: any = INF
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for +Inf")
+      Err(e):
+        expect(e.message).toContain("non-finite")
+
+  @it("should Err on negative Infinity")
+  fn shouldErrOnNegativeInfinity():
+    v: any = -INF
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for -Inf")
+      Err(e):
+        expect(e.message).toContain("non-finite")
+
+  @it("should Err on NaN buried inside a List<any>")
+  fn shouldErrOnNaNInList():
+    inner: any = NAN
+    xs: List<any> = [inner]
+    v: any = xs
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for NaN inside list")
+      Err(e):
+        expect(e.message).toContain("non-finite")
+
+@describe("json stringifySafe — rejects typed collections and unsupported types")
+fn jsonStringifySafeUnsupportedTests():
+  @it("should Err on typed List<int> wrapped as any")
+  fn shouldErrOnTypedListInt():
+    xs: List<int> = [1, 2, 3]
+    v: any = xs
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for typed List<int>")
+      Err(e):
+        expect(e.message).toContain("typed collection")
+
+  @it("should Err on typed Map<str, int> wrapped as any")
+  fn shouldErrOnTypedMapStrInt():
+    m: Map<str, int> = {"a": 1}
+    v: any = m
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for typed Map<str, int>")
+      Err(e):
+        expect(e.message).toContain("typed collection")
+
+  @it("should Err on Set wrapped as any")
+  fn shouldErrOnSet():
+    s: Set<int> = {1, 2}
+    v: any = s
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for Set")
+      Err(e):
+        expect(e.message).toContain("Set")
+
+  @it("should Err on Record wrapped as any")
+  fn shouldErrOnRecord():
+    p: Json1852Person = Json1852Person("x", 1)
+    v: any = p
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for Record")
+      Err(e):
+        expect(e.message).toContain("record")
+
+@describe("json stringifySorted — sorts Map keys")
+fn jsonStringifySortedTests():
+  @it("should sort top-level Map keys by byte order")
+  fn shouldSortTopLevelKeys():
+    case load("{\"c\":1,\"a\":2,\"b\":3}"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("{\"a\":2,\"b\":3,\"c\":1}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should sort nested Map keys recursively")
+  fn shouldSortNestedKeys():
+    case load("{\"z\":{\"y\":1,\"x\":2},\"a\":1}"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("{\"a\":1,\"z\":{\"x\":2,\"y\":1}}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should sort keys inside list elements")
+  fn shouldSortInsideListElements():
+    case load("[{\"b\":1,\"a\":2},{\"d\":3,\"c\":4}]"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("[{\"a\":2,\"b\":1},{\"c\":4,\"d\":3}]")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should preserve sorted order under pretty-print indent")
+  fn shouldSortUnderIndent():
+    case load("{\"b\":1,\"a\":2}"):
+      Ok(v):
+        expect(stringifySorted(v, 2)).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should leave empty map as {}")
+  fn shouldEmptyMap():
+    case load("{}"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("{}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should preserve list element order")
+  fn shouldPreserveListOrder():
+    case load("[3,1,2]"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("[3,1,2]")
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should match stringify for primitives (no Map to sort)")
+  fn shouldMatchStringifyForPrimitives():
+    v: any = 42
+    expect(stringifySorted(v)).toEq("42")
+
+  @it("should sort keys that share a NUL-containing prefix")
+  fn shouldSortKeysWithNul():
+    # NUL byte sorts before regular ASCII; "k\0a" < "k\0b".
+    case load("{\"k\\u0000b\":1,\"k\\u0000a\":2}"):
+      Ok(v):
+        expect(stringifySorted(v)).toEq("{\"k\\u0000a\":2,\"k\\u0000b\":1}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+@describe("json stringifySortedSafe — combines Safe and Sorted")
+fn jsonStringifySortedSafeTests():
+  @it("should Ok with sorted output for normal input")
+  fn shouldSortedSafeOk():
+    case load("{\"c\":1,\"a\":2}"):
+      Ok(v):
+        case stringifySortedSafe(v):
+          Ok(s): expect(s).toEq("{\"a\":2,\"c\":1}")
+          Err(e): fail("stringifySortedSafe failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should Err on NaN buried in an out-of-order Map")
+  fn shouldSortedSafeErrOnNaN():
+    bad: any = NAN
+    good: any = 1
+    m: Map<str, any> = {"c": bad, "a": good}
+    v: any = m
+    case stringifySortedSafe(v):
+      Ok(_): fail("expected Err for NaN inside sorted map")
+      Err(e):
+        expect(e.message).toContain("non-finite")
+
+  @it("should Ok with indent and sorted keys")
+  fn shouldSortedSafeIndent():
+    case load("{\"b\":1,\"a\":2}"):
+      Ok(v):
+        case stringifySortedSafe(v, 2):
+          Ok(s): expect(s).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
+          Err(e): fail("stringifySortedSafe indent failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
 

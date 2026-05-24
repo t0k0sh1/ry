@@ -50,11 +50,17 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e) {
         [&]() { return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy); });
 }
 
-// stringify(value: any) -> str
-// stringify(value: any, indent: int) -> str
-static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
+// Helper for stringify / stringifySafe / stringifySorted / stringifySortedSafe.
+// `runtimeFn`: the C entry point to call. `wrapResult`: whether to wrap the
+// nullable-ptr return in Result<str, Error> via wrapPtrAsResult (Safe variants
+// only). The non-Safe variants pass `wrapResult=false` and return the raw
+// `char*` (ARC string), matching the existing `stringify` contract.
+static llvm::Value *emitJsonStringifyImpl(CodeGen &cg, const CallExpr &e,
+                                           const char *runtimeFn,
+                                           const char *callName,
+                                           bool wrapResult) {
     if (e.args.size() != 1 && e.args.size() != 2)
-        cg.codegenError("stringify() takes 1 or 2 arguments");
+        cg.codegenError(std::string(e.callee) + "() takes 1 or 2 arguments");
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (val->getType() != cg.anyTy_)
         val = cg.wrapInAny(val);
@@ -64,20 +70,46 @@ static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(val, slot);
 
     llvm::Value *indent;
-    const char *callName;
     if (e.args.size() == 1) {
         indent = llvm::ConstantInt::getSigned(cg.i64Ty_, -1);
-        callName = "json_stringify_any";
     } else {
         indent = cg.emitExpr(*e.args[1]);
         if (indent->getType() != cg.i64Ty_)
-            cg.codegenError("stringify() indent must be an int");
-        callName = "json_stringify_any_pretty";
+            cg.codegenError(std::string(e.callee) + "() indent must be an int");
     }
     llvm::Type *paramTys[] = {cg.ptrTy_, cg.i64Ty_};
     auto *fnTy = llvm::FunctionType::get(cg.ptrTy_, paramTys, false);
-    auto fn = cg.mod_->getOrInsertFunction("__ry_json_stringify_any", fnTy);
-    return cg.builder_.CreateCall(fn, {slot, indent}, callName);
+    auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {slot, indent}, callName);
+    if (!wrapResult) return ptr;
+    return cg.wrapPtrAsResult(ptr);
+}
+
+// stringify(value: any) -> str
+// stringify(value: any, indent: int) -> str
+static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any",
+                                  "json_stringify_any", /*wrapResult=*/false);
+}
+
+// stringifySafe(value: any[, indent: int]) -> Result<str, Error>   (#1853)
+static llvm::Value *emitJsonStringifySafe(CodeGen &cg, const CallExpr &e) {
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_safe",
+                                  "json_stringify_any_safe", /*wrapResult=*/true);
+}
+
+// stringifySorted(value: any[, indent: int]) -> str                 (#1853)
+static llvm::Value *emitJsonStringifySorted(CodeGen &cg, const CallExpr &e) {
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_sorted",
+                                  "json_stringify_any_sorted",
+                                  /*wrapResult=*/false);
+}
+
+// stringifySortedSafe(value: any[, indent: int]) -> Result<str, Error> (#1853)
+static llvm::Value *emitJsonStringifySortedSafe(CodeGen &cg, const CallExpr &e) {
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_sorted_safe",
+                                  "json_stringify_any_sorted_safe",
+                                  /*wrapResult=*/true);
 }
 
 // loadAs<T>(text: str) -> Result<T, Error>                   (#1852)
@@ -181,9 +213,12 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     // arity field is metadata only when customEmitter is set — actual arity
     // dispatch happens via registered @native sigs at the custom-emitter gate
     // in emitTableDrivenNativeCall (see codegen_call_native.cpp).
-    {"load",      nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonLoad},
-    {"stringify", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
-    {"dump",      nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
+    {"load",                nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonLoad},
+    {"stringify",           nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
+    {"stringifySafe",       nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySafe},
+    {"stringifySorted",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySorted},
+    {"stringifySortedSafe", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySortedSafe},
+    {"dump",                nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)
