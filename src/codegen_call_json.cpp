@@ -112,8 +112,8 @@ static llvm::Value *emitJsonStringifySortedSafe(CodeGen &cg, const CallExpr &e) 
                                   /*wrapResult=*/true);
 }
 
-// loadAs<T>(text: str) -> Result<T, Error>                   (#1852)
-// loadAs<T>(f: File) -> Result<T, Error>
+// loadAs[T](text: str) -> Result<T, Error>                   (#1852)
+// loadAs[T](f: File) -> Result<T, Error>
 //
 // Parses JSON via the same runtime entry as `load`, then coerces the resulting
 // `any` to the concrete target type via `tryUnwrapFromAny` — which returns
@@ -231,8 +231,9 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     // codegen-stdlib-dispatcher.md #1856).
     cg.used_native_libraries_.insert("json");
 
-    // Intercept `loadAs<T>(...)` calls (#1852). The parser concatenates the
-    // type-arg literally into `e.callee` (e.g. "loadAs<Person>",
+    // Intercept `loadAs[T](...)` calls (#1852). The parser uses `[T]` syntax for
+    // generic function calls at user-facing call sites, but constructs the
+    // internal callee representation with `<T>` (e.g. "loadAs<Person>",
     // "loadAs<List<Person>>"), so we strip the `loadAs<` prefix and trailing
     // `>` to recover the type-name. The interceptor runs before
     // `emitTableDrivenNativeCall` because the table's name-keyed exact match

@@ -293,7 +293,11 @@ constructor_pattern ::= qualified_ident [ '(' [ pattern { ',' pattern } ] ')' ]
 qualified_ident  ::= IDENT { '::' IDENT }
 /* NOTE: explicit type arguments (`Foo<T>::Variant`) are not yet modeled at
  * the qualified_ident level — `<` always tokenizes as the comparison
- * operator in expression position. */
+ * operator in expression position. As a consequence, `Ident<...>(args)` in
+ * expression position is rejected with a dedicated parser diagnostic
+ * pointing users to the `[T]` generic-call syntax (e.g. `f[int](x)`),
+ * which is the canonical form documented in
+ * docs/reference/functions.md. See #1885. */
 
 range_pattern    ::= literal_pattern '..' literal_pattern
 

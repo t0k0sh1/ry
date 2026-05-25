@@ -2309,7 +2309,7 @@ public:
     // recursively `tryUnwrapFromAny`s each value, and builds the record via
     // an `InsertValue` chain. On any field miss / sub-Err, releases every
     // ARC-bearing field collected so far (per advisor's ARC-leak guard) and
-    // returns `Err(Error{message:"loadAs<RecordName>: ..."})`.
+    // returns `Err(Error{message:"loadAs[RecordName]: ..."})`.
     llvm::Value *tryUnwrapRecordFromAny(llvm::Value *anyVal,
                                           llvm::StructType *recordStructTy,
                                           const RecordInfo &info,
@@ -2343,7 +2343,7 @@ public:
     // Typed `Option<T>` reconstruction from `any` (#1852). Accepts two source
     // shapes: Unit (JSON null) maps to `Ok(None)`; any other tag is forwarded
     // to `tryUnwrapFromAny` for the inner type and on success wrapped in
-    // `Some(_)`. Inner err messages are prefixed with `loadAs<Option<X>>: ...`
+    // `Some(_)`. Inner err messages are prefixed with `loadAs[Option<X>]: ...`
     // so the test asserting "null" + "JSON object" simultaneously can match.
     llvm::Value *tryUnwrapOptionFromAny(llvm::Value *anyVal,
                                           llvm::StructType *optTy,
