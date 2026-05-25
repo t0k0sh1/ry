@@ -178,7 +178,7 @@ struct JsonAnyParser {
 
     bool parse_value(RyAny &out) {
         skip_ws();
-        if (at_end()) { error = "unexpected end of input"; return false; }
+        if (at_end()) { error = "unexpected end of input at " + formatPosition(pos); return false; }
         char c = peek();
         if (c == '"') return parse_string(out);
         if (c == '{') return parse_object(out);
@@ -195,6 +195,7 @@ struct JsonAnyParser {
     // Parse a JSON string body and append the decoded bytes (UTF-8) to `out`.
     // Used both for top-level string values and for object keys.
     bool parse_string_bytes(std::string &out) {
+        size_t open_pos = pos;
         pos++; // skip opening "
 
         // Fast path: scan for closing quote without backslash (common case)
@@ -221,7 +222,7 @@ struct JsonAnyParser {
             char c = advance();
             if (c == '"') return true;
             if (c == '\\') {
-                if (at_end()) { error = "unterminated string escape"; return false; }
+                if (at_end()) { error = "unterminated string escape at " + formatPosition(pos - 1); return false; }
                 char esc = advance();
                 switch (esc) {
                     case '"': out += '"'; break;
@@ -234,12 +235,12 @@ struct JsonAnyParser {
                     case 't': out += '\t'; break;
                     case 'u': {
                         auto parse_hex4 = [&](unsigned &cp_out) -> bool {
-                            if (pos + 4 > src_len) { error = "incomplete unicode escape"; return false; }
+                            if (pos + 4 > src_len) { error = "incomplete unicode escape at " + formatPosition(pos); return false; }
                             char hex[5] = {src[pos], src[pos+1], src[pos+2], src[pos+3], 0};
                             for (int hi = 0; hi < 4; hi++) {
                                 char hc = hex[hi];
                                 if (!((hc >= '0' && hc <= '9') || (hc >= 'a' && hc <= 'f') || (hc >= 'A' && hc <= 'F'))) {
-                                    error = "invalid hex digit in unicode escape";
+                                    error = "invalid hex digit in unicode escape at " + formatPosition(pos + static_cast<size_t>(hi));
                                     return false;
                                 }
                             }
@@ -252,19 +253,19 @@ struct JsonAnyParser {
                         // High surrogate: expect a following \uXXXX low surrogate.
                         if (cp >= 0xD800 && cp <= 0xDBFF) {
                             if (pos + 2 > src_len || src[pos] != '\\' || src[pos+1] != 'u') {
-                                error = "unpaired high surrogate in unicode escape";
+                                error = "unpaired high surrogate in unicode escape at " + formatPosition(pos);
                                 return false;
                             }
                             pos += 2;
                             unsigned low;
                             if (!parse_hex4(low)) return false;
                             if (low < 0xDC00 || low > 0xDFFF) {
-                                error = "invalid low surrogate in unicode escape";
+                                error = "invalid low surrogate in unicode escape at " + formatPosition(pos);
                                 return false;
                             }
                             cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
                         } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
-                            error = "unpaired low surrogate in unicode escape";
+                            error = "unpaired low surrogate in unicode escape at " + formatPosition(pos);
                             return false;
                         }
                         if (cp < 0x80) {
@@ -287,7 +288,7 @@ struct JsonAnyParser {
                     default:
                         error = "invalid escape character '\\";
                         error += esc;
-                        error += "'";
+                        error += "' at " + formatPosition(pos - 2);
                         return false;
                 }
             } else {
@@ -298,7 +299,7 @@ struct JsonAnyParser {
                 out += c;
             }
         }
-        error = "unterminated string";
+        error = "unterminated string at " + formatPosition(open_pos);
         return false;
     }
 
@@ -327,7 +328,7 @@ struct JsonAnyParser {
             is_float = true;
             pos++;
             if (at_end() || !isdigit((unsigned char)src[pos])) {
-                error = "invalid number: expected digit after decimal point";
+                error = "invalid number: expected digit after decimal point at " + formatPosition(start);
                 return false;
             }
             while (!at_end() && isdigit((unsigned char)src[pos])) pos++;
@@ -337,7 +338,7 @@ struct JsonAnyParser {
             pos++;
             if (!at_end() && (src[pos] == '+' || src[pos] == '-')) pos++;
             if (at_end() || !isdigit((unsigned char)src[pos])) {
-                error = "invalid number: expected digit in exponent";
+                error = "invalid number: expected digit in exponent at " + formatPosition(start);
                 return false;
             }
             while (!at_end() && isdigit((unsigned char)src[pos])) pos++;
@@ -392,10 +393,11 @@ struct JsonAnyParser {
 
     bool parse_array(RyAny &out) {
         if (depth >= MAX_NESTING_DEPTH) {
-            error = "json: maximum nesting depth exceeded";
+            error = "json: maximum nesting depth exceeded at " + formatPosition(pos);
             return false;
         }
         DepthGuard guard(this);
+        size_t open_pos = pos;
         pos++; // skip [
         skip_ws();
         if (!at_end() && peek() == ']') {
@@ -423,7 +425,7 @@ struct JsonAnyParser {
                 if (cap > SIZE_MAX / 2 / sizeof(RyAny)) {
                     releaseOwnedAny(item);
                     cleanup();
-                    error = "array too large";
+                    error = "array too large at " + formatPosition(open_pos);
                     return false;
                 }
                 cap *= 2;
@@ -431,7 +433,7 @@ struct JsonAnyParser {
             }
             items[len++] = item;
             skip_ws();
-            if (at_end()) { error = "unterminated array"; cleanup(); return false; }
+            if (at_end()) { error = "unterminated array at " + formatPosition(open_pos); cleanup(); return false; }
             if (peek() == ']') { pos++; break; }
             if (!expect(',')) { cleanup(); return false; }
         }
@@ -446,10 +448,11 @@ struct JsonAnyParser {
 
     bool parse_object(RyAny &out) {
         if (depth >= MAX_NESTING_DEPTH) {
-            error = "json: maximum nesting depth exceeded";
+            error = "json: maximum nesting depth exceeded at " + formatPosition(pos);
             return false;
         }
         DepthGuard guard(this);
+        size_t open_pos = pos;
         pos++; // skip {
         skip_ws();
         if (!at_end() && peek() == '}') {
@@ -499,7 +502,7 @@ struct JsonAnyParser {
                     freeStringSlot(key);
                     releaseOwnedAny(val);
                     cleanup();
-                    error = "object too large";
+                    error = "object too large at " + formatPosition(open_pos);
                     return false;
                 }
                 cap *= 2;
@@ -511,7 +514,7 @@ struct JsonAnyParser {
             len++;
 
             skip_ws();
-            if (at_end()) { error = "unterminated object"; cleanup(); return false; }
+            if (at_end()) { error = "unterminated object at " + formatPosition(open_pos); cleanup(); return false; }
             if (peek() == '}') { pos++; break; }
             if (!expect(',')) { cleanup(); return false; }
         }

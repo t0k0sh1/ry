@@ -1199,3 +1199,119 @@ fn jsonStringifySortedSafeTests():
       Err(e):
         fail("load failed: " + e.message)
 
+@describe("json load — error position coverage (#1882)")
+fn jsonLoadErrorPositionCoverageTests():
+  @it("should report position for unexpected end of input")
+  fn shouldReportPositionForUnexpectedEndOfInput():
+    case load(""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unexpected end of input at")).toEq(true)
+        expect(contains(e.message, "line 1")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
+  @it("should report position for unterminated string escape")
+  fn shouldReportPositionForUnterminatedStringEscape():
+    case load("\"\\"):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unterminated string escape at")).toEq(true)
+        expect(contains(e.message, "offset 1")).toEq(true)
+
+  @it("should report position for incomplete unicode escape")
+  fn shouldReportPositionForIncompleteUnicodeEscape():
+    case load("\"\\u00\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "incomplete unicode escape at")).toEq(true)
+        expect(contains(e.message, "offset 3")).toEq(true)
+
+  @it("should report position for invalid hex digit in unicode escape")
+  fn shouldReportPositionForInvalidHexDigitInUnicodeEscape():
+    case load("\"\\uZZZZ\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "invalid hex digit in unicode escape at")).toEq(true)
+        expect(contains(e.message, "offset 3")).toEq(true)
+
+  @it("should report position for unpaired high surrogate")
+  fn shouldReportPositionForUnpairedHighSurrogate():
+    case load("\"\\uD800\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unpaired high surrogate in unicode escape at")).toEq(true)
+        expect(contains(e.message, "offset 7")).toEq(true)
+
+  @it("should report position for invalid low surrogate")
+  fn shouldReportPositionForInvalidLowSurrogate():
+    case load("\"\\uD800\\u0041\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "invalid low surrogate in unicode escape at")).toEq(true)
+        expect(contains(e.message, "offset 13")).toEq(true)
+
+  @it("should report position for unpaired low surrogate")
+  fn shouldReportPositionForUnpairedLowSurrogate():
+    case load("\"\\uDC00\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unpaired low surrogate in unicode escape at")).toEq(true)
+        expect(contains(e.message, "offset 7")).toEq(true)
+
+  @it("should report position for invalid escape character")
+  fn shouldReportPositionForInvalidEscapeCharacter():
+    case load("\"\\q\""):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "invalid escape character")).toEq(true)
+        expect(contains(e.message, "offset 1")).toEq(true)
+
+  @it("should report position for unterminated string")
+  fn shouldReportPositionForUnterminatedString():
+    case load("\"hello"):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unterminated string at")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
+  @it("should report position for invalid number missing digit after decimal point")
+  fn shouldReportPositionForInvalidNumberDecimal():
+    case load("1."):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "expected digit after decimal point at")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
+  @it("should report position for invalid number missing digit in exponent")
+  fn shouldReportPositionForInvalidNumberExponent():
+    case load("1e"):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "expected digit in exponent at")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
+  @it("should report position for maximum nesting depth exceeded")
+  fn shouldReportPositionForMaxNestingDepth():
+    deep: str = repeat("[", 257)
+    case load(deep):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "maximum nesting depth exceeded at")).toEq(true)
+        expect(contains(e.message, "offset 256")).toEq(true)
+
+  @it("should report position for unterminated array")
+  fn shouldReportPositionForUnterminatedArray():
+    case load("[1, 2"):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unterminated array at")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
+  @it("should report position for unterminated object")
+  fn shouldReportPositionForUnterminatedObject():
+    case load("{\"k\": 1"):
+      Ok(_): fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "unterminated object at")).toEq(true)
+        expect(contains(e.message, "offset 0")).toEq(true)
+
