@@ -106,7 +106,7 @@ fn dump(f: File, value: any) -> Result<Unit, Error>
 fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 
 # Typed deserialization (#1852). Each call site monomorphizes per T and the
-# JSON dispatcher intercepts `loadAs<T>(...)` to route through the
+# JSON dispatcher intercepts `loadAs[T](...)` to route through the
 # `tryUnwrapFromAny` coerce path — tag/structure mismatches surface as
 # `Err(Error)` instead of panicking via `_Exit(1)`.
 #
@@ -115,7 +115,7 @@ fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 # Map<str, any>, user-defined records (flat and nested), typed collections
 # of records (List<Record>, Map<str, Record>), and Option<T>. Missing
 # fields, wrong-typed fields, and unsupported source shapes surface as
-# `Err(Error{message})` with a `loadAs<T>: ...` prefix that locates the
+# `Err(Error{message})` with a `loadAs[T]: ...` prefix that locates the
 # failure. See docs/reference/json.md for the full T table and error
 # message format.
 @public

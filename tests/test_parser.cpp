@@ -4293,3 +4293,74 @@ TEST(ParserArrayType, RejectsHexLiteralSize) {
 TEST(ParserArrayType, RejectsUnderscoreInSize) {
     EXPECT_THROW(parseStr("x: int[1_000] = 0"), DiagnosticError);
 }
+
+// ---- Angle-bracket generic call rejection (regression for #1885) ----
+//
+// `f<T>(args)` at expression position used to be silently parsed as a
+// comparison-chain (`f < T > (args)`), causing the misleading
+// "undefined variable: f" error. The canonical generic-call syntax is
+// `f[T](args)` (docs/reference/functions.md §Generic Functions); the
+// parser must emit a clear diagnostic for the `<T>(...)` form instead.
+
+TEST(ParserTest, AngleBracketGenericCallRejectsFlat) {
+    try {
+        parseStr("x = loadAs<int>(\"1\")");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("f[T](args)"), std::string::npos)
+            << "should suggest [T] syntax: " << msg;
+    }
+}
+
+TEST(ParserTest, AngleBracketGenericCallRejectsNested) {
+    try {
+        parseStr("x = loadAs<Map<str, int>>(\"{}\")");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("f[T](args)"), std::string::npos)
+            << "should suggest [T] syntax: " << msg;
+    }
+}
+
+TEST(ParserTest, AngleBracketGenericCallRejectsInCaseExpr) {
+    try {
+        parseStr(
+            "case loadAs<int>(\"1\"):\n"
+            "    Ok(v):\n"
+            "        print(v)\n"
+            "    Err(e):\n"
+            "        print(e.message)\n");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("f[T](args)"), std::string::npos)
+            << "should suggest [T] syntax: " << msg;
+    }
+}
+
+TEST(ParserTest, AngleBracketGenericCallPreservesComparisonChain) {
+    // `a < b > c` must still parse as a chained comparison (not a generic call).
+    Program prog = parseStr("x = a < b > c");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, AngleBracketGenericCallPreservesIdentLessExpr) {
+    // Plain `f < n` (no closing `>`) is a comparison and must keep parsing.
+    Program prog = parseStr("x = f < n");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, SquareBracketGenericCallStillWorks) {
+    // The canonical `f[T](args)` syntax remains accepted unchanged.
+    Program prog = parseStr("x = loadAs[int](\"1\")");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, EnumConstructorWithGenericTypeStillWorks) {
+    // `Foo<T>::Variant(args)` enum-constructor path must remain accepted —
+    // it is the sibling branch of the new `<T>(...)` rejection.
+    Program prog = parseStr("x = MyOption<int>::MySome(42)");
+    ASSERT_EQ(prog.size(), 1u);
+}

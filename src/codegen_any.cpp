@@ -243,7 +243,7 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
     // `List<int>` unwrap of a `List<any>` payload strides 8-byte ints over a
     // 16-byte buffer and silently produces garbage (outcome b in the original
     // advisor analysis). The only context where this PR newly exposes the
-    // hazard is generic monomorphization of `loadAs<T>` (and any user-defined
+    // hazard is generic monomorphization of `loadAs[T]` (and any user-defined
     // `fn f<T>(a: any) -> T` analog): the JSON parser materializes
     // `List<any>` but the substituted `T` claims `List<int>`. Direct unwraps
     // like `let ys: List<int> = a` where the source was actually a `List<int>`
@@ -515,7 +515,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     };
     auto emitUnsupportedErr = [&](const std::string &kindLabel) -> llvm::Value * {
         std::string label = targetTypeName.empty() ? "?" : targetTypeName;
-        std::string msg = "loadAs<" + label + ">: " + kindLabel +
+        std::string msg = "loadAs[" + label + "]: " + kindLabel +
                           " target not yet supported";
         return buildErrValue(buildInlineError(msg), resTy);
     };
@@ -651,7 +651,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         std::string typeForMsg =
             targetTypeName.empty() ? "float" : targetTypeName;
         std::string msg =
-            "loadAs<" + typeForMsg + ">: expected float or int";
+            "loadAs[" + typeForMsg + "]: expected float or int";
         return emitResultBranch(
             isErr, resTy,
             [&]() -> llvm::Value * {
@@ -701,7 +701,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                      : (targetTy == ptrTy_) ? "str"
                                             : "unknown";
     }
-    std::string msg = "loadAs<" + typeForMsg + ">: expected " + typeForMsg;
+    std::string msg = "loadAs[" + typeForMsg + "]: expected " + typeForMsg;
 
     return emitResultBranch(
         isErr, resTy,
@@ -734,7 +734,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
                                                llvm::StructType *resTy) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty() ? "?" : targetTypeName;
-    const std::string prefix = "loadAs<" + typeLabel + ">: ";
+    const std::string prefix = "loadAs[" + typeLabel + "]: ";
 
     // Field-kind classification drives ARC release on every err exit. Records
     // are built field-by-field via InsertValue; if iter k fails, every
@@ -997,7 +997,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel =
         targetTypeName.empty() ? ("List<" + elemTypeName + ">") : targetTypeName;
-    const std::string prefix = "loadAs<" + typeLabel + ">: ";
+    const std::string prefix = "loadAs[" + typeLabel + "]: ";
 
     auto buildInlineError = [&](const std::string &msg) -> llvm::Value * {
         llvm::Value *errStr = cachedGlobalString(msg);
@@ -1249,7 +1249,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty()
         ? ("Map<str, " + valTypeName + ">") : targetTypeName;
-    const std::string prefix = "loadAs<" + typeLabel + ">: ";
+    const std::string prefix = "loadAs[" + typeLabel + "]: ";
 
     auto buildInlineError = [&](const std::string &msg) -> llvm::Value * {
         llvm::Value *errStr = cachedGlobalString(msg);
@@ -1562,7 +1562,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
                                                llvm::StructType *resTy) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty() ? "?" : targetTypeName;
-    const std::string prefix = "loadAs<" + typeLabel + ">: ";
+    const std::string prefix = "loadAs[" + typeLabel + "]: ";
 
     // Three-way dispatch on the source `any` tag:
     //   Unit → Ok(None)
@@ -1615,7 +1615,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
     llvm::BasicBlock *innerOkEndBB = builder_.GetInsertBlock();
     builder_.CreateBr(doneBB);
 
-    // Inner Err: prepend `loadAs<Option<X>>: expected null or ` to the inner
+    // Inner Err: prepend `loadAs[Option<X>]: expected null or ` to the inner
     // message via __ry_string_make_uninit + memcpy (the same prefix-concat
     // pattern used by tryUnwrapRecordFromAny / tryUnwrapMapFromAny). The
     // resulting wording satisfies the test's "null" + "JSON object"

@@ -246,57 +246,57 @@ fn jsonStringifyAnyPrettyTests():
       Err(e):
         fail("load [1,2] failed: " + e.message)
 
-@describe("json loadAs<T> — primitives")
+@describe("json loadAs[T] — primitives")
 fn jsonLoadAsPrimitiveTests():
-  @it("should parse int directly via loadAs<int>")
+  @it("should parse int directly via loadAs[int]")
   fn shouldLoadAsInt():
     case loadAs[int]("42"):
       Ok(n):
         expect(n).toEq(42)
       Err(e):
-        fail("loadAs<int> failed: " + e.message)
+        fail("loadAs[int] failed: " + e.message)
 
-  @it("should parse negative int via loadAs<int>")
+  @it("should parse negative int via loadAs[int]")
   fn shouldLoadAsNegativeInt():
     case loadAs[int]("-7"):
       Ok(n):
         expect(n).toEq(-7)
       Err(e):
-        fail("loadAs<int> -7 failed: " + e.message)
+        fail("loadAs[int] -7 failed: " + e.message)
 
-  @it("should parse float via loadAs<float>")
+  @it("should parse float via loadAs[float]")
   fn shouldLoadAsFloat():
     case loadAs[float]("3.5"):
       Ok(f):
         expect(f).toEq(3.5)
       Err(e):
-        fail("loadAs<float> failed: " + e.message)
+        fail("loadAs[float] failed: " + e.message)
 
-  @it("should parse str via loadAs<str>")
+  @it("should parse str via loadAs[str]")
   fn shouldLoadAsStr():
     case loadAs[str]("\"hello\""):
       Ok(s):
         expect(s).toEq("hello")
       Err(e):
-        fail("loadAs<str> failed: " + e.message)
+        fail("loadAs[str] failed: " + e.message)
 
-  @it("should parse bool true via loadAs<bool>")
+  @it("should parse bool true via loadAs[bool]")
   fn shouldLoadAsBoolTrue():
     case loadAs[bool]("true"):
       Ok(b):
         expect(b).toEq(true)
       Err(e):
-        fail("loadAs<bool> true failed: " + e.message)
+        fail("loadAs[bool] true failed: " + e.message)
 
-  @it("should parse bool false via loadAs<bool>")
+  @it("should parse bool false via loadAs[bool]")
   fn shouldLoadAsBoolFalse():
     case loadAs[bool]("false"):
       Ok(b):
         expect(b).toEq(false)
       Err(e):
-        fail("loadAs<bool> false failed: " + e.message)
+        fail("loadAs[bool] false failed: " + e.message)
 
-  @it("should propagate parse error via loadAs<int>")
+  @it("should propagate parse error via loadAs[int]")
   fn shouldPropagateParseError():
     case loadAs[int]("{not json}"):
       Ok(_):
@@ -307,7 +307,7 @@ fn jsonLoadAsPrimitiveTests():
         # with a non-empty message.
         expect(byteLen(e.message) > 0).toEq(true)
 
-@describe("json loadAs<T> — collections")
+@describe("json loadAs[T] — collections")
 fn jsonLoadAsCollectionTests():
   @it("should parse List<any> via loadAs")
   fn shouldLoadAsListOfAny():
@@ -315,7 +315,7 @@ fn jsonLoadAsCollectionTests():
       Ok(xs):
         expect(len(xs)).toEq(3)
       Err(e):
-        fail("loadAs<List<any>> failed: " + e.message)
+        fail("loadAs[List<any>] failed: " + e.message)
 
   @it("should parse empty List<any> via loadAs")
   fn shouldLoadAsEmptyList():
@@ -323,7 +323,7 @@ fn jsonLoadAsCollectionTests():
       Ok(xs):
         expect(len(xs)).toEq(0)
       Err(e):
-        fail("loadAs<List<any>> [] failed: " + e.message)
+        fail("loadAs[List<any>] [] failed: " + e.message)
 
   @it("should parse Map<str, any> via loadAs")
   fn shouldLoadAsMapStrAny():
@@ -331,7 +331,7 @@ fn jsonLoadAsCollectionTests():
       Ok(m):
         expect(len(m)).toEq(2)
       Err(e):
-        fail("loadAs<Map<str, any>> failed: " + e.message)
+        fail("loadAs[Map<str, any>] failed: " + e.message)
 
   @it("should parse empty Map<str, any> via loadAs")
   fn shouldLoadAsEmptyMap():
@@ -339,18 +339,18 @@ fn jsonLoadAsCollectionTests():
       Ok(m):
         expect(len(m)).toEq(0)
       Err(e):
-        fail("loadAs<Map<str, any>> {} failed: " + e.message)
+        fail("loadAs[Map<str, any>] {} failed: " + e.message)
 
 @describe("json NUL round-trip")
 fn jsonNulRoundTripTests():
-  @it("should parse \\u0000 in a string value via loadAs<str>")
+  @it("should parse \\u0000 in a string value via loadAs[str]")
   fn shouldParseU0000InAStringValue():
     case loadAs[str]("\"a\\u0000b\""):
       Ok(s):
         expect(byteLen(s)).toEq(3)
         expect(s == "a\0b").toEq(true)
       Err(e):
-        fail("loadAs<str> failed: " + e.message)
+        fail("loadAs[str] failed: " + e.message)
 
   @it("should stringify NUL back to \\u0000")
   fn shouldStringifyNulBackToU0000():
@@ -390,7 +390,7 @@ fn jsonNulRoundTripTests():
       Ok(m):
         expect(len(m)).toEq(2)
       Err(e):
-        fail("loadAs<Map<str, any>> failed: " + e.message)
+        fail("loadAs[Map<str, any>] failed: " + e.message)
 
 @describe("json parse depth limit")
 fn jsonParseDepthLimitTests():
@@ -623,9 +623,9 @@ fn jsonFileOverloadsTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-@describe("json loadAs<T> — File overloads (#1854 + #1874)")
+@describe("json loadAs[T] — File overloads (#1854 + #1874)")
 fn jsonLoadAsFileOverloadsTests():
-  @it("should parse int directly via loadAs<int>(File)")
+  @it("should parse int directly via loadAs[int](File)")
   fn shouldLoadAsIntFromFile():
     case writeText("/tmp/ry_1854_loadas_int.json", "42"):
       Ok(_): 0
@@ -638,11 +638,11 @@ fn jsonLoadAsFileOverloadsTests():
             close(file)
           Err(e):
             close(file)
-            fail("loadAs<int>(File) failed: " + e.message)
+            fail("loadAs[int](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should parse str via loadAs<str>(File)")
+  @it("should parse str via loadAs[str](File)")
   fn shouldLoadAsStrFromFile():
     case writeText("/tmp/ry_1854_loadas_str.json", "\"hello\""):
       Ok(_): 0
@@ -655,11 +655,11 @@ fn jsonLoadAsFileOverloadsTests():
             close(file)
           Err(e):
             close(file)
-            fail("loadAs<str>(File) failed: " + e.message)
+            fail("loadAs[str](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should parse Map<str, any> via loadAs<Map<str, any>>(File)")
+  @it("should parse Map<str, any> via loadAs[Map<str, any>](File)")
   fn shouldLoadAsMapFromFile():
     case writeText("/tmp/ry_1854_loadas_map.json", "{\"name\":\"alice\",\"age\":30}"):
       Ok(_): 0
@@ -673,11 +673,11 @@ fn jsonLoadAsFileOverloadsTests():
             close(file)
           Err(e):
             close(file)
-            fail("loadAs<Map>(File) failed: " + e.message)
+            fail("loadAs[Map](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should propagate parse error from File via loadAs<int>(File)")
+  @it("should propagate parse error from File via loadAs[int](File)")
   fn shouldPropagateParseErrorViaLoadAsFile():
     case writeText("/tmp/ry_1854_loadas_bad.json", "{not json}"):
       Ok(_): 0
@@ -694,13 +694,13 @@ fn jsonLoadAsFileOverloadsTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should keep loadAs<T>(str) overload working alongside File overload")
+  @it("should keep loadAs[T](str) overload working alongside File overload")
   fn shouldRouteStrOverloadAlongsideFileOverload():
     case loadAs[int]("99"):
       Ok(n):
         expect(n).toEq(99)
       Err(e):
-        fail("loadAs<int>(str) regression: " + e.message)
+        fail("loadAs[int](str) regression: " + e.message)
 
 # Diagnostic non-generic wrapper to isolate whether the bug is in
 # generic monomorphization or in @native overload-by-arg-type resolution
@@ -728,7 +728,7 @@ fn jsonDiagLoadFromFnBodyTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-# Records for #1852 — loadAs<T> reconstruction of user-defined records and
+# Records for #1852 — loadAs[T] reconstruction of user-defined records and
 # typed collections. Prefixed with Json1852 to avoid colliding with other
 # record names in this file or in tests imported alongside it.
 
@@ -740,7 +740,7 @@ record Json1852Address:
   person: Json1852Person
   city: str
 
-@describe("json loadAs<T> — flat record reconstruction (#1852)")
+@describe("json loadAs[T] — flat record reconstruction (#1852)")
 fn jsonLoadAsFlatRecordTests():
   @it("should reconstruct a flat record from a JSON object")
   fn shouldReconstructFlatRecord():
@@ -749,7 +749,7 @@ fn jsonLoadAsFlatRecordTests():
         expect(p.name).toEq("alice")
         expect(p.age).toEq(30)
       Err(e):
-        fail("loadAs<Json1852Person> failed: " + e.message)
+        fail("loadAs[Json1852Person] failed: " + e.message)
 
   @it("should accept fields in any order")
   fn shouldAcceptFieldsInAnyOrder():
@@ -758,7 +758,7 @@ fn jsonLoadAsFlatRecordTests():
         expect(p.name).toEq("bob")
         expect(p.age).toEq(7)
       Err(e):
-        fail("loadAs<Json1852Person> reorder failed: " + e.message)
+        fail("loadAs[Json1852Person] reorder failed: " + e.message)
 
   @it("should return Err when a required field is missing")
   fn shouldReturnErrWhenRequiredFieldMissing():
@@ -793,7 +793,7 @@ fn jsonLoadAsFlatRecordTests():
       Err(e):
         expect(e.message).toContain("JSON object")
 
-@describe("json loadAs<T> — nested record reconstruction (#1852)")
+@describe("json loadAs[T] — nested record reconstruction (#1852)")
 fn jsonLoadAsNestedRecordTests():
   @it("should reconstruct a record whose field is itself a record")
   fn shouldReconstructNestedRecord():
@@ -804,7 +804,7 @@ fn jsonLoadAsNestedRecordTests():
         expect(a.person.name).toEq("dan")
         expect(a.person.age).toEq(9)
       Err(e):
-        fail("loadAs<Json1852Address> failed: " + e.message)
+        fail("loadAs[Json1852Address] failed: " + e.message)
 
   @it("should return Err when the nested record is missing a field")
   fn shouldReturnErrWhenNestedFieldMissing():
@@ -835,7 +835,7 @@ fn jsonLoadAsNestedRecordTests():
         expect(e.message).toContain("'city'")
         expect(e.message).toContain("missing")
 
-@describe("json loadAs<T> — typed List<Record> (#1852)")
+@describe("json loadAs[T] — typed List<Record> (#1852)")
 fn jsonLoadAsListRecordTests():
   @it("should reconstruct a List<Record> from a JSON array of objects")
   fn shouldReconstructListOfRecords():
@@ -848,7 +848,7 @@ fn jsonLoadAsListRecordTests():
         expect(xs[1].name).toEq("b")
         expect(xs[1].age).toEq(2)
       Err(e):
-        fail("loadAs<List<Json1852Person>> failed: " + e.message)
+        fail("loadAs[List<Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct an empty List<Record>")
   fn shouldReconstructEmptyListOfRecords():
@@ -856,7 +856,7 @@ fn jsonLoadAsListRecordTests():
       Ok(xs):
         expect(len(xs)).toEq(0)
       Err(e):
-        fail("loadAs<List<Json1852Person>> [] failed: " + e.message)
+        fail("loadAs[List<Json1852Person>] [] failed: " + e.message)
 
   @it("should return Err when an element is missing a field")
   fn shouldReturnErrWhenListElementMissingField():
@@ -876,7 +876,7 @@ fn jsonLoadAsListRecordTests():
       Err(e):
         expect(e.message).toContain("JSON array")
 
-@describe("json loadAs<T> — typed Map<str, Record> (#1852)")
+@describe("json loadAs[T] — typed Map<str, Record> (#1852)")
 fn jsonLoadAsMapRecordTests():
   @it("should reconstruct a Map<str, Record> from a JSON object of objects")
   fn shouldReconstructMapOfRecords():
@@ -889,7 +889,7 @@ fn jsonLoadAsMapRecordTests():
         expect(m["y"].name).toEq("b")
         expect(m["y"].age).toEq(2)
       Err(e):
-        fail("loadAs<Map<str, Json1852Person>> failed: " + e.message)
+        fail("loadAs[Map<str, Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct an empty Map<str, Record>")
   fn shouldReconstructEmptyMapOfRecords():
@@ -897,7 +897,7 @@ fn jsonLoadAsMapRecordTests():
       Ok(m):
         expect(len(m)).toEq(0)
       Err(e):
-        fail("loadAs<Map<str, Json1852Person>> {} failed: " + e.message)
+        fail("loadAs[Map<str, Json1852Person>] {} failed: " + e.message)
 
   @it("should return Err when a value is missing a field")
   fn shouldReturnErrWhenMapValueMissingField():
@@ -917,7 +917,7 @@ fn jsonLoadAsMapRecordTests():
       Err(e):
         expect(e.message).toContain("JSON object")
 
-@describe("json loadAs<T> — Option<Record> (#1852)")
+@describe("json loadAs[T] — Option<Record> (#1852)")
 fn jsonLoadAsOptionRecordTests():
   @it("should reconstruct Some(Record) when JSON value is an object")
   fn shouldReconstructSomeRecord():
@@ -933,7 +933,7 @@ fn jsonLoadAsOptionRecordTests():
             fail("expected Some(...) but got None")
         expect(gotSome).toEq(true)
       Err(e):
-        fail("loadAs<Option<Json1852Person>> failed: " + e.message)
+        fail("loadAs[Option<Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct None when JSON value is null")
   fn shouldReconstructNoneFromNull():
@@ -947,7 +947,7 @@ fn jsonLoadAsOptionRecordTests():
             gotNone = true
         expect(gotNone).toEq(true)
       Err(e):
-        fail("loadAs<Option<Json1852Person>> null failed: " + e.message)
+        fail("loadAs[Option<Json1852Person>] null failed: " + e.message)
 
   @it("should return Err when JSON value is neither object nor null")
   fn shouldReturnErrWhenInputNeitherObjectNorNullForOption():

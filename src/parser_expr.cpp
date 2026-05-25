@@ -541,7 +541,9 @@ ExprPtr Parser::parsePrimary() {
         // Generic enum constructor: MyOption<int>::MySome(42)
         if (lex_.peek().kind == TokenKind::Less && couldBeGenericEnum()) {
             // Try to parse as generic type: Ident<Type>::Variant(...)
+            Token angleTok = lex_.peek(); // position of '<' for #1885 diagnostic
             auto savedState = lex_.saveState();
+            bool committed = false;
             try {
                 lex_.next(); // consume '<'
                 std::string typeArgs = "<";
@@ -631,9 +633,24 @@ ExprPtr Parser::parsePrimary() {
                     node->loc = locFromToken(t);
                     return node;
                 }
+                // (#1885) `f<T>(args)` at expression position is the
+                // angle-bracket generic call form, which Ry does not support
+                // (`<` in expression position is the comparison operator —
+                // see docs/grammar.ebnf §294-296). The canonical syntax is
+                // `f[T](args)` (docs/reference/functions.md §Generic
+                // Functions). Emit a clear diagnostic so users are not
+                // misled by "undefined variable: f".
+                if (lex_.peek().kind == TokenKind::LParen) {
+                    committed = true;
+                    parseError(angleTok.line,
+                        "use 'f[T](args)' syntax for generic function call "
+                        "in expression position; '<' here is the comparison "
+                        "operator");
+                }
                 // Not a generic enum access, restore
                 lex_.restoreState(savedState);
             } catch (...) {
+                if (committed) throw;
                 lex_.restoreState(savedState);
             }
         }
