@@ -310,6 +310,48 @@ case open("out.json", "w"):
   directly. To stringify a user-built typed collection, box each
   element into a `List<any>` / `Map<str, any>` first (or call `as any`
   per element when assembling the collection).
+- **Compile-time error — assigning the `any` from `load` into a typed
+  collection**: writing `xs: List<str> = v` (or `Map<str, int>` /
+  `Set<int>` / any typed collection whose element type is not `any`)
+  on the `v` bound by `case Ok(v):` is rejected at compile time. The
+  source value's element type is unknown to the compiler at that point,
+  and an unchecked unwrap would either segfault (`List<str>` walks the
+  8-byte typed stride past the end of the 16-byte `RyAny` payload) or
+  silently produce garbage (`List<int>` reads the `RyAny` tag bytes as
+  the payload). Use one of the safe alternatives instead:
+
+  ```ry
+  # ❌ rejected at compile time — see error message
+  case load(text):
+    Ok(v):
+      xs: List<str> = v
+    Err(_): 0
+
+  # ✅ option 1: use loadAs[T] to parse + coerce in one step
+  case loadAs[List<str>](text):
+    Ok(xs): print(xs[0])
+    Err(e): print(e.message)
+
+  # ✅ option 2: unwrap as List<any> and case on each element
+  case load(text):
+    Ok(v):
+      vs: List<any> = v
+      for elem in vs:
+        opt: Option<str> = elem as str
+        case opt:
+          Some(s): print(s)
+          None: print("not a string")
+    Err(_): 0
+  ```
+
+  The diagnostic suggests `loadAs[T]` directly: `Cannot assign 'any' to
+  typed collection 'List<str>' for variable 'xs': source type is
+  unknown. Use 'loadAs[List<str>]' for type-safe parsing, or 'case' on
+  each element.` `List<any>` / `Map<str, any>` / `Set<any>` annotations
+  remain allowed unconditionally (the payload stride matches). The same
+  guard does not yet cover the reassignment path (`xs = v` after `xs`
+  is already declared) or function-boundary `any` passes with
+  mismatched element strides — prefer `loadAs[T]` for those cases too.
 
 ## Error message format
 

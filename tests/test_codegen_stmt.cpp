@@ -2616,3 +2616,133 @@ TEST_F(CodeGenTest, NonStdlibUfcsStillRoutesToUndefinedFunction) {
             << "non-stdlib name must not trip the import diagnostic; got: " << msg;
     }
 }
+
+// #1883: typed collection `any` assignment gate. `case Ok(v):` for
+// `Result<any, _>` binds `v` with no source-level collection type info, so
+// allowing `xs: List<str> = v` silently re-strides the any payload as native
+// (SIGSEGV / silent corruption). Require the source type name to match the
+// annotation; otherwise reject with a `loadAs[T]` hint.
+// NB: `Ok(42)` does not auto-wrap into `any` at the Result-construction
+// boundary, so the helper wraps explicitly via `a: any = 42; return Ok(a)`
+// before returning.
+TEST_F(CodeGenTest, AnyToTypedListStrFromResultRejected) {
+    expectCompileError(
+        "fn produceAny() -> Result<any, str>:\n"
+        "    a: any = 42\n"
+        "    return Ok(a)\n"
+        "case produceAny():\n"
+        "    Ok(v):\n"
+        "        xs: List<str> = v\n"
+        "    Err(_):\n"
+        "        x = 0\n",
+        "loadAs");
+}
+
+TEST_F(CodeGenTest, AnyToTypedMapStrIntFromResultRejected) {
+    expectCompileError(
+        "fn produceAny() -> Result<any, str>:\n"
+        "    a: any = 42\n"
+        "    return Ok(a)\n"
+        "case produceAny():\n"
+        "    Ok(v):\n"
+        "        m: Map<str, int> = v\n"
+        "    Err(_):\n"
+        "        x = 0\n",
+        "loadAs");
+}
+
+TEST_F(CodeGenTest, AnyToTypedSetIntFromResultRejected) {
+    expectCompileError(
+        "fn produceAny() -> Result<any, str>:\n"
+        "    a: any = 42\n"
+        "    return Ok(a)\n"
+        "case produceAny():\n"
+        "    Ok(v):\n"
+        "        s: Set<int> = v\n"
+        "    Err(_):\n"
+        "        x = 0\n",
+        "loadAs");
+}
+
+// Whitelist: `List<any>` / `Set<any>` / `Map<str, any>` are always safe — the
+// any payload's stride matches the destination directly.
+TEST_F(CodeGenTest, AnyToListAnyAllowedFromResult) {
+    EXPECT_NO_THROW(compileSource(
+        "fn produceAny() -> Result<any, str>:\n"
+        "    xs: List<any> = [1, 2, 3]\n"
+        "    a: any = xs\n"
+        "    return Ok(a)\n"
+        "case produceAny():\n"
+        "    Ok(v):\n"
+        "        xs: List<any> = v\n"
+        "    Err(_):\n"
+        "        x = 0\n"));
+}
+
+TEST_F(CodeGenTest, AnyToMapStrAnyAllowedFromResult) {
+    EXPECT_NO_THROW(compileSource(
+        "fn produceAny() -> Result<any, str>:\n"
+        "    a: any = 42\n"
+        "    return Ok(a)\n"
+        "case produceAny():\n"
+        "    Ok(v):\n"
+        "        m: Map<str, any> = v\n"
+        "    Err(_):\n"
+        "        x = 0\n"));
+}
+
+// Regression guard: the legitimate roundtrip `a: any = xs; ys: List<int> = a`
+// must keep working — `a`'s alloca stamps `source_type_name = "List<int>"`
+// via `registerAnyManagedVar`, so the gate permits the unwrap.
+TEST_F(CodeGenTest, AnyToTypedListIntRoundtripStillWorks) {
+    EXPECT_EQ(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "a: any = xs\n"
+        "ys: List<int> = a\n"
+        "print(ys)\n"), "[1, 2, 3]\n");
+}
+
+// Regression guard mirroring tests/spec/any.test.ry's
+// `shouldPreserveListThroughAnyRoundtripInFn`: when a value flows through a
+// function whose return type is `any`, the call-site sourceName is "any"
+// (ambiguous). The gate must NOT treat this as a concrete mismatch — defer to
+// unwrapFromAny's runtime tag check. Catching the empty/concrete-mismatch
+// hazard while permitting the ambiguous-any path keeps shipped semantics.
+TEST_F(CodeGenTest, AnyToTypedListIntThroughAnyReturningFnStillWorks) {
+    EXPECT_EQ(runSource(
+        "fn identityAny(v: any) -> any:\n"
+        "    return v\n"
+        "xs: List<int> = [10, 20]\n"
+        "a: any = identityAny(xs)\n"
+        "ys: List<int> = a\n"
+        "print(ys)\n"), "[10, 20]\n");
+}
+
+// Direct triggers for the gate's second branch
+// (`resolvedSource != resolvedColl`). The empty-source branch above is covered
+// by the FromResult cases; without these tests, a refactor that drops the
+// concrete-mismatch check (but keeps the empty check) would pass the existing
+// suite. See .claude/rules/tests-rejection-tdd.md.
+TEST_F(CodeGenTest, AnyToTypedListConcreteSourceMismatchRejected) {
+    expectCompileError(
+        "xs: List<int> = [1, 2, 3]\n"
+        "a: any = xs\n"
+        "ys: List<str> = a\n",
+        "loadAs");
+}
+
+TEST_F(CodeGenTest, AnyToTypedMapConcreteSourceMismatchRejected) {
+    expectCompileError(
+        "m: Map<str, int> = {\"k\": 1}\n"
+        "a: any = m\n"
+        "n: Map<str, str> = a\n",
+        "loadAs");
+}
+
+TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
+    expectCompileError(
+        "s: Set<int> = {1, 2, 3}\n"
+        "a: any = s\n"
+        "t: Set<str> = a\n",
+        "loadAs");
+}

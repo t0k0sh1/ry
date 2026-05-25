@@ -619,6 +619,102 @@ void CodeGen::emitVarDecl(const std::string &name,
                     //   - StructType + record descriptor (#1797) compares
                     //     descriptor-pointer identity at runtime.
                     // unwrapFromAny dispatches internally on annotTy.
+
+                    // #1883: typed-collection unwrap requires the source
+                    // type name to match the annotation. `case Ok(v):` on
+                    // `Result<any, _>` binds `v` with no element metadata,
+                    // so `xs: List<str> = v` would silently re-stride the
+                    // any payload as native (8B stride over 16B RyAny →
+                    // SIGSEGV / silent corruption). Mirrors the #1698
+                    // guard in unwrapFromAny but covers the literal-annot
+                    // path (#1698 only fires under generic substitution).
+                    // `List<any>` / `Set<any>` / `Map<str, any>` stay
+                    // unconditional — payload stride matches destination.
+                    if (annotTy == ptrTy_) {
+                        const std::string resolvedColl = resolveTypeAlias(resolvedAnnot);
+                        const bool annotIsList = isListTypeName(resolvedColl);
+                        const bool annotIsSet = isSetTypeName(resolvedColl);
+                        const bool annotIsMap = isMapTypeName(resolvedColl);
+                        if (annotIsList || annotIsSet || annotIsMap) {
+                            bool whitelisted = false;
+                            if (annotIsList) {
+                                std::string inner = trimTypeNameSpaces(
+                                    resolvedColl.substr(5, resolvedColl.size() - 6));
+                                whitelisted = (inner == "any");
+                            } else if (annotIsSet) {
+                                std::string inner = trimTypeNameSpaces(
+                                    resolvedColl.substr(4, resolvedColl.size() - 5));
+                                whitelisted = (inner == "any");
+                            } else {
+                                std::string innerArgs =
+                                    resolvedColl.substr(4, resolvedColl.size() - 5);
+                                auto parts = splitTypeArgs(innerArgs);
+                                if (parts.size() == 2) {
+                                    std::string k = trimTypeNameSpaces(parts[0]);
+                                    std::string vt = trimTypeNameSpaces(parts[1]);
+                                    whitelisted = (k == "str" && vt == "any");
+                                }
+                            }
+                            if (!whitelisted) {
+                                // 3-stage source-name lookup. Mirrors
+                                // `resolveSourceTypeName` in codegen_arc.cpp:
+                                //   1. getMeta(val)->source_type_name
+                                //   2. getMeta(LoadInst.getPointerOperand())
+                                //   3. arc_any_managed_vars_[srcAlloca]
+                                // Stage 3 is the load-bearing one for the
+                                // legitimate roundtrip `a: any = xs(List<int>)`
+                                // → `ys: List<int> = a` — registerAnyManagedVar
+                                // stamps the source name on the alloca, but
+                                // propagateTypeMeta("any") is a no-op so
+                                // getMeta-side reads are empty.
+                                std::string sourceName;
+                                if (auto *meta = getMeta(val); meta && !meta->source_type_name.empty())
+                                    sourceName = meta->source_type_name;
+                                if (sourceName.empty()) {
+                                    if (auto *li = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                                        llvm::Value *srcPtr = li->getPointerOperand();
+                                        if (auto *aMeta = getMeta(srcPtr); aMeta && !aMeta->source_type_name.empty())
+                                            sourceName = aMeta->source_type_name;
+                                        if (sourceName.empty()) {
+                                            if (auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(srcPtr)) {
+                                                auto it = arc_any_managed_vars_.find(srcAlloca);
+                                                if (it != arc_any_managed_vars_.end())
+                                                    sourceName = it->second;
+                                            }
+                                        }
+                                    }
+                                }
+                                // `sourceName == "any"` (e.g. `identityAny`
+                                // function-return whose return type is `any`)
+                                // is ambiguous, not a concrete mismatch — the
+                                // wrapped value MAY be the right collection at
+                                // runtime. Defer to unwrapFromAny's tag check
+                                // and the existing shipped roundtrip semantics
+                                // (tests/spec/any.test.ry:660-665). The gate
+                                // only fires when sourceName is empty (the
+                                // actual #1883 hazard from `case Ok(v):`) or
+                                // when it's a different concrete collection
+                                // type than the annotation.
+                                const bool sourceIsAmbiguous = (sourceName == "any");
+                                const std::string resolvedSource = sourceName.empty()
+                                    ? std::string{}
+                                    : resolveTypeAlias(sourceName);
+                                if (!sourceIsAmbiguous &&
+                                    (sourceName.empty() ||
+                                     resolvedSource != resolvedColl)) {
+                                    const std::string srcLabel = sourceName.empty()
+                                        ? std::string{"unknown"}
+                                        : sourceName;
+                                    codegenError(
+                                        "Cannot assign 'any' to typed collection '" + *annot +
+                                        "' for variable '" + name +
+                                        "': source type is " + srcLabel +
+                                        ". Use 'loadAs[" + *annot +
+                                        "]' for type-safe parsing, or 'case' on each element.");
+                                }
+                            }
+                        }
+                    }
                     val = unwrapFromAny(val, annotTy, *annot);
                     newTy = annotTy;
                 } else if (isUnionType(resolvedAnnot)) {
