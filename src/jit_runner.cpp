@@ -482,6 +482,20 @@ int runRySource(const std::string &src, const std::string &source_name,
     // TSan upstream root cause is identified (#1657).  This is still a
     // workaround, not a true root cause fix.
     (void)cg.release(); // NOLINT(bugprone-unused-return-value)
+
+    // And leak the parsed Program AST (#1895).  ~Program() walks the
+    // StmtNode vector -> ~unique_ptr<FnStmt>() -> ~FnStmt() which traverses
+    // lambda body / capture chains and other AST children.  Linux glibc CI
+    // (ry-ci image, glibc 2.40) shows intermittent tcache assertions
+    // from glibc's malloc integrity check:
+    //   "invalid next->prev_inuse"
+    //   "corrupted size vs. prev_size"
+    // ~5-10 % during this teardown on a heap already disturbed by JIT
+    // execution above (collection_meta_propagation.test.ry, 25 passed +
+    // SIGABRT before exit).  Same #1187 family; matches the existing jit /
+    // cg leak rationale.  The OS reclaims memory on process exit.
+    auto *progLeak = new Program(std::move(prog));
+    (void)progLeak;
 #endif
 
     return result > 0 ? 1 : 0;
