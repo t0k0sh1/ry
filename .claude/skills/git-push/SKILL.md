@@ -35,11 +35,7 @@ metadata:
      | `chore` | Build, CI, dependencies, tooling |
 
   2. **Generate a short kebab-case description** (2-4 words ideal). Examples: `feat/add-crypto-stdlib`, `fix/utf8-overread`, `refactor/parser-cleanup`.
-  3. **Present the proposed `<type>/<short-description>` to the user once** and wait for one of:
-     - Approval → proceed
-     - Modification (user suggests a different name) → adopt and re-confirm if substantially different
-     - Abort → stop the skill
-  4. Run `git checkout -b <type>/<short-description>`.
+  3. Run `git checkout -b <type>/<short-description>` and report the chosen branch name in the next message. Do **not** stop to ask for approval — auto-progress matches the legacy `git-branch-naming` behavior. If the user wants a different name afterwards, they can rename via `git branch -m <new>`.
 
 ### 1. Commit
 
