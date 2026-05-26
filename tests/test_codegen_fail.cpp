@@ -1425,3 +1425,25 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsFallthroughAbs) {
         "print(abs(-7))\n"
     ));
 }
+
+// `@native` declarations are exempt by design — the stdlib itself
+// declares reserved names like `@native fn sum(...)` and `@native fn
+// load<T>(...)`. These are exercised indirectly every time a test
+// loads `share/std/higher_order.ry` (Guard 1 path) or
+// `share/std/json/json.ry` (Guard 2 path), but explicit coverage
+// makes the intent obvious and prevents regression. `compileSource`
+// is used (not `runSource`) because `@native` declarations have no
+// body — there is nothing to JIT-execute.
+TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeDeclaration) {
+    EXPECT_NO_THROW(compileSource(
+        "@native\n"
+        "fn sum(a: int, b: int) -> int\n"
+    ));
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeGenericDeclaration) {
+    EXPECT_NO_THROW(compileSource(
+        "@native\n"
+        "fn map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U>\n"
+    ));
+}
