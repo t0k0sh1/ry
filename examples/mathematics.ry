@@ -1,0 +1,11 @@
+# 数学関数
+
+from math import sqrt, pow, abs, PI, E
+
+print(f"PI = {PI}")
+print(f"E = {E}")
+print(f"sqrt(2) = {sqrt(2.0)}")
+print(f"pow(2, 10) = {pow(2.0, 10.0)}")
+print(f"abs(-7) = {abs(-7)}")
+print(f"min(3, 5) = {min([3, 5])}")
+print(f"max(3, 5) = {max([3, 5])}")

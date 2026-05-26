@@ -1,0 +1,56 @@
+# レコード + 関数で OOP 風スタイル
+
+record BankAccount:
+    owner: str
+    balance: float
+
+fn deposit(acc: BankAccount, amount: float) -> BankAccount:
+    if amount < 0.0:
+        return acc
+    return BankAccount(acc.owner, acc.balance + amount)
+
+fn withdraw(acc: BankAccount, amount: float) -> Result<BankAccount, Error>:
+    if amount < 0.0:
+        return Err(Error(f"invalid withdraw amount: {amount}"))
+    if amount > acc.balance:
+        return Err(Error(f"insufficient funds: balance={acc.balance}, requested={amount}"))
+    return Ok(BankAccount(acc.owner, acc.balance - amount))
+
+# in-place 版 (record field 書き換え)
+fn depositInPlace(acc: BankAccount, amount: float):
+    if amount < 0.0:
+        return
+    acc.balance += amount
+
+# main
+a1 = BankAccount("Alice", 100.0)
+print(f"initial: {a1.owner} = {a1.balance}")
+
+# immutable update
+a2 = deposit(a1, 50.0)
+print(f"after deposit: {a2.balance}")
+
+# withdraw 試行
+case withdraw(a2, 200.0):
+    Ok(_):
+        print("withdrew 200 (unexpected)")
+    Err(e):
+        print(f"failed: {e.message}")
+
+case withdraw(a2, 80.0):
+    Ok(a3):
+        print(f"after withdraw: {a3.balance}")
+    Err(e):
+        print(f"failed: {e.message}")
+
+# 累積処理
+accts = [BankAccount("A", 100.0), BankAccount("B", 200.0), BankAccount("C", 50.0)]
+totalBal = 0.0
+for a in accts:
+    totalBal += a.balance
+print(f"total: {totalBal}")
+
+# 全アカウントに利息を付与 (map 風)
+updated = map(accts, (a: BankAccount) => BankAccount(a.owner, a.balance * 1.05))
+for a in updated:
+    print(f"  {a.owner}: {a.balance}")
