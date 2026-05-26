@@ -330,6 +330,31 @@ fn calc(x: int) -> int:      # conflicts with calc(int) from above
 
 ---
 
+## Reserved Built-in Names
+
+Top-level user functions cannot reuse names that the standard library reserves for built-ins. Names such as `sum`, `min`, `max`, `len`, `range`, `print`, `enumerate`, `zip`, `map`, `filter`, `fold`, `reduce`, `iter`, `Ok`, `Err`, `Some`, `None`, `Error`, and others dispatch directly through the compiler's built-in chain. A user `fn sum(...)` at the top level would never be called — the body would be silently ignored. The compiler rejects such declarations at definition time with `cannot declare function 'sum': name is reserved for a built-in function`.
+
+```ry
+# Error: cannot declare function 'sum': name is reserved for a built-in function
+fn sum(values: List<int>) -> int:
+    return 999
+```
+
+The check applies to:
+
+- Top-level non-`@native` `fn` declarations.
+- Top-level generic `fn` templates (e.g. `fn map<T, U>(...)`).
+- `from <module> import <name> as <reserved>` import aliases.
+
+The check does **not** apply to:
+
+- `@native` declarations (the stdlib's own implementations).
+- Nested `fn`s inside another function body — these are scope-local and cannot be observed by the built-in dispatcher.
+- Functions defined in a user module accessed via qualified import (`<mod>.<name>` dispatch consults the module's namespace directly).
+- Type-aware extension points such as `fn toStr(p: MyRecord)` — for record types, the codegen consults the user definition first, so `toStr` is not part of the reserved set. See [Records](records.md) for the record `toStr` override pattern.
+
+---
+
 ## Unit Type Functions
 
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.

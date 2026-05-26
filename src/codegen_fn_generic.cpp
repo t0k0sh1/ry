@@ -883,6 +883,21 @@ void CodeGen::registerGenericFnTemplate(const std::string &name,
     if (!tmpl.fnStmt)
         codegenError("internal: registerGenericFnTemplate called with empty template");
 
+    // #1889: generic fn templates live in a flat top-level map
+    // (`generic_fn_templates_`), so a shadow against a stdlib built-in name
+    // is just as silent as for non-generic fns. The caller (`emitStmt(FnStmt)`
+    // generic branch) already rejects generic fns inside qualified-import
+    // namespace targets, so reaching this point implies a top-level template.
+    // Skip `@native` generic templates — those ARE stdlib stubs (e.g.
+    // `share/std/json/json.ry`'s `@native("json") fn load<T>(text: str)`),
+    // not user shadows. The non-generic `@native` path returns early in
+    // `emitStmt(FnStmt)`'s `@native` branch BEFORE Guard 1 fires; the
+    // generic branch reaches `registerGenericFnTemplate` first, so the
+    // skip must live here.
+    if (tmpl.fnStmt->loc.isValid()) current_loc_ = tmpl.fnStmt->loc;
+    if (!hasDirective(tmpl.fnStmt->directives, "native"))
+        rejectIfReservedBuiltin(name);
+
     std::string newFp = buildParamFingerprint(*tmpl.fnStmt);
     size_t newArity = tmpl.fnStmt->params.size();
 

@@ -101,3 +101,34 @@ The check fires before any dispatch (table-driven stdlib, generic native, user-f
 - Cache the package-name set in a function-local `static std::unordered_set` inside `isStdlibPackageName` (registry is immutable after startup).
 - The bare unqualified-call case (`sqrt(4.0)` without `from math import sqrt`) is intentionally out of scope: distinguishing "user forgot the import" from "user defined `fn sqrt` later in the file" requires context the codegen dispatcher does not have at the call site, and the existing forward-reference hint is genuinely useful for the second case.
 - **#1747 alias-aware variant**: before constructing the "module not imported" message, call `findAliasForCanonical(ve->name)` (linear scan over `effective_to_canonical_`). If an alias exists, emit `"'<canonical>' is not defined. Did you mean '<alias>' (aliased from '<canonical>')?"` instead. The alias check is required because `import math as m` hides the canonical name per the Python-style contract documented in `docs/reference/modules.md`, so the generic `add 'import math'` hint is misleading — the user has already imported the module under a different name. The reverse-lookup helper lives next to `findModuleNamespace` in `include/ry/codegen.hpp` and `src/codegen.cpp`; both guard sites (`codegen_call_dispatch.cpp` CallExpr and `codegen_expr_literal.cpp` FieldAccessExpr) must apply the alias check uniformly so suggestion behavior matches whether the user wrote `math.fn(...)` or `math.field`.
+
+### `kReservedBuiltinFunctionNames` is empirically maintained — exclude `@native` generic stubs and type-aware-dispatched names
+
+**Source**: #1889 (2026-05-27, fix)
+**Tags**: stdlib, dispatch, reserved-names, builtin-shadow, @native, type-aware-dispatch, generic-fn, maintenance
+
+**Context**: #1889 added defense-in-depth guards at codegen entry that reject top-level user `fn` declarations whose name collides with a stdlib built-in (`sum`, `min`, `max`, `len`, `range`, `print`, …). Without the guards the user body was silently ignored — the hardcoded `e.callee == "..."` dispatch chain and `@native` stdlib entries always win over `findFunction`. The reserved list lives in `include/ry/builtin_names.hpp` as `kReservedBuiltinFunctionNames` and is consulted by `rejectIfReservedBuiltin(name)` at three sites: `emitStmt(FnStmt)` (non-generic top-level user fns), `registerGenericFnTemplate` (top-level generic fn templates), and `emitStmt(ImportAliasStmt)` `Kind::Fn` (import alias rename).
+
+**Rule**: The reserved list is determined **empirically**, not by enumerating every `emitBuiltin*` hardcoded `e.callee == "..."` checker or every `@native fn` declaration in `share/std/*.ry`. Most candidates from those two sources are *fall-through* — when the user defines `fn add(x: int, y: int)` and calls `add(1, 2)`, dispatch falls through past the stdlib `add` to the user fn because `add` is type-overloaded by metadata. Including such names in the reserved set produces over-rejection of legitimate user code.
+
+**Exclusions** (entries that look like candidates but must NOT go in `kReservedBuiltinFunctionNames`):
+1. **`@native` generic fn stubs** — declarations like `share/std/json/json.ry`'s `@native("json") fn load<T>(text: str) -> Result<T, Error>` reach `registerGenericFnTemplate` BEFORE the `@native` branch in `emitStmt(FnStmt)` (the generic branch fires first at `src/codegen_fn.cpp:612`). Guard 2 (`registerGenericFnTemplate`) must skip reserved-name rejection when `hasDirective(tmpl.fnStmt->directives, "native")` is true. Without the skip, the stdlib itself fails to load. The complementary check is unnecessary for Guard 1 (non-generic `@native`) because the `@native` branch at `src/codegen_fn.cpp:624+` returns before reaching `declareFunction`.
+2. **Type-aware-dispatched names** — `toStr` for records is a documented user override extension point (`docs/reference/records.md` "Stringification" section; `tests/spec/records.test.ry` "should override auto-generated toStr with user-defined"). For record types, the codegen dispatcher consults user `fn toStr(p: TheRecordType)` FIRST before falling back to the auto-generated builtin. Including `toStr` in the reserved set breaks every legitimate record stringification override. Spot-check similar extension points (`toInt`, `toFloat`, `unwrap`, `iter`) whose dispatch is metadata-driven rather than name-keyed before adding them to the reserved list.
+
+**How to verify a candidate name belongs in the reserved set**:
+
+```bash
+# Build a single-int-arg user fn with the candidate name and check whether
+# the user body or the stdlib wins:
+n=<candidate>
+printf 'fn %s(x:int)->int:\n    return 999\n\nprint(%s(1))' "$n" "$n" | ./build/ry -c
+```
+
+If the output is `999`, the user fn wins (fall-through) — the name does NOT belong in the reserved set. If the output is anything else (or an error), the stdlib silently overrides — the name belongs in the reserved set, subject to the two exclusion rules above. Repeat for `List<int>` and `str` signatures to catch type-dispatched names whose single-int test falls through but list/str test doesn't (`iter`, `pop`).
+
+**When to update `kReservedBuiltinFunctionNames`**:
+- Any new `emitBuiltin*` sub-handler added to the hardcoded `e.callee == "..."` dispatch chain.
+- Any new `@native fn` declaration in `share/std/*.ry` (excluding internal `_xxx` aliases per `stdlib-module-additions.md`).
+- After the change, run the empirical check above for every newly-touched name and add the ones where the stdlib wins. Cross-check the existing list with `grep -rEn "^fn <name>\b" tests/spec/ examples/` to confirm no legitimate top-level user fn would be over-rejected.
+
+**Why this rule cannot be derived from the dispatch chain alone**: the chain's order (qualified_module → ADT → verifyCalledWith → `emitBuiltin*` chain → StdlibRegistry → struct constructor → `findFunction`) is a static property, but whether any specific name "wins" against `findFunction` depends on whether each `emitBuiltin*` checker rejects unknown signatures and falls through, or unconditionally claims the call. That predicate is per-name and only the empirical check reveals it.
