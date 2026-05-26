@@ -1,9 +1,9 @@
 ---
 name: git-push
-description: Commit, rebase onto main, and push the current branch. Use when you have local commits or working-tree changes to publish. STOPs on main.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
+description: Ensure feature branch (auto-create from main if needed), commit, rebase onto main, and push. Use when starting work on a new feature/fix/task, or when you have local commits or working-tree changes to publish. Auto-creates a feature branch when invoked on main.
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git checkout -b:*), Bash(git rev-parse:*), Read, Edit
 metadata:
-  short-description: Commit and push
+  short-description: Branch, commit and push
 ---
 
 # Git Push
@@ -14,11 +14,32 @@ metadata:
 - Current git diff: !`git diff HEAD`
 - Current branch: !`git branch --show-current`
 
-## Branch safety
-
-- **STOP if on `main`.** Tell the user to create a feature branch via `/git-branch-naming` first.
-
 ## Steps
+
+### 0. Branch ensure
+
+> **AGENTS.md §Git ブランチ運用ルール違反警告**: `main` 上で本 skill を呼ばずに `git commit` を直接実行することは禁止。常にこの skill を経由してブランチ作成 → コミットの順を保つこと。
+
+- Run `git rev-parse --abbrev-ref HEAD` to determine the current branch.
+- If the current branch is **not** `main`, skip the rest of Step 0 and proceed to Step 1 on the existing branch.
+- If the current branch is `main`, create a feature branch before any commit:
+  1. **Infer `type`** from user intent and working-tree changes. Pick one of:
+
+     | Type | When to use |
+     |------|-------------|
+     | `feat` | New feature or functionality |
+     | `fix` | Bug fix |
+     | `docs` | Documentation only |
+     | `refactor` | Code restructuring without behavior change |
+     | `test` | Adding or updating tests |
+     | `chore` | Build, CI, dependencies, tooling |
+
+  2. **Generate a short kebab-case description** (2-4 words ideal). Examples: `feat/add-crypto-stdlib`, `fix/utf8-overread`, `refactor/parser-cleanup`.
+  3. **Present the proposed `<type>/<short-description>` to the user once** and wait for one of:
+     - Approval → proceed
+     - Modification (user suggests a different name) → adopt and re-confirm if substantially different
+     - Abort → stop the skill
+  4. Run `git checkout -b <type>/<short-description>`.
 
 ### 1. Commit
 

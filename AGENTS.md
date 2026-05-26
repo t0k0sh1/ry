@@ -97,13 +97,13 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
 ## Plan モードのルール
 
 - **開始条件**: 対象 issue の特定 (OPEN 状態を `gh issue view <n>` で確認)・リモートと最新化済み (`wip` 付与は Task 1 で実施するため事前付与不要)
-- **実装計画の最初の 2 タスク (固定・順序厳守)**:
+- **実装計画の最初のタスク (固定)**:
   - **Task 1**: `/git-claim-issue` で issue に `wip` ラベルを付与する
-  - **Task 2**: `main` からフィーチャーブランチを作成する (`/git-branch-naming` スキル経由)
+  - フィーチャーブランチ作成は `/git-push` 初回呼び出し時に自動で行われるため、Plan に独立タスクとして含めない
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **計画の抽象度（WHAT/HOW 分離）**: 計画は「何を達成するか」(WHAT) にとどめ、「どう実装するか」(HOW) は実装フェーズに委ねる。過剰な HOW 詳細が計画にあれば `/plan-rubric` で検出する
 - **実装計画に必ず含めるもの**:
-  - 最初の 2 タスクが固定どおり (Task 1 = `/git-claim-issue`、Task 2 = `/git-branch-naming` 経由のフィーチャーブランチ作成) であること
+  - 最初のタスクが固定どおり (Task 1 = `/git-claim-issue`) であること。フィーチャーブランチ作成は `/git-push` 初回呼び出し時に自動で行われる
   - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
