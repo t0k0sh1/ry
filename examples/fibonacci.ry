@@ -1,0 +1,43 @@
+# フィボナッチ - 再帰、メモ化、反復、 list comprehension 風
+
+# 純再帰
+fn fibRec(n: int) -> int:
+    if n < 2:
+        return n
+    return fibRec(n - 1) + fibRec(n - 2)
+
+# 反復
+fn fibIter(n: int) -> int:
+    if n < 2:
+        return n
+    a = 0
+    b = 1
+    for _ in range(0, n - 1):
+        next = a + b
+        a = b
+        b = next
+    return b
+
+# メモ化
+fn fibMemo(n: int) -> int:
+    memo: Map<int, int> = {0: 0, 1: 1}
+    fn helper(k: int) -> int:
+        case get(memo, k):
+            Some(v):
+                return v
+            None:
+                v = helper(k - 1) + helper(k - 2)
+                memo[k] = v
+                return v
+        return 0
+    return helper(n)
+
+print("fibRec(10) =", fibRec(10))
+print("fibIter(30) =", fibIter(30))
+print("fibMemo(40) =", fibMemo(40))
+
+# 最初の 10 項を List で
+nums: List<int> = []
+for i in range(0, 10):
+    append!(nums, fibIter(i))
+print(f"first 10: {nums}")

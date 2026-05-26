@@ -1,0 +1,107 @@
+# レコードと列挙型 (ADT) の検証
+
+# 基本 record
+record Point:
+    x: int
+    y: int
+
+p = Point(3, 4)
+print(f"p = ({p.x}, {p.y})")
+
+# 等値性 (構造的)
+p2 = Point(3, 4)
+print(f"p == p2: {p == p2}")
+
+# field 書き換え
+p.x = 10
+print(f"after: ({p.x}, {p.y})")
+
+# ネスト record
+record Rect:
+    topLeft: Point
+    bottomRight: Point
+
+r = Rect(Point(0, 0), Point(10, 5))
+print(f"area = {(r.bottomRight.x - r.topLeft.x) * (r.bottomRight.y - r.topLeft.y)}")
+
+# 継承 (subtype)
+record Animal:
+    name: str
+    legs: int
+
+record Dog < Animal:
+    breed: str
+
+d = Dog("Rex", 4, "Labrador")
+print(f"dog name = {d.name}, breed = {d.breed}")
+
+# 単純 enum
+enum Color:
+    Red
+    Green
+    Blue
+
+c = Color::Red
+case c:
+    Color::Red:
+        print("red")
+    Color::Green:
+        print("green")
+    Color::Blue:
+        print("blue")
+
+# ADT enum (関連データ付き)
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Triangle(float, float, float)
+
+fn area(s: Shape) -> float:
+    case s:
+        Shape::Circle(r):
+            return 3.14159 * r * r
+        Shape::Rectangle(w, h):
+            return w * h
+        Shape::Triangle(a, b, c):
+            # ヘロンの公式
+            half = (a + b + c) / 2.0
+            return ((half * (half - a) * (half - b) * (half - c)) ** 0.5) as float
+    return 0.0
+
+print(f"circle area = {area(Shape::Circle(5.0))}")
+print(f"rect area = {area(Shape::Rectangle(3.0, 4.0))}")
+print(f"triangle area = {area(Shape::Triangle(3.0, 4.0, 5.0))}")
+
+# 名前付きフィールド
+enum Event:
+    Click(x: int, y: int)
+    KeyPress(key: str)
+    Resize(width: int, height: int)
+
+ev = Event::Click(100, 200)
+case ev:
+    Event::Click(x, y):
+        print(f"click at ({x}, {y})")
+    Event::KeyPress(k):
+        print(f"key: {k}")
+    Event::Resize(w, h):
+        print(f"resize: {w}x{h}")
+
+# ジェネリック enum
+enum Tree:
+    Leaf(int)
+    Node(int, List<Tree>)
+
+fn treeSum(t: Tree) -> int:
+    case t:
+        Tree::Leaf(v):
+            return v
+        Tree::Node(v, children):
+            total = v
+            for child in children:
+                total += treeSum(child)
+            return total
+    return 0
+
+t = Tree::Node(1, [Tree::Leaf(2), Tree::Node(3, [Tree::Leaf(4), Tree::Leaf(5)])])
+print(f"tree sum = {treeSum(t)}")

@@ -1,0 +1,69 @@
+# 文字列操作と F-string の検証
+
+# 基本
+s = "Hello, World!"
+print(f"len = {len(s)}")
+print(f"upper = {toUpper(s)}")
+print(f"lower = {toLower(s)}")
+print(f"reverse = {reverse(s)}")
+
+# 部分文字列・検索
+print(f"contains 'World': {contains(s, "World")}")
+print(f"startsWith 'Hello': {startsWith(s, "Hello")}")
+print(f"endsWith '!': {endsWith(s, "!")}")
+print(f"find 'World': {find(s, "World")}")
+print(f"substr(7, 12) = {substr(s, 7, 12)}")
+print(f"charAt(0) = {charAt(s, 0)}")
+
+# 置換 / 整形
+print(f"replace = {replace(s, "World", "Ry")}")
+print(f"trim = {trim("   spaces   ")}")
+print(f"repeat = {repeat("ab", 3)}")
+
+# 分割 / 連結
+words = split("a,b,c,d", ",")
+print(f"split = {words}")
+print(f"join = {join(words, "|")}")
+
+# F-string
+name = "Alice"
+age = 30
+print(f"{name} is {age} years old")
+print(f"sum: {1 + 2 + 3}")
+print(f"list: {[1,2,3]}")
+
+# F-string エスケープ
+print(f"literal braces: {{value}}")
+
+# 文字列連結 (+ で連結可)
+greet = "Hello, " + name + "!"
+print(greet)
+
+# 文字列の反復
+for c in "abc":
+    print(f"char: {c}")
+
+# 文字列 + 数値
+print(f"num as str: {42 as str}")
+
+# Unicode
+ja = "こんにちは"
+print(f"日本語 len = {len(ja)}")
+print(f"日本語 byteLen = {byteLen(ja)}")
+for c in ja:
+    print(f"  {c}")
+
+# 数値変換
+n: int = 0
+case toInt("42"):
+    Ok(v):
+        n = v
+    Err(e):
+        print(f"err: {e.message}")
+print(f"parsed = {n}")
+
+# toStr で型変換
+print(f"toStr(int): {toStr(42)}")
+print(f"toStr(float): {toStr(3.14)}")
+print(f"toStr(bool): {toStr(true)}")
+print(f"toStr(list): {toStr([1,2,3])}")

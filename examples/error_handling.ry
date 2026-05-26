@@ -1,0 +1,81 @@
+# エラーハンドリング (Option, Result, Error, ?, !!) の検証
+
+# Option<T>
+fn safeDiv(a: int, b: int) -> int?:
+    if b == 0:
+        return none
+    return Some(a // b)
+
+case safeDiv(10, 2):
+    Some(v):
+        print(f"10/2 = {v}")
+    None:
+        print("div by zero")
+
+case safeDiv(10, 0):
+    Some(v):
+        print(f"10/0 = {v}")
+    None:
+        print("div by zero")
+
+# ?? coalesce
+v = safeDiv(10, 0) ?? -1
+print(f"default = {v}")
+
+# Result<V, E>
+fn parse(s: str) -> Result<int, Error>:
+    n = toInt(s)
+    case n:
+        Ok(v):
+            return Ok(v)
+        Err(_):
+            return Err(Error(f"cannot parse: {s}"))
+    return Err(Error("unreachable"))
+
+case parse("42"):
+    Ok(v):
+        print(f"parsed: {v}")
+    Err(e):
+        print(f"error: {e.message}")
+
+case parse("abc"):
+    Ok(v):
+        print(f"parsed: {v}")
+    Err(e):
+        print(f"error: {e.message}")
+
+# ? 演算子 (Result の自動伝搬)
+fn parseAll(items: List<str>) -> Result<List<int>, Error>:
+    out: List<int> = []
+    for s in items:
+        n = parse(s)?       # Err なら関数からそのまま return
+        append!(out, n)
+    return Ok(out)
+
+case parseAll(["1", "2", "3"]):
+    Ok(xs):
+        print(f"all parsed: {xs}")
+    Err(e):
+        print(f"failed: {e.message}")
+
+case parseAll(["1", "oops", "3"]):
+    Ok(xs):
+        print(f"all parsed: {xs}")
+    Err(e):
+        print(f"failed: {e.message}")
+
+# Error with code
+e = Error("not found", 404)
+print(f"{e.message} (code: {e.code})")
+
+# Option → 強制 unwrap (case で取り出すか ?? でデフォルト値)
+opt = Some(99)
+val = opt ?? 0
+print(f"opt value: {val}")
+
+# top-level ? は Err なら exit 1, Ok なら unwrap
+fn loadInt() -> Result<int, Error>:
+    return Ok(123)
+
+n: int = loadInt()?
+print(f"loaded: {n}")
