@@ -6,6 +6,615 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.25] - 2026-05-26
+
+### Added
+
+- Extended the `any` type to hold `List`, `Map`, and `Set` collections
+  in addition to the existing primitive types. `RyAnyTag` gains
+  `List=5`, `Map=6`, and `Set=7`; the 16-byte struct layout is
+  preserved by storing the collection header pointer in `data[8]`.
+  Wrap-in-`any` now emits an ARC retain on the collection, and the
+  enclosing variable's scope-end cleanup emits a tag-dispatched
+  release. Implicit unwrap (`let xs: List<int> = anyVal`) succeeds
+  whenever the dynamic tag matches the target collection kind, trusting
+  the static type annotation for element-type narrowing. `any == any`
+  on two collection-holding values does best-effort deep equality
+  (length + 8-byte-slot byte-equal data buffer) for `List` and pointer
+  identity for `Map` / `Set`; `to_string` returns opaque markers
+  (`<List>`, `<Map>`, `<Set>`) since element-type metadata is erased on
+  wrap. Order comparisons and arithmetic on collection-holding `any`
+  values continue to surface the existing "operator X not supported"
+  runtime error. Record / enum / function-pointer / resource types
+  remain unsupported and are tracked as follow-ups. (#1697)
+- `m[k]?` and `xs[i]?` postfix syntax for safe collection access.
+  Applied directly to a Map or List index expression, the trailing `?`
+  changes the semantics from "abort on miss" to "produce an `Option`":
+  `m["a"]?` returns `Some(v): Option<V>` when the key is present and
+  `None` otherwise; `xs[i]?` returns `Some(v): Option<T>` when the
+  (possibly negative-wrapped) index is in range and `None` otherwise.
+  This is a postfix syntax rather than sugar for `get(m, k)` — it
+  parses as `IndexExpr` with a new `try_mode` flag and flows through
+  the same codegen path on both Map and List. The negative-index wrap
+  established by `xs[-1]` is preserved (so `xs[-1]?` on a non-empty
+  list always returns `Some(last)`); only the post-wrap out-of-range
+  case yields `None`. Write-form `m[k]? = v` (including `m[k]?.x = v`
+  and `mm[k]?[k2] = v`), `?` on fixed-length arrays, on `str`, on
+  range slice `xs[a..b]?`, and on `any`-typed nested access are
+  rejected at compile time. The lexer's greedy tokenization of `??`
+  means `m["k"]?? default` (no space) still parses as `m["k"]` +
+  `?? default` — write `m["k"]? ?? default` (with a space) for the
+  Option-returning form coalesced with a default value. (#1699)
+- Extended the `any` type to hold user-defined `record` values.
+  `RyAnyTag` gains `Record=8`; the 16-byte struct layout is preserved
+  by heap-boxing the record so `any.data[8]` holds a pointer to a box
+  laid out as `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ record
+  struct ]`. Each record type emits a singleton
+  `__ry_record_desc_<typename>` global carrying the destructor,
+  equality function, and type name, so the dynamic type survives
+  erasure across function boundaries — release / equality / `toStr`
+  all dispatch through the descriptor word inside the box rather than
+  the (possibly stale) static type name at the call site. Wrap-in-`any`
+  emits an ARC retain on the box (and field-wise retains for ARC fields
+  when the source is an existing record alias), and the enclosing
+  variable's scope-end cleanup releases the box through a descriptor
+  trampoline. `any == any` on two record-holding values does field-wise
+  deep equality when the descriptor pointers match (different record
+  types always compare unequal); `toStr` emits a `<TypeName>` marker
+  (e.g. `<Point>`) using the descriptor's type name. Implicit unwrap
+  is gated by a descriptor-pointer-equality check against the expected
+  type's descriptor global, so only **exact-type unwrap**
+  (`let q: Point = anyVal` where `anyVal` holds a `Point`) is
+  permitted; cross-type unwrap to a parent record traps at runtime and
+  is tracked as a follow-up. The typed-path subtype coercion
+  (`fn f(p: Parent): ...; f(child)`) is unchanged. Function-pointer
+  and `enum` types remain unsupported. (#1797)
+- Extended the `any` type to hold `enum` values — organic `enum`
+  declarations (with or without payloads) plus the built-in
+  `Option<T>` / `Result<T, E>` types. `RyAnyTag` gains `Enum=9`; the
+  16-byte struct layout is preserved by heap-boxing the enum so
+  `any.data[8]` holds a pointer to a box laid out as
+  `[ ArcHeader (16B) ][ descriptor ptr (8B) ][ enum payload ]`. The
+  payload is the enum's native representation (`i64` discriminant for
+  simple enums; the ADT discriminated-union struct for ADT / `Option<T>`
+  / `Result<T, E>`). Each enum type emits a singleton
+  `__ry_enum_desc_<typename>` global carrying the destructor (which
+  switches on the discriminant and releases the active variant's ARC
+  fields), the equality function (variant-wise deep compare), and the
+  type name — including the full generic parameterization, so
+  `Option<int>` is distinct from `Option<str>` and `Result<List<int>,
+  str>` is distinct from `Result<int, str>`. Even simple enums (no
+  payload) flow through the new `Enum` tag rather than the prior
+  `Int=0` shortcut, so the source-level enum identity survives the
+  round-trip and `let c: Color = anyVal` only accepts an `any` that
+  actually carries a `Color`. Wrap-in-`any` emits an ARC retain on the
+  box (and field-wise retains for ARC fields in the active variant
+  when the source is an existing enum alias); the enclosing variable's
+  scope-end cleanup releases the box through a descriptor trampoline.
+  `any == any` on two enum-holding values matches descriptor pointers
+  first, then dispatches through the descriptor's equality function;
+  enums of different types always compare unequal. `toStr` /
+  f-string interpolation emits a `<TypeName>` marker (e.g. `<Color>`,
+  `<Option<int>>`, `<Result<int, str>>`). Implicit unwrap is gated by
+  descriptor-pointer equality, so only exact-type unwrap is permitted
+  — enums do not participate in record-style subtype unwrap chains.
+  Function-pointer and resource types (`TcpListener`, `TcpStream`,
+  etc.) remain unsupported. (#1798)
+- Extended `any` record unwrap to admit subtype projection. Given
+  `record Dog < Animal: ...`, `let a: Animal = anyHoldingDog` now
+  succeeds and reads the Animal-prefix fields from the boxed `Dog`,
+  rather than trapping as in v0.0.24. `RyRecordDescriptor` gains a
+  fourth pointer `parent_desc` that links each record's descriptor to
+  its parent's descriptor (or `null` for root records); the unwrap site
+  walks this chain at runtime via a new
+  `__ry_record_is_subtype_desc(actual, expected)` helper instead of
+  doing a single descriptor-pointer equality check, so the actual
+  dynamic type inside `any` is matched against the expected type's
+  entire ancestor chain. Multi-level inheritance
+  (`GuideDog < Dog < Animal`) and cross-function boundaries
+  (`fn make() -> any: return Dog(...)` then `let a: Animal = make()`)
+  both work because the descriptor stored in the box is the authoritative
+  dynamic-type record. Parent-prefix ARC fields (e.g. `Animal.name: str`)
+  are retained when projecting and released independently at scope end;
+  Child-only fields keep being released through the box destructor, so
+  no leak or double-free occurs. Unwrapping `any` to an unrelated record
+  type (e.g. a `Point` held in `any` to an `Animal` slot) still traps at
+  runtime. The typed-path subtype coercion
+  (`fn f(p: Parent); f(child)`) is unchanged. (#1802)
+- File handle API for the `io` module: `open(path, mode)`,
+  `readAll(f)`, `readLine(f)`, `writeText(f, s)`, and `close(f)`.
+  `open` returns `Result<File, Error>`; valid modes are `"r"`, `"w"`,
+  and `"a"`. `readLine` returns `Result<Option<str>, Error>` — `Ok(None)`
+  signals EOF cleanly. `File` is an opaque ARC resource handle: the file
+  is closed automatically when the last reference drops; calling `close`
+  explicitly allows earlier release and is idempotent. Path and mode
+  arguments are checked for embedded NUL bytes at the runtime boundary.
+  (#1816)
+- `using` statement for scope-based resource release. `using f =
+  open(path, "r"): ...` binds `f` to the block body and calls `close(f)`
+  automatically on every exit path: normal block end, `return`, `?`
+  propagation, and `break` / `continue`. When the initializer itself
+  propagates an error via `?`, no binding is established and no `close`
+  is invoked. Nested `using` releases resources in reverse order of
+  acquisition. The current scope is `io.File`; passing any other type
+  produces the compile error `using requires an io.File value`. Panic /
+  uncaught-runtime-error paths are tracked separately. (#1817)
+- `io.lines(f: File) -> Iterator<str>` lazy line iterator. Pair with
+  `for line in lines(f) { ... }` to process large files without loading
+  them into memory. The iterator retains the underlying `File` for its
+  lifetime and shares the read position with subsequent `readLine` /
+  `lines` calls. After `close(f)`, iteration terminates at the next
+  step rather than raising (Python-compatible). Closes the `#1700`
+  series of streaming-IO requests (`#1816` File handles, `#1817`
+  `using` statement, `#1818` `lines()` + `Iterator<T>`). (#1818)
+- `io.open(path, mode)` now accepts `"rb"` (binary read) and `"wb"`
+  (binary write) in addition to the existing `"r"` / `"w"` / `"a"`
+  text modes. The internal `fopen_nofollow` helper already mapped
+  `"rb"` / `"wb"` to `O_RDONLY` / `O_WRONLY | O_CREAT | O_TRUNC`; only
+  the strcmp guard at the entry of `__ry_io_file_open` was rejecting
+  them. The invalid-mode error message now reads `(must be "r", "w",
+  "a", "rb", or "wb")` to reflect the extended set. This is a
+  prerequisite for the future `readBytes(f: File)` / `writeBytes(f:
+  File, bytes)` overloads (#1816 follow-up). Append-binary `"ab"`
+  remains unsupported and is tracked separately in #1862. (#1848)
+- Extended `json.loadAs[T](text)` and `json.loadAs[T](File)` to support
+  user-defined records (flat and nested), typed collections of records
+  (`List<Record>`, `Map<str, Record>`), and `Option<T>`. Each field of
+  the parsed JSON object is looked up by name and recursively coerced
+  into the declared type; missing fields, wrong-typed fields, and
+  unsupported source shapes return `Err(Error{message})` with a
+  `loadAs[T]: ...` prefix that locates the failure (e.g.
+  `loadAs[Outer]: field 'inner': loadAs[Inner]: field 'age' missing`).
+  `Option<T>` accepts JSON `null` as `Ok(None)` and any non-null shape
+  as `Ok(Some(_))` (recursively coerced); a primitive source for
+  `Option<Record>` errors with `loadAs[Option<X>]: expected null or
+  loadAs[X]: expected JSON object`. Previously these targets crashed
+  with `_Exit(1)` via the panic-version `unwrapFromAny`; the new
+  `tryUnwrapFromAny` sibling routes Result-based propagation
+  end-to-end. (#1852)
+- Added three additive companion functions to `json.stringify`:
+  - `stringifySafe(value: any) -> Result<str, Error>` and
+    `stringifySafe(value: any, indent: int) -> Result<str, Error>` —
+    same encoding as `stringify`, but inputs that would otherwise
+    panic (non-finite floats, typed collections wrapped as `any`,
+    `Set` / record / enum tags) return `Err(Error{message})` so
+    callers can recover.
+  - `stringifySorted(value: any) -> str` and
+    `stringifySorted(value: any, indent: int) -> str` — emits
+    `Map<str, any>` keys (including nested ones) in
+    byte-lexicographic order so output is reproducible across runs
+    that build the same logical map via different insertion
+    sequences. Panic semantics match `stringify`.
+  - `stringifySortedSafe(value: any) -> Result<str, Error>` and
+    `stringifySortedSafe(value: any, indent: int) -> Result<str, Error>` —
+    sorted-key output combined with the `Err`-on-unsupported-input
+    behavior of `stringifySafe`.
+  The existing `stringify` API is unchanged: signature, insertion-order
+  iteration, and panic-on-unsupported-input behavior are all preserved
+  for backwards compatibility. (#1853)
+- `json.load(f: File) -> Result<any, Error>`,
+  `json.dump(f: File, value: any) -> Result<Unit, Error>` /
+  `json.dump(f: File, value: any, indent: int) -> Result<Unit, Error>`,
+  and `json.loadAs[T](f: File) -> Result<T, Error>` File-handle
+  overloads. `load(f)` fuses `io.readAll(f)? → load(text)?` and
+  `dump(f, value [, indent])` fuses
+  `stringify(value [, indent]) → io.writeText(f, ...)?` so callers can
+  avoid the intermediate `str` buffer. `loadAs[T](f)` reuses the
+  existing `any → T` coerce path (same supported `T` set as the str
+  overload: `int` / `float` / `str` / `bool` / `List<any>` /
+  `Map<str, any>`). Io errors (closed handle, write failure, etc.) are
+  propagated as `Err(Error{message})` alongside the existing parse-error
+  channel. Argument order follows the `io` module convention (File
+  first), and the `dump` overloads accept `indent < 0` as a fall-through
+  to compact form, matching `stringify(value, indent)`. (#1854)
+- `io.open(path, mode)` now accepts `"ab"` (append binary), completing
+  the binary-mode trio alongside `"rb"` / `"wb"` (added in #1848) and
+  restoring parity with the text-mode triple `"r"` / `"w"` / `"a"`.
+  `"ab"` maps to `O_WRONLY | O_CREAT | O_APPEND` (same POSIX flags as
+  `"a"`); writes always go to end-of-file, the file is created if
+  missing. The invalid-mode error message now reads `(must be "r",
+  "w", "a", "rb", "wb", or "ab")`. (#1862)
+- Generic user-defined functions can now be overloaded by argument
+  type. Multiple `fn name<T>(...)` templates with the same name are
+  allowed as long as their parameter signatures differ in arity or in
+  concrete argument types, and the compiler picks the matching template
+  at each call site via a two-pass resolution mirroring `@native`
+  dispatch: Pass 1 requires exact type match, Pass 2 (only when Pass 1
+  yields zero matches) accepts the widening conversions `u8 → int`,
+  `u8 → float`, and `int → float` at top-level parameter positions.
+  Nested element positions (`List<T>` / `Map<K, V>` / `Set<T>` / tuples
+  / function types) stay exact regardless of pass. Ambiguous matches in
+  either pass and no-match across the overload set produce dedicated
+  diagnostics naming the function. Templates whose parameter signatures
+  normalize identically after rewriting type variables to positional
+  `__T0`, `__T1`, ... are rejected at declaration time as duplicates,
+  catching alpha-equivalent redeclarations such as `fn id<T>(x: T)` /
+  `fn id<U>(x: U)` that previously caused silent shadowing. Single-
+  declaration code is unchanged. (#1874)
+
+### Changed
+
+- **BREAKING**: Redesigned the `json` module around the `any` type. The
+  opaque `JsonValue` handle and its 13 low-level accessors (`parse`,
+  `get`, `at`, `toStr`, `toInt`, `toFloat`, `toBool`, `kind`, `len`,
+  `keys`, `stringify(JsonValue, ...)`, `jsonFree`) are removed without a
+  deprecation period. The new API consists of four entry points:
+  - `load(text: str) -> Result<any, Error>` parses JSON into a tag-typed
+    `any` payload (`Null` / `Bool` / `Int` / `Float` / `Str` /
+    `List<any>` / `Map<str, any>`).
+  - `loadAs[T](text: str) -> Result<T, Error>` is a generic wrapper that
+    parses and then coerces to `T` via the existing
+    `let v: T = anyVal` slot-coercion path. Supported `T` in this
+    release: `int` / `float` / `str` / `bool`, plus the element-erased
+    forms `List<any>` and `Map<str, any>` (the parser materializes
+    container payloads as `any`; element-typed collections such as
+    `List<int>` / `Map<str, str>` are rejected by the generic
+    substitution guard in `unwrapFromAny` and must be unwrapped
+    element-by-element from `List<any>` / `Map<str, any>`). `T = record`,
+    `T = Set<...>`, `T = Option<...>`, and `T = Result<...>` are not
+    supported in this release and surface as a runtime type-mismatch
+    `Err` from the coerce step.
+  - `stringify(value: any) -> str` produces compact JSON.
+  - `stringify(value: any, indent: int) -> str` pretty-prints with the
+    given indent width (`indent < 0` falls back to compact form).
+  Lifetime of the parsed payload is now driven by codegen's standard ARC
+  machinery — the `jsonFree` early-return discipline is no longer
+  required. Map iteration order for `stringify` is the underlying map's
+  insertion order. Tags that JSON cannot represent (`Set`, `Record`,
+  `Enum`, and `Map` keyed by non-`str`) panic from `stringify` since the
+  return type is `-> str` and offers no `Result` channel. File-handle
+  overloads (`load(f: File)` / `dump(value, f: File)`) are intentionally
+  out of scope for this PR and will land alongside `io.File`. (#1698)
+- **Breaking:** Changed the signature of the stdin `readLine()` builtin
+  in `share/std/io/io.ry` from `() -> str` to
+  `() -> Result<Option<str>, Error>`, mirroring the File-handle variant
+  introduced in #1816. Previously `readLine()` returned `""` for both
+  EOF and an empty input line, so callers could not distinguish "stdin
+  closed" from "user pressed Enter on an empty line". The new shape
+  returns `Ok(Some(line))` on success (trailing newline removed),
+  `Ok(None)` at EOF, and `Err(e)` on I/O failure. Migration:
+  ```ry
+  # before
+  from io import readLine
+  name = readLine()
+  print(f"Hello, {name}!")
+  # after
+  from io import readLine
+  case readLine():
+      Ok(opt):
+          case opt:
+              Some(name): print(f"Hello, {name}!")
+              None: print("(EOF)")
+      Err(e): print(e.message)
+  ```
+  The `input()` builtin is unchanged and still returns a bare `str`,
+  so short scripts that do not need EOF distinction can continue using
+  it; whether to give `input()` the same EOF distinction is tracked
+  separately in #1868. (#1850)
+- `json.load` / `json.loadAs[T]` parse errors now report position as
+  `at line <L>, column <C> (offset <O>)` instead of the previous
+  `at position <N>` byte-offset-only form. `<L>` and `<C>` are 1-based
+  and `<C>` counts UTF-8 codepoints (matching Python's `JSONDecodeError`
+  and typical editor column numbers); the original byte offset is
+  preserved in parentheses for precision. Affects 11 position-bearing
+  error sites in `runtime_json.cpp` (`expected '<c>'`, `unexpected
+  character`, `unescaped control character in string`, `invalid number`,
+  `leading zeros not allowed`, `number out of range`, `integer overflow`,
+  `invalid literal`, `expected string key`). Position-less messages
+  (`unexpected end of input`, `unterminated string`, `json: maximum
+  nesting depth exceeded`, etc.) are unchanged. (#1851)
+- **Breaking:** Changed the signature of the `input()` builtin from
+  `() -> str` / `(prompt: str) -> str` to
+  `() -> Result<Option<str>, Error>` /
+  `(prompt: str) -> Result<Option<str>, Error>`, mirroring the
+  stdin `readLine()` change in #1850. Previously `input()` returned
+  `""` for EOF, an empty input line, and I/O errors alike, so callers
+  could not tell them apart. The new shape returns `Ok(Some(line))`
+  on a successful read (trailing newline removed), `Ok(None)` at
+  EOF, and `Err(e)` on I/O failure. Migration:
+  ```ry
+  # before
+  name = input("Name? ")
+  print(f"Hello, {name}!")
+  # after
+  case input("Name? "):
+      Ok(opt):
+          case opt:
+              Some(name): print(f"Hello, {name}!")
+              None: print("(EOF)")
+      Err(e): print(e.message)
+  ```
+  The `input()` builtin and stdin `readLine()` now share the same
+  semantics; pick whichever fits the call site (no `import` for
+  `input()`, explicit `from io import readLine` for the other). (#1868)
+- `docker/run.sh` now bind-mounts each source directory and config file
+  individually (`src/`, `include/`, `tests/`, `share/`, `CMakeLists.txt`,
+  `CMakePresets.json`, `package.toml`, `.clang-tidy`,
+  `.cppcheck-suppressions`) instead of bind-mounting the entire project
+  root. The per-preset build directory (`build-docker/`,
+  `build-asan-docker/`, etc.) is still mounted into its container
+  counterpart, but host macOS native build dirs (`build/`, `build-asan/`,
+  `build-fuzz/`) are no longer visible inside the container. This closes
+  the cross-OS contamination path where macOS Mach-O binaries leaked
+  through the outer `PROJECT_DIR:/workspace` mount alongside the inner
+  Docker build dir and caused `clang-tidy` to fail when
+  `compile_commands.json` listed `/Users/...` host paths. The
+  `./docker/run.sh <preset> <args>` invocation interface is unchanged;
+  adding a new top-level source or config file the build reads now
+  requires updating `docker/run.sh` `MOUNT_ARGS` (and the matching
+  `entrypoint.sh` guard) in the same PR. (#1876)
+- `docker/entrypoint.sh` validates the container state at startup and
+  fails fast on three contamination patterns: required source/config
+  mounts are missing (exit 70, signals a `docker/run.sh` mount-list
+  drift), a `BUILD_DIR/ry` or `BUILD_DIR/ry_tests` binary that is not
+  ELF (exit 71, signals a macOS Mach-O leak into the container build
+  dir), or `BUILD_DIR/compile_commands.json` listing `/Users/...`
+  directories (exit 72, the symptom that previously broke `clang-tidy`).
+  Each failure message names the host-side build dir to `rm -rf` for
+  recovery, via the `RY_HOST_BUILD_DIR` environment variable that
+  `docker/run.sh` now exports into the container. (#1876)
+- **Breaking** — `json.load` is now typed-only. The pre-#1887
+  non-generic overloads `load(text: str) -> Result<any, Error>` and
+  `load(f: File) -> Result<any, Error>` have been removed because they
+  exposed no safe accessor into the resulting `any`: callers had to
+  reach the payload via an unchecked `xs: List<T> = v` cast that #1883
+  later rejected at compile time. The remaining `loadAs[T]` API
+  (#1852) was renamed to `load[T]`, consolidating the typed-deserialize
+  path under a single name. Every JSON parse now picks an explicit
+  type argument; `load[any]` is intentionally not supported and falls
+  through `tryUnwrapFromAny`'s `non-record struct target not yet
+  supported` rejection (use `load[Map<str, any>]` / `load[List<any>]`
+  for the JSON-shape-typed equivalents). The error-message prefix
+  produced by the coerce path flipped from `loadAs[...]: ...` to
+  `load[...]: ...` to stay in sync with the API name. A direct call
+  to `load(text)` without a type argument now emits a compile-time
+  diagnostic that lists concrete-`T` alternatives instead of silently
+  resolving to "undefined function: load". Migration:
+  ```ry
+  # Before (#1852-era)
+  case loadAs[Map<str, int>](text):
+    Ok(m): ...
+    Err(e): ...
+  # After (#1887)
+  case load[Map<str, int>](text):
+    Ok(m): ...
+    Err(e): ...
+  # Before (pre-#1852 untyped path — already discouraged after #1883)
+  case load(text):
+    Ok(v):
+      m: Map<str, any> = v
+      ...
+  # After (#1887)
+  case load[Map<str, any>](text):
+    Ok(m): ...
+    Err(e): ...
+  ```
+  (#1887)
+
+### Fixed
+
+- Fixed a use-after-free when storing a dynamically-allocated `str`
+  (from `+` concatenation, `toString`, runtime construction, etc.) in
+  an `any` value. Wrapping a `str` in `any` now retains the underlying
+  `StringHeader` so the inner buffer outlives the source binding;
+  unwrapping back to `str`, copying `any` to `any`, and reassigning
+  `any` to a different `str` all emit symmetric retain/release calls.
+  Literal-backed strings remain unaffected (they are marked
+  `ARC_IMMORTAL` and the retain/release become no-ops). Previously,
+  `let s = "a" + "b"; let a: any = s; s = "..."` left `a` pointing at
+  freed heap; this is now sound. Closes the str half of the broader
+  `any` ARC integration started in #1697. (#1799)
+- `coerceResultType` now handles `Result<any, X>` → `Result<E, X>`
+  coercion when the destination Ok or Err slot is an enum type (simple
+  enum, `Option<T>`, `Result<T, E>`, or ADT). Previously the per-slot
+  `unwrapFromAny` call passed an empty `targetTypeName`, and the
+  `canAnyHoldType` gate rejected enum struct destinations entirely, so
+  the coercion fell back to "type error: variable '...' cannot be
+  reassigned to a different type" or silently took the wrong runtime
+  branch. `coerceResultType` gains an optional `dstResTypeName`
+  argument (defaulting to `""` for backward compatibility); the five
+  call sites — `emitVarDecl`, function-local reassignment,
+  module-global reassignment, and the two `mockReturnValueOnce`
+  emitters — thread the destination's source-level Result type name so
+  the Ok / Err slot can dispatch through the descriptor-driven enum
+  unwrap path. Cross-type mismatches continue to trap at runtime via
+  the existing `any enum type mismatch` diagnostic from
+  `unwrapEnumFromAny`. The `canAnyHoldType` gate remains restricted to
+  primitives, preserving the parallel-branch design from #1797 /
+  #1798. (#1808)
+- `json.stringify(any)` no longer reads out-of-bounds memory when `any`
+  holds a typed (non-`any`-element) collection (`List<int>`,
+  `Map<str, int>`, etc.). `wrapInAny` previously preserved the original
+  collection header pointer untouched, so passing the resulting `any`
+  to `stringify` walked the 8-byte-stride inner buffer as
+  `RyAny[16]` — undefined behavior that could segfault. The runtime
+  now records the source-level type name at `wrapInAny` time in a
+  register-only side-table (`std::unordered_map<void *, std::string>`
+  guarded by `std::mutex`, with an `std::atomic<size_t>` fast-path
+  counter; entries are overwritten on re-register via
+  `insert_or_assign`), and `stringify_any`'s List / Map arms look up
+  the inner data pointer before walking the buffer. On hit the runtime
+  exits deterministically with
+  `stringify: any holds typed collection 'List<int>' — use List<any> /
+  Map<str, any> / Set<any> instead` and `exit(1)`. ABI is unchanged;
+  the happy path for `List<any>` / `Map<str, any>` pays nothing because
+  the wrap arm only registers when at least one element type differs
+  from `any`. (#1811)
+- `emitRuntimeError` (the codegen helper that emits an `fprintf`
+  diagnostic and aborts the program from JIT'd code paths such as
+  `unwrapEnumFromAny`'s tag / descriptor mismatch trap) now calls
+  `_Exit(1)` (C11) instead of `exit(1)`. `exit(1)` runs the libc
+  atexit chain, which on Linux glibc invokes LLVM `ManagedStatic`
+  destructors (`PassRegistry::~PassRegistry`, etc.) on a heap still
+  referenced by the live JIT module — producing intermittent
+  `free(): invalid pointer` SIGABRT before the `EXPECT_EXIT`-expected
+  `ExitedWithCode(1)` is observed. The new
+  `CodeGenTest.CoerceResultOkNestedResultMismatchTrapsArcPayload`
+  death test exercises the same trap path with an ARC-bearing inner
+  enum payload as additional regression coverage. ASan and the macOS
+  libSystem malloc both masked the issue; the abort was only visible
+  on the default Linux build. The C++ runtime helper used for normal
+  program exit (`finalizeAfterPossibleJit` → `_exit(rc)`) already
+  bypasses the same atexit chain, so this change closes the
+  remaining JIT-triggered abort hole without altering user-visible
+  `exit()` semantics. (#1838)
+- Unified the JIT trap-path exit across the C++ runtime so it matches
+  the codegen-emitted trap path from #1838. A new shared helper
+  `ry_runtime_trap_exit()` in `include/ry/runtime_alloc.hpp` is now used
+  by all 16 `exit(1)` sites that previously lived in
+  `src/runtime_any.cpp`, `src/runtime_utf8.cpp`, `src/runtime_json.cpp`,
+  and `src/runtime_regex.cpp`. The helper calls `fflush(stdout)` +
+  `fflush(stderr)` then `std::_Exit(1)` — bypassing the `atexit` chain
+  (and the LLVM `ManagedStatic` destructors that ran on the still-live
+  JIT heap, causing `free(): invalid pointer` SIGABRT before the
+  expected `ExitedWithCode(1)` was observed). `CodeGen::emitRuntimeError`
+  in `src/codegen_call_user.cpp` was retrofitted to emit matching
+  `fflush(stdout)` / `fflush(stderr)` IR calls immediately before the
+  existing `_Exit(1)` IR call, so panic messages and any preceding
+  `print` output survive even when stdio buffering was line-buffered
+  to a pipe. A new CI `lint` step ("Check for banned direct exit()
+  calls in runtime") blocks regressions by rejecting any direct
+  `exit(...)` / `std::exit(...)` in `src/runtime_*.cpp`; allowed forms
+  (`_Exit`, `_exit`, `quick_exit`, and the codegen helpers
+  `getStdlibExit` / `getStdlibImmediateExit`) are not affected.
+  (#1840)
+- `io.open(path, mode)` now surfaces the detailed runtime error message
+  on failure instead of the static string `"open failed"`. Concretely,
+  `Err(e).message` now carries `"open: cannot open '<path>' in mode
+  '<mode>'"` / `"open: invalid mode '<mode>'"` / `"open: path contains
+  an embedded NUL byte"` / `"open: mode contains an embedded NUL byte"`
+  (the strings set by `setLastError` in `__ry_io_file_open`). Previously
+  `emitFileOpen` used `emitPtrToResult(..., "open failed", rk_file)`
+  which embedded a static error string and discarded the runtime
+  message. The fix switches to `wrapPtrAsResult(ptr)` (default
+  `errFnName = "__ry_get_last_error"`) + explicit
+  `addResourceKind(res, rk_file)`, matching the pattern already used by
+  `emitFileReadAll` and other `io` functions. (#1847)
+- Generic user-defined function dispatch on the **explicit type-args**
+  path (`f[T1, T2, ...](args)`) now resolves the correct overload by
+  substituting the type arguments into each candidate template's
+  parameter signature and comparing the substituted signature against
+  the call-site argument types. Previously this path hard-coded
+  template index 0, silently routing every explicit-`[T]` call to the
+  first declared overload regardless of arg types — for example
+  `loadAs[int](file)` would route through the `loadAs[T](text: str)`
+  body and fail with a confused type mismatch. The inferred-type-args
+  path (`f(args)`) was already correct in #1874; this fix closes the
+  remaining gap on the explicit path. Single-template programs are
+  unaffected (the legacy templateIndex=0 fast path is preserved).
+  (#1854)
+- Fixed JIT unresolved symbol errors (`Symbols not found: [ ___ry_io_file_open ]`
+  / `[ ___ry_write_text ]`) when a program imports only a subset of the
+  `io` module that triggers a custom-emitter or inline codegen path —
+  e.g. `from io import open` (without `close`), `from io import readAll`,
+  `from io import lines`, `from io import writeText` (path-string
+  overload). The custom emitters in `dispatchIO` (`emitFileOpen`,
+  `emitFileReadAll`, `emitFileReadLine`, `emitFileLines`,
+  `emitFileWriteText`) and the inline `writeText(path, content)` branch
+  all bypass `emitTableDrivenNativeCall`, so the `sig.library`-driven
+  `used_native_libraries_.insert("io")` never ran and the JIT failed to
+  load `libry_io.dylib`. Only programs that also imported `close`
+  happened to work, because `close` registers the library explicitly in
+  `codegen_call.cpp`. `dispatchIO` now registers the `io` library once
+  at the top so every dispatch path resolves correctly. (#1856)
+- `net.accept()` and `net.tlsConnect()` now surface the detailed
+  runtime error message on failure instead of the static strings
+  `"accept failed"` / `"TLS connection failed"`. Concretely,
+  `Err(e).message` now carries strings such as `"accept: timed out
+  waiting for connection"`, `"accept: listener shut down"`,
+  `"tlsConnect: cannot connect to host:port: <strerror>"`,
+  `"tlsConnect: TLS handshake failed: <openssl>"`, and `"tlsConnect:
+  certificate verification failed: <reason>"`. Previously `emitNetAccept`
+  and `emitNetConnect` (TLS branch) used `emitPtrToResult(..., "...
+  failed", rk_*)` which embedded a static error string and discarded
+  the runtime message. The fix adds `setLastError` calls to
+  `__ry_accept` (`runtime_net.cpp`) and `tls_handshake` /
+  `__ry_tls_connect{,_resolved}` (`runtime_tls.cpp`, gated by a new
+  `DEFINE_LAST_ERROR(tls)` thread-local channel exposed via
+  `__ry_tls_get_last_error`), and switches both codegen sites to
+  `wrapPtrAsResult(ptr, "__ry_<mod>_get_last_error")` +
+  `addResourceKind(res, rk_<kind>)` — matching the pattern already used
+  by `emitNetBind` / non-TLS `emitNetConnect` / `emitFileOpen`
+  (#1847). (#1858)
+- `json.load` / `json.loadAs[T]` now report `at line <L>, column <C>
+  (offset <O>)` for the 16 parse-error sites in `runtime_json.cpp` that
+  were left position-less by #1851 — `unexpected end of input`,
+  `unterminated string`, `unterminated string escape`, `incomplete
+  unicode escape`, `invalid hex digit in unicode escape`, `unpaired
+  high surrogate in unicode escape`, `invalid low surrogate in unicode
+  escape`, `unpaired low surrogate in unicode escape`, `invalid escape
+  character '\X'`, `invalid number: expected digit after decimal point`,
+  `invalid number: expected digit in exponent`, `json: maximum nesting
+  depth exceeded`, `array too large`, `unterminated array`, `object too
+  large`, `unterminated object`. Number errors point at the start of
+  the offending number; unterminated containers point at the opening
+  `"` / `[` / `{`; nesting-depth and escape errors point at the failing
+  token. All `json.load` parse-error messages now carry the position
+  suffix consistently. (#1882)
+- The compiler now rejects assignments from an `any` whose source type
+  is unknown into a typed collection (`List<T>` / `Map<K, V>` /
+  `Set<T>` where `T` / `V` is not `any`). The motivating hazard was
+  the pre-#1887 non-generic `json.load(text)` overload that returned
+  `Result<any, Error>`: previously
+  ```ry
+  # Reproducible before #1883 against the pre-#1887 `load(text)` API.
+  # Post-#1887 the non-generic overload is gone, but the same guard
+  # still fires for any other Result<any, _>-returning source.
+  case load(text):
+    Ok(v):
+      xs: List<str> = v   # compiled cleanly, crashed at runtime
+  ```
+  compiled without a diagnostic, then either segfaulted (`List<str>` /
+  `List<float>` — the 8-byte typed stride walked off the end of the
+  16-byte `RyAny` payload) or silently produced garbage (`List<int>`
+  read the `RyAny` tag bytes as the payload). The same trap applied to
+  `Map<_, T>` and `Set<T>`. `emitVarDecl` now uses the
+  `source_type_name` metadata stamped by `registerAnyManagedVar` to
+  distinguish the legitimate roundtrip
+  `xs: List<int> = ...; a: any = xs; ys: List<int> = a` (allowed —
+  stamped) from the `case Ok(v):` extraction whose binding has no
+  collection element metadata (rejected — empty source name). The
+  diagnostic suggests `load[T]` or per-element `case`, which were
+  already the safe alternatives. `List<any>` / `Map<str, any>` /
+  `Set<any>` annotations remain unconditional (the payload stride
+  matches the destination). Round-trips whose source type is itself
+  `any` (e.g. through a function returning `any`) are treated as
+  ambiguous and deferred to `unwrapFromAny`'s runtime tag check,
+  preserving shipped behavior. The same hazard in the reassignment
+  path (`xs = v` after `xs: List<str>` is already declared) and across
+  function argument / return boundaries with concrete-mismatched
+  element strides is not yet covered and will be addressed in a
+  follow-up. (#1883)
+- Parser: `Ident<...>(args)` in expression position (e.g.
+  `loadAs<int>("1")`) is now rejected with a dedicated diagnostic that
+  directs users to the canonical `[T]` generic-call syntax
+  (`f[int](x)`), instead of silently misparsing the form as a chain of
+  comparison operators and surfacing a misleading
+  `undefined variable: <name>` error. `Foo<T>::Variant` enum
+  constructors and plain comparison chains (`a < b > c`) are
+  unaffected. The runtime `loadAs[T]: ...` error-message prefix and
+  the `tests/spec/json.test.ry` describe/it names are unified with the
+  `[T]` user-facing notation. (#1885)
+- Linux CI flake (~5-10 %) where `tests/spec/collection_meta_propagation.test.ry`
+  printed `25 passed, 0 failed` and then SIGABRT'd inside `~FnStmt()`
+  with glibc tcache assertions (`malloc(): invalid next->prev_inuse` /
+  `corrupted size vs. prev_size`). The parsed AST (`Program prog` in
+  `runRySource`) was destructed via stack unwind after JIT execution
+  had already disturbed the heap — `~Program()` walks
+  `vector<StmtNode>` → `unique_ptr<FnStmt>` → `~FnStmt()` over lambda
+  body / capture chains, triggering glibc 2.40's tcache integrity
+  check on freed chunks the JIT had touched. The fix extends the
+  existing LLJIT / CodeGen teardown suppression in
+  `src/jit_runner.cpp` with a sixth step: `new Program(std::move(prog))`
+  inside the existing `#if defined(__linux__) || defined(__APPLE__)`
+  block, so the AST is intentionally leaked alongside the LLJIT and
+  CodeGen instances. The OS reclaims memory on process exit. Same
+  #1187 family workaround; root cause in LLVM ORC / JITLink heap
+  patterns is still unidentified upstream. macOS Docker did not
+  reproduce locally (50/50 then 200/200 PASS), so the fix is validated
+  via the mechanistic argument that `~FnStmt()` no longer runs after
+  JIT teardown, with CI statistics as the post-merge oracle. (#1895)
+
 ## [0.0.24] - 2026-05-18
 
 ### Added
@@ -2368,7 +2977,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.24...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.25...HEAD
+[0.0.25]: https://github.com/t0k0sh1/ry/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/t0k0sh1/ry/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/t0k0sh1/ry/compare/v0.0.22...v0.0.23
 [0.0.22]: https://github.com/t0k0sh1/ry/compare/v0.0.21...v0.0.22
