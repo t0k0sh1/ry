@@ -1,124 +1,115 @@
 ---
 name: knowledge-md-management
-description: KNOWLEDGE.md (未分類知見の暫定バッファ) の運用ガイド — 責任分解点・entry フォーマット・grep convention・外部参照禁止・rules/skills への昇格基準。Use when 新たな知見を得たとき / KNOWLEDGE.md に書く / KNOWLEDGE.md を参照 / ナレッジ追加 / 教訓を残す / 経験を記録 / 既存 rules/skills を更新するか判断 / 昇格 / 切り出し / 肥大化整理 のとき。実装中・PR レビュー対応中・Plan 中に新規知見を蓄積する際、または既存知見を grep で参照する際に呼び出す。
+description: Operate KNOWLEDGE.md, the staging buffer for unclassified lessons — where to write, entry format, grep convention, external-reference policy, and promotion to rules / skills. Use when capturing a lesson, looking knowledge up via grep, or splitting a stabilized entry out of KNOWLEDGE.md. Also fires on Japanese triggers ナレッジ追加, 教訓を残す, 経験を記録, 昇格, 切り出し, 肥大化整理, KNOWLEDGE.md に書く, KNOWLEDGE.md を参照.
 allowed-tools: Bash
 ---
 
 # Knowledge MD Management
 
-`KNOWLEDGE.md` (リポジトリ root) は、新たな教訓のうち既存 rules / skills のどれにも該当 entry を持たないものを一時的に蓄積するためのバッファ。安定後は `.claude/rules/<name>.md` または `.claude/skills/<name>/SKILL.md` へ昇格させる。
+`KNOWLEDGE.md` (repo root) is the staging buffer for lessons with no matching entry in `.claude/rules/` or `.claude/skills/` yet. Once an entry stabilizes, promote it to a rule or skill.
 
 ## When to use
 
-- 作業中に新たな教訓・非自明な事実・没案・コマンドミスのリカバリ等を記録する必要が生じたとき
-- 既存知見ベースを横断的に grep で参照したいとき (path-scoped auto-load では拾えない知見が KNOWLEDGE.md にある可能性があるため)
-- KNOWLEDGE.md の entry を `.claude/rules/` または `.claude/skills/` に昇格 (切り出し) させるとき
+- A new lesson, non-obvious fact, abandoned design, or command-recovery note to record
+- You need to grep across the whole knowledge base (KNOWLEDGE.md isn't covered by path-scoped auto-load)
+- A stabilized entry is ready to be split out into `.claude/rules/` or `.claude/skills/`
 
-## 1. 責任分解点: どこに書くか (REQ-1)
+## 1. Where to write (REQ-1)
 
-新規知見を得たときの判断フロー:
+1. **A matching entry exists** in a rule / skill → append there. Do not touch KNOWLEDGE.md.
+2. **No matching entry anywhere** → append to KNOWLEDGE.md as a temporary buffer.
+3. **Entry has stabilized or coalesced into a clear theme** → follow §4 to promote.
 
-1. **対応する path-scoped rule または skill に既に該当 entry がある** (同じトピックで既に書かれている)
-   → そのファイルに追記する。KNOWLEDGE.md には書かない
-2. **どの rule / skill にも該当 entry がない、まったく新しい知見**
-   → KNOWLEDGE.md に追記する (暫定バッファ)
-3. **後日 KNOWLEDGE.md の entry が安定した、または新しいテーマとして固まった**
-   → §4 の昇格手順に従い、`.claude/rules/` または `.claude/skills/` に切り出す
-
-「該当 entry があるか」の判定は §2 の grep convention に従う。判定に迷った場合は KNOWLEDGE.md を default とする (後で昇格しやすい)。
+Use §2's grep to check matching. When uncertain, default to KNOWLEDGE.md — promotion is easier than retraction.
 
 ## 2. Entry format & how to read (REQ-1, REQ-2)
 
-### Entry format
+### Format
 
-各 entry は既存 rules / skills と同じフォーマットに統一する (grep 一貫性のため):
+Every entry follows the same shape as rule / skill entries (for grep consistency):
 
 ```markdown
-### <短く具体的な heading>
+### <short, specific heading>
 
-**Source**: <PR / issue / commit など出典>
-**Tags**: <空白区切りキーワード>
-**Rule**: <教訓本文。何をすべき/避けるべきかを 1-3 段落>
+**Source**: <PR / issue / commit>
+**Tags**: <space-separated keywords>
+**Rule**: <body — what to do or avoid, 1-3 paragraphs>
 ```
 
-`**Tags**:` 行は必須 — これがないと grep convention で発見できない。
+The `**Tags**:` line is mandatory — without it the entry is invisible to the grep convention.
 
 ### How to read
 
-実装着手時 / レビュー時 / 関連知見の確認時には、Tags ベースで全知見ベース (rules + skills + KNOWLEDGE) を横断検索する:
+Grep all sources by tag:
 
 ```bash
 grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md
 ```
 
-`KNOWLEDGE.md` は path-scoped auto-load の仕組みを持たないため (rule のような frontmatter `paths:` glob を持たない)、上記の grep を **明示的に** 実行する必要がある。編集ファイルから自動 trigger されない点に注意。
+KNOWLEDGE.md has no path-scoped auto-load (no frontmatter `paths:` glob), so this grep must be run **explicitly** — it isn't triggered by file edits.
 
-## 3. 外部参照ポリシー (REQ-3)
+## 3. External-reference policy (REQ-3)
 
-KNOWLEDGE.md の **個別 entry を指す参照** を、AGENTS.md / `.claude/rules/<*>.md` / `.claude/skills/<*>/SKILL.md` / `.claude/agents/<*>.md` から作成してはならない。理由: KNOWLEDGE.md の編集 (entry の追加・削除・順序変更・移植) で参照が容易に dangling 化する。実例として `.claude/rules/` 配下に 6 行の dangling reference が残存した実績がある (#1550 で整理済み)。
+Do **not** reference individual KNOWLEDGE.md entries from AGENTS.md, `.claude/rules/<*>.md`, `.claude/skills/<*>/SKILL.md`, or `.claude/agents/<*>.md`. Any KNOWLEDGE.md edit (add / remove / reorder / promote) trivially dangles such references. Precedent: #1550 cleaned up six dangling lines under `.claude/rules/`.
 
-### 禁止される参照パターン
+### Forbidden reference patterns
 
-`KNOWLEDGE` または `KNOWLEDGE.md` というトークンに続けて、以下のいずれかの形を取る参照は禁止:
+Any reference combining `KNOWLEDGE` or `KNOWLEDGE.md` with one of:
 
-| パターン | 形式 | 失敗する理由 |
+| Pattern | Shape | Why it breaks |
 |---|---|---|
-| 行番号参照 | 大文字 `L` + 整数 | entry 追加/削除で行番号がずれる |
-| 行近似参照 | 単語 `line` + 数値 | 同上 |
-| 位置参照 | 単語 `entry` + 方向語 (above / below / here) | 順序変更で意味が逆転する |
-| heading 名参照 | KNOWLEDGE.md の `### ...` 見出しを直接引用 | entry 移植・rename で broken |
+| Line number | Capital `L` + integer | Line numbers shift on add / remove |
+| Approximate line | Word `line` + number | Same |
+| Positional | Word `entry` + direction (above / below / here) | Reorder flips the meaning |
+| Heading name | Quoting a `### ...` heading from KNOWLEDGE.md | Breaks on entry move / rename |
 
-要するに: 「KNOWLEDGE.md の特定の場所」を指す書き方すべてが禁止対象。
+### Allowed references
 
-### 許容される参照
-
-| パターン | 例 | OK な理由 |
+| Pattern | Example | Why OK |
 |---|---|---|
-| skill 自体へのメタ参照 | ``KNOWLEDGE.md の運用は `/knowledge-md-management` 参照`` | 個別 entry を指していない (skill 全体を指す) |
-| 集合体としての言及 | AGENTS.md「ナレッジベース」節での bullet 項目 | KNOWLEDGE.md 全体を扱っているだけ |
+| Meta-reference to the skill | ``KNOWLEDGE.md operations live at `/knowledge-md-management` `` | Points at the skill, not an entry |
+| Mention as a whole | The "knowledge base" bullet in AGENTS.md | Treats KNOWLEDGE.md as a collection |
 
-要するに: 「KNOWLEDGE.md にナレッジが蓄積される」という一般的な言及は OK、特定 entry の場所を指すのは NG。
+Generic mentions ("knowledge accumulates in KNOWLEDGE.md") are fine; pointing at a specific entry is not.
 
 ### Self-check
 
-新規にナレッジベース文書を書くときは、以下で違反していないか確認:
+Before publishing new knowledge-base docs, verify:
 
 ```bash
 grep -nE 'KNOWLEDGE(\.md)?\s*(L[0-9]+|line\s+|entry\s+(above|below|here))' \
   AGENTS.md .claude/rules/*.md .claude/skills/*/SKILL.md .claude/agents/*.md
 ```
 
-ヒットした行はすべて修正対象。
+Every hit is a violation to fix.
 
-## 4. rules / skills への昇格 (REQ-4)
+## 4. Promotion to rules / skills (REQ-4)
 
-### 昇格判定の目安
+### When to promote
 
-以下のいずれかに該当したら昇格を検討する:
+- **Per-entry** (primary): a single entry has stabilized and its permanent home — a rule or a skill — is clear → promote immediately
+- **Bulk** (secondary, periodic): KNOWLEDGE.md exceeds **10 entries** or **400 lines** → review all entries for promotion candidates
 
-- **個別 entry トリガー** (一次的): 単一 entry が安定し (内容が落ち着き、書き直しが必要そうにない)、永続的な所属先 (rule または skill) が特定できた → 即座に昇格
-- **bulk トリガー** (二次的、定期見直し): KNOWLEDGE.md 全体が **10 entry 超** または **400 行超** に達した → 全 entry を見直して昇格候補を洗い出す
+Thresholds are defaults; adjust as needed.
 
-bulk トリガーの定量閾値は default 値であり、運用経験で調整可能。
+### Choosing destination: rule vs skill
 
-### 移植先の判定: rules vs skills
-
-| 条件 | 移植先 |
+| Condition | Destination |
 |---|---|
-| frontmatter `paths:` glob で対象ファイルを絞れる (特定 path / 特定実装に依存する知見) | `.claude/rules/<name>.md` |
-| 手順・意図・横断的なポリシー (path に依存しない、または複数 path にまたがる) | `.claude/skills/<name>/SKILL.md` |
-| PR レビューで再発する論点の meta-index | `.claude/skills/pr-review-recurring-patterns/SKILL.md` |
-| コマンド・環境変数・シェル構文のミスのリカバリ | `.claude/skills/commands-environment-gotchas/SKILL.md` |
+| Scopable by a frontmatter `paths:` glob (tied to specific paths / implementations) | `.claude/rules/<name>.md` |
+| Procedure / intent / cross-cutting policy (path-independent or multi-path) | `.claude/skills/<name>/SKILL.md` |
+| Meta-index of recurring PR-review themes | `.claude/skills/pr-review-recurring-patterns/SKILL.md` |
+| Command / env-var / shell-syntax recovery | `.claude/skills/commands-environment-gotchas/SKILL.md` |
 
-### 移植時の cleanup
+### Cleanup on promotion
 
-- KNOWLEDGE.md 側の元 entry は **完全削除** する。pointer stub (例: 「移植済み: 〜.md 参照」) を残してはならない
-- 理由: stub 自体が将来 stale な参照になりうる。移植先 entry が rename / 削除された場合に発見が困難で、§3 の禁止パターンと同質の問題を生む
-- 移植事実は PR description / commit message にのみ記録する (KNOWLEDGE.md 内には残さない)
+- **Fully delete** the original entry from KNOWLEDGE.md. No pointer stub (e.g. "moved to ~.md").
+- Stubs themselves become stale: if the destination entry is later renamed or removed, the stub is hard to find — same failure mode as §3.
+- Record the promotion only in the PR description / commit message.
 
-### 移植 PR の典型 structure
+### Typical promotion PR shape
 
-1. KNOWLEDGE.md から該当 entry を削除
-2. 移植先ファイルに entry を追加 (既存 entry 群と style を一致させる)
-3. PR description に「KNOWLEDGE.md → `<destination>` に移植」と記録
-4. `/pre-commit-checklist` でセルフ検証
+1. Remove the entry from KNOWLEDGE.md
+2. Add it to the destination file (match neighboring entries' style)
+3. Note "KNOWLEDGE.md → `<destination>` promotion" in the PR description
+4. Run `/pre-commit-checklist` for self-verification
