@@ -50,7 +50,7 @@ Create a new git branch following the `<type>/<short-description>` naming conven
 1. Check the current branch with `git branch --show-current`.
 2. **Only create a new branch when necessary**:
    - If the current branch is `main`, proceed to create a new feature branch.
-   - Otherwise (already on an existing feature branch), **reuse the current branch** and report it instead of creating a new one. This keeps the skill aligned with `git-commit-push-pr`, which also reuses the current branch when it is not main.
+   - Otherwise (already on an existing feature branch), **reuse the current branch** and report it instead of creating a new one. This keeps the skill aligned with `git-create-pr`, which also operates on the current branch when it is not main.
 3. Determine the type from the user's intent or the changes in progress.
 4. Generate a short, descriptive kebab-case summary.
 5. Run `git checkout -b <type>/<short-description>` (only when Step 2 decided to create a new branch).
