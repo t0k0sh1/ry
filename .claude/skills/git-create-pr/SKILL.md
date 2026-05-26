@@ -16,7 +16,7 @@ metadata:
 
 ## Branch safety
 
-- **STOP if on `main`.** Tell the user to create a feature branch via `/git-branch-naming` first.
+- **STOP if on `main`.** Tell the user to run `/git-push` first (it will auto-create the feature branch and push commits).
 
 ## Steps
 
