@@ -1,24 +1,25 @@
 from testing import it, describe, expect, fail
 
-from json import load, loadAs, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
+from json import load, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
 from str import contains, repeat, byteLen
 from io import open, close, writeText, readText
 from math import NAN, INF
 
 @describe("json load — primitives")
 fn jsonLoadPrimitivesTests():
-  @it("should load null as any")
+  @it("should load JSON null as any-Null payload via Map<str, any>")
   fn shouldLoadNullAsAny():
-    case load("null"):
-      Ok(v):
+    case load[Map<str, any>]("{\"x\": null}"):
+      Ok(m):
+        v: any = m["x"]
         s: str = stringify(v)
         expect(s).toEq("null")
       Err(e):
-        fail("load null failed: " + e.message)
+        fail("load[Map<str, any>] null payload failed: " + e.message)
 
   @it("should load true as any")
   fn shouldLoadTrueAsAny():
-    case load("true"):
+    case load[bool]("true"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("true")
@@ -27,7 +28,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should load false as any")
   fn shouldLoadFalseAsAny():
-    case load("false"):
+    case load[bool]("false"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("false")
@@ -36,7 +37,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should load int as any")
   fn shouldLoadIntAsAny():
-    case load("42"):
+    case load[int]("42"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("42")
@@ -45,7 +46,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should load negative int as any")
   fn shouldLoadNegativeIntAsAny():
-    case load("-7"):
+    case load[int]("-7"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("-7")
@@ -54,7 +55,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should load float as any")
   fn shouldLoadFloatAsAny():
-    case load("3.5"):
+    case load[float]("3.5"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("3.5")
@@ -63,7 +64,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should load str as any")
   fn shouldLoadStrAsAny():
-    case load("\"hi\""):
+    case load[str]("\"hi\""):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("\"hi\"")
@@ -72,7 +73,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should reject malformed input")
   fn shouldRejectMalformedInput():
-    case load("{not json}"):
+    case load[Map<str, any>]("{not json}"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -80,7 +81,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should reject trailing content")
   fn shouldRejectTrailingContent():
-    case load("42 extra"):
+    case load[int]("42 extra"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -88,7 +89,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should reject raw NUL inside a string")
   fn shouldRejectRawNulInsideString():
-    case load("\"a\0b\""):
+    case load[str]("\"a\0b\""):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -96,7 +97,7 @@ fn jsonLoadPrimitivesTests():
 
   @it("should reject raw newline inside a string")
   fn shouldRejectRawNewlineInsideString():
-    case load("\"a\nb\""):
+    case load[str]("\"a\nb\""):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -106,7 +107,7 @@ fn jsonLoadPrimitivesTests():
 fn jsonLoadArrayTests():
   @it("should load empty array")
   fn shouldLoadEmptyArray():
-    case load("[]"):
+    case load[List<any>]("[]"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("[]")
@@ -115,7 +116,7 @@ fn jsonLoadArrayTests():
 
   @it("should load array of ints")
   fn shouldLoadArrayOfInts():
-    case load("[1, 2, 3]"):
+    case load[List<any>]("[1, 2, 3]"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("[1,2,3]")
@@ -124,7 +125,7 @@ fn jsonLoadArrayTests():
 
   @it("should load mixed-type array round-trip")
   fn shouldLoadMixedArrayRoundTrip():
-    case load("[1, \"two\", true, null]"):
+    case load[List<any>]("[1, \"two\", true, null]"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("[1,\"two\",true,null]")
@@ -133,7 +134,7 @@ fn jsonLoadArrayTests():
 
   @it("should load nested array")
   fn shouldLoadNestedArray():
-    case load("[[1, 2], [3]]"):
+    case load[List<any>]("[[1, 2], [3]]"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("[[1,2],[3]]")
@@ -144,7 +145,7 @@ fn jsonLoadArrayTests():
 fn jsonLoadObjectTests():
   @it("should load empty object")
   fn shouldLoadEmptyObject():
-    case load("{}"):
+    case load[Map<str, any>]("{}"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("{}")
@@ -153,7 +154,7 @@ fn jsonLoadObjectTests():
 
   @it("should load object round-trip preserving insertion order")
   fn shouldLoadObjectRoundTrip():
-    case load("{\"a\": 1, \"b\": 2}"):
+    case load[Map<str, any>]("{\"a\": 1, \"b\": 2}"):
       Ok(v):
         s: str = stringify(v)
         # Map iteration order = insertion order, so a-then-b
@@ -163,7 +164,7 @@ fn jsonLoadObjectTests():
 
   @it("should load nested object round-trip")
   fn shouldLoadNestedObjectRoundTrip():
-    case load("{\"outer\": {\"inner\": 7}}"):
+    case load[Map<str, any>]("{\"outer\": {\"inner\": 7}}"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("{\"outer\":{\"inner\":7}}")
@@ -174,7 +175,7 @@ fn jsonLoadObjectTests():
 fn jsonLoadNestedMixedTests():
   @it("should load object containing array round-trip")
   fn shouldLoadObjectContainingArrayRoundTrip():
-    case load("{\"xs\": [1, 2, 3]}"):
+    case load[Map<str, any>]("{\"xs\": [1, 2, 3]}"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("{\"xs\":[1,2,3]}")
@@ -183,7 +184,7 @@ fn jsonLoadNestedMixedTests():
 
   @it("should load array containing object round-trip")
   fn shouldLoadArrayContainingObjectRoundTrip():
-    case load("[{\"k\": 1}, {\"k\": 2}]"):
+    case load[List<any>]("[{\"k\": 1}, {\"k\": 2}]"):
       Ok(v):
         s: str = stringify(v)
         expect(s).toEq("[{\"k\":1},{\"k\":2}]")
@@ -194,7 +195,7 @@ fn jsonLoadNestedMixedTests():
 fn jsonStringifyAnyPrimitivesTests():
   @it("should round-trip int via load and stringify")
   fn shouldRoundTripIntPrimitive():
-    case load("123"):
+    case load[int]("123"):
       Ok(v):
         expect(stringify(v)).toEq("123")
       Err(e):
@@ -202,7 +203,7 @@ fn jsonStringifyAnyPrimitivesTests():
 
   @it("should round-trip float via load and stringify")
   fn shouldRoundTripFloatPrimitive():
-    case load("1.5"):
+    case load[float]("1.5"):
       Ok(v):
         expect(stringify(v)).toEq("1.5")
       Err(e):
@@ -210,7 +211,7 @@ fn jsonStringifyAnyPrimitivesTests():
 
   @it("should round-trip bool via load and stringify")
   fn shouldRoundTripBoolPrimitive():
-    case load("true"):
+    case load[bool]("true"):
       Ok(v):
         expect(stringify(v)).toEq("true")
       Err(e):
@@ -220,7 +221,7 @@ fn jsonStringifyAnyPrimitivesTests():
 fn jsonStringifyAnyPrettyTests():
   @it("should pretty-print array with indent=2")
   fn shouldPrettyPrintArray():
-    case load("[1, 2]"):
+    case load[List<any>]("[1, 2]"):
       Ok(v):
         # 2-space indent
         expected = "[\n  1,\n  2\n]"
@@ -230,7 +231,7 @@ fn jsonStringifyAnyPrettyTests():
 
   @it("should pretty-print object with indent=2")
   fn shouldPrettyPrintObject():
-    case load("{\"a\": 1}"):
+    case load[Map<str, any>]("{\"a\": 1}"):
       Ok(v):
         expected = "{\n  \"a\": 1\n}"
         expect(stringify(v, 2)).toEq(expected)
@@ -239,122 +240,122 @@ fn jsonStringifyAnyPrettyTests():
 
   @it("should fall back to compact form when indent is negative")
   fn shouldCompactWhenIndentNegative():
-    case load("[1, 2]"):
+    case load[List<any>]("[1, 2]"):
       Ok(v):
         expect(stringify(v, -1)).toEq("[1,2]")
         expect(stringify(v, -100)).toEq("[1,2]")
       Err(e):
         fail("load [1,2] failed: " + e.message)
 
-@describe("json loadAs[T] — primitives")
+@describe("json load[T] — primitives")
 fn jsonLoadAsPrimitiveTests():
-  @it("should parse int directly via loadAs[int]")
+  @it("should parse int directly via load[int]")
   fn shouldLoadAsInt():
-    case loadAs[int]("42"):
+    case load[int]("42"):
       Ok(n):
         expect(n).toEq(42)
       Err(e):
-        fail("loadAs[int] failed: " + e.message)
+        fail("load[int] failed: " + e.message)
 
-  @it("should parse negative int via loadAs[int]")
+  @it("should parse negative int via load[int]")
   fn shouldLoadAsNegativeInt():
-    case loadAs[int]("-7"):
+    case load[int]("-7"):
       Ok(n):
         expect(n).toEq(-7)
       Err(e):
-        fail("loadAs[int] -7 failed: " + e.message)
+        fail("load[int] -7 failed: " + e.message)
 
-  @it("should parse float via loadAs[float]")
+  @it("should parse float via load[float]")
   fn shouldLoadAsFloat():
-    case loadAs[float]("3.5"):
+    case load[float]("3.5"):
       Ok(f):
         expect(f).toEq(3.5)
       Err(e):
-        fail("loadAs[float] failed: " + e.message)
+        fail("load[float] failed: " + e.message)
 
-  @it("should parse str via loadAs[str]")
+  @it("should parse str via load[str]")
   fn shouldLoadAsStr():
-    case loadAs[str]("\"hello\""):
+    case load[str]("\"hello\""):
       Ok(s):
         expect(s).toEq("hello")
       Err(e):
-        fail("loadAs[str] failed: " + e.message)
+        fail("load[str] failed: " + e.message)
 
-  @it("should parse bool true via loadAs[bool]")
+  @it("should parse bool true via load[bool]")
   fn shouldLoadAsBoolTrue():
-    case loadAs[bool]("true"):
+    case load[bool]("true"):
       Ok(b):
         expect(b).toEq(true)
       Err(e):
-        fail("loadAs[bool] true failed: " + e.message)
+        fail("load[bool] true failed: " + e.message)
 
-  @it("should parse bool false via loadAs[bool]")
+  @it("should parse bool false via load[bool]")
   fn shouldLoadAsBoolFalse():
-    case loadAs[bool]("false"):
+    case load[bool]("false"):
       Ok(b):
         expect(b).toEq(false)
       Err(e):
-        fail("loadAs[bool] false failed: " + e.message)
+        fail("load[bool] false failed: " + e.message)
 
-  @it("should propagate parse error via loadAs[int]")
+  @it("should propagate parse error via load[int]")
   fn shouldPropagateParseError():
-    case loadAs[int]("{not json}"):
+    case load[int]("{not json}"):
       Ok(_):
         fail("expected parse error for invalid JSON")
       Err(e):
-        # loadAs propagates the load() error via `?`, so the message
-        # comes from the parser. Only assert that an error returned
-        # with a non-empty message.
+        # load[int] propagates the underlying parser error before the
+        # coerce step, so the message comes from the parser. Only assert
+        # that an error returned with a non-empty message.
         expect(byteLen(e.message) > 0).toEq(true)
 
-@describe("json loadAs[T] — collections")
+@describe("json load[T] — collections")
 fn jsonLoadAsCollectionTests():
-  @it("should parse List<any> via loadAs")
+  @it("should parse List<any> via load")
   fn shouldLoadAsListOfAny():
-    case loadAs[List<any>]("[1, 2, 3]"):
+    case load[List<any>]("[1, 2, 3]"):
       Ok(xs):
         expect(len(xs)).toEq(3)
       Err(e):
-        fail("loadAs[List<any>] failed: " + e.message)
+        fail("load[List<any>] failed: " + e.message)
 
-  @it("should parse empty List<any> via loadAs")
+  @it("should parse empty List<any> via load")
   fn shouldLoadAsEmptyList():
-    case loadAs[List<any>]("[]"):
+    case load[List<any>]("[]"):
       Ok(xs):
         expect(len(xs)).toEq(0)
       Err(e):
-        fail("loadAs[List<any>] [] failed: " + e.message)
+        fail("load[List<any>] [] failed: " + e.message)
 
-  @it("should parse Map<str, any> via loadAs")
+  @it("should parse Map<str, any> via load")
   fn shouldLoadAsMapStrAny():
-    case loadAs[Map<str, any>]("{\"a\": 1, \"b\": 2}"):
+    case load[Map<str, any>]("{\"a\": 1, \"b\": 2}"):
       Ok(m):
         expect(len(m)).toEq(2)
       Err(e):
-        fail("loadAs[Map<str, any>] failed: " + e.message)
+        fail("load[Map<str, any>] failed: " + e.message)
 
-  @it("should parse empty Map<str, any> via loadAs")
+  @it("should parse empty Map<str, any> via load")
   fn shouldLoadAsEmptyMap():
-    case loadAs[Map<str, any>]("{}"):
+    case load[Map<str, any>]("{}"):
       Ok(m):
         expect(len(m)).toEq(0)
       Err(e):
-        fail("loadAs[Map<str, any>] {} failed: " + e.message)
+        fail("load[Map<str, any>] {} failed: " + e.message)
 
 @describe("json NUL round-trip")
 fn jsonNulRoundTripTests():
-  @it("should parse \\u0000 in a string value via loadAs[str]")
+  @it("should parse \\u0000 in a string value via load[str]")
   fn shouldParseU0000InAStringValue():
-    case loadAs[str]("\"a\\u0000b\""):
+    case load[str]("\"a\\u0000b\""):
       Ok(s):
         expect(byteLen(s)).toEq(3)
         expect(s == "a\0b").toEq(true)
       Err(e):
-        fail("loadAs[str] failed: " + e.message)
+        fail("load[str] failed: " + e.message)
 
   @it("should stringify NUL back to \\u0000")
   fn shouldStringifyNulBackToU0000():
-    case load("\"a\\u0000b\""):
+    case load[str]("\"a\\u0000b\""):
       Ok(v):
         expect(stringify(v)).toEq("\"a\\u0000b\"")
       Err(e):
@@ -362,7 +363,7 @@ fn jsonNulRoundTripTests():
 
   @it("should round-trip NUL in object value")
   fn shouldRoundTripNulInObjectValue():
-    case load("{\"k\":\"a\\u0000b\"}"):
+    case load[Map<str, any>]("{\"k\":\"a\\u0000b\"}"):
       Ok(v):
         expect(stringify(v)).toEq("{\"k\":\"a\\u0000b\"}")
       Err(e):
@@ -370,7 +371,7 @@ fn jsonNulRoundTripTests():
 
   @it("should round-trip NUL in object key")
   fn shouldRoundTripNulInObjectKey():
-    case load("{\"k\\u0000x\":1}"):
+    case load[Map<str, any>]("{\"k\\u0000x\":1}"):
       Ok(v):
         expect(stringify(v)).toEq("{\"k\\u0000x\":1}")
       Err(e):
@@ -378,7 +379,7 @@ fn jsonNulRoundTripTests():
 
   @it("should round-trip NUL in array element")
   fn shouldRoundTripNulInArrayElement():
-    case load("[\"a\\u0000b\",\"c\"]"):
+    case load[List<any>]("[\"a\\u0000b\",\"c\"]"):
       Ok(v):
         expect(stringify(v)).toEq("[\"a\\u0000b\",\"c\"]")
       Err(e):
@@ -386,11 +387,11 @@ fn jsonNulRoundTripTests():
 
   @it("should disambiguate keys that share prefix up to NUL")
   fn shouldDisambiguateKeysThatSharePrefixUpToNul():
-    case loadAs[Map<str, any>]("{\"k\\u0000a\":1,\"k\\u0000b\":2}"):
+    case load[Map<str, any>]("{\"k\\u0000a\":1,\"k\\u0000b\":2}"):
       Ok(m):
         expect(len(m)).toEq(2)
       Err(e):
-        fail("loadAs[Map<str, any>] failed: " + e.message)
+        fail("load[Map<str, any>] failed: " + e.message)
 
 @describe("json parse depth limit")
 fn jsonParseDepthLimitTests():
@@ -398,7 +399,7 @@ fn jsonParseDepthLimitTests():
   fn shouldRejectDeeplyNestedArrays():
     # depth 257 = MAX_NESTING_DEPTH (256) + 1
     deep = repeat("[", 257) + repeat("]", 257)
-    case load(deep):
+    case load[List<any>](deep):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -408,7 +409,7 @@ fn jsonParseDepthLimitTests():
   fn shouldRejectDeeplyNestedObjects():
     # depth 257 of {"a": ... } nesting
     deep = repeat("{\"a\":", 257) + "1" + repeat("}", 257)
-    case load(deep):
+    case load[Map<str, any>](deep):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -421,7 +422,7 @@ fn jsonParseDepthLimitTests():
     open = repeat("[{\"a\":", pairs)
     close = repeat("}]", pairs)
     deep = open + "1" + close
-    case load(deep):
+    case load[List<any>](deep):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -431,7 +432,7 @@ fn jsonParseDepthLimitTests():
   fn shouldAcceptNestingAtExactlyTheDepthLimit():
     # depth 256 = MAX_NESTING_DEPTH (boundary - 1, inclusive)
     deep = repeat("[", 256) + repeat("]", 256)
-    case load(deep):
+    case load[List<any>](deep):
       Ok(_):
         0
       Err(e):
@@ -442,7 +443,7 @@ fn jsonLoadErrorPositionTests():
   @it("should report line/column/offset for malformed input")
   fn shouldReportLineColumnOffsetForMalformedInput():
     # {not json}: parse_object sees 'n' at byte offset 1 (column 2)
-    case load("{not json}"):
+    case load[Map<str, any>]("{not json}"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -452,7 +453,7 @@ fn jsonLoadErrorPositionTests():
   @it("should report line 3 for multi-line malformed input")
   fn shouldReportLine3ForMultiLineMalformedInput():
     # 'invalid' starts at byte 13, on line 3, column 3
-    case load("{\n  \"key\":\n  invalid\n}"):
+    case load[Map<str, any>]("{\n  \"key\":\n  invalid\n}"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -465,7 +466,7 @@ fn jsonLoadErrorPositionTests():
     # ["日本語", invalid]
     # codepoint columns: [ " 日 本 語 " , space i → 'i' at column 9
     # byte offset: 0 1 2-4 5-7 8-10 11 12 13 14 → 'i' at byte 14
-    case load("[\"日本語\", invalid]"):
+    case load[List<any>]("[\"日本語\", invalid]"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -474,7 +475,7 @@ fn jsonLoadErrorPositionTests():
 
   @it("should report line 1 column 1 offset 0 at start of input")
   fn shouldReportLine1Column1Offset0AtStartOfInput():
-    case load("x"):
+    case load[int]("x"):
       Ok(_):
         fail("expected Err but got Ok")
       Err(e):
@@ -490,14 +491,14 @@ fn jsonFileOverloadsTests():
       Err(e): fail("setup writeText failed: " + e.message)
     case open("/tmp/ry_1854_load_object.json", "r"):
       Ok(file):
-        case load(file):
+        case load[Map<str, any>](file):
           Ok(v):
             s: str = stringify(v)
             expect(s).toEq("{\"name\":\"alice\",\"age\":30}")
             close(file)
           Err(e):
             close(file)
-            fail("load(File) failed: " + e.message)
+            fail("load[Map<str, any>](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
@@ -508,14 +509,14 @@ fn jsonFileOverloadsTests():
       Err(e): fail("setup writeText failed: " + e.message)
     case open("/tmp/ry_1854_load_array.json", "r"):
       Ok(file):
-        case load(file):
+        case load[List<any>](file):
           Ok(v):
             s: str = stringify(v)
             expect(s).toEq("[1,2,3]")
             close(file)
           Err(e):
             close(file)
-            fail("load(File) array failed: " + e.message)
+            fail("load[List<any>](File) array failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
@@ -526,7 +527,7 @@ fn jsonFileOverloadsTests():
       Err(e): fail("setup writeText failed: " + e.message)
     case open("/tmp/ry_1854_load_bad.json", "r"):
       Ok(file):
-        case load(file):
+        case load[Map<str, any>](file):
           Ok(_):
             close(file)
             fail("expected Err but got Ok")
@@ -544,7 +545,7 @@ fn jsonFileOverloadsTests():
     case open("/tmp/ry_1854_closed.json", "r"):
       Ok(file):
         close(file)
-        case load(file):
+        case load[Map<str, any>](file):
           Ok(_):
             fail("expected Err but got Ok after close")
           Err(e):
@@ -612,7 +613,7 @@ fn jsonFileOverloadsTests():
         fail("open w failed: " + e.message)
     case open("/tmp/ry_1854_roundtrip.json", "r"):
       Ok(file):
-        case load(file):
+        case load[Map<str, any>](file):
           Ok(v):
             s: str = stringify(v)
             expect(s).toEq("{\"hello\":\"world\",\"name\":\"alice\"}")
@@ -623,68 +624,68 @@ fn jsonFileOverloadsTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-@describe("json loadAs[T] — File overloads (#1854 + #1874)")
+@describe("json load[T] — File overloads (#1854 + #1874)")
 fn jsonLoadAsFileOverloadsTests():
-  @it("should parse int directly via loadAs[int](File)")
+  @it("should parse int directly via load[int](File)")
   fn shouldLoadAsIntFromFile():
-    case writeText("/tmp/ry_1854_loadas_int.json", "42"):
+    case writeText("/tmp/ry_1854_load_int.json", "42"):
       Ok(_): 0
       Err(e): fail("setup writeText failed: " + e.message)
-    case open("/tmp/ry_1854_loadas_int.json", "r"):
+    case open("/tmp/ry_1854_load_int.json", "r"):
       Ok(file):
-        case loadAs[int](file):
+        case load[int](file):
           Ok(n):
             expect(n).toEq(42)
             close(file)
           Err(e):
             close(file)
-            fail("loadAs[int](File) failed: " + e.message)
+            fail("load[int](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should parse str via loadAs[str](File)")
+  @it("should parse str via load[str](File)")
   fn shouldLoadAsStrFromFile():
-    case writeText("/tmp/ry_1854_loadas_str.json", "\"hello\""):
+    case writeText("/tmp/ry_1854_load_str.json", "\"hello\""):
       Ok(_): 0
       Err(e): fail("setup writeText failed: " + e.message)
-    case open("/tmp/ry_1854_loadas_str.json", "r"):
+    case open("/tmp/ry_1854_load_str.json", "r"):
       Ok(file):
-        case loadAs[str](file):
+        case load[str](file):
           Ok(s):
             expect(s).toEq("hello")
             close(file)
           Err(e):
             close(file)
-            fail("loadAs[str](File) failed: " + e.message)
+            fail("load[str](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should parse Map<str, any> via loadAs[Map<str, any>](File)")
+  @it("should parse Map<str, any> via load[Map<str, any>](File)")
   fn shouldLoadAsMapFromFile():
-    case writeText("/tmp/ry_1854_loadas_map.json", "{\"name\":\"alice\",\"age\":30}"):
+    case writeText("/tmp/ry_1854_load_map.json", "{\"name\":\"alice\",\"age\":30}"):
       Ok(_): 0
       Err(e): fail("setup writeText failed: " + e.message)
-    case open("/tmp/ry_1854_loadas_map.json", "r"):
+    case open("/tmp/ry_1854_load_map.json", "r"):
       Ok(file):
-        case loadAs[Map<str, any>](file):
+        case load[Map<str, any>](file):
           Ok(m):
             s: str = stringify(m)
             expect(s).toEq("{\"name\":\"alice\",\"age\":30}")
             close(file)
           Err(e):
             close(file)
-            fail("loadAs[Map](File) failed: " + e.message)
+            fail("load[Map](File) failed: " + e.message)
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should propagate parse error from File via loadAs[int](File)")
+  @it("should propagate parse error from File via load[int](File)")
   fn shouldPropagateParseErrorViaLoadAsFile():
-    case writeText("/tmp/ry_1854_loadas_bad.json", "{not json}"):
+    case writeText("/tmp/ry_1854_load_bad.json", "{not json}"):
       Ok(_): 0
       Err(e): fail("setup writeText failed: " + e.message)
-    case open("/tmp/ry_1854_loadas_bad.json", "r"):
+    case open("/tmp/ry_1854_load_bad.json", "r"):
       Ok(file):
-        case loadAs[int](file):
+        case load[int](file):
           Ok(_):
             close(file)
             fail("expected Err but got Ok")
@@ -694,24 +695,26 @@ fn jsonLoadAsFileOverloadsTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-  @it("should keep loadAs[T](str) overload working alongside File overload")
+  @it("should keep load[T](str) overload working alongside File overload")
   fn shouldRouteStrOverloadAlongsideFileOverload():
-    case loadAs[int]("99"):
+    case load[int]("99"):
       Ok(n):
         expect(n).toEq(99)
       Err(e):
-        fail("loadAs[int](str) regression: " + e.message)
+        fail("load[int](str) regression: " + e.message)
 
-# Diagnostic non-generic wrapper to isolate whether the bug is in
-# generic monomorphization or in @native overload-by-arg-type resolution
-# within an ordinary fn body.
+# Diagnostic wrapper to confirm `load[T](f: File)` resolves correctly
+# from inside a non-generic function body (i.e. the explicit-typearg
+# dispatch path #1854 fixed is reachable even when the surrounding fn
+# is not itself generic). #1887 removed the non-generic `load(f)`
+# overload, so the explicit `[int]` here is the only legal form.
 fn diagLoadIntFromFile(f: File) -> Result<int, Error>:
-  v: int = load(f)?
+  v: int = load[int](f)?
   return Ok(v)
 
-@describe("json diag — load(File) from non-generic fn body")
+@describe("json diag — load[T](File) from non-generic fn body")
 fn jsonDiagLoadFromFnBodyTests():
-  @it("should resolve load(f: File) when called from a non-generic fn body")
+  @it("should resolve load[T](f: File) when called from a non-generic fn body")
   fn shouldResolveLoadFileFromFnBody():
     case writeText("/tmp/ry_1854_diag.json", "777"):
       Ok(_): 0
@@ -728,7 +731,7 @@ fn jsonDiagLoadFromFnBodyTests():
       Err(e):
         fail("open r failed: " + e.message)
 
-# Records for #1852 — loadAs[T] reconstruction of user-defined records and
+# Records for #1852 — load[T] reconstruction of user-defined records and
 # typed collections. Prefixed with Json1852 to avoid colliding with other
 # record names in this file or in tests imported alongside it.
 
@@ -740,29 +743,29 @@ record Json1852Address:
   person: Json1852Person
   city: str
 
-@describe("json loadAs[T] — flat record reconstruction (#1852)")
+@describe("json load[T] — flat record reconstruction (#1852)")
 fn jsonLoadAsFlatRecordTests():
   @it("should reconstruct a flat record from a JSON object")
   fn shouldReconstructFlatRecord():
-    case loadAs[Json1852Person]("{\"name\": \"alice\", \"age\": 30}"):
+    case load[Json1852Person]("{\"name\": \"alice\", \"age\": 30}"):
       Ok(p):
         expect(p.name).toEq("alice")
         expect(p.age).toEq(30)
       Err(e):
-        fail("loadAs[Json1852Person] failed: " + e.message)
+        fail("load[Json1852Person] failed: " + e.message)
 
   @it("should accept fields in any order")
   fn shouldAcceptFieldsInAnyOrder():
-    case loadAs[Json1852Person]("{\"age\": 7, \"name\": \"bob\"}"):
+    case load[Json1852Person]("{\"age\": 7, \"name\": \"bob\"}"):
       Ok(p):
         expect(p.name).toEq("bob")
         expect(p.age).toEq(7)
       Err(e):
-        fail("loadAs[Json1852Person] reorder failed: " + e.message)
+        fail("load[Json1852Person] reorder failed: " + e.message)
 
   @it("should return Err when a required field is missing")
   fn shouldReturnErrWhenRequiredFieldMissing():
-    case loadAs[Json1852Person]("{\"name\": \"carol\"}"):
+    case load[Json1852Person]("{\"name\": \"carol\"}"):
       Ok(_):
         fail("expected Err for missing 'age' field")
       Err(e):
@@ -771,7 +774,7 @@ fn jsonLoadAsFlatRecordTests():
 
   @it("should return Err when a field has the wrong type")
   fn shouldReturnErrWhenFieldHasWrongType():
-    case loadAs[Json1852Person]("{\"name\": 42, \"age\": 1}"):
+    case load[Json1852Person]("{\"name\": 42, \"age\": 1}"):
       Ok(_):
         fail("expected Err for wrong-typed 'name' field")
       Err(e):
@@ -779,7 +782,7 @@ fn jsonLoadAsFlatRecordTests():
 
   @it("should return Err when input is not a JSON object")
   fn shouldReturnErrWhenInputNotObject():
-    case loadAs[Json1852Person]("[1, 2, 3]"):
+    case load[Json1852Person]("[1, 2, 3]"):
       Ok(_):
         fail("expected Err for array input")
       Err(e):
@@ -787,29 +790,29 @@ fn jsonLoadAsFlatRecordTests():
 
   @it("should return Err when input is a primitive")
   fn shouldReturnErrWhenInputIsPrimitive():
-    case loadAs[Json1852Person]("42"):
+    case load[Json1852Person]("42"):
       Ok(_):
         fail("expected Err for primitive input")
       Err(e):
         expect(e.message).toContain("JSON object")
 
-@describe("json loadAs[T] — nested record reconstruction (#1852)")
+@describe("json load[T] — nested record reconstruction (#1852)")
 fn jsonLoadAsNestedRecordTests():
   @it("should reconstruct a record whose field is itself a record")
   fn shouldReconstructNestedRecord():
     text = "{\"person\": {\"name\": \"dan\", \"age\": 9}, \"city\": \"tokyo\"}"
-    case loadAs[Json1852Address](text):
+    case load[Json1852Address](text):
       Ok(a):
         expect(a.city).toEq("tokyo")
         expect(a.person.name).toEq("dan")
         expect(a.person.age).toEq(9)
       Err(e):
-        fail("loadAs[Json1852Address] failed: " + e.message)
+        fail("load[Json1852Address] failed: " + e.message)
 
   @it("should return Err when the nested record is missing a field")
   fn shouldReturnErrWhenNestedFieldMissing():
     text = "{\"person\": {\"name\": \"eve\"}, \"city\": \"tokyo\"}"
-    case loadAs[Json1852Address](text):
+    case load[Json1852Address](text):
       Ok(_):
         fail("expected Err for nested missing 'age'")
       Err(e):
@@ -819,7 +822,7 @@ fn jsonLoadAsNestedRecordTests():
   @it("should return Err when the nested record is the wrong shape")
   fn shouldReturnErrWhenNestedRecordWrongShape():
     text = "{\"person\": [1, 2], \"city\": \"tokyo\"}"
-    case loadAs[Json1852Address](text):
+    case load[Json1852Address](text):
       Ok(_):
         fail("expected Err for non-object nested 'person'")
       Err(e):
@@ -828,19 +831,19 @@ fn jsonLoadAsNestedRecordTests():
   @it("should return Err when the outer field is missing")
   fn shouldReturnErrWhenOuterFieldMissing():
     text = "{\"person\": {\"name\": \"fay\", \"age\": 1}}"
-    case loadAs[Json1852Address](text):
+    case load[Json1852Address](text):
       Ok(_):
         fail("expected Err for missing 'city'")
       Err(e):
         expect(e.message).toContain("'city'")
         expect(e.message).toContain("missing")
 
-@describe("json loadAs[T] — typed List<Record> (#1852)")
+@describe("json load[T] — typed List<Record> (#1852)")
 fn jsonLoadAsListRecordTests():
   @it("should reconstruct a List<Record> from a JSON array of objects")
   fn shouldReconstructListOfRecords():
     text = "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2}]"
-    case loadAs[List<Json1852Person>](text):
+    case load[List<Json1852Person>](text):
       Ok(xs):
         expect(len(xs)).toEq(2)
         expect(xs[0].name).toEq("a")
@@ -848,20 +851,20 @@ fn jsonLoadAsListRecordTests():
         expect(xs[1].name).toEq("b")
         expect(xs[1].age).toEq(2)
       Err(e):
-        fail("loadAs[List<Json1852Person>] failed: " + e.message)
+        fail("load[List<Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct an empty List<Record>")
   fn shouldReconstructEmptyListOfRecords():
-    case loadAs[List<Json1852Person>]("[]"):
+    case load[List<Json1852Person>]("[]"):
       Ok(xs):
         expect(len(xs)).toEq(0)
       Err(e):
-        fail("loadAs[List<Json1852Person>] [] failed: " + e.message)
+        fail("load[List<Json1852Person>] [] failed: " + e.message)
 
   @it("should return Err when an element is missing a field")
   fn shouldReturnErrWhenListElementMissingField():
     text = "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\"}]"
-    case loadAs[List<Json1852Person>](text):
+    case load[List<Json1852Person>](text):
       Ok(_):
         fail("expected Err for element missing 'age'")
       Err(e):
@@ -870,18 +873,18 @@ fn jsonLoadAsListRecordTests():
 
   @it("should return Err when the JSON value is not an array")
   fn shouldReturnErrWhenInputNotArrayForListOfRecord():
-    case loadAs[List<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
+    case load[List<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
       Ok(_):
         fail("expected Err for non-array input")
       Err(e):
         expect(e.message).toContain("JSON array")
 
-@describe("json loadAs[T] — typed Map<str, Record> (#1852)")
+@describe("json load[T] — typed Map<str, Record> (#1852)")
 fn jsonLoadAsMapRecordTests():
   @it("should reconstruct a Map<str, Record> from a JSON object of objects")
   fn shouldReconstructMapOfRecords():
     text = "{\"x\":{\"name\":\"a\",\"age\":1},\"y\":{\"name\":\"b\",\"age\":2}}"
-    case loadAs[Map<str, Json1852Person>](text):
+    case load[Map<str, Json1852Person>](text):
       Ok(m):
         expect(len(m)).toEq(2)
         expect(m["x"].name).toEq("a")
@@ -889,20 +892,20 @@ fn jsonLoadAsMapRecordTests():
         expect(m["y"].name).toEq("b")
         expect(m["y"].age).toEq(2)
       Err(e):
-        fail("loadAs[Map<str, Json1852Person>] failed: " + e.message)
+        fail("load[Map<str, Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct an empty Map<str, Record>")
   fn shouldReconstructEmptyMapOfRecords():
-    case loadAs[Map<str, Json1852Person>]("{}"):
+    case load[Map<str, Json1852Person>]("{}"):
       Ok(m):
         expect(len(m)).toEq(0)
       Err(e):
-        fail("loadAs[Map<str, Json1852Person>] {} failed: " + e.message)
+        fail("load[Map<str, Json1852Person>] {} failed: " + e.message)
 
   @it("should return Err when a value is missing a field")
   fn shouldReturnErrWhenMapValueMissingField():
     text = "{\"x\":{\"name\":\"a\",\"age\":1},\"y\":{\"name\":\"b\"}}"
-    case loadAs[Map<str, Json1852Person>](text):
+    case load[Map<str, Json1852Person>](text):
       Ok(_):
         fail("expected Err for value missing 'age'")
       Err(e):
@@ -911,17 +914,17 @@ fn jsonLoadAsMapRecordTests():
 
   @it("should return Err when the JSON value is not an object")
   fn shouldReturnErrWhenInputNotObjectForMapOfRecord():
-    case loadAs[Map<str, Json1852Person>]("[1, 2, 3]"):
+    case load[Map<str, Json1852Person>]("[1, 2, 3]"):
       Ok(_):
         fail("expected Err for non-object input")
       Err(e):
         expect(e.message).toContain("JSON object")
 
-@describe("json loadAs[T] — Option<Record> (#1852)")
+@describe("json load[T] — Option<Record> (#1852)")
 fn jsonLoadAsOptionRecordTests():
   @it("should reconstruct Some(Record) when JSON value is an object")
   fn shouldReconstructSomeRecord():
-    case loadAs[Option<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
+    case load[Option<Json1852Person>]("{\"name\":\"a\",\"age\":1}"):
       Ok(opt):
         gotSome = false
         case opt:
@@ -933,11 +936,11 @@ fn jsonLoadAsOptionRecordTests():
             fail("expected Some(...) but got None")
         expect(gotSome).toEq(true)
       Err(e):
-        fail("loadAs[Option<Json1852Person>] failed: " + e.message)
+        fail("load[Option<Json1852Person>] failed: " + e.message)
 
   @it("should reconstruct None when JSON value is null")
   fn shouldReconstructNoneFromNull():
-    case loadAs[Option<Json1852Person>]("null"):
+    case load[Option<Json1852Person>]("null"):
       Ok(opt):
         gotNone = false
         case opt:
@@ -947,11 +950,11 @@ fn jsonLoadAsOptionRecordTests():
             gotNone = true
         expect(gotNone).toEq(true)
       Err(e):
-        fail("loadAs[Option<Json1852Person>] null failed: " + e.message)
+        fail("load[Option<Json1852Person>] null failed: " + e.message)
 
   @it("should return Err when JSON value is neither object nor null")
   fn shouldReturnErrWhenInputNeitherObjectNorNullForOption():
-    case loadAs[Option<Json1852Person>]("42"):
+    case load[Option<Json1852Person>]("42"):
       Ok(_):
         fail("expected Err for primitive input")
       Err(e):
@@ -960,7 +963,7 @@ fn jsonLoadAsOptionRecordTests():
 
   @it("should return Err when the inner object is missing a field")
   fn shouldReturnErrWhenInnerOptionRecordMissingField():
-    case loadAs[Option<Json1852Person>]("{\"name\":\"a\"}"):
+    case load[Option<Json1852Person>]("{\"name\":\"a\"}"):
       Ok(_):
         fail("expected Err for inner missing 'age'")
       Err(e):
@@ -1000,7 +1003,7 @@ fn jsonStringifySafeHappyPathTests():
 
   @it("should Ok for List<any> matching stringify")
   fn shouldStringifySafeMatchListAny():
-    case load("[1,2,3]"):
+    case load[List<any>]("[1,2,3]"):
       Ok(v):
         case stringifySafe(v):
           Ok(s): expect(s).toEq(stringify(v))
@@ -1010,7 +1013,7 @@ fn jsonStringifySafeHappyPathTests():
 
   @it("should Ok for Map<str, any> matching stringify")
   fn shouldStringifySafeMatchMapAny():
-    case load("{\"a\":1,\"b\":2}"):
+    case load[Map<str, any>]("{\"a\":1,\"b\":2}"):
       Ok(v):
         case stringifySafe(v):
           Ok(s): expect(s).toEq(stringify(v))
@@ -1020,7 +1023,7 @@ fn jsonStringifySafeHappyPathTests():
 
   @it("should accept indent argument like stringify")
   fn shouldStringifySafeAcceptIndent():
-    case load("[1,2]"):
+    case load[List<any>]("[1,2]"):
       Ok(v):
         case stringifySafe(v, 2):
           Ok(s): expect(s).toEq("[\n  1,\n  2\n]")
@@ -1106,7 +1109,7 @@ fn jsonStringifySafeUnsupportedTests():
 fn jsonStringifySortedTests():
   @it("should sort top-level Map keys by byte order")
   fn shouldSortTopLevelKeys():
-    case load("{\"c\":1,\"a\":2,\"b\":3}"):
+    case load[Map<str, any>]("{\"c\":1,\"a\":2,\"b\":3}"):
       Ok(v):
         expect(stringifySorted(v)).toEq("{\"a\":2,\"b\":3,\"c\":1}")
       Err(e):
@@ -1114,7 +1117,7 @@ fn jsonStringifySortedTests():
 
   @it("should sort nested Map keys recursively")
   fn shouldSortNestedKeys():
-    case load("{\"z\":{\"y\":1,\"x\":2},\"a\":1}"):
+    case load[Map<str, any>]("{\"z\":{\"y\":1,\"x\":2},\"a\":1}"):
       Ok(v):
         expect(stringifySorted(v)).toEq("{\"a\":1,\"z\":{\"x\":2,\"y\":1}}")
       Err(e):
@@ -1122,7 +1125,7 @@ fn jsonStringifySortedTests():
 
   @it("should sort keys inside list elements")
   fn shouldSortInsideListElements():
-    case load("[{\"b\":1,\"a\":2},{\"d\":3,\"c\":4}]"):
+    case load[List<any>]("[{\"b\":1,\"a\":2},{\"d\":3,\"c\":4}]"):
       Ok(v):
         expect(stringifySorted(v)).toEq("[{\"a\":2,\"b\":1},{\"c\":4,\"d\":3}]")
       Err(e):
@@ -1130,7 +1133,7 @@ fn jsonStringifySortedTests():
 
   @it("should preserve sorted order under pretty-print indent")
   fn shouldSortUnderIndent():
-    case load("{\"b\":1,\"a\":2}"):
+    case load[Map<str, any>]("{\"b\":1,\"a\":2}"):
       Ok(v):
         expect(stringifySorted(v, 2)).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
       Err(e):
@@ -1138,7 +1141,7 @@ fn jsonStringifySortedTests():
 
   @it("should leave empty map as {}")
   fn shouldEmptyMap():
-    case load("{}"):
+    case load[Map<str, any>]("{}"):
       Ok(v):
         expect(stringifySorted(v)).toEq("{}")
       Err(e):
@@ -1146,7 +1149,7 @@ fn jsonStringifySortedTests():
 
   @it("should preserve list element order")
   fn shouldPreserveListOrder():
-    case load("[3,1,2]"):
+    case load[List<any>]("[3,1,2]"):
       Ok(v):
         expect(stringifySorted(v)).toEq("[3,1,2]")
       Err(e):
@@ -1160,7 +1163,7 @@ fn jsonStringifySortedTests():
   @it("should sort keys that share a NUL-containing prefix")
   fn shouldSortKeysWithNul():
     # NUL byte sorts before regular ASCII; "k\0a" < "k\0b".
-    case load("{\"k\\u0000b\":1,\"k\\u0000a\":2}"):
+    case load[Map<str, any>]("{\"k\\u0000b\":1,\"k\\u0000a\":2}"):
       Ok(v):
         expect(stringifySorted(v)).toEq("{\"k\\u0000a\":2,\"k\\u0000b\":1}")
       Err(e):
@@ -1170,7 +1173,7 @@ fn jsonStringifySortedTests():
 fn jsonStringifySortedSafeTests():
   @it("should Ok with sorted output for normal input")
   fn shouldSortedSafeOk():
-    case load("{\"c\":1,\"a\":2}"):
+    case load[Map<str, any>]("{\"c\":1,\"a\":2}"):
       Ok(v):
         case stringifySortedSafe(v):
           Ok(s): expect(s).toEq("{\"a\":2,\"c\":1}")
@@ -1191,7 +1194,7 @@ fn jsonStringifySortedSafeTests():
 
   @it("should Ok with indent and sorted keys")
   fn shouldSortedSafeIndent():
-    case load("{\"b\":1,\"a\":2}"):
+    case load[Map<str, any>]("{\"b\":1,\"a\":2}"):
       Ok(v):
         case stringifySortedSafe(v, 2):
           Ok(s): expect(s).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
@@ -1203,7 +1206,7 @@ fn jsonStringifySortedSafeTests():
 fn jsonLoadErrorPositionCoverageTests():
   @it("should report position for unexpected end of input")
   fn shouldReportPositionForUnexpectedEndOfInput():
-    case load(""):
+    case load[int](""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unexpected end of input at")).toEq(true)
@@ -1212,7 +1215,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unterminated string escape")
   fn shouldReportPositionForUnterminatedStringEscape():
-    case load("\"\\"):
+    case load[str]("\"\\"):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unterminated string escape at")).toEq(true)
@@ -1220,7 +1223,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for incomplete unicode escape")
   fn shouldReportPositionForIncompleteUnicodeEscape():
-    case load("\"\\u00\""):
+    case load[str]("\"\\u00\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "incomplete unicode escape at")).toEq(true)
@@ -1228,7 +1231,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for invalid hex digit in unicode escape")
   fn shouldReportPositionForInvalidHexDigitInUnicodeEscape():
-    case load("\"\\uZZZZ\""):
+    case load[str]("\"\\uZZZZ\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "invalid hex digit in unicode escape at")).toEq(true)
@@ -1236,7 +1239,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unpaired high surrogate")
   fn shouldReportPositionForUnpairedHighSurrogate():
-    case load("\"\\uD800\""):
+    case load[str]("\"\\uD800\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unpaired high surrogate in unicode escape at")).toEq(true)
@@ -1244,7 +1247,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for invalid low surrogate")
   fn shouldReportPositionForInvalidLowSurrogate():
-    case load("\"\\uD800\\u0041\""):
+    case load[str]("\"\\uD800\\u0041\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "invalid low surrogate in unicode escape at")).toEq(true)
@@ -1252,7 +1255,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unpaired low surrogate")
   fn shouldReportPositionForUnpairedLowSurrogate():
-    case load("\"\\uDC00\""):
+    case load[str]("\"\\uDC00\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unpaired low surrogate in unicode escape at")).toEq(true)
@@ -1260,7 +1263,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for invalid escape character")
   fn shouldReportPositionForInvalidEscapeCharacter():
-    case load("\"\\q\""):
+    case load[str]("\"\\q\""):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "invalid escape character")).toEq(true)
@@ -1268,7 +1271,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unterminated string")
   fn shouldReportPositionForUnterminatedString():
-    case load("\"hello"):
+    case load[str]("\"hello"):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unterminated string at")).toEq(true)
@@ -1276,7 +1279,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for invalid number missing digit after decimal point")
   fn shouldReportPositionForInvalidNumberDecimal():
-    case load("1."):
+    case load[float]("1."):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "expected digit after decimal point at")).toEq(true)
@@ -1284,7 +1287,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for invalid number missing digit in exponent")
   fn shouldReportPositionForInvalidNumberExponent():
-    case load("1e"):
+    case load[float]("1e"):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "expected digit in exponent at")).toEq(true)
@@ -1293,7 +1296,7 @@ fn jsonLoadErrorPositionCoverageTests():
   @it("should report position for maximum nesting depth exceeded")
   fn shouldReportPositionForMaxNestingDepth():
     deep: str = repeat("[", 257)
-    case load(deep):
+    case load[List<any>](deep):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "maximum nesting depth exceeded at")).toEq(true)
@@ -1301,7 +1304,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unterminated array")
   fn shouldReportPositionForUnterminatedArray():
-    case load("[1, 2"):
+    case load[List<any>]("[1, 2"):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unterminated array at")).toEq(true)
@@ -1309,7 +1312,7 @@ fn jsonLoadErrorPositionCoverageTests():
 
   @it("should report position for unterminated object")
   fn shouldReportPositionForUnterminatedObject():
-    case load("{\"k\": 1"):
+    case load[Map<str, any>]("{\"k\": 1"):
       Ok(_): fail("expected Err but got Ok")
       Err(e):
         expect(contains(e.message, "unterminated object at")).toEq(true)

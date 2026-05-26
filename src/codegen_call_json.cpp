@@ -5,50 +5,7 @@
 
 namespace ry {
 
-// ===== JSON custom emitters (#1698: any-based API) =====
-
-// load(text: str) -> Result<any, Error>
-// load(f: File) -> Result<any, Error>      (#1854)
-//
-// Both runtime entry points share the same calling convention: int64_t status
-// (0 ok / non-zero err) with an out-param RyAny slot.  Selecting between
-// `__ry_json_parse_to_any` and `__ry_json_load_file` based on the arg type
-// means the resulting IR is identical for str and File overloads — only the
-// runtime symbol name differs.
-static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
-
-    const char *runtimeFn;
-    if (cg.isFile(arg0)) {
-        runtimeFn = "__ry_json_load_file";
-    } else {
-        if (arg0->getType() != cg.ptrTy_)
-            cg.codegenError("load() requires a str or File argument");
-        runtimeFn = "__ry_json_parse_to_any";
-    }
-
-    // Allocate a stack RyAny out-param and call <runtimeFn>(arg, &out).
-    llvm::AllocaInst *outSlot =
-        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_load_out");
-    llvm::Type *paramTys[] = {cg.ptrTy_, cg.ptrTy_};
-    auto *fnTy = llvm::FunctionType::get(cg.i64Ty_, paramTys, false);
-    auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
-    llvm::Value *status =
-        cg.builder_.CreateCall(fn, {arg0, outSlot}, "json_load_status");
-    llvm::Value *isErr = cg.builder_.CreateICmpNE(
-        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "json_load_err");
-
-    llvm::StructType *resTy = cg.getResultType(cg.anyTy_, cg.errorTy_);
-    return cg.emitResultBranch(
-        isErr, resTy,
-        [&]() {
-            llvm::Value *loaded =
-                cg.builder_.CreateLoad(cg.anyTy_, outSlot, "json_load_val");
-            return cg.buildOkValue(loaded, resTy);
-        },
-        [&]() { return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy); });
-}
+// ===== JSON custom emitters (#1698: any-based API; #1887: typed-only load) =====
 
 // Helper for stringify / stringifySafe / stringifySorted / stringifySortedSafe.
 // `runtimeFn`: the C entry point to call. `wrapResult`: whether to wrap the
@@ -112,16 +69,23 @@ static llvm::Value *emitJsonStringifySortedSafe(CodeGen &cg, const CallExpr &e) 
                                   /*wrapResult=*/true);
 }
 
-// loadAs[T](text: str) -> Result<T, Error>                   (#1852)
-// loadAs[T](f: File) -> Result<T, Error>
+// load[T](text: str) -> Result<T, Error>                  (#1852, #1887)
+// load[T](f: File) -> Result<T, Error>
 //
-// Parses JSON via the same runtime entry as `load`, then coerces the resulting
-// `any` to the concrete target type via `tryUnwrapFromAny` — which returns
-// `Err(Error)` on tag mismatch instead of panicking. The interceptor receives
-// the type-arg as a literal string (e.g. "Person", "List<Person>") extracted
-// from `e.callee` by `dispatchJson`.
-static llvm::Value *emitJsonLoadAs(CodeGen &cg, const CallExpr &e,
-                                    const std::string &typeArg) {
+// Parses JSON via `__ry_json_parse_to_any` / `__ry_json_load_file`, then
+// coerces the resulting `any` to the concrete target type via
+// `tryUnwrapFromAny` — which returns `Err(Error)` on tag mismatch instead of
+// panicking. The interceptor receives the type-arg as a literal string
+// (e.g. "Person", "List<Person>") extracted from `e.callee` by `dispatchJson`.
+//
+// #1887: the pre-existing non-generic `load() -> Result<any, Error>` form was
+// removed because it had no safe accessor. `T = any` is rejected by
+// `tryUnwrapFromAny` (anyTy_ is a non-record StructType and falls through to
+// the "non-record struct target not yet supported" branch); callers wanting
+// the historical `Map`/`List<any>` shape should pick `load[Map<str, any>]` or
+// `load[List<any>]` explicitly.
+static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
+                                 const std::string &typeArg) {
     cg.requireArgs(e, 1);
     llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
 
@@ -130,7 +94,7 @@ static llvm::Value *emitJsonLoadAs(CodeGen &cg, const CallExpr &e,
         runtimeFn = "__ry_json_load_file";
     } else {
         if (arg0->getType() != cg.ptrTy_)
-            cg.codegenError("loadAs() requires a str or File argument");
+            cg.codegenError("load[T]() requires a str or File argument");
         runtimeFn = "__ry_json_parse_to_any";
     }
 
@@ -138,20 +102,20 @@ static llvm::Value *emitJsonLoadAs(CodeGen &cg, const CallExpr &e,
     llvm::StructType *resTy = cg.getResultType(targetTy, cg.errorTy_);
 
     llvm::AllocaInst *outSlot =
-        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_loadas_out");
+        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_load_out");
     llvm::Type *paramTys[] = {cg.ptrTy_, cg.ptrTy_};
     auto *fnTy = llvm::FunctionType::get(cg.i64Ty_, paramTys, false);
     auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
     llvm::Value *status =
-        cg.builder_.CreateCall(fn, {arg0, outSlot}, "json_loadas_status");
+        cg.builder_.CreateCall(fn, {arg0, outSlot}, "json_load_status");
     llvm::Value *isParseErr = cg.builder_.CreateICmpNE(
-        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "json_loadas_parse_err");
+        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "json_load_parse_err");
 
     llvm::Value *result = cg.emitResultBranch(
         isParseErr, resTy,
         [&]() -> llvm::Value * {
             llvm::Value *anyVal = cg.builder_.CreateLoad(
-                cg.anyTy_, outSlot, "json_loadas_any");
+                cg.anyTy_, outSlot, "json_load_any");
             return cg.tryUnwrapFromAny(anyVal, targetTy, typeArg);
         },
         [&]() -> llvm::Value * {
@@ -213,7 +177,10 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     // arity field is metadata only when customEmitter is set — actual arity
     // dispatch happens via registered @native sigs at the custom-emitter gate
     // in emitTableDrivenNativeCall (see codegen_call_native.cpp).
-    {"load",                nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonLoad},
+    //
+    // `load[T]` is intercepted by `dispatchJson` via suffix match against
+    // `e.callee` (which is mangled to `load<T>` by the parser), so it has no
+    // entry in this table.
     {"stringify",           nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
     {"stringifySafe",       nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySafe},
     {"stringifySorted",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySorted},
@@ -231,22 +198,34 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     // codegen-stdlib-dispatcher.md #1856).
     cg.used_native_libraries_.insert("json");
 
-    // Intercept `loadAs[T](...)` calls (#1852). The parser uses `[T]` syntax for
-    // generic function calls at user-facing call sites, but constructs the
-    // internal callee representation with `<T>` (e.g. "loadAs<Person>",
-    // "loadAs<List<Person>>"), so we strip the `loadAs<` prefix and trailing
-    // `>` to recover the type-name. The interceptor runs before
+    // Intercept `load[T](...)` calls (#1852, #1887). The parser uses `[T]`
+    // syntax for generic function calls at user-facing call sites, but
+    // constructs the internal callee representation with `<T>` (e.g.
+    // "load<Person>", "load<List<Person>>"), so we strip the `load<` prefix
+    // and trailing `>` to recover the type-name. The interceptor runs before
     // `emitTableDrivenNativeCall` because the table's name-keyed exact match
     // does not handle the parametric suffix.
-    constexpr const char kLoadAsPrefix[] = "loadAs<";
-    constexpr size_t kLoadAsPrefixLen = sizeof(kLoadAsPrefix) - 1;
-    if (e.callee.size() > kLoadAsPrefixLen + 1 &&
-        e.callee.compare(0, kLoadAsPrefixLen, kLoadAsPrefix) == 0 &&
+    constexpr const char kLoadPrefix[] = "load<";
+    constexpr size_t kLoadPrefixLen = sizeof(kLoadPrefix) - 1;
+    if (e.callee.size() > kLoadPrefixLen + 1 &&
+        e.callee.compare(0, kLoadPrefixLen, kLoadPrefix) == 0 &&
         e.callee.back() == '>') {
         std::string typeArg = e.callee.substr(
-            kLoadAsPrefixLen,
-            e.callee.size() - kLoadAsPrefixLen - 1);
-        return emitJsonLoadAs(cg, e, typeArg);
+            kLoadPrefixLen,
+            e.callee.size() - kLoadPrefixLen - 1);
+        return emitJsonLoad(cg, e, typeArg);
+    }
+
+    // Reject bare `load(...)` without a type argument (#1887). The pre-#1887
+    // non-generic `load() -> Result<any, Error>` form was removed because it
+    // had no safe accessor; a friendly diagnostic here beats the generic
+    // "undefined function: load" that `emitTableDrivenNativeCall` would
+    // otherwise emit.
+    if (e.callee == "load") {
+        cg.codegenError(
+            "load() requires an explicit type argument: load[T](text|File). "
+            "Pick a concrete T such as load[Map<str, any>], load[List<any>], "
+            "or load[int]. load[any] is intentionally not supported (#1887).");
     }
 
     return cg.emitTableDrivenNativeCall(e, "json", json_table, std::size(json_table));

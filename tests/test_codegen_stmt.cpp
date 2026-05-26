@@ -2621,7 +2621,7 @@ TEST_F(CodeGenTest, NonStdlibUfcsStillRoutesToUndefinedFunction) {
 // `Result<any, _>` binds `v` with no source-level collection type info, so
 // allowing `xs: List<str> = v` silently re-strides the any payload as native
 // (SIGSEGV / silent corruption). Require the source type name to match the
-// annotation; otherwise reject with a `loadAs[T]` hint.
+// annotation; otherwise reject with a `load[T]` hint.
 // NB: `Ok(42)` does not auto-wrap into `any` at the Result-construction
 // boundary, so the helper wraps explicitly via `a: any = 42; return Ok(a)`
 // before returning.
@@ -2635,7 +2635,7 @@ TEST_F(CodeGenTest, AnyToTypedListStrFromResultRejected) {
         "        xs: List<str> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "loadAs");
+        "load");
 }
 
 TEST_F(CodeGenTest, AnyToTypedMapStrIntFromResultRejected) {
@@ -2648,7 +2648,7 @@ TEST_F(CodeGenTest, AnyToTypedMapStrIntFromResultRejected) {
         "        m: Map<str, int> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "loadAs");
+        "load");
 }
 
 TEST_F(CodeGenTest, AnyToTypedSetIntFromResultRejected) {
@@ -2661,7 +2661,7 @@ TEST_F(CodeGenTest, AnyToTypedSetIntFromResultRejected) {
         "        s: Set<int> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "loadAs");
+        "load");
 }
 
 // Whitelist: `List<any>` / `Set<any>` / `Map<str, any>` are always safe — the
@@ -2728,7 +2728,7 @@ TEST_F(CodeGenTest, AnyToTypedListConcreteSourceMismatchRejected) {
         "xs: List<int> = [1, 2, 3]\n"
         "a: any = xs\n"
         "ys: List<str> = a\n",
-        "loadAs");
+        "load");
 }
 
 TEST_F(CodeGenTest, AnyToTypedMapConcreteSourceMismatchRejected) {
@@ -2736,7 +2736,7 @@ TEST_F(CodeGenTest, AnyToTypedMapConcreteSourceMismatchRejected) {
         "m: Map<str, int> = {\"k\": 1}\n"
         "a: any = m\n"
         "n: Map<str, str> = a\n",
-        "loadAs");
+        "load");
 }
 
 TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
@@ -2744,5 +2744,5 @@ TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
         "s: Set<int> = {1, 2, 3}\n"
         "a: any = s\n"
         "t: Set<str> = a\n",
-        "loadAs");
+        "load");
 }

@@ -3,20 +3,24 @@
 JSON parsing and serialization. All functions require explicit import from `json`.
 
 ```ry
-from json import load, loadAs, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
+from json import load, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
 ```
 
 ## Overview
 
-The `json` module decodes JSON text directly into Ry's `any` type and
+The `json` module decodes JSON text into a caller-specified Ry type and
 encodes `any`-typed values back to JSON. `any` carries a runtime tag
 (`Null` / `Bool` / `Int` / `Float` / `Str` / `List<any>` /
 `Map<str, any>`), so parsed values participate in ordinary ARC and
 slot-coercion machinery — there is no opaque handle and no manual
-`free` step. `loadAs[T](text)` is a thin generic wrapper that parses
-once and then coerces the resulting `any` slot to `T`.
+`free` step. `load[T](text)` parses once and coerces the result to `T`;
+the type argument is required (#1887 removed the pre-#1852 non-generic
+`load(text) -> Result<any, Error>` form, which had no safe accessor
+into the resulting `any`). Pick a concrete `T` such as
+`load[Map<str, any>]` / `load[List<any>]` / `load[int]` /
+`load[Record]` — `load[any]` is intentionally not supported.
 
-`load(f: File)` and `dump(f: File, ...)` are File-handle convenience
+`load[T](f: File)` and `dump(f: File, ...)` are File-handle convenience
 overloads that fuse `io.readAll` / `io.writeText` with parsing /
 stringification in a single step.
 
@@ -24,10 +28,8 @@ stringification in a single step.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `load` | `(str) -> Result<any, Error>` | Parses a JSON string. On success, the `any` value's tag is `Null` / `Bool` / `Int` / `Float` / `Str` / `List<any>` / `Map<str, any>`. |
-| `load` | `(File) -> Result<any, Error>` | Reads from an open `File` handle and parses. Equivalent to `load(io.readAll(f)?)?`. Io errors are propagated as `Err`. |
-| `loadAs[T]` | `(str) -> Result<T, Error>` | Parses then coerces to `T` (see "Supported `T` in `loadAs`" below). |
-| `loadAs[T]` | `(File) -> Result<T, Error>` | Reads from an open `File` handle, parses, then coerces. Same `T` set as `loadAs[T](str)`. |
+| `load[T]` | `(str) -> Result<T, Error>` | Parses a JSON string then coerces to `T` (see "Supported `T` in `load[T]`" below). |
+| `load[T]` | `(File) -> Result<T, Error>` | Reads from an open `File` handle, parses, then coerces. Same `T` set as `load[T](str)`. |
 | `stringify` | `(any) -> str` | Serializes an `any` value to compact JSON text. |
 | `stringify` | `(any, int) -> str` | Pretty-prints with `indent` spaces. `indent < 0` falls back to compact form. |
 | `stringifySafe` | `(any) -> Result<str, Error>` | Like `stringify`, but unsupported inputs (non-finite float, typed collection wrapped as `any`, `Set` / record / enum) return `Err(Error)` instead of panicking. |
@@ -39,7 +41,7 @@ stringification in a single step.
 | `dump` | `(File, any) -> Result<Unit, Error>` | Stringifies `value` compactly and writes to `f`. Equivalent to `io.writeText(f, stringify(value))?`. |
 | `dump` | `(File, any, int) -> Result<Unit, Error>` | Pretty-prints with `indent` spaces and writes to `f`. `indent < 0` falls back to compact form. |
 
-## Supported `T` in `loadAs[T]`
+## Supported `T` in `load[T]`
 
 This release supports the following `T`:
 
@@ -47,34 +49,39 @@ This release supports the following `T`:
 - Homogeneous container: `List<int>` / `List<float>` / `List<str>` /
   `List<bool>` and `Map<str, int>` / `Map<str, float>` / `Map<str, str>` /
   `Map<str, bool>`
-- `List<any>` / `Map<str, any>` (no element coercion)
+- `List<any>` / `Map<str, any>` (no element coercion). Use these when you
+  want the loosely-typed shape preserved as `any` payloads (e.g. for
+  recursive `case`-walking by element).
 - User-defined records (flat and nested) — each field of the JSON object
   is looked up by name and recursively coerced into the declared field
   type. Missing or wrong-typed fields surface as `Err(Error{message})`
-  with a `loadAs<Record>: field 'name' ...` prefix
+  with a `load<Record>: field 'name' ...` prefix
 - Typed collections of records: `List<Record>` (JSON array of objects)
   and `Map<str, Record>` (JSON object whose values are objects). Inner
-  failures are prefixed with `loadAs<List<Record>>: element <i>: ...` or
-  `loadAs<Map<str, Record>>: value '<key>': ...`
+  failures are prefixed with `load<List<Record>>: element <i>: ...` or
+  `load<Map<str, Record>>: value '<key>': ...`
 - `Option<T>` — JSON `null` produces `Ok(None)`; any other shape is
   recursively coerced into `T` and wrapped in `Ok(Some(_))`. Inner
-  failures are prefixed with `loadAs<Option<T>>: expected null or ...`
+  failures are prefixed with `load<Option<T>>: expected null or ...`
 
 Unsupported `T` (returns `Err` from the coerce step):
 
+- `T = any` — intentionally rejected (#1887). The pre-#1887 non-generic
+  `load() -> Result<any, Error>` form had no safe accessor into the
+  payload, which is why it was removed. Use `load[Map<str, any>]` /
+  `load[List<any>]` for the JSON-shape-typed equivalents.
 - `T = Set<...>` (JSON has no native set representation)
 - `T = Result<...>` (no native JSON representation)
 
 ## Usage Examples
 
-### Loading into `any` and pattern-matching
+### Loading into `Map<str, any>` and pattern-matching
 
 ```ry
 from json import load
 
-case load("{\"name\": \"Alice\", \"age\": 30}"):
-  Ok(v):
-    m: Map<str, any> = v
+case load[Map<str, any>]("{\"name\": \"Alice\", \"age\": 30}"):
+  Ok(m):
     case get(m, "name"):
       Some(name): print(name)
       None: print("missing name")
@@ -82,42 +89,42 @@ case load("{\"name\": \"Alice\", \"age\": 30}"):
     print("parse error: " + e.message)
 ```
 
-### `loadAs[T]` shortcut
+### Primitive and container `load[T]`
 
 ```ry
-from json import loadAs
+from json import load
 
-case loadAs[int]("42"):
+case load[int]("42"):
   Ok(n): print(n)                  # 42
   Err(e): print("error: " + e.message)
 
-case loadAs[Map[str, str]]("{\"k\":\"v\"}"):
+case load[Map<str, str>]("{\"k\":\"v\"}"):
   Ok(m): print(m["k"])             # v
   Err(e): print("error: " + e.message)
 ```
 
-### `loadAs[Record]` / `loadAs[List<Record>]` / `loadAs[Option<Record>]`
+### `load[Record]` / `load[List<Record>]` / `load[Option<Record>]`
 
-`loadAs` reconstructs records by looking up each declared field in the
+`load[T]` reconstructs records by looking up each declared field in the
 parsed JSON object and coercing it into the declared type. Nested
 records, `List<Record>`, `Map<str, Record>`, and `Option<Record>` all
 work via the same recursive path; the error message tells you which
 nested location failed.
 
 ```ry
-from json import loadAs
+from json import load
 
 record Person { name: str, age: int }
 
-case loadAs[Person]("{\"name\":\"Alice\",\"age\":30}"):
+case load[Person]("{\"name\":\"Alice\",\"age\":30}"):
   Ok(p): print(p.name)              # Alice
-  Err(e): print(e.message)          # e.g. loadAs<Person>: field 'age' missing
+  Err(e): print(e.message)          # e.g. load<Person>: field 'age' missing
 
-case loadAs[List<Person>]("[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2}]"):
+case load[List<Person>]("[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2}]"):
   Ok(xs): print(xs[0].name)         # a
   Err(e): print(e.message)
 
-case loadAs[Option<Person>]("null"):
+case load[Option<Person>]("null"):
   Ok(opt):
     case opt:
       Some(_): print("got Some")
@@ -216,9 +223,8 @@ from json import load
 
 case open("config.json", "r"):
   Ok(f):
-    case load(f):
-      Ok(v):
-        m: Map<str, any> = v
+    case load[Map<str, any>](f):
+      Ok(m):
         print(m["host"])
       Err(e):
         print("parse error: " + e.message)
@@ -226,17 +232,17 @@ case open("config.json", "r"):
     print("open error: " + e.message)
 ```
 
-`loadAs[T](f: File)` parses a `File` handle and coerces the result to
+`load[T](f: File)` parses a `File` handle and coerces the result to
 `T` in one step, mirroring the str-form. The supported `T` set is the
-same as `loadAs[T](text)` — see "Supported `T` in `loadAs[T]`" above.
+same as `load[T](text)` — see "Supported `T` in `load[T]`" above.
 
 ```ry
 from io import open
-from json import loadAs
+from json import load
 
 case open("config.json", "r"):
   Ok(f):
-    case loadAs[Map<str, any>](f):
+    case load[Map<str, any>](f):
       Ok(c): print(c["host"])
       Err(e): print("parse error: " + e.message)
   Err(e): print("open error: " + e.message)
@@ -260,11 +266,11 @@ case open("out.json", "w"):
 
 ## Notes
 
-- Lifetime: `load` / `loadAs` return ARC-managed `any` payloads.
-  Codegen emits the matching release at scope exit; no manual `free`
-  call exists or is needed.
-- `loadAs[int]` accepts JSON floats that are whole numbers
-  (`42.0` → `42`); `loadAs[float]` accepts JSON integers
+- Lifetime: `load[T]` returns ARC-managed payloads (and `any` slots when
+  `T` is `List<any>` / `Map<str, any>`). Codegen emits the matching
+  release at scope exit; no manual `free` call exists or is needed.
+- `load[int]` accepts JSON floats that are whole numbers
+  (`42.0` → `42`); `load[float]` accepts JSON integers
   (`42` → `42.0`).
 - Embedded NUL bytes (` `) round-trip: `load` accepts ` ` in
   string values and object keys; `stringify` emits the escape sequence
@@ -305,37 +311,44 @@ case open("out.json", "w"):
 
   Followed by `exit(1)`. The recorded type name (`'List<int>'`,
   `'Map<str, int>'`, etc.) reflects the source-level Ry type that was
-  wrapped. Safe inputs are: the `any` returned by `load(text)`,
-  primitive `any` slots, and `List<any>` / `Map<str, any>` constructed
-  directly. To stringify a user-built typed collection, box each
-  element into a `List<any>` / `Map<str, any>` first (or call `as any`
-  per element when assembling the collection).
-- **Compile-time error — assigning the `any` from `load` into a typed
+  wrapped. Safe inputs are: `any` payloads parsed via
+  `load[Map<str, any>]` / `load[List<any>]`, primitive `any` slots, and
+  `List<any>` / `Map<str, any>` constructed directly. To stringify a
+  user-built typed collection, box each element into a `List<any>` /
+  `Map<str, any>` first (or call `as any` per element when assembling
+  the collection).
+- **Compile-time error — assigning an `any` payload into a typed
   collection**: writing `xs: List<str> = v` (or `Map<str, int>` /
   `Set<int>` / any typed collection whose element type is not `any`)
-  on the `v` bound by `case Ok(v):` is rejected at compile time. The
-  source value's element type is unknown to the compiler at that point,
-  and an unchecked unwrap would either segfault (`List<str>` walks the
-  8-byte typed stride past the end of the 16-byte `RyAny` payload) or
-  silently produce garbage (`List<int>` reads the `RyAny` tag bytes as
-  the payload). Use one of the safe alternatives instead:
+  on a `v: any` bound from a `Result<any, _>`-returning function is
+  rejected at compile time (#1883). The source value's element type is
+  unknown to the compiler at that point, and an unchecked unwrap would
+  either segfault (`List<str>` walks the 8-byte typed stride past the
+  end of the 16-byte `RyAny` payload) or silently produce garbage
+  (`List<int>` reads the `RyAny` tag bytes as the payload). Use one of
+  the safe alternatives instead:
 
   ```ry
   # ❌ rejected at compile time — see error message
-  case load(text):
+  fn loadAny(text: str) -> Result<any, Error>:
+    case load[List<any>](text):
+      Ok(xs):
+        a: any = xs
+        return Ok(a)
+      Err(e): return Err(e)
+  case loadAny(text):
     Ok(v):
       xs: List<str> = v
     Err(_): 0
 
-  # ✅ option 1: use loadAs[T] to parse + coerce in one step
-  case loadAs[List<str>](text):
+  # ✅ option 1: use load[T] to parse + coerce in one step (no any in between)
+  case load[List<str>](text):
     Ok(xs): print(xs[0])
     Err(e): print(e.message)
 
-  # ✅ option 2: unwrap as List<any> and case on each element
-  case load(text):
-    Ok(v):
-      vs: List<any> = v
+  # ✅ option 2: parse into List<any> and case on each element
+  case load[List<any>](text):
+    Ok(vs):
       for elem in vs:
         opt: Option<str> = elem as str
         case opt:
@@ -344,18 +357,22 @@ case open("out.json", "w"):
     Err(_): 0
   ```
 
-  The diagnostic suggests `loadAs[T]` directly: `Cannot assign 'any' to
+  The diagnostic suggests `load[T]` directly: `Cannot assign 'any' to
   typed collection 'List<str>' for variable 'xs': source type is
-  unknown. Use 'loadAs[List<str>]' for type-safe parsing, or 'case' on
+  unknown. Use 'load[List<str>]' for type-safe parsing, or 'case' on
   each element.` `List<any>` / `Map<str, any>` / `Set<any>` annotations
-  remain allowed unconditionally (the payload stride matches). The same
-  guard does not yet cover the reassignment path (`xs = v` after `xs`
+  remain allowed unconditionally (the payload stride matches). #1887
+  removed the non-generic `load(text)` / `load(f)` overloads to make
+  this hazard harder to hit (every JSON parse now picks an explicit
+  `T`), but the same guard still applies whenever an `any` slot arrives
+  from any other `Result<any, _>`-returning source. The check does not
+  yet cover the reassignment path (`xs = v` after `xs`
   is already declared) or function-boundary `any` passes with
-  mismatched element strides — prefer `loadAs[T]` for those cases too.
+  mismatched element strides — prefer `load[T]` for those cases too.
 
 ## Error message format
 
-`load` and `loadAs[T]` return `Err(Error{message})` on parse failure.
+`load[T]` returns `Err(Error{message})` on parse failure.
 When the failure can be tied to a specific position in the input, the
 message includes a human-readable line/column reference followed by the
 original byte offset in parentheses:
@@ -386,8 +403,14 @@ the position suffix.
 
 ## Out-of-scope (this release)
 
-- `loadAs[Set<T>]` — JSON has no native set representation; users
-  needing set semantics should `loadAs[List<T>]` first and convert.
-- `loadAs[Result<...>]` — Result has no canonical JSON shape and the
+- `load[any]` — intentionally rejected (#1887). The pre-#1887
+  non-generic `load(text)` returned `Result<any, Error>` but exposed
+  no safe accessor into the payload, which is why the API was
+  consolidated to `load[T]`. Pick a concrete `T` such as
+  `load[Map<str, any>]` / `load[List<any>]` to keep the JSON-shape
+  typing without committing to a specific element type.
+- `load[Set<T>]` — JSON has no native set representation; users
+  needing set semantics should `load[List<T>]` first and convert.
+- `load[Result<...>]` — Result has no canonical JSON shape and the
   ambiguity (success/failure marker key? Two arms?) is intentionally
   left to the user to encode at a higher level.

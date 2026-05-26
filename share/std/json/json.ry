@@ -21,7 +21,8 @@
 # followed by `exit(1)`.
 #
 # Safe inputs to `stringify(value: any)`:
-#   - The `any` returned by `load(text)` (always `List<any>` / `Map<str, any>`)
+#   - An `any`-typed value obtained by widening `load[Map<str, any>](text)` /
+#     `load[List<any>](text)` (the most common JSON-decoded shapes)
 #   - Primitive `any` slots (int / float / bool / str / null)
 #   - `List<any>` / `Map<str, any>` constructed directly by the user
 #
@@ -29,30 +30,23 @@
 #   - `any` constructed from typed `List<T>` (T != `any`) or typed
 #     `Map<K, V>` (K != `str` or V != `any`). Examples: `List<int>`,
 #     `List<str>`, `Map<str, int>`, `Map<int, any>`. Box each element
-#     into `List<any>` / `Map<str, any>` first, or use `json.load`
-#     output.
+#     into `List<any>` / `Map<str, any>` first, or use the result of
+#     `json.load[Map<str, any>]` / `json.load[List<any>]`.
 #
 # Set / Record / Enum / non-`str` Map keys still panic at runtime via the
 # existing "json stringify: ..." diagnostics because JSON has no native
 # representation for them — these are unrelated to the side-table guard.
 #
-# File handle overloads (#1854):
-# `load(f: File)` reads a JSON document from an open `File` handle and returns
-# the `any`-decoded result — equivalent to `load(io.readAll(f)?)?`. `dump(f,
-# value, [indent])` stringifies and writes to the file in one step, equivalent
-# to `io.writeText(f, stringify(value [, indent]))?`. The file must be opened
-# in a writable mode for `dump`. Both overloads propagate io errors via the
-# returned `Result` (`__ry_io_get_last_error` is surfaced as `Error.message`).
-# `stringify`'s runtime exit(1) behavior on typed collections / Set / Record /
-# Enum / non-`str` Map keys is inherited by `dump` unchanged.
-
-@public
-@native("json")
-fn load(text: str) -> Result<any, Error>
-
-@public
-@native("json")
-fn load(f: File) -> Result<any, Error>
+# File handle overloads (#1854, #1887):
+# `load[T](f: File)` reads a JSON document from an open `File` handle and
+# returns the result coerced to `T` — equivalent to `load[T](io.readAll(f)?)?`.
+# `dump(f, value, [indent])` stringifies and writes to the file in one step,
+# equivalent to `io.writeText(f, stringify(value [, indent]))?`. The file must
+# be opened in a writable mode for `dump`. Both overloads propagate io errors
+# via the returned `Result` (`__ry_io_get_last_error` is surfaced as
+# `Error.message`). `stringify`'s runtime exit(1) behavior on typed
+# collections / Set / Record / Enum / non-`str` Map keys is inherited by
+# `dump` unchanged.
 
 @public
 @native("json")
@@ -105,23 +99,29 @@ fn dump(f: File, value: any) -> Result<Unit, Error>
 @native("json")
 fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
 
-# Typed deserialization (#1852). Each call site monomorphizes per T and the
-# JSON dispatcher intercepts `loadAs[T](...)` to route through the
-# `tryUnwrapFromAny` coerce path — tag/structure mismatches surface as
-# `Err(Error)` instead of panicking via `_Exit(1)`.
+# Typed deserialization (#1852, consolidated as the sole `load` form in #1887).
+# Each call site monomorphizes per T and the JSON dispatcher intercepts
+# `load[T](...)` to route through the `tryUnwrapFromAny` coerce path —
+# tag/structure mismatches surface as `Err(Error)` instead of panicking via
+# `_Exit(1)`. The pre-#1887 non-generic `load() -> Result<any, Error>` form
+# was removed because it had no safe accessor: callers had to cast the `any`
+# back into a concrete type without a type-checked path. Pick a concrete T
+# at the call site instead.
 #
 # Supported T: primitive (int / float / str / bool), homogeneous container
 # (List<int|float|str|bool>, Map<str, int|float|str|bool>), List<any> /
 # Map<str, any>, user-defined records (flat and nested), typed collections
 # of records (List<Record>, Map<str, Record>), and Option<T>. Missing
 # fields, wrong-typed fields, and unsupported source shapes surface as
-# `Err(Error{message})` with a `loadAs[T]: ...` prefix that locates the
-# failure. See docs/reference/json.md for the full T table and error
-# message format.
+# `Err(Error{message})` with a `load[T]: ...` prefix that locates the
+# failure. `T = any` is not supported (would re-introduce the untyped
+# access hazard #1887 was filed to remove); use `load[Map<str, any>]` /
+# `load[List<any>]` for the JSON-shape-typed equivalents. See
+# docs/reference/json.md for the full T table and error message format.
 @public
 @native("json")
-fn loadAs<T>(text: str) -> Result<T, Error>
+fn load<T>(text: str) -> Result<T, Error>
 
 @public
 @native("json")
-fn loadAs<T>(f: File) -> Result<T, Error>
+fn load<T>(f: File) -> Result<T, Error>
