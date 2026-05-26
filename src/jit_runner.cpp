@@ -487,8 +487,9 @@ int runRySource(const std::string &src, const std::string &source_name,
     // StmtNode vector -> ~unique_ptr<FnStmt>() -> ~FnStmt() which traverses
     // lambda body / capture chains and other AST children.  Linux glibc CI
     // (ry-ci image, glibc 2.40) shows intermittent tcache assertions
-    //   malloc(): invalid next->prev_inuse
-    //   corrupted size vs. prev_size
+    // from glibc's malloc integrity check:
+    //   "invalid next->prev_inuse"
+    //   "corrupted size vs. prev_size"
     // ~5-10 % during this teardown on a heap already disturbed by JIT
     // execution above (collection_meta_propagation.test.ry, 25 passed +
     // SIGABRT before exit).  Same #1187 family; matches the existing jit /
