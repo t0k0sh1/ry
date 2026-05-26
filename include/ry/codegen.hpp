@@ -828,6 +828,21 @@ public:
     // themselves so they can emit a caller-specific error.
     void rejectIfTypeNameTakenByOtherKind(const std::string &name);
 
+    // Reject `name` if it collides with a stdlib built-in function name (see
+    // `kReservedBuiltinFunctionNames` in `include/ry/builtin_names.hpp`).
+    // Applied at top-level user-fn declarations, generic-fn templates, and
+    // `from ... import ... as <name>` aliases. Nested fns, `@native`, and
+    // qualified-import (`fn`s under `NamespaceEmitScope`) are intentionally
+    // exempt — callers gate accordingly. Nested-fn exemption is empirically
+    // justified: type-aware dispatch (record `toStr`, directive lifecycle
+    // hooks, `@parameterized` `iter` hook) consults user fns BEFORE the
+    // hardcoded `emitBuiltin*` chain, so a nested `fn toStr(p: Point)` /
+    // `fn first(self)` / `fn iter(self)` legitimately overrides the
+    // auto-generated builtin. For hardcoded-dispatch names like `sum`, the
+    // nested shadow silently dispatches to stdlib instead — a pre-existing
+    // limitation outside #1889's scope.
+    void rejectIfReservedBuiltin(const std::string &name);
+
     // Generic function templates. Multiple templates with the same name are
     // allowed as overloads — they must differ in arity or argument types
     // (alpha-equivalent signatures are rejected at registration time).

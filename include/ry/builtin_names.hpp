@@ -1,0 +1,102 @@
+#ifndef RY_BUILTIN_NAMES_HPP
+#define RY_BUILTIN_NAMES_HPP
+
+#include <string_view>
+#include <unordered_set>
+
+namespace ry {
+
+// Reserved stdlib built-in function names; see .claude/rules/codegen-stdlib-dispatcher.md for maintenance.
+inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames = {
+    "Err",
+    "Error",
+    "None",
+    "Ok",
+    "Some",
+    "all",
+    "any",
+    "args",
+    "availableParallelism",
+    "blockOn",
+    "byteLen",
+    "charAt",
+    "checkedAdd",
+    "checkedMul",
+    "checkedSub",
+    "close",
+    "contains",
+    "count",
+    "distinct",
+    "endsWith",
+    "enumerate",
+    "env",
+    "exit",
+    "filter",
+    "find",
+    "first",
+    "flat",
+    "fold",
+    "hasKey",
+    "input",
+    "isEmpty",
+    "iter",
+    "keys",
+    "last",
+    "len",
+    "lines",
+    "load",
+    "map",
+    "max",
+    "min",
+    "pop",
+    "print",
+    "range",
+    "readAll",
+    "readLine",
+    "receive",
+    "reduce",
+    "regexFindAll",
+    "regexMatch",
+    "regexReplace",
+    "regexSearch",
+    "regexSplit",
+    "repeat",
+    "replace",
+    "reverse",
+    "reverse!",
+    "saturatingAdd",
+    "saturatingMul",
+    "saturatingSub",
+    "send",
+    "sequence",
+    "sleep",
+    "sort",
+    "sort!",
+    "split",
+    "startsWith",
+    "substr",
+    "sum",
+    "tap",
+    "toFloat",
+    "toInt",
+    "toLower",
+    "toUpper",
+    "trim",
+    "trimEnd",
+    "trimStart",
+    "typeOf",
+    "unwrap",
+    "values",
+    "wrappingAdd",
+    "wrappingMul",
+    "wrappingSub",
+    "zip",
+};
+
+inline bool isReservedBuiltinFunctionName(std::string_view name) {
+    return kReservedBuiltinFunctionNames.count(name) > 0;
+}
+
+}  // namespace ry
+
+#endif  // RY_BUILTIN_NAMES_HPP

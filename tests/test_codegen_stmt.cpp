@@ -1063,6 +1063,56 @@ TEST_F(ImportTest, ImportAliasCollidesWithLocalDefinition) {
     }
 }
 
+// #1889: `from <mod> import <fn> as <builtin>` is just as dangerous as a
+// direct `fn <builtin>` declaration — the alias goes into `fn_aliases_`
+// where the hardcoded dispatch chain never consults it.
+TEST_F(ImportTest, ImportAliasRejectsReservedBuiltinName) {
+    writeFile("aliasbimod.ry",
+        "@public\n"
+        "fn helper() -> int:\n"
+        "    return 1\n");
+    try {
+        runWithImports(
+            "from aliasbimod import helper as sum\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("is reserved for a built-in"), std::string::npos)
+            << "got: " << msg;
+        EXPECT_NE(msg.find("'sum'"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(ImportTest, ImportAliasRejectsReservedBuiltinPrintName) {
+    writeFile("aliasprintmod.ry",
+        "@public\n"
+        "fn writer(x: int) -> int:\n"
+        "    return x\n");
+    try {
+        runWithImports(
+            "from aliasprintmod import writer as print\n");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("is reserved for a built-in"), std::string::npos)
+            << "got: " << msg;
+    }
+}
+
+// #1889 positive case: a user-defined module declaring `fn sum`
+// inside a `QualifiedImportStmt`-emitted bucket compiles cleanly.
+// Reaches the `fn sum` declaration with `current_namespace_target_
+// != nullptr`, which skips Guard 1 (caller dispatch is always via
+// `<mod>.sum(...)` through `fn_overloads`, never the hardcoded chain).
+TEST_F(ImportTest, ImportAllowsReservedNameInQualifiedNamespace) {
+    writeFile("nsmod.ry",
+        "fn sum(x: int, y: int) -> int:\n"
+        "    return x + y\n");
+    EXPECT_EQ(runWithImports(
+        "import nsmod\n"
+        "print(nsmod.sum(2, 3))\n"), "5\n");
+}
+
 // Generic fn alias is scope-out: the instantiation cache + mangle keys are
 // driven by the original name, so aliasing breaks them. Reject explicitly.
 TEST_F(ImportTest, ImportAliasGenericFnRejected) {

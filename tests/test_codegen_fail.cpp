@@ -1205,3 +1205,245 @@ TEST_F(CodeGenTest, UsingRejectsListInit) {
         "    print(x)\n",
         "using requires an io.File value");
 }
+
+// ============================================================
+// #1889: stdlib built-in function names cannot be shadowed by
+// user-defined top-level `fn`. Without this guard, the hardcoded
+// dispatch chain (`emitBuiltin*`) silently overrides the user fn,
+// most dangerously when the signature matches exactly
+// (`fn sum(v: List<int>) -> int: return 999` — body ignored,
+// stdlib executes instead). The guard fires for the user fn
+// declaration, not at the call site, so the error is surfaced
+// before any silent shadow has a chance to occur.
+// ============================================================
+
+// Issue reproduction: 4 signature variants of `fn sum` — every one
+// must be rejected, including the exact-signature shadow that was
+// the original silent-shadow bug.
+TEST_F(CodeGenTest, ReservedBuiltinSumTwoIntArgs) {
+    expectCompileError(
+        "fn sum(a: int, b: int) -> int:\n"
+        "    return a + b\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinSumStrArg) {
+    expectCompileError(
+        "fn sum(s: str) -> int:\n"
+        "    return 0\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinSumNoArgs) {
+    expectCompileError(
+        "fn sum() -> int:\n"
+        "    return 0\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinSumListIntExactSignature) {
+    expectCompileError(
+        "fn sum(v: List<int>) -> int:\n"
+        "    return 999\n",
+        "is reserved for a built-in");
+}
+
+// Family representatives: at least one rejection per stdlib family
+// (builtins.ry auto-loaded fn / collection ops / conversion / query /
+// ADT constructor / regex / IO / channel / set ops / arithmetic
+// checked/saturating/wrapping).
+TEST_F(CodeGenTest, ReservedBuiltinPrint) {
+    expectCompileError(
+        "fn print(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinLen) {
+    expectCompileError(
+        "fn len(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinRange) {
+    expectCompileError(
+        "fn range(n: int) -> int:\n"
+        "    return n\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinMin) {
+    expectCompileError(
+        "fn min(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinMax) {
+    expectCompileError(
+        "fn max(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+// ADT constructor names (Ok, Err, Some, None, Error) appear in
+// `kReservedBuiltinFunctionNames` for defense-in-depth, but the parser
+// independently rejects PascalCase `fn` names with "must be camelCase".
+// That sibling rule renders the reserved-builtin guard unreachable for
+// these specific names today, so no direct rejection test is added.
+
+// `toStr` is intentionally excluded from kReservedBuiltinFunctionNames:
+// type-aware dispatch for records consults user `fn toStr(p: RecordType)`
+// BEFORE the auto-generated builtin (see tests/spec/records.test.ry's
+// "should override auto-generated toStr with user-defined" case and the
+// CodeGenTest.RecordUserDefinedToStr family). A top-level
+// `fn toStr(p: Point)` is therefore legitimate Ry, not a silent shadow.
+
+TEST_F(CodeGenTest, ReservedBuiltinTypeOf) {
+    expectCompileError(
+        "fn typeOf(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinIter) {
+    expectCompileError(
+        "fn iter(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinReverseMutating) {
+    expectCompileError(
+        "fn reverse!(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+// The error message must name the specific function so the user
+// can fix the right declaration when many fns share a file.
+TEST_F(CodeGenTest, ReservedBuiltinErrorNamesTheFunction) {
+    expectCompileError(
+        "fn sum(a: int, b: int) -> int:\n"
+        "    return a + b\n",
+        "'sum'");
+}
+
+// Generic fn templates also flow through reserved-name rejection.
+// `generic_fn_templates_` is a flat top-level map, so shadowing is
+// just as silent without the guard.
+TEST_F(CodeGenTest, ReservedBuiltinGenericMap) {
+    expectCompileError(
+        "fn map<T, U>(x: T) -> U:\n"
+        "    return x as U\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinGenericMin) {
+    expectCompileError(
+        "fn min<T>(x: T) -> T:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinGenericFilter) {
+    expectCompileError(
+        "fn filter<T>(x: T) -> T:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
+// ============================================================
+// #1889 positive cases: the guard MUST NOT over-fire. False
+// positives would block legitimate code, so each accept-path is
+// pinned by a positive test that proves the input compiles.
+// ============================================================
+
+// Non-collision names compile cleanly even when they share a prefix
+// or suffix with a reserved name.
+TEST_F(CodeGenTest, ReservedBuiltinAllowsDistinctName) {
+    EXPECT_NO_THROW(runSource(
+        "fn mySum(x: int) -> int:\n"
+        "    return x\n"
+        "print(mySum(5))\n"
+    ));
+}
+
+// Nested fns are exempt from the reserved-name reject — the
+// declaration is accepted at codegen time. For hardcoded-dispatch
+// builtins like `sum`, the call site silently dispatches to stdlib
+// instead of the nested fn (a pre-existing limitation outside #1889's
+// scope). This test verifies declaration acceptance only.
+TEST_F(CodeGenTest, ReservedBuiltinAllowsNestedShadow) {
+    EXPECT_NO_THROW(runSource(
+        "fn outer() -> int:\n"
+        "    fn sum(x: int) -> int:\n"
+        "        return x + 1\n"
+        "    return 0\n"
+        "print(outer())\n"
+    ));
+}
+
+// `toStr` is excluded from the reserved set (see
+// `kReservedBuiltinFunctionNames` in include/ry/builtin_names.hpp),
+// so a `fn toStr(p: Point)` override is legal at any scope. This test
+// pins the nested form; the top-level form is exercised by the
+// `RecordUserDefinedToStr` family in tests/test_codegen_record.cpp.
+TEST_F(CodeGenTest, NestedToStrOverrideWorks) {
+    EXPECT_NO_THROW(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn outer() -> str:\n"
+        "    fn toStr(p: Point) -> str:\n"
+        "        return f\"({p.x}, {p.y})\"\n"
+        "    p = Point(1, 2)\n"
+        "    return toStr(p)\n"
+        "print(outer())\n"
+    ));
+}
+
+// Fall-through builtin names (the 154 names NOT in the empirically
+// filtered 84-name reserved set) keep working — declaring them as
+// user fns is the long-standing override pattern and the 84-name
+// list was chosen to preserve that exactly.
+TEST_F(CodeGenTest, ReservedBuiltinAllowsFallthroughAdd) {
+    EXPECT_NO_THROW(runSource(
+        "fn add(x: int, y: int) -> int:\n"
+        "    return x + y\n"
+        "print(add(2, 3))\n"
+    ));
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinAllowsFallthroughAbs) {
+    EXPECT_NO_THROW(runSource(
+        "fn abs(x: int) -> int:\n"
+        "    if x < 0:\n"
+        "        return -x\n"
+        "    return x\n"
+        "print(abs(-7))\n"
+    ));
+}
+
+// `@native` declarations are exempt by design — the stdlib itself
+// declares reserved names like `@native fn sum(...)` and `@native fn
+// load<T>(...)`. These are exercised indirectly every time a test
+// loads `share/std/higher_order.ry` (Guard 1 path) or
+// `share/std/json/json.ry` (Guard 2 path), but explicit coverage
+// makes the intent obvious and prevents regression. `compileSource`
+// is used (not `runSource`) because `@native` declarations have no
+// body — there is nothing to JIT-execute.
+TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeDeclaration) {
+    EXPECT_NO_THROW(compileSource(
+        "@native\n"
+        "fn sum(a: int, b: int) -> int\n"
+    ));
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeGenericDeclaration) {
+    EXPECT_NO_THROW(compileSource(
+        "@native\n"
+        "fn map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U>\n"
+    ));
+}

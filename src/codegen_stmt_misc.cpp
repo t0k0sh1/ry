@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/builtin_names.hpp"
 
 
 namespace ry {
@@ -499,6 +500,12 @@ void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
         codegenError("type '" + name + "' is already defined as a type alias");
 }
 
+void CodeGen::rejectIfReservedBuiltin(const std::string &name) {
+    if (isReservedBuiltinFunctionName(name))
+        codegenError("cannot declare function '" + name +
+                     "': name is reserved for a built-in function");
+}
+
 void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
@@ -933,6 +940,9 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
             generic_fn_templates_.count(alias))
             codegenError("import alias '" + alias +
                          "' conflicts with an existing function definition");
+        // #1889: also reject `from <mod> import <fn> as <builtin>` — silent
+        // shadowing through alias is just as harmful as through declaration.
+        rejectIfReservedBuiltin(alias);
         rejectIfTypeNameTakenByOtherKind(alias);
         rejectCrossKindAliasCollision(ImportAliasStmt::Kind::Fn);
         if (generic_fn_templates_.count(orig))

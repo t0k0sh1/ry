@@ -687,6 +687,19 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
+    // #1889: reject silent shadow of stdlib built-ins at the top-level.
+    // Nested fns are scope-local closures and never feed the global
+    // hardcoded-dispatch chain that the guard defends against, so the
+    // exemption preserves user freedom inside a function body. Qualified
+    // -import fns emitted under `NamespaceEmitScope` are reachable only
+    // through `<mod>.<name>` dispatch (consults `fn_overloads` directly,
+    // never the hardcoded chain) and are likewise exempt. Type-aware
+    // extension points such as `fn toStr(p: MyRecord)` are accommodated
+    // by excluding those specific names from `kReservedBuiltinFunctionNames`
+    // (see include/ry/builtin_names.hpp), not by the nesting exemption.
+    if (fn_nesting_depth_ == 0 && current_namespace_target_ == nullptr)
+        rejectIfReservedBuiltin(s->name);
+
     std::vector<llvm::Type*> paramTypes;
     paramTypes.reserve(s->params.size());
     for (auto &p : s->params)
