@@ -1,91 +1,65 @@
 ---
 name: pre-commit-checklist
-description: 作業完了前チェックリスト — ドキュメント反映 / CHANGELOG / rules+skills 更新 / 全テスト / ASan+UBSan / TSan / libFuzzer / バックグラウンドタスク / ラベル整理。Use when 作業完了前 / 実装完了 / 修正完了 / 機能追加完了 / 機能修正完了 / マージ前 / PR を出す前 / セルフ検証 / 動作確認 / サニタイザー実行 / テスト実行 / チェックリスト / 完了前に何をすべき のとき。フィーチャー開発の終盤では常に fire する。
+description: Pre-commit checklist — docs / CHANGELOG / rules+skills / tests / ASan+UBSan / TSan / libFuzzer / background hygiene / labels. Use before declaring complete, before PR, self-verify, running sanitizers/tests; also on Japanese triggers 作業完了前, 完了前, 実装完了, 修正完了, マージ前, PR を出す前, セルフ検証, 動作確認, サニタイザー実行, テスト実行, チェックリスト. Always fires near the end of feature work.
 allowed-tools: Bash
 ---
 
 # Pre-commit Checklist
 
-Mandatory checklist to run before declaring a task complete. Covers documentation, CHANGELOG, knowledge-base updates, full tests, sanitizers, fuzzing, background-task hygiene, and label policy.
+Mandatory checklist before declaring a task complete: documentation, CHANGELOG, knowledge-base updates, full tests, sanitizers, fuzzing, background-task hygiene, and label policy.
 
 > **Source-of-truth note**: previously in `AGENTS.md` §"作業完了前チェックリスト"; relocated by #1384.
 
-タスクの完了前に、以下を必ず実行すること。
+## 0. Change-type × Skip Matrix
 
-## 0. 変更種別 × スキップ可否マトリクス
-
-実装着手前に変更ファイルセットを取得し、下表でスキップ可能なセクションを特定する。
+List the changed paths and consult the matrix to identify skippable sections.
 
 ```bash
 git diff --name-only origin/main
 ```
 
-> 上記コマンドは未コミット変更も含む（働き木 vs `origin/main`）。`origin/main` を fetch していない場合は先に `git fetch origin main` を実行する。`origin/main` が無い（detached HEAD / fresh clone）場合は `git diff --name-only HEAD` で代替する。
+> Includes uncommitted changes (working tree vs `origin/main`). Run `git fetch origin main` first if not fetched. On detached HEAD or a fresh clone without `origin/main`, fall back to `git diff --name-only HEAD`.
 
-| 変更種別 | §1 Doc | §2 CHANGELOG | §3 全テスト | §3.5 Sanitizer | §3.6 libFuzzer |
+| Change type | §1 Doc | §2 CHANGELOG | §3 Tests | §3.5 Sanitizer | §3.6 libFuzzer |
 |---|---|---|---|---|---|
-| `.md` / `docs/` のみ | ✓ | skip | skip | skip | skip |
-| `changelog.d/` のみ | skip | ✓ | skip | skip | skip |
-| `.claude/` のみ | skip | skip | skip | skip | skip |
-| `tests/` のみ | review | review | ✓ | ✓ | パーサ系のみ |
-| parser/lexer/json/utf8/string 系を含む※ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| その他コード変更 | ✓ | ✓ | ✓ | ✓ | skip |
+| `.md` / `docs/` only | ✓ | skip | skip | skip | skip |
+| `changelog.d/` only | skip | ✓ | skip | skip | skip |
+| `.claude/` only | skip | skip | skip | skip | skip |
+| `tests/` only | review | review | ✓ | ✓ | parser-family only |
+| includes parser/lexer/json/utf8/string※ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| other code changes | ✓ | ✓ | ✓ | ✓ | skip |
 
-**凡例**: `✓` = 実行必須 / `skip` = 省略可（PR description に記録） / `review` = 担当者判断（judgment call）
+**Legend**: `✓` = required / `skip` = may omit (record in PR description) / `review` = judgment call.
 
-※ 「parser/lexer/json/utf8/string 系」 = `src/(parser|lexer|runtime_json|runtime_utf8|runtime_string)*` または `include/ry/(parser|lexer|runtime_json|runtime_string).hpp` を変更した場合。**`runtime_string*` は `fuzz_json` と `fuzz_utf8` 双方の依存先**のため必ずこの行に該当する。
+※ "parser/lexer/json/utf8/string family" = changes to `src/(parser|lexer|runtime_json|runtime_utf8|runtime_string)*` or `include/ry/(parser|lexer|runtime_json|runtime_string).hpp`. **`runtime_string*` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
 
-**補足**:
+**Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
 
-- 複数行に該当する変更は **各列の最も厳しい要求を採用** する（= `✓` 優先 / 次点 `review` / 最後 `skip`）。
-- マトリクス対象外で **常時必須**: §2.5（rules/skills 更新, 該当時のみ） / §3.5.5（Static Analysis） / §3.6.5（tree-sitter Grammar Regression Check, 該当時のみ） / §3.7（background hygiene） / §4（Label Cleanup, no-op directive）。
-- **`.md` / `docs/` のみの PR** では実質的に §4（Label Cleanup）が唯一の必須アクション。§1 は doc 編集自体で satisfied、§2-§3.6 は全てスキップ可、§3.7 は常時暗黙必須だが sanity check のみで実アクションを伴わない。
-- **`changelog.d/` のみの PR** も同様に §4 が唯一の必須アクション。§2 は fragment 編集自体で satisfied、§1 / §3-§3.6 は全てスキップ可。
-- マトリクスの `✓` のうち、自身を編集対象とするセクション（`.md`/`docs/` 行の §1、`changelog.d/` 行の §2）は **編集自体が satisfy 条件** であり、Skip if の bash も `skip` 判定を返す（自編集 = 完了）。
-
-> **記録義務**: いずれかのセクションをスキップした場合、PR description（CHANGELOG fragment があればそちらでも可）に `Skipped §X — <理由>` を必ず記録すること。skip ログは将来の audit（regression 発生時の再現）に必要。
+> **Logging duty**: whenever a section is skipped, record `Skipped §X — <reason>` in the PR description (or in the CHANGELOG fragment if one exists). Skip logs are required for future audit.
 
 ## 1. Documentation Update Check (English only)
 
-> **Skip if** — 変更ファイルが `.claude/` または `changelog.d/` のみ（= ユーザーに見える変更が発生していない）:
+> **Skip if** — changed files are only `.claude/` or `changelog.d/` (no user-visible change):
 >
 > ```bash
 > git diff --name-only origin/main | grep -vE '^(\.claude/|changelog\.d/)' | head -1
 > ```
 >
-> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §1 — no user-visible change` を記録。
+> Empty output ⇒ skip. Record `Skipped §1 — no user-visible change` in the PR description.
 
-機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。
-
-**判断基準**: ドキュメントに現在記載があるかではなく、**ユーザーが知るべき内容かどうか**で更新要否を判断する。新機能・挙動変更・新オプションなど、ユーザーに影響する変更は必ずドキュメントに反映すること。
-
-対象と確認観点:
-
-- **`docs/reference/`** — 型・演算子・制御構文・関数・コレクション・組み込み関数・エラーなどの仕様変更があれば該当ファイルを更新
-- **`docs/README.md`** — ドキュメント目次の更新（新ページ追加時）
-- **`README.md`** — 以下の内容に関わる変更があれば更新（詳細は docs/ に委譲）:
-  - Features（言語機能の追加・変更）
-  - Sample Code（新機能のデモに適したコード変更）
-  - Installation（インストール方法の変更）
-  - Usage（CLI コマンドの追加・変更）
-
-反映が不要と判断した場合は、その理由を明示すること（内部リファクタリングのみ、テスト追加のみ、等）。
+For any **add / change / remove** of behavior, update **English documentation only**. Decision criterion: not "is it already documented?" but "should the user know about it?" Update `docs/reference/` when types / operators / control flow / functions / collections / builtins / errors change spec; update `docs/README.md` TOC for new pages; update `README.md` Features / Sample Code / Installation / Usage when affected (details delegated to `docs/`). If no update is needed, state the reason (internal refactor only, tests-only, etc.).
 
 ## 2. CHANGELOG Update Check
 
-> **Skip if** — 変更ファイルが `.claude/` / `docs/` / トップレベル `*.md` / `changelog.d/` のみ（= `feat:` / `fix:` / 破壊的変更ではない）:
+> **Skip if** — changed files are only `.claude/` / `docs/` / top-level `*.md` / `changelog.d/` (not a `feat:` / `fix:` / breaking change):
 >
 > ```bash
 > git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
 > ```
 >
-> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §2 — no user-visible change` を記録。
+> Empty output ⇒ skip. Record `Skipped §2 — no user-visible change` in the PR description.
 
-ユーザーに影響のある変更（`feat:`, `fix:`, 破壊的変更）を行った場合、`changelog.d/` にフラグメントファイルを作成する。
-
-**ファイル名**: `changelog.d/{issue番号}-{slug}.md`（例: `changelog.d/545-546-list-improvements.md`）
-
-**内容**: `### Added` / `### Changed` / `### Fixed` / `### Removed` セクションのみを記述する。複数カテゴリにまたがる場合は 1 ファイルに複数セクションを含める。
+For user-impacting changes, add a fragment under `changelog.d/{issue}-{slug}.md` (e.g. `changelog.d/545-546-list-improvements.md`). Body: only `### Added` / `### Changed` / `### Fixed` / `### Removed` sections. Combine multiple categories in one file when they coexist.
 
 ```markdown
 ### Added
@@ -97,87 +71,74 @@ git diff --name-only origin/main
 - Some bugfix description (#545)
 ```
 
-> **注意**: `CHANGELOG.md` を直接編集しないこと。フラグメントファイルはリリース準備時（現状は手動。`/release-orchestrator` 参照）に `scripts/assemble-changelog.sh` で CHANGELOG.md に集約される。
+> **Do not edit `CHANGELOG.md` directly.** Fragments are assembled into `CHANGELOG.md` by `scripts/assemble-changelog.sh` at release time (currently manual — see `/release-orchestrator`).
 
-内部リファクタリング・テスト追加・CI 変更のみの場合はフラグメント作成不要。
+No fragment is needed for internal refactors, test-only changes, or CI-only changes.
 
-## 2.5. .claude/rules/ + .claude/skills/ Update Check
+## 2.5. `.claude/rules/` + `.claude/skills/` Update Check
 
-今回の作業で以下のいずれかが発生した場合、`.claude/rules/` または `.claude/skills/` に追記する:
+If any of the following happened during the work, add an entry to `.claude/rules/` or `.claude/skills/`:
 
-1. **新しい拒否ブランチ・検証チェックを追加した** — 将来の回帰を防ぐテストルール entry が既にあるか確認し、無ければ `.claude/rules/tests-rejection-tdd.md` に追加する:
+1. **Added a new reject branch / validation check** — verify a regression-test rule entry exists; otherwise add one to `.claude/rules/tests-rejection-tdd.md`:
    ```bash
    git diff origin/<base> -- 'src/**' 'include/**' \
      | grep -nE '^\+.*(codegenError|parserError|return std::nullopt)'
    ```
-   hit した各拒否ブランチに対して、直接トリガーする回帰テストが存在することを確認する（合法ケースのテストでは代替不可）。
-2. **実装中に非自明な落とし穴を発見した** — 例: 特定の LLVM API の罠、opaque pointer 周りの注意点、ARC retain/release の順序依存等。編集中ファイルの path-scope に該当する `.claude/rules/<name>.md` （例: ARC は `codegen-arc-cow.md`、type/metadata は `codegen-type-and-metadata.md`、runtime memory は `runtime-memory-safety.md`）に追加
-3. **採用しなかった設計判断がある** — なぜその案を選ばなかったかを書いておくと、将来同じ検討を繰り返さずに済む。該当 path rule に追加
-4. **コマンド・環境変数・シェル構文のミスをリカバリした** — 実行したコマンドが間違っていて失敗したが 2 回目以降で正解に辿り着いた場合、以下に該当するなら `.claude/skills/commands-environment-gotchas/SKILL.md` に追記する:
-   - フラグや引数の組み合わせを間違えて失敗した
-   - 必要な環境変数（`ASAN_OPTIONS`, `RY_ENV` 等）を忘れて失敗した
-   - `cmake --preset` 名や path を間違えた
-   - `gh` / `git` コマンドの subcommand / flag を間違えた
-   - heredoc / quoting / escaping を間違えた
+   For each hit, confirm a regression test that triggers the reject branch directly exists (a legal-case test does not substitute).
+2. **Non-obvious pitfall during implementation** — e.g. LLVM API quirk, opaque-pointer caveat, ARC retain/release ordering. Add to the path-scoped `.claude/rules/<name>.md` (ARC → `codegen-arc-cow.md`, type/metadata → `codegen-type-and-metadata.md`, runtime memory → `runtime-memory-safety.md`).
+3. **Rejected design alternative** — record why so the evaluation isn't repeated later. Add to the matching path rule.
+4. **Recovered from a command / env / shell mistake** — non-obvious fix (undocumented or counter-intuitive). Categories: wrong flag combo, missing env var (`ASAN_OPTIONS`, `RY_ENV`, etc.), wrong `cmake --preset` name or path, wrong `gh` / `git` subcommand or flag, wrong heredoc / quoting / escaping. Add to `.claude/skills/commands-environment-gotchas/SKILL.md`. Simple typos don't qualify.
+5. **Cross-cutting PR-review pattern** — recurring across multiple paths ⇒ add to `.claude/skills/pr-review-recurring-patterns/SKILL.md`.
 
-   修正が自明でなかった（＝ドキュメントに書いていない、直感に反する）場合のみ記録する。単なるタイポは不要。
-5. **PR レビューで横断的なパターンを指摘された** — 複数 path で再発しうる論点は `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記する
-
-追記不要と判断した場合は、その理由を明示する（純粋なバグ修正で再発しない、その PR 限りの local な指摘、等）。
+If no entry is needed, state the reason (pure bug fix that won't recur, PR-local-only feedback, etc.).
 
 ## 3. Run All Tests
 
-> **Skip if** — 変更ファイルが `.claude/` / `docs/` / トップレベル `*.md` / `changelog.d/` のみ（= 実行コードに影響なし）:
+> **Skip if** — changed files are only `.claude/` / `docs/` / top-level `*.md` / `changelog.d/` (no source impact):
 >
 > ```bash
 > git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
 > ```
 >
-> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §3 — no source code change` を記録。
-
-全テストを実行して成功を確認する。
+> Empty output ⇒ skip. Record `Skipped §3 — no source code change` in the PR description.
 
 ```bash
 cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p
 ```
 
-テストが失敗した場合は、原因を修正してから作業完了とすること。
+Fix any failure before declaring complete.
 
 ## 3.5. Sanitizer Verification
 
-> **Skip if** — §3 と同条件（実行コードに影響なし）:
->
-> ```bash
-> git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
-> ```
->
-> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §3.5 — no source code change` を記録。
+> **Skip if** — same as §3 (no source impact). Record `Skipped §3.5 — no source code change`.
 
-> **macOS 注意**: ASan / UBSan / TSan のローカル実行は Docker に統一する。`fuzz_json` の ASan 下ハングや TSan `LargeMmapAllocator` の Darwin upstream バグなど macOS-host 固有の問題を避けるため (issue #1865)。サニタイザー環境変数は `docker/run.sh` がプリセットに応じて自動設定する。
+> **macOS note**: run ASan / UBSan / TSan via Docker. Avoids macOS-host-only issues such as `fuzz_json` hangs under ASan and the Darwin upstream TSan `LargeMmapAllocator` bug (#1865). `docker/run.sh` sets sanitizer env vars per preset.
 
-**ASan + UBSan**（メモリ安全性 + 未定義動作）:
+**ASan + UBSan** (memory safety + undefined behavior):
 
 ```bash
 ./docker/run.sh asan ry_tests
 ./docker/run.sh asan ry test -p
 ```
 
-ASan / UBSan が検出した問題は原因を修正してから作業完了とする。これらのエラーを残したままコミットしてはならない。
+Fix any finding before declaring complete; do not commit while errors remain.
 
-**TSan**（スレッド安全性）:
+**TSan** (thread safety):
 
 ```bash
 ./docker/run.sh tsan ry_tests
 ./docker/run.sh tsan ry test -p
 ```
 
-C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716、Linux 限定) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。LLVM ORC teardown family の crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) は両 OS で観測されうるが `src/jit_runner.cpp` の三段階 leak (#1187 + #1657) で suppress 済み — このパターンの再発は新規 issue として起票する。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること (`/triage-side-finding` Q1 該当 = CI 検出の再現困難問題 → 即時修正)。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry および ORC teardown entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
+The C++ TSan run (`ry_tests`) is required and validates `ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test). The Ry self-test (`ry test -p`) is warn-only due to the TSan `LargeMmapAllocator` CHECK problem (upstream #1716, Linux-only) — a clean C++ run is sufficient for this PR. LLVM ORC teardown crashes (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) can surface on both OSes but are suppressed by the three-stage leak in `src/jit_runner.cpp` (#1187 + #1657); file a new issue if this pattern recurs.
+
+If a race is detected (C++ or self-test), fix it in this PR (`/triage-side-finding` Q1 — hard-to-reproduce CI detection ⇒ immediate fix). Do not park it as a known race. See `/tsan-known-issues` for `LargeMmapAllocator` and ORC teardown entries. For new race patterns not in the #630 audit, file a separate concurrency issue and add a reproducer under `tests/spec/concurrency*.test.ry`.
 
 ## 3.5.5. Static Analysis
 
-CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカルで再現する。設定・抑制ルール・誤検知対処の詳細は `/static-analysis-tools` に委譲。
+Reproduce the CI `lint` / `clang-tidy` / `scan-build` jobs locally before pushing. Configuration, suppression rules, and false-positive handling are delegated to `/static-analysis-tools`.
 
-> **macOS 注意**: clang-tidy の PCH 互換性問題 (Apple clang ↔ Homebrew LLVM clang) / scan-build PATH 不在 / Homebrew LLVM 依存を避けるため、ローカル実行は Docker に統一する (issue #1865)。
+> **macOS note**: use Docker to avoid clang-tidy PCH incompatibility (Apple clang ↔ Homebrew LLVM clang), missing scan-build PATH, and Homebrew LLVM dependencies (#1865).
 
 **clang-tidy** (required):
 
@@ -191,44 +152,35 @@ CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカル
 ./docker/run.sh static-analysis cppcheck
 ```
 
-**scan-build** (warn-only — 強く推奨):
-
-CI は `continue-on-error: true` で warn-only 運用中。ローカルでも警告即修正は不要だが、新規 null-dereference / use-after-free / division-by-zero が検出された場合は同 PR で対処することを強く推奨する。CI は event ごとに分析スコープを切り替える (#1738): PR では `--target ry`、push-to-main では全 target — Docker 側は PR 相当の fast scan (`--target ry`) を実行する。
+**scan-build** (warn-only — strongly recommended): CI runs with `continue-on-error: true`. New null-deref / use-after-free / division-by-zero findings should be addressed in the same PR. CI switches scope per event (#1738): PRs run `--target ry`, push-to-main runs all targets — Docker matches the PR-equivalent fast scan.
 
 ```bash
 ./docker/run.sh static-analysis scan-build
 ```
 
-3 ツールを一括実行する場合:
+All three at once:
 
 ```bash
 ./docker/run.sh static-analysis all
 ```
 
-> `scan-build` および `all` は専用の `build-scan-docker/`（host）↔ `build-scan/`（container）で analyzer wrapper ビルドを行うため、`build-docker/` を汚染しない。直後に `./docker/run.sh default ...` を実行する際の cleanup は不要。HTML レポートは `build-scan-docker/scan-build-report/<timestamp>/index.html` に出力される — 不要になったら `build-scan-docker/` ごと削除して構わない。
+> `scan-build` and `all` use a dedicated `build-scan-docker/` (host) ↔ `build-scan/` (container) so `build-docker/` stays clean. No cleanup needed before the next `./docker/run.sh default ...`. HTML reports land in `build-scan-docker/scan-build-report/<timestamp>/index.html`.
 
-clang-tidy / cppcheck で失敗した場合は原因を修正してから作業完了とする。よくある失敗パターン (`performance-inefficient-string-concatenation` 等) と canonical workaround は `.claude/rules/build-warning-flags.md` を参照。
+Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e.g. `performance-inefficient-string-concatenation`) and canonical workarounds are in `.claude/rules/build-warning-flags.md`.
 
 ## 3.6. libFuzzer Fuzzing
 
-> **Skip if** — 変更ファイルに parser/lexer/json/utf8/string 系を **含まない**:
+> **Skip if** — changed files do **not** include the parser/lexer/json/utf8/string family:
 >
 > ```bash
 > git diff --name-only origin/main | grep -E '(src/(parser|lexer|runtime_(json|utf8|string))|include/ry/(parser|lexer|runtime_(json|string)))' | head -1
 > ```
 >
-> 出力が **空ならスキップ可**。出力があれば該当 fuzzer を実行する。スキップ時は PR description に `Skipped §3.6 — no parser/lexer/json/utf8/string change` を記録。
->
-> **Fuzzer mapping**:
->
-> - parser / lexer 系 → `fuzz_parser`
-> - json 系 → `fuzz_json`（`runtime_string*` を変更した場合は `fuzz_utf8` も合わせて実行）
-> - utf8 / string 系 → `fuzz_utf8`（`runtime_string*` を変更した場合は `fuzz_json` も合わせて実行）
-> - **`tests/` のみ変更** で対象テストが parser/lexer/json/utf8/string 系の場合は該当 fuzzer のみ実行（judgment call）。不確かな場合は全 3 ターゲット実行を推奨。
+> **Empty output ⇒ skip**. Otherwise run the matching fuzzer. Record `Skipped §3.6 — no parser/lexer/json/utf8/string change` in the PR description. **Fuzzer mapping**: parser/lexer → `fuzz_parser`; json → `fuzz_json` (+ `fuzz_utf8` if `runtime_string*` changed); utf8/string → `fuzz_utf8` (+ `fuzz_json` if `runtime_string*` changed). `tests/`-only changes targeting these areas ⇒ run the matching fuzzer only (judgment call); run all three when unsure.
 
-**CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。** ハーネス要件・既知制限の詳細は `/libfuzzer-harness` を参照。
+**CI jobs are disabled; always run locally on the feature branch.** Harness requirements and known limits are delegated to `/libfuzzer-harness`.
 
-> **macOS 注意**: `fuzz_json` は macOS native の ASan 下でハングするため Docker 実行が必須 (issue #1865)。`docker/run.sh` がプリセットに応じてサニタイザー環境変数を自動設定する。
+> **macOS note**: `fuzz_json` hangs under native macOS ASan, so Docker is required (#1865).
 
 ```bash
 ./docker/run.sh fuzz fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
@@ -241,20 +193,19 @@ clang-tidy / cppcheck で失敗した場合は原因を修正してから作業�
     -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
 ```
 
-- 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
-- crash が発見された場合は `/triage-side-finding` の判定フローに従う。**再現困難な crash** (ローカルで 3 回試行しても再現しない / コーパス未保存 / CI でのみ出る) は Q1 = Yes として**同 PR で即座に修正**する (再現中のウィンドウを逃さない設計上の判断であり、TSan race の取り扱い §3.5 L174 と同じ原則)。現在の PR のコードが直接引き起こしたものも同 PR で即座に修正してよい (Q4(a) = 即時修正)。ローカルで安定再現する既存バグかつ scope を実質的に変える規模のものに限って Q4(b) で別 issue 起票に振る。crash 入力は再現性に関わらず `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること (再現困難な crash でも入力アーティファクトは残す)。
+All three targets must exit 0 after 60 s. On crash, follow `/triage-side-finding`. **Hard-to-reproduce crashes** (no repro in 3 local attempts / no saved corpus / CI-only) ⇒ Q1 = Yes ⇒ **fix in the same PR** (don't lose the reproduction window — same principle as the TSan race rule above). If the current PR's code directly caused it, also fix in the same PR (Q4(a)). Only file a separate issue (Q4(b)) when the bug is locally reproducible, pre-existing, and would substantially expand scope. Save the crash input to both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/` regardless of reproducibility.
 
 ## 3.6.5. tree-sitter Grammar Regression Check
 
-> **Skip if** — 変更ファイルに tree-sitter グラマー / EBNF 仕様 / external scanner を **含まない**:
+> **Skip if** — changed files do **not** include the tree-sitter grammar / EBNF spec / external scanner:
 >
 > ```bash
 > git diff --name-only origin/main | grep -E '^(docs/grammar\.ebnf$|editor/tree-sitter/(grammar\.js$|src/))' | head -1
 > ```
 >
-> 出力が **空ならスキップ可**。出力があれば再ビルド & 再インストールを実行する。スキップ時は PR description に `Skipped §3.6.5 — no tree-sitter grammar change` を記録。
+> **Empty output ⇒ skip**. Otherwise rebuild & reinstall. Record `Skipped §3.6.5 — no tree-sitter grammar change` in the PR description.
 
-§0 マトリクスとは独立した常時評価ステップ。`.md` / `docs/` のみの PR でも `docs/grammar.ebnf` を変更していれば発火する（マトリクスの「`.md` / `docs/` のみ」row には載せない理由）。
+Evaluated independently of the §0 matrix: a `.md` / `docs/`-only PR still fires this step if `docs/grammar.ebnf` is touched (which is why the matrix row for `.md` / `docs/`-only omits it).
 
 ```bash
 ./editor/tree-sitter/build.sh
@@ -262,20 +213,19 @@ clang-tidy / cppcheck で失敗した場合は原因を修正してから作業�
 ./editor/tree-sitter/check.sh --no-build
 ```
 
-- `build.sh` 内部で `tree-sitter generate`（`grammar.js` から `parser.c` を再生成）と `tree-sitter build`（`parser.c` + `scanner.c` から `ry.so` をリンク）が両方成功し、`ry.so` が生成されることを確認する。`tree-sitter generate` が失敗すればグラマー側の構文ミスを意味する。
-- `install.sh --no-build` が `ry.so` と `queries/*.scm` を Neovim parser ディレクトリへコピーすることを確認する。
-- `check.sh --no-build` が `tests/spec/**/*.test.ry` 全件を `tree-sitter parse` に通し、`expected-fail.txt` 外の file で ERROR/MISSING が出ていないことを確認する（**exit 0 が必須**）。`expected-fail.txt` に列挙された既知の grammar gap は SKIP として silent に扱われ、grammar の改修で parse できるようになると `WARN: ... now passes` が出るので、そのファイルを `expected-fail.txt` から削除する。
-- 現状 in-tree グラマーは Ry の全構文をまだカバーしていないため `tree-sitter parse` を実テストファイルに当てると ERROR ノードを含むことがある。これは `expected-fail.txt` で許容している既知の gap であり、`check.sh` の対象外（`expected-fail.txt` 外で出た場合のみ regression として扱う）。Phase 2 の hand-curated `tree-sitter test` corpus + S-expression assertion は `editor/tree-sitter/test/corpus/*.txt` で管理 (#1633)。Neovim 等で `.ry` ファイルを開き、構文ハイライトに重大な regression が起きていないかを目視確認することは推奨。
+- `build.sh` must run both `tree-sitter generate` (`grammar.js` → `parser.c`) and `tree-sitter build` (`parser.c` + `scanner.c` → `ry.so`) successfully and produce `ry.so`. A `tree-sitter generate` failure indicates a grammar-side syntax error.
+- `install.sh --no-build` copies `ry.so` and `queries/*.scm` into the Neovim parser directory.
+- `check.sh --no-build` runs `tree-sitter parse` over every `tests/spec/**/*.test.ry` and asserts that files outside `expected-fail.txt` have no ERROR/MISSING (**exit 0 required**). Known gaps in `expected-fail.txt` are silently SKIPped; if grammar improvements make one parseable, `WARN: ... now passes` is emitted and that file should be removed from the list.
+- The in-tree grammar doesn't yet cover all of Ry, so out-of-list ERRORs from `tree-sitter parse` are the only regressions that count. The hand-curated Phase 2 `tree-sitter test` corpus + S-expression assertions live in `editor/tree-sitter/test/corpus/*.txt` (#1633). Visual highlight check in Neovim is recommended.
 
 ## 3.7. Background Task Residual Check
 
-作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
+Before declaring complete, confirm no self-launched background tasks or shells remain.
 
-- 全バックグラウンドタスクが完了していることを `BashOutput` / `TaskOutput` で確認する
-- 孤立シェルの検出: `ps aux | grep -E "claude|zsh.*cat"` で自分のセッション由来のプロセスを探す
-- 残存している場合は `TaskStop` で停止するか、`kill <pid>` でプロセスを終了させてから完了を宣言する
-- ゾンビ化の典型例: `run_in_background=true` + heredoc による `zsh` + `cat` の stdin 待ち（詳細は AGENTS.md「Bash コマンドの実行ルール」参照）
+- Confirm every background task finished via `BashOutput` / `TaskOutput`; detect orphan shells with `ps aux | grep -E "claude|zsh.*cat"`.
+- Stop any remaining via `TaskStop` or `kill <pid>` before declaring complete.
+- Classic zombie: `run_in_background=true` + heredoc, leaving `zsh` + `cat` blocked on stdin (see AGENTS.md §"Bash コマンドの実行ルール").
 
 ## 4. Label Cleanup
 
-**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後、`git-merge-pr` スキル Step 5 が `wip` 除去を自律的に処理する。個別コマンドを直接実行しない。
+**Do not change labels at the self-verification stage.** Label transitions happen post-merge: `git-merge-pr` Step 5 removes `wip` autonomously. Do not run individual commands directly.
