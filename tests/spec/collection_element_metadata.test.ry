@@ -7,23 +7,23 @@ from thread import lockNew, lockAcquire, lockRelease, lockFree
 fn collectionElementLoadsPreserveMetadata1320Tests():
   @it("preserves any metadata for List element loads")
   fn preservesAnyMetadataForListElementLoads():
-    case load("{\"x\": 1}"):
+    case load[Map<str, any>]("{\"x\": 1}"):
       Ok(v):
         xs: List<any> = [v]
         x = xs[0]
         expect(stringify(x)).toEq("{\"x\":1}")
       Err(e):
-        fail("load failed: " + e.message)
+        fail("load[Map<str, any>] failed: " + e.message)
 
   @it("preserves any metadata for Map value loads")
   fn preservesAnyMetadataForMapValueLoads():
-    case load("{\"x\": 1}"):
+    case load[Map<str, any>]("{\"x\": 1}"):
       Ok(v):
         m: Map<str, any> = {"k": v}
         x = m["k"]
         expect(stringify(x)).toEq("{\"x\":1}")
       Err(e):
-        fail("load failed: " + e.message)
+        fail("load[Map<str, any>] failed: " + e.message)
 
   @it("preserves resource metadata for List element loads")
   fn preservesResourceMetadataForListElementLoads():

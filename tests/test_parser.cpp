@@ -4304,7 +4304,7 @@ TEST(ParserArrayType, RejectsUnderscoreInSize) {
 
 TEST(ParserTest, AngleBracketGenericCallRejectsFlat) {
     try {
-        parseStr("x = loadAs<int>(\"1\")");
+        parseStr("x = load<int>(\"1\")");
         FAIL() << "expected DiagnosticError";
     } catch (const DiagnosticError &e) {
         std::string msg = e.what();
@@ -4315,7 +4315,7 @@ TEST(ParserTest, AngleBracketGenericCallRejectsFlat) {
 
 TEST(ParserTest, AngleBracketGenericCallRejectsNested) {
     try {
-        parseStr("x = loadAs<Map<str, int>>(\"{}\")");
+        parseStr("x = load<Map<str, int>>(\"{}\")");
         FAIL() << "expected DiagnosticError";
     } catch (const DiagnosticError &e) {
         std::string msg = e.what();
@@ -4327,7 +4327,7 @@ TEST(ParserTest, AngleBracketGenericCallRejectsNested) {
 TEST(ParserTest, AngleBracketGenericCallRejectsInCaseExpr) {
     try {
         parseStr(
-            "case loadAs<int>(\"1\"):\n"
+            "case load<int>(\"1\"):\n"
             "    Ok(v):\n"
             "        print(v)\n"
             "    Err(e):\n"
@@ -4354,7 +4354,7 @@ TEST(ParserTest, AngleBracketGenericCallPreservesIdentLessExpr) {
 
 TEST(ParserTest, SquareBracketGenericCallStillWorks) {
     // The canonical `f[T](args)` syntax remains accepted unchanged.
-    Program prog = parseStr("x = loadAs[int](\"1\")");
+    Program prog = parseStr("x = load[int](\"1\")");
     ASSERT_EQ(prog.size(), 1u);
 }
 

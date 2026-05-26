@@ -2,9 +2,13 @@
 
 - The compiler now rejects assignments from an `any` whose source type
   is unknown into a typed collection (`List<T>` / `Map<K, V>` /
-  `Set<T>` where `T` / `V` is not `any`). The motivating hazard is
-  `json.load(text)` returning `Result<any, Error>`: previously
+  `Set<T>` where `T` / `V` is not `any`). The motivating hazard was
+  the pre-#1887 non-generic `json.load(text)` overload that returned
+  `Result<any, Error>`: previously
   ```ry
+  # Reproducible before #1883 against the pre-#1887 `load(text)` API.
+  # Post-#1887 the non-generic overload is gone, but the same guard
+  # still fires for any other Result<any, _>-returning source.
   case load(text):
     Ok(v):
       xs: List<str> = v   # compiled cleanly, crashed at runtime
@@ -19,7 +23,7 @@
   `xs: List<int> = ...; a: any = xs; ys: List<int> = a` (allowed —
   stamped) from the `case Ok(v):` extraction whose binding has no
   collection element metadata (rejected — empty source name). The
-  diagnostic suggests `loadAs[T]` or per-element `case`, which were
+  diagnostic suggests `load[T]` or per-element `case`, which were
   already the safe alternatives. `List<any>` / `Map<str, any>` /
   `Set<any>` annotations remain unconditional (the payload stride
   matches the destination). Round-trips whose source type is itself

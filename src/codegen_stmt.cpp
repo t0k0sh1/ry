@@ -709,7 +709,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                                         "Cannot assign 'any' to typed collection '" + *annot +
                                         "' for variable '" + name +
                                         "': source type is " + srcLabel +
-                                        ". Use 'loadAs[" + *annot +
+                                        ". Use 'load[" + *annot +
                                         "]' for type-safe parsing, or 'case' on each element.");
                                 }
                             }

@@ -867,7 +867,7 @@ public:
         const std::string &baseName, const std::vector<ExprPtr> &args);
 
     // Explicit-type-args overload resolution (#1854 Cycle 2): when the
-    // call site supplies `<T1, T2, ...>` directly (e.g. `loadAs[int](f)`),
+    // call site supplies `<T1, T2, ...>` directly (e.g. `load[int](f)`),
     // substitute the type args into each candidate template's parameter
     // signature via `type_param_scope_` and compare the substituted
     // parameter type-names against the call-site argument type-names.
@@ -2309,7 +2309,7 @@ public:
     // recursively `tryUnwrapFromAny`s each value, and builds the record via
     // an `InsertValue` chain. On any field miss / sub-Err, releases every
     // ARC-bearing field collected so far (per advisor's ARC-leak guard) and
-    // returns `Err(Error{message:"loadAs[RecordName]: ..."})`.
+    // returns `Err(Error{message:"load[RecordName]: ..."})`.
     llvm::Value *tryUnwrapRecordFromAny(llvm::Value *anyVal,
                                           llvm::StructType *recordStructTy,
                                           const RecordInfo &info,
@@ -2343,7 +2343,7 @@ public:
     // Typed `Option<T>` reconstruction from `any` (#1852). Accepts two source
     // shapes: Unit (JSON null) maps to `Ok(None)`; any other tag is forwarded
     // to `tryUnwrapFromAny` for the inner type and on success wrapped in
-    // `Some(_)`. Inner err messages are prefixed with `loadAs[Option<X>]: ...`
+    // `Some(_)`. Inner err messages are prefixed with `load[Option<X>]: ...`
     // so the test asserting "null" + "JSON object" simultaneously can match.
     llvm::Value *tryUnwrapOptionFromAny(llvm::Value *anyVal,
                                           llvm::StructType *optTy,
