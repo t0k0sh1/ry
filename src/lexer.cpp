@@ -601,9 +601,12 @@ Token Lexer::readToken() {
         }
         consumeDigitsWithSeparators(src_, pos_, col_, line_,
             isDecDigit);
-        // Fraction part (e.g., 3.14).
+        // Fraction part (e.g., 3.14). Suppress when the integer literal
+        // directly follows a Dot (e.g. `t.0.0`) so nested tuple/record
+        // field access lexes as Number-Dot-Number, not Float.
         if (pos_ < src_.size() && src_[pos_] == '.' &&
-            pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
+            pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1])) &&
+            prev_kind_ != TokenKind::Dot) {
             ++pos_; ++col_;
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);

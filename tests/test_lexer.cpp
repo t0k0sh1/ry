@@ -1289,6 +1289,91 @@ TEST(LexerTest, LeadingDotFloat) {
     }
 }
 
+TEST(LexerTest, DotAfterDotSuppressesFractionAbsorption) {
+    // Nested tuple/record field access: a.0.0 must lex as five tokens, not
+    // [Ident, Dot, Float("0.0")]. The integer literal '0' after the leading
+    // '.' must NOT greedily absorb the trailing ".0" as a fraction part.
+    {
+        auto toks = tokenize("a.0.0");
+        ASSERT_EQ(toks.size(), 6u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].value, "a");
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "0");
+        EXPECT_EQ(toks[3].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[4].kind, TokenKind::Number);
+        EXPECT_EQ(toks[4].value, "0");
+        EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+    }
+    // Three-level chain: a.0.1.2 (5 numeric segments → 7 non-Eof tokens).
+    {
+        auto toks = tokenize("a.0.1.2");
+        ASSERT_EQ(toks.size(), 8u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "0");
+        EXPECT_EQ(toks[3].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[4].kind, TokenKind::Number);
+        EXPECT_EQ(toks[4].value, "1");
+        EXPECT_EQ(toks[5].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[6].kind, TokenKind::Number);
+        EXPECT_EQ(toks[6].value, "2");
+        EXPECT_EQ(toks[7].kind, TokenKind::Eof);
+    }
+    // Tuple literal directly followed by chained numeric field access.
+    {
+        auto toks = tokenize("(1,2).0.1");
+        ASSERT_EQ(toks.size(), 10u);
+        EXPECT_EQ(toks[0].kind, TokenKind::LParen);
+        EXPECT_EQ(toks[1].kind, TokenKind::Number);
+        EXPECT_EQ(toks[1].value, "1");
+        EXPECT_EQ(toks[2].kind, TokenKind::Comma);
+        EXPECT_EQ(toks[3].kind, TokenKind::Number);
+        EXPECT_EQ(toks[3].value, "2");
+        EXPECT_EQ(toks[4].kind, TokenKind::RParen);
+        EXPECT_EQ(toks[5].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[6].kind, TokenKind::Number);
+        EXPECT_EQ(toks[6].value, "0");
+        EXPECT_EQ(toks[7].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[8].kind, TokenKind::Number);
+        EXPECT_EQ(toks[8].value, "1");
+        EXPECT_EQ(toks[9].kind, TokenKind::Eof);
+    }
+    // Non-regression: a regular float literal after an arithmetic operator
+    // must still tokenize as Float, even when the LHS uses .index access.
+    {
+        auto toks = tokenize("a.1 + 1.5");
+        ASSERT_EQ(toks.size(), 6u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "1");
+        EXPECT_EQ(toks[3].kind, TokenKind::Plus);
+        EXPECT_EQ(toks[4].kind, TokenKind::Float);
+        EXPECT_EQ(toks[4].value, "1.5");
+        EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+    }
+    // Non-regression: leading-dot float `.5` after Plus must still tokenize
+    // as Float, even when the LHS contains nested numeric field access.
+    {
+        auto toks = tokenize("a.0.0 + .5");
+        ASSERT_EQ(toks.size(), 8u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "0");
+        EXPECT_EQ(toks[3].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[4].kind, TokenKind::Number);
+        EXPECT_EQ(toks[4].value, "0");
+        EXPECT_EQ(toks[5].kind, TokenKind::Plus);
+        EXPECT_EQ(toks[6].kind, TokenKind::Float);
+        EXPECT_EQ(toks[6].value, ".5");
+        EXPECT_EQ(toks[7].kind, TokenKind::Eof);
+    }
+}
+
 TEST(LexerTest, NumericUnderscoreSeparators) {
     // Decimal integers
     {

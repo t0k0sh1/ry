@@ -1076,3 +1076,14 @@ fn tupleTests():
     t2 = (1, 2)
     expect(t1 == t2).toBeTrue()
     expect(t1 != t2).toBeFalse()
+  @it("should access nested tuple fields with chained numeric access (#1892)")
+  fn shouldAccessNestedTupleFieldsWithChainedNumericAccess():
+    nested = ((1, 2), (3, 4))
+    expect(nested.0.0).toEq(1)
+    expect(nested.0.1).toEq(2)
+    expect(nested.1.0).toEq(3)
+    expect(nested.1.1).toEq(4)
+  @it("should access tuple literal fields with chained numeric access (#1892)")
+  fn shouldAccessTupleLiteralFieldsWithChainedNumericAccess():
+    expect(((10, 20), (30, 40)).0.0).toEq(10)
+    expect(((10, 20), (30, 40)).1.1).toEq(40)

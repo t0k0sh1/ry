@@ -87,7 +87,11 @@ tests/spec/type_of.test.ry
 # gap unrelated to braced selective import.
 #   - arc_tuple_*.ry, collection_meta_propagation.ry, mock.test.ry: feature-
 #     specific syntax surfaces not yet covered by editor/tree-sitter/grammar.js
+#   - collection_element_metadata.test.ry: uses `load[Map<str, any>]("...")`
+#     turbofish-style type application — same grammar gap as json.test.ry
+#     (#1887 registration miss; #1892 self-verification housekeeping)
 tests/spec/arc_tuple_index_assign.test.ry
 tests/spec/arc_tuple_ownership.test.ry
 tests/spec/collection_meta_propagation.test.ry
+tests/spec/collection_element_metadata.test.ry
 tests/spec/mock.test.ry

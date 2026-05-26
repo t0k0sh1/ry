@@ -362,7 +362,7 @@ postfix_expression ::= primary_expression { postfix_op }
 
 postfix_op       ::= '(' [ argument_list ] ')'                       // call
                    | '[' expression { ',' expression } ']'           // index; if immediately followed by '?', returns Option<elem> on Map<K,V> / List<T> (#1699)
-                   | '.' IDENT                                        // field / method
+                   | '.' ( IDENT | INTEGER )                          // field / method / tuple index
                    | '?'                                              // unwrap Result/Option; after '[..]' becomes the Option-returning index above
                    | '++' | '--'                                      // post-inc/dec
                    | 'as' type_expr                                   // cast
