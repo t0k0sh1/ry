@@ -1,157 +1,129 @@
 ---
 name: triage-side-finding
-description: 副次的な発見 (side finding) の扱いを判定するときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー指示 → Q3 bug-forensics-analyst → Q4 3 択判定 [即時修正 / 別 issue 起票 / ユーザー確認])。Use when 副次的な発見 / side finding / scope / ついでに直したい / 別 issue 起票 / 即時修正 / OPEN PR 依存 / fold-only / orphan issue 防止 / triage / 判定フロー のとき。実装中・セルフ検証中・PR レビュー対応中に副次的な問題が見つかった場合に呼び出す。**起源判定 (回帰 vs 既存バグ) そのものは `bug-forensics-analyst` agent の領域なので、本 skill は Q3 経由でのみ agent を呼ぶ。**
+description: Triage hub for side findings — short-circuits via Q1 (hard-to-reproduce CI detection) / Q2 (explicit user direction) / Q3 (bug-forensics-analyst) / Q4 (three-way 即時修正 / 別 issue 起票 / ユーザー確認). Use during implementation, self-verification, or PR review when an out-of-scope finding surfaces. Origin diagnosis (regression vs pre-existing) is delegated to `bug-forensics-analyst` and reached only via Q3. Also fires on Japanese triggers 副次的な発見, side finding, scope, ついでに直したい, 別 issue 起票, 即時修正, OPEN PR 依存, fold-only, orphan issue 防止, triage, 判定フロー.
 allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Bash(gh api:*), Agent
 ---
 
 # Triage Side Finding
 
-副次的な発見 (side finding) を検出したときの中立的なトリアージハブ。3 択判定 — (a) 即時修正 / (b) 別 issue 起票 / (c) ユーザー確認 — に振り分ける。実装中・セルフ検証中・PR レビュー対応中に呼び出す。
+Neutral triage hub for side findings detected during implementation, self-verification, or PR review. Routes to one of three outcomes — (a) 即時修正 / (b) 別 issue 起票 / (c) ユーザー確認.
 
-> **Source-of-truth note**: previously in `AGENTS.md` §"責務の分離 > スコープ外の問題を発見した場合の対応ルール"; relocated by #1384. 「現在 OPEN な PR への依存」ゲート (Q4(b) Step 1 + fold-only ルール) は #1694 で追加。Q1-Q4 early short-circuit フローへの再設計と `bug-forensics-analyst` 統合は #1752 で導入。
+> **Source-of-truth note**: previously in `AGENTS.md` §"責務の分離 > スコープ外の問題を発見した場合の対応ルール"; relocated by #1384. The "OPEN PR dependency" gate (Q4(b) Step 1 + fold-only rule) was added by #1694. The Q1-Q4 short-circuit redesign and `bug-forensics-analyst` integration came in #1752.
 
 ## Design intent
 
-本 skill は **副次的発見を「別 issue 起票」方向に押し流さない** ことを設計目標とする。旧 `scope-out-issue` skill は名前と Case 1/2 default の構造から「スコープアウトする手順」のバイアスを生み、(a) CI 検出の再現困難な問題 (ASan / TSan / UBSan / libFuzzer crash) が後追いで再現できず塩漬けになる、(b) ユーザーが「今直す」と判断してもルール順守側に揺り戻される、という失敗パターンを生んでいた (#1752)。
+The skill must **not** bias side findings toward "file a separate issue." The previous `scope-out-issue` skill did, producing two failure modes (#1752): (a) hard-to-reproduce CI findings (ASan / TSan / UBSan / libFuzzer crashes) went stale before triage finished; (b) when the user said "fix it now," rule discipline overrode the call.
 
-新フローは Q1 / Q2 で **agent / advisor を呼ばずに即時修正へ short-circuit** させ、再現中のウィンドウを逃さない。Q3 / Q4 は Q1 / Q2 で確定しなかった「分析を要するケース」に限定する。
+Q1 / Q2 short-circuit to immediate fix without invoking any agent or advisor, preserving the reproduction window. Q3 / Q4 run only when Q1 / Q2 did not settle the case.
 
 ## Decision Flow
 
-副次的発見を検出したら、以下の順序で判定する。**前段で確定したら後段の処理 (`bug-forensics-analyst` / advisor 呼び出し含む) は実行しない**。
+Evaluate in order. **Once a stage settles, do not run later stages** (no `bug-forensics-analyst` or advisor invocation).
 
-### Q1: 今再現中で、後で再現困難になる問題か?
+### Q1: Reproducing now, but hard to reproduce later?
 
-CI のサニタイザー (ASan / TSan / UBSan) / libFuzzer crash / 並行性 race / 確率的なメモリ破壊など、ローカル環境では確率的にしか再現しないが今この瞬間に観測できているものを指す。
+Covers CI-only sanitizer hits (ASan / TSan / UBSan), libFuzzer crashes, concurrency races, and probabilistic memory corruption — observable right now but flaky on local reproduction.
 
-**Falsifiable な判定基準** (いずれかに該当すれば Q1 = Yes):
+**Falsifiable criteria** (any one ⇒ Q1 = Yes):
 
-- CI で検出されたサニタイザー / libFuzzer crash で、ローカル開発環境 (`build-asan/` / `build-tsan/` / `build-fuzz/`) で **3 回試行しても確実に再現しない**
-- TSan が race を検出したが、再実行で出ない (TSan の本質的に確率的な性質)
-- libFuzzer が新規 crashing input を生成したが、コーパス未保存のため再現難
-- CI 上のみで観測され、再実行可能性に保証がない (CI ジョブ retention が短い、ログのみ残存等)
+- CI-detected sanitizer / libFuzzer crash that **does not reliably reproduce after 3 local attempts** in `build-asan/` / `build-tsan/` / `build-fuzz/`
+- TSan race that vanishes on re-run (intrinsic probabilistic behavior)
+- libFuzzer crashing input with no saved corpus
+- CI-only with no re-run guarantee (short job retention, log-only artifacts)
 
-逆に **以下は Q1 = No** (Q2 以降へ進む):
+**Q1 = No** (proceed to Q2): bug reproducible locally at will, production crash with steps in hand, or pre-existing bug surfaced by a known reproducible test case.
 
-- ローカルで確実に再現でき、いつでも観察可能なバグ
-- production 環境のクラッシュレポートで再現手順が手元にある
-- 既知の再現性のあるテストケースで露呈した既存バグ
+→ **Q1 = Yes**: **fix immediately. Do not invoke `bug-forensics-analyst` or advisor.** Protects the reproduction window — not "while-we're-at-it cleanup" (no conflict with `/plan-rubric`'s no-incidental-fix rule). Persist crash inputs / stack traces (`tests/fuzz/regressions/` etc.) first, then land the fix in the current PR.
+→ **Q1 = No**: proceed to Q2.
 
-→ **Q1 = Yes**: **即時修正に振る。`bug-forensics-analyst` / advisor は呼ばない**。
-   - 再現中のウィンドウを最優先する設計上の判断であり「ついでに直す」ではない (`plan-rubric` の「ついでに直す禁止」と衝突しない、`/plan-rubric` 参照)
-   - 必要に応じてクラッシュ入力 / スタックトレースを `tests/fuzz/regressions/` 等に永続化してから修正する
-   - フィーチャーブランチに含めて同 PR 内で対処する
-→ **Q1 = No**: Q2 へ進む。
+### Q2: Has the user explicitly directed the disposition?
 
-### Q2: ユーザーが明示的に方針を指示しているか?
+The user has said "fix it in this branch," "make it a separate issue," "handle it here," etc.
 
-ユーザーから「これは今のブランチで直そう」「別 issue にして」「ここで対処」などの方針指示が出ているか。
+**Before following the direction, report the following in one message** (informed-consent gate):
 
-**ただし指示に従う前に、必ず以下を 1 メッセージで報告する** (informed consent 化):
+- **What** — fix target (file / function / change)
+- **Where** — impact surface (modules / tests / dependencies)
+- **Estimated diff size** — lines / files touched
+- **Dependency risk** — does it materially change current PR scope or depend on an OPEN PR?
 
-- **What**: 修正対象 (どのファイル / 関数 / 何を変える)
-- **Where**: 影響範囲 (関連するモジュール / テスト / 依存)
-- **推定差分規模**: 概ねの行数 / 触るファイル数
-- **依存リスク**: 現 PR scope を実質的に変えないか、OPEN PR への依存がないか
+If the user confirms with that knowledge, follow it. Obvious quality-gate violations (leaving a sanitizer error in place, splitting a TDD cycle, etc.) are **out of Q2 scope** — AGENTS.md's quality-gate rules win (see `AGENTS.md` §"副次的発見の判断優先順位").
 
-ユーザーがこれを承知した上で指示するなら従う。明らかな品質ゲート違反 (サニタイザーエラーを残す / TDD サイクル分割禁止違反など) は **Q2 の対象外** — それらは AGENTS.md の品質ゲート系ルールが優先する (`AGENTS.md` 「副次的発見の判断優先順位」参照)。
+→ **Q2 = Yes**: **follow the user's direction. Do not invoke `bug-forensics-analyst` or advisor** (no rule-side override of an explicit "fix now").
+→ **Q2 = No**: proceed to Q3.
 
-→ **Q2 = Yes**: **ユーザー指示に従う。`bug-forensics-analyst` / advisor は呼ばない** (ルール順守側で「今直す」判断を覆さない)。
-→ **Q2 = No**: Q3 へ進む。
+### Q3: Origin analysis via `bug-forensics-analyst`
 
-### Q3: `bug-forensics-analyst` agent で起源分析
-
-Q1 / Q2 で確定しなかった場合のみ実行する。
+Run only when Q1 / Q2 did not settle the case.
 
 ```
 Agent tool: subagent_type='bug-forensics-analyst'
 ```
 
-agent は以下を出力する (詳細は `.claude/agents/bug-forensics-analyst.md`):
+The agent emits (full spec in `.claude/agents/bug-forensics-analyst.md`):
 
-- 起源判定: regression (現 PR で導入) / pre-existing (現 PR が露呈させたのみ) / pre-existing exposed (条件付きで現 PR が引き金)
-- 影響範囲 (どのコードパスが触られるか)
-- 既存テストカバレッジのギャップ
-- 修正方針の Recommendation (修正コードは書かない)
+- Origin verdict: regression (current PR introduced it) / pre-existing (PR only exposed it) / pre-existing exposed (PR triggers it conditionally)
+- Impact surface (code paths touched)
+- Test coverage gaps
+- Fix-direction recommendation (does **not** write fix code)
 
-> **呼び出し元の責務**: agent invoke 時、本 skill の呼び出し元 (= Claude Code 本体) は agent に渡るコンテキスト (PR diff / blame 範囲 / 失敗したテスト出力 等) を会話履歴上で確認可能な状態に保つ。現状の skill / agent はいずれも同一会話セッションから情報を引けるため、明示的なコンテキスト転送なしで動作する想定。
+> **Caller responsibility**: keep the agent's input context (PR diff / blame range / failing test output) visible in conversation history; same session ⇒ no explicit transfer needed.
 
-### Q4: 3 択判定
+### Q4: Three-way verdict
 
-Q3 の分析結果と PR サイズ規律 (`plan-rubric` の 1 issue ≒ 1 PR) を踏まえ、以下から 1 つを選ぶ:
+Using Q3's analysis and `/plan-rubric`'s PR-size discipline (1 issue ≒ 1 PR), pick one:
 
-**(a) 即時修正**
+**(a) 即時修正** — fix diff is related to the current PR's scope and doesn't grow it materially; judged a regression; simple fix with low side-effect risk. → Land in the feature branch / current PR.
 
-- 修正 diff が現 PR の本来 scope と関連し、追加 diff が現 PR と同程度以上にならない
-- regression と判定された (現 PR が直接引き起こした)
-- 修正方法が単純で副作用リスクが低い
+**(b) 別 issue 起票** — unrelated concern (e.g. parser bug surfaced alongside a codegen improvement); materially expands the current PR's scope; pre-existing and loosely related. → Proceed to "Issue Creation Steps" below.
 
-→ フィーチャーブランチに含めて同 PR 内で対処する。
-
-**(b) 別 issue 起票**
-
-- 別関心事 (parser bug と codegen 改善が同時に見つかった等)
-- 現 PR scope を実質的に変える規模
-- pre-existing で、現 PR の関連は薄い
-
-→ 後続「Issue Creation Steps」へ進む。
-
-**(c) ユーザー確認**
-
-- 設計判断が分かれる (どの fix approach を取るか複数案ある)
-- regression / pre-existing の境界が曖昧
-- 規模が中間で (a)/(b) どちらも合理的に見える
-
-→ ユーザーに **What / Where / Context / 推定 size / 推奨案 (理由付き)** を提示し、回答を待つ。
+**(c) ユーザー確認** — design choice is open (multiple fix approaches); regression vs pre-existing boundary is blurry; mid-sized so both (a) and (b) look reasonable. → Present **What / Where / Context / estimated size / recommended option (with reason)** and wait.
 
 ## Issue Creation Steps
 
-Q4 = (b) と判定した場合に実行する。
+Run only when Q4 = (b).
 
-> **重要**: 新規 issue の起票 (`gh issue create`) は **ユーザーの明示許可必須** (AGENTS.md §責務の分離「ユーザーが明示的に指示すること」)。Step 2 で起票内容を提示し、許可を得てから Step 3 以降を実行する。Claude Code は許可なしに `gh issue create` を実行してはならない。
+> **Important**: new issue creation (`gh issue create`) **requires explicit user permission** (AGENTS.md §責務の分離 "ユーザーが明示的に指示すること"). Step 2 previews the issue and waits for permission before Step 3 onward; do not run `gh issue create` without it.
 
-### Step 1: 依存 PR を確認し、fold または escalate する
+### Step 1: Check OPEN-PR dependency; fold or escalate
 
-このルールは **fold-only** である。「依存 PR がマージされてから再起票する」案は**採らない** — 着手不可な orphan issue は backlog 上で「open かつ着手可能」と区別がつかず tracker の signal を低下させ、依存関係も暗黙化してしまうため。
+This is a **fold-only** rule. "File now, work after the dependency PR merges" is not allowed — an orphan issue is indistinguishable from "open and actionable" in the backlog, weakens tracker signal, and hides the dependency.
 
-1. **該当 OPEN PR を特定する**:
+1. **Identify the OPEN PR**:
 
 ```bash
 gh pr list --state open --json number,title,headRefName
 gh pr view <number> --json files,state,headRefName --jq '{state, branch: .headRefName, files: [.files[].path]}'
 ```
 
-2. **依存判定**:
-   - 該当コードパスが現在 OPEN な PR のフィーチャーブランチでしか存在しない (= main にはまだない) → **依存あり** (fold または escalate へ進む)
-   - 該当コードパスが `main` 上に既に存在する / 独立して作業可能 → **依存なし** (Step 2 へ進む)
+2. **Decide dependency**:
+   - Code path only on the OPEN PR's feature branch (not on `main`) → **has dependency** (fold or escalate)
+   - Code path on `main` / workable independently → **no dependency** (proceed to Step 2)
 
-3. **fold する (PR 作者と相談して scope 拡大を提案する)**: 当該 PR の作者と相談し、発見した作業項目を当該 PR のスコープに追加する形で取り込む。一方的にコミットを push するのではなく、PR comment 等で scope creep を提案して同意を得るのが基本。自分が PR 作者であれば自分のフィーチャーブランチに追加コミットしてよい。
+3. **Fold (propose scope expansion)**: ask the PR author to absorb the new finding via PR comment and obtain agreement — do not unilaterally push commits. If you are the author, add a commit to your own feature branch.
 
-4. **escalate する (fold 困難時)**: 以下のいずれかに該当する場合は fold せず、ユーザーに **What** / **Where** / **推定 size** を提示して判断を仰ぐ。
-   - 追加作業が当該 PR の本来 scope を実質的に変える (設計判断の見直しを要する等)
-   - 追加 diff が当該 PR の既存 diff と同程度以上になる
-   - 当該 PR が review 完了済み・マージ直前で再 review コストが高い
+4. **Escalate (when fold isn't viable)**: present **What** / **Where** / **estimated size** to the user when any of: extra work materially changes PR scope (design rethink); added diff is comparable to or larger than the PR's existing diff; PR is review-complete / merge-ready and re-review cost is high.
 
-ユーザーは独立 issue 起票 / 当該 PR の scope 拡大 / 別フィーチャーブランチ作成等の選択肢から判断する。
+The user then chooses: file an independent issue, expand the PR's scope, branch off, etc.
 
-**Motivating example (#1692)**: PR #1693 (`verifyCalledWith` v1) が未マージのまま、その v2 拡張として #1692 が起票された。#1692 は PR #1693 で導入される `__ry_mock_store_arg` / kind tag enum / `mockArgEqual` / `__ry_mock_count_matching_calls` を**前提**とするため、PR #1693 マージ前は実装に進めない orphan issue となった。本ゲートにより、今後は同種の起票は fold (PR #1693 への scope 追加) または escalate に振り分けられる。
+**Motivating example (#1692)**: #1692 was filed as a v2 extension of unmerged PR #1693 (`verifyCalledWith`), depending on `__ry_mock_store_arg` / kind tag enum / `mockArgEqual` / `__ry_mock_count_matching_calls` from there — an orphan until #1693 merged. With this gate, the same case routes to fold (extend #1693's scope) or escalate.
 
-### Step 2: ユーザー許可確認 (起票内容のプレビュー提示)
+### Step 2: User-permission gate (preview the proposed issue)
 
-Step 1 で「依存なし」と判定された場合のみ実行する (fold / escalate ケースは Step 1 で完結)。
+Run only when Step 1 resolves to "no dependency" (fold / escalate cases finish in Step 1).
 
-ユーザーに以下の 6 項目を提示し、明示の起票許可 (「起票して」 / 「OK」等) を待つ。**許可が得られるまで `gh issue create` を実行しない**。
+Present the following six items and wait for explicit creation permission ("起票して" / "OK" etc.). **Do not run `gh issue create` until permission is given.**
 
-| 項目 | 内容 |
+| Item | Content |
 |---|---|
-| **起票理由** | なぜこの発見を現 PR で対応せず別 issue にするのか (関心事分離 / scope 規模 / pre-existing 等、Q4(b) の判定根拠) |
-| **概要** | 1〜3 行の要点 (本文ではなく要旨) |
-| **粒度の妥当性** | 1 issue ≒ 1 PR に収まるか、Step 4 の分割対象になりうるか |
-| **解決確度** | High (再現手順あり) / Medium (仮説 + 検証手順あり) / Low (仮説のみ) のいずれかと根拠 |
-| **ラベル案** | 自動判断 (例: `bug` / `enhancement` / `documentation` / `refactor` 等)。**最低 1 個は必須、空にしない** |
-| **マイルストーン候補** | `gh api repos/t0k0sh1/ry/milestones?state=open` で現在 open な milestone を取得し、現開発バージョンの milestone を「候補」として提示。**自動継承しない** — ユーザーが採用 / 別指定 / 未設定を判断する |
+| **Reason for filing** | Why this finding doesn't belong in the current PR (separation of concerns / scope size / pre-existing / Q4(b) rationale) |
+| **Summary** | 1-3 lines of gist (not full body) |
+| **Granularity** | Fits in 1 PR? Will Step 4 split it? |
+| **Confidence** | High (reproduction available) / Medium (hypothesis + verification path) / Low (hypothesis only), with reasoning |
+| **Label suggestion** | Auto-pick (e.g. `bug` / `enhancement` / `documentation` / `refactor`). **At least one required; never empty.** |
+| **Milestone candidate** | Run `gh api repos/t0k0sh1/ry/milestones?state=open` and propose the current dev-version milestone as a **candidate**. **Do not auto-inherit** — let the user choose adopt / override / unset. |
 
-提示例:
+Example presentation:
 
 ```text
 別 issue 起票の許可をお願いします:
@@ -166,32 +138,32 @@ Step 1 で「依存なし」と判定された場合のみ実行する (fold / e
 起票してよろしいですか?
 ```
 
-ユーザーが許可したら、その回答 (採用 milestone を含む) を Step 3 以降の入力とする。許可されなかった場合は起票せず終了する。
+Once permission is granted (including the adopted milestone), feed the answer into Step 3 onward. If denied, exit without filing.
 
-### Step 3: 重複を確認する
+### Step 3: Check for duplicates
 
 ```bash
 gh search issues --repo t0k0sh1/ry "<keywords>" --state open
 ```
 
-重複があれば追加 context を comment で添え、必要に応じて `gh issue edit <number> --milestone "<title>"` でマイルストーンを揃える (milestone 変更もユーザー確認後)。Step 4 を skip して Step 6 へ進む。
+If a duplicate exists, add the new context as a comment and, if needed, align milestones with `gh issue edit <number> --milestone "<title>"` (milestone change also after user confirmation). Skip Step 4 and proceed to Step 6.
 
-### Step 4: 分割を判断する
+### Step 4: Decide whether to split
 
-複数の独立した関心事を含む、または見積もりが概ね 1 PR を超える場合は別 issue に分割する。**1 issue ≒ 1 PR** を目標とする。
+If the finding has multiple independent concerns or the estimate clearly exceeds 1 PR, file separate issues. Target **1 issue ≒ 1 PR**.
 
-例: parser bug と codegen 改善が同時に見つかった → 2 issue / 同じ runtime 関数の正しさ修正と性能改善 → 2 issue。
+Example: parser bug + codegen improvement → 2 issues; correctness fix and performance work on the same runtime function → 2 issues.
 
-分割すると判断した場合の **分割理由の分類 (機能境界 / 依存関係 / 規模) と対称性チェック (typed↔any / wrap↔unwrap / read↔write / base↔derived)、3 段目派生の警戒** は `/scope-decomposition` REQ-1〜3 を参照。
+When splitting, the **classification of split rationale (feature boundary / dependency / size), symmetry check (typed↔any / wrap↔unwrap / read↔write / base↔derived), and 3rd-level-derivative guard** are in `/scope-decomposition` REQ-1〜3.
 
-分割が必要になった場合は分割案 (各 issue のタイトル・粒度) を再度ユーザーに提示し、改めて許可を得る (Step 2 と同等)。
+If splitting, present the split proposal (titles + granularity) to the user and obtain permission again (equivalent to Step 2).
 
-### Step 5: issue を作成する
+### Step 5: Create the issue
 
-Step 2 で得た許可と milestone 決定を入力に、`/git-create-issue` skill 経由で起票する。コマンド本体と本文テンプレートは `/git-create-issue` に集約されている。
+Using the permission and milestone choice from Step 2, file via `/git-create-issue`. The command body and body-template live there.
 
-**重複した許可確認を避けるため**: `/git-create-issue` Step 1 は許可ゲートだが、本 skill 経由で呼ぶ場合は Step 2 で同等の 6 項目プレビューと承認が完了しているため、`/git-create-issue` 側は **Step 1 を skip し Step 2 (重複確認) から開始**する。Step 2 で承認された 6 項目 (起票理由 / 概要 / 粒度 / 解決確度 / ラベル案 / 採用 milestone) をそのまま `gh issue create` の入力にする。`/git-create-issue` 側にも同等の skip 条件が明記されている。
+**To avoid duplicate permission prompts**: `/git-create-issue` Step 1 is its own permission gate, but Step 2 above already obtained the equivalent approval, so `/git-create-issue` **skips its Step 1 and starts at Step 2 (duplicate check)** (same skip condition recorded there). The six approved items (reason / summary / granularity / confidence / label / adopted milestone) feed `gh issue create` as-is.
 
-### Step 6: 報告する
+### Step 6: Report
 
-ユーザーに issue 番号・タイトル・設定したマイルストーンを報告する。複数 issue を起票したらすべて列挙する。fold / escalate を選択した場合はその旨と対象 OPEN PR 番号を報告する。
+Report the issue number, title, and configured milestone to the user. List all if multiple were filed. For fold / escalate, report that outcome and the relevant OPEN PR number.
