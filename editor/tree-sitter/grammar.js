@@ -90,6 +90,14 @@ export default grammar({
     // prec.dynamic biases toward statement form in statement context.
     [$.case_match_statement, $.case_match_expression],
     [$.case_cond_statement, $.case_cond_expression],
+    // `f[T, ...]` — bracket contents look like either a type list (generic call,
+    // when followed by `(`) or an expression list (index_expression). The
+    // ambiguity is resolved at the closing `]` based on the next token. Both
+    // entries are required: the 2-rule form covers `f[T, ...]` (bare type-vs-expr
+    // ambiguity), the 3-rule form covers `f[(x, y), ...]` (paren prefix could
+    // start a lambda param list, a tuple type, or a parenthesized expr). (#1906)
+    [$.named_type, $.qualified_identifier],
+    [$.named_type, $.qualified_identifier, $.lambda_param],
   ],
 
   rules: {
@@ -870,6 +878,11 @@ export default grammar({
 
     call_expression: $ => prec(PREC.postfix, seq(
       field('function', $._postfix_expression),
+      optional(field('type_arguments', seq(
+        '[',
+        sep1($._type, ','),
+        ']',
+      ))),
       '(',
       optional(field('arguments', $.argument_list)),
       ')',

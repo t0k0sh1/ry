@@ -174,3 +174,106 @@ y = obj.method(1, 2)
           value: (integer_literal))
         (argument
           value: (integer_literal))))))
+
+==================
+generic call with single primitive type argument (#1906)
+==================
+
+x = load[int]("42")
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      type_arguments: (union_type
+        (primitive_type))
+      arguments: (argument_list
+        (argument
+          value: (string_literal))))))
+
+==================
+generic call with multiple type arguments (#1906)
+==================
+
+b = mapHas[str, int](m, "a")
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      type_arguments: (union_type
+        (primitive_type))
+      type_arguments: (union_type
+        (primitive_type))
+      arguments: (argument_list
+        (argument
+          value: (qualified_identifier
+            (identifier)))
+        (argument
+          value: (string_literal))))))
+
+==================
+generic call with nested generic type (#1906)
+==================
+
+x = load[Map<str, any>]("{}")
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      type_arguments: (union_type
+        (named_type
+          (identifier)
+          (type_arguments
+            (union_type
+              (primitive_type))
+            (union_type
+              (primitive_type)))))
+      arguments: (argument_list
+        (argument
+          value: (string_literal))))))
+
+==================
+generic call with two-level nested generic type (#1906)
+==================
+
+x = load[Map<str, List<Foo>>](text)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      type_arguments: (union_type
+        (named_type
+          (identifier)
+          (type_arguments
+            (union_type
+              (primitive_type))
+            (union_type
+              (named_type
+                (identifier)
+                (type_arguments
+                  (union_type
+                    (named_type
+                      (identifier)))))))))
+      arguments: (argument_list
+        (argument
+          value: (qualified_identifier
+            (identifier)))))))

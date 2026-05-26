@@ -361,6 +361,9 @@ unary_expr       ::= ( '-' | '+' | '~' | 'not' | 'await' | 'weak' ) unary_expr
 postfix_expression ::= primary_expression { postfix_op }
 
 postfix_op       ::= '(' [ argument_list ] ')'                       // call
+                   | '[' type_expr { ',' type_expr } ']' '(' [ argument_list ] ')'
+                                                                       // generic call: f[T](args); the C++ parser only accepts this form
+                                                                       // when the callee is a bare IDENT (#1906, see #1885 / #1887)
                    | '[' expression { ',' expression } ']'           // index; if immediately followed by '?', returns Option<elem> on Map<K,V> / List<T> (#1699)
                    | '.' ( IDENT | INTEGER )                          // field / method / tuple index
                    | '?'                                              // unwrap Result/Option; after '[..]' becomes the Option-returning index above
