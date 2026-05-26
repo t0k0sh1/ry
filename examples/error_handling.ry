@@ -1,4 +1,4 @@
-# エラーハンドリング (Option, Result, Error, ?, !!) の検証
+# エラーハンドリング (Option, Result, Error, ?, ??) の検証
 
 # Option<T>
 fn safeDiv(a: int, b: int) -> int?:

@@ -5,15 +5,21 @@ record BankAccount:
     balance: float
 
 fn deposit(acc: BankAccount, amount: float) -> BankAccount:
+    if amount < 0.0:
+        return acc
     return BankAccount(acc.owner, acc.balance + amount)
 
 fn withdraw(acc: BankAccount, amount: float) -> Result<BankAccount, Error>:
+    if amount < 0.0:
+        return Err(Error(f"invalid withdraw amount: {amount}"))
     if amount > acc.balance:
         return Err(Error(f"insufficient funds: balance={acc.balance}, requested={amount}"))
     return Ok(BankAccount(acc.owner, acc.balance - amount))
 
 # in-place 版 (record field 書き換え)
 fn depositInPlace(acc: BankAccount, amount: float):
+    if amount < 0.0:
+        return
     acc.balance += amount
 
 # main
