@@ -2,7 +2,7 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/directive_meta.hpp"
-#include "ry/sema_return.hpp"
+#include "ry/sema/sema_return.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <llvm/IR/Verifier.h>

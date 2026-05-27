@@ -1,4 +1,4 @@
-#include "ry/trace.hpp"
+#include "ry/trace/trace.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>

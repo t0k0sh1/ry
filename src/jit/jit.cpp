@@ -1,4 +1,4 @@
-#include "ry/jit.hpp"
+#include "ry/jit/jit.hpp"
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
 

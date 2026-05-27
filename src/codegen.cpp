@@ -1,5 +1,5 @@
 #include "ry/codegen.hpp"
-#include "ry/coverage_runtime.hpp"
+#include "ry/coverage/coverage_runtime.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>

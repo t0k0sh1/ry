@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry/project_config.hpp"
+#include "ry/project/project_config.hpp"
 #include <filesystem>
 #include <fstream>
 #include <string>

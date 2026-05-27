@@ -41,7 +41,7 @@ write a 3-line entry under this section with a descriptive subheading.
 **Tags**: commands, environment, stdlib, dev-stdlib, module-loader
 
 **Wrong**: `printf '...\n' > /tmp/b64_smoke.ry && ./build/ry /tmp/b64_smoke.ry`
-→ Error: `'encodeBytes' not found in module 'base64'` (verbatim shape per `src/module_loader.cpp` after #1483; the function name was also renamed `encode_bytes` → `encodeBytes` in #1415)
+→ Error: `'encodeBytes' not found in module 'base64'` (verbatim shape per `src/module/module_loader.cpp` after #1483; the function name was also renamed `encode_bytes` → `encodeBytes` in #1415)
 
 **Correct**: `./build/ry test tests/spec/base64.test.ry` (or any `.ry` inside the repo)
 
@@ -268,7 +268,7 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 **Source**: #1424 implementation (2026-05-05)
 **Tags**: cmake, ninja, googletest, subprocess, fork, exec, test-isolation
 
-**Wrong**: After modifying `src/jit_runner.cpp`, run `cmake --build build --target ry_tests` to retest. Subprocess tests like `DeprecatedWarningsTest` keep failing as if no source change had taken effect.
+**Wrong**: After modifying `src/jit/jit_runner.cpp`, run `cmake --build build --target ry_tests` to retest. Subprocess tests like `DeprecatedWarningsTest` keep failing as if no source change had taken effect.
 
 **Correct**: `cmake --build build` (no `--target`) — Ninja will relink both the test binary **and** the `ry` executable.
 

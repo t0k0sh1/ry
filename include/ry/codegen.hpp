@@ -4,10 +4,10 @@
 #include "ry/ast/ast.hpp"
 #include "ry/codegen_native_dispatch.hpp"
 #include "ry/directive_meta.hpp"
-#include "ry/sema_return.hpp"
+#include "ry/sema/sema_return.hpp"
 #include "ry/source_manager/source_location.hpp"
 #include "ry/source_manager/source_manager.hpp"
-#include "ry/trace.hpp"
+#include "ry/trace/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>

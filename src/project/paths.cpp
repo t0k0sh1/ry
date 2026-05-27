@@ -1,6 +1,6 @@
-#include "ry/paths.hpp"
-#include "ry/project_config.hpp"
-#include "ry/self_update.hpp"
+#include "ry/project/paths.hpp"
+#include "ry/project/project_config.hpp"
+#include "ry/cli/self_update.hpp"
 #include <cstdlib>
 #include <fstream>
 #include <sstream>

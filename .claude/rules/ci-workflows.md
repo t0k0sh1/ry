@@ -426,7 +426,7 @@ symbolic execution, CodeQL's extraction + query evaluation) scale with
 the number of translation units they see. The default `all` target
 pulls in `ry_tests` (~45 TU), `ry_<pkg>` native shared libraries
 (~15 TU), and fuzz targets in addition to the production
-compiler/runtime (`src/main.cpp` + `ry_lib`, ~76 TU). Including the
+compiler/runtime (`src/app/main.cpp` + `ry_lib`, ~76 TU). Including the
 test and plugin TUs dominates CI time without adding meaningful
 coverage on the production path that releases ship.
 
@@ -435,7 +435,7 @@ under a static-analysis tool, select the analysis scope from
 `github.event_name`:
 
 - `pull_request`: pass `--target ry --parallel` so only `ry` (i.e.
-  `src/main.cpp` + `ry_lib`) is built and analysed. PR feedback stays
+  `src/app/main.cpp` + `ry_lib`) is built and analysed. PR feedback stays
   fast.
 - `push` (to `main`): pass `--parallel` but **no** `--target`, so the
   default target is analysed. Mainline keeps the wider coverage
@@ -460,7 +460,7 @@ Concrete invocations using this pattern today:
 
 **clang-tidy semantic difference**: for scan-build and CodeQL the
 analyser wraps the build itself, so `--target ry` narrows both the
-build *and* the analysis to `ry_lib` + `src/main.cpp`. For clang-tidy,
+build *and* the analysis to `ry_lib` + `src/app/main.cpp`. For clang-tidy,
 `--target ry` narrows only the `Build` step — the subsequent
 `Run clang-tidy` step still drives `find src -name '*.cpp'` over every
 `src/*.cpp` (90 files, including TUs not built into `ry_lib` like

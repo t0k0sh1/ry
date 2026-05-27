@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 #include "ry/codegen.hpp"
-#include "ry/jit.hpp"
+#include "ry/jit/jit.hpp"
 #include "ry/parser/parser.hpp"
 #include "ry/args_runtime.hpp"
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>

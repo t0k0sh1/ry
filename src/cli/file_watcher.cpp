@@ -1,4 +1,4 @@
-#include "ry/file_watcher.hpp"
+#include "ry/cli/file_watcher.hpp"
 #include <chrono>
 #include <csignal>
 #include <cstdio>

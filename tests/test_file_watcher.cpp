@@ -1,4 +1,4 @@
-#include "ry/file_watcher.hpp"
+#include "ry/cli/file_watcher.hpp"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>

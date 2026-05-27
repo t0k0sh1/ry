@@ -75,12 +75,12 @@ deadly signal and terminates the run.
 `include/ry/diagnostic.hpp:22`). This missed `std::out_of_range` thrown by
 `parseFloatLiteral` / `parseIntLiteral` in `include/ry/parser.hpp:196,210`
 for malformed literals like `0B1f32`, causing a libFuzzer crash despite
-the CLI (`src/main.cpp:297-310`) handling the same input cleanly via its
+the CLI (`src/app/main.cpp:297-310`) handling the same input cleanly via its
 top-level `catch (const std::exception &)`.
 
 **How to apply**: When writing or reviewing a fuzz harness, match the
-established top-level pattern used across `src/main.cpp:308`,
-`src/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
+established top-level pattern used across `src/app/main.cpp:308`,
+`src/cli/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
 — a single `catch (const std::exception &)` backstop. Preserve the
 `// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
 under the `/static-analysis-tools` skill (Clang-Tidy section). Document the expected exception types in the

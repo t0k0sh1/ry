@@ -1,4 +1,4 @@
-#include "ry/coverage_runtime.hpp"
+#include "ry/coverage/coverage_runtime.hpp"
 #include <gtest/gtest.h>
 #include <cstdio>
 #include <string>

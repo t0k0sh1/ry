@@ -150,7 +150,7 @@ One test per rule: R1 = `1+2`, R2 = `1+2.0`, R3 = `1.0+2`, R4 = `1.0+2.0`.
 | Operand is `Err` | F | T | – |
 | **Action** | unwrap Ok | propagate Err to caller | parse error: `?` outside Result-returning fn |
 
-**Module privacy** (`src/module_loader.cpp`):
+**Module privacy** (`src/module/module_loader.cpp`):
 
 | Condition | R1 | R2 | R3 |
 |---|---|---|---|

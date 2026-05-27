@@ -1,10 +1,10 @@
-#include "ry/module_loader.hpp"
+#include "ry/module/module_loader.hpp"
 #include "ry/lexer/lexer.hpp"
 #include "ry/parser/parser.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
-#include "ry/project_config.hpp"
+#include "ry/project/project_config.hpp"
 #include "ry/stdlib_registry.hpp"
-#include "ry/trace.hpp"
+#include "ry/trace/trace.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
