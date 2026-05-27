@@ -273,3 +273,31 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 **Correct**: `cmake --build build` (no `--target`) — Ninja will relink both the test binary **and** the `ry` executable.
 
 **Why**: Tests under `tests/test_emit_llvm_ir.cpp`, `tests/test_help.cpp`, and `tests/test_deprecated_warnings.cpp` use a `fork()` + `execv(RY_BINARY_PATH, ...)` pattern (the `RunResult` / `runRy()` helper). They invoke the on-disk `./build/ry` binary, **not** the `runRySource()` C++ symbol linked into `ry_tests`. The `ry_tests` target depends on `ry_lib.a` (the static library), but it does **not** depend on the `ry` executable. So `--target ry_tests` skips relinking `./build/ry`, and the subprocess test forks an old binary that still has the pre-fix behavior. The failure mode is confusing because in-process tests on the same code change pass — only the subprocess tests see a stale binary. Always rebuild without `--target` (or run `--target ry_tests --target ry`) when subprocess tests are in scope.
+
+---
+
+### GraphQL `viewer` is a root Query field, not a `Repository` field
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, graphql, viewer, query-type
+
+**Wrong**: `gh api graphql -f query='{ repository(owner: "...", name: "...") { pullRequest(number: N) { ... } } viewer { login } } }'`
+→ `Field 'viewer' doesn't exist on type 'Repository'`. The closing braces visually suggest `viewer` is outside `repository(...)` but the brace count is off by one — `viewer` ends up nested inside `repository`.
+
+**Correct**: `gh api graphql -f query='{ repository(owner: "...", name: "...") { pullRequest(number: N) { ... } } viewer { login } }'` (one less `}` after the `pullRequest` close so `viewer` sits at the root Query level alongside `repository`).
+
+**Why**: GitHub GraphQL exposes `viewer` only on the root `Query` type. Mis-nested braces are easy to miss because the editor's brace matcher highlights the wrong pair. When composing multi-block queries, count `{ ... }` pairs after the outermost `repository(...)` block before pasting into `gh api graphql -f`.
+
+---
+
+### `gh pr checks --json` uses `bucket`/`state`/`link`, not `status`/`conclusion`/`detailsUrl`
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, pr-checks, json-fields
+
+**Wrong**: `gh pr checks <PR> --json name,status,conclusion,detailsUrl`
+→ `Unknown JSON field: "status"`. Naming is borrowed from `gh run list --json` (which *does* expose `status` / `conclusion`), but `gh pr checks` uses different fields.
+
+**Correct**: `gh pr checks <PR> --json name,bucket,state,link`
+
+**Why**: `gh pr checks --json` field set is `bucket, completedAt, description, event, link, name, startedAt, state, workflow`. Aggregate pass/fail logic should use `bucket`: values are `pass` (SUCCESS / SKIPPED / NEUTRAL), `fail`, `pending`, `cancel`, `skipping`, `stale`. `state` carries the underlying conclusion string (e.g. `SUCCESS`, `FAILURE`); `link` replaces `detailsUrl`. Run `gh pr checks --help` to list the current field set before composing the flag.

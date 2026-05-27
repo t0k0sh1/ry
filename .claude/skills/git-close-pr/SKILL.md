@@ -52,7 +52,7 @@ Fetch in one pass:
 ```bash
 gh api --paginate "repos/t0k0sh1/ry/pulls/<PR>/comments"   # inline review comments
 gh api --paginate "repos/t0k0sh1/ry/pulls/<PR>/reviews"    # review summaries (incl. CodeRabbit nitpicks)
-gh api graphql -f query='{ repository(owner: "t0k0sh1", name: "ry") { pullRequest(number: <PR>) { reviewThreads(first: 100) { nodes { isResolved comments(last: 50) { nodes { databaseId author { login } body path originalLine } } } } } viewer { login } } }'
+gh api graphql -f query='{ repository(owner: "t0k0sh1", name: "ry") { pullRequest(number: <PR>) { reviewThreads(first: 100) { nodes { isResolved comments(last: 50) { nodes { databaseId author { login } body path originalLine } } } } } } viewer { login } }'
 ```
 
 For each unique reviewer comment, and each unresolved thread whose last commenter is **not** the viewer, classify into two buckets:
@@ -72,11 +72,11 @@ If there are no review comments and no unresolved threads, proceed to Step 3 wit
 ### Step 3: Check CI
 
 ```bash
-gh pr checks <PR> --json name,status,conclusion,detailsUrl
+gh pr checks <PR> --json name,bucket,state,link
 ```
 
-- All `conclusion == SUCCESS` (empty for non-required jobs is OK) → proceed.
-- Any failure → list each failed job (`name` / `conclusion` / `detailsUrl`) and stop:
+- All `bucket == "pass"` (SUCCESS / SKIPPED / NEUTRAL) → proceed.
+- Any `bucket == "fail"` → list each failed job (`name` / `state` / `link`) and stop:
   > CI failure(s) detected on PR #\<PR\> (above). Fix PR-caused failures and rerun. For pre-existing failures, triage via `/triage-side-finding` first.
 
 Do not auto-rerun, auto-fix, or loop.
