@@ -301,3 +301,21 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 **Correct**: `gh pr checks <PR> --json name,bucket,state,link`
 
 **Why**: `gh pr checks --json` field set is `bucket, completedAt, description, event, link, name, startedAt, state, workflow`. Aggregate pass/fail logic should use `bucket`: values are `pass` (SUCCESS / SKIPPED / NEUTRAL), `fail`, `pending`, `cancel`, `skipping`, `stale`. `state` carries the underlying conclusion string (e.g. `SUCCESS`, `FAILURE`); `link` replaces `detailsUrl`. Run `gh pr checks --help` to list the current field set before composing the flag.
+
+---
+
+### `gh pr view --json mergeable` is conflict-only; `mergeStateStatus` carries CI / branch-protection state
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, pr-view, mergeable, merge-state-status, branch-protection
+
+**Wrong**: gating merge on `mergeable` alone — e.g. `gh pr view <PR> --json mergeable --jq .mergeable` returns `MERGEABLE` so the script proceeds, then `gh pr merge` rejects with "Pull request is not mergeable" because branch protection still requires green CI / reviews.
+
+**Correct**: read both fields and treat `mergeStateStatus ∈ {CLEAN, HAS_HOOKS}` as the actual gate:
+
+```bash
+gh pr view <PR> --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeStateStatus)"'
+# Accept only: "MERGEABLE CLEAN" or "MERGEABLE HAS_HOOKS"
+```
+
+**Why**: `mergeable` is the merge-conflict judgment only — it returns `MERGEABLE` / `CONFLICTING` / `UNKNOWN` based on whether the base/head can be three-way merged. `mergeStateStatus` is the comprehensive UI state and exposes `CLEAN`, `HAS_HOOKS` (both ready), `BLOCKED` (required checks not green / required reviews missing / signed-commit policy), `BEHIND` (head behind base), `DIRTY` (conflicts; mirrors `mergeable: CONFLICTING`), `DRAFT`, `UNKNOWN`, `UNSTABLE` (non-required failures). CI-pending and branch-protection states show up as `BLOCKED` while `mergeable` stays `MERGEABLE`, so skipping the second check lets the merge call proceed and fail noisily. The `gh pr merge` documentation says "the merge will not happen unless the pull request is in a mergeable state" without spelling out which API field that maps to — the answer is `mergeStateStatus`, not `mergeable`.

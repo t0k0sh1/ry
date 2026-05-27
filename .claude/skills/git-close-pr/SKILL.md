@@ -42,8 +42,8 @@ From Context (or `gh pr view <PR> --json state,mergeable,mergeStateStatus,headRe
 
 - `state != OPEN` → stop:
   > PR #\<PR\> is not open (state: `<state>`). Aborting.
-- `mergeable != MERGEABLE` → stop:
-  > PR #\<PR\> is not mergeable (mergeStateStatus: `<mergeStateStatus>`). Resolve conflicts or required checks, then rerun.
+- `mergeable != MERGEABLE` **or** `mergeStateStatus` ∉ {`CLEAN`, `HAS_HOOKS`} → stop:
+  > PR #\<PR\> is not mergeable (mergeable: `<mergeable>`, mergeStateStatus: `<mergeStateStatus>`). Resolve conflicts or required checks, then rerun.
 
 ### Step 2: Address reviews and unresolved threads
 
@@ -101,8 +101,8 @@ Re-verify status (push triggered fresh CI):
 gh pr view <PR> --json state,mergeable,mergeStateStatus
 ```
 
-- `mergeable != MERGEABLE` → stop:
-  > PR #\<PR\> is not mergeable (mergeStateStatus: `<mergeStateStatus>`). Wait for CI to settle and rerun.
+- `mergeable != MERGEABLE` **or** `mergeStateStatus` ∉ {`CLEAN`, `HAS_HOOKS`} → stop:
+  > PR #\<PR\> is not mergeable (mergeable: `<mergeable>`, mergeStateStatus: `<mergeStateStatus>`). Wait for CI to settle and rerun.
 
 Re-fetch unresolved threads (new comments may have arrived during push):
 
