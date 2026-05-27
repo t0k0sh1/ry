@@ -200,7 +200,7 @@ is `Err` and that `e.message` contains the expected string. Never assert the mes
 
 ### Subprocess tests: `execl` の argv[0] にフルパスを渡す (`"ry"` 短縮は Linux で stdlib 解決を壊す)
 
-**Source**: #1869 (2026-05-23, fix — `/ci-investigate` 経由で発見)
+**Source**: #1869 (2026-05-23, fix — CI failure investigation)
 **Tags**: testing, subprocess, execl, fork, stdlib-resolution, linux, macos, blind-spot
 
 **Context**: `tests/test_*.cpp` の fork+pipe subprocess helper で `execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr)` のように argv[0] に bare `"ry"` を渡すと、子プロセス側で `argv[0] = "ry"` (slash なし) が見える。`src/paths.cpp:94` の `find_share_dir` は `fs::path(exe_path).parent_path()` で exe_dir を導出するため、bare `"ry"` だと `parent_path() = ""` → `fs::canonical("", ec)` の挙動が **macOS では CWD を返して成功 (CWD = repo root → `share/std/` 命中)**、**Linux glibc では失敗** → exe-adjacent share lookup (step 3) が機能しない。`setenv("RY_ENV", "internal", 1)` が同時に存在すると global `~/.ry/share` lookup (step 2) もスキップされ、`/tmp/<script>` を referrer に持つ subprocess は `findProjectRoot` も nullopt を返すので step 1 (project override) も塞がる — 結果 `find_share_dir = {}` で「`module not found: io`」になる。macOS native では発生せず Linux CI / Docker でのみ再現するため、ローカル `./build/ry_tests` パスでも CI で FAIL する非対称性が罠。

@@ -91,7 +91,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
 
 - **リポジトリ**: `t0k0sh1/ry`
 - **開始**: ユーザーが issue 番号 / URL を指定 → 内容把握 → Plan モード。「次の issue を探して」指示時は open issue 取得 (`wip` 除外)・バグ優先で候補提示 → 選択後に Plan モード
-- **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-merge-pr` Step 5 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
+- **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-close-pr` Step 7 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
 - **issue 分割時のスコープ検証**: 派生 issue を起票・分離する判断は `/scope-decomposition` で対称性 (4 軸) / 分割理由 (3 分類) / 派生連鎖警戒 (3 段目以降) を確認する
 
 ## Plan モードのルール
@@ -167,7 +167,7 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 - テスト実行
 - セルフ検証
 - ドキュメント更新
-- PR マージ後の `wip` ラベル除去（`git-merge-pr` Step 5 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない。issue クローズは `Closes #xx` キーワードにより GitHub が自動で行う。ただしこれは feature が main に入った記録であり、リリース完了ではない — 「リリースワークフロー」参照）
+- PR マージ後の `wip` ラベル除去（`git-close-pr` Step 7 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない。issue クローズは `Closes #xx` キーワードにより GitHub が自動で行う。ただしこれは feature が main に入った記録であり、リリース完了ではない — 「リリースワークフロー」参照）
 
 #### 副次的発見への対応
 
@@ -195,7 +195,7 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 
 - **コミット/プッシュの徹底**: 修正内容がコミット・プッシュされていなければ PR に反映されない。レビュー対応の完了時に未コミットの変更があればユーザーに必ず伝え、コミット・プッシュを促すこと
 - **Resolve 判断はレビュワーに委ねる**: CodeRabbit は返信内容を自動検証して自分で会話を Resolve するため、Claude Code が先回りで Resolve すると検証フローが機能しない。人間レビュワーのコメントも同様に、返信のみ行い Resolve 判断は委ねる
-- **マージ前の未 Resolve チェック**: `git-merge-pr` スキルが自動で未 Resolve 会話を検出し、残っていればマージを中止する
+- **マージ前の未 Resolve チェック**: `git-close-pr` Step 6 が自動で未 Resolve 会話を検出し、残っていればマージを中止する
 
 ### PR レビューから得た学びの蓄積
 

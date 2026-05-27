@@ -22,6 +22,6 @@ Releases are tag-push driven. Pushing a `v*.*.*`-glob tag (e.g., `v0.0.14`) to `
    - **Release prep: v<X.Y.Z>** — assemble `changelog.d/` fragments into `CHANGELOG.md` under the `[X.Y.Z] - YYYY-MM-DD` section. Standard issue flow (claim → feature branch → PR → merge).
    - **Release: v<X.Y.Z>** — once prep merges, confirm no issues remain in the milestone and push the tag.
    - **Release cleanup: v<X.Y.Z>** — after tag push, verify `release.yml` completion and GitHub Release publication, then close the milestone (verification only — no branch/PR).
-2. Progress the Release prep issue through the normal flow (`git-claim-issue` → Plan → implement → `git-merge-pr`).
+2. Progress the Release prep issue through the normal flow (`git-claim-issue` → Plan → implement → `git-close-pr`).
 3. After Release prep merges to main, work on the Release issue and push the tag per its instructions.
 4. After Release closes, work on the Release cleanup issue. Close the milestone only after release artifacts (tag + GitHub Release) are verified published — "all issues closed ≠ release complete." Follow the cleanup issue's steps.

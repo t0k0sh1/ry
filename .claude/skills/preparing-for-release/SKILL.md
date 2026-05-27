@@ -8,7 +8,7 @@ metadata:
 
 # Preparing for Release
 
-Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone (AGENTS.md "リリースワークフロー"). The skill only files issues — prep & release use the standard `git-claim-issue` → branch → PR → `git-merge-pr` flow; cleanup is verification-only (`gh run list`, `gh release view`, `gh api PATCH milestone`).
+Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone (AGENTS.md "リリースワークフロー"). The skill only files issues — prep & release use the standard `git-claim-issue` → branch → PR → `git-close-pr` flow; cleanup is verification-only (`gh run list`, `gh release view`, `gh api PATCH milestone`).
 
 ## Inputs
 
@@ -71,7 +71,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`git-claim-issue` → branch → PR → `git-merge-pr`); the release tag itself is out of scope (sibling Release issue).
+Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`git-claim-issue` → branch → PR → `git-close-pr`); the release tag itself is out of scope (sibling Release issue).
 
 ## Tasks
 

@@ -64,7 +64,7 @@ write a 3-line entry under this section with a descriptive subheading.
 
 **Why**: `--label` in `gh issue edit` is a *set* operation, not an *append*. The flag name is misleading because `gh issue create --label` is safe (empty initial state). The asymmetry bites every time you remember the create syntax and apply it to edit.
 
-**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-merge-pr` Step 5 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
+**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-close-pr` Step 7 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
 
 ---
 
@@ -105,7 +105,7 @@ arrays in shell scripts.
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
-**Tags**: skill, allowed-tools, claude-code, ci-investigate, review-feedback
+**Tags**: skill, allowed-tools, claude-code, review-feedback
 
 **Rule**: Every Bash command that a SKILL.md step instructs the agent to run must be covered by an entry in `allowed-tools`. A common pitfall is listing only `gh pr:*`/`gh run:*`/`git branch:*` while the skill body also calls `cmake`, `clang-tidy`, `cppcheck`, `scan-build`, `find`, etc. At runtime the agent will be blocked from running those uncovered commands, silently breaking the step.
 
@@ -118,7 +118,7 @@ When the reproduction command set is open-ended (e.g. "run the CI job's correspo
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
-**Tags**: github-actions, gh-cli, ci-investigate, review-feedback, gotcha
+**Tags**: github-actions, gh-cli, review-feedback, gotcha
 
 **Rule**: `gh run list --branch <name>` includes runs from every commit on that branch. In a CI investigation or re-run tool, this causes reruns and log analysis for commits unrelated to the PR being investigated.
 
