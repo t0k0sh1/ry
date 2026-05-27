@@ -152,6 +152,7 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 ## Git ブランチ運用ルール
 
 - フィーチャーブランチは `main` から作成し、PR は `main` に向けて作成する。`main` への直接コミットは禁止
+- **MUST (例外なし)**: フィーチャーブランチ名に文字列 `main` を含めてはならない。判定はブランチ名を小文字化し英字以外 (`/`, `-`, `_`, 数字、記号など) を全て除去した文字列に対して行い、その中に `m`,`a`,`i`,`n` がこの順で連続出現する場合は違反 (記号・大文字小文字・kebab セグメント境界での迂回不可、`domain-driven` のように自然な単語に偶然含まれる場合も禁止)。理由: `git branch | grep -i main` 等の検索ノイズとスクリプト判定の誤マッチを完全排除するため。違反した場合は `git branch -m <new>` で改名してから push すること
 - フィーチャーブランチに main の最新を取り込む際は **`git rebase origin/main`** を使う (履歴の線形性を保つため)。merge commit による合流はしない。具体手順は `/git-push` / `/git-create-pr` / `/git-resolve-conflicts` を参照
 - rebase 後の push は **`git push --force-with-lease`** を使う (二回目以降は SHA が書き換わるため force push が必要。`--force-with-lease` は remote の予期しない進行を検知して上書きをブロックする)。`fetch` と `push` の間で `git fetch` を再実行しない (lease 保護が緩む)
 - 上記の rebase 方針はフィーチャーブランチへの main 取り込みに限る。`/preparing-for-release` での main 自体の更新は別系統で、`git pull --ff-only origin main` のまま (線形性が保証されているため変更不要)

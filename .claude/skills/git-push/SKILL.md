@@ -35,7 +35,11 @@ metadata:
      | `chore` | Build, CI, dependencies, tooling |
 
   2. **Generate a short kebab-case description** (2-4 words ideal). Examples: `feat/add-crypto-stdlib`, `fix/utf8-overread`, `refactor/parser-cleanup`.
-  3. Run `git checkout -b <type>/<short-description>` and report the chosen branch name in the next message. Do **not** stop to ask for approval — auto-progress matches the legacy `git-branch-naming` behavior. If the user wants a different name afterwards, they can rename via `git branch -m <new>`.
+
+     > **MUST (no exceptions)**: The generated branch name `<type>/<short-description>` must NOT contain `main` as a substring after lowercasing it and stripping every non-alphabetic character. This rejects e.g. `chore/rebase-main-sync` (`chorerebasemainsync` contains `main`), `feat/m-a-i-n` (`featmain` after stripping), and even `feat/domain-driven` (`featdomaindriven` contains `main` inside `domain`). See AGENTS.md §Git ブランチ運用ルール.
+
+  3. **Validate** the chosen branch name before `git checkout -b`: lowercase it, strip every non-alphabetic character, and check that the result does NOT contain the substring `main`. If it does, regenerate a different `<short-description>` and re-validate. Repeat until clean. This is a hard MUST — never bypass.
+  4. Run `git checkout -b <type>/<short-description>` and report the chosen branch name in the next message. Do **not** stop to ask for approval — auto-progress matches the legacy `git-branch-naming` behavior. If the user wants a different name afterwards, they can rename via `git branch -m <new>` (the rename must also satisfy the MUST rule above).
 
 ### 1. Commit
 
