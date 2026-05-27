@@ -1179,3 +1179,37 @@ fn mixedAnyLiteralReassignmentTests():
     expect(vi).toEq(1)
     expect(vs).toEq("two")
     expect(vb).toEq(true)
+  @it("should reassign local Set<any> with mixed element types via literal")
+  fn shouldReassignLocalSetAnyWithMixedLiteral():
+    s: Set<any> = {}
+    s = {1, "x", true}
+    expect(s).toHaveLen(3)
+    expect(1 in s).toEq(true)
+    expect("x" in s).toEq(true)
+    expect(true in s).toEq(true)
+  @it("should compound-assign local List<any> with mixed element types via literal")
+  fn shouldCompoundAssignLocalListAnyWithMixedLiteral():
+    xs: List<any> = []
+    xs += [1, "x", true]
+    vi: int = xs[0]
+    vs: str = xs[1]
+    vb: bool = xs[2]
+    expect(vi).toEq(1)
+    expect(vs).toEq("x")
+    expect(vb).toEq(true)
+  @it("should compound-assign local Map<str, any> with mixed value types via literal")
+  fn shouldCompoundAssignLocalMapStrAnyWithMixedLiteral():
+    m: Map<str, any> = {}
+    m += {"a": 1, "b": "two"}
+    vi: int = m["a"]
+    vs: str = m["b"]
+    expect(vi).toEq(1)
+    expect(vs).toEq("two")
+  @it("should compound-assign local Set<any> with mixed element types via literal")
+  fn shouldCompoundAssignLocalSetAnyWithMixedLiteral():
+    s: Set<any> = {}
+    s += {1, "x", true}
+    expect(s).toHaveLen(3)
+    expect(1 in s).toEq(true)
+    expect("x" in s).toEq(true)
+    expect(true in s).toEq(true)

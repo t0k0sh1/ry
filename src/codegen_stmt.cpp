@@ -1348,6 +1348,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
+    // #1884: install the literal-any hint BEFORE the compound-assignment
+    // early-return so `xs: List<any> = []; xs += [1, "x", true]` (and the
+    // analogous Map / Set compound forms) wrap each RHS literal element
+    // individually instead of failing the strict same-type gate.
+    LiteralAnyHintGuard localAnyHintGuard(*this, computeLiteralAnyHintFromMeta(ptr));
+
     // Compound assignment resolution: operator+= → operator+ → built-in.
     // Shares the load-modify-store core with the chained LHS forms (#812)
     // via `applyCompoundOp` so the operator resolution order stays in sync.
@@ -1435,11 +1441,6 @@ void CodeGen::emitStmt(AssignStmt &s) {
             localOptInner = llvm::cast<llvm::StructType>(varTy)->getElementType(1);
     }
     DeclAnnotationInnerGuard localNoneGuard(*this, localOptInner);
-
-    // #1884: when the local variable's collection metadata pins an axis to
-    // `any`, push a literal-any hint so a mixed-type literal RHS wraps each
-    // element individually instead of erroring on type mismatch.
-    LiteralAnyHintGuard localAnyHintGuard(*this, computeLiteralAnyHintFromMeta(ptr));
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
@@ -1665,6 +1666,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // path reuses `ptr` throughout).
     llvm::Value *storagePtr = loadModuleGlobalStorage(b, s.name);
 
+    // #1884: install the literal-any hint BEFORE the compound-assignment
+    // early-return (mirrors the local-alloca path) so compound forms like
+    // `m += {"a": 1, "b": "two"}` on a `Map<str, any>` module-global also
+    // per-element wrap the RHS literal.
+    LiteralAnyHintGuard globalAnyHintGuard(*this, computeLiteralAnyHintFromMeta(anchor));
+
     // Compound assignment shares the resolution order with the local
     // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
     if (s.compound_op) {
@@ -1734,11 +1741,6 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         ? llvm::cast<llvm::StructType>(valueTy)->getElementType(1)
         : nullptr;
     DeclAnnotationInnerGuard globalNoneGuard(*this, globalOptInner);
-
-    // #1884: when the module-global's collection metadata pins an axis to
-    // `any`, push a literal-any hint so a mixed-type literal RHS wraps each
-    // element individually (mirrors the local-alloca path).
-    LiteralAnyHintGuard globalAnyHintGuard(*this, computeLiteralAnyHintFromMeta(anchor));
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
