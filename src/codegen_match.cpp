@@ -792,8 +792,9 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
         // fieldTypeIsArcManaged), so the original strong count from
         // __ry_io_file_open transfers through the Ok-arm extract without
         // a balancing subject-side release.
-        if (resolved == "File") {
-            int rk = ResourceKindRegistry::instance().lookupByTypeName(resolved);
+        auto canonical = resolveTypeAlias(resolved);
+        if (canonical == "File") {
+            int rk = ResourceKindRegistry::instance().lookupByTypeName(canonical);
             if (rk != ResourceKindRegistry::NONE) {
                 // Guarded-arm copy of the binding lives in a throwaway scope
                 // that pops between the pattern test and the body re-bind.

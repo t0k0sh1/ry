@@ -1,0 +1,46 @@
+from testing import it, describe, expect, fail
+
+from io import open, close, readText, writeText, deleteFile, File
+from thread import lockNew, lockAcquire, lockRelease, lockFree, Lock
+from regex import regexFindAll, Match
+
+record MatchHolder:
+  m: Match
+
+@describe("import of C++-registered types (#1888)")
+fn importCppTypesTests():
+  @it("should use imported File type as function parameter annotation")
+  fn shouldUseImportedFileTypeAsFunctionParameterAnnotation():
+    case writeText("/tmp/ry_import_cpp_types_io.txt", "hello"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("write failed: " + e.message)
+    fn closeFile(f: File) -> Unit:
+      close(f)
+    case open("/tmp/ry_import_cpp_types_io.txt", "r"):
+      Ok(f):
+        closeFile(f)
+        expect(true).toEq(true)
+      Err(e): fail("open failed: " + e.message)
+    case deleteFile("/tmp/ry_import_cpp_types_io.txt"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("delete failed: " + e.message)
+
+  @it("should use imported Lock type as function parameter annotation")
+  fn shouldUseImportedLockTypeAsFunctionParameterAnnotation():
+    fn acquireAndRelease(l: Lock) -> bool:
+      case lockAcquire(l):
+        Ok(_):
+          case lockRelease(l):
+            Ok(_): return true
+            Err(_): return false
+        Err(_): return false
+    l = lockNew()
+    expect(acquireAndRelease(l)).toEq(true)
+    lockFree(l)
+
+  @it("should use imported Match record from regex as field type")
+  fn shouldUseImportedMatchRecordAsFieldType():
+    matches: List<Match> = regexFindAll("abc 123 def 456", "[0-9]+")
+    expect(len(matches)).toEq(2)
+    holder = MatchHolder(matches[0])
+    expect(holder.m.full).toEq("123")
