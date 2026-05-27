@@ -1,14 +1,14 @@
 ---
 name: pre-commit-checklist
 description: Pre-commit checklist — docs / CHANGELOG / rules+skills / tests / ASan+UBSan / TSan / libFuzzer / background hygiene / labels. Use before declaring complete, before PR, self-verify, running sanitizers/tests; also on Japanese triggers 作業完了前, 完了前, 実装完了, 修正完了, マージ前, PR を出す前, セルフ検証, 動作確認, サニタイザー実行, テスト実行, チェックリスト. Always fires near the end of feature work.
-allowed-tools: Bash
+allowed-tools: Bash(./.claude/skills/pre-commit-checklist/*.sh:*), Bash(git diff:*), Bash(git fetch:*)
 ---
 
 # Pre-commit Checklist
 
 Mandatory checklist before declaring a task complete: documentation, CHANGELOG, knowledge-base updates, full tests, sanitizers, fuzzing, background-task hygiene, and label policy.
 
-> **Source-of-truth note**: previously in `AGENTS.md` §"作業完了前チェックリスト"; relocated by #1384.
+> **Source-of-truth note**: previously in `AGENTS.md` §"作業完了前チェックリスト"; relocated by #1384. Section §3〜§3.7 execution steps were extracted into `./*.sh` scripts by #1942 (rationale: reduce SKILL.md context size and consolidate permission prompts into a single approval per script).
 
 ## 0. Change-type × Skip Matrix
 
@@ -103,10 +103,10 @@ If no entry is needed, state the reason (pure bug fix that won't recur, PR-local
 > Empty output ⇒ skip. Record `Skipped §3 — no source code change` in the PR description.
 
 ```bash
-cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p
+./.claude/skills/pre-commit-checklist/run-tests.sh
 ```
 
-Fix any failure before declaring complete.
+Runs `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p`. The script auto-removes `build/` when `CMakeCache.txt` belongs to a sanitizer/fuzzer preset; pass `--clean` to force removal. Fix any failure before declaring complete.
 
 ## 3.5. Sanitizer Verification
 
@@ -117,8 +117,7 @@ Fix any failure before declaring complete.
 **ASan + UBSan** (memory safety + undefined behavior):
 
 ```bash
-./docker/run.sh asan ry_tests
-./docker/run.sh asan ry test -p
+./.claude/skills/pre-commit-checklist/run-asan.sh
 ```
 
 Fix any finding before declaring complete; do not commit while errors remain.
@@ -126,8 +125,7 @@ Fix any finding before declaring complete; do not commit while errors remain.
 **TSan** (thread safety):
 
 ```bash
-./docker/run.sh tsan ry_tests
-./docker/run.sh tsan ry test -p
+./.claude/skills/pre-commit-checklist/run-tsan.sh
 ```
 
 The C++ TSan run (`ry_tests`) is required and validates `ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test). The Ry self-test (`ry test -p`) is warn-only due to the TSan `LargeMmapAllocator` CHECK problem (upstream #1716, Linux-only) — a clean C++ run is sufficient for this PR. LLVM ORC teardown crashes (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) can surface on both OSes but are suppressed by the three-stage leak in `src/jit_runner.cpp` (#1187 + #1657); file a new issue if this pattern recurs.
@@ -143,25 +141,25 @@ Reproduce the CI `lint` / `clang-tidy` / `scan-build` jobs locally before pushin
 **clang-tidy** (required):
 
 ```bash
-./docker/run.sh static-analysis clang-tidy
+./.claude/skills/pre-commit-checklist/run-clang-tidy.sh
 ```
 
 **cppcheck** (required):
 
 ```bash
-./docker/run.sh static-analysis cppcheck
+./.claude/skills/pre-commit-checklist/run-cppcheck.sh
 ```
 
 **scan-build** (warn-only — strongly recommended): CI runs with `continue-on-error: true`. New null-deref / use-after-free / division-by-zero findings should be addressed in the same PR. CI switches scope per event (#1738): PRs run `--target ry`, push-to-main runs all targets — Docker matches the PR-equivalent fast scan.
 
 ```bash
-./docker/run.sh static-analysis scan-build
+./.claude/skills/pre-commit-checklist/run-scan-build.sh
 ```
 
 All three at once:
 
 ```bash
-./docker/run.sh static-analysis all
+./.claude/skills/pre-commit-checklist/run-static-analysis-all.sh
 ```
 
 > `scan-build` and `all` use a dedicated `build-scan-docker/` (host) ↔ `build-scan/` (container) so `build-docker/` stays clean. No cleanup needed before the next `./docker/run.sh default ...`. HTML reports land in `build-scan-docker/scan-build-report/<timestamp>/index.html`.
@@ -183,17 +181,10 @@ Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e
 > **macOS note**: `fuzz_json` hangs under native macOS ASan, so Docker is required (#1865).
 
 ```bash
-./docker/run.sh fuzz fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
-
-./docker/run.sh fuzz fuzz_json -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
-
-./docker/run.sh fuzz fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
+./.claude/skills/pre-commit-checklist/run-fuzz.sh
 ```
 
-All three targets must exit 0 after 60 s. On crash, follow `/triage-side-finding`. **Hard-to-reproduce crashes** (no repro in 3 local attempts / no saved corpus / CI-only) ⇒ Q1 = Yes ⇒ **fix in the same PR** (don't lose the reproduction window — same principle as the TSan race rule above). If the current PR's code directly caused it, also fix in the same PR (Q4(a)). Only file a separate issue (Q4(b)) when the bug is locally reproducible, pre-existing, and would substantially expand scope. Save the crash input to both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/` regardless of reproducibility.
+Runs all three targets (`fuzz_parser` / `fuzz_json` / `fuzz_utf8`) for 60 s each with `-rss_limit_mb=512` and `-artifact_prefix=tests/fuzz/regressions/<name>/`. For a single target, invoke `./docker/run.sh fuzz <target> ...` directly. All three targets must exit 0 after 60 s. On crash, follow `/triage-side-finding`. **Hard-to-reproduce crashes** (no repro in 3 local attempts / no saved corpus / CI-only) ⇒ Q1 = Yes ⇒ **fix in the same PR** (don't lose the reproduction window — same principle as the TSan race rule above). If the current PR's code directly caused it, also fix in the same PR (Q4(a)). Only file a separate issue (Q4(b)) when the bug is locally reproducible, pre-existing, and would substantially expand scope. Save the crash input to both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/` regardless of reproducibility.
 
 ## 3.6.5. tree-sitter Grammar Regression Check
 
@@ -208,23 +199,20 @@ All three targets must exit 0 after 60 s. On crash, follow `/triage-side-finding
 Evaluated independently of the §0 matrix: a `.md` / `docs/`-only PR still fires this step if `docs/grammar.ebnf` is touched (which is why the matrix row for `.md` / `docs/`-only omits it).
 
 ```bash
-./editor/tree-sitter/build.sh
-./editor/tree-sitter/install.sh --no-build
-./editor/tree-sitter/check.sh --no-build
+./.claude/skills/pre-commit-checklist/run-tree-sitter.sh
 ```
 
-- `build.sh` must run both `tree-sitter generate` (`grammar.js` → `parser.c`) and `tree-sitter build` (`parser.c` + `scanner.c` → `ry.so`) successfully and produce `ry.so`. A `tree-sitter generate` failure indicates a grammar-side syntax error.
-- `install.sh --no-build` copies `ry.so` and `queries/*.scm` into the Neovim parser directory.
-- `check.sh --no-build` runs `tree-sitter parse` over every `tests/spec/**/*.test.ry` and asserts that files outside `expected-fail.txt` have no ERROR/MISSING (**exit 0 required**). Known gaps in `expected-fail.txt` are silently SKIPped; if grammar improvements make one parseable, `WARN: ... now passes` is emitted and that file should be removed from the list.
-- The in-tree grammar doesn't yet cover all of Ry, so out-of-list ERRORs from `tree-sitter parse` are the only regressions that count. The hand-curated Phase 2 `tree-sitter test` corpus + S-expression assertions live in `editor/tree-sitter/test/corpus/*.txt` (#1633). Visual highlight check in Neovim is recommended.
+Chains `build.sh` (`tree-sitter generate` + `build` → `ry.so`; generate failure = grammar syntax error), `install.sh --no-build` (copies into Neovim parser dir), and `check.sh --no-build` (`tree-sitter parse` over every `tests/spec/**/*.test.ry`; **exit 0 required**). `expected-fail.txt` entries are SKIPped; ones now parsing emit `WARN: ... now passes` and should be removed from the list. Out-of-list ERRORs are the only regressions that count. Hand-curated Phase 2 corpus lives in `editor/tree-sitter/test/corpus/*.txt` (#1633); a visual highlight check in Neovim is recommended.
 
 ## 3.7. Background Task Residual Check
 
 Before declaring complete, confirm no self-launched background tasks or shells remain.
 
-- Confirm every background task finished via `BashOutput` / `TaskOutput`; detect orphan shells with `ps aux | grep -E "claude|zsh.*cat"`.
-- Stop any remaining via `TaskStop` or `kill <pid>` before declaring complete.
-- Classic zombie: `run_in_background=true` + heredoc, leaving `zsh` + `cat` blocked on stdin (see AGENTS.md §"Bash コマンドの実行ルール").
+```bash
+./.claude/skills/pre-commit-checklist/check-background.sh
+```
+
+Exits 1 if `ps aux | grep -E 'zsh.*cat'` finds orphan shells (the classic `run_in_background=true` + heredoc zombie: `zsh` + `cat` blocked on stdin — see AGENTS.md §"Bash コマンドの実行ルール"). The script only **detects** — stop any remaining via `TaskStop` or `kill <pid>` (Claude-tool operations, not shell-invocable). Also confirm every background task finished via `BashOutput` / `TaskOutput`.
 
 ## 4. Label Cleanup
 
