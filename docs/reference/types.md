@@ -893,6 +893,27 @@ f: float = getValue()  # any(int) is unwrapped and promoted to float
 
 If the runtime type does not match the target type (e.g., unwrapping `any(str)` into an `int` variable), a **runtime error** occurs.
 
+#### Mixed-type literals in typed `any` collections
+
+When the annotation is `Map<K, any>` / `List<any>` / `Set<any>`, each element in a literal is individually wrapped into `any` during the declaration or reassignment — elements with different concrete types can coexist in the same literal:
+
+```ry
+m: Map<str, any> = {"a": 1, "b": "two", "c": true}   # int / str / bool values
+xs: List<any> = [1, "x", true]
+s:  Set<any>  = {1, "x", true}
+
+# Reassignment uses the same path
+m = {"k": 42, "v": false}
+```
+
+The wrap is only triggered by the `any` element annotation on the destination. With a concrete element annotation, the strict same-type check still applies:
+
+```ry
+# m: Map<str, int> = {"a": 1, "b": "two"}   # error: map values must all have the same type
+```
+
+`Map<any, V>` (any-typed keys) is currently out of scope; mixed-key literals continue to be rejected by the strict same-type check.
+
 ### Reassignment
 
 An `any` variable can be reassigned to a value of any supported type:

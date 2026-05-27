@@ -2796,3 +2796,33 @@ TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
         "t: Set<str> = a\n",
         "load");
 }
+
+// #1884: when LHS does NOT pin a `*_any` axis, the strict per-element type
+// check must still fire. Guards against accidental hint leakage that would
+// silently legalise mixed-type literals under typed annotations.
+TEST_F(CodeGenTest, MapValueTypeMismatchUnderTypedAnnotationRejected) {
+    expectCompileError(
+        "m: Map<str, int> = {\"a\": 1, \"b\": \"two\"}\n",
+        "map values must all have the same type");
+}
+
+TEST_F(CodeGenTest, ListElementTypeMismatchUnderTypedAnnotationRejected) {
+    expectCompileError(
+        "xs: List<int> = [1, \"x\"]\n",
+        "list elements must all have the same type");
+}
+
+TEST_F(CodeGenTest, SetElementTypeMismatchUnderTypedAnnotationRejected) {
+    expectCompileError(
+        "s: Set<int> = {1, \"x\"}\n",
+        "set elements must all have the same type");
+}
+
+// Map<any, V> is intentionally out of scope for #1884: the rehash dispatch has
+// no anyTy_ (16B struct) variant. Mixed key types under Map<any, V> must
+// continue to fail at the strict same-type check.
+TEST_F(CodeGenTest, MapKeyTypeMismatchUnderAnyAnnotationRejected) {
+    expectCompileError(
+        "m: Map<any, str> = {1: \"a\", \"two\": \"b\"}\n",
+        "map keys must all have the same type");
+}

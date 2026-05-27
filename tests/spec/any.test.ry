@@ -465,6 +465,15 @@ fn anyElementInMapTests():
     m["x"] = 1
     k: any = "x"
     expect(k in m).toEq(true)
+  @it("should accept mixed value types in Map<str, any> literal")
+  fn shouldAcceptMixedValueTypesInMapStrAnyLiteral():
+    m: Map<str, any> = {"a": 1, "b": "two", "c": true}
+    vi: int = m["a"]
+    vs: str = m["b"]
+    vb: bool = m["c"]
+    expect(vi).toEq(1)
+    expect(vs).toEq("two")
+    expect(vb).toEq(true)
 
 @describe("any element in List")
 fn anyElementInListTests():
@@ -550,6 +559,25 @@ fn anyElementInListTests():
     xs: List<int> = [1, 2, 3]
     v: any = 2
     expect(v in xs).toEq(true)
+  @it("should accept mixed element types in List<any> literal")
+  fn shouldAcceptMixedElementTypesInListAnyLiteral():
+    xs: List<any> = [1, "x", true]
+    vi: int = xs[0]
+    vs: str = xs[1]
+    vb: bool = xs[2]
+    expect(vi).toEq(1)
+    expect(vs).toEq("x")
+    expect(vb).toEq(true)
+  @it("should accept already-any element mixed with concrete values in List<any> literal")
+  fn shouldAcceptAlreadyAnyElementInListAnyLiteral():
+    a: any = 42
+    xs: List<any> = [a, "x", true]
+    vi: int = xs[0]
+    vs: str = xs[1]
+    vb: bool = xs[2]
+    expect(vi).toEq(42)
+    expect(vs).toEq("x")
+    expect(vb).toEq(true)
 
 @describe("any element in Set")
 fn anyElementInSetTests():
@@ -608,6 +636,13 @@ fn anyElementInSetTests():
     add(s, 5)
     v: any = 5
     expect(v in s).toEq(true)
+  @it("should accept mixed element types in Set<any> literal")
+  fn shouldAcceptMixedElementTypesInSetAnyLiteral():
+    s: Set<any> = {1, "x", true}
+    expect(s).toHaveLen(3)
+    expect(1 in s).toEq(true)
+    expect("x" in s).toEq(true)
+    expect(true in s).toEq(true)
 
 @describe("any holds collection")
 fn anyHoldsCollectionTests():
@@ -1110,3 +1145,37 @@ fn anyHoldsEnumTests():
           Ok(n): expect(n).toEq(42)
           Err(_): fail("expected inner Ok")
       Err(_): fail("expected outer Ok")
+
+mixedAnyMapGlobal: Map<str, any> = {}
+
+@describe("mixed any literal reassignment")
+fn mixedAnyLiteralReassignmentTests():
+  @it("should reassign local Map<str, any> with mixed value types via literal")
+  fn shouldReassignLocalMapStrAnyWithMixedLiteral():
+    m: Map<str, any> = {}
+    m = {"a": 1, "b": "two", "c": true}
+    vi: int = m["a"]
+    vs: str = m["b"]
+    vb: bool = m["c"]
+    expect(vi).toEq(1)
+    expect(vs).toEq("two")
+    expect(vb).toEq(true)
+  @it("should reassign local List<any> with mixed element types via literal")
+  fn shouldReassignLocalListAnyWithMixedLiteral():
+    xs: List<any> = []
+    xs = [1, "x", true]
+    vi: int = xs[0]
+    vs: str = xs[1]
+    vb: bool = xs[2]
+    expect(vi).toEq(1)
+    expect(vs).toEq("x")
+    expect(vb).toEq(true)
+  @it("should reassign module-global Map<str, any> with mixed value types via literal")
+  fn shouldReassignModuleGlobalMapStrAnyWithMixedLiteral():
+    mixedAnyMapGlobal = {"a": 1, "b": "two", "c": true}
+    vi: int = mixedAnyMapGlobal["a"]
+    vs: str = mixedAnyMapGlobal["b"]
+    vb: bool = mixedAnyMapGlobal["c"]
+    expect(vi).toEq(1)
+    expect(vs).toEq("two")
+    expect(vb).toEq(true)

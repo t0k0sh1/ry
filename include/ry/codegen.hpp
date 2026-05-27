@@ -180,6 +180,23 @@ public:
     // leak into arbitrary sub-expressions (e.g., function arguments).
     llvm::Type *option_decl_annotation_inner_ = nullptr;
 
+    // Literal `any`-element hint (#1884). When set, Map/List/Set literal
+    // emitters wrap each element via wrapInAny on the active axes and stamp
+    // `*_type_name = "any"` on the resulting header metadata. Written by
+    // emitVarDecl / local-reassign / global-reassign when LHS annotation /
+    // existing metadata indicates `Map<K, any>` / `List<any>` / `Set<any>` /
+    // `Map<any, V>`. Each literal emitter snapshots this hint at entry, then
+    // immediately installs an empty hint via LiteralAnyHintGuard so nested
+    // sub-literals do not inherit the outer axis. Non-literal emitters do
+    // NOT read this field, so it cannot leak into arbitrary sub-expressions.
+    struct LiteralAnyHint {
+        bool list_elem_any = false;
+        bool set_elem_any = false;
+        bool map_key_any = false;
+        bool map_value_any = false;
+    };
+    LiteralAnyHint literal_any_hint_;
+
     // Compute an Option inner-type hint from a pair of branch-arm expressions.
     // Returns nullptr when no concrete inner type can be derived
     // (e.g., non-Option arms or placeholder-only outcomes).
@@ -266,6 +283,13 @@ public:
     static bool isMapTypeName(const std::string &typeName);
     static bool isSetTypeName(const std::string &typeName);
     static bool isCollectionTypeName(const std::string &typeName);
+
+    // #1884: derive literal_any_hint_ from an LHS annotation string
+    // (`List<any>` / `Set<any>` / `Map<any, V>` / `Map<K, any>`) or from an
+    // existing collection header's `*_type_name` metadata slots. Returns an
+    // all-false hint when the source does not have `any` on any axis.
+    LiteralAnyHint computeLiteralAnyHintFromAnnot(const std::string &annot);
+    LiteralAnyHint computeLiteralAnyHintFromMeta(llvm::Value *ptr);
 
     // ======== Weak References ========
     static bool isWeakTypeName(const std::string &typeName);

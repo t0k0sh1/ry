@@ -129,3 +129,23 @@ Three outcomes:
 - For `Option<T>` specifically, the dispatch is 3-way (NOT 2-way like `emitResultBranch`): `tag == Unit → Ok(None)` / `tag != Unit → recurse via tryUnwrapFromAny(anyVal, innerTy) → inner Ok wrap in Some(...) → inner Err prepend "expected null or " prefix`. Build three independent BBs (`none`, `inner_ok`, `inner_err`) and merge with one 3-incoming PHI on `resTy`. The error wording `load<Option<X>>: expected null or load<X>: ...` deliberately satisfies the test's `toContain("null") + toContain("JSON object")` simultaneous assertion when the source is a primitive (e.g. `42` with `Option<Record>` target).
 - `buildSomeValue(inner, optTy)` calls `tryRetainArcSource(inner)` internally when `inner` is `ptrTy_` — the recursive `tryUnwrapFromAny` already owns one refcount on the extracted Ok value, so the `Some(...)` arm does NOT double-retain (the existing tryRetainArcSource is the single retain the wrapper owes the caller). The same applies to `buildOkValue(rec)` on record / collection results: the field-by-field `InsertValue` build owns the refcount once per ARC-bearing field.
 - The complementary `share/std/json/json.ry` change is a one-line `v: T = a` → `v: T = a?` won't work (the `?` operator requires the LHS Result type to match the function's return Result type). Instead, the Ry-side `load<T>` does NOT need to change — `emitJsonLoad` in `codegen_call_json.cpp` directly emits the `tryUnwrapFromAny` call as part of the `load[T]` codegen and PHI-merges the parse-Err / unwrap-Err / unwrap-Ok paths into a single `Result<T, Error>` SSA value.
+
+### `Map<any, V>` is out of scope for the literal `any`-hint path; key-side must keep the strict same-type gate
+
+**Source**: #1884 (2026-05-27, feat — `Map<K, any>` / `List<any>` / `Set<any>` literal annotation propagation)
+**Tags**: codegen, any, map, literal, hint, rehash, hash-table, scope, strict-type-gate
+
+**Context**: #1884 added a `LiteralAnyHintGuard` RAII helper so that `m: Map<str, any> = {"a": 1, "b": "two", "c": true}` per-element-wraps via `wrapInAny` and skips the strict same-LLVM-type gate in `emitExprVariant(MapExpr / ListExpr / SetExpr)`. The hint structure has separate `map_key_any` / `map_value_any` flags, but **only the value side is wired**. The temptation is to extend the same wrap-skip to `Map<any, V>` for symmetry; this is unsafe.
+
+**Rule**: In both `computeLiteralAnyHintFromAnnot` and `computeLiteralAnyHintFromMeta` (the var-decl / function-local reassign + module-global reassign paths feed through these), force `hint.map_key_any = false` even when the annotation literally says `Map<any, V>`. Both helpers must agree — if only one keeps the gate closed, the reassign path leaks the unsafe wrap on its own. The map literal emitter then falls through to the strict same-LLVM-type key check, which is the user-visible error surface (`map keys must all have the same type`).
+
+**Why**:
+
+- The hash-table rehash dispatch (`__ry_ht_rehash_i64` / `__ry_ht_rehash_f64` / `__ry_ht_rehash_str`) has no 16-byte struct (`anyTy_`) variant. Picking any of the three would write keys at the wrong stride or hash bytes that overlap the tag.
+- The runtime lookup path (`emitMapKeyLookup`) has a linear-scan fallback for `StructType` keys via `__ry_any_eq`, so a populated `Map<any, V>` *would* be lookup-safe in isolation — but the literal-time bucket write hashes the key into a bucket that the lookup linear-scan would have to ignore entirely. There is no current code path that can produce a self-consistent `Map<any, V>` at literal-construction time.
+- The ARC story is also unaddressed for `anyTy_` keys carrying str / List / Map / Set / record / enum payloads (the default map dtor releases the LLVM-typed key slot, not the anyTy_ heap-box descriptor underneath).
+
+**How to apply**:
+
+- In `src/codegen_expr_literal.cpp` (`computeLiteralAnyHintFromAnnot`, `computeLiteralAnyHintFromMeta`), when the annotation matches `Map<K, V>` with `splitTypeArgs` returning 2 args, set `hint.map_value_any = (trimTypeNameSpaces(args[1]) == "any")` and **leave `hint.map_key_any` at its default `false`** — do NOT mirror the check on `args[0]`.
+- Negative tests live in `tests/test_codegen_stmt.cpp` (e.g. `MapKeyTypeMismatchUnderAnyAnnotationRejected`) and verify that `Map<any, V> = {1: "a", "two": "b"}` still produces the strict same-type error. If a future PR lifts this restriction, it must add (a) an `__ry_ht_rehash_any` runtime variant, (b) a bucket-write path that hashes through `__ry_any_hash`, and (c) a per-key ARC release path that dispatches on the inner tag.

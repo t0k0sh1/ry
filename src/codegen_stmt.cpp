@@ -536,6 +536,15 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
     DeclAnnotationInnerGuard noneHintGuard(*this, annotOptionInner);
 
+    // #1884: when LHS annotation is `List<any>` / `Set<any>` /
+    // `Map<any, V>` / `Map<K, any>`, push a literal-any hint so the RHS
+    // literal emitter per-element wrap into any (allowing mixed-type
+    // literals like `m: Map<str, any> = {"a": 1, "b": "two"}`).
+    LiteralAnyHint anyHint;
+    if (annot)
+        anyHint = computeLiteralAnyHintFromAnnot(*annot);
+    LiteralAnyHintGuard anyHintGuard(*this, anyHint);
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
     // #1697: Capture the pre-wrap source-level type name so that, when the
@@ -1427,6 +1436,11 @@ void CodeGen::emitStmt(AssignStmt &s) {
     }
     DeclAnnotationInnerGuard localNoneGuard(*this, localOptInner);
 
+    // #1884: when the local variable's collection metadata pins an axis to
+    // `any`, push a literal-any hint so a mixed-type literal RHS wraps each
+    // element individually instead of erroring on type mismatch.
+    LiteralAnyHintGuard localAnyHintGuard(*this, computeLiteralAnyHintFromMeta(ptr));
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -1720,6 +1734,11 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         ? llvm::cast<llvm::StructType>(valueTy)->getElementType(1)
         : nullptr;
     DeclAnnotationInnerGuard globalNoneGuard(*this, globalOptInner);
+
+    // #1884: when the module-global's collection metadata pins an axis to
+    // `any`, push a literal-any hint so a mixed-type literal RHS wraps each
+    // element individually (mirrors the local-alloca path).
+    LiteralAnyHintGuard globalAnyHintGuard(*this, computeLiteralAnyHintFromMeta(anchor));
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
