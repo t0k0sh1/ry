@@ -37,6 +37,22 @@ private:
     llvm::Type *saved_;
 };
 
+class LiteralAnyHintGuard {
+public:
+    explicit LiteralAnyHintGuard(CodeGen &cg, CodeGen::LiteralAnyHint hint)
+        : cg_(cg), saved_(cg.literal_any_hint_) {
+        cg_.literal_any_hint_ = hint;
+    }
+
+    ~LiteralAnyHintGuard() { cg_.literal_any_hint_ = saved_; }
+    LiteralAnyHintGuard(const LiteralAnyHintGuard &) = delete;
+    LiteralAnyHintGuard &operator=(const LiteralAnyHintGuard &) = delete;
+
+private:
+    CodeGen &cg_;
+    CodeGen::LiteralAnyHint saved_;
+};
+
 class ParallelForScope {
 public:
     explicit ParallelForScope(CodeGen &cg) : cg_(cg) { ++cg_.parallel_for_depth_; }

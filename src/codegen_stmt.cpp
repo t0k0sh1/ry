@@ -536,6 +536,15 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
     DeclAnnotationInnerGuard noneHintGuard(*this, annotOptionInner);
 
+    // #1884: when LHS annotation is `List<any>` / `Set<any>` /
+    // `Map<any, V>` / `Map<K, any>`, push a literal-any hint so the RHS
+    // literal emitter per-element wrap into any (allowing mixed-type
+    // literals like `m: Map<str, any> = {"a": 1, "b": "two"}`).
+    LiteralAnyHint anyHint;
+    if (annot)
+        anyHint = computeLiteralAnyHintFromAnnot(*annot);
+    LiteralAnyHintGuard anyHintGuard(*this, anyHint);
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
     // #1697: Capture the pre-wrap source-level type name so that, when the
@@ -1339,6 +1348,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
+    // #1884: install the literal-any hint BEFORE the compound-assignment
+    // early-return so `xs: List<any> = []; xs += [1, "x", true]` (and the
+    // analogous Map / Set compound forms) wrap each RHS literal element
+    // individually instead of failing the strict same-type gate.
+    LiteralAnyHintGuard localAnyHintGuard(*this, computeLiteralAnyHintFromMeta(ptr));
+
     // Compound assignment resolution: operator+= → operator+ → built-in.
     // Shares the load-modify-store core with the chained LHS forms (#812)
     // via `applyCompoundOp` so the operator resolution order stays in sync.
@@ -1650,6 +1665,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // for every read/write in this function (mirrors how the local-alloca
     // path reuses `ptr` throughout).
     llvm::Value *storagePtr = loadModuleGlobalStorage(b, s.name);
+
+    // #1884: install the literal-any hint BEFORE the compound-assignment
+    // early-return (mirrors the local-alloca path) so compound forms like
+    // `m += {"a": 1, "b": "two"}` on a `Map<str, any>` module-global also
+    // per-element wrap the RHS literal.
+    LiteralAnyHintGuard globalAnyHintGuard(*this, computeLiteralAnyHintFromMeta(anchor));
 
     // Compound assignment shares the resolution order with the local
     // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).

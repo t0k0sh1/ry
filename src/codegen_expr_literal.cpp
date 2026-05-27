@@ -278,21 +278,79 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
     return result;
 }
 
+CodeGen::LiteralAnyHint CodeGen::computeLiteralAnyHintFromAnnot(const std::string &annot) {
+    LiteralAnyHint hint;
+    std::string resolved = resolveTypeAlias(annot);
+    if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+        std::string inner = trimTypeNameSpaces(resolved.substr(5, resolved.size() - 6));
+        if (inner == "any")
+            hint.list_elem_any = true;
+    } else if (isSetTypeName(resolved) && resolved.size() >= 6 && resolved.back() == '>') {
+        std::string inner = trimTypeNameSpaces(resolved.substr(4, resolved.size() - 5));
+        if (inner == "any")
+            hint.set_elem_any = true;
+    } else if (isMapTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+        std::string inner = resolved.substr(4, resolved.size() - 5);
+        auto args = splitTypeArgs(inner);
+        if (args.size() == 2) {
+            // Map<any, V> is intentionally out of scope for #1884: the rehash
+            // dispatch (`__ry_ht_rehash_i64` / `_f64` / `_str`) has no anyTy_
+            // (16B struct) variant. Lookup falls back to linear scan and is
+            // safe, but the literal-time rehash would write wrong hashes into
+            // the bucket array. Forcing map_key_any=false keeps the strict
+            // same-type key check; only Map<str, any> / Map<int, any> etc.
+            // (concrete key, any value) are widened.
+            if (trimTypeNameSpaces(args[1]) == "any")
+                hint.map_value_any = true;
+        }
+    }
+    return hint;
+}
+
+CodeGen::LiteralAnyHint CodeGen::computeLiteralAnyHintFromMeta(llvm::Value *ptr) {
+    LiteralAnyHint hint;
+    auto *meta = getMeta(ptr);
+    if (!meta)
+        return hint;
+    if (meta->list_elem_type_name == "any")
+        hint.list_elem_any = true;
+    if (meta->set_elem_type_name == "any")
+        hint.set_elem_any = true;
+    // map_key_any intentionally not propagated — Map<any, V> is out of scope
+    // for #1884 (see computeLiteralAnyHintFromAnnot).
+    if (meta->map_value_type_name == "any")
+        hint.map_value_any = true;
+    return hint;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     if (e->elements.empty())
         codegenError("empty list literal requires type annotation (not yet supported)");
 
+    // #1884: snapshot any-element hint then immediately install an empty hint
+    // so nested sub-literals do not inherit the outer axis.
+    const bool wrapElemAsAny = literal_any_hint_.list_elem_any;
+    LiteralAnyHintGuard innerHintGuard(*this, LiteralAnyHint{});
+
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
     vals.reserve(e->elements.size());
-    for (auto &el : e->elements)
-        vals.push_back(emitExpr(*el));
+    for (auto &el : e->elements) {
+        llvm::Value *v = emitExpr(*el);
+        if (wrapElemAsAny && v->getType() != anyTy_)
+            v = wrapInAny(v);
+        vals.push_back(v);
+    }
 
-    // Check all elements have the same type
+    // Check all elements have the same type (skipped when wrapping into any —
+    // wrapInAny normalises every element to anyTy_, so a per-element check is
+    // redundant).
     llvm::Type *elemTy = vals[0]->getType();
-    for (size_t i = 1; i < vals.size(); ++i) {
-        if (vals[i]->getType() != elemTy)
-            codegenError("list elements must all have the same type");
+    if (!wrapElemAsAny) {
+        for (size_t i = 1; i < vals.size(); ++i) {
+            if (vals[i]->getType() != elemTy)
+                codegenError("list elements must all have the same type");
+        }
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -429,6 +487,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
             getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemFnTypeInfo;
     }
 
+    // #1884: stamp list_elem_type_name = "any" for List<any> literals.
+    // Elements are stored as anyTy_ (struct, not ptrTy_), so the ptr-element
+    // branch above does not run.
+    if (wrapElemAsAny)
+        getOrCreateMeta(headerPtr).list_elem_type_name = "any";
+
     return headerPtr;
 }
 
@@ -436,25 +500,47 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     if (e->keys.empty())
         codegenError("empty map literal requires type annotation");
 
+    // #1884: snapshot any-element hint then immediately install an empty hint
+    // so nested sub-literals do not inherit the outer axes.
+    const bool wrapKeyAsAny = literal_any_hint_.map_key_any;
+    const bool wrapValAsAny = literal_any_hint_.map_value_any;
+    LiteralAnyHintGuard innerHintGuard(*this, LiteralAnyHint{});
+
     // Evaluate all keys and values
     std::vector<llvm::Value*> keyVals, valVals;
     keyVals.reserve(e->keys.size());
     valVals.reserve(e->values.size());
-    for (auto &k : e->keys) keyVals.push_back(emitExpr(*k));
-    for (auto &v : e->values) valVals.push_back(emitExpr(*v));
-
-    // Check all keys have the same type
-    llvm::Type *keyTy = keyVals[0]->getType();
-    for (size_t i = 1; i < keyVals.size(); ++i) {
-        if (keyVals[i]->getType() != keyTy)
-            codegenError("map keys must all have the same type");
+    for (auto &k : e->keys) {
+        llvm::Value *v = emitExpr(*k);
+        if (wrapKeyAsAny && v->getType() != anyTy_)
+            v = wrapInAny(v);
+        keyVals.push_back(v);
+    }
+    for (auto &v : e->values) {
+        llvm::Value *val = emitExpr(*v);
+        if (wrapValAsAny && val->getType() != anyTy_)
+            val = wrapInAny(val);
+        valVals.push_back(val);
     }
 
-    // Check all values have the same type
+    // Check all keys have the same type (skipped on the any axis — wrapInAny
+    // normalises every key to anyTy_).
+    llvm::Type *keyTy = keyVals[0]->getType();
+    if (!wrapKeyAsAny) {
+        for (size_t i = 1; i < keyVals.size(); ++i) {
+            if (keyVals[i]->getType() != keyTy)
+                codegenError("map keys must all have the same type");
+        }
+    }
+
+    // Check all values have the same type (skipped on the any axis — wrapInAny
+    // normalises every value to anyTy_).
     llvm::Type *valTy = valVals[0]->getType();
-    for (size_t i = 1; i < valVals.size(); ++i) {
-        if (valVals[i]->getType() != valTy)
-            codegenError("map values must all have the same type");
+    if (!wrapValAsAny) {
+        for (size_t i = 1; i < valVals.size(); ++i) {
+            if (valVals[i]->getType() != valTy)
+                codegenError("map values must all have the same type");
+        }
     }
 
     int64_t count = static_cast<int64_t>(keyVals.size());
@@ -568,6 +654,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     else if (valTy == ptrTy_ && (anyValIsStr || anyValIsStrLike))
         getOrCreateMeta(headerPtr).map_value_type_name = "str";
 
+    // #1884: stamp map_key_type_name / map_value_type_name = "any" for
+    // Map<any, V> / Map<K, any> literals. Keys/values are stored as anyTy_
+    // (struct, not ptrTy_), so the ptr-based branches above do not fire.
+    if (wrapKeyAsAny)
+        getOrCreateMeta(headerPtr).map_key_type_name = "any";
+    if (wrapValAsAny)
+        getOrCreateMeta(headerPtr).map_value_type_name = "any";
+
     return headerPtr;
 }
 
@@ -578,17 +672,29 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         codegenError("empty set literal requires type annotation");
     }
 
+    // #1884: snapshot any-element hint then immediately install an empty hint
+    // so nested sub-literals do not inherit the outer axis.
+    const bool wrapElemAsAny = literal_any_hint_.set_elem_any;
+    LiteralAnyHintGuard innerHintGuard(*this, LiteralAnyHint{});
+
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
     vals.reserve(e->elements.size());
-    for (auto &el : e->elements)
-        vals.push_back(emitExpr(*el));
+    for (auto &el : e->elements) {
+        llvm::Value *v = emitExpr(*el);
+        if (wrapElemAsAny && v->getType() != anyTy_)
+            v = wrapInAny(v);
+        vals.push_back(v);
+    }
 
-    // Check all elements have the same type
+    // Check all elements have the same type (skipped on the any axis —
+    // wrapInAny normalises every element to anyTy_).
     llvm::Type *elemTy = vals[0]->getType();
-    for (size_t i = 1; i < vals.size(); ++i) {
-        if (vals[i]->getType() != elemTy)
-            codegenError("set elements must all have the same type");
+    if (!wrapElemAsAny) {
+        for (size_t i = 1; i < vals.size(); ++i) {
+            if (vals[i]->getType() != elemTy)
+                codegenError("set elements must all have the same type");
+        }
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -700,6 +806,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     if (elemTy == ptrTy_ && setElemName.empty() && (anyElemIsStr || anyElemIsStrLike))
         getOrCreateMeta(headerPtr).set_elem_type_name = "str";
+
+    // #1884: stamp set_elem_type_name = "any" for Set<any> literals. Elements
+    // are stored as anyTy_ (struct, not ptrTy_), so the ptr-element branch
+    // above does not run.
+    if (wrapElemAsAny)
+        getOrCreateMeta(headerPtr).set_elem_type_name = "any";
 
     return headerPtr;
 }
