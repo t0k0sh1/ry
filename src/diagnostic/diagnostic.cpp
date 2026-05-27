@@ -1,4 +1,4 @@
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #include <sstream>
 
 

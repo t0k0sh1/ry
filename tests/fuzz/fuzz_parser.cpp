@@ -1,5 +1,5 @@
-#include "ry/lexer.hpp"
-#include "ry/parser.hpp"
+#include "ry/lexer/lexer.hpp"
+#include "ry/parser/parser.hpp"
 
 #include <cstddef>
 #include <cstdint>

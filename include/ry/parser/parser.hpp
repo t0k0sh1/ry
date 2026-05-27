@@ -1,8 +1,8 @@
 #pragma once
 
-#include "ry/lexer.hpp"
-#include "ry/ast.hpp"
-#include "ry/source_manager.hpp"
+#include "ry/lexer/lexer.hpp"
+#include "ry/ast/ast.hpp"
+#include "ry/source_manager/source_manager.hpp"
 
 #include <cctype>
 #include <cerrno>

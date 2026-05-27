@@ -7,7 +7,7 @@
 #include "ry/args_runtime.hpp"
 #include "ry/file_watcher.hpp"
 #include "ry/trace.hpp"
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>

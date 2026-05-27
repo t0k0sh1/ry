@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ry/parser.hpp"
-#include "ry/diagnostic.hpp"
+#include "ry/parser/parser.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 
 
 using namespace ry;

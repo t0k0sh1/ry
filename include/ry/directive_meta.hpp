@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ry/ast.hpp"
+#include "ry/ast/ast.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>

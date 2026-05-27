@@ -1,6 +1,6 @@
 #include "ry/formatter.hpp"
-#include "ry/lexer.hpp"
-#include "ry/parser.hpp"
+#include "ry/lexer/lexer.hpp"
+#include "ry/parser/parser.hpp"
 #include <gtest/gtest.h>
 
 

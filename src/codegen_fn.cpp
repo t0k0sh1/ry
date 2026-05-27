@@ -1,6 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #include "ry/directive_meta.hpp"
 #include "ry/sema_return.hpp"
 #include <algorithm>

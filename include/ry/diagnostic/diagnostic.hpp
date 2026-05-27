@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ry/source_location.hpp"
-#include "ry/source_manager.hpp"
+#include "ry/source_manager/source_location.hpp"
+#include "ry/source_manager/source_manager.hpp"
 #include <stdexcept>
 #include <string>
 

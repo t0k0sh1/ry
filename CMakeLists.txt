@@ -112,14 +112,14 @@ FetchContent_MakeAvailable(googletest)
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
     src/trace.cpp
-    src/source_manager.cpp
-    src/diagnostic.cpp
+    src/source_manager/source_manager.cpp
+    src/diagnostic/diagnostic.cpp
     src/directive_meta.cpp
-    src/lexer.cpp
-    src/parser.cpp
-    src/parser_expr.cpp
-    src/type_node.cpp
-    src/parser_decl.cpp
+    src/lexer/lexer.cpp
+    src/parser/parser.cpp
+    src/parser/parser_expr.cpp
+    src/ast/type_node.cpp
+    src/parser/parser_decl.cpp
     src/codegen.cpp
     src/codegen_type.cpp
     src/codegen_builtin.cpp

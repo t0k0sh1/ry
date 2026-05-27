@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ry/ast.hpp"
-#include "ry/source_manager.hpp"
+#include "ry/ast/ast.hpp"
+#include "ry/source_manager/source_manager.hpp"
 #include <filesystem>
 #include <optional>
 #include <string>
