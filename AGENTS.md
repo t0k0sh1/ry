@@ -85,7 +85,7 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## ワークフロー全体像
 
-issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード (Task 1 = `/git-claim-issue` で `wip` 付与) → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。
+issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード (Task 1 = `/git-claim-issue` で `wip` 付与) → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。PR レビュー対応 → CI 確認 → push → マージを 1 コマンドで連鎖実行したい場合は `/git-close-pr` を使う (ブロッカー時は停止)。
 
 ## issue 起点の開発
 
