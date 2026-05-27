@@ -228,4 +228,4 @@ Before declaring complete, confirm no self-launched background tasks or shells r
 
 ## 4. Label Cleanup
 
-**Do not change labels at the self-verification stage.** Label transitions happen post-merge: `git-merge-pr` Step 5 removes `wip` autonomously. Do not run individual commands directly.
+**Do not change labels at the self-verification stage.** Label transitions happen post-merge: `git-close-pr` Step 7 removes `wip` autonomously. Do not run individual commands directly.

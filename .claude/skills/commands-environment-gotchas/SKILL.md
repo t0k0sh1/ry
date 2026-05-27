@@ -64,7 +64,7 @@ write a 3-line entry under this section with a descriptive subheading.
 
 **Why**: `--label` in `gh issue edit` is a *set* operation, not an *append*. The flag name is misleading because `gh issue create --label` is safe (empty initial state). The asymmetry bites every time you remember the create syntax and apply it to edit.
 
-**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-merge-pr` Step 5 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
+**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-close-pr` Step 7 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
 
 ---
 
@@ -105,7 +105,7 @@ arrays in shell scripts.
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
-**Tags**: skill, allowed-tools, claude-code, ci-investigate, review-feedback
+**Tags**: skill, allowed-tools, claude-code, review-feedback
 
 **Rule**: Every Bash command that a SKILL.md step instructs the agent to run must be covered by an entry in `allowed-tools`. A common pitfall is listing only `gh pr:*`/`gh run:*`/`git branch:*` while the skill body also calls `cmake`, `clang-tidy`, `cppcheck`, `scan-build`, `find`, etc. At runtime the agent will be blocked from running those uncovered commands, silently breaking the step.
 
@@ -118,7 +118,7 @@ When the reproduction command set is open-ended (e.g. "run the CI job's correspo
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
-**Tags**: github-actions, gh-cli, ci-investigate, review-feedback, gotcha
+**Tags**: github-actions, gh-cli, review-feedback, gotcha
 
 **Rule**: `gh run list --branch <name>` includes runs from every commit on that branch. In a CI investigation or re-run tool, this causes reruns and log analysis for commits unrelated to the PR being investigated.
 
@@ -273,3 +273,49 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 **Correct**: `cmake --build build` (no `--target`) — Ninja will relink both the test binary **and** the `ry` executable.
 
 **Why**: Tests under `tests/test_emit_llvm_ir.cpp`, `tests/test_help.cpp`, and `tests/test_deprecated_warnings.cpp` use a `fork()` + `execv(RY_BINARY_PATH, ...)` pattern (the `RunResult` / `runRy()` helper). They invoke the on-disk `./build/ry` binary, **not** the `runRySource()` C++ symbol linked into `ry_tests`. The `ry_tests` target depends on `ry_lib.a` (the static library), but it does **not** depend on the `ry` executable. So `--target ry_tests` skips relinking `./build/ry`, and the subprocess test forks an old binary that still has the pre-fix behavior. The failure mode is confusing because in-process tests on the same code change pass — only the subprocess tests see a stale binary. Always rebuild without `--target` (or run `--target ry_tests --target ry`) when subprocess tests are in scope.
+
+---
+
+### GraphQL `viewer` is a root Query field, not a `Repository` field
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, graphql, viewer, query-type
+
+**Wrong**: `gh api graphql -f query='{ repository(owner: "...", name: "...") { pullRequest(number: N) { ... } } viewer { login } } }'`
+→ `Field 'viewer' doesn't exist on type 'Repository'`. The closing braces visually suggest `viewer` is outside `repository(...)` but the brace count is off by one — `viewer` ends up nested inside `repository`.
+
+**Correct**: `gh api graphql -f query='{ repository(owner: "...", name: "...") { pullRequest(number: N) { ... } } viewer { login } }'` (one less `}` after the `pullRequest` close so `viewer` sits at the root Query level alongside `repository`).
+
+**Why**: GitHub GraphQL exposes `viewer` only on the root `Query` type. Mis-nested braces are easy to miss because the editor's brace matcher highlights the wrong pair. When composing multi-block queries, count `{ ... }` pairs after the outermost `repository(...)` block before pasting into `gh api graphql -f`.
+
+---
+
+### `gh pr checks --json` uses `bucket`/`state`/`link`, not `status`/`conclusion`/`detailsUrl`
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, pr-checks, json-fields
+
+**Wrong**: `gh pr checks <PR> --json name,status,conclusion,detailsUrl`
+→ `Unknown JSON field: "status"`. Naming is borrowed from `gh run list --json` (which *does* expose `status` / `conclusion`), but `gh pr checks` uses different fields.
+
+**Correct**: `gh pr checks <PR> --json name,bucket,state,link`
+
+**Why**: `gh pr checks --json` field set is `bucket, completedAt, description, event, link, name, startedAt, state, workflow`. Aggregate pass/fail logic should use `bucket`: values are `pass` (SUCCESS / SKIPPED / NEUTRAL), `fail`, `pending`, `cancel`, `skipping`, `stale`. `state` carries the underlying conclusion string (e.g. `SUCCESS`, `FAILURE`); `link` replaces `detailsUrl`. Run `gh pr checks --help` to list the current field set before composing the flag.
+
+---
+
+### `gh pr view --json mergeable` is conflict-only; `mergeStateStatus` carries CI / branch-protection state
+
+**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Tags**: gh, pr-view, mergeable, merge-state-status, branch-protection
+
+**Wrong**: gating merge on `mergeable` alone — e.g. `gh pr view <PR> --json mergeable --jq .mergeable` returns `MERGEABLE` so the script proceeds, then `gh pr merge` rejects with "Pull request is not mergeable" because branch protection still requires green CI / reviews.
+
+**Correct**: read both fields and treat `mergeStateStatus ∈ {CLEAN, HAS_HOOKS}` as the actual gate:
+
+```bash
+gh pr view <PR> --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeStateStatus)"'
+# Accept only: "MERGEABLE CLEAN" or "MERGEABLE HAS_HOOKS"
+```
+
+**Why**: `mergeable` is the merge-conflict judgment only — it returns `MERGEABLE` / `CONFLICTING` / `UNKNOWN` based on whether the base/head can be three-way merged. `mergeStateStatus` is the comprehensive UI state and exposes `CLEAN`, `HAS_HOOKS` (both ready), `BLOCKED` (required checks not green / required reviews missing / signed-commit policy), `BEHIND` (head behind base), `DIRTY` (conflicts; mirrors `mergeable: CONFLICTING`), `DRAFT`, `UNKNOWN`, `UNSTABLE` (non-required failures). CI-pending and branch-protection states show up as `BLOCKED` while `mergeable` stays `MERGEABLE`, so skipping the second check lets the merge call proceed and fail noisily. The `gh pr merge` documentation says "the merge will not happen unless the pull request is in a mergeable state" without spelling out which API field that maps to — the answer is `mergeStateStatus`, not `mergeable`.
