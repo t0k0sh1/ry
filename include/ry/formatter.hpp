@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ry/ast.hpp"
+#include "ry/ast/ast.hpp"
 #include <string>
 #include <vector>
 

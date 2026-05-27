@@ -1,7 +1,7 @@
 #include "ry/test_runner.hpp"
 #include "ry/jit_runner.hpp"
 #include "ry/self_update.hpp"
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #ifdef __APPLE__
 #include <crt_externs.h>
 #define RY_ENVIRON (*_NSGetEnviron())

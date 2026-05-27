@@ -3,8 +3,8 @@
  * ===============================================
  *
  * Source: ry compiler v0.0.17 — verified against
- *   include/ry/lexer.hpp / src/lexer.cpp     (terminals & keyword table)
- *   src/parser*.cpp                          (statement & expression productions)
+ *   include/ry/lexer/lexer.hpp / src/lexer/lexer.cpp     (terminals & keyword table)
+ *   src/parser/parser*.cpp                               (statement & expression productions)
  *   tests/spec/*.test.ry                     (concrete syntax samples)
  *   docs/reference/types.md                  (type system spec)
  *
@@ -418,7 +418,7 @@ f_string         ::= FSTRING_START expression { FSTRING_MID expression } FSTRING
 
 
 /* =====================================================================
- * 9. Lexical (terminals — emitted by include/ry/lexer.hpp)
+ * 9. Lexical (terminals — emitted by include/ry/lexer/lexer.hpp)
  * ===================================================================*/
 
 /* Whitespace & comments (filtered, not part of grammar) */
@@ -462,7 +462,7 @@ NEWLINE          ::= '\n' [ indent ]   /* emitted at end of every logical line *
 INDENT           ::= /* emitted when a logical line's indent exceeds the previous */
 DEDENT           ::= /* emitted when a logical line's indent falls back */
 
-/* Hard keywords (lexer keyword_map @ src/lexer.cpp:35-66) */
+/* Hard keywords (lexer keyword_map @ src/lexer/lexer.cpp:35-66) */
 KEYWORD          ::= 'and'    | 'or'     | 'not'
                    | 'true'   | 'false'  | 'none'
                    | 'if'     | 'else'   | 'while'

@@ -1,9 +1,9 @@
 ---
 paths:
-  - "src/parser*.cpp"
-  - "src/lexer*.cpp"
-  - "include/ry/parser.hpp"
-  - "include/ry/lexer.hpp"
+  - "src/parser/*.cpp"
+  - "src/lexer/*.cpp"
+  - "include/ry/parser/parser.hpp"
+  - "include/ry/lexer/lexer.hpp"
   - "src/formatter*.cpp"
 ---
 

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry/lexer.hpp"
+#include "ry/lexer/lexer.hpp"
 
 
 using namespace ry;

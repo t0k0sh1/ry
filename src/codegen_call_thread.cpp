@@ -1,6 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #include <functional>
 
 

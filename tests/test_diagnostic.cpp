@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry/diagnostic.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 
 
 using namespace ry;
