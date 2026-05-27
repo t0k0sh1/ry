@@ -103,7 +103,14 @@ EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
 }
 
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
+    // #1888: try direct lookup first, then alias resolution only on miss.
+    // Canonical names (`"File"`) hit immediately; alias names (`"MyFile"`
+    // from `from io import File as MyFile`) take the second branch.
+    // Allocation-free for the common alias-free path.
     int rk = ResourceKindRegistry::instance().lookupByTypeName(typeName);
+    if (rk == ResourceKindRegistry::NONE && !type_aliases_.empty()) {
+        rk = ResourceKindRegistry::instance().lookupByTypeName(resolveTypeAlias(typeName));
+    }
     if (rk != ResourceKindRegistry::NONE) {
         addResourceKind(val, rk);
     }

@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/builtin_names.hpp"
+#include "ry/stdlib_registry.hpp"
 
 
 namespace ry {
@@ -997,7 +998,17 @@ void CodeGen::emitStmt(ImportAliasStmt &s) {
                          "' conflicts with an existing type alias");
         rejectIfTypeNameTakenByOtherKind(alias);
         rejectCrossKindAliasCollision(ImportAliasStmt::Kind::TypeAlias);
-        if (!type_aliases_.count(orig))
+        // #1888: orig may name either a user-declared `type` alias or a
+        // C++-registered resource kind (File / TcpListener / ...). The latter
+        // has no AST and lives only in `ResourceKindRegistry`; widen the
+        // validation so module_loader's TypeAlias-kind alias for resource
+        // types resolves here. The downstream `resolveType` path walks
+        // `type_aliases_` and falls back to `ResourceKindRegistry` for the
+        // canonical name, so a plain alias entry is enough.
+        bool origKnown = type_aliases_.count(orig) ||
+            (ResourceKindRegistry::instance().lookupByTypeName(orig) !=
+             ResourceKindRegistry::NONE);
+        if (!origKnown)
             codegenError("cannot create import alias '" + alias +
                          "': type alias '" + orig + "' is not defined");
         // Point alias at orig; resolveType's existing chain walks the rest.

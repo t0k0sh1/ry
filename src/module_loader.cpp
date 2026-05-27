@@ -3,6 +3,7 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/project_config.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/trace.hpp"
 #include <algorithm>
 #include <cstdlib>
@@ -89,6 +90,44 @@ static bool isTestingIntrinsic(bool from_stdlib,
                                const std::string &name) {
     return from_stdlib && module_path == "testing" &&
            testingIntrinsics().count(name) > 0;
+}
+
+// #1888: C++-registered resource kinds (File / TcpListener / Thread / ...) are
+// declared programmatically via `ResourceKindRegistry::registerKind` at static
+// init, not as `record` statements in the stdlib `.ry` files, so they are
+// invisible to `extractDefinitions`'s AST scan. The registry stores the owning
+// module in `Info::library`; if it matches `import_path` we treat the name as
+// a resolvable export. Gated on `from_stdlib` for the same reason as
+// `isTestingIntrinsic`: a project-local shadow must not silently absorb a
+// stdlib-only registered type name.
+static bool isCppResourceKind(bool from_stdlib,
+                              const std::string &module_path,
+                              const std::string &name) {
+    if (!from_stdlib) return false;
+    int id = ResourceKindRegistry::instance().lookupByTypeName(name);
+    if (id == ResourceKindRegistry::NONE) return false;
+    const auto *info = ResourceKindRegistry::instance().getInfo(id);
+    if (!info || !info->library) return false;
+    return module_path == info->library;
+}
+
+// #1888: Builtin record types registered in `CodeGen` constructor (not in the
+// stdlib `.ry` file). Only `Match` qualifies today — see truth source
+// `src/codegen.cpp:52` (`record_types_["Match"]` registration). If a new
+// builtin record is added there, sync this map. `Error` is intentionally
+// excluded: it is a global builtin not associated with any module.
+static bool isCppBuiltinRecord(bool from_stdlib,
+                               const std::string &module_path,
+                               const std::string &name) {
+    if (!from_stdlib) return false;
+    static const std::unordered_map<std::string,
+                                    std::unordered_set<std::string>>
+        kModuleToRecords = {
+            {"regex", {"Match"}},
+        };
+    auto it = kModuleToRecords.find(module_path);
+    if (it == kModuleToRecords.end()) return false;
+    return it->second.count(name) > 0;
 }
 
 static ExportableKind getExportableKind(const StmtNode &stmt) {
@@ -268,6 +307,26 @@ static void extractDefinitions(Program &source, Program &dest,
                     detail += import_path;
                     detail += "': intrinsics cannot be re-bound (tracked in #1725)";
                     throw std::runtime_error(makeImportError(line, detail));
+                }
+                continue;
+            }
+            // #1888: C++-registered resource kind (File / TcpListener / ...).
+            if (isCppResourceKind(from_stdlib, import_path, name)) {
+                if (item.alias.has_value()) {
+                    SourceLocation alias_loc{line, 1, file_id};
+                    dest.push_back(makeAliasBinding(ExportableKind::TypeAlias,
+                                                    name, *item.alias,
+                                                    alias_loc));
+                }
+                continue;
+            }
+            // #1888: C++-registered builtin record (Match — see codegen.cpp:52).
+            if (isCppBuiltinRecord(from_stdlib, import_path, name)) {
+                if (item.alias.has_value()) {
+                    SourceLocation alias_loc{line, 1, file_id};
+                    dest.push_back(makeAliasBinding(ExportableKind::Record,
+                                                    name, *item.alias,
+                                                    alias_loc));
                 }
                 continue;
             }
@@ -791,6 +850,26 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                 detail += imp.module_path;
                                 detail += "': intrinsics cannot be re-bound (tracked in #1725)";
                                 throw std::runtime_error(makeImportError(imp.loc.line, detail));
+                            }
+                            continue;
+                        }
+                        // #1888: C++-registered resource kind cache-hit branch.
+                        if (isCppResourceKind(rp.from_stdlib, imp.module_path, name)) {
+                            if (item.alias.has_value()) {
+                                SourceLocation alias_loc{imp.loc.line, 1, imp.loc.file_id};
+                                result.push_back(makeAliasBinding(
+                                    ExportableKind::TypeAlias, name,
+                                    *item.alias, alias_loc));
+                            }
+                            continue;
+                        }
+                        // #1888: C++-registered builtin record cache-hit branch.
+                        if (isCppBuiltinRecord(rp.from_stdlib, imp.module_path, name)) {
+                            if (item.alias.has_value()) {
+                                SourceLocation alias_loc{imp.loc.line, 1, imp.loc.file_id};
+                                result.push_back(makeAliasBinding(
+                                    ExportableKind::Record, name,
+                                    *item.alias, alias_loc));
                             }
                             continue;
                         }

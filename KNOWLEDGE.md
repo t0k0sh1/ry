@@ -41,4 +41,25 @@
 - When adding a new AST variant (new `ExprNode` or `StmtNode` alternative), grep for existing walkers in `src/codegen.cpp` and update them to include the new variant. Walkers that should `if constexpr (...)` over every variant include `collectTestTargetsFromStmt`, `collectTestTargetsFromExpr` (#1765), and `stmtHasOnlyDirective`.
 - The `LambdaExpr` and `IfBlockExpr` alternatives are the only ExprNode variants that carry `std::vector<StmtNode>` — both must hand off to the stmt-walker (`collectTestTargetsFromStmts`) explicitly. Forgetting one of them re-introduces the same class of bug.
 
+### Hot-path helpers that gate on a rarely-populated map should be lookup-first, not normalize-first
+
+**Source**: #1888 (2026-05-27 implementation)
+**Tags**: codegen, allocation, heap-perturbation, alias-resolution, lookup-pattern, latent-bug
+
+**Context**: `registerResourceByTypeName` is called for every fn parameter, variable annotation, and propagate-type-meta site that might be a resource handle — many thousands of times per typical compilation. The naive #1888 fix prefixed `resolveTypeAlias(typeName)` to the `ResourceKindRegistry::lookupByTypeName` call so aliased resource types (`from io import File as MyFile`) resolve to their canonical name. But `resolveTypeAlias` always allocates a `std::unordered_set<std::string>` for cycle detection and copies the input string, even when `type_aliases_` is empty (the overwhelmingly common case — most fns have no `type X = ...` alias in scope). The extra allocation churn measurably shifted heap layout and amplified an unrelated pre-existing latent memory bug in `tests/spec/collection_meta_propagation.test.ry` from a ~3% baseline reproduction rate (origin/main equivalent, 1/30) to ~63% (11/30). Lookup-first restores the failure rate to baseline (~3%, 2/60 across same-session stash and unstash) — it mitigates the amplification, not the underlying bug. The bug surface was "runtime error: map key not found" with exit 1 — not a sanitizer hit (ASan masked it) and not the #1895 SIGABRT teardown family.
+
+**Rule**: When extending a hot-path lookup helper to support a new naming convention (alias, qualified name, deprecated form), try the **direct** lookup first and fall back to the normalization path **only when the direct lookup misses AND the normalization map is non-empty**. The two-clause guard skips both the allocation and the function call entirely for the common case, preserving the original heap signature. Single-clause guards (only "direct lookup misses") still pay the allocation when the map is empty.
+
+**How to apply**:
+- Pattern (canonical form, `src/codegen_fn.cpp:104-111`):
+  ```cpp
+  int rk = ResourceKindRegistry::instance().lookupByTypeName(typeName);
+  if (rk == ResourceKindRegistry::NONE && !type_aliases_.empty()) {
+      rk = ResourceKindRegistry::instance().lookupByTypeName(resolveTypeAlias(typeName));
+  }
+  ```
+- The `!type_aliases_.empty()` test must use the actual map's `empty()` (cheap — single load), not a heuristic.
+- Detection in code review: any prefix of the form `lookup(normalize(x))` inside a per-fn / per-statement / per-expression codegen helper is a candidate. Bisect by reverting only that prefix and re-running a flaky downstream test 30x; if the failure rate drops to baseline (origin/main), the allocation churn is the trigger.
+- Latent memory bugs exposed this way should be filed separately via `/triage-side-finding` Q4(b) — the lookup-first fix mitigates the symptom but does not fix the root cause.
+
 

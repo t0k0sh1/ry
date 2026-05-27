@@ -2176,6 +2176,177 @@ TEST_F(ImportTest, QualifiedImportUserDefinedRecordConstructor) {
         "print(p.y)\n"), "3\n4\n");
 }
 
+// ===== #1888: import of C++-registered resource kinds and builtin records =====
+//
+// Resource kinds (File / TcpListener / Thread / ...) and the builtin record
+// Match (regex) are registered programmatically in C++ rather than declared
+// in their stdlib `.ry` files. `from io import File` etc. must resolve
+// because the names are semantically part of those modules even though
+// `extractDefinitions` cannot see them via AST scan.
+TEST_F(ImportTest, FromCppResourceKindImportsResolve) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    struct Case { const char *mod; const char *type; };
+    const Case cases[] = {
+        {"io", "File"},
+        {"net", "TcpListener"},
+        {"net", "TcpStream"},
+        {"http", "TlsStream"},
+        {"http", "HttpRequest"},
+        {"http", "HttpResponse"},
+        {"http", "HttpClientResponse"},
+        {"thread", "Thread"},
+        {"thread", "Lock"},
+        {"thread", "RWLock"},
+        {"thread", "Semaphore"},
+        {"thread", "Barrier"},
+        {"thread", "AtomicInt"},
+        {"thread", "AtomicBool"},
+    };
+    for (const auto &c : cases) {
+        std::string src = std::string("from ") + c.mod + " import " + c.type + "\n";
+        EXPECT_NO_THROW({
+            resolveImportsOnly(src, tmp_dir_.string(), search_paths);
+        }) << "case: " << src;
+    }
+}
+
+TEST_F(ImportTest, FromRegexImportMatchResolves) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from regex import Match\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+// Cache-hit boundary: a second import in the same loader must use the
+// `resolveImports` cache-hit branch (L778-803), which has its own throw site.
+TEST_F(ImportTest, FromCppResourceKindResolvesViaCacheHit) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from io\n"
+            "from io import File\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+TEST_F(ImportTest, FromRegexImportMatchResolvesViaCacheHit) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from regex\n"
+            "from regex import Match\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+// Negative: wrong module rejects (TcpListener belongs to "net", not "io").
+TEST_F(ImportTest, FromIoImportTcpListenerStillRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_THROW({
+        resolveImportsOnly(
+            "from io import TcpListener\n",
+            tmp_dir_.string(),
+            search_paths);
+    }, std::runtime_error);
+}
+
+// Negative: unknown type still rejected.
+TEST_F(ImportTest, FromIoImportUnknownTypeStillRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_THROW({
+        resolveImportsOnly(
+            "from io import NotARealType\n",
+            tmp_dir_.string(),
+            search_paths);
+    }, std::runtime_error);
+}
+
+// Negative: Error type is global, not associated with any module.
+// Importing it from io (or anywhere) must remain rejected.
+TEST_F(ImportTest, FromIoImportErrorStillRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_THROW({
+        resolveImportsOnly(
+            "from io import Error\n",
+            tmp_dir_.string(),
+            search_paths);
+    }, std::runtime_error);
+}
+
+// Symmetry with isTestingIntrinsic's from_stdlib guard: a local `io.ry`
+// shadow must NOT bypass the C++ type check. Importing File from a local
+// io.ry that does not declare File should fail with the standard
+// "not found in module" diagnostic.
+TEST_F(ImportTest, FromLocalIoShadowDoesNotBypassCppTypeCheck) {
+    writeFile("io.ry", "fn dummy() -> int:\n    return 0\n");
+    EXPECT_THROW({
+        resolveImportsOnly(
+            "from io import File\n",
+            tmp_dir_.string(),
+            {});
+    }, std::runtime_error);
+}
+
+// Alias of C++-registered resource kind: `from io import File as MyFile`
+// must (a) parse, (b) reach codegen without throwing, and (c) allow the
+// aliased name to be used in a type annotation that propagates resource
+// metadata for ARC cleanup.
+TEST_F(ImportTest, ImportAliasResourceTypeWorks) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        runWithImports(
+            "from io import File as MyFile\n"
+            "fn use(f: MyFile) -> bool:\n"
+            "    return true\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+TEST_F(ImportTest, ImportAliasResourceTypeWorksCacheHit) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        runWithImports(
+            "from io\n"
+            "from io import File as MyFile\n"
+            "fn use(f: MyFile) -> bool:\n"
+            "    return true\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+// Alias of C++-registered builtin record (Match).
+TEST_F(ImportTest, ImportAliasBuiltinRecordWorks) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        runWithImports(
+            "from regex import Match as M\n"
+            "fn use(m: M) -> str:\n"
+            "    return m.full\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        runWithImports(
+            "from regex\n"
+            "from regex import Match as M\n"
+            "fn use(m: M) -> str:\n"
+            "    return m.full\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
 // ===== type alias =====
 
 TEST_F(CodeGenTest, TypeAlias) {

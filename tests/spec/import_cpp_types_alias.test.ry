@@ -1,0 +1,62 @@
+from testing import it, describe, expect, fail
+
+from io import open, close, writeText, deleteFile, File as MyFile
+from thread import lockNew, lockAcquire, lockRelease, lockFree, Lock as MyLock
+from regex import regexFindAll, Match as M
+
+record MHolder:
+  m: M
+
+@describe("aliased import of C++-registered types (#1888)")
+fn importCppTypesAliasTests():
+  @it("should not leak when Ok(f) binds a Result<MyFile, Error> with aliased element (#1888 Task 4a)")
+  fn shouldNotLeakWhenOkBindsAliasedResultElement():
+    case writeText("/tmp/ry_import_cpp_types_alias.txt", "hi"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("write failed: " + e.message)
+    r: Result<MyFile, Error> = open("/tmp/ry_import_cpp_types_alias.txt", "r")
+    case r:
+      Ok(f):
+        close(f)
+        expect(true).toEq(true)
+      Err(e):
+        fail("open failed: " + e.message)
+    case deleteFile("/tmp/ry_import_cpp_types_alias.txt"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("delete failed: " + e.message)
+
+  @it("should accept aliased MyFile as function parameter type")
+  fn shouldAcceptAliasedMyFileAsFunctionParameterType():
+    fn closer(f: MyFile) -> Unit:
+      close(f)
+    case writeText("/tmp/ry_import_cpp_types_alias2.txt", "yo"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("write failed: " + e.message)
+    case open("/tmp/ry_import_cpp_types_alias2.txt", "r"):
+      Ok(f):
+        closer(f)
+        expect(true).toEq(true)
+      Err(e): fail("open failed: " + e.message)
+    case deleteFile("/tmp/ry_import_cpp_types_alias2.txt"):
+      Ok(_): expect(true).toEq(true)
+      Err(e): fail("delete failed: " + e.message)
+
+  @it("should use aliased Lock as function parameter type")
+  fn shouldUseAliasedLockAsFunctionParameterType():
+    fn acquireRelease(l: MyLock) -> bool:
+      case lockAcquire(l):
+        Ok(_):
+          case lockRelease(l):
+            Ok(_): return true
+            Err(_): return false
+        Err(_): return false
+    l = lockNew()
+    expect(acquireRelease(l)).toEq(true)
+    lockFree(l)
+
+  @it("should use aliased Match record as record field type")
+  fn shouldUseAliasedMatchRecordAsRecordFieldType():
+    matches: List<M> = regexFindAll("xyz 42 abc 99", "[0-9]+")
+    expect(len(matches)).toEq(2)
+    holder = MHolder(matches[0])
+    expect(holder.m.full).toEq("42")
