@@ -1,5 +1,5 @@
-#include "ry/self_update.hpp"
-#include "ry/paths.hpp"
+#include "ry/cli/self_update.hpp"
+#include "ry/project/paths.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

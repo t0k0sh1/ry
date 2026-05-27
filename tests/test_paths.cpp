@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry/paths.hpp"
+#include "ry/project/paths.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>

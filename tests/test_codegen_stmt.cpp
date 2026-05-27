@@ -1,5 +1,5 @@
 #include "test_codegen_common.hpp"
-#include "ry/module_loader.hpp"
+#include "ry/module/module_loader.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>

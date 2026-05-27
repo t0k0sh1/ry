@@ -22,7 +22,7 @@ Excluded: bugprone-easily-swappable-parameters, cert-err58-cpp, etc. (see .clang
 - `HeaderFilterRegex` is restricted to project headers (`include/ry/`); LLVM / GoogleTest are SYSTEM-included and auto-excluded.
 - `compile_commands.json` is emitted by `CMAKE_EXPORT_COMPILE_COMMANDS=ON` under `build/`.
 - CI build scope by event (#1741):
-  - **pull request**: `cmake --build build --target ry --parallel` — fast build (`src/main.cpp` + `ry_lib` ≈ ~76 TU); `ry_tests` / native plugin / fuzz TUs skipped.
+  - **pull request**: `cmake --build build --target ry --parallel` — fast build (`src/app/main.cpp` + `ry_lib` ≈ ~76 TU); `ry_tests` / native plugin / fuzz TUs skipped.
   - **push to main**: `cmake --build build --parallel` — full build (all targets).
   - **Note**: `--target ry` narrows **only the build step**. clang-tidy analysis still covers all 90 `src/*.cpp` files (14 of them outside `ry_lib`) in parallel on both events.
 - Per-TU parallel analysis: `xargs -0 -n 1 -P "$(nproc)"` (#1741). `-n 1` is required — without it xargs hands every `.cpp` to a single clang-tidy invocation and `-P` parallelises nothing.
@@ -50,7 +50,7 @@ Excluded: bugprone-easily-swappable-parameters, cert-err58-cpp, etc. (see .clang
 
 **Examples**:
 - `src/codegen.cpp` `CodeGen::FnScope::~FnScope() noexcept` — `noexcept` + `NOLINTNEXTLINE` (trailing `resize()` inferred throwing under libc++).
-- `src/main.cpp` `main()` and the watcher lambda — `NOLINTNEXTLINE` (process boundary).
+- `src/app/main.cpp` `main()` and the watcher lambda — `NOLINTNEXTLINE` (process boundary).
 
 ## Cppcheck
 
@@ -74,7 +74,7 @@ Excluded: see .cppcheck-suppressions
 Path-sensitive symbolic-execution analysis catching null deref, use-after-free, memory leaks, uninitialised reads, and dead stores that Clang-Tidy / Cppcheck typically miss.
 
 CI scope by event (#1738):
-- **pull request**: `--target ry --parallel` — fast scan (`src/main.cpp` + `ry_lib` ≈ ~76 TU); test / native-plugin TUs excluded for fast PR feedback.
+- **pull request**: `--target ry --parallel` — fast scan (`src/app/main.cpp` + `ry_lib` ≈ ~76 TU); test / native-plugin TUs excluded for fast PR feedback.
 - **push to main**: `--parallel` (no `--target`) — full scan (all targets), wider coverage including tests, native plugins, and fuzz.
 
 Both events run with `continue-on-error: true` (warn-only).

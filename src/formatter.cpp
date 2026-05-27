@@ -1,7 +1,7 @@
 #include "ry/formatter.hpp"
 #include "ry/lexer/lexer.hpp"
 #include "ry/parser/parser.hpp"
-#include "ry/project_config.hpp"
+#include "ry/project/project_config.hpp"
 
 #include <algorithm>
 #include <cmath>

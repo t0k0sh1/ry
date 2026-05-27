@@ -1,4 +1,4 @@
-#include "ry/project_config.hpp"
+#include "ry/project/project_config.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>

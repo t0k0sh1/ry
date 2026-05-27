@@ -210,7 +210,7 @@ If a table lists filenames or paths, run `ls` on the claimed directory before tr
 **Context**: `project.md` global options table listed `--env=<env>` as accepting
 `production|development|internal` (3 values). `packages.md` RY_ENV table had
 5 values (`prod`, `dev`, `test`, `staging`, `internal`) plus their aliases. The
-authoritative source is `src/dotenv.cpp:resolveRyEnv` + `src/cli.cpp` help text.
+authoritative source is `src/project/dotenv.cpp:resolveRyEnv` + `src/cli/cli.cpp` help text.
 
 **Rule**: When two doc pages both describe the same CLI flag or env var value set,
 verify they are consistent with each other AND with the implementation. Quick check:
@@ -219,7 +219,7 @@ verify they are consistent with each other AND with the implementation. Quick ch
 # Find all pages that mention --env or RY_ENV
 grep -rn 'env\|RY_ENV' docs/reference/ | grep -v '\.env\.'
 # Check implementation's documented values
-grep -n 'env.*=.*\|' src/cli.cpp | head -10
+grep -n 'env.*=.*\|' src/cli/cli.cpp | head -10
 ```
 
 ### Runtime errors in stdlib dispatchers must be mirrored in docs/reference/

@@ -61,7 +61,7 @@ real codegen UAF** — it is the same #1187 family LLVM ORC heap
 corruption that already forces `~LLJIT()` and `removeResourceTracker`
 to leak. Suppression is now a three-step `(void)jit.release()` +
 `rtCleanup.release()` + `(void)cg.release()` block in
-`src/jit_runner.cpp`. **Why:** ASan + UBSan are clean on the same
+`src/jit/jit_runner.cpp`. **Why:** ASan + UBSan are clean on the same
 binary and same test, indicating the heap corruption originates in
 the JIT teardown path and only the disturbed-heap sequel shows up
 in `~CodeGen()` under TSan's stricter free-list checking. **How to
@@ -69,7 +69,7 @@ apply:** When a TSan crash report on macOS points at `~OverloadEntry()`
 or any other `~CodeGen()` member destructor, do not start hunting
 for codegen-side `unique_ptr` ownership bugs first — first check
 whether ASan is also clean. If yes, treat as ORC teardown family
-and follow the suppression pattern in `src/jit_runner.cpp`. The
+and follow the suppression pattern in `src/jit/jit_runner.cpp`. The
 `LargeMmapAllocator` warn-only policy above continues to protect
 against this family on Linux as well; promotion of Ry self-test
 TSan to required is gated on the upstream LLVM ORC root cause, not
@@ -84,7 +84,7 @@ intermittent crash" entry.
 **Source**: #1688 (2026-05-17, `@timeout(ms)` directive)
 **Tags**: tsan, sanitizer, ci, linux, signal-handler, siglongjmp, setitimer, gotcha
 
-**Rule**: `@timeout(ms)` (`src/codegen_test.cpp::emitItWithTimeout` + `src/jit_runner.cpp::test_timeout_handler`) installs a SIGALRM handler that calls `siglongjmp` back to a JIT-emitted continuation. On **Linux + TSan**, libtsan's `siglongjmp` interceptor deadlocks when invoked from signal context (subprocess never returns; CI hits the 30s WNOHANG backstop with empty / truncated stdout). The exact same code completes in ~1.4s on **macOS TSan** and passes under default + ASan+UBSan builds, so this is an upstream TSan + Linux libtsan interaction — not a race in ry code.
+**Rule**: `@timeout(ms)` (`src/codegen_test.cpp::emitItWithTimeout` + `src/jit/jit_runner.cpp::test_timeout_handler`) installs a SIGALRM handler that calls `siglongjmp` back to a JIT-emitted continuation. On **Linux + TSan**, libtsan's `siglongjmp` interceptor deadlocks when invoked from signal context (subprocess never returns; CI hits the 30s WNOHANG backstop with empty / truncated stdout). The exact same code completes in ~1.4s on **macOS TSan** and passes under default + ASan+UBSan builds, so this is an upstream TSan + Linux libtsan interaction — not a race in ry code.
 
 **How to apply**: When adding tests that exercise `@timeout` via a forked-child subprocess (`tests/test_spec_timeout.cpp`), gate the test body with:
 

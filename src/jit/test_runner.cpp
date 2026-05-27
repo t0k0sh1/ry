@@ -1,6 +1,6 @@
-#include "ry/test_runner.hpp"
-#include "ry/jit_runner.hpp"
-#include "ry/self_update.hpp"
+#include "ry/jit/test_runner.hpp"
+#include "ry/jit/jit_runner.hpp"
+#include "ry/cli/self_update.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #ifdef __APPLE__
 #include <crt_externs.h>

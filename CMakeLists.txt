@@ -111,7 +111,7 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
-    src/trace.cpp
+    src/trace/trace.cpp
     src/source_manager/source_manager.cpp
     src/diagnostic/diagnostic.cpp
     src/directive_meta.cpp
@@ -144,9 +144,9 @@ add_library(ry_lib STATIC
     src/codegen_call_result.cpp
     src/codegen_call_option.cpp
     src/codegen_lambda.cpp
-    src/sema_return.cpp
-    src/module_loader.cpp
-    src/jit.cpp
+    src/sema/sema_return.cpp
+    src/module/module_loader.cpp
+    src/jit/jit.cpp
     src/test_runtime.cpp
     src/runtime_string.cpp
     src/runtime_hash.cpp
@@ -154,18 +154,18 @@ add_library(ry_lib STATIC
     src/runtime_regex_parser.cpp
     src/runtime_utf8.cpp
     src/runtime_sort.cpp
-    src/project_config.cpp
-    src/self_update.cpp
+    src/project/project_config.cpp
+    src/cli/self_update.cpp
     src/args_runtime.cpp
-    src/paths.cpp
+    src/project/paths.cpp
     src/runtime_parallel.cpp
     src/runtime_print.cpp
     src/codegen_call_json.cpp
     src/formatter.cpp
     src/formatter_stmt.cpp
-    src/file_watcher.cpp
-    src/coverage_runtime.cpp
-    src/dotenv.cpp
+    src/cli/file_watcher.cpp
+    src/coverage/coverage_runtime.cpp
+    src/project/dotenv.cpp
     src/codegen_call_native.cpp
     src/codegen_call_thread.cpp
     src/codegen_arith.cpp
@@ -183,9 +183,9 @@ add_library(ry_lib STATIC
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
     src/runtime_error.cpp
-    src/cli.cpp
-    src/jit_runner.cpp
-    src/test_runner.cpp
+    src/cli/cli.cpp
+    src/jit/jit_runner.cpp
+    src/jit/test_runner.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -303,7 +303,7 @@ set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing r
 # ===== メイン実行ファイル =====
 # Native shared libraries are NOT linked here — the JIT loads them on-demand
 # via find_native_library() + DynamicLibrarySearchGenerator::Load() (see main.cpp).
-add_executable(ry src/main.cpp)
+add_executable(ry src/app/main.cpp)
 add_dependencies(ry ${RY_NATIVE_LIBS})
 if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)

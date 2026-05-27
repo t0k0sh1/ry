@@ -1,7 +1,7 @@
-#include "ry/cli.hpp"
-#include "ry/project_config.hpp"
-#include "ry/paths.hpp"
-#include "ry/dotenv.hpp"
+#include "ry/cli/cli.hpp"
+#include "ry/project/project_config.hpp"
+#include "ry/project/paths.hpp"
+#include "ry/project/dotenv.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
