@@ -71,7 +71,7 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## TSan（ThreadSanitizer）
 
-スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる。ビルドコマンド・required vs warn-only ジョブ分割・upstream TSan allocator バグの詳細は `.claude/skills/tsan-known-issues/SKILL.md`（または `/tsan-known-issues`）を参照。
+スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる。ビルドコマンド・required vs warn-only ジョブ分割・upstream TSan allocator バグ・LLVM ORC teardown 等の既知問題は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクションを参照。
 
 > 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容しない。
 
