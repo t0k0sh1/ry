@@ -27,6 +27,16 @@ allowed-tools: Bash
 
 ## 1. Where to write (REQ-1)
 
+**Special case — sanitizer / libFuzzer failure notes**: runtime behavior, allocator quirks, masking mechanics, upstream bugs, suppression workarounds — i.e. "what to know only when it crashes". Always write to `KNOWLEDGE.md ## サニタイザー既知問題 ### <Sanitizer>`, **even when the knowledge is otherwise scopable by a `paths:` glob**. Rationale:
+
+- Keep auto-loaded `.claude/rules/` / `.claude/skills/` / `AGENTS.md` free of knowledge that's only needed when something crashes
+- Prevent divergence across multiple path-scoped files (TSan-style consolidation, established in #1945)
+- Leave room for future split into a dedicated file once the section stabilizes
+
+Genuine coding-rule content (what API to use, what idiom to follow) stays in the rule; only the sanitizer-runtime portion is split off.
+
+**General rules** (apply when the special case doesn't):
+
 1. **A matching entry exists** in a rule / skill → append there. Do not touch KNOWLEDGE.md.
 2. **No matching entry anywhere** → append to KNOWLEDGE.md as a temporary buffer.
 3. **Entry has stabilized or coalesced into a clear theme** → follow §4 to promote.
@@ -48,6 +58,15 @@ Every entry follows the same shape as rule / skill entries (for grep consistency
 ```
 
 The `**Tags**:` line is mandatory — without it the entry is invisible to the grep convention.
+
+### Subsection format for `## サニタイザー既知問題`
+
+The dedicated `## サニタイザー既知問題` section in `KNOWLEDGE.md` uses a two-level hierarchy:
+
+- **Level 3** (`### <Sanitizer>`): sanitizer name — `### TSan`, `### ASan`, `### UBSan`, `### libFuzzer`
+- **Level 4** (`#### <entry heading>`): individual entries, each carrying the standard `**Source**:` / `**Tags**:` / `**Rule**:` body
+
+This level-3/level-4 hierarchy is permitted **only** under `## サニタイザー既知問題`. All other sections in `KNOWLEDGE.md` keep the flat `###` convention.
 
 ### How to read
 
@@ -107,6 +126,7 @@ Thresholds are defaults; adjust as needed.
 
 | Condition | Destination |
 |---|---|
+| **Sanitizer / libFuzzer failure note** (allocator quirk, masking, upstream bug, suppression) | `KNOWLEDGE.md ## サニタイザー既知問題 ### <Sanitizer>` (overrides the rows below) |
 | Scopable by a frontmatter `paths:` glob (tied to specific paths / implementations) | `.claude/rules/<name>.md` |
 | Procedure / intent / cross-cutting policy (path-independent or multi-path) | `.claude/skills/<name>/SKILL.md` |
 | Meta-index of recurring PR-review themes | `.claude/skills/pr-review-recurring-patterns/SKILL.md` |

@@ -6,36 +6,6 @@ paths:
 
 # CI Workflows
 
-### UBSan must disable `vptr` and `function` checks on this project
-
-**Source**: #630 (2026-04-11, implementation)
-**Tags**: ubsan, sanitizer, cmake, llvm, cxx-flags
-
-**Context**: When enabling UBSan (`-fsanitize=undefined`) on ry, two
-sub-checks fail in ways that have nothing to do with actual
-undefined behavior:
-
-1. `vptr` — ry compiles with `-fno-rtti` (to match LLVM's build
-   flags, see `CMakeLists.txt:25`). The `vptr` check requires RTTI
-   to resolve virtual-call types, so enabling it under `-fno-rtti`
-   produces no coverage and in some toolchains hard-errors.
-2. `function` — LLVM exposes many C-style function pointers that
-   ry casts through `void *` (JIT symbol resolution, runtime
-   dispatch, etc.). UBSan's `function` check flags every one of
-   these as a type mismatch, drowning out real signal.
-
-**Rule**: When adding or extending UBSan flags in `CMakeLists.txt`,
-always pair `-fsanitize=undefined` with
-`-fno-sanitize=vptr,function`. Do not try to fix the false positives
-by changing the LLVM interop code — the checks themselves are the
-wrong tool for this codebase.
-
-**Also**: UBSan and ASan are compatible and are enabled together via
-the `asan` CMake preset (`ENABLE_ASAN=ON` + `ENABLE_UBSAN=ON`). TSan
-is **not** compatible with either and lives in its own `tsan` preset
-(`build-tsan/`). `CMakeLists.txt` enforces this with a
-`FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
-
 ### Linux CI runs in pre-baked GHCR container images, no apt usage
 
 **Source**: #1505 (2026-05-02)
@@ -571,43 +541,6 @@ names like `digests-ry-ci__amd64` (not `digests-ry-ci-amd64`). In
 the manifest job log, the `for f in /tmp/digests/*; do …` loop
 should iterate exactly the expected number of digests (2 per arch
 matrix per image, not the cross-product).
-
-### LLVM 17+ source build: `compiler-rt` belongs in `LLVM_ENABLE_RUNTIMES`, not `LLVM_ENABLE_PROJECTS`
-
-**Source**: #1505 follow-up (2026-05-02)
-**Tags**: ci, docker, llvm, compiler-rt, cmake, sanitizer, asan, tsan
-
-**Context**: The first `ry-ci` / `ry-ci-glibc-old` image build for
-issue #1505 only set
-`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"` in the LLVM cmake
-invocation, which produces clang+clang-tools but **not** compiler-rt.
-The CI `asan` job failed at link time with
-`cannot find /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.asan_static.a`,
-and the `tsan` job failed with the same pattern for
-`libclang_rt.tsan{,_cxx}.a`. From LLVM 17 onward, the runtime
-libraries (`compiler-rt`, `libcxx`, `libcxxabi`, `libunwind`) must
-be built via `LLVM_ENABLE_RUNTIMES` rather than `LLVM_ENABLE_PROJECTS`
-so that the *just-built* clang is used to compile them — putting
-`compiler-rt` in `PROJECTS` is silently legacy and produces broken
-or no libraries on modern LLVM.
-
-**Rule**: When source-building LLVM in `docker/ci.Dockerfile` /
-`docker/ci-glibc-old.Dockerfile`, always include
-`-DLLVM_ENABLE_RUNTIMES="compiler-rt"` alongside
-`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"`. Disable the
-sub-projects ry doesn't use to keep build time bounded
-(`COMPILER_RT_BUILD_PROFILE=OFF`, `COMPILER_RT_BUILD_XRAY=OFF`,
-`COMPILER_RT_BUILD_MEMPROF=OFF`, `COMPILER_RT_BUILD_ORC=OFF`) but
-keep `BUILD_SANITIZERS=ON`, `BUILD_BUILTINS=ON`, `BUILD_LIBFUZZER=ON`
-(libFuzzer is gated off in CI but the harness build script needs
-the static archive to exist).
-
-**How to verify**: After image rebuild,
-`docker run --rm ghcr.io/<owner>/ry-ci:llvm-21 ls /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/`
-should list `libclang_rt.asan.a`, `libclang_rt.asan_static.a`,
-`libclang_rt.tsan.a`, `libclang_rt.tsan_cxx.a`,
-`libclang_rt.ubsan_standalone.a`, and `libclang_rt.fuzzer.a`. CI
-`asan` and `tsan` jobs link cleanly.
 
 ### cppcheck 2.16 raises `normalCheckLevelMaxBranches` to a hard exit under `--error-exitcode=1`
 

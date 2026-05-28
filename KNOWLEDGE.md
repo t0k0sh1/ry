@@ -64,7 +64,7 @@
 
 ## サニタイザー既知問題
 
-> サニタイザー固有の past-incident 参照を集中管理するセクション。新規エントリは該当サブセクションに追記する。本セクションは現状の flat entry 規約 (`### <heading>`) を一時的に level 3 (sanitizer 名) + level 4 (`#### <entry>`) の階層構造に拡張している (#1945 で導入)。正式な format 規約更新は follow-up issue で扱う。
+> サニタイザー固有の past-incident 参照を集中管理するセクション。新規エントリは該当サブセクションに追記する。サブセクション規約 (`### <Sanitizer>` + `#### <entry>`) は `/knowledge-md-management` §2 を参照。
 
 ### TSan
 
@@ -145,9 +145,9 @@ and follow the suppression pattern in `src/jit/jit_runner.cpp`. The
 `LargeMmapAllocator` warn-only policy above continues to protect
 against this family on Linux as well; promotion of Ry self-test
 TSan to required is gated on the upstream LLVM ORC root cause, not
-just the LargeMmapAllocator fix. See full details in
-`.claude/rules/codegen-llvm-ir-conventions.md` "LLVM ORC JIT
-intermittent crash" entry.
+just the LargeMmapAllocator fix. See the
+`LLVM ORC JIT intermittent teardown crash` entry under `### ASan`
+below for the six-step suppression details.
 
 #### TSan + Linux libtsan deadlocks on `siglongjmp` from a signal handler
 
@@ -197,11 +197,244 @@ impl: `src/codegen_stmt_loop.cpp::emitParallelForRange`.
 
 ### ASan
 
-_(follow-up issue で集約予定 — 現状のエントリは `.claude/rules/runtime-memory-safety.md` 等に散在)_
+#### `ConcurrencySpecSuite` ASan `DISABLED_` guard was stale after #630's atomic-ARC fix
+
+**Source**: #872
+**Tags**: asan, concurrency, parallel_for, arc, testing
+
+**Rule**: `ConcurrencySpecSuite` was disabled under ASan in commit `fb010ea`
+(2026-03-31) because non-atomic ARC retain/release ops in `@parallel for`
+workers raced with ASan's shadow-memory interceptors, causing a deadlock
+(SIGALRM, exit 142 after 300 s on Linux). After #630's P0 fix made all ARC
+ops inside `@parallel for` thunks use `atomicrmw seqcst`, the root cause
+was removed. The `DISABLED_` guard was removed in #872; on macOS the suite
+runs in ~55 ms. If a future change reintroduces non-atomic ARC inside a
+`@parallel for` thunk, re-enable the guard and investigate the hang before
+merging.
+
+#### `~CodeGen()` glibc heap-check crashes are not destructor bugs
+
+**Source**: #1161 / #1167 (2026-04-18)
+**Tags**: codegen, arc, glibc, debugging, heap-corruption, asan, gotcha
+
+**Scope**: This entry covers crashes that **persist under ASan** (i.e. ASan itself reports
+a heap-buffer-overflow or use-after-free). For crashes where all test cases pass and only
+the teardown crashes — and the crash disappears on re-run — see the `LLVM ORC JIT
+intermittent teardown crash` entry below instead; those are pre-existing LLVM ORC
+flakiness, not user-code bugs.
+
+**Rule**: When `ry::CodeGen::~CodeGen()` aborts on Linux glibc with
+`corrupted size vs. prev_size while consolidating` **and the crash reproduces persistently**
+(especially under ASan), treat it as an **earlier** OOB write or UAF in ARC-managed
+runtime buffers (Map/List/Set CoW copies, ARC headers) that glibc only detects when a
+neighbouring chunk is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
+or member-lifetime bug in `CodeGen` itself.
+
+**Why `~CodeGen()` is not the culprit**:
+- `~CodeGen` is compiler-generated. `mod_` / `ctx_` are moved into
+  `ThreadSafeModule` at `src/codegen.cpp:575`; the destructor never touches IR objects.
+- ARC tracking sets (`include/ry/codegen.hpp:184-193`) store bare `llvm::Value*`
+  and only walk hash buckets at destruction — no dereference.
+
+**Diagnostic checklist**:
+1. Reproduce on Linux with ASan (ARM64 Docker via `docker/run.sh asan`; x86_64 CI
+   asan job on `v*` push). macOS libSystem malloc does not expose glibc's chunk
+   metadata checks, so the crash is Linux-only even with the same bug.
+2. ASan will pinpoint the actual OOB/UAF site instead of just the late `free()`.
+3. Look first at recent changes to `emitCowCheckSlot` / `emitCowDeepCopy*` /
+   `emitMapKeyLookup` / `emitSetElementLookup`: ARC retain gating, `keyName` /
+   `elemName` propagation, and hash-vs-linear-scan branch selection are the
+   class of change that introduced `~CodeGen()` crash #1161.
+
+**History**: #1161 crash (`corrupted size vs. prev_size`) was observed after PR #1148
+landed. The bug was most likely a heap-layout-dependent OOB that became non-reproducible
+after PR #1160 (`emitCowCheckSlot` `doKeyRetain` unconditional + `emitMapKeyLookup`
+`keyName` fix). CI ASan clean on x86_64 Linux was confirmed at commit `998edc42`
+(CI run #24601715375, 2026-04-18). The exact commit that fixed it was not bisected;
+if the crash re-appears, revert to the diagnostic checklist above.
+
+#### LLVM ORC JIT intermittent teardown crash (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~FnStmt()`)
+
+**Source**: #1187 / #1657 / #1749 / #1838 / #1895
+**Tags**: asan, llvm, orc, jit, teardown, glibc, macos, gotcha
+
+**Rule**: Self-tests pass all `it` blocks then crash during JIT teardown — Linux glibc `cfree` heap consolidation, macOS parallel-mode worker SEGV, macOS TSan `~OverloadEntry()`, Linux glibc tcache assertion in `~FnStmt()` (`malloc(): invalid next->prev_inuse` / `corrupted size vs. prev_size`). Fix is a **six-step** suppression. Four live in `runRySource` (`src/jit/jit_runner.cpp`) guarded by `#if defined(__linux__) || defined(__APPLE__)`: (1) `rtCleanup.release()` cancels the `RT->remove()` `scope_exit`, (2) `(void)jit.release()` leaks LLJIT so `~LLJIT()` never runs, (3) `(void)cg.release()` leaks CodeGen so `~CodeGen()` does not walk `functions_` on a heap disturbed by JIT teardown, (4) `new Program(std::move(prog))` leaks the parsed AST so `~Program()` → `~unique_ptr<FnStmt>()` → `~FnStmt()` never traverses lambda body / capture chains on the disturbed heap (#1895: collection_meta_propagation.test.ry, 25 passed + SIGABRT, ~5-10 % Linux CI flake). The fifth (5) is in `main()` (`src/app/main.cpp`): `finalizeAfterPossibleJit(rc)` calls `_exit(rc)` on Linux/macOS when `ry::jitWasInitialized()` returns true (a flag set in `runRySource` immediately after `LLJITBuilder().create()` succeeds), bypassing the C++ static-destructor chain that still touched LLVM `ManagedStatic` / `llvm_shutdown` state on the disturbed heap and intermittently aborted in glibc `_int_malloc` (#1749, exit 134 after the test had already printed its result). **The sixth (6) is in `emitRuntimeError` (`src/codegen_call_user.cpp`)**: the trap path emits `_Exit(1)` instead of `exit(1)`, via a parallel `getStdlibImmediateExit` helper (#1838). The JIT'd code reaches `emitRuntimeError` by calling the libc abort function directly from the JIT module — `finalizeAfterPossibleJit` does NOT cover this path because control never returns to `main()`. Without `_Exit`, the libc atexit chain fires while the JIT module is still live, invoking `PassRegistry::~PassRegistry` (and other `ManagedStatic` destructors) which then double-free against the JIT heap and intermittently SIGABRT before the expected `ExitedWithCode(1)` is observed (`CoerceResultOkNestedResultMismatchTraps`, ASan-masked). Non-JIT exits (help, formatter, parse-time failures before any LLJIT instance is created) still run normal teardown — the flag gates the (5) bypass narrowly, and (6) only affects JIT'd code's own abort path. The user-facing Ry `exit()` builtin (`emitExit` in `codegen_match.cpp`) deliberately keeps `exit()` semantics; only the internal trap path moves to `_Exit`. All six are required — dropping any one leaves a residual failure rate. These are workarounds, not a root-cause fix; underlying LLVM ORC / JITLink heap pattern is unidentified upstream. On Linux CI, treat this signature as flake (re-run); on ASan, persistent crashes mean user-code OOB/UAF, not flake. Do NOT suppress the LLVM crash reporter or add `|| true`.
+
+#### LLVM 17+ source build: `compiler-rt` belongs in `LLVM_ENABLE_RUNTIMES`, not `LLVM_ENABLE_PROJECTS`
+
+**Source**: #1505 follow-up (2026-05-02)
+**Tags**: ci, docker, llvm, compiler-rt, cmake, sanitizer, asan, tsan
+
+**Context**: The first `ry-ci` / `ry-ci-glibc-old` image build for
+issue #1505 only set
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"` in the LLVM cmake
+invocation, which produces clang+clang-tools but **not** compiler-rt.
+The CI `asan` job failed at link time with
+`cannot find /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.asan_static.a`,
+and the `tsan` job failed with the same pattern for
+`libclang_rt.tsan{,_cxx}.a`. From LLVM 17 onward, the runtime
+libraries (`compiler-rt`, `libcxx`, `libcxxabi`, `libunwind`) must
+be built via `LLVM_ENABLE_RUNTIMES` rather than `LLVM_ENABLE_PROJECTS`
+so that the *just-built* clang is used to compile them — putting
+`compiler-rt` in `PROJECTS` is silently legacy and produces broken
+or no libraries on modern LLVM.
+
+**Rule**: When source-building LLVM in `docker/ci.Dockerfile` /
+`docker/ci-glibc-old.Dockerfile`, always include
+`-DLLVM_ENABLE_RUNTIMES="compiler-rt"` alongside
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"`. Disable the
+sub-projects ry doesn't use to keep build time bounded
+(`COMPILER_RT_BUILD_PROFILE=OFF`, `COMPILER_RT_BUILD_XRAY=OFF`,
+`COMPILER_RT_BUILD_MEMPROF=OFF`, `COMPILER_RT_BUILD_ORC=OFF`) but
+keep `BUILD_SANITIZERS=ON`, `BUILD_BUILTINS=ON`, `BUILD_LIBFUZZER=ON`
+(libFuzzer is gated off in CI but the harness build script needs
+the static archive to exist).
+
+**How to verify**: After image rebuild,
+`docker run --rm ghcr.io/<owner>/ry-ci:llvm-21 ls /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/`
+should list `libclang_rt.asan.a`, `libclang_rt.asan_static.a`,
+`libclang_rt.tsan.a`, `libclang_rt.tsan_cxx.a`,
+`libclang_rt.ubsan_standalone.a`, and `libclang_rt.fuzzer.a`. CI
+`asan` and `tsan` jobs link cleanly.
+
+#### ASan CI exposed a COMDAT-collision crash from `namespace ry` TU-local name shadowing
+
+**Source**: PR #1729 (2026-05-11)
+**Tags**: asan, odr, comdat, linker, libstdc++, runtime, gotcha
+
+**Rule**: When two translation units declare same-named types inside `namespace ry { ... }` —
+e.g. `struct Parser` in `src/runtime_json.cpp` and `class ry::Parser` in `include/ry/parser.hpp` —
+their compiler-generated destructors share the same mangled symbol (`_ZN2ry6ParserD1Ev`). On
+Linux libstdc++ the linker COMDAT-picked the public header's destructor and applied it across
+every TU, including `__ry_json_parse`. PR #1723 added `std::unordered_set<std::string>
+imported_modules_` to `ry::Parser`, making its destructor non-trivial; from that point on
+`JsonParser` instances were destructed by code that ran `~unordered_set()` on JSON-struct
+memory, reading garbage as the hashtable bucket count and triggering `__asan_memset` of
+multi-GB → `AddressSanitizer: unknown-crash`.
+
+**Why ASan was the channel**: The bug was **latent for years** — both destructors were
+trivially equal until the qualified-import work added a non-POD member. macOS libc++ happens
+to avoid the crash because of memory-layout differences; the Linux libstdc++ asan CI job hit
+it deterministically. The default (non-ASan) Linux build *would* have crashed eventually, but
+the COMDAT pick + non-trivial destructor produced a multi-GB `memset` that ASan immediately
+caught at the shadow-memory boundary — so the asan job pinpointed it while default Linux just
+saw a generic `__asan_memset` stall.
+
+**How to apply**: The coding rule (don't shadow public class names from TU-local types in
+`namespace ry`) lives in `.claude/rules/runtime-memory-safety.md`. The ASan-side lesson is
+that a sudden `__asan_memset` for gigabytes against TU-local memory should be triaged as a
+COMDAT-pick collision first — before chasing the apparent crash site as a real heap bug.
+
+#### `arc_alloc` vs `checked_malloc` mismatch is masked under ASan
+
+**Source**: #1007 / #1011 / PR #997 (2026-04-16)
+**Tags**: asan, arc, runtime, memory-safety, gotcha
+
+**Rule**: Runtime functions that return heap-allocated structs to Ry code (e.g.
+`IOListHeader`, `ListHeader`, `MapHeader`) must allocate with `arc_alloc`, not
+`checked_malloc`, because `emitVarDecl` emits a retain that reads `header_ptr -
+ARC_HEADER_SIZE` (16 bytes) to bump the strong-count. When the header is `checked_malloc`'d,
+that region is malloc metadata, not an ARC counter. Corrupting it and then calling
+`arc_release` / `__ry_arc_free_counted` on scope exit causes
+`malloc: *** error for object 0x...: pointer being freed was not allocated` on default builds.
+
+**Why ASan masks this**: ASan's allocator uses a different internal layout, so the metadata
+region happens not to be misinterpreted as zero — the retain reads "harmless" bytes and the
+release succeeds without an OS-level crash report. The default (non-ASan) build is the
+canonical reproducer for this category of allocator-mismatch bug; ASan absence of a crash
+does NOT prove the runtime function is allocating correctly.
+
+**How to apply**: Reproduce allocator-mismatch suspicions on the **default** (non-ASan)
+build first. If a runtime function works under ASan but crashes with `pointer being freed
+was not allocated` under default, the most likely cause is an `arc_alloc` vs `checked_malloc`
+mismatch on a struct returned to Ry code. The coding rule (use `arc_alloc` for any header
+returned to Ry) lives in `.claude/rules/runtime-memory-safety.md` along with the affected-sites
+table.
+
+#### `_Exit` vs `exit` SIGABRT trap path is masked under ASan and on macOS
+
+**Source**: #1838 (2026-05-21)
+**Tags**: asan, macos, libsystem, runtime, _Exit, atexit, managed-static, gotcha
+
+**Rule**: Ry's trap path (`emitRuntimeError` codegen + `ry_runtime_trap_exit` C++ helper) calls
+`_Exit(1)` rather than `exit(1)` so that the `atexit` chain (LLVM `ManagedStatic` destructors
+including `PassRegistry::~PassRegistry`) does not run on a heap still referenced by the JIT'd
+module that triggered the trap. The wrong choice (`exit`) produces `free(): invalid pointer`
+SIGABRT replacing the expected `ExitedWithCode(1)` before death-test assertions can observe it.
+
+**Why ASan and macOS mask this**: ASan's allocator interceptor catches the would-be SIGABRT
+internally — the symptom only reproduces on default (non-ASan) Linux builds. macOS libSystem
+malloc tolerates the same atexit-vs-JIT-heap pattern silently because its allocator's
+free-tolerance is more permissive. The bug surfaces in `CoerceResultOkNestedResultMismatchTraps`
+on default Linux only.
+
+**How to apply**: When testing trap paths (panics, divide-by-zero, OOB, contract violations,
+JSON parse errors, etc.), reproduce on the **default Linux** build first; do not assume ASan
+green or macOS green imply the trap is wired correctly. The coding rule (`_Exit` not `exit`,
+plus the `fflush(stdout); fflush(stderr)` pair that replaces what `atexit` would have done)
+lives in `.claude/rules/runtime-memory-safety.md`. The CI `lint` step "Check for banned direct
+exit() calls in runtime" auto-blocks regressions.
 
 ### UBSan
 
-_(follow-up issue で集約予定)_
+#### UBSan must disable `vptr` and `function` checks on this project
+
+**Source**: #630 (2026-04-11, implementation)
+**Tags**: ubsan, sanitizer, cmake, llvm, cxx-flags
+
+**Context**: When enabling UBSan (`-fsanitize=undefined`) on ry, two
+sub-checks fail in ways that have nothing to do with actual
+undefined behavior:
+
+1. `vptr` — ry compiles with `-fno-rtti` (to match LLVM's build
+   flags, see `CMakeLists.txt:25`). The `vptr` check requires RTTI
+   to resolve virtual-call types, so enabling it under `-fno-rtti`
+   produces no coverage and in some toolchains hard-errors.
+2. `function` — LLVM exposes many C-style function pointers that
+   ry casts through `void *` (JIT symbol resolution, runtime
+   dispatch, etc.). UBSan's `function` check flags every one of
+   these as a type mismatch, drowning out real signal.
+
+**Rule**: When adding or extending UBSan flags in `CMakeLists.txt`,
+always pair `-fsanitize=undefined` with
+`-fno-sanitize=vptr,function`. Do not try to fix the false positives
+by changing the LLVM interop code — the checks themselves are the
+wrong tool for this codebase.
+
+**Also**: UBSan and ASan are compatible and are enabled together via
+the `asan` CMake preset (`ENABLE_ASAN=ON` + `ENABLE_UBSAN=ON`). TSan
+is **not** compatible with either and lives in its own `tsan` preset
+(`build-tsan/`). `CMakeLists.txt` enforces this with a
+`FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
+
+#### `static_cast<uint64_t>(-static_cast<int64_t>(mag))` triggers UBSan when `mag == INT64_MIN`
+
+**Source**: #1025 (2026-04-16)
+**Tags**: ubsan, codegen, numeric-literal, unary-minus, int64-min, signed-overflow
+
+**Rule**: Negating an `int64_t` whose value is `INT64_MIN` is signed-integer overflow
+and UBSan reports it at runtime. The `-<NumberExpr>` fast-path in
+`src/codegen_expr.cpp::emitExprVariant(UnaryExpr)` originally computed
+`static_cast<uint64_t>(-static_cast<int64_t>(mag))` to convert a magnitude back to its
+unsigned bit pattern; this is UB precisely at `mag == 2^63` (the literal
+`-9223372036854775808` case). Use unsigned two's-complement arithmetic
+(`const uint64_t negBits = static_cast<uint64_t>(0) - mag;`) instead — well-defined,
+produces the same bits, and silences UBSan.
+
+**Why UBSan was the channel**: The bug was a correctness issue only in the specific
+literal-form `-9223372036854775808` (INT64_MIN, which is the canonical edge for any 64-bit
+signed conversion). It compiled and produced the right bits on most toolchains because
+the codegen never actually used the overflowed value — but UBSan's
+`signed-integer-overflow` sanitizer caught the offending negation regardless of whether
+the result was used. The unsigned-subtraction fix is portable; the previous form was
+toolchain-fragile.
+
+**How to apply**: The coding rule (always use unsigned subtraction for `negBits`; never
+negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1))
+lives in `.claude/rules/parser-conventions.md` under the `UnaryExpr fast-path covers bare
+int for INT64_MIN` entry. The UBSan-side lesson is that the UBSan job is the most reliable
+channel for catching `INT64_MIN`-edge bugs — even if the wrong-bits result happens not to
+be observed by any test, UBSan flags the offending negation immediately.
 
 ### libFuzzer
 

@@ -10,8 +10,8 @@ paths:
 
 ### Local types in `namespace ry` must not shadow public class names in `include/ry/*.hpp`
 
-**Source**: PR #1729 (2026-05-11, CI asan failure investigation; PR #1723 surfacing)
-**Tags**: odr, namespace, runtime, gotcha, comdat, linker, libstdc++, libc++, asan
+**Source**: PR #1729 (2026-05-11, PR #1723 surfacing)
+**Tags**: odr, namespace, runtime, gotcha, comdat, linker, libstdc++, libc++
 
 **Rule**: Translation-unit-local types declared inside `namespace ry { ... }`
 in any `src/runtime_*.cpp` (or other `.cpp`) must use a name that does **not**
@@ -30,13 +30,10 @@ across every TU, including `__ry_json_parse`. PR #1723 added
 `std::unordered_set<std::string> imported_modules_` to `ry::Parser`, making
 its destructor non-trivial. From that point on, `JsonParser` instances
 were destructed by code that ran `~unordered_set()` on JSON-struct memory,
-reading garbage as the hashtable bucket count and triggering
-`__asan_memset` of multi-GB → `AddressSanitizer: unknown-crash`.
+reading garbage as the hashtable bucket count and corrupting the heap.
 
 The bug was **latent for years** — both destructors were trivially equal
-until the qualified-import work added a non-POD member. macOS libc++
-happens to avoid the crash because of memory-layout differences; the
-asan CI job (Linux libstdc++) hit it deterministically.
+until the qualified-import work added a non-POD member.
 
 **How to apply**:
 - For every TU-local type inside `src/runtime_*.cpp` (or any `.cpp`
@@ -70,10 +67,6 @@ metadata, not an ARC counter. Corrupting it and then calling
 ```text
 malloc: *** error for object 0x...: pointer being freed was not allocated
 ```
-
-ASan builds do not reproduce the crash because the allocator's internal
-layout differs and the metadata region happens not to be misinterpreted as
-zero.
 
 **Affected sites in this codebase** (checked 2026-04-16):
 
@@ -266,49 +259,6 @@ IR survived codegen and crashed only during JIT optimization.
 
 ---
 
-### `~CodeGen()` glibc heap-check crashes are not destructor bugs
-
-**Source**: #1161 / #1167 (2026-04-18)
-**Tags**: codegen, arc, glibc, debugging, heap-corruption, gotcha
-
-**Scope**: This entry covers crashes that **persist under ASan** (i.e. ASan itself reports
-a heap-buffer-overflow or use-after-free). For crashes where all test cases pass and only
-the teardown crashes — and the crash disappears on re-run — see the ORC JIT flake entry
-([`LLVM ORC JIT intermittent crash`](#llvm-orc-jit-intermittent-crash-in-lljit--removeresourcetracker--codegen-linux--macos))
-instead; those are pre-existing LLVM ORC flakiness, not user-code bugs.
-
-**Rule**: When `ry::CodeGen::~CodeGen()` aborts on Linux glibc with
-`corrupted size vs. prev_size while consolidating` **and the crash reproduces persistently**
-(especially under ASan), treat it as an **earlier** OOB write or UAF in ARC-managed
-runtime buffers (Map/List/Set CoW copies, ARC headers) that glibc only detects when a
-neighbouring chunk is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
-or member-lifetime bug in `CodeGen` itself.
-
-**Why `~CodeGen()` is not the culprit**:
-- `~CodeGen` is compiler-generated. `mod_` / `ctx_` are moved into
-  `ThreadSafeModule` at `src/codegen.cpp:575`; the destructor never touches IR objects.
-- ARC tracking sets (`include/ry/codegen.hpp:184-193`) store bare `llvm::Value*`
-  and only walk hash buckets at destruction — no dereference.
-
-**Diagnostic checklist**:
-1. Reproduce on Linux with ASan (ARM64 Docker via `docker/run.sh asan`; x86_64 CI
-   asan job on `v*` push). macOS libSystem malloc does not expose glibc's chunk
-   metadata checks, so the crash is Linux-only even with the same bug.
-2. ASan will pinpoint the actual OOB/UAF site instead of just the late `free()`.
-3. Look first at recent changes to `emitCowCheckSlot` / `emitCowDeepCopy*` /
-   `emitMapKeyLookup` / `emitSetElementLookup`: ARC retain gating, `keyName` /
-   `elemName` propagation, and hash-vs-linear-scan branch selection are the
-   class of change that introduced `~CodeGen()` crash #1161.
-
-**History**: #1161 crash (`corrupted size vs. prev_size`) was observed after PR #1148
-landed. The bug was most likely a heap-layout-dependent OOB that became non-reproducible
-after PR #1160 (`emitCowCheckSlot` `doKeyRetain` unconditional + `emitMapKeyLookup`
-`keyName` fix). CI ASan clean on x86_64 Linux was confirmed at commit `998edc42`
-(CI run #24601715375, 2026-04-18). The exact commit that fixed it was not bisected;
-if the crash re-appears, revert to the diagnostic checklist above.
-
----
-
 ### Ry runtime panics bypass C++ exceptions — they `fprintf + _Exit(1)`
 
 **Source**: #828, #1838 (2026-05-21 codegen trap path), #1840 (2026-05-21 runtime trap-path unification)
@@ -357,12 +307,10 @@ referenced by the JIT'd module that triggered the trap.
 `free(): invalid pointer` SIGABRT replaces the expected
 `ExitedWithCode(1)` before death-test assertions can observe it.
 `_Exit` bypasses `atexit` entirely; no static destructor runs.
-ASan's allocator interceptor masks the issue, so the symptom only
-reproduces on default (non-ASan) Linux builds — macOS libSystem
-malloc tolerates the same pattern silently. The explicit
-`fflush(stdout); fflush(stderr)` immediately before `_Exit` recovers
-the libc buffer flush that `exit` would have done via `atexit`, so
-panic messages and any preceding `print` output are not lost.
+The explicit `fflush(stdout); fflush(stderr)` immediately before
+`_Exit` recovers the libc buffer flush that `exit` would have done
+via `atexit`, so panic messages and any preceding `print` output
+are not lost.
 
 **Why `llvm_shutdown` / RAII don't apply**: those would only help on
 the *normal* exit path (process returns from `main`). The trap path

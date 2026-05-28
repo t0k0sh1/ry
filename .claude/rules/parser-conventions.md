@@ -380,7 +380,7 @@ Reference site: `src/parser_expr.cpp::parsePrimary` Ident branch (bare-lambda di
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)
-**Tags**: codegen, numeric-literal, unary-minus, int64-min, ubsan
+**Tags**: codegen, numeric-literal, unary-minus, int64-min
 
 **Rule**: The `-<NumberExpr>` fast-path in `src/codegen_expr.cpp::emitExprVariant(UnaryExpr)`
 accepts bare int (empty suffix) as equivalent to `i64` for the magnitude check
