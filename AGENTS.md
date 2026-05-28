@@ -143,7 +143,7 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 
 **Why:** background 実行は task_id 記録漏れリスクが構造的に存在する (Bash 経由は OS プロセステーブルに乗るため OS-level スキャンに頼らざるを得ず、別 Claude Code セッションを誤検出する — #1944)。subagent background は task framework 内で `TaskStop` 可能だが、それでも「使い分け判断ミス」のリスクは残る。バックグラウンド実行という概念を完全に消すことで認知コストとリスクを根本から排除する。並列化は subagent foreground で十分実現できる。
 
-`./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ず foreground 実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える (background 禁止と無関係に従来通りのルール)。
+> **補足 (heredoc 入力の独立ルール)**: `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ず foreground 実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える。background 禁止前から有効な独立ルールで、本節の禁止対象ではない (heredoc + background の hang リスクは歴史的事項)。
 
 ### タイムアウトの設定
 
