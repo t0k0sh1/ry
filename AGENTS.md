@@ -18,17 +18,7 @@ cmake --build build                                     # Ninja が自動並列�
 
 ## tree-sitter グラマーのビルド & インストール
 
-以下のいずれかが変更された PR では、`ry.so` を再ビルドしてローカル Neovim parser ディレクトリへインストールすること:
-
-- `docs/grammar.ebnf` — 正準 EBNF 仕様
-- `editor/tree-sitter/grammar.js` — tree-sitter グラマー定義
-- `editor/tree-sitter/src/` — external scanner (`scanner.c`)
-
-```bash
-./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh --no-build
-```
-
-前提条件 (tree-sitter CLI / GNU gcc) と各スクリプトのフラグ詳細は `editor/tree-sitter/README.md` を参照。セルフ検証時の確認手順は `/pre-commit-checklist` §3.6.5 を参照。グラマー編集時の落とし穴 (externals enum 順序、`mark_end` / `valid_symbols` セマンティクス、highlights.scm の named-node vs anonymous-literal) と検証レシピは `.claude/skills/tree-sitter-grammar-editing/SKILL.md`（または `/tree-sitter-grammar-editing`）を参照。`editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm` を編集する際は同 skill が path-scoped rule 経由で自動 load される。
+`docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` のいずれかを変更した PR では `ry.so` の再ビルドが必要。build/install コマンド・前提条件・落とし穴 (externals enum 順序 / `mark_end` / `valid_symbols` セマンティクス / highlights.scm) ・検証レシピは `.claude/skills/tree-sitter-grammar-editing/SKILL.md`（または `/tree-sitter-grammar-editing`）と `editor/tree-sitter/README.md`、セルフ検証手順は `/pre-commit-checklist` §3.6.5 を参照。`editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm` 編集時は同 skill が path-scoped rule 経由で自動 load される。
 
 ## コンパイラ警告フラグ
 
@@ -53,31 +43,17 @@ CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、r
     - `.claude/agents/test-runner.md` — C++ ry_tests + Ry セルフテストを独立 context で実行・失敗解析する subagent (並列化用)
     - `.claude/agents/fuzzer-runner.md` — libFuzzer harness を独立 context で実行・crash 解析する subagent (並列化用)
     - `.claude/agents/pr-review-responder.md` — CodeRabbit / 人間レビュワー指摘の解析・返信生成・修正案作成を行う subagent
-- **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・昇格手順は `/knowledge-md-management` 参照
-- **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md`
-- **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。**該当する rule / skill が既にあればそこを更新**、どこにも該当 entry がない新規知見は **`KNOWLEDGE.md` に追記** (詳細は `/knowledge-md-management`)。path 限定の整理先は `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
-- **いつ書く**: PR レビュー対応後 (再発しうる指摘) / 実装中 (非自明な事実) / Plan 中 (採用しなかった設計判断) / コマンドミスのリカバリ時
+- **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・「いつ書く」トリガー・昇格手順は `/knowledge-md-management` 参照
 
 ## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
 
-ローカル開発では ASan と UBSan を同時に有効化してテストを実行する。`asan` preset は `ENABLE_ASAN=ON` と `ENABLE_UBSAN=ON` を両方設定する:
-
-```bash
-cmake --preset asan                                     # Debug + ASan + UBSan（build-asan/）
-cmake --build build-asan                                # ビルド
-ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-asan/ry_tests                               # C++ テスト
-ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-asan/ry test -p                             # Ry セルフテスト
-```
-
-> `detect_container_overflow=0` は ASan なし LLVM ライブラリとの混在 false positive 抑制のため。UBSan は `-fno-sanitize=vptr,function` でビルド (`-fno-rtti` および LLVM の C 風関数ポインタキャスト対策)。
+ローカル開発では `cmake --preset asan` で ASan + UBSan を同時有効化してテストを実行する。ビルドコマンド・実行時 env (`ASAN_OPTIONS=detect_container_overflow=0` / `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`) と各設定の根拠 (LLVM 混在 false positive 抑制 / `-fno-sanitize=vptr,function` の理由) は `.claude/skills/commands-environment-gotchas/SKILL.md`（または `/commands-environment-gotchas`）、セルフ検証手順は `/pre-commit-checklist` §3.5 を参照。
 
 ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
 
 ## TSan（ThreadSanitizer）
 
-スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる。ビルドコマンド・required vs warn-only ジョブ分割・upstream TSan allocator バグ・LLVM ORC teardown 等の既知問題は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクションを参照。
+スレッド安全性の検証は TSan preset を使う。ビルドコマンド (`cmake --preset tsan`) / ASan-UBSan との排他性 (`build-tsan/` 隔離) / required vs warn-only ジョブ分割 / 既知の upstream バグ (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクション、セルフ検証手順は `/pre-commit-checklist` §3.5 を参照。
 
 > 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容しない。
 
@@ -116,10 +92,6 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
   - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
 - **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。`/triage-side-finding` Q4(b) で「別 issue 起票」と判定された場合のみ、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること 参照)
 - **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
-
-## repo build と stdlib 解決
-
-repo 内 `./build/ry` / `./build-current/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` で project-local の `share/std/` を参照。OS インストール版は `~/.ry/share/std` を参照。`RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない。
 
 ## 内部挙動の解析に trace を使う
 
@@ -192,7 +164,7 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 2. **再現困難問題の即時修正**: CI 検出の再現困難なメモリ破壊 / 並行性 race / fuzz crash 等 (`/triage-side-finding` Q1 = Yes に該当) は、起源判定 (regression vs pre-existing) より修正タイミングを優先する。再現中のウィンドウを逃さない原則。**ただし副次的発見の判断にのみ適用**。
 3. **分析より修正優先**: Q1 / Q2 該当時は `bug-forensics-analyst` / advisor を呼ばない。意味は「即時修正を選んだあと不要な分析で時間を消費しない」であり、root cause 分析投資原則 (`/plan-rubric` 等) と衝突せず、Q3 経由の分析完了後の修正着手を妨げない。
 
-> **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (L49 catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
+> **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (§"ナレッジベース" の catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
 
 ### ユーザーが明示的に指示すること
 

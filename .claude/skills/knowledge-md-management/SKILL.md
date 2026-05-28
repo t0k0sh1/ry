@@ -14,6 +14,17 @@ allowed-tools: Bash
 - You need to grep across the whole knowledge base (KNOWLEDGE.md isn't covered by path-scoped auto-load)
 - A stabilized entry is ready to be split out into `.claude/rules/` or `.claude/skills/`
 
+### Concrete write triggers
+
+ナレッジを書くタイミングは典型的に以下の 4 つに集約される。これらに該当した時点で、§1 のルーティング (既存 entry を更新 vs KNOWLEDGE.md へ追記) を判断する。
+
+| トリガー | 何を書くか |
+|---|---|
+| **PR レビュー対応後** | 他 PR にも再発しうるレビュー指摘 (path-scope に収まれば対応 rule、横断的なら `.claude/skills/pr-review-recurring-patterns/SKILL.md`)。単発の local 指摘は不要 |
+| **実装中** | 非自明な事実 (型システムの落とし穴、ライブラリの裏仕様、再現条件付きバグ等)。「次に誰かが同じ問題に当たったとき即座に解けるか」を基準に判断 |
+| **Plan 中** | 採用しなかった設計判断 (なぜ別案を選ばなかったか)。将来同じ alternative を再検討する時の判断材料 |
+| **コマンドミスのリカバリ時** | `commands-environment-gotchas/SKILL.md` の `Wrong → Correct → Why` triple。プレーン typo は除外、second invocation で初めて気付いた非自明なものが対象 |
+
 ## 1. Where to write (REQ-1)
 
 1. **A matching entry exists** in a rule / skill → append there. Do not touch KNOWLEDGE.md.

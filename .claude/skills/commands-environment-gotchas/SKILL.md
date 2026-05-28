@@ -47,6 +47,32 @@ write a 3-line entry under this section with a descriptive subheading.
 
 **Why**: `./build/ry` resolves the stdlib path via `package.toml`'s hidden `[paths]._dev_stdlib` key, which requires a `package.toml` somewhere in the ancestor directory chain. Files under `/tmp/` have no such ancestor, so the module loader falls back to `~/.ry/share/std` (the globally-installed stdlib), which does not contain the newly added declarations. The trace event to look for: `"resolved_path":"/Users/.../.ry/share/std"` instead of `"resolved_path":"/Users/.../Workspace/ry-2/share/std"`.
 
+**Note on `RY_ENV=internal`**: The `_dev_stdlib` resolution above runs automatically for repo-local `./build/ry` invocations — `RY_ENV=internal` is **not** required for routine development. The env var exists for additional isolation (e.g. forcing the in-repo stdlib path even when the working directory has no `package.toml` ancestor chain, or when a globally-installed `ry` would otherwise win); use it only when you explicitly need that override.
+
+---
+
+### ASan + UBSan: `detect_container_overflow=0` and `-fno-sanitize=vptr,function` are not optional
+
+**Source**: AGENTS.md historical note (migrated from inline sanitizer section, 2026-05-28)
+**Tags**: sanitizer, asan, ubsan, cmake, preset, llvm, false-positive
+
+**Rule**: When invoking `./build-asan/ry_tests` or `./build-asan/ry test -p`, always set:
+
+```bash
+ASAN_OPTIONS=detect_container_overflow=0 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-asan/ry_tests
+```
+
+The `asan` preset itself already builds with `-fno-sanitize=vptr,function`.
+
+**Why**:
+
+- **`detect_container_overflow=0`**: ASan's container-overflow detection requires every C++ allocation to participate in the same ASan-instrumented heap. The repo links against the system LLVM libraries (`/usr/local/llvm/...`) which are **not** built with ASan, so any `std::vector` / `std::string` flowing across the boundary trips false-positive container-overflow reports. Disabling this single check leaves the bulk of ASan (heap UAF, OOB, double-free, leaks) intact.
+- **`-fno-sanitize=vptr,function`** (preset, not env): The project builds with `-fno-rtti`, which strips typeinfo that UBSan's `vptr` check requires. The `function` check trips on LLVM's C-style function-pointer casts (e.g. `reinterpret_cast<void*>(&Func)` patterns inside ORC JIT plumbing) that are well-defined in practice but not provable to UBSan. Excluding both keeps the rest of UBSan (signed overflow, null deref, alignment, etc.) effective.
+
+**How to apply**: If a fresh contributor reports "ASan flagged container-overflow on a trivial vector push" or "UBSan halted on a function-pointer cast in JIT teardown", the answer is one of these two — point them at this entry rather than chasing the false positive into LLVM internals. The TSan build uses a separate preset (`build-tsan/`); see `KNOWLEDGE.md` §サニタイザー既知問題 / TSan.
+
 ---
 
 ### `gh issue edit --label` replaces all labels; use `--add-label` / `--remove-label`

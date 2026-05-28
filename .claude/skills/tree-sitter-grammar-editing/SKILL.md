@@ -11,6 +11,21 @@ grammar at `editor/tree-sitter/`. Cross-reference: build/install workflow
 in `editor/tree-sitter/README.md` §Contributor workflow, and pre-commit
 verification in `/pre-commit-checklist` §3.6.5.
 
+## When to build & install (`ry.so`)
+
+A PR that touches any of the following paths must rebuild `ry.so` and
+install it into the local Neovim parser directory (via
+`./editor/tree-sitter/build.sh && ./editor/tree-sitter/install.sh --no-build`):
+
+- `docs/grammar.ebnf` — the canonical EBNF spec
+- `editor/tree-sitter/grammar.js` — the tree-sitter grammar definition
+- `editor/tree-sitter/src/` — the external scanner (`scanner.c`)
+
+Prerequisites (tree-sitter CLI, GNU gcc) and flag details for each script
+are documented in `editor/tree-sitter/README.md`. Self-verification gating
+runs out of `/pre-commit-checklist` §3.6.5, which checks whether any of
+the three paths above is in the diff.
+
 ---
 
 ### `docs/grammar.ebnf` is the canonical spec — propagate edits in order
