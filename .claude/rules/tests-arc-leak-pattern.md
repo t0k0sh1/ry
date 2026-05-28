@@ -57,18 +57,3 @@ collection internal buffers are NOT counted.
 **How to apply**: When writing UAF regression tests for collection-element retain paths, prefer `List<List<int>>` / `List<Map<str,int>>` / `List<fn(…) -> …>` over `List<str>`, or use both. When reviewing such a PR, verify the test discriminates — a test that passes before the fix indicates the test (or the surrounding metadata pipeline) is not catching what it claims to catch. Also note: #1204's own `list_range_index.test.ry` has the same `List<str>` blind spot — any future fix that addresses the missing `list_elem_type_name = "str"` annotation (possibly a follow-up issue) should re-verify #1204's tests then fail pre-fix.
 
 **Related**: #1204 (slice retain fix — same test pattern, same blind spot), #1235 (take retain fix — discovered property), #1046 (str ARC dispatch via side-table, independent of `list_elem_type_name`).
-
-### ConcurrencySpecSuite ASan DISABLED_ was stale after #630's atomic-ARC fix
-
-**Source**: #872
-**Tags**: asan, concurrency, parallel_for, arc, testing
-
-**Rule**: `ConcurrencySpecSuite` was disabled under ASan in commit `fb010ea`
-(2026-03-31) because non-atomic ARC retain/release ops in `@parallel for`
-workers raced with ASan's shadow-memory interceptors, causing a deadlock
-(SIGALRM, exit 142 after 300 s on Linux).  After #630's P0 fix made all ARC
-ops inside `@parallel for` thunks use `atomicrmw seqcst`, the root cause
-was removed.  The `DISABLED_` guard was removed in #872; on macOS the suite
-runs in ~55 ms.  If a future change reintroduces non-atomic ARC inside a
-`@parallel for` thunk, re-enable the guard and investigate the hang before
-merging.

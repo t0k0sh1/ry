@@ -51,6 +51,8 @@ CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、r
 
 ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
 
+ASan / UBSan の事故知見・既知問題（マスク機構・アロケータ差異・platform-specific 顕在化経路）は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクションを参照。
+
 ## TSan（ThreadSanitizer）
 
 スレッド安全性の検証は TSan preset を使う。ビルドコマンド (`cmake --preset tsan`) / ASan-UBSan との排他性 (`build-tsan/` 隔離) / required vs warn-only ジョブ分割 / 既知の upstream バグ (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクション、セルフ検証手順は `/pre-commit-checklist` §3.5 を参照。
@@ -59,7 +61,7 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## libFuzzer（カバレッジガイデッドファジング）
 
-**CI ジョブは現在無効** — フィーチャーブランチのセルフ検証で必ず手動実行すること（`/pre-commit-checklist` §3.6 参照）。クラッシュ入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存する。ハーネス要件・ビルドコマンド・既知制限は `.claude/skills/libfuzzer-harness/SKILL.md`（または `/libfuzzer-harness`）を参照。
+**CI ジョブは現在無効** — フィーチャーブランチのセルフ検証で必ず手動実行すること（`/pre-commit-checklist` §3.6 参照）。クラッシュ入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存する。ハーネス要件・ビルドコマンド・既知制限は `.claude/skills/libfuzzer-harness/SKILL.md`（または `/libfuzzer-harness`）を参照。事故知見・既知問題は `KNOWLEDGE.md` の `## サニタイザー既知問題` も参照。
 
 ## メモリ安全ルール（C++ ランタイム）
 
