@@ -1,5 +1,5 @@
 #include "ry/args_runtime.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/string.hpp"
 #include <cstdlib>
 #include <cstring>
 

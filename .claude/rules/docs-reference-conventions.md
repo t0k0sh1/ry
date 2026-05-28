@@ -241,11 +241,11 @@ completely absent from the corresponding reference pages. Examples found:
 | `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp:291-294` |
 
 **Rule**: When auditing stdlib docs (PR 3–5 of #1118), grep all `codegenError()` and
-`runtime error:` strings in `src/codegen_call_*.cpp` and `src/runtime_*.cpp`, then verify
+`runtime error:` strings in `src/codegen_call_*.cpp` and `src/runtime/**/*.cpp`, then verify
 each is mentioned (at least as a brief note) in the matching docs page:
 
 ```bash
-grep -rn '"runtime error:' src/codegen_call_*.cpp src/runtime_*.cpp
+grep -rn '"runtime error:' src/codegen_call_*.cpp src/runtime/**/*.cpp
 grep -rn 'codegenError' src/codegen_call_*.cpp | grep '"' | grep -v '//'
 ```
 
@@ -279,12 +279,12 @@ fn bodies. Always:
 **Source**: #1118 PR 5 docs audit
 **Tags**: documentation, audit, drift, http, enumerated-tables
 
-**Context**: `__ry_http_reason_phrase` in `src/runtime_http.cpp:639-696` had 50 `case` statements, but `docs/reference/http.md` listed only 38 status codes — 12 were silently missing (402, 407, 412, 418, 421, 425, 428, 431, 451, 507, 508, 511).
+**Context**: `__ry_http_reason_phrase` in `src/runtime/native/http/http.cpp:639-696` had 50 `case` statements, but `docs/reference/http.md` listed only 38 status codes — 12 were silently missing (402, 407, 412, 418, 421, 425, 428, 431, 451, 507, 508, 511).
 
 **Rule**: When the implementation contains an enumerated list (status code switch, kind string registry, format specifier table) that is mirrored in a documentation table, **regenerate the doc table from the implementation** rather than hand-editing. For HTTP status codes specifically:
 
 ```bash
-grep -nE '^\s*case [0-9]+:' src/runtime_http.cpp
+grep -nE '^\s*case [0-9]+:' src/runtime/native/http/http.cpp
 ```
 
 gives the authoritative list; compare it against the `docs/reference/http.md` table before declaring clean. Apply the same pattern to any other enumerated registry (error kind strings, format specifiers, etc.).
@@ -339,10 +339,10 @@ Pattern 3 needs aggressive filtering for false positives (file paths like `hello
 
 ```bash
 # C runtime symbols — verify the actual emitted names
-grep -nE '__ry_[a-z]+_[a-zA-Z_]+' src/runtime_*.cpp | head -30
+grep -nE '__ry_[a-z]+_[a-zA-Z_]+' src/runtime/**/*.cpp | head -30
 
 # Look specifically for snake_case after the package prefix
-grep -nE '__ry_[a-z]+_[a-z]+_[a-z]' src/runtime_*.cpp
+grep -nE '__ry_[a-z]+_[a-z]+_[a-z]' src/runtime/**/*.cpp
 ```
 
 If reality is mixed, replace the single-form placeholder (`<functionName>` or `<fn_name>`) with a neutral term like `<symbol>` and add prose enumerating which packages follow which convention, plus an example mapping table.

@@ -1,5 +1,5 @@
 #include "ry/codegen.hpp"
-#include "ry/runtime_regex_error_sentinels.hpp"
+#include "ry/runtime/core/regex_error_sentinels.hpp"
 #include "ry/stdlib_registry.hpp"
 
 

@@ -19,7 +19,7 @@ Reference for libFuzzer toolchain requirements and harness conventions in the ry
 
 1. **Clang-only**: `-fsanitize=fuzzer` is not supported by GCC or Apple Clang (Apple's fuzzer runtime is a stub). The `fuzz` CMake preset enforces this with a `FATAL_ERROR` check on `CMAKE_CXX_COMPILER_ID`. On macOS use `/opt/homebrew/opt/llvm@21/bin/clang++`; on Linux CI `/usr/local/llvm/bin/clang++`.
 
-2. **Whole-archive link of ry_lib**: Fuzz harnesses link `ry_lib` with `-Wl,-force_load` (macOS) / `-Wl,--whole-archive` (Linux) — the same pattern as `ry` and `ry_tests`. Without this, JIT and runtime symbols (`__ry_set_last_error`, `checked_malloc`, etc.) needed by directly-compiled runtime sources (e.g. `runtime_json.cpp`) will be undefined.
+2. **Whole-archive link of ry_lib**: Fuzz harnesses link `ry_lib` with `-Wl,-force_load` (macOS) / `-Wl,--whole-archive` (Linux) — the same pattern as `ry` and `ry_tests`. Without this, JIT and runtime symbols (`__ry_set_last_error`, `checked_malloc`, etc.) needed by directly-compiled runtime sources (e.g. `runtime/native/json.cpp`) will be undefined.
 
 3. **Split `-fsanitize=fuzzer-no-link` vs `-fsanitize=fuzzer`**: `ENABLE_FUZZER` adds `-fsanitize=fuzzer-no-link` globally (coverage-only; no `main` injection) and the `add_ry_fuzz_target` CMake helper adds `-fsanitize=fuzzer` at link time **only on fuzz executables**. If `-fsanitize=fuzzer` were applied globally it would inject a competing `main` into `ry` and `ry_tests`, causing link errors.
 
@@ -29,19 +29,19 @@ Reference for libFuzzer toolchain requirements and harness conventions in the ry
 
 ---
 
-### Fuzz harness sources must include every runtime_*.cpp whose symbols the directly-compiled sources call
+### Fuzz harness sources must include every src/runtime/**/*.cpp whose symbols the directly-compiled sources call
 
 **Source**: #1854 (2026-05-23, link failure during pre-commit fuzz run)
 **Tags**: libfuzzer, fuzzer, harness, cmake, native-lib, cross-runtime-symbols, shared-lib
 
-**Rule**: When `add_ry_fuzz_target(fuzz_X tests/fuzz/fuzz_X.cpp src/runtime_X.cpp ...)` lists a runtime source that calls symbols from **another** runtime file living in a separate `libry_<other>.dylib` (`add_ry_native_lib(<other>, src/runtime_<other>.cpp)`), the other runtime source must also appear in the fuzz target's source list. The shared libraries are NOT linked into fuzz binaries — they only `dlopen` at runtime in the main `ry` binary — so any symbol they normally provide must be supplied via direct source-level inclusion.
+**Rule**: When `add_ry_fuzz_target(fuzz_X tests/fuzz/fuzz_X.cpp src/runtime/native/X.cpp ...)` lists a runtime source that calls symbols from **another** runtime file living in a separate `libry_<other>.dylib` (`add_ry_native_lib(<other>, src/runtime/native/<other>.cpp)`), the other runtime source must also appear in the fuzz target's source list. The shared libraries are NOT linked into fuzz binaries — they only `dlopen` at runtime in the main `ry` binary — so any symbol they normally provide must be supplied via direct source-level inclusion.
 
-**Why**: Native libs (`libry_io.so`, `libry_json.so`, etc.) are SHARED libraries loaded by the JIT via `dlopen` based on `@native("mod")` declarations in `share/std/<mod>/<mod>.ry`. Fuzz harnesses don't run the JIT loader path — they call C functions directly from the harness TU. Their CMake target only whole-archive-links `ry_lib` plus the explicit source files passed to `add_ry_fuzz_target`. If runtime_json.cpp calls `__ry_io_file_read_all` (defined in runtime_io.cpp, which lives in `libry_io.so`), the fuzz_json link fails with `undefined reference to __ry_io_file_read_all` because `libry_io.so` is not part of the fuzz_json link line. The `__ry_set_last_error` / `__ry_get_last_error` exceptions live in `ry_lib` (whole-archive-linked) and resolve normally.
+**Why**: Native libs (`libry_io.so`, `libry_json.so`, etc.) are SHARED libraries loaded by the JIT via `dlopen` based on `@native("mod")` declarations in `share/std/<mod>/<mod>.ry`. Fuzz harnesses don't run the JIT loader path — they call C functions directly from the harness TU. Their CMake target only whole-archive-links `ry_lib` plus the explicit source files passed to `add_ry_fuzz_target`. If runtime/native/json.cpp calls `__ry_io_file_read_all` (defined in runtime/native/io.cpp, which lives in `libry_io.so`), the fuzz_json link fails with `undefined reference to __ry_io_file_read_all` because `libry_io.so` is not part of the fuzz_json link line. The `__ry_set_last_error` / `__ry_get_last_error` exceptions live in `ry_lib` (whole-archive-linked) and resolve normally.
 
 **How to apply**:
-- When adding a new cross-runtime call (e.g. `runtime_json.cpp` calling `__ry_io_*` symbols from `runtime_io.cpp` in #1854), update both the runtime header (`include/ry/runtime_<other>.hpp` extern "C" block) **and** add `src/runtime_<other>.cpp` to the matching `add_ry_fuzz_target` line in `CMakeLists.txt`. Mirror the comment convention next to the target (`# fuzz_json ... runtime_io.cpp is also embedded because __ry_json_load_file references __ry_io_file_read_all`).
+- When adding a new cross-runtime call (e.g. `runtime/native/json.cpp` calling `__ry_io_*` symbols from `runtime/native/io.cpp` in #1854), update both the runtime header (`include/ry/runtime/native/<other>.hpp` extern "C" block) **and** add `src/runtime/native/<other>.cpp` to the matching `add_ry_fuzz_target` line in `CMakeLists.txt`. Mirror the comment convention next to the target (`# fuzz_json ... runtime/native/io.cpp is also embedded because __ry_json_load_file references __ry_io_file_read_all`).
 - Symptom of forgetting: `undefined reference to __ry_<other>_<symbol>` only at the fuzz target link step. Production / spec tests / sanitizer runs pass because they go through `dlopen` of the shared lib.
-- Audit: `grep -E '__ry_(io|json|net|http)_' src/runtime_*.cpp` to find cross-module symbol calls, then verify each is reflected in CMakeLists.txt's `add_ry_fuzz_target` invocations.
+- Audit: `grep -E '__ry_(io|json|net|http)_' src/runtime/**/*.cpp` to find cross-module symbol calls, then verify each is reflected in CMakeLists.txt's `add_ry_fuzz_target` invocations.
 
 ---
 
@@ -50,9 +50,9 @@ Reference for libFuzzer toolchain requirements and harness conventions in the ry
 **Source**: #896 (2026-04-18)
 **Tags**: libfuzzer, regex, exit, gotcha
 
-**Rule**: `RegexParser::parse()` in `src/runtime_regex_parser.cpp:13-21` calls `exit(1)` on unrecognised patterns. This terminates the libFuzzer process immediately, causing the fuzzer to report a crash and stop. The fuzz harness for the regex engine was therefore **excluded from #896** and tracked as follow-up issue #1176.
+**Rule**: `RegexParser::parse()` in `src/runtime/core/regex_parser.cpp:13-21` calls `exit(1)` on unrecognised patterns. This terminates the libFuzzer process immediately, causing the fuzzer to report a crash and stop. The fuzz harness for the regex engine was therefore **excluded from #896** and tracked as follow-up issue #1176.
 
-**How to apply**: Before adding a `fuzz_regex` harness, refactor `RegexParser::parse()` to throw `std::runtime_error` (or return `std::optional<CompiledRegex>`) instead of `exit(1)`. Also check `src/runtime_utf8.cpp`'s NUL-terminated variants (`__ry_utf8_char_at`, `__ry_utf8_char_index`) which also `exit(1)` on OOB — do not call these from fuzz harnesses; use the `_checked`/`_n` bounded variants instead.
+**How to apply**: Before adding a `fuzz_regex` harness, refactor `RegexParser::parse()` to throw `std::runtime_error` (or return `std::optional<CompiledRegex>`) instead of `exit(1)`. Also check `src/runtime/core/utf8.cpp`'s NUL-terminated variants (`__ry_utf8_char_at`, `__ry_utf8_char_index`) which also `exit(1)` on OOB — do not call these from fuzz harnesses; use the `_checked`/`_n` bounded variants instead.
 
 ---
 
@@ -80,7 +80,7 @@ top-level `catch (const std::exception &)`.
 
 **How to apply**: When writing or reviewing a fuzz harness, match the
 established top-level pattern used across `src/app/main.cpp:308`,
-`src/cli/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
+`src/cli/cli.cpp:51,96`, `src/runtime/native/json.cpp:766`, `src/formatter.cpp:702,798`
 — a single `catch (const std::exception &)` backstop. Preserve the
 `// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
 under the `/static-analysis-tools` skill (Clang-Tidy section). Document the expected exception types in the

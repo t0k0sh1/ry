@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "ry/runtime_arc.hpp"
-#include "ry/runtime_regex.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/arc.hpp"
+#include "ry/runtime/core/regex.hpp"
+#include "ry/runtime/core/string.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <cstring>

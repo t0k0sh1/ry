@@ -1,6 +1,6 @@
 #include "test_codegen_common.hpp"
-#include "ry/runtime_net.hpp"
-#include "ry/runtime_io.hpp"
+#include "ry/runtime/native/net.hpp"
+#include "ry/runtime/native/io.hpp"
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>

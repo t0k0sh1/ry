@@ -31,7 +31,7 @@ git diff --name-only origin/main
 
 **Legend**: `✓` = required / `skip` = may omit (record in PR description) / `review` = judgment call.
 
-※ "parser/lexer/json/utf8/string family" = changes to `src/(parser|lexer|runtime_json|runtime_utf8|runtime_string)*` or `include/ry/(parser|lexer|runtime_json|runtime_string).hpp`. **`runtime_string*` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
+※ "parser/lexer/json/utf8/string family" = changes to `src/parser*`, `src/lexer*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), or `include/ry/parser*.hpp`, `include/ry/lexer*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
 
 **Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
 
@@ -171,10 +171,10 @@ Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e
 > **Skip if** — changed files do **not** include the parser/lexer/json/utf8/string family:
 >
 > ```bash
-> git diff --name-only origin/main | grep -E '(src/(parser|lexer|runtime_(json|utf8|string))|include/ry/(parser|lexer|runtime_(json|string)))' | head -1
+> git diff --name-only origin/main | grep -E '(src/(parser|lexer)|src/runtime/native/json\.cpp|src/runtime/core/(utf8|string)\.cpp|include/ry/(parser|lexer)|include/ry/runtime/native/json\.hpp|include/ry/runtime/core/string\.hpp)' | head -1
 > ```
 >
-> **Empty output ⇒ skip**. Otherwise run the matching fuzzer. Record `Skipped §3.6 — no parser/lexer/json/utf8/string change` in the PR description. **Fuzzer mapping**: parser/lexer → `fuzz_parser`; json → `fuzz_json` (+ `fuzz_utf8` if `runtime_string*` changed); utf8/string → `fuzz_utf8` (+ `fuzz_json` if `runtime_string*` changed). `tests/`-only changes targeting these areas ⇒ run the matching fuzzer only (judgment call); run all three when unsure.
+> **Empty output ⇒ skip**. Otherwise run the matching fuzzer. Record `Skipped §3.6 — no parser/lexer/json/utf8/string change` in the PR description. **Fuzzer mapping**: parser/lexer → `fuzz_parser`; json → `fuzz_json` (+ `fuzz_utf8` if `runtime/core/string.cpp` changed); utf8/string → `fuzz_utf8` (+ `fuzz_json` if `runtime/core/string.cpp` changed). `tests/`-only changes targeting these areas ⇒ run the matching fuzzer only (judgment call); run all three when unsure.
 
 **CI jobs are disabled; always run locally on the feature branch.** Harness requirements and known limits are delegated to `/libfuzzer-harness`.
 

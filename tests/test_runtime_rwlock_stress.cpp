@@ -1,6 +1,6 @@
-#include "ry/runtime_thread.hpp"
-#include "ry/runtime_arc.hpp"
-#include "ry/runtime_io.hpp"
+#include "ry/runtime/native/thread.hpp"
+#include "ry/runtime/core/arc.hpp"
+#include "ry/runtime/native/io.hpp"
 
 #include <gtest/gtest.h>
 
@@ -22,7 +22,7 @@ extern "C" void __ry_thread_cleanup(void *thread_ptr);
 
 // Stress test for #871 — RWLock unlock dispatch under contention.
 //
-// Exercises the extern "C" runtime primitives in src/runtime_thread.cpp
+// Exercises the extern "C" runtime primitives in src/runtime/native/thread.cpp
 // directly. The Ry-language harness cannot be used here because
 // runTestSource (tests/test_codegen_common.hpp) bypasses the module
 // loader, so `from thread import ...` fails inside specs it runs.

@@ -119,7 +119,7 @@ llvm::Constant *CodeGen::buildArcGlobal(
 
     // Create global with StringHeader prefix:
     //   { i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8] "...\0" }
-    // Layout matches the runtime StringHeader (see include/ry/runtime_string.hpp):
+    // Layout matches the runtime StringHeader (see include/ry/runtime/core/string.hpp):
     //   handle - 8  → byte_len
     //   handle - 24 → strong_count (ARC_IMMORTAL → retain/release are no-ops)
     // str.size() gives the correct byte count even when str contains NUL bytes

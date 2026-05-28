@@ -1,5 +1,5 @@
-#include "ry/runtime_string.hpp"
-#include "ry/runtime_list.hpp"
+#include "ry/runtime/core/string.hpp"
+#include "ry/runtime/core/list.hpp"
 #include "ry/ry_layout.hpp"
 #include <gtest/gtest.h>
 #include <cstring>

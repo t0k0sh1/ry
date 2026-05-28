@@ -1,5 +1,5 @@
-#include "ry/runtime_print.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/print.hpp"
+#include "ry/runtime/core/string.hpp"
 #include <gtest/gtest.h>
 #include <cstdlib>
 

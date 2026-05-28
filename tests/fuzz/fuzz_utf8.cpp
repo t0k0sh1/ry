@@ -1,4 +1,4 @@
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/string.hpp"
 
 #include <cstddef>
 #include <cstdint>

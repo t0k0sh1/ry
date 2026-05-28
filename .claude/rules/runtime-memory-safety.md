@@ -1,8 +1,8 @@
 ---
 paths:
-  - "src/runtime_*.cpp"
-  - "include/ry/runtime_*.hpp"
-  - "include/ry/runtime_alloc.hpp"
+  - "src/runtime/**/*.cpp"
+  - "include/ry/runtime/**/*.hpp"
+  - "include/ry/runtime/core/alloc.hpp"
   - "src/codegen_stmt_loop.cpp"
 ---
 
@@ -14,14 +14,14 @@ paths:
 **Tags**: odr, namespace, runtime, gotcha, comdat, linker, libstdc++, libc++
 
 **Rule**: Translation-unit-local types declared inside `namespace ry { ... }`
-in any `src/runtime_*.cpp` (or other `.cpp`) must use a name that does **not**
+in any `src/runtime/**/*.cpp` (or other `.cpp`) must use a name that does **not**
 collide with a public class declared in `include/ry/*.hpp`. Prefix or suffix
 the local type with the module name (e.g. `JsonParser` inside
 `runtime_json.cpp`, not `Parser`). Anonymous namespaces do **not** suffice
 when both definitions sit under `namespace ry` — the linker still merges
 implicit / inline destructor symbols across translation units via COMDAT.
 
-**Why** (concrete incident): `src/runtime_json.cpp` had `struct Parser` in
+**Why** (concrete incident): `src/runtime/native/json.cpp` had `struct Parser` in
 `namespace ry` for a TU-local JSON parser. `include/ry/parser.hpp` has
 `class ry::Parser` for the Ry source parser. Both auto-generated
 destructors (`_ZN2ry6ParserD1Ev`) share the same mangled symbol. On Linux
@@ -36,7 +36,7 @@ The bug was **latent for years** — both destructors were trivially equal
 until the qualified-import work added a non-POD member.
 
 **How to apply**:
-- For every TU-local type inside `src/runtime_*.cpp` (or any `.cpp`
+- For every TU-local type inside `src/runtime/**/*.cpp` (or any `.cpp`
   declared in `namespace ry`), use a module-qualified name:
   `JsonParser`, `HttpParser`, `TomlLexer`, etc. — never the bare
   `Parser` / `Lexer` / `Tokenizer` / etc. used by public headers.
@@ -72,12 +72,12 @@ malloc: *** error for object 0x...: pointer being freed was not allocated
 
 | Function | File | Fixed by |
 |---|---|---|
-| `makeStringList`, `makeMatchList` | `include/ry/runtime_list.hpp` | PR #997 |
-| `makeByteList` | `include/ry/runtime_io.hpp` | PR #1007 |
-| `__ry_read_bytes` | `src/runtime_io.cpp` | PR #1007 |
-| `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime_net.cpp` | PR #1007 |
-| `__ry_tls_receive` | `src/runtime_tls.cpp` | PR #1007 |
-| `build_str_map` | `src/runtime_http.cpp` | PR #1011 |
+| `makeStringList`, `makeMatchList` | `include/ry/runtime/core/list.hpp` | PR #997 |
+| `makeByteList` | `include/ry/runtime/native/io.hpp` | PR #1007 |
+| `__ry_read_bytes` | `src/runtime/native/io.cpp` | PR #1007 |
+| `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime/native/net.cpp` | PR #1007 |
+| `__ry_tls_receive` | `src/runtime/native/http/tls.cpp` | PR #1007 |
+| `build_str_map` | `src/runtime/native/http/http.cpp` | PR #1011 |
 
 **Error-path pairing**: when an allocation succeeds with `arc_alloc` but
 the function later bails out before returning to Ry, free with `arc_free`,
@@ -112,7 +112,7 @@ relaxed-atomic semantics without relying on `std::atomic` object layout.
 **Source**: #871 (2026-04-11, implementation; follow-up to #630 P1 audit)
 **Tags**: rwlock, runtime-thread, concurrency, deadlock, thread-local, gotcha
 
-**Rule**: In `src/runtime_thread.cpp`, the per-thread counter that tells
+**Rule**: In `src/runtime/native/thread.cpp`, the per-thread counter that tells
 `__ry_rwlock_unlock` whether to call `unlock_shared()` vs `unlock()` on
 the underlying `std::shared_mutex` lives in a
 `thread_local std::unordered_map<RWLockHandle*, int>` at namespace
@@ -276,7 +276,7 @@ bypass `atexit` handlers (including LLVM `ManagedStatic` destructors).
 The C++ runtime trap-path counterpart — used when JIT'd code calls
 out to a runtime function that panics (e.g. `__ry_utf8_char_at`
 out-of-bounds, JSON parse error, ARC misuse) — is the shared helper
-`ry_runtime_trap_exit()` in `include/ry/runtime_alloc.hpp`. It does
+`ry_runtime_trap_exit()` in `include/ry/runtime/core/alloc.hpp`. It does
 the same `fflush(stdout); fflush(stderr); std::_Exit(1);`. Any new
 trap path emitted from runtime C++ MUST call this helper, never
 `exit(1)` or `std::exit(1)`. The `lint` job in `.github/workflows/ci.yml`
@@ -290,14 +290,14 @@ existing defensive `try { ... } catch (std::exception &)` blocks
 inside runtime functions — those only fire for C++ exceptions
 that escape from LLVM-generated code, which never happens for
 user panics. The existing catch in `__ry_thread_spawn`
-(`src/runtime_thread.cpp`) is dormant defensive code, not an
+(`src/runtime/native/thread.cpp`) is dormant defensive code, not an
 active error-propagation path. Fixing this requires refactoring
 both `emitRuntimeError` and `ry_runtime_trap_exit` to a throw-based
 path + installing a top-level catch in `ry run` / `ry test` —
 tracked in #880. Before writing tests that trigger a panic and
 expect `Err(error_msg)`, verify that the panic *actually* throws a
 C++ exception; the only current throw path from runtime code is
-`__ry_task_join` double-join (`src/runtime_parallel.cpp:292`) and a
+`__ry_task_join` double-join (`src/runtime/core/parallel.cpp:292`) and a
 handful of compile-time lexer/loader errors.
 
 **Why `_Exit` and not `exit`** (#1838): `exit(1)` invokes the
@@ -332,13 +332,13 @@ If the header is plain `checked_malloc`, this access lands in malloc metadata
 
 Applies to:
 - `ListHeader` (string/match lists): use `makeStringList` / `makeMatchList` in
-  `include/ry/runtime_list.hpp` — these already use `arc_alloc`.
-- `IOListHeader` (byte lists): use `makeByteList` in `include/ry/runtime_io.hpp`;
+  `include/ry/runtime/core/list.hpp` — these already use `arc_alloc`.
+- `IOListHeader` (byte lists): use `makeByteList` in `include/ry/runtime/native/io.hpp`;
   also `makeEmptyIOList` in `runtime_net.cpp` and inline allocations in
   `runtime_net.cpp` / `runtime_tls.cpp` / `runtime_io.cpp` — all converted in #997.
 
 **C++ tests that wrap these headers**: Use `arc_free(header)` (from
-`include/ry/runtime_arc.hpp`) instead of `free(header)`. The `data` array
+`include/ry/runtime/core/arc.hpp`) instead of `free(header)`. The `data` array
 inside the header is separately `checked_malloc`'d and must be freed with plain
 `free`. Individual string elements created by `dupString` are also plain
 `checked_malloc` and freed with plain `free`.
@@ -363,7 +363,7 @@ size_t n = static_cast<size_t>(stringByteLen(handle));
 
 **2. Validate with `hasEmbeddedNul` before passing to NUL-sensitive C APIs**:
 ```cpp
-// Defined in include/ry/runtime_string.hpp:
+// Defined in include/ry/runtime/core/string.hpp:
 inline bool hasEmbeddedNul(const char *handle) {
     if (!handle) return false;
     size_t n = static_cast<size_t>(stringByteLen(handle));
@@ -439,14 +439,14 @@ check to the codegen emitter.
 **How to apply**:
 - Bool-return-only functions (e.g. `exists`) that detect an invalid argument: return the safe conservative value (`false` / `0`) silently — do **not** call `setLastError`.
 - Result-returning functions: call `setLastError("fn: argument contains an embedded NUL byte")` before returning `nullptr` / `1`.
-- This matches the split used in `src/runtime_io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
+- This matches the split used in `src/runtime/native/io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
 
 ### Forbidden heap allocation functions and trap-path exits in new C++ code
 
 **Source**: #1498 (migrated from AGENTS.md, 2026-05-02), #1840 (2026-05-21 trap-path unification)
 **Tags**: runtime, memory-safety, malloc, oom, checked_malloc, forbidden-functions, lint, exit, _Exit, trap-path
 
-**Rule**: Use the safe wrappers from `include/ry/runtime_alloc.hpp`.
+**Rule**: Use the safe wrappers from `include/ry/runtime/core/alloc.hpp`.
 The following functions must **not** be called directly in new code:
 
 | Forbidden | Replacement | Reason |
@@ -457,7 +457,7 @@ The following functions must **not** be called directly in new code:
 | `strdup` | `checked_strdup` | OOM → null |
 | `strndup` | `checked_strndup` | OOM → null |
 | `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | integer overflow → heap buffer overflow |
-| `exit` / `std::exit` (in `src/runtime_*.cpp`) | `ry_runtime_trap_exit()` | `exit()` runs `atexit` → LLVM `ManagedStatic` destructors on JIT-live heap → SIGABRT (#1838) |
+| `exit` / `std::exit` (in `src/runtime/**/*.cpp`) | `ry_runtime_trap_exit()` | `exit()` runs `atexit` → LLVM `ManagedStatic` destructors on JIT-live heap → SIGABRT (#1838) |
 
 Additional rules:
 - On OOM, call `oom_abort(n)` with the requested size and abort
@@ -469,8 +469,8 @@ Additional rules:
   `.github/workflows/ci.yml`: "Check for banned unsafe allocation
   functions" (scans `src/`+`include/` for raw `malloc`/`realloc`/etc.)
   and "Check for banned direct exit() calls in runtime" (scans
-  `src/runtime_*.cpp` for direct `exit(...)` / `std::exit(...)`).
-- The `exit` ban is scoped to `src/runtime_*.cpp` deliberately: user-visible
+  `src/runtime/**/*.cpp` for direct `exit(...)` / `std::exit(...)`).
+- The `exit` ban is scoped to `src/runtime/**/*.cpp` deliberately: user-visible
   exit-builtin codegen (`src/codegen_call_user.cpp` `getStdlibExit`,
   `src/codegen_match.cpp:1172`) and shutdown paths in `main.cpp` still
   use `exit()` legitimately. The `_Exit`, `_exit`, and `quick_exit`

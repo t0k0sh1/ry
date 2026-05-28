@@ -1,10 +1,10 @@
-#include "ry/runtime_json.hpp"
-#include "ry/runtime_any.hpp"
-#include "ry/runtime_arc.hpp"
-#include "ry/runtime_error.hpp"
-#include "ry/runtime_list.hpp"
-#include "ry/runtime_string.hpp"
-#include "ry/runtime_http_types.hpp"
+#include "ry/runtime/native/json.hpp"
+#include "ry/runtime/core/any.hpp"
+#include "ry/runtime/core/arc.hpp"
+#include "ry/runtime/core/error.hpp"
+#include "ry/runtime/core/list.hpp"
+#include "ry/runtime/core/string.hpp"
+#include "ry/runtime/native/http/http_types.hpp"
 #include "ry/ry_layout.hpp"
 #include <gtest/gtest.h>
 #include <cstdint>

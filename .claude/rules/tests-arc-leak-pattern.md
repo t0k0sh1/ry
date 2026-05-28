@@ -42,7 +42,7 @@ path from this background noise.
 **Coverage**: `tests/spec/arc_release_on_index_overwrite.test.ry` contains
 the canonical examples.  The counter tracks only ARC *header* allocs/frees
 (codegen path via `__ry_arc_alloc_counted` / `__ry_arc_free_counted` and the
-C++ helper path in `include/ry/runtime_arc.hpp`).  COW buffer reallocs and
+C++ helper path in `include/ry/runtime/core/arc.hpp`).  COW buffer reallocs and
 collection internal buffers are NOT counted.
 
 ### `List<str>` literals can have empty `list_elem_type_name` — UAF tests on retain paths are silently neutralized

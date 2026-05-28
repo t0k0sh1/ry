@@ -1,7 +1,7 @@
 ---
 paths:
-  - "src/runtime_regex*.cpp"
-  - "include/ry/runtime_regex.hpp"
+  - "src/runtime/core/regex*.cpp"
+  - "include/ry/runtime/core/regex.hpp"
 ---
 
 # Regex Engine
@@ -11,7 +11,7 @@ paths:
 **Source**: #829 (2026-04-14, implementation)
 **Tags**: regex, nfa, capture-groups, design-decision
 
-**Rule**: The `NFASimulator` in `src/runtime_regex.cpp` stores per-thread tracking data
+**Rule**: The `NFASimulator` in `src/runtime/core/regex.cpp` stores per-thread tracking data
 directly on `NFAState` (`matchStartPos`). This is safe because only one value is tracked.
 Extending the Thompson NFA to carry per-thread capture slot arrays (RE2 style) would require
 moving to a `Thread = {NFAState*, vector<pair<int,int>>}` approach — a significant rewrite.
@@ -42,4 +42,4 @@ graph and reads these states explicitly.
 **Source**: #1197 (2026-04-19, implementation)
 **Tags**: regex, codegen, api-naming, ufcs, dispatch
 
-**Rule**: Each unprefixed UFCS regex function (`isMatch`, `search`, `replace`, `split`, `findAll`) must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol whose semantics literally match the function's name. Never alias a UFCS form to the prefixed `regex*` form's runtime symbol — the two can have different semantics (e.g. `isMatch` is partial/unanchored search, but `regexMatch` is full-string match). When adding a new UFCS regex function, add a matching `__ry_regex_<verb>` C entry point in `src/runtime_regex.cpp` + `include/ry/runtime_regex.hpp` and cover it directly in `tests/test_regex_runtime.cpp` — do not rely on a shared symbol and a LLVM `Trunc` to paper over a semantic mismatch.
+**Rule**: Each unprefixed UFCS regex function (`isMatch`, `search`, `replace`, `split`, `findAll`) must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol whose semantics literally match the function's name. Never alias a UFCS form to the prefixed `regex*` form's runtime symbol — the two can have different semantics (e.g. `isMatch` is partial/unanchored search, but `regexMatch` is full-string match). When adding a new UFCS regex function, add a matching `__ry_regex_<verb>` C entry point in `src/runtime/core/regex.cpp` + `include/ry/runtime/core/regex.hpp` and cover it directly in `tests/test_regex_runtime.cpp` — do not rely on a shared symbol and a LLVM `Trunc` to paper over a semantic mismatch.
