@@ -68,6 +68,24 @@
 
 ### TSan
 
+#### TSan build commands and preset isolation
+
+**Source**: AGENTS.md historical note (migrated from inline sanitizer section, 2026-05-28)
+**Tags**: tsan, sanitizer, cmake, preset, build, isolation
+
+**Rule**: TSan ビルドは `asan` preset とは別ディレクトリで行う:
+
+```bash
+cmake --preset tsan                                     # Debug + TSan (build-tsan/)
+cmake --build build-tsan                                # ビルド
+./build-tsan/ry_tests                                   # C++ tests
+./build-tsan/ry test -p                                 # Ry self-tests
+```
+
+`tsan` preset は ASan / UBSan と排他であり、別ディレクトリ `build-tsan/` にビルドされる。同じディレクトリで sanitizer を切り替えると CMake キャッシュが壊れるため、必ず別 build tree に分離する。
+
+**How to apply**: TSan ジョブを走らせる前に `build-tsan/` の存在を確認し、無ければ `cmake --preset tsan` から作る。`build-asan/` と `build-tsan/` を混ぜないこと。既知の upstream バグ (LargeMmapAllocator / LLVM ORC teardown / signal-handler siglongjmp) は本セクションの他エントリ参照。
+
 #### TSan job — C++ tests required, Ry self-tests warn-only
 
 **Source**: #868 (warn-only landed), #874 (split policy)
