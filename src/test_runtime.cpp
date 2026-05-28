@@ -1,7 +1,7 @@
 #include "ry/ry_layout.hpp"
-#include "ry/runtime_alloc.hpp"
-#include "ry/runtime_list.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/alloc.hpp"
+#include "ry/runtime/core/list.hpp"
+#include "ry/runtime/core/string.hpp"
 #include "ry/test_runtime.hpp"
 #include <csignal>
 #include <cstdio>

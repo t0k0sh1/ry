@@ -26,20 +26,20 @@ jobs:
       - name: Check for banned unsafe allocation functions
         run: |
           # Scan src/ and include/ for raw malloc/realloc/calloc/strdup/strndup.
-          # Exclude runtime_alloc.hpp (the wrapper implementation itself) and
+          # Exclude runtime/core/alloc.hpp (the wrapper implementation itself) and
           # lines that are already using the checked_* wrappers.
           if grep -rn --include='*.cpp' --include='*.hpp' \
             -E '\b(std::)?(malloc|realloc|calloc|strdup|strndup)\s*\(' \
             src/ include/ \
-            | grep -v 'runtime_alloc\.hpp' \
+            | grep -v 'runtime/core/alloc\.hpp' \
             | grep -v 'checked_'; then
-            echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime_alloc.hpp instead."
+            echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime/core/alloc.hpp instead."
             exit 1
           fi
       - name: Check for banned direct exit() calls in runtime
         run: |
           # Trap-path runtime functions must use ry_runtime_trap_exit()
-          # from include/ry/runtime_alloc.hpp, not exit(). exit() runs
+          # from include/ry/runtime/core/alloc.hpp, not exit(). exit() runs
           # the atexit chain, which on Linux glibc invokes LLVM
           # ManagedStatic destructors on a heap still referenced by the
           # JIT'd module — `free(): invalid pointer` SIGABRT before the
@@ -49,9 +49,9 @@ jobs:
           # which all have a word character (underscore or letter)
           # immediately before "exit" and so don't match a word
           # boundary at the start.
-          if grep -nE '\b(std::)?exit\s*\(' src/runtime_*.cpp \
+          if grep -rnE --include='*.cpp' '\b(std::)?exit\s*\(' src/runtime/ \
             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//'; then
-            echo "::error::Direct exit() call in src/runtime_*.cpp detected. Use ry_runtime_trap_exit() (from include/ry/runtime_alloc.hpp) instead."
+            echo "::error::Direct exit() call in src/runtime/**/*.cpp detected. Use ry_runtime_trap_exit() (from include/ry/runtime/core/alloc.hpp) instead."
             exit 1
           fi
       - name: Run Cppcheck

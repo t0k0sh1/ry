@@ -257,7 +257,7 @@ std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elem
 
 llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
     // Runtime returns a List<str> of UTF-8 code points. See
-    // src/runtime_utf8.cpp:__ry_split_chars. The result list is ARC-managed
+    // src/runtime/core/utf8.cpp:__ry_split_chars. The result list is ARC-managed
     // exactly like any other List<str> (#746, #827).
     auto fn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_, i64Ty_});
     llvm::Value *result = builder_.CreateCall(fn, {s, emitStringByteLen(s)}, label);

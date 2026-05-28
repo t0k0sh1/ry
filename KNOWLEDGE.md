@@ -303,7 +303,7 @@ should list `libclang_rt.asan.a`, `libclang_rt.asan_static.a`,
 **Tags**: asan, odr, comdat, linker, libstdc++, runtime, gotcha
 
 **Rule**: When two translation units declare same-named types inside `namespace ry { ... }` —
-e.g. `struct Parser` in `src/runtime_json.cpp` and `class ry::Parser` in `include/ry/parser.hpp` —
+e.g. `struct Parser` in `src/runtime/native/json.cpp` and `class ry::Parser` in `include/ry/parser.hpp` —
 their compiler-generated destructors share the same mangled symbol (`_ZN2ry6ParserD1Ev`). On
 Linux libstdc++ the linker COMDAT-picked the public header's destructor and applied it across
 every TU, including `__ry_json_parse`. PR #1723 added `std::unordered_set<std::string>

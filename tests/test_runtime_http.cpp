@@ -7,11 +7,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include "ry/runtime_net.hpp"
-#include "ry/runtime_http_types.hpp"
-#include "ry/runtime_io.hpp"
-#include "ry/runtime_arc.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/native/net.hpp"
+#include "ry/runtime/native/http/http_types.hpp"
+#include "ry/runtime/native/io.hpp"
+#include "ry/runtime/core/arc.hpp"
+#include "ry/runtime/core/string.hpp"
 
 
 using namespace ry;

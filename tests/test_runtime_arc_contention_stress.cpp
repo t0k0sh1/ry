@@ -1,5 +1,5 @@
 #include "ry/ry_layout.hpp"
-#include "ry/runtime_alloc.hpp"
+#include "ry/runtime/core/alloc.hpp"
 
 #include <gtest/gtest.h>
 

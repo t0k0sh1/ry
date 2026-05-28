@@ -134,7 +134,7 @@ smoke tests + document the gap in the PR. Don't add failing
 **Tags**: rwlock, testing, tsan, spec-loader, gotcha
 
 **Rule**: When adding a TSan-gated stress test for
-`src/runtime_thread.cpp` primitives, put it in a pure C++
+`src/runtime/native/thread.cpp` primitives, put it in a pure C++
 GoogleTest under `tests/` (e.g.
 `tests/test_runtime_rwlock_stress.cpp`), NOT in
 `tests/spec/concurrency.test.ry`. Wire it into `ry_tests` via
@@ -148,7 +148,7 @@ Any `from thread import ...` statement in a spec run via that harness
 fails with `unresolved import: thread (ModuleLoader should have
 resolved this)`. Adding a stress test to `concurrency.test.ry`
 therefore silently breaks the TSan-required gate. A pure C++ test
-that calls `__ry_rwlock_*` directly via `include/ry/runtime_thread.hpp`
+that calls `__ry_rwlock_*` directly via `include/ry/runtime/native/thread.hpp`
 works under all sanitizers, runs in the required step, and is more
 direct anyway — we are testing a runtime invariant, not a language
 feature. See also the entry at the top of this "Testing" section for
@@ -175,7 +175,7 @@ makeString("k\x00" "a", 3);                 // "k\x00" ends the hex sequence; "a
 
 **Why it matters here**: NUL-key disambiguation tests build keys like `k\0a` vs `k\0b`. Using `"k\x00a"` / `"k\x00b"` produces identical keys (`k\n`) and the test silently passes for the wrong reason. Always use the char-array or adjacent-literal form when the byte after `\xNN` is a hex character.
 
-The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime_string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime_regex.hpp`, `src/runtime_regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
+The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime/core/string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime/core/regex.hpp`, `src/runtime/core/regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`, and `str` fields must also be inserted into `arc_str_managed_vars_`** (Source: #1016, updated #1046):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca

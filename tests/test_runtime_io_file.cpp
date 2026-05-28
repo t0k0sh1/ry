@@ -1,6 +1,6 @@
-#include "ry/runtime_io.hpp"
-#include "ry/runtime_string.hpp"
-#include "ry/runtime_arc.hpp"
+#include "ry/runtime/native/io.hpp"
+#include "ry/runtime/core/string.hpp"
+#include "ry/runtime/core/arc.hpp"
 #include <gtest/gtest.h>
 #include <cstdio>
 #include <cstdlib>

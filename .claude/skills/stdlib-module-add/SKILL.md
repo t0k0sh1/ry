@@ -1,6 +1,6 @@
 ---
 name: stdlib-module-add
-description: Procedure for adding a new stdlib module (`@native`) — 5 steps plus constant-addition and extending existing modules. Use when adding a stdlib module, declaring `@native`, editing `runtime_<mod>.cpp`, calling `add_ry_native_lib`, adding constants, or touching `share/std/<mod>/<mod>.ry`. Also fires on Japanese triggers stdlib モジュール追加, 新しい標準ライブラリ, @native 宣言, 定数の追加.
+description: Procedure for adding a new stdlib module (`@native`) — 5 steps plus constant-addition and extending existing modules. Use when adding a stdlib module, declaring `@native`, editing `src/runtime/native/<mod>.cpp`, calling `add_ry_native_lib`, adding constants, or touching `share/std/<mod>/<mod>.ry`. Also fires on Japanese triggers stdlib モジュール追加, 新しい標準ライブラリ, @native 宣言, 定数の追加.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
@@ -25,7 +25,7 @@ fn sha256(data: str) -> str
 
 ### 2. C++ runtime implementation
 
-Implement `extern "C"` functions in `src/runtime_<mod>.cpp`, named per the `__ry_<mod>_<name>` convention.
+Implement `extern "C"` functions in `src/runtime/native/<mod>.cpp`, named per the `__ry_<mod>_<name>` convention.
 
 ```cpp
 extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
@@ -33,7 +33,7 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 
 ### 3. Build setup
 
-Add `add_ry_native_lib(mod src/runtime_<mod>.cpp)` to `CMakeLists.txt` and append the library to `RY_NATIVE_LIBS` (linked by `ry` and `ry_tests`).
+Add `add_ry_native_lib(<mod> src/runtime/native/<mod>.cpp)` to `CMakeLists.txt` and append the library to `RY_NATIVE_LIBS` (linked by `ry` and `ry_tests`).
 
 ### 4. Codegen dispatcher (custom logic only)
 
@@ -68,6 +68,6 @@ Add an `@const` declaration in `share/std/<mod>/<mod>.ry`. Usually paired with `
 Touch:
 
 1. `share/std/<mod>/<mod>.ry` — `@native("mod") fn` declaration.
-2. `src/runtime_<mod>.cpp` — C++ implementation.
+2. `src/runtime/native/<mod>.cpp` — C++ implementation.
 3. `src/codegen_call_<mod>.cpp` — `custom_emitter` if custom dispatch is required (skip for simple functions).
 4. Tests — selective-import and execution cases.

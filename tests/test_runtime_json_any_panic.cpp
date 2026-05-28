@@ -1,11 +1,11 @@
-#include "ry/runtime_alloc.hpp"
-#include "ry/runtime_any.hpp"
-#include "ry/runtime_any_typed_coll.hpp"
-#include "ry/runtime_arc.hpp"
-#include "ry/runtime_http_types.hpp"
-#include "ry/runtime_json.hpp"
-#include "ry/runtime_list.hpp"
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/alloc.hpp"
+#include "ry/runtime/core/any.hpp"
+#include "ry/runtime/core/any_typed_coll.hpp"
+#include "ry/runtime/core/arc.hpp"
+#include "ry/runtime/native/http/http_types.hpp"
+#include "ry/runtime/native/json.hpp"
+#include "ry/runtime/core/list.hpp"
+#include "ry/runtime/core/string.hpp"
 
 #include <gtest/gtest.h>
 

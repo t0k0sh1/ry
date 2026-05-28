@@ -1,4 +1,4 @@
-#include "ry/runtime_thread.hpp"
+#include "ry/runtime/native/thread.hpp"
 
 #include <gtest/gtest.h>
 

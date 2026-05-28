@@ -8,7 +8,7 @@ namespace ry {
 //
 // Provides the `arcLiveCount() -> int` function to Ry test code.
 // The backing C++ symbol (__ry_runtime_internal_arc_live_count) lives in
-// src/runtime_arc_counter.cpp and is linked directly into ry_lib / the host
+// src/runtime/core/arc_counter.cpp and is linked directly into ry_lib / the host
 // process, so no separate shared library is needed.
 
 static const CodeGen::NativeDispatchEntry runtime_internal_table[] = {

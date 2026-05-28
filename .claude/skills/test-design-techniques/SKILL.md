@@ -107,7 +107,7 @@ For a range `[lo, hi]`: `lo - 1`, `lo`, `lo + 1`, `hi - 1`, `hi`, `hi + 1`.
 **ry application examples**:
 
 - **Type inference scope** (`src/type_check.cpp`): enter `fn` body → infer locals → enter nested lambda → exit lambda → exit fn. Each scope-entry and scope-exit is a transition; test that variable lookup respects shadowing at each transition
-- **ARC reference count** (`src/runtime_arc_counter.cpp`): `RC=1 → RC=2` (clone) → `RC=1` (drop) → `RC=0` (free). Test that the codepath through every transition produces the correct count delta. Combine with `arcLiveCount()` delta pattern (see `.claude/rules/tests-arc-leak-pattern.md`)
+- **ARC reference count** (`src/runtime/core/arc_counter.cpp`): `RC=1 → RC=2` (clone) → `RC=1` (drop) → `RC=0` (free). Test that the codepath through every transition produces the correct count delta. Combine with `arcLiveCount()` delta pattern (see `.claude/rules/tests-arc-leak-pattern.md`)
 - **Lock state** (`share/std/thread/lock.ry`): `Released → Acquired → Released`; plus invalid transitions: `Released → Released` (double release), `Acquired → Acquired` (deadlock-prone re-entry)
 - **Result chain** (`andThen` / `?` propagation): `Ok(v1) → andThen(f) → Ok(v2)`, `Ok(v1) → andThen(f) → Err(e)`, `Err(e1) → andThen(f) → Err(e1)` (Err short-circuits)
 - **Lexer modes**: normal → string-literal (on `"`) → escape (on `\`) → string-literal → normal (on closing `"`). Test each transition, especially escape inside a multi-byte sequence

@@ -148,18 +148,18 @@ add_library(ry_lib STATIC
     src/module/module_loader.cpp
     src/jit/jit.cpp
     src/test_runtime.cpp
-    src/runtime_string.cpp
-    src/runtime_hash.cpp
-    src/runtime_regex.cpp
-    src/runtime_regex_parser.cpp
-    src/runtime_utf8.cpp
-    src/runtime_sort.cpp
+    src/runtime/core/string.cpp
+    src/runtime/core/hash.cpp
+    src/runtime/core/regex.cpp
+    src/runtime/core/regex_parser.cpp
+    src/runtime/core/utf8.cpp
+    src/runtime/core/sort.cpp
     src/project/project_config.cpp
     src/cli/self_update.cpp
     src/args_runtime.cpp
     src/project/paths.cpp
-    src/runtime_parallel.cpp
-    src/runtime_print.cpp
+    src/runtime/core/parallel.cpp
+    src/runtime/core/print.cpp
     src/codegen_call_json.cpp
     src/formatter.cpp
     src/formatter_stmt.cpp
@@ -170,19 +170,19 @@ add_library(ry_lib STATIC
     src/codegen_call_thread.cpp
     src/codegen_arith.cpp
     src/codegen_any.cpp
-    src/runtime_any.cpp
-    src/runtime_any_typed_coll.cpp
+    src/runtime/core/any.cpp
+    src/runtime/core/any_typed_coll.cpp
     src/codegen_arc.cpp
     src/codegen_arc_cow.cpp
     src/codegen_call_runtime_internal.cpp
-    src/runtime_arc_counter.cpp
+    src/runtime/core/arc_counter.cpp
     src/codegen_arc_gc.cpp
     src/codegen_tostring.cpp
     src/codegen_fn_generic.cpp
     src/codegen_metadata.cpp
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
-    src/runtime_error.cpp
+    src/runtime/core/error.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp
     src/jit/test_runner.cpp
@@ -268,34 +268,34 @@ function(add_ry_fuzz_target TARGET_NAME)
 endfunction()
 
 # Self-contained packages (no cross-runtime dependencies)
-add_ry_native_lib(base64     src/runtime_base64.cpp)
-add_ry_native_lib(path       src/runtime_path.cpp)
-add_ry_native_lib(convert    src/runtime_convert.cpp)
-add_ry_native_lib(filesystem src/runtime_filesystem.cpp)
-add_ry_native_lib(gc         src/runtime_gc.cpp)
-add_ry_native_lib(testing    src/runtime_testing.cpp)
+add_ry_native_lib(base64     src/runtime/native/base64.cpp)
+add_ry_native_lib(path       src/runtime/native/path.cpp)
+add_ry_native_lib(convert    src/runtime/native/convert.cpp)
+add_ry_native_lib(filesystem src/runtime/native/filesystem.cpp)
+add_ry_native_lib(gc         src/runtime/native/gc.cpp)
+add_ry_native_lib(testing    src/runtime/native/testing.cpp)
 
 # All native libs are independent — no inter-library link dependencies.
 # __ry_set_last_error / __ry_get_last_error live in ry_lib (the main executable)
 # and are resolved from the process at runtime via -undefined dynamic_lookup
 # (macOS) or -rdynamic (Linux).
-add_ry_native_lib(io         src/runtime_io.cpp)
-add_ry_native_lib(json       src/runtime_json.cpp)
-add_ry_native_lib(net        src/runtime_net.cpp)
+add_ry_native_lib(io         src/runtime/native/io.cpp)
+add_ry_native_lib(json       src/runtime/native/json.cpp)
+add_ry_native_lib(net        src/runtime/native/net.cpp)
 
-add_ry_native_lib(thread     src/runtime_thread.cpp)
+add_ry_native_lib(thread     src/runtime/native/thread.cpp)
 if(APPLE)
     target_link_libraries(ry_thread PRIVATE Threads::Threads)
 else()
     target_link_libraries(ry_thread PRIVATE Threads::Threads atomic)
 endif()
 
-# runtime_hash.cpp is compiled here (not in a separate shared lib) because ry_http
+# runtime/core/hash.cpp is compiled here (not in a separate shared lib) because ry_http
 # needs hash symbols at link time for HTTP header map construction.
-# Shared TCP utilities are compiled directly into ry_http via runtime_net_utils.hpp.
-add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
-                             src/runtime_http_multipart.cpp src/runtime_http_error.cpp
-                             src/runtime_tls.cpp src/runtime_hash.cpp)
+# Shared TCP utilities are compiled directly into ry_http via runtime/native/net_utils.hpp.
+add_ry_native_lib(http       src/runtime/native/http/http.cpp src/runtime/native/http/http_client.cpp
+                             src/runtime/native/http/http_multipart.cpp src/runtime/native/http/http_error.cpp
+                             src/runtime/native/http/tls.cpp src/runtime/core/hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
@@ -450,9 +450,9 @@ if(ENABLE_FUZZER)
     # runtime_io.cpp is also embedded because __ry_json_load_file /
     # __ry_json_dump_file (#1854) reference __ry_io_file_read_all /
     # __ry_io_file_write_text from runtime_io.cpp.
-    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime_json.cpp src/runtime_io.cpp)
+    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime/native/json.cpp src/runtime/native/io.cpp)
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
     # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
     # not ry_lib) so the File handle symbols are available without dlopen.
-    add_ry_fuzz_target(fuzz_io_open tests/fuzz/fuzz_io_open.cpp src/runtime_io.cpp)
+    add_ry_fuzz_target(fuzz_io_open tests/fuzz/fuzz_io_open.cpp src/runtime/native/io.cpp)
 endif()

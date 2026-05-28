@@ -167,7 +167,7 @@ release = drop the box. Bundling the two breaks iterator safety.
 - `src/codegen_call.cpp` — `close(File)` dispatch emits a direct
   call to `__ry_io_file_close` (returns Unit), not
   `emitResourceFree`.
-- `src/runtime_io.cpp` — keep `__ry_io_file_close` (user-facing,
+- `src/runtime/native/io.cpp` — keep `__ry_io_file_close` (user-facing,
   `fp = nullptr`) and `__ry_io_file_cleanup` (ARC destructor,
   `fclose` + `arc_free`) as separate functions. Never collapse
   them. The destructor calls `fclose` only if `fp != nullptr`, so

@@ -108,7 +108,7 @@ Three outcomes:
 - `sourceName.empty()` OR `resolveTypeAlias(sourceName) != resolvedColl`: `codegenError` with a `load[T]` hint (renamed from `loadAs[T]` in #1887). Empty is the `case Ok(v):` hazard; mismatch is `a: any = List<int>; ys: List<str> = a`.
 - Otherwise (concrete match): forward to `unwrapFromAny` as before.
 
-**Why a frontend gate and not a runtime check**: `ListHeader` ABI (`include/ry/runtime_list.hpp:16-23`) has no stride / element-type field — the runtime has no way to detect the mismatch without an out-of-band side table. The metadata-channel gate is the only place we know the source-level type. `List<any>` / `Set<any>` / `Map<str, any>` annotations stay unconditional (payload stride matches destination, payload is `RyAny[N]`).
+**Why a frontend gate and not a runtime check**: `ListHeader` ABI (`include/ry/runtime/core/list.hpp:16-23`) has no stride / element-type field — the runtime has no way to detect the mismatch without an out-of-band side table. The metadata-channel gate is the only place we know the source-level type. `List<any>` / `Set<any>` / `Map<str, any>` annotations stay unconditional (payload stride matches destination, payload is `RyAny[N]`).
 
 **Do NOT widen `canAnyHoldType(ty)`** to incorporate this check. The collection eligibility is dynamic-metadata-driven (per the rule in §57's "Do NOT widen `canAnyHoldType`" callout); the gate lives at the call site in `emitVarDecl`, parallel to the existing primitive-only `canAnyHoldType` branch.
 

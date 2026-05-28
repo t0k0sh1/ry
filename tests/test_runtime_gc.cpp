@@ -1,5 +1,5 @@
 #include "test_codegen_common.hpp"
-#include "ry/runtime_gc.hpp"
+#include "ry/runtime/native/gc.hpp"
 #include "ry/ry_layout.hpp"
 #include <cstdlib>
 #include <cstring>

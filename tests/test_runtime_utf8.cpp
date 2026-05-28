@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry/runtime_string.hpp"
+#include "ry/runtime/core/string.hpp"
 #include <cstdlib>
 
 

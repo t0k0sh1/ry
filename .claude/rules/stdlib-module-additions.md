@@ -1,8 +1,8 @@
 ---
 paths:
   - "share/std/**/*.ry"
-  - "src/runtime_*.cpp"
-  - "include/ry/runtime_*.hpp"
+  - "src/runtime/**/*.cpp"
+  - "include/ry/runtime/**/*.hpp"
   - "src/codegen_call_*.cpp"
   - "CMakeLists.txt"
 ---

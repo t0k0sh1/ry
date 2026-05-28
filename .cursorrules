@@ -39,9 +39,9 @@ ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
 ## Stdlib Package Addition (5 Steps)
 
 1. `share/std/<pkg>/<pkg>.ry` — `@native("pkg") fn` declarations
-2. `src/runtime_<pkg>.cpp` — C++ implementation (`__ry_<pkg>_*` function naming)
+2. `src/runtime/native/<pkg>.cpp` — C++ implementation (`__ry_<pkg>_*` function naming)
 3. `src/codegen_call_<pkg>.cpp` — self-registering codegen dispatcher (`RY_REGISTER_STDLIB_PACKAGE` macro + free function emitters)
-4. `CMakeLists.txt` — add `src/codegen_call_<pkg>.cpp` to `ry_lib`, and register `src/runtime_<pkg>.cpp` via `add_ry_native_lib(<pkg> src/runtime_<pkg>.cpp)` (runtime sources must NOT go into `ry_lib` — they build a separate shared library loaded at runtime)
+4. `CMakeLists.txt` — add `src/codegen_call_<pkg>.cpp` to `ry_lib`, and register `src/runtime/native/<pkg>.cpp` via `add_ry_native_lib(<pkg> src/runtime/native/<pkg>.cpp)` (runtime sources must NOT go into `ry_lib` — they build a separate shared library loaded at runtime)
 5. Tests — import tests + native function execution tests
 
 ## Key Conventions
