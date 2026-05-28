@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <array>
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +47,15 @@ static RunResult runRy(const std::vector<const char *> &args) {
         return {};
     }
 
+    // Build argv and set RY_ENV in the PARENT before fork. After fork the
+    // child must only invoke async-signal-safe calls (close / dup2 / execv);
+    // setenv and std::vector heap operations can deadlock on libc / allocator
+    // locks if any other thread in the test runner is holding them.
+    std::vector<const char *> argv{RY_BINARY_PATH};
+    argv.insert(argv.end(), args.begin(), args.end());
+    argv.push_back(nullptr);
+    setenv("RY_ENV", "internal", 1);
+
     pid_t pid = fork();
     if (pid < 0) {
         close(pipeOut[0]);
@@ -63,12 +73,6 @@ static RunResult runRy(const std::vector<const char *> &args) {
         close(pipeOut[1]);
         close(pipeErr[1]);
         close(STDIN_FILENO);
-        setenv("RY_ENV", "internal", 1);
-
-        std::vector<const char *> argv{RY_BINARY_PATH};
-        argv.insert(argv.end(), args.begin(), args.end());
-        argv.push_back(nullptr);
-
         execv(RY_BINARY_PATH, const_cast<char *const *>(argv.data()));
         _exit(127);
     }
@@ -92,8 +96,11 @@ static RunResult runRy(const std::vector<const char *> &args) {
     outReader.join();
     errReader.join();
     int status = 0;
-    waitpid(pid, &status, 0);
-    r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    pid_t wp;
+    do {
+        wp = waitpid(pid, &status, 0);
+    } while (wp == -1 && errno == EINTR);
+    r.exit_code = (wp != -1 && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
     return r;
 }
 
