@@ -130,7 +130,7 @@ Fix any finding before declaring complete; do not commit while errors remain.
 
 The C++ TSan run (`ry_tests`) is required and validates `ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test). The Ry self-test (`ry test -p`) is warn-only due to the TSan `LargeMmapAllocator` CHECK problem (upstream #1716, Linux-only) — a clean C++ run is sufficient for this PR. LLVM ORC teardown crashes (`~LLJIT()` / `removeResourceTracker` / `~CodeGen()` / `~OverloadEntry()`) can surface on both OSes but are suppressed by the three-stage leak in `src/jit/jit_runner.cpp` (#1187 + #1657); file a new issue if this pattern recurs.
 
-If a race is detected (C++ or self-test), fix it in this PR (`/triage-side-finding` Q1 — hard-to-reproduce CI detection ⇒ immediate fix). Do not park it as a known race. See `/tsan-known-issues` for `LargeMmapAllocator` and ORC teardown entries. For new race patterns not in the #630 audit, file a separate concurrency issue and add a reproducer under `tests/spec/concurrency*.test.ry`.
+If a race is detected (C++ or self-test), fix it in this PR (`/triage-side-finding` Q1 — hard-to-reproduce CI detection ⇒ immediate fix). Do not park it as a known race. Upstream TSan allocator bugs / LLVM ORC teardown crashes etc. are catalogued in `KNOWLEDGE.md` の `## サニタイザー既知問題` section. For new race patterns not in the #630 audit, file a separate concurrency issue and add a reproducer under `tests/spec/concurrency*.test.ry`.
 
 ## 3.5.5. Static Analysis
 
