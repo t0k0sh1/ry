@@ -93,7 +93,7 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
     if (cg.isFile(arg0)) {
         runtimeFn = "__ry_json_load_file";
     } else {
-        if (arg0->getType() != cg.ptrTy_)
+        if (!cg.isStringValue(arg0))
             cg.codegenError("load[T]() requires a str or File argument");
         runtimeFn = "__ry_json_parse_to_any";
     }

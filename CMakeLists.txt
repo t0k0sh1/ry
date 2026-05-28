@@ -371,6 +371,7 @@ add_executable(ry_tests
     tests/test_codegen_type_safety.cpp
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
+    tests/test_codegen_call_json_reject.cpp
     tests/test_spec_timeout.cpp
     tests/test_runtime_io_file.cpp
 )
