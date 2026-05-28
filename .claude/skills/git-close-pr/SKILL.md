@@ -14,7 +14,7 @@ Take a pull request end-to-end: address review comments, follow up unresolved th
 
 This skill runs straight through. On any blocker it reports and stops — fix → push → CI wait → re-fix loops are never started automatically. Invoking this skill is the merge consent; no additional "merge しますか？" prompt is shown.
 
-When Step 2 produces review-fix commits, Step 5 pushes them and triggers fresh CI runs, so Step 6 will typically stop on `mergeable != MERGEABLE` until those checks complete. Rerun once CI is green.
+Priority order: (1) CI failures are caught first (Step 2) and stop the flow immediately so investigation takes precedence; (2) review comments are addressed next (Step 3); (3) CI completion is verified strictly at the merge gate (Step 6). Step 1 is a structural-only pre-check that stops on conflicts; transient states like `BLOCKED` (CI pending) warn and proceed so Step 2 and Step 3 run in parallel with CI. When Step 3 produces review-fix commits, Step 5 pushes them and triggers fresh CI runs, so Step 6 will typically stop on `mergeStateStatus ∉ {CLEAN, HAS_HOOKS}` until those checks complete. Rerun once CI is green.
 
 ## Repository
 
@@ -42,10 +42,24 @@ From Context (or `gh pr view <PR> --json state,mergeable,mergeStateStatus,headRe
 
 - `state != OPEN` → stop:
   > PR #\<PR\> is not open (state: `<state>`). Aborting.
-- `mergeable != MERGEABLE` **or** `mergeStateStatus` ∉ {`CLEAN`, `HAS_HOOKS`} → stop:
-  > PR #\<PR\> is not mergeable (mergeable: `<mergeable>`, mergeStateStatus: `<mergeStateStatus>`). Resolve conflicts or required checks, then rerun.
+- `mergeable == CONFLICTING` **or** `mergeStateStatus == DIRTY` → stop:
+  > PR #\<PR\> has merge conflicts (mergeable: `<mergeable>`, mergeStateStatus: `<mergeStateStatus>`). Resolve conflicts and rerun.
+- `mergeStateStatus` ∉ {`CLEAN`, `HAS_HOOKS`} (e.g. `BLOCKED`, `BEHIND`, `UNSTABLE`, `UNKNOWN`, `DRAFT`) → warn and proceed:
+  > PR #\<PR\>: mergeStateStatus=`<mergeStateStatus>` (transient). Proceeding to Step 2 (CI failure check) and Step 3 (review handling); the strict merge gate is re-checked at Step 6.
 
-### Step 2: Address reviews and unresolved threads
+### Step 2: Check CI for failures
+
+```bash
+gh pr checks <PR> --json name,bucket,state,link
+```
+
+- Any `bucket == "fail"` → list each failed job (`name` / `state` / `link`) and stop:
+  > CI failure(s) detected on PR #\<PR\> (above). Fix PR-caused failures and rerun. For pre-existing failures, triage via `/triage-side-finding` first.
+- Otherwise (all `pass` and/or `pending`) → proceed to Step 3. Pending checks do not block here; the strict completion gate is enforced at Step 6.
+
+Do not auto-rerun, auto-fix, or loop.
+
+### Step 3: Address reviews and unresolved threads
 
 Fetch in one pass:
 
@@ -67,19 +81,7 @@ Do **not** resolve threads yourself — leave that to the reviewer (CodeRabbit a
 
 CodeRabbit `<summary>🧹 Nitpick comments</summary>` blocks inside review summaries are treated as ordinary comments: extract each suggestion from the body and route through the same triage.
 
-If there are no review comments and no unresolved threads, proceed to Step 3 without action.
-
-### Step 3: Check CI
-
-```bash
-gh pr checks <PR> --json name,bucket,state,link
-```
-
-- All `bucket == "pass"` (SUCCESS / SKIPPED / NEUTRAL) → proceed.
-- Any `bucket == "fail"` → list each failed job (`name` / `state` / `link`) and stop:
-  > CI failure(s) detected on PR #\<PR\> (above). Fix PR-caused failures and rerun. For pre-existing failures, triage via `/triage-side-finding` first.
-
-Do not auto-rerun, auto-fix, or loop.
+If there are no review comments and no unresolved threads, proceed to Step 4 without action.
 
 ### Step 4: Pre-commit checklist
 
@@ -89,7 +91,7 @@ Invoke `/pre-commit-checklist`. If it reports outstanding items, stop:
 
 ### Step 5: Push
 
-Invoke `/git-push`. It commits any working-tree changes left by Step 2, rebases onto `origin/main`, and pushes with `--force-with-lease`. On any failure (rebase conflict, lease rejection, etc.) it stops with its own report — surface that message and stop:
+Invoke `/git-push`. It commits any working-tree changes left by Step 3, rebases onto `origin/main`, and pushes with `--force-with-lease`. On any failure (rebase conflict, lease rejection, etc.) it stops with its own report — surface that message and stop:
 
 > Push failed. Resolve the issue as reported above, then rerun.
 
