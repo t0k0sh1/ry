@@ -46,7 +46,13 @@ CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、r
 
 - **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter `paths:` glob に一致するファイル編集時に自動 load
 - **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。`description:` にマッチした時に呼び出される
-- **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。現状は `.claude/agents/devils-advocate.md` (Plan / 設計レビュー用の批評エージェント) と `.claude/agents/bug-forensics-analyst.md` (バグの起源判定 / git archaeology / テストギャップ分析。`/triage-side-finding` Q3 経由で起動)
+- **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。**並列化したい verification step は subagent を foreground で複数同時起動** (single message に multiple `Agent` tool calls)。Background 実行は禁止 (AGENTS.md §"Bash コマンドの実行ルール" 参照、#1947)。現状の catalog:
+    - `.claude/agents/devils-advocate.md` — Plan / 設計レビュー用の批評エージェント
+    - `.claude/agents/bug-forensics-analyst.md` — バグの起源判定 / git archaeology / テストギャップ分析 (`/triage-side-finding` Q3 経由で起動)
+    - `.claude/agents/sanitizer-runner.md` — ASan+UBSan / TSan を独立 context で実行・分析する subagent (並列化用)
+    - `.claude/agents/test-runner.md` — C++ ry_tests + Ry セルフテストを独立 context で実行・失敗解析する subagent (並列化用)
+    - `.claude/agents/fuzzer-runner.md` — libFuzzer harness を独立 context で実行・crash 解析する subagent (並列化用)
+    - `.claude/agents/pr-review-responder.md` — CodeRabbit / 人間レビュワー指摘の解析・返信生成・修正案作成を行う subagent
 - **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・昇格手順は `/knowledge-md-management` 参照
 - **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md`
 - **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。**該当する rule / skill が既にあればそこを更新**、どこにも該当 entry がない新規知見は **`KNOWLEDGE.md` に追記** (詳細は `/knowledge-md-management`)。path 限定の整理先は `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
@@ -121,24 +127,29 @@ trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・impo
 
 ## Bash コマンドの実行ルール
 
-### `run_in_background=true` の使用制限
+### Claude 起動の background 実行を全面禁止
 
-- ビルド（`cmake --build`）やテスト（`./build/ry_tests`）など、**有限時間で必ず終了することが明らかなコマンド**にのみ使用する
-- 以下のパターンは **禁止**（コンテキスト圧縮後に socket FD が失われ、zsh + cat が stdin 待ちで永久に残存する）:
+Claude (メインエージェント) から起動するあらゆる background 実行を **全面禁止** する (#1947)。例外なし。
 
-| 禁止パターン | 理由 |
-|---|---|
-| `run_in_background=true` + ヒアドキュメント (`<<'EOF'`) | `cat` が stdin socket を読み続ける |
-| `run_in_background=true` + パイプ末尾の `cat` / `read` | 同上 |
-| `run_in_background=true` + タイムアウト未指定 + 長時間コマンド | 圧縮後にプロセスが孤立する |
+**禁止対象:**
+- `Bash(run_in_background=true)` の使用 (用途・コマンドを問わず)
+- shell の末尾 `&` による background 起動 (`cmake --build &` 等)
+- `nohup` / `disown` / その他 detach 手段
+- `Agent({run_in_background: true, ...})` (subagent background)
+- ビルド (`cmake --build`) / テスト (`./build/ry_tests`) / fuzzer / 長時間処理も含めてすべて foreground 同期実行のみ
 
-- 対話的入力を待つコマンド（`cat`、`read`、stdin 待ちになるパイプライン末尾）を `run_in_background` で起動してはならない
-- `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ずフォアグラウンド実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える
+**並列化が必要な場合:**
+single message に multiple `Agent` tool calls を入れて **subagent を foreground で複数同時起動** する。各 subagent は独立 context で foreground 実行、main agent は全戻り値の同期で待ち合わせる。`/pre-commit-checklist` の各 verification step (sanitizer / test / fuzzer / PR レビュー対応 等) には事前 subagent を `.claude/agents/` に整備済み — 使い分けは catalog (本 AGENTS.md §"ナレッジベース" 参照) で確認。
+
+**Why:** background 実行は task_id 記録漏れリスクが構造的に存在する (Bash 経由は OS プロセステーブルに乗るため OS-level スキャンに頼らざるを得ず、別 Claude Code セッションを誤検出する — #1944)。subagent background は task framework 内で `TaskStop` 可能だが、それでも「使い分け判断ミス」のリスクは残る。バックグラウンド実行という概念を完全に消すことで認知コストとリスクを根本から排除する。並列化は subagent foreground で十分実現できる。
+
+> **補足 (heredoc 入力の独立ルール)**: `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ず foreground 実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える。background 禁止前から有効な独立ルールで、本節の禁止対象ではない (heredoc + background の hang リスクは歴史的事項)。
 
 ### タイムアウトの設定
 
-- `run_in_background=true` を使う場合でも Bash ツールの `timeout` パラメータを必ず設定する
+- Bash ツールの `timeout` パラメータは foreground 実行でも必ず設定する (デフォルト 120,000 ms = 2 分は短い場合がある)
 - ビルド系は `timeout: 300000`（5 分）、長時間テストでも `timeout: 600000`（10 分）を上限とする
+- 上限を超える処理は script 分割 / ステップ化、または subagent foreground 並列化で対処 (background 化での回避は禁止)
 
 ### 一時ファイル作成の禁止
 

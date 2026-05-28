@@ -229,8 +229,6 @@ build_status=${PIPESTATUS[0]}  # bash 専用; zsh は $pipestatus[1]
 
 ninja は失敗時に短いエラー要約 (5-10 行) を末尾に出力するため `| tail -10` で見ようとしがちだが、これがまさに罠。`tail` が exit code を握り潰すので、Claude Code の Bash ツールが「成功」と判断してしまい、後続の sanitizer テスト実行が古いバイナリで走り、結果として「テストは pass したが実は古いコードのまま」という silent regression を生む。検出は downstream 症状（spec test が修正前のエラーメッセージを出す等）でしか起きず、デバッグに時間を浪費する。
 
-`run_in_background=true` でビルドを実行する場合も同じ罠が当てはまる: BashOutput の `tail -N` ライクな表示は同様に exit code を見落としがち。Bash ツールの戻り値の `<exit_code>` 行を必ず確認する。
-
 ---
 
 ### `printf "%s" "$big_var" | grep -q ...` silently misses matches under `set -o pipefail`

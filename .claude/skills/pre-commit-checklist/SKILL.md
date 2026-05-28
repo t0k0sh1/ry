@@ -1,6 +1,6 @@
 ---
 name: pre-commit-checklist
-description: Pre-commit checklist — docs / CHANGELOG / rules+skills / tests / ASan+UBSan / TSan / libFuzzer / background hygiene / labels. Use before declaring complete, before PR, self-verify, running sanitizers/tests; also on Japanese triggers 作業完了前, 完了前, 実装完了, 修正完了, マージ前, PR を出す前, セルフ検証, 動作確認, サニタイザー実行, テスト実行, チェックリスト. Always fires near the end of feature work.
+description: Pre-commit checklist — docs / CHANGELOG / rules+skills / tests / ASan+UBSan / TSan / libFuzzer / background execution prohibition check / labels. Use before declaring complete, before PR, self-verify, running sanitizers/tests; also on Japanese triggers 作業完了前, 完了前, 実装完了, 修正完了, マージ前, PR を出す前, セルフ検証, 動作確認, サニタイザー実行, テスト実行, チェックリスト. Always fires near the end of feature work.
 allowed-tools: Bash(./.claude/skills/pre-commit-checklist/*.sh:*), Bash(git diff:*), Bash(git fetch:*)
 ---
 
@@ -204,15 +204,20 @@ Evaluated independently of the §0 matrix: a `.md` / `docs/`-only PR still fires
 
 Chains `build.sh` (`tree-sitter generate` + `build` → `ry.so`; generate failure = grammar syntax error), `install.sh --no-build` (copies into Neovim parser dir), and `check.sh --no-build` (`tree-sitter parse` over every `tests/spec/**/*.test.ry`; **exit 0 required**). `expected-fail.txt` entries are SKIPped; ones now parsing emit `WARN: ... now passes` and should be removed from the list. Out-of-list ERRORs are the only regressions that count. Hand-curated Phase 2 corpus lives in `editor/tree-sitter/test/corpus/*.txt` (#1633); a visual highlight check in Neovim is recommended.
 
-## 3.7. Background Task Residual Check
+## 3.7. Background Execution Prohibition Check
 
-Before declaring complete, confirm no self-launched background tasks or shells remain.
+Claude (メインエージェント) から起動する background 実行は #1947 で全面禁止 (AGENTS.md §"Bash コマンドの実行ルール" 参照)。セルフ検証では会話履歴を振り返り、本セッションで以下のいずれかが発生していないか確認する:
 
-```bash
-./.claude/skills/pre-commit-checklist/check-background.sh
-```
+- `Bash(run_in_background=true)` の呼び出し
+- shell の末尾 `&` による background 起動 (`cmake --build &` 等)
+- `nohup` / `disown` / その他 detach 手段
+- `Agent({run_in_background: true, ...})` (subagent background)
 
-Exits 1 if `ps aux | grep -E 'zsh.*cat'` finds orphan shells (the classic `run_in_background=true` + heredoc zombie: `zsh` + `cat` blocked on stdin — see AGENTS.md §"Bash コマンドの実行ルール"). The script only **detects** — stop any remaining via `TaskStop` or `kill <pid>` (Claude-tool operations, not shell-invocable). Also confirm every background task finished via `BashOutput` / `TaskOutput`.
+該当呼び出しがあった場合は完了宣言を停止しユーザーに報告 (foreground 同期実行に切り替えるか、並列化が必要なら subagent を foreground で複数同時起動する設計に変更)。該当なしであれば OK。
+
+> **並列化が必要だった場合の正しいパターン**: single message に multiple `Agent` tool calls を入れて foreground 並列実行。`.claude/agents/` には sanitizer-runner / test-runner / fuzzer-runner / pr-review-responder 等の事前 subagent が用意されている。
+>
+> **Why detection by recall, not `ps aux`?** 旧 `check-background.sh` (#1947 で削除) は `ps aux | grep -E 'zsh.*cat'` で OS 全体を見ていたため、別 Claude Code セッションの正規プロセスを誤検出する欠陥があった (#1944)。全面禁止下では「使わなかったことを会話履歴で確認」が正しい scope。
 
 ## 4. Label Cleanup
 
