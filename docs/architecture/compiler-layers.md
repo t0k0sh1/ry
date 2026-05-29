@@ -6,7 +6,7 @@ This document records the intended dependency direction between the compiler/run
 
 Source code is organized into the following layers, ordered from input (left) to output (right):
 
-```
+```text
 lexer → parser → AST → module loader → sema → codegen → runtime ABI
 ```
 
