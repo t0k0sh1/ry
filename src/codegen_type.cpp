@@ -42,7 +42,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "f64")   return f64Ty_;
 
     // Weak reference type: "weak str", "weak List<int>"
-    if (isWeakTypeName(typeName)) {
+    if (ry::util::isWeakTypeName(typeName)) {
         std::string inner = weakInnerTypeName(typeName);
         // Resolve aliases to canonical name
         auto aliasIt = type_aliases_.find(inner);
@@ -128,7 +128,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
             if (s != std::string::npos) sizeStr = sizeStr.substr(s);
             while (!sizeStr.empty() && sizeStr.back() == ' ') sizeStr.pop_back();
 
-            if (!isLowLevelTypeName(elemStr))
+            if (!ry::util::isLowLevelTypeName(elemStr))
                 codegenError("array element type must be a low-level type: " + elemStr);
             llvm::Type *elemTy = resolveType(elemStr);
             uint64_t size = std::stoull(sizeStr);
@@ -164,7 +164,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     }
 
     // fn(...) -> T function type → opaque pointer
-    if (isFunctionTypeName(typeName)) {
+    if (ry::util::isFunctionTypeName(typeName)) {
         return ptrTy_;
     }
 
@@ -370,7 +370,7 @@ std::string CodeGen::substituteTypeParamsInName(const std::string &typeName) {
     auto it = type_param_scope_.find(typeName);
     if (it != type_param_scope_.end()) return it->second;
 
-    if (isWeakTypeName(typeName)) {
+    if (ry::util::isWeakTypeName(typeName)) {
         std::string inner = weakInnerTypeName(typeName);
         std::string sub = substituteTypeParamsInName(inner);
         if (sub != inner) return "weak " + sub;
@@ -392,7 +392,7 @@ std::string CodeGen::substituteTypeParamsInName(const std::string &typeName) {
         bool changed = false;
         std::string out = base + "<";
         for (size_t i = 0; i < args.size(); ++i) {
-            std::string arg = trimTypeNameSpaces(args[i]);
+            std::string arg = ry::util::trimTypeNameSpaces(args[i]);
             std::string sub = substituteTypeParamsInName(arg);
             if (sub != arg) changed = true;
             if (i) out += ", ";
@@ -509,7 +509,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
                 resolvedRetStr = resolvedRetStr.substr(rs, re - rs + 1);
         }
         info.returnTypeName = resolvedRetStr;
-        if (isFunctionTypeName(resolvedRetStr))
+        if (ry::util::isFunctionTypeName(resolvedRetStr))
             info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetStr));
     } else {
         info.returnType = llvm::Type::getVoidTy(*ctx_);

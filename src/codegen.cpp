@@ -1073,21 +1073,16 @@ bool CodeGen::isUnsignedLowLevelName(const std::string &name) {
     return !name.empty() && name[0] == 'u';
 }
 
-bool CodeGen::isLowLevelTypeName(const std::string &name) {
-    return name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
-           name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "f32";
-}
-
 std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {
     if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&node.data)) {
         if ((*ue)->op == "+" || (*ue)->op == "-")
             return getExprLowLevelSuffix(*(*ue)->operand);
     }
     if (auto *ne = std::get_if<NumberExpr>(&node.data)) {
-        if (isLowLevelTypeName(ne->suffix)) return ne->suffix;
+        if (ry::util::isLowLevelTypeName(ne->suffix)) return ne->suffix;
     }
     if (auto *fe = std::get_if<FloatExpr>(&node.data)) {
-        if (isLowLevelTypeName(fe->suffix)) return fe->suffix;
+        if (ry::util::isLowLevelTypeName(fe->suffix)) return fe->suffix;
     }
     return "";
 }
@@ -1226,7 +1221,7 @@ bool CodeGen::isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
                                    const std::string &paramTypeName) const {
     // Block low-level types except i8/u8 (u8 is the successor of byte)
     if (isLowLevelTy(argVal) && argVal->getType() != i8Ty_) return false;
-    if (isLowLevelTypeName(paramTypeName)) return false;
+    if (ry::util::isLowLevelTypeName(paramTypeName)) return false;
     auto *argTy = argVal->getType();
     return (argTy == i8Ty_  && paramTy == i64Ty_) ||   // u8 -> int
            (argTy == i8Ty_  && paramTy == f64Ty_) ||   // u8 -> float

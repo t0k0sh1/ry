@@ -446,20 +446,8 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
 
 // ===== Collection type name helpers =====
 
-bool CodeGen::isListTypeName(const std::string &typeName) {
-    return typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0;
-}
-
-bool CodeGen::isMapTypeName(const std::string &typeName) {
-    return typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0;
-}
-
-bool CodeGen::isSetTypeName(const std::string &typeName) {
-    return typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0;
-}
-
 bool CodeGen::isCollectionTypeName(const std::string &typeName) {
-    return isListTypeName(typeName) || isMapTypeName(typeName) || isSetTypeName(typeName);
+    return ry::util::isListTypeName(typeName) || ry::util::isMapTypeName(typeName) || ry::util::isSetTypeName(typeName);
 }
 
 bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
@@ -477,7 +465,7 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     if (fieldTypeName.empty())
         return false;
     const std::string resolved = resolveTypeAlias(fieldTypeName);
-    if (isWeakTypeName(resolved))
+    if (ry::util::isWeakTypeName(resolved))
         return false;
     if (resolved == "str") {
         // str is ARC-managed via StringHeader (handle - STRING_HEADER_SIZE = 24).
@@ -485,15 +473,15 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
         if (outFieldKind) *outFieldKind = CollectionKind::Str;
         return true;
     }
-    if (isListTypeName(resolved)) {
+    if (ry::util::isListTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::List;
         return true;
     }
-    if (isMapTypeName(resolved)) {
+    if (ry::util::isMapTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::Map;
         return true;
     }
-    if (isSetTypeName(resolved)) {
+    if (ry::util::isSetTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::Set;
         return true;
     }
@@ -627,17 +615,17 @@ void CodeGen::emitTaggedUnionRelease(llvm::AllocaInst *alloca,
     std::string okName, errName;
     if (isOption && resolvedSource.size() > 1 && resolvedSource.back() == '?') {
         // T? shorthand for Option<T>
-        okName = trimTypeNameSpaces(
+        okName = ry::util::trimTypeNameSpaces(
             resolvedSource.substr(0, resolvedSource.size() - 1));
     } else {
         std::string head;
         std::vector<std::string> innerArgs;
-        if (splitGenericTypeName(resolvedSource, head, innerArgs)) {
+        if (ry::util::splitGenericTypeName(resolvedSource, head, innerArgs)) {
             if (isResult && head == "Result") {
-                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
-                if (innerArgs.size() >= 2) errName = trimTypeNameSpaces(innerArgs[1]);
+                if (!innerArgs.empty()) okName = ry::util::trimTypeNameSpaces(innerArgs[0]);
+                if (innerArgs.size() >= 2) errName = ry::util::trimTypeNameSpaces(innerArgs[1]);
             } else if (isOption && head == "Option") {
-                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+                if (!innerArgs.empty()) okName = ry::util::trimTypeNameSpaces(innerArgs[0]);
             }
         }
     }
@@ -713,10 +701,6 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
 }
 
 // ===== Weak reference operations =====
-
-bool CodeGen::isWeakTypeName(const std::string &typeName) {
-    return typeName.size() > 5 && typeName.compare(0, 5, "weak ") == 0;
-}
 
 std::string CodeGen::weakInnerTypeName(const std::string &typeName) {
     return typeName.substr(5);
@@ -1098,7 +1082,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         std::string innerValSig;
         std::string head;
         std::vector<std::string> innerArgs;
-        if (splitGenericTypeName(resolved, head, innerArgs)) {
+        if (ry::util::splitGenericTypeName(resolved, head, innerArgs)) {
             if ((innerKind == CollectionKind::List || innerKind == CollectionKind::Set) &&
                 !innerArgs.empty()) {
                 innerElemSig = resolveTypeAlias(innerArgs[0]);
@@ -1253,11 +1237,11 @@ void CodeGen::emitTupleComponentRetain(llvm::Value *val,
                                         const std::string &fSig) {
     if (fSig.empty() || !val) return;
     const std::string resolved = resolveTypeAlias(fSig);
-    if (resolved.empty() || isWeakTypeName(resolved)) return;
+    if (resolved.empty() || ry::util::isWeakTypeName(resolved)) return;
     if (resolved == "str") {
         emitArcRetain(emitStrGetHeaderFromData(val), isArcAtomic(val));
-    } else if (isListTypeName(resolved) || isMapTypeName(resolved) ||
-               isSetTypeName(resolved)) {
+    } else if (ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) ||
+               ry::util::isSetTypeName(resolved)) {
         emitArcRetain(emitArcGetHeaderFromData(val), isArcAtomic(val));
     } else if (resolved.size() >= 2 && resolved.front() == '(' &&
                 resolved.back() == ')') {
@@ -1285,7 +1269,7 @@ void CodeGen::emitTupleComponentRetainTraced(llvm::Value *fieldVal,
                                               const std::string &fSig) {
     if (fSig.empty() || !fieldVal) return;
     const std::string resolved = resolveTypeAlias(fSig);
-    if (resolved.empty() || isWeakTypeName(resolved)) return;
+    if (resolved.empty() || ry::util::isWeakTypeName(resolved)) return;
 
     // Recover the original SSA value at `topIdx` of `sourceAgg`. When
     // sourceAgg is an InsertValueInst chain (the freshly-built tuple in
@@ -1384,11 +1368,11 @@ void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
         std::min<size_t>(components.size(), tupleTy->getNumElements()));
     for (unsigned i = 0; i < n; ++i) {
         const std::string fSig = resolveTypeAlias(components[i]);
-        if (fSig.empty() || isWeakTypeName(fSig)) continue;
+        if (fSig.empty() || ry::util::isWeakTypeName(fSig)) continue;
 
         const bool isStr  = (fSig == "str");
-        const bool isColl = isListTypeName(fSig) || isMapTypeName(fSig) ||
-                            isSetTypeName(fSig);
+        const bool isColl = ry::util::isListTypeName(fSig) || ry::util::isMapTypeName(fSig) ||
+                            ry::util::isSetTypeName(fSig);
         const bool isTup  = (fSig.size() >= 2 && fSig.front() == '(' &&
                               fSig.back() == ')');
         if (!isStr && !isColl && !isTup) continue;
@@ -1435,10 +1419,10 @@ void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
             std::vector<std::string> innerArgs;
             CollectionKind innerKind = CollectionKind::List;
             std::string innerElemSig, innerValSig;
-            if (isListTypeName(fSig)) innerKind = CollectionKind::List;
-            else if (isMapTypeName(fSig)) innerKind = CollectionKind::Map;
-            else if (isSetTypeName(fSig)) innerKind = CollectionKind::Set;
-            if (splitGenericTypeName(fSig, head, innerArgs)) {
+            if (ry::util::isListTypeName(fSig)) innerKind = CollectionKind::List;
+            else if (ry::util::isMapTypeName(fSig)) innerKind = CollectionKind::Map;
+            else if (ry::util::isSetTypeName(fSig)) innerKind = CollectionKind::Set;
+            if (ry::util::splitGenericTypeName(fSig, head, innerArgs)) {
                 if ((innerKind == CollectionKind::List ||
                      innerKind == CollectionKind::Set) &&
                     !innerArgs.empty()) {
@@ -1473,9 +1457,9 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
     bool anyArc = false;
     for (const auto &c : components) {
         const std::string r = resolveTypeAlias(c);
-        if (r.empty() || isWeakTypeName(r)) continue;
-        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
-            isSetTypeName(r) ||
+        if (r.empty() || ry::util::isWeakTypeName(r)) continue;
+        if (r == "str" || ry::util::isListTypeName(r) || ry::util::isMapTypeName(r) ||
+            ry::util::isSetTypeName(r) ||
             (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
             anyArc = true;
             break;
@@ -1509,9 +1493,9 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
     bool anyArc = false;
     for (const auto &c : components) {
         const std::string r = resolveTypeAlias(c);
-        if (r.empty() || isWeakTypeName(r)) continue;
-        if (r == "str" || isListTypeName(r) || isMapTypeName(r) ||
-            isSetTypeName(r) ||
+        if (r.empty() || ry::util::isWeakTypeName(r)) continue;
+        if (r == "str" || ry::util::isListTypeName(r) || ry::util::isMapTypeName(r) ||
+            ry::util::isSetTypeName(r) ||
             (r.size() >= 2 && r.front() == '(' && r.back() == ')')) {
             anyArc = true;
             break;
@@ -1530,11 +1514,11 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
         std::min<size_t>(components.size(), tupleTy->getNumElements()));
     for (unsigned i = 0; i < n; ++i) {
         const std::string fSig = resolveTypeAlias(components[i]);
-        if (fSig.empty() || isWeakTypeName(fSig)) continue;
+        if (fSig.empty() || ry::util::isWeakTypeName(fSig)) continue;
 
         const bool isStr  = (fSig == "str");
-        const bool isColl = isListTypeName(fSig) || isMapTypeName(fSig) ||
-                            isSetTypeName(fSig);
+        const bool isColl = ry::util::isListTypeName(fSig) || ry::util::isMapTypeName(fSig) ||
+                            ry::util::isSetTypeName(fSig);
         const bool isTup  = (fSig.size() >= 2 && fSig.front() == '(' &&
                               fSig.back() == ')');
         if (!isStr && !isColl && !isTup) continue;

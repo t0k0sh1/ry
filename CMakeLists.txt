@@ -186,6 +186,7 @@ add_library(ry_lib STATIC
     src/cli/cli.cpp
     src/jit/jit_runner.cpp
     src/jit/test_runner.cpp
+    src/util/type_name.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -374,6 +375,7 @@ add_executable(ry_tests
     tests/test_codegen_call_json_reject.cpp
     tests/test_spec_timeout.cpp
     tests/test_runtime_io_file.cpp
+    tests/test_util_type_name.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

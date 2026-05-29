@@ -117,8 +117,8 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
 
                 // Closure/function variants: return "<closure>" directly.
                 // Union component names are normalized type strings like "fn(int) -> int",
-                // so use isFunctionTypeName() rather than comparing against the literal "closure".
-                if (uinfo.componentTypes[i]->isPointerTy() && isFunctionTypeName(compName)) {
+                // so use ry::util::isFunctionTypeName() rather than comparing against the literal "closure".
+                if (uinfo.componentTypes[i]->isPointerTy() && ry::util::isFunctionTypeName(compName)) {
                     phi->addIncoming(cachedGlobalString("<closure>", ".vts_closure"),
                                      builder_.GetInsertBlock());
                     builder_.CreateBr(mergeBB);
@@ -131,9 +131,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 // rather than producing garbage output.
                 if (uinfo.componentTypes[i]->isPointerTy() &&
                     compName != "str" &&
-                    !isListTypeName(compName) &&
-                    !isMapTypeName(compName) &&
-                    !isSetTypeName(compName)) {
+                    !ry::util::isListTypeName(compName) &&
+                    !ry::util::isMapTypeName(compName) &&
+                    !ry::util::isSetTypeName(compName)) {
                     codegenError("cannot convert " + compName +
                                  " variant of union to string");
                 }
@@ -142,12 +142,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                     uinfo.componentTypes[i], dataTmp, "vts.union.inner");
 
                 // Propagate low-level type metadata for correct signedness formatting
-                if (isLowLevelTypeName(compName))
+                if (ry::util::isLowLevelTypeName(compName))
                     getOrCreateMeta(innerVal).low_level_type_name = compName;
 
                 // Propagate collection type metadata so List/Map/Set variants format
                 // their element types correctly (matches List/Map/Set branches below).
-                if (isListTypeName(compName) || isMapTypeName(compName) || isSetTypeName(compName))
+                if (ry::util::isListTypeName(compName) || ry::util::isMapTypeName(compName) || ry::util::isSetTypeName(compName))
                     propagateTypeMeta(compName, innerVal);
 
                 llvm::Value *innerStr = valueToString(innerVal, inCollection);

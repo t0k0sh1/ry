@@ -40,7 +40,7 @@ std::string CodeGen::buildCanonicalSig(const std::string &name,
     result += '(';
     for (size_t i = 0; i < paramTypeNames.size(); ++i) {
         if (i > 0) result += ", ";
-        result += resolveTypeAlias(trimTypeNameSpaces(paramTypeNames[i]));
+        result += resolveTypeAlias(ry::util::trimTypeNameSpaces(paramTypeNames[i]));
     }
     result += ')';
     return result;
@@ -57,18 +57,18 @@ bool CodeGen::parseSigString(const std::string &input,
     if (input.empty() || input.back() != ')')
         codegenError("invalid signature syntax: '" + input +
                      "' — expected 'name(T1, T2, ...)' with matching parentheses");
-    outName = trimTypeNameSpaces(input.substr(0, parenPos));
+    outName = ry::util::trimTypeNameSpaces(input.substr(0, parenPos));
     if (outName.empty())
         codegenError("invalid signature syntax: '" + input +
                      "' — function name before '(' is empty");
-    const std::string inner = trimTypeNameSpaces(
+    const std::string inner = ry::util::trimTypeNameSpaces(
         input.substr(parenPos + 1, input.size() - parenPos - 2));
     outParamTypeNames.clear();
     if (inner.empty()) return true;
     const auto parts = splitTypeArgs(inner);
     outParamTypeNames.reserve(parts.size());
     for (const auto &p : parts) {
-        const std::string trimmed = trimTypeNameSpaces(p);
+        const std::string trimmed = ry::util::trimTypeNameSpaces(p);
         if (trimmed.empty())
             codegenError("invalid signature syntax: '" + input +
                          "' — empty parameter type between commas");
@@ -1021,12 +1021,12 @@ void CodeGen::emitMockCall(CallStmt &s) {
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (auto &ov : *fitOverloads) {
             if (ov.paramTypeNames.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(ov.paramTypeNames[i]))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -1165,12 +1165,12 @@ void CodeGen::emitNativeMockCall(CallStmt &s,
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (const auto *sig : nativeSigs) {
             if (sig->params.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(sig->params[i].typeName))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -1293,12 +1293,12 @@ void CodeGen::emitNativeSpyCall(CallStmt &s,
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (const auto *sig : nativeSigs) {
             if (sig->params.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(sig->params[i].typeName))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -1354,12 +1354,12 @@ void CodeGen::emitNativeMockReturnValueOnceCall(
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (const auto *sig : nativeSigs) {
             if (sig->params.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(sig->params[i].typeName))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(sig->params[i].typeName))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -1397,9 +1397,9 @@ void CodeGen::emitNativeMockReturnValueOnceCall(
 
     bool supported = (resolved == "int") || (resolved == "float")
         || (resolved == "bool") || (resolved == "Unit")
-        || isLowLevelTypeName(resolved)
+        || ry::util::isLowLevelTypeName(resolved)
         || (resolved == "str")
-        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) || ry::util::isSetTypeName(resolved)
         || (record_types_.count(resolved) > 0)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
@@ -1509,7 +1509,7 @@ static std::string vretExtractGenericArg(const std::string &typeStr,
                                           size_t argIdx) {
     if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
         if (argIdx != 0) return {};
-        return CodeGen::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
+        return ry::util::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
     }
     if (typeStr.size() <= prefix.size() ||
         typeStr.compare(0, prefix.size(), prefix) != 0 ||
@@ -1519,7 +1519,7 @@ static std::string vretExtractGenericArg(const std::string &typeStr,
                                               typeStr.size() - prefix.size() - 1);
     const auto parts = CodeGen::splitTypeArgs(inner);
     if (argIdx >= parts.size()) return {};
-    return CodeGen::trimTypeNameSpaces(parts[argIdx]);
+    return ry::util::trimTypeNameSpaces(parts[argIdx]);
 }
 
 void CodeGen::retainValueReturnResult(llvm::Value *val,
@@ -1534,7 +1534,7 @@ void CodeGen::retainValueReturnResult(llvm::Value *val,
         emitArcRetain(hdr, false);
         return;
     }
-    if (isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)) {
+    if (ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) || ry::util::isSetTypeName(resolved)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         emitArcRetain(hdr, false);
         return;
@@ -1595,19 +1595,19 @@ void CodeGen::releaseValueReturnResult(llvm::Value *val,
         emitArcRelease(hdr, false, {});
         return;
     }
-    if (isListTypeName(resolved)) {
+    if (ry::util::isListTypeName(resolved)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         auto subDtor = getOrCreateCollectionDestructor(CollectionKind::List);
         emitArcRelease(hdr, false, subDtor);
         return;
     }
-    if (isMapTypeName(resolved)) {
+    if (ry::util::isMapTypeName(resolved)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         auto subDtor = getOrCreateCollectionDestructor(CollectionKind::Map);
         emitArcRelease(hdr, false, subDtor);
         return;
     }
-    if (isSetTypeName(resolved)) {
+    if (ry::util::isSetTypeName(resolved)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         auto subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
         emitArcRelease(hdr, false, subDtor);
@@ -1744,7 +1744,7 @@ llvm::FunctionCallee CodeGen::getOrCreateValueReturnEnvDestructor(
     // Non-ARC primitives need no dtor — runtime frees env memory unconditionally.
     std::string resolved = resolveTypeAlias(retTyName);
     bool needsDtor = (resolved == "str")
-        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) || ry::util::isSetTypeName(resolved)
         || record_types_.count(resolved)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
@@ -1837,12 +1837,12 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (auto &ov : *fitOverloads) {
             if (ov.paramTypeNames.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(ov.paramTypeNames[i]))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -1881,9 +1881,9 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
     // Reject return types whose retain/release the helpers do not handle.
     bool supported = (resolved == "int") || (resolved == "float")
         || (resolved == "bool") || (resolved == "Unit")
-        || isLowLevelTypeName(resolved)
+        || ry::util::isLowLevelTypeName(resolved)
         || (resolved == "str")
-        || isListTypeName(resolved) || isMapTypeName(resolved) || isSetTypeName(resolved)
+        || ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) || ry::util::isSetTypeName(resolved)
         || (record_types_.count(resolved) > 0)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0)
         || (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0)
@@ -2025,12 +2025,12 @@ void CodeGen::emitSpyCall(CallStmt &s) {
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (auto &ov : *fitOverloads) {
             if (ov.paramTypeNames.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(ov.paramTypeNames[i]))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -2447,7 +2447,7 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
         if (matchedEntry && i < matchedEntry->paramTypeNames.size()) {
             std::string declared = resolveTypeAlias(
                 matchedEntry->paramTypeNames[i]);
-            if (isFunctionTypeName(declared) && argTy == ptrTy_) {
+            if (ry::util::isFunctionTypeName(declared) && argTy == ptrTy_) {
                 auto *ucTy = getUniformClosureTy();
                 llvm::Value *thunkField = builder_.CreateStructGEP(
                     ucTy, argVal, 0, "mock_fn.thunk_gep");
@@ -2539,12 +2539,12 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         std::vector<std::string> wantNorm;
         wantNorm.reserve(sigParamTypes.size());
         for (const auto &p : sigParamTypes)
-            wantNorm.push_back(resolveTypeAlias(trimTypeNameSpaces(p)));
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
         for (auto &ov : *overloads) {
             if (ov.paramTypeNames.size() != wantNorm.size()) continue;
             bool eq = true;
             for (size_t i = 0; i < wantNorm.size(); ++i) {
-                if (resolveTypeAlias(trimTypeNameSpaces(ov.paramTypeNames[i]))
+                if (resolveTypeAlias(ry::util::trimTypeNameSpaces(ov.paramTypeNames[i]))
                         != wantNorm[i]) {
                     eq = false; break;
                 }
@@ -2640,10 +2640,10 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             i < entry.paramTypeNames.size()
                 ? resolveTypeAlias(entry.paramTypeNames[i])
                 : std::string{};
-        const bool paramIsList = isListTypeName(declaredParamName);
-        const bool paramIsSet = !paramIsList && isSetTypeName(declaredParamName);
+        const bool paramIsList = ry::util::isListTypeName(declaredParamName);
+        const bool paramIsSet = !paramIsList && ry::util::isSetTypeName(declaredParamName);
         const bool paramIsMap = !paramIsList && !paramIsSet &&
-                                isMapTypeName(declaredParamName);
+                                ry::util::isMapTypeName(declaredParamName);
         const bool paramIsRecord = !paramIsList && !paramIsSet && !paramIsMap &&
                                    record_types_.count(declaredParamName) > 0;
         const bool paramIsTuple = !paramIsList && !paramIsSet && !paramIsMap &&
@@ -2653,7 +2653,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                                   declaredParamName.back() == ')';
         const bool paramIsFn = !paramIsList && !paramIsSet && !paramIsMap &&
                                !paramIsRecord && !paramIsTuple &&
-                               isFunctionTypeName(declaredParamName);
+                               ry::util::isFunctionTypeName(declaredParamName);
         std::string paramListInner;
         std::string paramSetInner;
         std::string paramMapKeyInner;
@@ -2695,8 +2695,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             auto parts = splitTypeArgs(
                 declaredParamName.substr(4, declaredParamName.size() - 5));
             if (parts.size() == 2) {
-                paramMapKeyInner = resolveTypeAlias(trimTypeNameSpaces(parts[0]));
-                paramMapValInner = resolveTypeAlias(trimTypeNameSpaces(parts[1]));
+                paramMapKeyInner = resolveTypeAlias(ry::util::trimTypeNameSpaces(parts[0]));
+                paramMapValInner = resolveTypeAlias(ry::util::trimTypeNameSpaces(parts[1]));
             }
             if (!isSupportedCollElemName(paramMapKeyInner) ||
                 !isSupportedCollElemName(paramMapValInner)) {

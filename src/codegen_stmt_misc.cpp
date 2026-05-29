@@ -92,7 +92,7 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
             std::string resolved = resolveTypeAlias(elemTypeName);
             std::string head;
             std::vector<std::string> innerArgs;
-            if (splitGenericTypeName(resolved, head, innerArgs)) {
+            if (ry::util::splitGenericTypeName(resolved, head, innerArgs)) {
                 if ((elemKind == CollectionKind::List || elemKind == CollectionKind::Set) &&
                     !innerArgs.empty()) {
                     innerElemSig = resolveTypeAlias(innerArgs[0]);

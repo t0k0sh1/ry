@@ -676,16 +676,16 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
             std::string inside = sourceElemName.substr(7, sourceElemName.size() - 8);
             auto parts = splitTypeArgs(inside);
             if (!parts.empty())
-                innerTypeName = trimTypeNameSpaces(parts[0]);
+                innerTypeName = ry::util::trimTypeNameSpaces(parts[0]);
             if (parts.size() >= 2)
-                errTypeName = trimTypeNameSpaces(parts[1]);
+                errTypeName = ry::util::trimTypeNameSpaces(parts[1]);
         } else if (sourceElemName.size() > 8 &&
                    sourceElemName.compare(0, 7, "Option<") == 0 &&
                    sourceElemName.back() == '>') {
             std::string inside = sourceElemName.substr(7, sourceElemName.size() - 8);
             auto parts = splitTypeArgs(inside);
             if (!parts.empty())
-                innerTypeName = trimTypeNameSpaces(parts[0]);
+                innerTypeName = ry::util::trimTypeNameSpaces(parts[0]);
         } else if (sourceElemName.size() > 1 && sourceElemName.back() == '?') {
             innerTypeName = sourceElemName.substr(0, sourceElemName.size() - 1);
         }

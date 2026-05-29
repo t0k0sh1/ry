@@ -25,13 +25,6 @@ bool sameFnTypeInfoShape(const CodeGen::FnTypeInfo &lhs, const CodeGen::FnTypeIn
 
 // --- JNI-like naming convention helpers ---
 
-std::string CodeGen::deriveRuntimeFnName(const std::string &package,
-                                         const std::string &fn_name) {
-    if (package.empty())
-        return "__ry_" + fn_name;
-    return "__ry_" + package + "_" + fn_name;
-}
-
 const std::unordered_set<std::string>& CodeGen::getRequiredLibraries() const {
     return used_native_libraries_;
 }
@@ -128,7 +121,7 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
         markArcManaged(alloca);
     {
         std::string resolvedPtype = resolveTypeAlias(ptype);
-        if (isFunctionTypeName(resolvedPtype))
+        if (ry::util::isFunctionTypeName(resolvedPtype))
             getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedPtype);
         auto constraint = parseTypeConstraint(resolvedPtype);
         if (constraint) {
@@ -676,7 +669,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // a user declares @native("base64") fn encode(str) alongside
         // `from base64 import encode`, while preserving valid type-based
         // overloads like encode(str) and encode(int).
-        auto &sigVec = native_fn_sigs_[nativeSigKey(effectivePackage, sig.name)];
+        auto &sigVec = native_fn_sigs_[ry::util::nativeSigKey(effectivePackage, sig.name)];
         bool duplicate = false;
         for (const auto &existing : sigVec) {
             if (existing.params.size() != sig.params.size()) continue;
