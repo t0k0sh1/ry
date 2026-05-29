@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/coverage/coverage_runtime.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include "ry/llvm_emit/api.h"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -89,6 +90,40 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_ = llvm::FunctionType::get(
         ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
+
+    // Initialize the LLVM IR emission ABI context (#1949 scaffolding).
+    // Functions reached via the ABI: getRuntimeFn / buildErrorFromRuntime /
+    // emitBoundsCheck. The fn_ slot is set as bodies are emitted.
+    emit_ctx_ = ry_emit_ctx_create(mod_.get(), &builder_, ctx_.get(), nullptr);
+    RyEmitCallbacks cbs = {};
+    cbs.user_ctx = this;
+    cbs.emit_negative_index_wrap = [](void *user, RyValueId idx_id,
+                                      RyValueId len_id,
+                                      const char *prefix) -> RyValueId {
+        auto *cg = static_cast<CodeGen *>(user);
+        auto *idx =
+            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, idx_id));
+        auto *len =
+            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, len_id));
+        llvm::Value *wrapped = cg->emitNegativeIndexWrap(idx, len, prefix);
+        return ry_emit_intern(cg->emit_ctx_, wrapped);
+    };
+    cbs.emit_bounds_error = [](void *user, RyValueId orig_idx_id,
+                               RyValueId len_id, const char *fmt,
+                               const char *global) {
+        auto *cg = static_cast<CodeGen *>(user);
+        auto *idx = static_cast<llvm::Value *>(
+            ry_emit_resolve(cg->emit_ctx_, orig_idx_id));
+        auto *len =
+            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, len_id));
+        cg->emitBoundsError(idx, len, fmt, global);
+    };
+    ry_emit_ctx_set_callbacks(emit_ctx_, &cbs);
+}
+
+CodeGen::~CodeGen() {
+    if (emit_ctx_)
+        ry_emit_ctx_destroy(emit_ctx_);
 }
 
 void CodeGen::setTestingIntrinsicsImported(const std::unordered_set<std::string> &imported) {
@@ -102,7 +137,9 @@ const std::unordered_set<std::string> &CodeGen::getTestingIntrinsicsImported() c
 llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
-    return mod_->getOrInsertFunction(name, fnTy);
+    auto *callee = static_cast<llvm::Value *>(
+        ry_emit_get_runtime_fn(emit_ctx_, name, fnTy));
+    return llvm::FunctionCallee(fnTy, callee);
 }
 
 int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {

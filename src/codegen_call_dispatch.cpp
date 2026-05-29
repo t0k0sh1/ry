@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/llvm_emit/api.h"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 
@@ -453,13 +454,9 @@ llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *res
 }
 
 llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {
-    auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-    auto errFn = mod_->getOrInsertFunction(errFnName, errFnTy);
-    llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
-    llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-    errStruct = builder_.CreateInsertValue(errStruct, errMsg, 0, "err.msg");
-    errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-    return errStruct;
+    RyValueId id =
+        ry_emit_build_error_from_runtime(emit_ctx_, errFnName, errorTy_);
+    return static_cast<llvm::Value *>(ry_emit_resolve(emit_ctx_, id));
 }
 
 llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const char *errFnName) {

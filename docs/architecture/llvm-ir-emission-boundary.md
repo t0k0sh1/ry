@@ -37,6 +37,22 @@ The recommended sequence is:
 2. (#1949) Define the shared-library ABI starting from category 3 (the most narrowed surface today) and progressively wrap the other categories. Extract the LLVM-owning side into `libry_codegen.so`/`.dylib`.
 3. (#1950) Reimplement `libry_codegen` in Rust behind the same ABI.
 
+## Stage 2-A landed (#1949 scaffolding)
+
+The first #1949 PR is intentionally scaffolding-only — it stands up the shared-library boundary without migrating every category-3 helper:
+
+- **Shared library target**: `ry_llvm_emit` is built as `add_library(SHARED ...)` in the root `CMakeLists.txt`. It produces `lib/libry_llvm_emit.{dylib,so}`; LLVM is not linked into it (its symbols resolve from the main process via `-undefined dynamic_lookup` on macOS and `-rdynamic` on Linux, mirroring the `add_ry_native_lib()` pattern). Unlike the JIT-loaded stdlib native libs the `ry` / `ry_tests` executables and the `add_ry_fuzz_target` harnesses link it explicitly because `ry_lib`'s shim layer references its symbols at compile time.
+- **ABI header**: `include/ry/llvm_emit/api.h`. Defines `RyValueId` / `RyFuncId` / `RyTypeId` as `uint32_t` opaque handles, `RyEmitCtx` as an opaque struct, and a `RyEmitCallbacks` slot for the helpers that have not crossed the ABI yet. The header is the LLVM-type-exclusion contract: no `llvm::Value*` / `llvm::Module&` / `llvm::IRBuilder<>` / `llvm::Function*` / `llvm::BasicBlock*` / `llvm::Type*` appears in any public signature. Module / IRBuilder / context / function pointers are passed as transitional `void*` until categories 1 and 2 cross the ABI in a successor PR.
+- **Category-3 helpers crossing the ABI**: three of five.
+  - `ry_emit_get_runtime_fn` — backs `CodeGen::getRuntimeFn`.
+  - `ry_emit_build_error_from_runtime` — backs `CodeGen::buildErrorFromRuntime`. Takes `errorTy_` as a transitional `void*` parameter to preserve the named-`StructType` pointer identity that `isResultType` and friends rely on.
+  - `ry_emit_bounds_check` — backs the BoundsCheck pilot from #1961. Calls into `CodeGen::emitNegativeIndexWrap` and `CodeGen::emitBoundsError` through the `RyEmitCallbacks` slot.
+- **Category-3 helpers deferred** (still `CodeGen` methods, untouched call sites): `wrapPtrAsResult`, `wrapStatusAsResult`, and `emitResultBranch`. Their bodies pull in `getResultType` (a pointer-identity-sensitive `result_types_` cache) and `buildOkValue` / `buildErrValue` (which call `propagateMeta` + `tryRetainArcSource`). Migrating them via callbacks would widen the ABI surface beyond the scaffolding scope; they migrate together with the `ResultWrap` / `ResultUnwrap` lowered op in the same successor PR.
+- **BoundsCheck shape**: the lowered op type in `include/ry/codegen/lowered_bounds_check.hpp` still holds `llvm::Value*` members, per the two-stage boundary policy — the lowering↔emission split is an internal C++ boundary where LLVM types are allowed; only the ABI surface is opaque. `src/codegen_emission_bounds_check.cpp` interns the op's `idx` / `len` into handles immediately before each ABI call.
+- **EmitCtx lifecycle**: one ctx is created in `CodeGen::CodeGen` and destroyed in `CodeGen::~CodeGen`. `ry_emit_ctx_set_function` is called from `emitBoundsCheck` to sync the current `llvm::Function*` before the ABI creates new basic blocks. The handle table is a `std::vector<llvm::Value*>` indexed by `RyValueId`; handle 0 is the sentinel for "invalid / null".
+
+Subsequent PRs (still under issue #1949 unless re-scoped) will: (1) migrate `wrapPtrAsResult` / `wrapStatusAsResult` / `emitResultBranch` together with `ResultWrap` op support, (2) replace the `emitNegativeIndexWrap` / `emitBoundsError` callbacks with proper ABI functions, (3) start crossing category 1 / 2 (LLVM context handles and primitive type accessors) so the transitional `void*` parameters can become typed opaque handles. The codegen-layering graduation document remains unwritten until those steps complete and the boundary is observable end-to-end.
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

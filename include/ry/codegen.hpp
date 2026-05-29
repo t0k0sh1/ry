@@ -28,6 +28,15 @@
 #include <vector>
 
 
+// LLVM IR emission shared-library handle (#1949). Defined in the ABI
+// translation unit `src/llvm_emit/impl.cpp`; reached from CodeGen through the
+// extern "C" surface in include/ry/llvm_emit/api.h. Forward-declared here so
+// codegen.hpp does not pull the C header into every translation unit that
+// includes it.
+extern "C" {
+struct RyEmitCtx;
+}
+
 namespace ry {
 
 class OptionNoneHintGuard;
@@ -39,6 +48,7 @@ public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
                      bool coverage_mode = false, int coverage_file_id_offset = 0,
                      bool outline_mode = false);
+    ~CodeGen();
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
@@ -101,6 +111,10 @@ public:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
+    // Owns the LLVM IR emission ABI context (#1949). Initialized in the
+    // constructor, destroyed by ~CodeGen. Reached by shim implementations of
+    // getRuntimeFn / buildErrorFromRuntime / emitBoundsCheck.
+    ::RyEmitCtx *emit_ctx_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
     llvm::FunctionType *fnTy_ptr_to_ptr_;
     llvm::FunctionType *fnTy_ptr_to_i64_;
