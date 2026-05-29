@@ -1950,9 +1950,6 @@ public:
                          const std::string &fmtMsg, const std::string &globalName);
     llvm::Value *emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
                                         const std::string &prefix);
-    void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
-                         const std::string &errMsg, const std::string &globalName,
-                         const std::string &bbPrefix);
     // Narrow a float (f32/f64) to a signed or unsigned integer with a
     // runtime guard that rejects NaN / ±inf / out-of-range inputs before
     // LLVM `fptosi` / `fptoui` (which return poison on those inputs).

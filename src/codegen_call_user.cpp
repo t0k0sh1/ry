@@ -818,42 +818,6 @@ llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapB
     return builder_.CreateSelect(isNeg, wrapped, idx, prefix + "_idx");
 }
 
-void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
-                               const std::string &errMsg, const std::string &globalName,
-                               const std::string &bbPrefix) {
-    if (index->getType() == i1Ty_)
-        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
-
-    // Compile-time constant check with negative index wrap-around
-    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
-        if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
-            int64_t idx = ci->getSExtValue();
-            int64_t sz = static_cast<int64_t>(cs->getZExtValue());
-            if (idx < 0) idx += sz;
-            if (idx < 0 || idx >= sz)
-                codegenError("index " + std::to_string(ci->getSExtValue()) +
-                             " out of bounds (size " + std::to_string(sz) + ")");
-            index = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(idx));
-            return;
-        }
-    }
-
-    llvm::Value *origIndex = index;
-    index = emitNegativeIndexWrap(index, size, bbPrefix);
-
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *negCheck = builder_.CreateICmpSLT(
-        index, zero, bbPrefix + "_neg");
-    llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
-    llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
-    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
-    builder_.CreateCondBr(oob, oobBB, okBB);
-    builder_.SetInsertPoint(oobBB);
-    emitBoundsError(origIndex, size, errMsg, globalName);
-    builder_.SetInsertPoint(okBB);
-}
-
 llvm::Value *CodeGen::emitCheckedFPToInt(llvm::Value *val, llvm::Type *targetTy,
                                           const std::string &typeName,
                                           const std::string &bbPrefix,

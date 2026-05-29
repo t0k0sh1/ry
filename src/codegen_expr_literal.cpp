@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_bounds_check.hpp"
 
 
 namespace ry {
@@ -924,8 +925,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            emitBoundsCheck(index, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_idx_err", "arr");
+            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+                    *this, index, llvm::ConstantInt::get(i64Ty_, arrSize),
+                    codegen::lowered::BoundsKind::Array, ".arr_idx_err"))
+                index = codegen::emission::emitBoundsCheck(*this, *bcOp, "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, arrPtr, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
@@ -1142,8 +1145,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         return phi;
     }
 
-    emitBoundsCheck(index, length,
-                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_err", "index");
+    if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+            *this, index, length, codegen::lowered::BoundsKind::List, ".idx_err"))
+        index = codegen::emission::emitBoundsCheck(*this, *bcOp, "index");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");

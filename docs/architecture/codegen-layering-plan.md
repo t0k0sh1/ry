@@ -38,7 +38,7 @@ The vocabulary is kept small so the LLVM IR emission layer can map each op to a 
 | Op | Lowering input (Ry intent) | Emission output (LLVM API sequence) | Current implementation site |
 |---|---|---|---|
 | `RuntimeCall` | A Ry-level call resolved to a `__ry_*` runtime symbol with a structured signature and return-wrapping policy. | `mod_->getOrInsertFunction("__ry_…", funcType)` + `CreateCall`. | Scattered across `codegen_call_*.cpp` (no central helper today; see `codegen_any.cpp:199,362,912`, `codegen_call_user.cpp:392-767`). |
-| `BoundsCheck` | An index expression, a length expression, and a structured error spec (error kind + source position). | `CreateICmpSLT` + `CreateICmpSGE` + `CreateCondBr` + `emitBoundsError` (exit IR). | `emitBoundsCheck` in `codegen_call_user.cpp:821` (~35 lines). |
+| `BoundsCheck` | An index expression, a length expression, and a structured error spec (error kind + source position). | `CreateICmpSLT` + `CreateICmpSGE` + `CreateCondBr` + `emitBoundsError` (exit IR). | Extracted in #1961: `lowering::lowerBoundsCheck` in `codegen_lowering_bounds_check.cpp` (constant fold + classification), `emission::emitBoundsCheck` in `codegen_emission_bounds_check.cpp` (LLVM IR). Op type in `include/ry/codegen/lowered_bounds_check.hpp`. |
 | `ResultWrap` / `ResultUnwrap` | Wrap a value or runtime-error query as `Result<T, Error>`, or unwrap on a known path. | `CreateInsertValue` for the `Result` struct, or BB split + PHI for unwrap. | Already centralized: `emitResultBranch`, `wrapPtrAsResult`, `wrapStatusAsResult`, `buildErrorFromRuntime` at `codegen_call_dispatch.cpp:430-481`. |
 | `OptionWrap` | Wrap a value as `Some` / `None`. | `CreateInsertValue` for the `Option` struct. | `codegen_call.cpp` `buildSomeValue` / `buildNoneValue` (helpers, not yet a single entry point). |
 | `AnyWrap` / `AnyUnwrap` | Decide the runtime type tag from value metadata and wrap; or unwrap to a concrete type with a tag check. | `CreateInsertValue` / `CreateExtractValue` for the `{i64 tag, [8 x i8] data}` struct + runtime helper calls. | `wrapInAny` (`codegen_any.cpp:44`), `unwrapFromAny` (:230), `tryUnwrapFromAny` (:500). |
@@ -83,9 +83,42 @@ The pilot for the lowering / emission split is the **`BoundsCheck`** op.
 - The emission side accepts the op via an `EmitterContext`-shaped interface (the narrowing direction documented in `llvm-ir-emission-boundary.md` §"Narrowing direction").
 - The call-site rewrite at the 6 callers is mechanical — i.e. the split does not require redesigning callers.
 
-### Expected post-cleanup documentation deliverable
+### Post-extraction op shape (recorded after #1961)
 
-The pilot PR updates this `codegen-layering-plan.md` to reflect the actual `BoundsCheck` op shape after extraction — including any vocabulary entries that proved redundant or under-specified during the pilot. A separate graduation document for the lowering / emission sub-layers is **not** written at this step; that comes only after step 2 per §"When the codegen layers earn their graduation document". Writing per-layer graduation docs at the pilot stage would be exactly the aspirational anti-pattern the workflow exists to prevent.
+The pilot landed as #1961. The actual `BoundsCheck` op shape, in `include/ry/codegen/lowered_bounds_check.hpp`:
+
+```cpp
+namespace ry::codegen::lowered {
+
+enum class BoundsKind { List, Array };
+
+struct BoundsCheckErrorSpec {
+    BoundsKind kind;          // the only two error-message variants
+                              // observed across the 6 call sites
+    std::string global_name;  // cachedGlobalString dedup key
+                              // (e.g. ".idx_assign_err")
+    // SourceLocation loc;    // reserved; emitBoundsError does not yet
+                              // consume position metadata
+};
+
+struct BoundsCheckOp {
+    llvm::Value *idx;
+    llvm::Value *len;
+    BoundsCheckErrorSpec error_spec;
+};
+
+} // namespace ry::codegen::lowered
+```
+
+Notes on what was kept vs. cut against the original vocabulary intent (§"Lowered IR vocabulary"):
+
+- **Error format string → enum**: the 6 call sites use exactly two `fprintf` format strings (list vs. array). Carrying a free-form format string in the op was rejected; `BoundsKind` is sufficient. The emission helper reconstructs the format string from `kind`.
+- **`SourceLocation` reserved as a comment**: the doc text named "source position" as part of the error spec, but the current `emitBoundsError` → `emitRuntimeError` chain emits `fprintf(stderr, ...) + exit(1)` without consuming a position. The field is left as a comment placeholder so a future PR that threads position into the runtime error channel does not have to renegotiate the op shape.
+- **`bb_prefix` stays outside the op**: the LLVM block-label hint (e.g. `"idx_assign"`, `"pcow_list"`) is an emission concern only and was not promoted into the op. The emission helper takes it as a separate parameter.
+- **Constant fold stays in lowering**: the compile-time `codegenError` path uses a Ry-semantic diagnostic and so cannot live on the emission side. Lowering returns `std::nullopt` for the constant-fold path; the helper writes the folded constant back into the caller's `Value *&idx` in place. The runtime path returns a `BoundsCheckOp` carrying the un-wrapped index; emission performs `emitNegativeIndexWrap` itself so that lowering contains no `IRBuilder<>::Create*` call.
+- **`emitNegativeIndexWrap` and `emitBoundsError` remain `CodeGen` methods**: the former is shared with `slice` / substring / range-index; the latter is a one-line shim over `emitRuntimeError`. Both are reachable from the emission helper as `cg.emitNegativeIndexWrap(...)` / `cg.emitBoundsError(...)`.
+
+A separate graduation document for the lowering / emission sub-layers is **not** written at this step; that comes only after step 2 per §"When the codegen layers earn their graduation document". Writing per-layer graduation docs at the pilot stage would be exactly the aspirational anti-pattern the workflow exists to prevent.
 
 ### Alternatives considered (not selected)
 

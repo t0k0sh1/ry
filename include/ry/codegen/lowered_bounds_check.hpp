@@ -1,0 +1,58 @@
+#pragma once
+
+#include <optional>
+#include <string>
+
+namespace llvm {
+class Value;
+}
+
+namespace ry {
+class CodeGen;
+}
+
+namespace ry::codegen::lowered {
+
+enum class BoundsKind { List, Array };
+
+// Structured error spec for a bounds-check op.
+// A future PR will add a SourceLocation field once emitBoundsError consumes
+// position metadata; see docs/architecture/codegen-layering-plan.md.
+struct BoundsCheckErrorSpec {
+    BoundsKind kind;
+    std::string global_name;
+};
+
+struct BoundsCheckOp {
+    llvm::Value *idx;
+    llvm::Value *len;
+    BoundsCheckErrorSpec error_spec;
+};
+
+} // namespace ry::codegen::lowered
+
+namespace ry::codegen::lowering {
+
+// Constant-fold case: both idx and len are ConstantInt — fold statically
+// (apply negative-index wrap, reject OOB via codegenError, overwrite *idx with
+// the folded constant) and return std::nullopt.
+// Runtime case: return a BoundsCheckOp carrying the un-wrapped idx and len.
+// Caller passes the BoundsCheckOp to emission::emitBoundsCheck and assigns
+// its return value back to idx for the subsequent GEP.
+std::optional<lowered::BoundsCheckOp>
+lowerBoundsCheck(CodeGen &cg, llvm::Value *&idx, llvm::Value *len,
+                 lowered::BoundsKind kind, std::string global_name);
+
+} // namespace ry::codegen::lowering
+
+namespace ry::codegen::emission {
+
+// Emit the runtime bounds-check IR sequence for a pre-lowered BoundsCheckOp.
+// Touches only LLVM state via CodeGen (builder_, ctx_, fn_, emitBoundsError,
+// emitNegativeIndexWrap); does not access type registries, ARC, sema, or
+// module-namespace state. Returns the wrapped index (used by the caller's
+// subsequent GEP). bb_prefix is an LLVM block-label naming hint only.
+llvm::Value *emitBoundsCheck(CodeGen &cg, const lowered::BoundsCheckOp &op,
+                             const std::string &bb_prefix);
+
+} // namespace ry::codegen::emission
