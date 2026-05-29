@@ -17,7 +17,7 @@ lexer → parser → AST → module loader → sema → codegen → runtime ABI
 | AST | `include/ry/ast/ast.hpp` | Plain-data node definitions shared by every later layer. The AST is the contract between parsing and downstream consumers. |
 | module loader | `include/ry/module/module_loader.hpp` | Resolve `import` graphs, load `.ry` source files lazily, and provide AST roots for each module. |
 | sema | `include/ry/sema/*.hpp` | Static analysis that runs alongside codegen — return-path coverage (`sema_return.hpp`), pattern-match exhaustiveness, etc. |
-| codegen | `include/ry/codegen.hpp` | Lower AST + sema results into LLVM IR. Owns the `CodeGen` monolith (LLVM context, ARC bookkeeping, type/metadata registries, stdlib dispatch). |
+| codegen | `include/ry/codegen.hpp` | Lower AST + sema results into LLVM IR. Owns the `CodeGen` monolith (LLVM context, ARC bookkeeping, type/metadata registries, stdlib dispatch). A 2-layer split into Ry semantic lowering vs LLVM IR emission is the v0.0.26 working hypothesis ([Codegen Layering Plan](codegen-layering-plan.md)) and is the critical path to the shared-library extraction in #1949 and the Rust reimplementation in #1950. |
 | runtime ABI | `include/ry/runtime/{core,native}/*.hpp` | C++ runtime entry points exposed via `extern "C"` symbols (`__ry_*`). See [Runtime ABI Boundary](runtime-abi-boundary.md) for the categorization. |
 
 `codegen_native_dispatch.hpp` / `directive_meta.hpp` / `ry_layout.hpp` / `codegen_guards.hpp` are shared declarations co-owned by codegen and the runtime ABI; they sit at the codegen/runtime interface and intentionally span the two layers.
@@ -47,5 +47,7 @@ The observed adjacency list as of v0.0.26 is:
 
 ## Related documents
 
+- [Layer Graduation Workflow](layer-graduation-workflow.md) — graduation criteria, the per-layer graduation document template, and the "write the contract after the refactor" rule that governs how this layer hypothesis evolves into per-layer contracts.
+- [Codegen Layering Plan](codegen-layering-plan.md) — codegen-specific working hypothesis for the Ry semantic lowering vs LLVM IR emission split, the lowered IR vocabulary, and the pilot extraction target.
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — identifies the candidate shared-library boundary inside the codegen layer.
 - [Runtime ABI Boundary](runtime-abi-boundary.md) — categorizes the `__ry_*` `extern "C"` surface for Rust migration planning.
