@@ -64,14 +64,6 @@ RY_IS_RESOURCE(isRegex,              "Regex")
 #undef RY_IS_RESOURCE
 
 
-std::string CodeGen::trimTypeNameSpaces(const std::string &s) {
-    size_t b = 0;
-    while (b < s.size() && s[b] == ' ') ++b;
-    size_t e = s.size();
-    while (e > b && s[e - 1] == ' ') --e;
-    return s.substr(b, e - b);
-}
-
 bool CodeGen::ensureEnumInstantiated(const std::string &typeName) {
     if (enum_types_.count(typeName)) return true;
     auto lt = typeName.find('<');
@@ -95,17 +87,17 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
         std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::TaskResult, val, resolveType(inner));
-    } else if (isListTypeName(resolved) && resolved.back() == '>') {
+    } else if (ry::util::isListTypeName(resolved) && resolved.back() == '>') {
         std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::ListElem, val, resolveType(inner));
         getOrCreateMeta(val).list_elem_type_name = inner;
-        if (isFunctionTypeName(inner))
+        if (ry::util::isFunctionTypeName(inner))
             getOrCreateMeta(val).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
-        if (isListTypeName(inner) && inner.back() == '>') {
+        if (ry::util::isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
             setTypeMeta(TypeMeta::NestedListElem, val, resolveType(nested));
         }
-    } else if (isMapTypeName(resolved) && resolved.back() == '>') {
+    } else if (ry::util::isMapTypeName(resolved) && resolved.back() == '>') {
         auto [keyTy, valTy] = parseMapTypeAnnotation(resolved);
         if (keyTy) setTypeMeta(TypeMeta::MapKey, val, keyTy);
         if (valTy) setTypeMeta(TypeMeta::MapValue, val, valTy);
@@ -113,24 +105,24 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         // (key name is used by map-iteration destructure in #813).
         auto parts = splitTypeArgs(resolved.substr(4, resolved.size() - 5));
         if (parts.size() == 2) {
-            std::string ktn = trimTypeNameSpaces(parts[0]);
-            std::string vtn = trimTypeNameSpaces(parts[1]);
+            std::string ktn = ry::util::trimTypeNameSpaces(parts[0]);
+            std::string vtn = ry::util::trimTypeNameSpaces(parts[1]);
             if (!ktn.empty()) {
                 getOrCreateMeta(val).map_key_type_name = ktn;
-                if (isFunctionTypeName(ktn))
+                if (ry::util::isFunctionTypeName(ktn))
                     getOrCreateMeta(val).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
             }
             if (!vtn.empty()) {
                 getOrCreateMeta(val).map_value_type_name = vtn;
-                if (isFunctionTypeName(vtn))
+                if (ry::util::isFunctionTypeName(vtn))
                     getOrCreateMeta(val).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
             }
         }
-    } else if (isSetTypeName(resolved) && resolved.back() == '>') {
+    } else if (ry::util::isSetTypeName(resolved) && resolved.back() == '>') {
         std::string inner = resolved.substr(4, resolved.size() - 5);
         setTypeMeta(TypeMeta::SetElem, val, resolveType(inner));
         getOrCreateMeta(val).set_elem_type_name = inner;
-        if (isFunctionTypeName(inner))
+        if (ry::util::isFunctionTypeName(inner))
             getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0 && resolved.back() == '>') {
         // Stamp the lossless full type name so pattern bindings can recover
@@ -162,7 +154,7 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
             propagateTypeMeta(okType, val);
-            propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(okType)));
+            propagateResourceLikeMeta(resolveTypeAlias(ry::util::trimTypeNameSpaces(okType)));
             bool hasMeta = (getMeta(val) != nullptr &&
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
@@ -173,7 +165,7 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                 size_t start = errType.find_first_not_of(' ');
                 if (start != std::string::npos) errType = errType.substr(start);
                 propagateTypeMeta(errType, val);
-                propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(errType)));
+                propagateResourceLikeMeta(resolveTypeAlias(ry::util::trimTypeNameSpaces(errType)));
             }
         }
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
@@ -182,7 +174,7 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
         std::string inner = resolved.substr(7, resolved.size() - 8);
         propagateTypeMeta(inner, val);
-        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
+        propagateResourceLikeMeta(resolveTypeAlias(ry::util::trimTypeNameSpaces(inner)));
     } else if (resolved.size() > 1 && resolved.back() == '?') {
         // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
         // Normalize to Option<inner> form before stamping source_type_name so
@@ -191,8 +183,8 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         std::string inner = resolved.substr(0, resolved.size() - 1);
         getOrCreateMeta(val).source_type_name = "Option<" + inner + ">";
         propagateTypeMeta(inner, val);
-        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
-    } else if (isLowLevelTypeName(resolved)) {
+        propagateResourceLikeMeta(resolveTypeAlias(ry::util::trimTypeNameSpaces(inner)));
+    } else if (ry::util::isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
     } else if (ResourceKindRegistry::instance().lookupByTypeName(resolved) !=
                ResourceKindRegistry::NONE) {
@@ -224,7 +216,7 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     }
     if (!entry) return;
     std::string resolved = resolveTypeAlias(entry->returnTypeName);
-    if (!isFunctionTypeName(resolved)) return;
+    if (!ry::util::isFunctionTypeName(resolved)) return;
     getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
@@ -232,14 +224,14 @@ std::string CodeGen::extractMapKeyTypeName(const std::string &mapTypeName) {
     std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
     auto parts = splitTypeArgs(inner);
     if (parts.size() != 2) return "";
-    return trimTypeNameSpaces(parts[0]);
+    return ry::util::trimTypeNameSpaces(parts[0]);
 }
 
 std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
     std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
     auto parts = splitTypeArgs(inner);
     if (parts.size() != 2) return "";
-    return trimTypeNameSpaces(parts[1]);
+    return ry::util::trimTypeNameSpaces(parts[1]);
 }
 
 std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy) {

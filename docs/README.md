@@ -47,3 +47,15 @@ For detailed language specifications, see the reference pages below.
 | [Design by Contract](reference/contracts.md) | require, ensure, invariant |
 | [Directives](reference/directives.md) | @deprecated and other compile-time instructions |
 | [Error List](reference/errors.md) | Compile errors and runtime errors |
+
+---
+
+## Architecture (for contributors)
+
+Internal architecture references for working on the Ry compiler and runtime. These describe layer boundaries, the LLVM IR emission interface, and the runtime ABI surface — they are not needed to write Ry programs.
+
+| Page | Contents |
+|------|----------|
+| [Compiler Layers](architecture/compiler-layers.md) | lexer → parser → AST → module → sema → codegen → runtime ABI dependency direction |
+| [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | Candidate shared-library boundary for the LLVM IR emission layer (#1949/#1950 prep) |
+| [Runtime ABI Boundary](architecture/runtime-abi-boundary.md) | `__ry_*` `extern "C"` surface categorized by core/native for Rust migration planning |

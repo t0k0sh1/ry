@@ -230,8 +230,8 @@ llvm::Value *CodeGen::buildUnitAny() {
 llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                      const std::string &rawTargetTypeName) {
     // Substitute generic type-parameter names at the helper's entry so every
-    // downstream dispatch (collection-arm via `isListTypeName` /
-    // `isMapTypeName` / `isSetTypeName`, enum-descriptor cache key in
+    // downstream dispatch (collection-arm via `ry::util::isListTypeName` /
+    // `ry::util::isMapTypeName` / `ry::util::isSetTypeName`, enum-descriptor cache key in
     // `unwrapEnumFromAny`, error message, record `findRecordTypeName`) sees
     // the concrete type rather than the raw "T". No-op when `type_param_scope_`
     // is empty, so non-generic call sites stay byte-identical. Mirrors the
@@ -255,8 +255,8 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         targetTypeName != rawTargetTypeName;
     if (fromGenericSubstitution && targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
-        if (isListTypeName(resolved)) {
-            std::string inner = trimTypeNameSpaces(
+        if (ry::util::isListTypeName(resolved)) {
+            std::string inner = ry::util::trimTypeNameSpaces(
                 resolved.substr(5, resolved.size() - 6));
             if (inner != "any") {
                 codegenError(
@@ -265,8 +265,8 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                     "be 'any' (use 'List<any>' and unwrap elements "
                     "individually)");
             }
-        } else if (isSetTypeName(resolved)) {
-            std::string inner = trimTypeNameSpaces(
+        } else if (ry::util::isSetTypeName(resolved)) {
+            std::string inner = ry::util::trimTypeNameSpaces(
                 resolved.substr(4, resolved.size() - 5));
             if (inner != "any") {
                 codegenError(
@@ -275,12 +275,12 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                     "be 'any' (use 'Set<any>' and unwrap elements "
                     "individually)");
             }
-        } else if (isMapTypeName(resolved)) {
+        } else if (ry::util::isMapTypeName(resolved)) {
             std::string innerArgs = resolved.substr(4, resolved.size() - 5);
             auto parts = splitTypeArgs(innerArgs);
             if (parts.size() == 2) {
-                std::string k = trimTypeNameSpaces(parts[0]);
-                std::string v = trimTypeNameSpaces(parts[1]);
+                std::string k = ry::util::trimTypeNameSpaces(parts[0]);
+                std::string v = ry::util::trimTypeNameSpaces(parts[1]);
                 if (k != "str" || v != "any") {
                     codegenError(
                         "unwrapping 'any' to '" + targetTypeName +
@@ -437,13 +437,13 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
     bool isCollectionUnwrap = false;
     if (targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
-        if (isListTypeName(resolved)) {
+        if (ry::util::isListTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::List);
             isCollectionUnwrap = true;
-        } else if (isMapTypeName(resolved)) {
+        } else if (ry::util::isMapTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::Map);
             isCollectionUnwrap = true;
-        } else if (isSetTypeName(resolved)) {
+        } else if (ry::util::isSetTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::Set);
             isCollectionUnwrap = true;
         }
@@ -542,12 +542,12 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
             if (resolved.size() > kPrefixLen + 1 &&
                 resolved.compare(0, kPrefixLen, kPrefix) == 0 &&
                 resolved.back() == '>') {
-                innerName = trimTypeNameSpaces(
+                innerName = ry::util::trimTypeNameSpaces(
                     resolved.substr(kPrefixLen,
                                     resolved.size() - kPrefixLen - 1));
             } else if (resolved.size() > 1 && resolved.back() == '?') {
                 // `T?` shorthand for `Option<T>`.
-                innerName = trimTypeNameSpaces(
+                innerName = ry::util::trimTypeNameSpaces(
                     resolved.substr(0, resolved.size() - 1));
             }
             return tryUnwrapOptionFromAny(anyVal, st, innerTy, innerName,
@@ -573,8 +573,8 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     // of scope for #1852.
     if (targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
-        if (isListTypeName(resolved)) {
-            std::string inner = trimTypeNameSpaces(
+        if (ry::util::isListTypeName(resolved)) {
+            std::string inner = ry::util::trimTypeNameSpaces(
                 resolved.substr(5, resolved.size() - 6));
             if (inner == "any") {
                 // Falls through to the standard pointer-tag dispatch below
@@ -587,18 +587,18 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                 return tryUnwrapListFromAny(anyVal, elemTy, inner,
                                               targetTypeName, resTy);
             }
-        } else if (isSetTypeName(resolved)) {
-            std::string inner = trimTypeNameSpaces(
+        } else if (ry::util::isSetTypeName(resolved)) {
+            std::string inner = ry::util::trimTypeNameSpaces(
                 resolved.substr(4, resolved.size() - 5));
             if (inner != "any") {
                 return emitUnsupportedErr("typed Set<" + inner + ">");
             }
-        } else if (isMapTypeName(resolved)) {
+        } else if (ry::util::isMapTypeName(resolved)) {
             std::string innerArgs = resolved.substr(4, resolved.size() - 5);
             auto parts = splitTypeArgs(innerArgs);
             if (parts.size() == 2) {
-                std::string k = trimTypeNameSpaces(parts[0]);
-                std::string v = trimTypeNameSpaces(parts[1]);
+                std::string k = ry::util::trimTypeNameSpaces(parts[0]);
+                std::string v = ry::util::trimTypeNameSpaces(parts[1]);
                 if (k != "str") {
                     return emitUnsupportedErr(
                         "typed Map<" + k + ", " + v + ">");
@@ -672,13 +672,13 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     bool isCollectionUnwrap = false;
     if (targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
-        if (isListTypeName(resolved)) {
+        if (ry::util::isListTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::List);
             isCollectionUnwrap = true;
-        } else if (isMapTypeName(resolved)) {
+        } else if (ry::util::isMapTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::Map);
             isCollectionUnwrap = true;
-        } else if (isSetTypeName(resolved)) {
+        } else if (ry::util::isSetTypeName(resolved)) {
             expectedTag = static_cast<int64_t>(RyAnyTag::Set);
             isCollectionUnwrap = true;
         }
@@ -751,8 +751,8 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
         }
         if (fieldLlvmTy != ptrTy_) return FieldKind::None;
         std::string resolved = resolveTypeAlias(fieldTypeName);
-        if (isListTypeName(resolved) || isMapTypeName(resolved) ||
-            isSetTypeName(resolved))
+        if (ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) ||
+            ry::util::isSetTypeName(resolved))
             return FieldKind::Collection;
         if (resolved == "str") return FieldKind::Str;
         return FieldKind::None;
@@ -784,9 +784,9 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
                     break;
                 case FieldKind::Collection: {
                     CollectionKind ck = CollectionKind::List;
-                    if (isMapTypeName(p.resolvedTypeName))
+                    if (ry::util::isMapTypeName(p.resolvedTypeName))
                         ck = CollectionKind::Map;
-                    else if (isSetTypeName(p.resolvedTypeName))
+                    else if (ry::util::isSetTypeName(p.resolvedTypeName))
                         ck = CollectionKind::Set;
                     emitArcReleaseLoadedElement(p.val, ck, p.resolvedTypeName,
                                                 "tryrec.rel.col");
@@ -982,8 +982,8 @@ static TryUnwrapElemKind classifyTryUnwrapElem(
     }
     if (elemLlvmTy != cg.ptrTy_) return TryUnwrapElemKind::None;
     std::string resolved = cg.resolveTypeAlias(elemTypeName);
-    if (cg.isListTypeName(resolved) || cg.isMapTypeName(resolved) ||
-        cg.isSetTypeName(resolved))
+    if (ry::util::isListTypeName(resolved) || ry::util::isMapTypeName(resolved) ||
+        ry::util::isSetTypeName(resolved))
         return TryUnwrapElemKind::Collection;
     if (resolved == "str") return TryUnwrapElemKind::Str;
     return TryUnwrapElemKind::None;
@@ -1154,8 +1154,8 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
                 break;
             case TryUnwrapElemKind::Collection: {
                 CollectionKind ck = CollectionKind::List;
-                if (isMapTypeName(resolvedElemTy)) ck = CollectionKind::Map;
-                else if (isSetTypeName(resolvedElemTy)) ck = CollectionKind::Set;
+                if (ry::util::isMapTypeName(resolvedElemTy)) ck = CollectionKind::Map;
+                else if (ry::util::isSetTypeName(resolvedElemTy)) ck = CollectionKind::Set;
                 emitArcReleaseLoadedElement(relVal, ck, resolvedElemTy,
                                             "trylst.rel.col");
                 break;
@@ -1431,8 +1431,8 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
                     break;
                 case TryUnwrapElemKind::Collection: {
                     CollectionKind ck = CollectionKind::List;
-                    if (isMapTypeName(resolvedValTy)) ck = CollectionKind::Map;
-                    else if (isSetTypeName(resolvedValTy)) ck = CollectionKind::Set;
+                    if (ry::util::isMapTypeName(resolvedValTy)) ck = CollectionKind::Map;
+                    else if (ry::util::isSetTypeName(resolvedValTy)) ck = CollectionKind::Set;
                     emitArcReleaseLoadedElement(relVal, ck, resolvedValTy,
                                                 "trymap.rel.v.col");
                     break;
@@ -1819,13 +1819,13 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
             std::string canon = resolveTypeAlias(useTypeName);
             switch (kind) {
                 case CollectionKind::List:
-                    sourceMatchesKind = isListTypeName(canon);
+                    sourceMatchesKind = ry::util::isListTypeName(canon);
                     break;
                 case CollectionKind::Map:
-                    sourceMatchesKind = isMapTypeName(canon);
+                    sourceMatchesKind = ry::util::isMapTypeName(canon);
                     break;
                 case CollectionKind::Set:
-                    sourceMatchesKind = isSetTypeName(canon);
+                    sourceMatchesKind = ry::util::isSetTypeName(canon);
                     break;
                 case CollectionKind::Str:
                     sourceMatchesKind = false;
@@ -2002,13 +2002,13 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
             std::string canon = resolveTypeAlias(useTypeName);
             switch (kind) {
                 case CollectionKind::List:
-                    sourceMatchesKind = isListTypeName(canon);
+                    sourceMatchesKind = ry::util::isListTypeName(canon);
                     break;
                 case CollectionKind::Map:
-                    sourceMatchesKind = isMapTypeName(canon);
+                    sourceMatchesKind = ry::util::isMapTypeName(canon);
                     break;
                 case CollectionKind::Set:
-                    sourceMatchesKind = isSetTypeName(canon);
+                    sourceMatchesKind = ry::util::isSetTypeName(canon);
                     break;
                 case CollectionKind::Str:
                     sourceMatchesKind = false;

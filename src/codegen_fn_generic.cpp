@@ -288,19 +288,6 @@ static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
     return out;
 }
 
-bool CodeGen::splitGenericTypeName(const std::string &s,
-                                    std::string &head,
-                                    std::vector<std::string> &inner) {
-    std::string t = trimWs(s);
-    size_t lt = t.find('<');
-    if (lt == std::string::npos) return false;
-    if (t.back() != '>') return false;
-    head = trimWs(t.substr(0, lt));
-    std::string body = t.substr(lt + 1, t.size() - lt - 2);
-    inner = splitTopLevelCommas(body);
-    return true;
-}
-
 static bool splitTupleTypeName(const std::string &s,
                                 std::vector<std::string> &elements) {
     std::string t = trimWs(s);
@@ -384,7 +371,7 @@ bool CodeGen::unifyTypeParam(
         } else if constexpr (std::is_same_v<T, GenericType>) {
             std::string head;
             std::vector<std::string> innerArgs;
-            if (!splitGenericTypeName(argTypeName, head, innerArgs))
+            if (!ry::util::splitGenericTypeName(argTypeName, head, innerArgs))
                 return false;
             if (head != v.name) return false;
             if (innerArgs.size() != v.type_args.size()) return false;
@@ -429,7 +416,7 @@ bool CodeGen::unifyTypeParam(
             }
             std::string head;
             std::vector<std::string> innerArgs;
-            if (splitGenericTypeName(t, head, innerArgs) &&
+            if (ry::util::splitGenericTypeName(t, head, innerArgs) &&
                 head == "Option" && innerArgs.size() == 1) {
                 return unifyTypeParam(*v.inner, innerArgs[0],
                                       typeParamSet, inferred, fnName);
@@ -483,7 +470,7 @@ static bool argMatchesParam(CodeGen &cg,
         } else if constexpr (std::is_same_v<T, GenericType>) {
             std::string head;
             std::vector<std::string> innerArgs;
-            if (!cg.splitGenericTypeName(argTypeName, head, innerArgs))
+            if (!ry::util::splitGenericTypeName(argTypeName, head, innerArgs))
                 return false;
             if (head != v.name) return false;
             if (innerArgs.size() != v.type_args.size()) return false;
@@ -521,7 +508,7 @@ static bool argMatchesParam(CodeGen &cg,
             }
             std::string head;
             std::vector<std::string> innerArgs;
-            if (cg.splitGenericTypeName(t, head, innerArgs) &&
+            if (ry::util::splitGenericTypeName(t, head, innerArgs) &&
                 head == "Option" && innerArgs.size() == 1) {
                 return argMatchesParam(cg, *v.inner, innerArgs[0], typeParamSet);
             }

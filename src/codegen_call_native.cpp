@@ -12,7 +12,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // Guard: check if this callee has any registered @native signature
     // for this package (or as a bare name for inline declarations).
     // The sigKey is reused later for signature lookup (variadic + normal paths).
-    std::string sigKey = nativeSigKey(package, e.callee);
+    std::string sigKey = ry::util::nativeSigKey(package, e.callee);
     if (!native_fn_sigs_.count(sigKey) && !native_fn_sigs_.count(e.callee))
         return nullptr;
 
@@ -31,7 +31,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     auto getErrFnName = [&]() -> std::string {
         if (entry->errFnOverride)
             return entry->errFnOverride;
-        return deriveRuntimeFnName(package, "get_last_error");
+        return ry::util::deriveRuntimeFnName(package, "get_last_error");
     };
 
     // Resolve the effective runtime suffix
@@ -145,7 +145,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
         std::string rtName = (entry->rtNameOverride
             ? std::string(entry->rtNameOverride)
-            : deriveRuntimeFnName(package, rtSuffix))
+            : ry::util::deriveRuntimeFnName(package, rtSuffix))
             + std::to_string(n);
 
         // For ResultPtr, the C runtime returns a raw pointer; wrap after call.
@@ -322,7 +322,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // Derive runtime function name
     std::string rtName = entry->rtNameOverride
         ? entry->rtNameOverride
-        : deriveRuntimeFnName(package, rtSuffix);
+        : ry::util::deriveRuntimeFnName(package, rtSuffix);
 
     // Pre-compute out-param type for ResultOutParam (used in two places)
     llvm::Type *outTy = nullptr;
@@ -512,7 +512,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     candidateTypes.reserve(e.args.size());
 
     for (const auto &lib : libIt->second) {
-        std::string sigKey = nativeSigKey(lib, e.callee);
+        std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
         if (sigIt == native_fn_sigs_.end()) continue;
         for (const auto &sig : sigIt->second) {
@@ -548,7 +548,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     if (!matchedSig) {
         std::vector<bool> candidateNeedsWidening(e.args.size(), false);
         for (const auto &lib : libIt->second) {
-            std::string sigKey = nativeSigKey(lib, e.callee);
+            std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
             auto sigIt = native_fn_sigs_.find(sigKey);
             if (sigIt == native_fn_sigs_.end()) continue;
             for (const auto &sig : sigIt->second) {
@@ -610,13 +610,13 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     }
 
     // Derive runtime function name: __ry_<module>_<fn_name>
-    std::string rtName = deriveRuntimeFnName(matchedPackage, e.callee);
+    std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, e.callee);
 
     // Determine C-level calling convention from the Ry return type
     auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->returnTypeName);
 
     // Error function name for Result wrappings
-    std::string errFnName = deriveRuntimeFnName(matchedPackage, "get_last_error");
+    std::string errFnName = ry::util::deriveRuntimeFnName(matchedPackage, "get_last_error");
 
     // Build C-level return type and handle out-param
     llvm::Type *outTy = nullptr;
@@ -760,7 +760,7 @@ const CodeGen::NativeFnSignature *CodeGen::pickNativeOverloadByCallShape(
     actualNames.reserve(e.args.size());
     for (const auto &arg : e.args) {
         std::string n = inferExprTypeName(*arg, emptyParamMap, emptyParamNameMap);
-        actualNames.push_back(resolveTypeAlias(trimTypeNameSpaces(n)));
+        actualNames.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(n)));
     }
 
     picked = nullptr;
@@ -769,7 +769,7 @@ const CodeGen::NativeFnSignature *CodeGen::pickNativeOverloadByCallShape(
         if (sig.params.size() != e.args.size()) continue;
         bool eq = true;
         for (size_t i = 0; i < sig.params.size(); ++i) {
-            if (resolveTypeAlias(trimTypeNameSpaces(sig.params[i].typeName))
+            if (resolveTypeAlias(ry::util::trimTypeNameSpaces(sig.params[i].typeName))
                     != actualNames[i]) {
                 eq = false; break;
             }

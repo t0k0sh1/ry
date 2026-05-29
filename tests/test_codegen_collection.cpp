@@ -2779,7 +2779,7 @@ TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
 }
 
 // Union with a function-typed variant must be rejected at compile time.
-// Regression for the isFunctionTypeName guard added in #960.
+// Regression for the ry::util::isFunctionTypeName guard added in #960.
 TEST_F(CodeGenTest, UnionFnVariantEqualityRejected) {
     expectCompileError(
         "fn makeFn() -> fn(int) -> int:\n"

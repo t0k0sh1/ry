@@ -36,33 +36,33 @@ static std::string withCoreAndTestingDirectiveDecls(const char *src) {
 
 class DirectiveTest : public CodeGenTest {};
 
-// --- deriveRuntimeFnName tests ---
+// --- ry::util::deriveRuntimeFnName tests ---
 
 TEST(NativeFnNaming, PackageFunction) {
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "encode"), "__ry_base64_encode");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "decode"), "__ry_base64_decode");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("base64", "encode"), "__ry_base64_encode");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("base64", "decode"), "__ry_base64_decode");
 }
 
 TEST(NativeFnNaming, MathFunctions) {
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "sin"), "__ry_math_sin");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "cos"), "__ry_math_cos");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "floor"), "__ry_math_floor");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("math", "sin"), "__ry_math_sin");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("math", "cos"), "__ry_math_cos");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("math", "floor"), "__ry_math_floor");
 }
 
 TEST(NativeFnNaming, EmptyPackage) {
     // Empty package still produces a name, but callers should not use it
     // for builtins since they use varied naming (libc, inline IR, etc.)
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("", "print"), "__ry_print");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("", "print"), "__ry_print");
 }
 
 TEST(NativeFnNaming, MultiWordFunctionName) {
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("filesystem", "listDir"), "__ry_filesystem_listDir");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("path", "isAbsolute"), "__ry_path_isAbsolute");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("filesystem", "listDir"), "__ry_filesystem_listDir");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("path", "isAbsolute"), "__ry_path_isAbsolute");
 }
 
 TEST(NativeFnNaming, ErrorGetter) {
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "get_last_error"), "__ry_base64_get_last_error");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("io", "get_last_error"), "__ry_io_get_last_error");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("base64", "get_last_error"), "__ry_base64_get_last_error");
+    EXPECT_EQ(ry::util::deriveRuntimeFnName("io", "get_last_error"), "__ry_io_get_last_error");
 }
 
 // --- NativeFnSignature registry tests ---

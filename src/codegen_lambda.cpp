@@ -486,7 +486,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.returnTypeName = returnTypeName;
     if (!retTypeStr.empty()) {
         std::string resolvedRetType = resolveTypeAlias(retTypeStr);
-        if (isFunctionTypeName(resolvedRetType))
+        if (ry::util::isFunctionTypeName(resolvedRetType))
             info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetType));
     }
     info.capturedVars = captures.capturedNames;
@@ -973,7 +973,7 @@ std::string CodeGen::inferNativeCallReturnTypeName(
     auto isInferenceWidening = [&](llvm::Type *argTy,
                                    llvm::Type *paramTy,
                                    const std::string &paramTypeName) {
-        if (isLowLevelTypeName(paramTypeName))
+        if (ry::util::isLowLevelTypeName(paramTypeName))
             return false;
         return (argTy == i8Ty_ && paramTy == i64Ty_) ||
                (argTy == i8Ty_ && paramTy == f64Ty_) ||
@@ -1025,14 +1025,14 @@ std::string CodeGen::inferNativeCallReturnTypeName(
     if (auto libIt = native_lib_index_.find(expr.callee);
         libIt != native_lib_index_.end()) {
         for (const auto &lib : libIt->second) {
-            auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+            auto sigIt = native_fn_sigs_.find(ry::util::nativeSigKey(lib, expr.callee));
             if (sigIt == native_fn_sigs_.end())
                 continue;
             tryMatchBucket(sigIt->second, &exactMatch, false);
         }
         if (!exactMatch) {
             for (const auto &lib : libIt->second) {
-                auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+                auto sigIt = native_fn_sigs_.find(ry::util::nativeSigKey(lib, expr.callee));
                 if (sigIt == native_fn_sigs_.end())
                     continue;
                 tryMatchBucket(sigIt->second, &wideningMatch, true);
@@ -1283,7 +1283,7 @@ llvm::Function *CodeGen::materializeNativeThunk(const std::string &name) {
     info.returnTypeName = sig.returnTypeName;
     {
         std::string resolved = resolveTypeAlias(sig.returnTypeName);
-        if (isFunctionTypeName(resolved))
+        if (ry::util::isFunctionTypeName(resolved))
             info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolved));
     }
     info.sourceFn = thunk;
@@ -1547,7 +1547,7 @@ std::vector<llvm::Value*> CodeGen::wrapFnTypedArgs(
     std::vector<llvm::Value*> temps;
     for (size_t i = 0; i < argVals.size() && i < paramTypeNames.size(); ++i) {
         std::string resolved = resolveTypeAlias(paramTypeNames[i]);
-        if (isFunctionTypeName(resolved)) {
+        if (ry::util::isFunctionTypeName(resolved)) {
             auto *fnInfo = lookupFnTypeInfo(argVals[i]);
             if (fnInfo && !fnInfo->isUniformClosure) {
                 argVals[i] = wrapAsUniformClosure(argVals[i], *fnInfo);

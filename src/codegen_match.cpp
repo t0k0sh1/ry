@@ -107,7 +107,7 @@ std::vector<std::string> CodeGen::splitTupleSig(const std::string &tupleTypeSig)
     const std::string resolved = resolveTypeAlias(tupleTypeSig);
     if (resolved.size() < 2 || resolved.front() != '(' || resolved.back() != ')') return {};
     std::vector<std::string> parts = splitTypeArgs(resolved.substr(1, resolved.size() - 2));
-    for (auto &p : parts) p = trimTypeNameSpaces(p);
+    for (auto &p : parts) p = ry::util::trimTypeNameSpaces(p);
     return parts;
 }
 
@@ -473,7 +473,7 @@ static std::string extractGenericTypeArg(const std::string &typeStr,
     if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
         if (argIdx != 0)
             return {};
-        return CodeGen::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
+        return ry::util::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
     }
     if (typeStr.size() <= prefix.size() ||
         typeStr.compare(0, prefix.size(), prefix) != 0 ||
@@ -483,7 +483,7 @@ static std::string extractGenericTypeArg(const std::string &typeStr,
                                               typeStr.size() - prefix.size() - 1);
     const auto parts = CodeGen::splitTypeArgs(inner);
     if (argIdx >= parts.size()) return {};
-    return CodeGen::trimTypeNameSpaces(parts[argIdx]);
+    return ry::util::trimTypeNameSpaces(parts[argIdx]);
 }
 
 void CodeGen::maybeRegisterTaggedUnionSubject(llvm::AllocaInst *subjectAlloca,
@@ -514,17 +514,17 @@ void CodeGen::maybeRegisterTaggedUnionSubject(llvm::AllocaInst *subjectAlloca,
     std::string okName, errName;
     const bool isOpt = isOptionType(subjectTy);
     if (isOpt && resolvedSource.size() > 1 && resolvedSource.back() == '?') {
-        okName = trimTypeNameSpaces(
+        okName = ry::util::trimTypeNameSpaces(
             resolvedSource.substr(0, resolvedSource.size() - 1));
     } else {
         std::string head;
         std::vector<std::string> innerArgs;
-        if (splitGenericTypeName(resolvedSource, head, innerArgs)) {
+        if (ry::util::splitGenericTypeName(resolvedSource, head, innerArgs)) {
             if (head == "Result") {
-                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
-                if (innerArgs.size() >= 2) errName = trimTypeNameSpaces(innerArgs[1]);
+                if (!innerArgs.empty()) okName = ry::util::trimTypeNameSpaces(innerArgs[0]);
+                if (innerArgs.size() >= 2) errName = ry::util::trimTypeNameSpaces(innerArgs[1]);
             } else if (head == "Option") {
-                if (!innerArgs.empty()) okName = trimTypeNameSpaces(innerArgs[0]);
+                if (!innerArgs.empty()) okName = ry::util::trimTypeNameSpaces(innerArgs[0]);
             }
         }
     }
@@ -754,7 +754,7 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
             arc_backed_vars_.insert(bindAlloca);
             return;
         }
-        if (isFunctionTypeName(resolved)) {
+        if (ry::util::isFunctionTypeName(resolved)) {
             // Distinguish capturing closure from bare function pointer via
             // fn_type_info metadata on the source value.
             const ValueMetadata *m = getMeta(val);
@@ -1167,10 +1167,10 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
         for (size_t i = 0; i < info.componentTypes.size(); ++i) {
             if (info.componentTypes[i] != val->getType()) continue;
             const auto &compName = info.componentNames[i];
-            if ((meta->map_key || meta->map_value) && isMapTypeName(compName)) { tagIdx = i; break; }
-            if (meta->set_elem && isSetTypeName(compName))                     { tagIdx = i; break; }
-            if (meta->list_elem && isListTypeName(compName))                   { tagIdx = i; break; }
-            if (meta->fn_type_info && isFunctionTypeName(compName))            { tagIdx = i; break; }
+            if ((meta->map_key || meta->map_value) && ry::util::isMapTypeName(compName)) { tagIdx = i; break; }
+            if (meta->set_elem && ry::util::isSetTypeName(compName))                     { tagIdx = i; break; }
+            if (meta->list_elem && ry::util::isListTypeName(compName))                   { tagIdx = i; break; }
+            if (meta->fn_type_info && ry::util::isFunctionTypeName(compName))            { tagIdx = i; break; }
         }
     }
     // Fallback: first variant with matching LLVM type.

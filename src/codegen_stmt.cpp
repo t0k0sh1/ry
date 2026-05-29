@@ -122,8 +122,8 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
                 kPrefix.size(), resolved.size() - kPrefix.size() - 1);
             auto parts = splitTypeArgs(inner);
             if (parts.size() == 2) {
-                dstOkTypeName  = trimTypeNameSpaces(parts[0]);
-                dstErrTypeName = trimTypeNameSpaces(parts[1]);
+                dstOkTypeName  = ry::util::trimTypeNameSpaces(parts[0]);
+                dstErrTypeName = ry::util::trimTypeNameSpaces(parts[1]);
             }
         }
     }
@@ -255,7 +255,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!annot)
             codegenError("empty {} literal requires type annotation");
-        if (isSetTypeName(*annot)) {
+        if (ry::util::isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
@@ -279,7 +279,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
             {
                 const std::string resolvedInner = resolveTypeAlias(inner);
-                if (isFunctionTypeName(resolvedInner)) {
+                if (ry::util::isFunctionTypeName(resolvedInner)) {
                     getOrCreateMeta(ptr).set_elem_fn_type_info = parseFnTypeAnnotation(resolvedInner);
                 } else if (resolvedInner != "str" && resolvedInner != "int" &&
                            resolvedInner != "float" && resolvedInner != "bool") {
@@ -294,7 +294,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (isMapTypeName(*annot)) {
+        if (ry::util::isMapTypeName(*annot)) {
             auto [keyTy, valTy] = parseMapTypeAnnotation(*annot);
             if (!keyTy || !valTy)
                 codegenError("invalid map type annotation: " + *annot);
@@ -324,7 +324,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 std::string ktn = resolveTypeAlias(extractMapKeyTypeName(*annot));
                 if (!ktn.empty()) {
                     getOrCreateMeta(ptr).map_key_type_name = ktn;
-                    if (isFunctionTypeName(ktn))
+                    if (ry::util::isFunctionTypeName(ktn))
                         getOrCreateMeta(ptr).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
                 }
             }
@@ -332,7 +332,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 std::string vtn = extractMapValueTypeName(*annot);
                 if (!vtn.empty()) {
                     getOrCreateMeta(ptr).map_value_type_name = vtn;
-                    if (isFunctionTypeName(vtn))
+                    if (ry::util::isFunctionTypeName(vtn))
                         getOrCreateMeta(ptr).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
                 }
             }
@@ -349,7 +349,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (!annot)
             codegenError("empty list literal requires a List<T> type annotation");
         std::string resolvedAnnot = resolveTypeAlias(*annot);
-        if (!isListTypeName(resolvedAnnot) || resolvedAnnot.size() < 7 || resolvedAnnot.back() != '>')
+        if (!ry::util::isListTypeName(resolvedAnnot) || resolvedAnnot.size() < 7 || resolvedAnnot.back() != '>')
             codegenError("empty list literal requires a List<T> type annotation");
         std::string inner = resolvedAnnot.substr(5, resolvedAnnot.size() - 6);
         llvm::Type *elemTy = resolveType(inner);
@@ -373,7 +373,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         arc_backed_vars_.insert(ptr);
 
         // Set nested-list metadata for List<List<T>> annotations
-        if (isListTypeName(inner) && inner.back() == '>') {
+        if (ry::util::isListTypeName(inner) && inner.back() == '>') {
             std::string nestedInner = inner.substr(5, inner.size() - 6);
             llvm::Type *nestedElemTy = resolveType(nestedInner);
             if (nestedElemTy)
@@ -394,7 +394,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (inner == "str") {
             getOrCreateMeta(ptr).list_elem_type_name = "str";
             getOrCreateMeta(ptr).list_elem_is_str = true;
-        } else if (isFunctionTypeName(inner))
+        } else if (ry::util::isFunctionTypeName(inner))
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         else if (inner != "int" && inner != "float" && inner != "bool")
             getOrCreateMeta(ptr).list_elem_type_name = inner;
@@ -505,7 +505,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
                 le && !(*le)->elements.empty()) {
             std::string resolved = resolveTypeAlias(*annot);
-            if (isListTypeName(resolved) && resolved.size() >= 7 &&
+            if (ry::util::isListTypeName(resolved) && resolved.size() >= 7 &&
                     resolved.back() == '>') {
                 std::string inner = resolved.substr(5, resolved.size() - 6);
                 while (!inner.empty() && inner.front() == ' ')
@@ -641,17 +641,17 @@ void CodeGen::emitVarDecl(const std::string &name,
                     // unconditional — payload stride matches destination.
                     if (annotTy == ptrTy_) {
                         const std::string resolvedColl = resolveTypeAlias(resolvedAnnot);
-                        const bool annotIsList = isListTypeName(resolvedColl);
-                        const bool annotIsSet = isSetTypeName(resolvedColl);
-                        const bool annotIsMap = isMapTypeName(resolvedColl);
+                        const bool annotIsList = ry::util::isListTypeName(resolvedColl);
+                        const bool annotIsSet = ry::util::isSetTypeName(resolvedColl);
+                        const bool annotIsMap = ry::util::isMapTypeName(resolvedColl);
                         if (annotIsList || annotIsSet || annotIsMap) {
                             bool whitelisted = false;
                             if (annotIsList) {
-                                std::string inner = trimTypeNameSpaces(
+                                std::string inner = ry::util::trimTypeNameSpaces(
                                     resolvedColl.substr(5, resolvedColl.size() - 6));
                                 whitelisted = (inner == "any");
                             } else if (annotIsSet) {
-                                std::string inner = trimTypeNameSpaces(
+                                std::string inner = ry::util::trimTypeNameSpaces(
                                     resolvedColl.substr(4, resolvedColl.size() - 5));
                                 whitelisted = (inner == "any");
                             } else {
@@ -659,8 +659,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                                     resolvedColl.substr(4, resolvedColl.size() - 5);
                                 auto parts = splitTypeArgs(innerArgs);
                                 if (parts.size() == 2) {
-                                    std::string k = trimTypeNameSpaces(parts[0]);
-                                    std::string vt = trimTypeNameSpaces(parts[1]);
+                                    std::string k = ry::util::trimTypeNameSpaces(parts[0]);
+                                    std::string vt = ry::util::trimTypeNameSpaces(parts[1]);
                                     whitelisted = (k == "str" && vt == "any");
                                 }
                             }
@@ -797,7 +797,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     // Track low-level type metadata
     if (annot) {
         const std::string &ann = *annot;
-        if (isLowLevelTypeName(ann))
+        if (ry::util::isLowLevelTypeName(ann))
             getOrCreateMeta(ptr).low_level_type_name = ann;
     } else {
         // Propagate metadata from initializer expression (e.g., y = x as u32)
@@ -868,7 +868,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (newTy == ptrTy_) {
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
-        if (!elemTy && annot && isListTypeName(*annot)) {
+        if (!elemTy && annot && ry::util::isListTypeName(*annot)) {
             std::string inner = annot->substr(5, annot->size() - 6);
             elemTy = resolveType(inner);
         }
@@ -890,10 +890,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             bool inner_is_str = false;
             if (letn.empty() && !lefti && annot) {
                 std::string resolved = resolveTypeAlias(*annot);
-                if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+                if (ry::util::isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isFunctionTypeName(inner)) {
+                    if (ry::util::isFunctionTypeName(inner)) {
                         lefti = parseFnTypeAnnotation(inner);
                     } else if (inner == "str") {
                         // List<str>: stamp both list_elem_type_name (#1576 —
@@ -944,7 +944,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
         }
         // From type annotation: Map<K, V>
-        if (!keyTy && annot && isMapTypeName(*annot)) {
+        if (!keyTy && annot && ry::util::isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
         if (keyTy) setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
@@ -971,14 +971,14 @@ void CodeGen::emitVarDecl(const std::string &name,
                 }
             }
             // Also derive from annotation: Map<fn(int) -> int, V> → mktn = "fn(int) -> int"
-            if (mktn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+            if (mktn.empty() && annot && ry::util::isMapTypeName(resolvedAnnot)) {
                 std::string ktn = extractMapKeyTypeName(resolvedAnnot);
                 if (!ktn.empty())
                     mktn = ktn;
             }
             if (!mktn.empty()) {
                 getOrCreateMeta(ptr).map_key_type_name = mktn;
-                if (!mkfti && isFunctionTypeName(mktn))
+                if (!mkfti && ry::util::isFunctionTypeName(mktn))
                     mkfti = parseFnTypeAnnotation(mktn);
             }
             if (mkfti)
@@ -1006,14 +1006,14 @@ void CodeGen::emitVarDecl(const std::string &name,
                 }
             }
             // Also derive from annotation: Map<K, fn(int) -> int> → mvtn = "fn(int) -> int"
-            if (mvtn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+            if (mvtn.empty() && annot && ry::util::isMapTypeName(resolvedAnnot)) {
                 std::string vtn = extractMapValueTypeName(resolvedAnnot);
                 if (!vtn.empty())
                     mvtn = vtn;
             }
             if (!mvtn.empty()) {
                 getOrCreateMeta(ptr).map_value_type_name = mvtn;
-                if (!mvfti && isFunctionTypeName(mvtn))
+                if (!mvfti && ry::util::isFunctionTypeName(mvtn))
                     mvfti = parseFnTypeAnnotation(mvtn);
             }
             if (mvfti)
@@ -1027,7 +1027,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setElemTy = getSetElementType(load->getPointerOperand());
             }
         }
-        if (!setElemTy && annot && isSetTypeName(*annot)) {
+        if (!setElemTy && annot && ry::util::isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             setElemTy = resolveType(inner);
         }
@@ -1057,10 +1057,10 @@ void CodeGen::emitVarDecl(const std::string &name,
                 }
             }
             if (setn.empty() && annot &&
-                isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
+                ry::util::isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
                 std::string inner = resolvedAnnot.substr(4, resolvedAnnot.size() - 5);
                 while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                if (isFunctionTypeName(inner)) {
+                if (ry::util::isFunctionTypeName(inner)) {
                     sefti = parseFnTypeAnnotation(inner);
                 } else if (inner != "str" && inner != "int" && inner != "float" && inner != "bool") {
                     // `str` is intentionally excluded: Set has no
@@ -1075,7 +1075,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
             if (!setn.empty()) {
                 getOrCreateMeta(ptr).set_elem_type_name = setn;
-                if (!sefti && isFunctionTypeName(setn))
+                if (!sefti && ry::util::isFunctionTypeName(setn))
                     sefti = parseFnTypeAnnotation(setn);
             }
             if (sefti)
@@ -1098,7 +1098,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (valMeta && valMeta->fn_type_info) {
                 getOrCreateMeta(ptr).fn_type_info = *valMeta->fn_type_info;
             } else if (annot) {
-                if (isFunctionTypeName(resolvedAnnot)) {
+                if (ry::util::isFunctionTypeName(resolvedAnnot)) {
                     getOrCreateMeta(ptr).fn_type_info = parseFnTypeAnnotation(resolvedAnnot);
                 }
             }
@@ -1116,7 +1116,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
 
         // --- Weak reference tracking ---
-        if (annot && isWeakTypeName(*annot)) {
+        if (annot && ry::util::isWeakTypeName(*annot)) {
             if (!std::get_if<std::unique_ptr<WeakExpr>>(&value.data))
                 codegenError("weak-typed variable must be initialized with a 'weak' expression");
             std::string innerName = resolveTypeAlias(weakInnerTypeName(*annot));

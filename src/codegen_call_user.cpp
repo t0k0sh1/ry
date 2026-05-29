@@ -289,9 +289,9 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         if (!typeName) return;
 
         std::string resolvedType = resolveTypeAlias(*typeName);
-        if (isLowLevelTypeName(resolvedType))
+        if (ry::util::isLowLevelTypeName(resolvedType))
             getOrCreateMeta(alloca).low_level_type_name = resolvedType;
-        if (isFunctionTypeName(resolvedType))
+        if (ry::util::isFunctionTypeName(resolvedType))
             getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedType);
         auto constraint = parseTypeConstraint(resolvedType);
         if (constraint)
@@ -931,11 +931,11 @@ llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetT
     }
 
     if (val->getType() == f64Ty_ && targetTy == i64Ty_ &&
-        !isLowLevelTypeName(typeName)) {
+        !ry::util::isLowLevelTypeName(typeName)) {
         return emitCheckedFPToInt(val, i64Ty_, "int", truncName);
     }
     if (val->getType() == i64Ty_ && targetTy == f64Ty_ &&
-        !isLowLevelTypeName(typeName)) {
+        !ry::util::isLowLevelTypeName(typeName)) {
         return builder_.CreateSIToFP(val, f64Ty_, truncName);
     }
 

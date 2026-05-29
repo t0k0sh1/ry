@@ -137,7 +137,7 @@ bool CodeGen::isPotentiallyCyclic(const std::string &typeName) const {
     if (typeName.size() > 1 && typeName.back() == '?')
         return isPotentiallyCyclic(typeName.substr(0, typeName.size() - 1));
     // Map<K,V> — check both K and V
-    if (isMapTypeName(typeName) && typeName.back() == '>') {
+    if (ry::util::isMapTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         // Find the comma separating K and V (handle nested generics)
         int depth = 0;

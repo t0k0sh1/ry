@@ -8,6 +8,7 @@
 #include "ry/source_manager/source_location.hpp"
 #include "ry/source_manager/source_manager.hpp"
 #include "ry/trace/trace.hpp"
+#include "ry/util/type_name.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
@@ -78,20 +79,6 @@ public:
     // Populated by the caller (jit_runner) from ModuleLoader::importedTestingIntrinsics().
     void setTestingIntrinsicsImported(const std::unordered_set<std::string> &imported);
     const std::unordered_set<std::string>& getTestingIntrinsicsImported() const;
-
-    // Derive the base runtime function name for a stdlib module function.
-    // e.g. ("base64", "encode") → "__ry_base64_encode"
-    // For overloaded functions, callers must append an arity suffix
-    // (e.g. "__ry_path_join2", "__ry_path_join3") as needed.
-    // Only meaningful for module functions; builtins use varied naming.
-    static std::string deriveRuntimeFnName(const std::string &package,
-                                           const std::string &fn_name);
-
-    // Build the registry key for native_fn_sigs_.
-    static std::string nativeSigKey(const std::string &package,
-                                    const std::string &name) {
-        return package.empty() ? name : package + "::" + name;
-    }
 
     // #1746: returns true when `name` matches a stdlib package registered
     // via RY_REGISTER_STDLIB_PACKAGE (e.g. "math", "json", "path"). Used
@@ -279,9 +266,6 @@ public:
     void retainArcValue(llvm::Value *val);
 
     // Collection type name predicates
-    static bool isListTypeName(const std::string &typeName);
-    static bool isMapTypeName(const std::string &typeName);
-    static bool isSetTypeName(const std::string &typeName);
     static bool isCollectionTypeName(const std::string &typeName);
 
     // #1884: derive literal_any_hint_ from an LHS annotation string
@@ -292,7 +276,6 @@ public:
     LiteralAnyHint computeLiteralAnyHintFromMeta(llvm::Value *ptr);
 
     // ======== Weak References ========
-    static bool isWeakTypeName(const std::string &typeName);
     static std::string weakInnerTypeName(const std::string &typeName);
     void markWeakManaged(llvm::AllocaInst *alloca);
     bool isWeakManaged(llvm::AllocaInst *alloca) const;
@@ -364,14 +347,6 @@ public:
     // operand must trace the chain. Returns nullptr if no matching insert
     // is found.
     static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx);
-
-    // Splits a generic type name like "List<str>" into head="List" and
-    // inner=["str"].  Returns false for non-generic names (no '<').
-    // Extracted from codegen_fn_generic.cpp so callers across translation
-    // units can use the same parsing logic.
-    static bool splitGenericTypeName(const std::string &s,
-                                     std::string &head,
-                                     std::vector<std::string> &inner);
 
     // Predicate: does the container's *element* type itself own an
     // ARC-managed allocation that needs releasing on slot overwrite?
@@ -833,9 +808,6 @@ public:
     // substitution applies. Used by `resolveType` to make generic enum /
     // wrapper types usable at every type position inside a generic function.
     std::string substituteTypeParamsInName(const std::string &typeName);
-    // Strip ASCII spaces from both ends of a type-name substring. Shared by
-    // the comma-separated annotation parsers (Map key/value, tuple destructure).
-    static std::string trimTypeNameSpaces(const std::string &s);
     // Return the best source-level element type name for a list value.
     // Used by enumerate()/zip() to build the tuple `list_elem_type_name`.
     std::string snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy);
@@ -1026,9 +998,6 @@ public:
     // is the destructor used to release `env_ptr` when the closure is dropped
     // (null for non-capturing functions). Layout mirrored in
     // `getOrCreateUniformClosureDestructor` in src/codegen_lambda.cpp.
-    static bool isFunctionTypeName(const std::string &s) {
-        return s.size() > 3 && s.compare(0, 3, "fn(") == 0;
-    }
     llvm::StructType *getUniformClosureTy() {
         if (!uniformClosureTy_)
             uniformClosureTy_ = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
@@ -1807,7 +1776,6 @@ public:
     const std::string &getLowLevelTypeName(llvm::Value *val) const;
     bool isUnsignedLowLevel(llvm::Value *val) const;
     static bool isUnsignedLowLevelName(const std::string &name);
-    static bool isLowLevelTypeName(const std::string &name);
     static std::string getExprLowLevelSuffix(const ExprNode &node);
     bool isLowLevelIntTy(llvm::Type *ty) const;
     bool isLowLevelIntTy(llvm::Value *val) const;

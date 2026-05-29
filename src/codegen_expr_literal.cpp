@@ -281,15 +281,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
 CodeGen::LiteralAnyHint CodeGen::computeLiteralAnyHintFromAnnot(const std::string &annot) {
     LiteralAnyHint hint;
     std::string resolved = resolveTypeAlias(annot);
-    if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
-        std::string inner = trimTypeNameSpaces(resolved.substr(5, resolved.size() - 6));
+    if (ry::util::isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+        std::string inner = ry::util::trimTypeNameSpaces(resolved.substr(5, resolved.size() - 6));
         if (inner == "any")
             hint.list_elem_any = true;
-    } else if (isSetTypeName(resolved) && resolved.size() >= 6 && resolved.back() == '>') {
-        std::string inner = trimTypeNameSpaces(resolved.substr(4, resolved.size() - 5));
+    } else if (ry::util::isSetTypeName(resolved) && resolved.size() >= 6 && resolved.back() == '>') {
+        std::string inner = ry::util::trimTypeNameSpaces(resolved.substr(4, resolved.size() - 5));
         if (inner == "any")
             hint.set_elem_any = true;
-    } else if (isMapTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+    } else if (ry::util::isMapTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
         std::string inner = resolved.substr(4, resolved.size() - 5);
         auto args = splitTypeArgs(inner);
         if (args.size() == 2) {
@@ -300,7 +300,7 @@ CodeGen::LiteralAnyHint CodeGen::computeLiteralAnyHintFromAnnot(const std::strin
             // the bucket array. Forcing map_key_any=false keeps the strict
             // same-type key check; only Map<str, any> / Map<int, any> etc.
             // (concrete key, any value) are widened.
-            if (trimTypeNameSpaces(args[1]) == "any")
+            if (ry::util::trimTypeNameSpaces(args[1]) == "any")
                 hint.map_value_any = true;
         }
     }
