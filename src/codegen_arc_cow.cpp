@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_bounds_check.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 
@@ -430,9 +431,10 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(
                 listHeaderTy_, parent, 0, "pcow_len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "pcow_length");
-            emitBoundsCheck(indexVal, length,
-                            "runtime error: index %lld out of bounds for list of length %lld\n",
-                            ".pcow_list_err", "pcow_list");
+            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+                    *this, indexVal, length, codegen::lowered::BoundsKind::List,
+                    ".pcow_list_err"))
+                indexVal = codegen::emission::emitBoundsCheck(*this, *bcOp, "pcow_list");
             llvm::Value *dataField = builder_.CreateStructGEP(
                 listHeaderTy_, parent, 2, "pcow_data_field");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pcow_data");

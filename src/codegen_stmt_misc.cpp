@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/builtin_names.hpp"
+#include "ry/codegen/lowered_bounds_check.hpp"
 #include "ry/stdlib_registry.hpp"
 
 
@@ -425,9 +426,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                 codegenError("cannot determine list element type for chained field assignment");
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 0, "len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
-            emitBoundsCheck(indexVal, length,
-                            "runtime error: index %lld out of bounds for list of length %lld\n",
-                            ".idx_chain_err", "idx_chain");
+            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+                    *this, indexVal, length, codegen::lowered::BoundsKind::List,
+                    ".idx_chain_err"))
+                indexVal = codegen::emission::emitBoundsCheck(*this, *bcOp, "idx_chain");
             llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 2, "data_ptr");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
             elemSlot = builder_.CreateGEP(elemTy, dataPtr, {indexVal}, "list_elem_ptr");
@@ -1079,8 +1081,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_assign_err", "arr_assign");
+            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+                    *this, key, llvm::ConstantInt::get(i64Ty_, arrSize),
+                    codegen::lowered::BoundsKind::Array, ".arr_assign_err"))
+                key = codegen::emission::emitBoundsCheck(*this, *bcOp, "arr_assign");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
@@ -1317,8 +1321,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
-    emitBoundsCheck(key, length,
-                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_assign_err", "idx_assign");
+    if (auto bcOp = codegen::lowering::lowerBoundsCheck(
+            *this, key, length, codegen::lowered::BoundsKind::List, ".idx_assign_err"))
+        key = codegen::emission::emitBoundsCheck(*this, *bcOp, "idx_assign");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
