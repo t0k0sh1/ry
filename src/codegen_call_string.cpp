@@ -640,6 +640,31 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
         builder_.CreateStore(newData, newDataField);
 
+        // Per-element copy loop above duplicates ARC pointers without
+        // retaining them; propagateMeta inherits the destructor, so source
+        // and result would double-release. Mirror emitCollOp_slice
+        // (#1204 / #1667).
+        {
+            const ValueMetadata *srcMeta = getMeta(arg);
+            const std::string elemSigSnap =
+                srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                         : std::string{};
+            if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+                elemSigSnap.back() == ')') {
+                if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                    emitTupleElemRetainLoop(newData, len, "rev_telem",
+                                             elemSigSnap, tupleTy);
+                }
+            } else {
+                CollectionKind elemArcKind = CollectionKind::List;
+                if (elementTypeIsArcManaged(arg, CollectionKind::List,
+                                             &elemArcKind)) {
+                    emitCowRetainArcElements(newData, len, "rev_elem",
+                                              elemArcKind);
+                }
+            }
+        }
+
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         propagateMeta(arg, newHeader);
         return newHeader;

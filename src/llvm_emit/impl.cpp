@@ -461,6 +461,308 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
     ctx->builder->SetInsertPoint(doneBB);
 }
 
+namespace {
+
+// loadListHeader mirror — produces the same {len, cap, data} loads + GEPs as
+// CodeGen::loadListHeader, so impl-side IR matches the original byte-for-byte
+// (FileCheck-stable). prefix gets concatenated with "_len_ptr" / "_cap_ptr" /
+// "_data_ptr" / "_len" / "_cap" / "_data".
+struct ListHeaderLoad {
+    llvm::Value *lenPtr;
+    llvm::Value *capPtr;
+    llvm::Value *dataPtr;
+    llvm::Value *len;
+    llvm::Value *cap;
+    llvm::Value *data;
+};
+
+ListHeaderLoad loadListHeaderImpl(llvm::IRBuilder<> &builder,
+                                  llvm::StructType *listHeaderTy,
+                                  llvm::Value *listPtr, llvm::Type *i64Ty,
+                                  llvm::Type *ptrTy, const char *prefix) {
+    ListHeaderLoad h{};
+    h.lenPtr =
+        builder.CreateStructGEP(listHeaderTy, listPtr, 0,
+                                std::string(prefix) + "_len_ptr");
+    h.capPtr =
+        builder.CreateStructGEP(listHeaderTy, listPtr, 1,
+                                std::string(prefix) + "_cap_ptr");
+    h.dataPtr =
+        builder.CreateStructGEP(listHeaderTy, listPtr, 2,
+                                std::string(prefix) + "_data_ptr");
+    h.len = builder.CreateLoad(i64Ty, h.lenPtr, std::string(prefix) + "_len");
+    h.cap = builder.CreateLoad(i64Ty, h.capPtr, std::string(prefix) + "_cap");
+    h.data =
+        builder.CreateLoad(ptrTy, h.dataPtr, std::string(prefix) + "_data");
+    return h;
+}
+
+} // namespace
+
+void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                               RyValueId val_id, void *list_header_ty_ptr,
+                               void *elem_ty_ptr, uint64_t elem_size) {
+    auto *listPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, list_ptr_id));
+    auto *val = static_cast<llvm::Value *>(ry_emit_resolve(ctx, val_id));
+    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
+    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *voidTy = llvm::Type::getVoidTy(*ctx->context);
+    auto &builder = *ctx->builder;
+    auto *fn = builder.GetInsertBlock()->getParent();
+
+    auto h =
+        loadListHeaderImpl(builder, listHeaderTy, listPtr, i64Ty, ptrTy, "app");
+
+    auto *needGrow = builder.CreateICmpEQ(h.len, h.cap, "app_need_grow");
+    auto *growBB = llvm::BasicBlock::Create(*ctx->context, "app.grow", fn);
+    auto *storeBB = llvm::BasicBlock::Create(*ctx->context, "app.store", fn);
+    builder.CreateCondBr(needGrow, growBB, storeBB);
+
+    builder.SetInsertPoint(growBB);
+    auto *four = llvm::ConstantInt::get(i64Ty, 4);
+    auto *doubled = builder.CreateMul(
+        h.cap, llvm::ConstantInt::get(i64Ty, 2), "app_doubled");
+    auto *gt4 = builder.CreateICmpSGT(doubled, four, "cap_gt4");
+    auto *newCap = builder.CreateSelect(gt4, doubled, four, "app_new_cap");
+    auto *newSize = builder.CreateMul(
+        newCap, llvm::ConstantInt::get(i64Ty, elem_size), "app_new_size");
+    auto mallocFn = ctx->module->getOrInsertFunction(
+        "malloc", llvm::FunctionType::get(ptrTy, {i64Ty}, false));
+    auto *newData = builder.CreateCall(mallocFn, {newSize}, "app_new_data");
+    auto *oldSize = builder.CreateMul(
+        h.len, llvm::ConstantInt::get(i64Ty, elem_size), "app_old_size");
+    auto memcpyFn = ctx->module->getOrInsertFunction(
+        "memcpy",
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false));
+    builder.CreateCall(memcpyFn, {newData, h.data, oldSize});
+    auto freeFn = ctx->module->getOrInsertFunction(
+        "free", llvm::FunctionType::get(voidTy, {ptrTy}, false));
+    builder.CreateCall(freeFn, {h.data});
+    builder.CreateStore(newData, h.dataPtr);
+    builder.CreateStore(newCap, h.capPtr);
+    builder.CreateBr(storeBB);
+
+    builder.SetInsertPoint(storeBB);
+    auto *curData = builder.CreateLoad(ptrTy, h.dataPtr, "app_cur_data");
+    auto *curLen = builder.CreateLoad(i64Ty, h.lenPtr, "app_cur_len");
+    auto *elemPtr =
+        builder.CreateGEP(elemTy, curData, curLen, "app_elem_ptr");
+    builder.CreateStore(val, elemPtr);
+    auto *newLen = builder.CreateAdd(
+        curLen, llvm::ConstantInt::get(i64Ty, 1), "app_new_len");
+    builder.CreateStore(newLen, h.lenPtr);
+}
+
+void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                               RyValueId idx_id, RyValueId val_id,
+                               void *list_header_ty_ptr, void *elem_ty_ptr,
+                               uint64_t elem_size) {
+    auto *listPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, list_ptr_id));
+    auto *origIdx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, idx_id));
+    auto *val = static_cast<llvm::Value *>(ry_emit_resolve(ctx, val_id));
+    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
+    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *voidTy = llvm::Type::getVoidTy(*ctx->context);
+    auto &builder = *ctx->builder;
+    auto *fn = builder.GetInsertBlock()->getParent();
+
+    auto h =
+        loadListHeaderImpl(builder, listHeaderTy, listPtr, i64Ty, ptrTy, "ins");
+
+    // insert() valid range is [0, len], so negative -k maps to len+1-k.
+    auto *wrapBase = builder.CreateAdd(
+        h.len, llvm::ConstantInt::get(i64Ty, 1), "ins_wrap_base");
+    RyValueId wrappedId = ry_emit_negative_index_wrap(
+        ctx, ry_emit_intern(ctx, origIdx), ry_emit_intern(ctx, wrapBase),
+        "ins");
+    auto *idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrappedId));
+
+    auto *zero = llvm::ConstantInt::get(i64Ty, 0);
+    auto *negCheck = builder.CreateICmpSLT(idx, zero);
+    auto *overCheck = builder.CreateICmpSGT(idx, h.len);
+    auto *outOfBounds = builder.CreateOr(negCheck, overCheck, "ins_oob");
+    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "ins.err", fn);
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "ins.ok", fn);
+    builder.CreateCondBr(outOfBounds, errBB, okBB);
+    builder.SetInsertPoint(errBB);
+    ry_emit_bounds_error(
+        ctx, ry_emit_intern(ctx, origIdx), ry_emit_intern(ctx, h.len),
+        "runtime error: index %lld out of bounds for insert() on list of "
+        "length %lld\n",
+        ".ins_oob_err");
+
+    builder.SetInsertPoint(okBB);
+    auto *needGrow = builder.CreateICmpEQ(h.len, h.cap, "ins_need_grow");
+    auto *growBB = llvm::BasicBlock::Create(*ctx->context, "ins.grow", fn);
+    auto *moveBB = llvm::BasicBlock::Create(*ctx->context, "ins.move", fn);
+    builder.CreateCondBr(needGrow, growBB, moveBB);
+
+    builder.SetInsertPoint(growBB);
+    auto *four = llvm::ConstantInt::get(i64Ty, 4);
+    auto *doubled = builder.CreateMul(
+        h.cap, llvm::ConstantInt::get(i64Ty, 2), "ins_doubled");
+    auto *gt4 = builder.CreateICmpSGT(doubled, four);
+    auto *newCap = builder.CreateSelect(gt4, doubled, four, "ins_new_cap");
+    auto *newSize = builder.CreateMul(
+        newCap, llvm::ConstantInt::get(i64Ty, elem_size), "ins_new_size");
+    auto mallocFn = ctx->module->getOrInsertFunction(
+        "malloc", llvm::FunctionType::get(ptrTy, {i64Ty}, false));
+    auto *newData = builder.CreateCall(mallocFn, {newSize}, "ins_new_data");
+    auto *oldSize = builder.CreateMul(
+        h.len, llvm::ConstantInt::get(i64Ty, elem_size), "ins_old_size");
+    auto memcpyFn = ctx->module->getOrInsertFunction(
+        "memcpy",
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false));
+    builder.CreateCall(memcpyFn, {newData, h.data, oldSize});
+    auto freeFn = ctx->module->getOrInsertFunction(
+        "free", llvm::FunctionType::get(voidTy, {ptrTy}, false));
+    builder.CreateCall(freeFn, {h.data});
+    builder.CreateStore(newData, h.dataPtr);
+    builder.CreateStore(newCap, h.capPtr);
+    builder.CreateBr(moveBB);
+
+    builder.SetInsertPoint(moveBB);
+    auto *curData = builder.CreateLoad(ptrTy, h.dataPtr, "ins_cur_data");
+    auto *srcPtr = builder.CreateGEP(elemTy, curData, {idx}, "ins_src");
+    auto *idxPlusOne =
+        builder.CreateAdd(idx, llvm::ConstantInt::get(i64Ty, 1));
+    auto *dstPtr =
+        builder.CreateGEP(elemTy, curData, {idxPlusOne}, "ins_dst");
+    auto *moveCount = builder.CreateSub(h.len, idx, "ins_move_count");
+    auto *moveBytes = builder.CreateMul(
+        moveCount, llvm::ConstantInt::get(i64Ty, elem_size),
+        "ins_move_bytes");
+    auto memmoveFn = ctx->module->getOrInsertFunction(
+        "memmove",
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false));
+    builder.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
+    auto *insertPtr = builder.CreateGEP(elemTy, curData, {idx}, "ins_ptr");
+    builder.CreateStore(val, insertPtr);
+    auto *newLen = builder.CreateAdd(
+        h.len, llvm::ConstantInt::get(i64Ty, 1), "ins_new_len");
+    builder.CreateStore(newLen, h.lenPtr);
+}
+
+RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                                        RyValueId idx_id,
+                                        void *list_header_ty_ptr,
+                                        void *elem_ty_ptr,
+                                        uint64_t elem_size) {
+    auto *listPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, list_ptr_id));
+    auto *origIdx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, idx_id));
+    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
+    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto &builder = *ctx->builder;
+    auto *fn = builder.GetInsertBlock()->getParent();
+
+    auto h = loadListHeaderImpl(builder, listHeaderTy, listPtr, i64Ty, ptrTy,
+                                "rmat");
+
+    RyValueId wrappedId = ry_emit_negative_index_wrap(
+        ctx, ry_emit_intern(ctx, origIdx), ry_emit_intern(ctx, h.len), "rmat");
+    auto *idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrappedId));
+
+    auto *zero = llvm::ConstantInt::get(i64Ty, 0);
+    auto *negCheck = builder.CreateICmpSLT(idx, zero);
+    auto *overCheck = builder.CreateICmpSGE(idx, h.len);
+    auto *outOfBounds = builder.CreateOr(negCheck, overCheck, "rmat_oob");
+    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "rmat.err", fn);
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "rmat.ok", fn);
+    builder.CreateCondBr(outOfBounds, errBB, okBB);
+    builder.SetInsertPoint(errBB);
+    ry_emit_bounds_error(
+        ctx, ry_emit_intern(ctx, origIdx), ry_emit_intern(ctx, h.len),
+        "runtime error: index %lld out of bounds for removeAt() on list of "
+        "length %lld\n",
+        ".rmat_oob_err");
+
+    builder.SetInsertPoint(okBB);
+    auto *elemPtr =
+        builder.CreateGEP(elemTy, h.data, {idx}, "rmat_elem_ptr");
+    auto *removedVal = builder.CreateLoad(elemTy, elemPtr, "rmat_val");
+    auto *idxPlusOne =
+        builder.CreateAdd(idx, llvm::ConstantInt::get(i64Ty, 1));
+    auto *srcPtr = builder.CreateGEP(elemTy, h.data, {idxPlusOne}, "rmat_src");
+    auto *lenMinusIdx = builder.CreateSub(h.len, idx);
+    auto *moveCount = builder.CreateSub(
+        lenMinusIdx, llvm::ConstantInt::get(i64Ty, 1), "rmat_move_count");
+    auto *moveBytes = builder.CreateMul(
+        moveCount, llvm::ConstantInt::get(i64Ty, elem_size),
+        "rmat_move_bytes");
+    auto memmoveFn = ctx->module->getOrInsertFunction(
+        "memmove",
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false));
+    builder.CreateCall(memmoveFn, {elemPtr, srcPtr, moveBytes});
+    auto *newLen = builder.CreateSub(
+        h.len, llvm::ConstantInt::get(i64Ty, 1), "rmat_new_len");
+    builder.CreateStore(newLen, h.lenPtr);
+
+    return ry_emit_intern(ctx, removedVal);
+}
+
+void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                        RyValueId start_id, RyValueId end_excl_id,
+                        void *list_header_ty_ptr, void *elem_ty_ptr,
+                        uint64_t elem_size, RyValueId *out_count,
+                        RyValueId *out_new_data) {
+    auto *listPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, list_ptr_id));
+    auto *startVal =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, start_id));
+    auto *endExclVal =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, end_excl_id));
+    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
+    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+
+    auto &builder = *ctx->builder;
+    auto *slLenPtr =
+        builder.CreateStructGEP(listHeaderTy, listPtr, 0, "sl_len_ptr");
+    auto *slDataPtr =
+        builder.CreateStructGEP(listHeaderTy, listPtr, 2, "sl_data_ptr");
+    auto *slLen = builder.CreateLoad(i64Ty, slLenPtr, "sl_len");
+    auto *slData = builder.CreateLoad(ptrTy, slDataPtr, "sl_data");
+
+    auto *zero = llvm::ConstantInt::get(i64Ty, 0);
+    auto *startNeg = builder.CreateICmpSLT(startVal, zero);
+    auto *cStart =
+        builder.CreateSelect(startNeg, zero, startVal, "sl_cstart");
+    auto *startOver = builder.CreateICmpSGT(cStart, slLen);
+    cStart = builder.CreateSelect(startOver, slLen, cStart, "sl_cstart2");
+    auto *endNeg = builder.CreateICmpSLT(endExclVal, zero);
+    auto *cEnd = builder.CreateSelect(endNeg, zero, endExclVal, "sl_cend");
+    auto *endOver = builder.CreateICmpSGT(cEnd, slLen);
+    cEnd = builder.CreateSelect(endOver, slLen, cEnd, "sl_cend2");
+
+    auto *diff = builder.CreateSub(cEnd, cStart, "sl_diff");
+    auto *diffGt0 = builder.CreateICmpSGT(diff, zero);
+    auto *count = builder.CreateSelect(diffGt0, diff, zero, "sl_count");
+    auto *dataSize = builder.CreateMul(
+        count, llvm::ConstantInt::get(i64Ty, elem_size), "sl_dsize");
+    auto mallocFnTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
+    auto mallocFn = ctx->module->getOrInsertFunction("malloc", mallocFnTy);
+    auto *newData = builder.CreateCall(mallocFn, {dataSize}, "sl_data");
+    auto *srcOffset =
+        builder.CreateGEP(elemTy, slData, cStart, "sl_src_off");
+    auto memcpyFnTy =
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false);
+    auto memcpyFn = ctx->module->getOrInsertFunction("memcpy", memcpyFnTy);
+    builder.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
+
+    *out_count = ry_emit_intern(ctx, count);
+    *out_new_data = ry_emit_intern(ctx, newData);
+}
+
 RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
                                 void *res_ty_ptr, RyBuildValueFn build_ok,
                                 RyBuildValueFn build_err, void *user_ctx) {
