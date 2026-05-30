@@ -266,4 +266,25 @@ RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
     return ry_emit_intern(ctx, phi);
 }
 
+RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
+                                   void *opt_ty_ptr) {
+    auto *optTy = static_cast<llvm::StructType *>(opt_ty_ptr);
+    auto *inner = static_cast<llvm::Value *>(ry_emit_resolve(ctx, inner_id));
+    auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
+    llvm::Value *val = llvm::UndefValue::get(optTy);
+    val = ctx->builder->CreateInsertValue(val, llvm::ConstantInt::get(i1Ty, 1), 0);
+    val = ctx->builder->CreateInsertValue(val, inner, 1);
+    return ry_emit_intern(ctx, val);
+}
+
+RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, void *opt_ty_ptr) {
+    auto *optTy = static_cast<llvm::StructType *>(opt_ty_ptr);
+    auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
+    llvm::Value *val = llvm::UndefValue::get(optTy);
+    val = ctx->builder->CreateInsertValue(val, llvm::ConstantInt::get(i1Ty, 0), 0);
+    val = ctx->builder->CreateInsertValue(
+        val, llvm::UndefValue::get(optTy->getElementType(1)), 1);
+    return ry_emit_intern(ctx, val);
+}
+
 } // extern "C"
