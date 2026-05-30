@@ -549,9 +549,11 @@ public:
     // implement deep (path) copy-on-write for nested collection writes
     // through aliases (#854).
     llvm::Value *emitPathCowForChain(ExprNode &chain);
-    llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
-    llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
-    llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
+    // emitCowDeepCopy{List,Map,Set} were dissolved into the llvm_emit ABI
+    // (`ry_emit_cow_ensure_unique`) in #1970 — only `emitCowCheckSlot`
+    // ever called them, so the IR construction now lives entirely inside
+    // the ABI alongside the strong_count check, retain loops, slot
+    // overwrite, and PHI.
     void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag,
                                    CollectionKind elemArcKind = CollectionKind::List);
     std::map<std::tuple<CollectionKind, std::string, std::string>,
