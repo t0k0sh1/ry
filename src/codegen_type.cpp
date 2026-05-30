@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_option_wrap.hpp"
 #include "ry/stdlib_registry.hpp"
 
 
@@ -520,17 +521,16 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
 }
 
 llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
-    llvm::Value *val = llvm::UndefValue::get(optionTy);
-    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
-    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
-        llvm::cast<llvm::StructType>(optionTy)->getElementType(1)), 1);
-    return val;
+    auto op = codegen::lowering::lowerOptionWrap(
+        *this, /*inner=*/nullptr, llvm::cast<llvm::StructType>(optionTy),
+        /*is_some=*/false);
+    return codegen::emission::emitOptionWrap(*this, op);
 }
 
 llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
-    llvm::Value *val = llvm::UndefValue::get(optionTy);
-    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
-    val = builder_.CreateInsertValue(val, inner, 1);
+    auto op = codegen::lowering::lowerOptionWrap(
+        *this, inner, llvm::cast<llvm::StructType>(optionTy), /*is_some=*/true);
+    llvm::Value *val = codegen::emission::emitOptionWrap(*this, op);
     propagateMeta(inner, val);
     // Retain the inner collection so scope cleanup of the caller's local variable
     // does not free it before the returned aggregate is consumed (#999).

@@ -20,6 +20,15 @@
 //     and bounds error are now proper ABI functions rather than callbacks
 //     into CodeGen.
 //
+// Stage 2-C (in progress, #1965) begins migrating the remaining lowered IR
+// ops. The first step (#1967) adds two entry points for OptionWrap —
+// ry_emit_option_wrap_some and ry_emit_option_wrap_none. Unlike the BB-
+// creating ops above, these do not require ry_emit_ctx_set_function to be
+// called first (they emit no basic blocks). getOptionType's StructType
+// cache stays in CodeGen for the same reason as getResultType (the
+// reverse_option_types_ map is consumed by ARC release / Any wrap on the
+// CodeGen side); opt_ty crosses the ABI as `void*`, mirroring resTy_.
+//
 // Stage 2-A (scaffolding, #1949):
 //   - Opaque handles for LLVM values are defined as `uint32_t` (RyValueId).
 //   - Module / IRBuilder / LLVMContext / Function pointers are still passed
@@ -160,6 +169,24 @@ RyValueId ry_emit_negative_index_wrap(RyEmitCtx *ctx, RyValueId idx_id,
 void ry_emit_bounds_error(RyEmitCtx *ctx, RyValueId orig_idx_id,
                           RyValueId len_id, const char *fmt_msg,
                           const char *global_name);
+
+// Stage 2-C entry — Option<T> Some-arm construction.
+// Builds UndefValue(opt_ty) + InsertValue(tag=1, 0) + InsertValue(inner, 1)
+// and returns a handle to the resulting aggregate. opt_ty_ptr is the LLVM
+// StructType handle for Option<T> (transitional `void*` until the type-handle
+// category crosses the ABI; mirrors res_ty_ptr in ry_emit_result_branch).
+// inner_id must resolve to a non-null payload value whose type matches
+// opt_ty's element-1 slot. Creates no basic blocks, no precondition on
+// ry_emit_ctx_set_function.
+RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
+                                   void *opt_ty_ptr /* llvm::StructType* */);
+
+// Stage 2-C entry — Option<T> None-arm construction.
+// Builds UndefValue(opt_ty) + InsertValue(tag=0, 0) + InsertValue(
+// UndefValue(opt_ty->getElementType(1)), 1). Creates no basic blocks, no
+// precondition on ry_emit_ctx_set_function.
+RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx,
+                                   void *opt_ty_ptr /* llvm::StructType* */);
 
 #ifdef __cplusplus
 } // extern "C"
