@@ -25,15 +25,18 @@ See [`docker/README.md`](../../../docker/README.md) for a quick-start reference.
 
 ./docker/run.sh tsan ry_tests                                     # TSan, C++ tests
 
-./docker/run.sh fuzz fuzz_parser -max_total_time=30 \
+./docker/run.sh fuzz fuzz_parser  -max_total_time=30 \
     -artifact_prefix=tests/fuzz/regressions/parser/ \
     tests/fuzz/corpus/parser                                      # libFuzzer parser harness
-./docker/run.sh fuzz fuzz_json   -max_total_time=30 \
+./docker/run.sh fuzz fuzz_json    -max_total_time=30 \
     -artifact_prefix=tests/fuzz/regressions/json/ \
     tests/fuzz/corpus/json
-./docker/run.sh fuzz fuzz_utf8   -max_total_time=30 \
+./docker/run.sh fuzz fuzz_utf8    -max_total_time=30 \
     -artifact_prefix=tests/fuzz/regressions/utf8/ \
     tests/fuzz/corpus/utf8
+./docker/run.sh fuzz fuzz_io_open -max_total_time=30 \
+    -artifact_prefix=tests/fuzz/regressions/fuzz_io_open/ \
+    tests/fuzz/corpus/fuzz_io_open                                # libFuzzer I/O syscall harness
 
 ./docker/run.sh default bash                                      # interactive shell
 

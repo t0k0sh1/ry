@@ -167,14 +167,14 @@ case "$CMD" in
   ry)
     exec "./$BUILD_DIR/ry" "$@"
     ;;
-  fuzz_parser|fuzz_json|fuzz_utf8)
+  fuzz_parser|fuzz_json|fuzz_utf8|fuzz_io_open)
     exec "./$BUILD_DIR/$CMD" "$@"
     ;;
   bash)
     exec bash "$@"
     ;;
   *)
-    echo "error: unknown command '$CMD' (supported: ry_tests, ry, bash, fuzz_parser, fuzz_json, fuzz_utf8)" >&2
+    echo "error: unknown command '$CMD' (supported: ry_tests, ry, bash, fuzz_parser, fuzz_json, fuzz_utf8, fuzz_io_open)" >&2
     exit 1
     ;;
 esac

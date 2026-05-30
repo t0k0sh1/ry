@@ -26,12 +26,12 @@ git diff --name-only origin/main
 | `changelog.d/` only | skip | ✓ | skip | skip | skip |
 | `.claude/` only | skip | skip | skip | skip | skip |
 | `tests/` only | review | review | ✓ | ✓ | parser-family only |
-| includes parser/lexer/json/utf8/string※ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| includes parser/lexer/json/utf8/string/io※ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | other code changes | ✓ | ✓ | ✓ | ✓ | skip |
 
 **Legend**: `✓` = required / `skip` = may omit (record in PR description) / `review` = judgment call.
 
-※ "parser/lexer/json/utf8/string family" = changes to `src/parser*`, `src/lexer*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), or `include/ry/parser*.hpp`, `include/ry/lexer*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
+※ "parser/lexer/json/utf8/string/io family" = changes to `src/parser*`, `src/lexer*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), `src/runtime/native/io.cpp`, or `include/ry/parser*.hpp`, `include/ry/lexer*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`, `include/ry/runtime/native/io.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
 
 **Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
 
@@ -171,10 +171,10 @@ Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e
 > **Skip if** — changed files do **not** include the parser/lexer/json/utf8/string family:
 >
 > ```bash
-> git diff --name-only origin/main | grep -E '(src/(parser|lexer)|src/runtime/native/json\.cpp|src/runtime/core/(utf8|string)\.cpp|include/ry/(parser|lexer)|include/ry/runtime/native/json\.hpp|include/ry/runtime/core/string\.hpp)' | head -1
+> git diff --name-only origin/main | grep -E '(src/(parser|lexer)|src/runtime/native/(json|io)\.cpp|src/runtime/core/(utf8|string)\.cpp|include/ry/(parser|lexer)|include/ry/runtime/native/(json|io)\.hpp|include/ry/runtime/core/string\.hpp)' | head -1
 > ```
 >
-> **Empty output ⇒ skip**. Otherwise run the matching fuzzer. Record `Skipped §3.6 — no parser/lexer/json/utf8/string change` in the PR description. **Fuzzer mapping**: parser/lexer → `fuzz_parser`; json → `fuzz_json` (+ `fuzz_utf8` if `runtime/core/string.cpp` changed); utf8/string → `fuzz_utf8` (+ `fuzz_json` if `runtime/core/string.cpp` changed). `tests/`-only changes targeting these areas ⇒ run the matching fuzzer only (judgment call); run all three when unsure.
+> **Empty output ⇒ skip**. Otherwise run the matching fuzzer. Record `Skipped §3.6 — no parser/lexer/json/utf8/string/io change` in the PR description. **Fuzzer mapping**: parser/lexer → `fuzz_parser`; json → `fuzz_json` (+ `fuzz_utf8` if `runtime/core/string.cpp` changed); utf8/string → `fuzz_utf8` (+ `fuzz_json` if `runtime/core/string.cpp` changed); io → `fuzz_io_open`. `tests/`-only changes targeting these areas ⇒ run the matching fuzzer only (judgment call); run all four when unsure.
 
 **CI jobs are disabled; always run locally on the feature branch.** Harness requirements and known limits are delegated to `/libfuzzer-harness`.
 
@@ -184,7 +184,7 @@ Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e
 ./.claude/skills/pre-commit-checklist/run-fuzz.sh
 ```
 
-Runs all three targets (`fuzz_parser` / `fuzz_json` / `fuzz_utf8`) for 60 s each with `-rss_limit_mb=512` and `-artifact_prefix=tests/fuzz/regressions/<name>/`. For a single target, invoke `./docker/run.sh fuzz <target> ...` directly. All three targets must exit 0 after 60 s. On crash, follow `/triage-side-finding`. **Hard-to-reproduce crashes** (no repro in 3 local attempts / no saved corpus / CI-only) ⇒ Q1 = Yes ⇒ **fix in the same PR** (don't lose the reproduction window — same principle as the TSan race rule above). If the current PR's code directly caused it, also fix in the same PR (Q4(a)). Only file a separate issue (Q4(b)) when the bug is locally reproducible, pre-existing, and would substantially expand scope. Save the crash input to both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/` regardless of reproducibility.
+Runs all four targets (`fuzz_parser` / `fuzz_json` / `fuzz_utf8` / `fuzz_io_open`) for 60 s each with `-rss_limit_mb=2048` and `-artifact_prefix=tests/fuzz/regressions/<name>/`. The 2048 MB cap (raised from 512 MB) accommodates libFuzzer's coverage-tracking overhead (~275k inline 8-bit counters + PC table), which empirically peaks at 400–600 MB across all four harnesses (measured: `fuzz_parser` 514 MB, `fuzz_json` 597 MB, `fuzz_utf8` 429 MB, `fuzz_io_open` 536 MB). The previous 512 MB cap triggered a startup OOM in `fuzz_parser` and was borderline for `fuzz_json` / `fuzz_io_open` — this is a structural corpus + coverage overhead, not a parser-specific bug (#1976). For a single target, invoke `./docker/run.sh fuzz <target> ...` directly. All four targets must exit 0 after 60 s. On crash, follow `/triage-side-finding`. **Hard-to-reproduce crashes** (no repro in 3 local attempts / no saved corpus / CI-only) ⇒ Q1 = Yes ⇒ **fix in the same PR** (don't lose the reproduction window — same principle as the TSan race rule above). If the current PR's code directly caused it, also fix in the same PR (Q4(a)). Only file a separate issue (Q4(b)) when the bug is locally reproducible, pre-existing, and would substantially expand scope. Save the crash input to both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/` regardless of reproducibility.
 
 ## 3.6.5. tree-sitter Grammar Regression Check
 
