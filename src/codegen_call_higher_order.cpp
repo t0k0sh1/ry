@@ -99,6 +99,35 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "filter_len_ptr");
         builder_.CreateStore(finalLen, newLenPtr);
 
+        // Source and result share element pointers (loop copied them
+        // verbatim). propagateMeta below makes the result inherit
+        // list_elem_type_name, so resolveCollectionDestructor picks the same
+        // inner-arc-release destructor for both — without per-element
+        // retain, both destructors release the same elements at scope/exit
+        // (glibc malloc detects this as `invalid next->prev_inuse`; macOS
+        // libmalloc / ASan-on-JIT-code are blind to it). Mirror the
+        // emitCollOp_slice retain block (#1204 / #1667).
+        {
+            const ValueMetadata *srcMeta = getMeta(listVal);
+            const std::string elemSigSnap =
+                srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                         : std::string{};
+            if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+                elemSigSnap.back() == ')') {
+                if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                    emitTupleElemRetainLoop(newData, finalLen, "filter_telem",
+                                             elemSigSnap, tupleTy);
+                }
+            } else {
+                CollectionKind elemArcKind = CollectionKind::List;
+                if (elementTypeIsArcManaged(listVal, CollectionKind::List,
+                                             &elemArcKind)) {
+                    emitCowRetainArcElements(newData, finalLen, "filter_elem",
+                                              elemArcKind);
+                }
+            }
+        }
+
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         propagateMeta(listVal, newHeader);
         return newHeader;
@@ -898,6 +927,31 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     auto timsortFn = getRuntimeFn("__ry_timsort",
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_});
     builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
+
+    // memcpy duplicates ARC element pointers without bumping refcounts;
+    // propagateMeta below makes src and result share the same destructor,
+    // which would double-release each element. Mirror the
+    // emitCollOp_slice retain block (#1204 / #1667).
+    {
+        const ValueMetadata *srcMeta = getMeta(listVal);
+        const std::string elemSigSnap =
+            srcMeta ? resolveTypeAlias(srcMeta->list_elem_type_name)
+                     : std::string{};
+        if (elemSigSnap.size() >= 2 && elemSigSnap.front() == '(' &&
+            elemSigSnap.back() == ')') {
+            if (auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy)) {
+                emitTupleElemRetainLoop(newData, srcLen, "sort_telem",
+                                         elemSigSnap, tupleTy);
+            }
+        } else {
+            CollectionKind elemArcKind = CollectionKind::List;
+            if (elementTypeIsArcManaged(listVal, CollectionKind::List,
+                                         &elemArcKind)) {
+                emitCowRetainArcElements(newData, srcLen, "sort_elem",
+                                          elemArcKind);
+            }
+        }
+    }
 
     // Return sorted list
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
