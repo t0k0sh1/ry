@@ -41,6 +41,30 @@
 // reverse_option_types_ map is consumed by ARC release / Any wrap on the
 // CodeGen side); opt_ty crosses the ABI as `void*`, mirroring resTy_.
 //
+// Stage 2-C (#1970) adds ry_emit_cow_ensure_unique for the Copy-on-Write
+// uniqueness check used by 1-hop List / Map / Set slot writes (path CoW
+// via emitPathCowForChain is a later Stage). The op:
+//   - Loads strong_count atomically (Acquire if RY_ARC_ATOMIC, NotAtomic
+//     otherwise) to pair with the SeqCst atomicrmw used by retain/release.
+//   - Treats both strong==1 (unique) and strong==INT64_MAX (immortal) as
+//     "skip CoW".
+//   - Otherwise allocates a fresh ARC-backed collection header, memcpy's
+//     the kind-specific contents (List `{i64,i64,ptr}`, Map
+//     `{i64,i64,ptr,ptr,i64,ptr}`, Set `{i64,i64,ptr,i64,ptr}`), runs
+//     element-retain loops (always NON-atomic; element retain crosses no
+//     thread boundary), calls ry_emit_arc_release internally to drop the
+//     old header, and stores the new dataPtr into slot_ptr_id.
+//   - Returns a PHI joining the original dataPtr (unique / immortal) with
+//     the new dataPtr (copied path).
+// The kind-specific header StructTypes are reconstructed locally inside
+// the emission layer as anonymous `{i64, i64, ptr}` / `{i64, i64, ptr,
+// ptr, i64, ptr}` / `{i64, i64, ptr, i64, ptr}` — CodeGen's named
+// "ListHeader" / "MapHeader" / "SetHeader" types stay on the CodeGen side
+// and are not consulted at the ABI boundary. emitCowDeepCopy{List,Map,Set}
+// in src/codegen_arc_cow.cpp are dissolved into the ABI implementation;
+// emitCowRetainArcElements stays in CodeGen because of its 8 non-CoW
+// callers.
+//
 // Stage 2-A (scaffolding, #1949):
 //   - Opaque handles for LLVM values are defined as `uint32_t` (RyValueId).
 //   - Module / IRBuilder / LLVMContext / Function pointers are still passed
@@ -99,6 +123,16 @@ typedef enum {
     RY_ARC_NONATOMIC = 0,
     RY_ARC_ATOMIC = 1
 } RyArcAtomic;
+
+// Copy-on-Write collection kind selector. Numbers chosen to match the order
+// CodeGen's CollectionKind enum uses for List / Map / Set; do not reorder
+// without updating both sides. CollectionKind::Str is intentionally absent
+// because str is immutable and never reaches the CoW path.
+typedef enum {
+    RY_COW_LIST = 0,
+    RY_COW_MAP = 1,
+    RY_COW_SET = 2
+} RyCowKind;
 
 // Callback type for ok/err value builders consumed by ry_emit_result_branch.
 // Stage 2-B keeps callbacks at the C ABI boundary (function pointer +
@@ -357,6 +391,87 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         void *elem_ty_ptr /* llvm::Type* */,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data);
+
+// Descriptor for ry_emit_cow_ensure_unique. CodeGen collects all metadata
+// (kind, element sizes, retain flags, destructor) and flattens it to this
+// plain-int / handle struct so the ABI stays C-only and LLVM types do not
+// cross the boundary. `lowered::CowEnsureUniqueOp` (`include/ry/codegen/
+// lowered_cow.hpp`) is the C++-side mirror.
+typedef struct {
+    // Current ARC-backed dataPtr (handle to llvm::Value*). The op derives
+    // headerPtr internally as `data_ptr - ARC_HEADER_SIZE`.
+    RyValueId data_ptr_id;
+    // Slot (alloca or GEP) receiving the new dataPtr after a copy. The op
+    // emits one store into this slot on the copy path; the unique / immortal
+    // path leaves the slot untouched.
+    RyValueId slot_ptr_id;
+    // RyCowKind selector: 0 = List, 1 = Map, 2 = Set.
+    int kind;
+    // RyArcAtomic — gates the strong_count load ordering (Acquire vs
+    // NotAtomic) and the internal ry_emit_arc_release atomic mode.
+    int atomic;
+    // List: element bytes; Set: element bytes; Map: unused (use val_size).
+    uint64_t elem_size;
+    // Map: key bytes. 0 for List / Set.
+    uint64_t key_size;
+    // Map: value bytes. 0 for List / Set.
+    uint64_t val_size;
+    // 1 = retain each cloned element after memcpy (List element / Map value
+    // / Set element). Always done with RY_ARC_NONATOMIC inside the ABI.
+    int do_elem_retain;
+    // 1 = element retain uses StringHeader (offset -24); 0 = ArcHeader
+    // (offset -16). Only consulted when do_elem_retain == 1.
+    int elem_is_str;
+    // Map only. 1 = retain each cloned Map key after memcpy. Always
+    // RY_ARC_NONATOMIC. Independent of do_elem_retain because
+    // `elementTypeIsArcManaged` only inspects map_value_type_name.
+    int do_key_retain;
+    // 1 = key retain uses StringHeader (offset -24); 0 = ArcHeader
+    // (offset -16). Only consulted when do_key_retain == 1.
+    int key_is_str;
+    // C function pointer `void (*)(void *)` for the per-kind collection
+    // destructor passed to the internal ry_emit_arc_release. May be NULL
+    // when the kind has no element-side cleanup to perform.
+    void *destructor_callee;
+} RyCowEnsureUniqueDesc;
+
+// Stage 2-C entry — Copy-on-Write uniqueness check (`emitCowCheckSlot`).
+// Emits the per-slot CoW sequence (BB labels FileCheck-stable):
+//   header_ptr = data_ptr_id - ARC_HEADER_SIZE
+//   strong = atomic-load strong_count  (Acquire if atomic, NotAtomic else)
+//   skip   = (strong == 1) || (strong == INT64_MAX /* ARC_IMMORTAL */)
+//   if (skip) goto cow.cont;
+//   cow.copy:
+//     // Allocate fresh ARC-backed collection header via the same path
+//     // CodeGen's emitArcAlloc + emitArcGetDataPtr use (counter_delta +1,
+//     // strong=1, weak=0, GEP+ARC_HEADER_SIZE for the dataPtr).
+//     new_data = arc_alloc_header(kind_size)
+//     memcpy(new_data, data_ptr_id, kind_size)
+//     // For List: malloc(len * elem_size) + memcpy + store into new header
+//     // For Map: same for keys (len * key_size), vals (len * val_size),
+//     //          buckets (bucket_count * sizeof(i64)); bucket_count is
+//     //          loaded from the old map header at field 4.
+//     // For Set: same for elems (len * elem_size) and buckets.
+//     if (do_elem_retain) for each cloned element retain (NON-atomic)
+//     if (do_key_retain)  for each cloned Map key retain (NON-atomic)
+//     ry_emit_arc_release(header_ptr, atomic, destructor_callee, NULL)
+//     *slot_ptr_id = new_data
+//     goto cow.cont;
+//   cow.cont:
+//     phi = PHI(data_ptr_id from orig BB, new_data from copy-end BB)
+//     return phi
+// The descriptor's atomic flag governs both the strong_count load ordering
+// and the ry_emit_arc_release internal counters. Element retains stay
+// NON-atomic because the per-thread thunk that owns the freshly-cloned
+// container holds the only alias for the duration of the retain loop.
+// destructor_callee may be NULL.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it). The
+// caller must additionally register "gc" in CodeGen.used_native_libraries_
+// because the internal ry_emit_arc_release call emits __ry_gc_track /
+// __ry_gc_untrack.
+RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
+                                    const RyCowEnsureUniqueDesc *desc);
 
 #ifdef __cplusplus
 } // extern "C"

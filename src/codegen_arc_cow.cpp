@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_bounds_check.hpp"
+#include "ry/codegen/lowered_cow.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 
@@ -44,122 +45,11 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
     builder_.SetInsertPoint(doneBB);
 }
 
-llvm::Value *CodeGen::emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy) {
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-    auto oldFields = loadListHeader(oldDataPtr, "cow_old");
-
-    auto *newDataPtr = emitArcAllocCollectionHeader(listHeaderTy_);
-
-    // Tight copy: allocate len (not cap) elements; cap = len
-    auto *bufSize = builder_.CreateMul(oldFields.len,
-        llvm::ConstantInt::get(i64Ty_, elemSize), "cow_buf_size");
-    auto *newBuf = builder_.CreateCall(getStdlibMalloc(), {bufSize}, "cow_new_buf");
-    builder_.CreateCall(getStdlibMemcpy(), {newBuf, oldFields.data, bufSize});
-
-    auto *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 0, "cow_new_len_ptr");
-    builder_.CreateStore(oldFields.len, newLenPtr);
-    auto *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 1, "cow_new_cap_ptr");
-    builder_.CreateStore(oldFields.len, newCapPtr);
-    auto *newDataField = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 2, "cow_new_data_ptr");
-    builder_.CreateStore(newBuf, newDataField);
-
-    // Note: we do NOT retain ARC elements here. Collection destructors only
-    // free internal buffers and do not release ARC-managed elements, so
-    // retaining here would cause an ARC imbalance (leak).
-
-    return newDataPtr;
-}
-
-llvm::Value *CodeGen::emitCowDeepCopyMap(llvm::Value *oldDataPtr,
-                                          llvm::Type *keyTy, llvm::Type *valTy) {
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t keySize = dl.getTypeAllocSize(keyTy);
-    uint64_t valSize = dl.getTypeAllocSize(valTy);
-    uint64_t bucketElemSize = dl.getTypeAllocSize(i64Ty_);
-
-    auto oldFields = loadMapHeader(oldDataPtr, "cow_old");
-    auto *bucketCountPtr = builder_.CreateStructGEP(mapHeaderTy_, oldDataPtr, 4, "cow_old_bc_ptr");
-    auto *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "cow_old_bc");
-    auto *bucketsFieldPtr = builder_.CreateStructGEP(mapHeaderTy_, oldDataPtr, 5, "cow_old_bk_ptr");
-    auto *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsFieldPtr, "cow_old_bk");
-
-    auto *newDataPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
-
-    // Tight copy: allocate len (not cap) for keys/vals
-    auto *keysBufSize = builder_.CreateMul(oldFields.len,
-        llvm::ConstantInt::get(i64Ty_, keySize), "cow_keys_size");
-    auto *newKeys = builder_.CreateCall(getStdlibMalloc(), {keysBufSize}, "cow_new_keys");
-    builder_.CreateCall(getStdlibMemcpy(), {newKeys, oldFields.keys, keysBufSize});
-
-    auto *valsBufSize = builder_.CreateMul(oldFields.len,
-        llvm::ConstantInt::get(i64Ty_, valSize), "cow_vals_size");
-    auto *newVals = builder_.CreateCall(getStdlibMalloc(), {valsBufSize}, "cow_new_vals");
-    builder_.CreateCall(getStdlibMemcpy(), {newVals, oldFields.vals, valsBufSize});
-
-    auto *bucketsBufSize = builder_.CreateMul(bucketCount,
-        llvm::ConstantInt::get(i64Ty_, bucketElemSize), "cow_bk_size");
-    auto *newBuckets = builder_.CreateCall(getStdlibMalloc(), {bucketsBufSize}, "cow_new_bk");
-    builder_.CreateCall(getStdlibMemcpy(), {newBuckets, oldBuckets, bucketsBufSize});
-
-    auto *newLenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_m_len_ptr");
-    builder_.CreateStore(oldFields.len, newLenPtr);
-    auto *newCapPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 1, "cow_m_cap_ptr");
-    builder_.CreateStore(oldFields.len, newCapPtr);
-    auto *newKeysField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 2, "cow_m_keys_ptr");
-    builder_.CreateStore(newKeys, newKeysField);
-    auto *newValsField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 3, "cow_m_vals_ptr");
-    builder_.CreateStore(newVals, newValsField);
-    auto *newBcPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 4, "cow_m_bc_ptr");
-    builder_.CreateStore(bucketCount, newBcPtr);
-    auto *newBkField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 5, "cow_m_bk_ptr");
-    builder_.CreateStore(newBuckets, newBkField);
-
-    // Note: no ARC element retain — see emitCowDeepCopyList for rationale.
-
-    return newDataPtr;
-}
-
-llvm::Value *CodeGen::emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy) {
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t elemSz = dl.getTypeAllocSize(elemTy);
-    uint64_t bucketElemSize = dl.getTypeAllocSize(i64Ty_);
-
-    auto oldFields = loadSetHeader(oldDataPtr, "cow_old");
-    auto *bucketCountPtr = builder_.CreateStructGEP(setHeaderTy_, oldDataPtr, 3, "cow_old_bc_ptr");
-    auto *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "cow_old_bc");
-    auto *bucketsFieldPtr = builder_.CreateStructGEP(setHeaderTy_, oldDataPtr, 4, "cow_old_bk_ptr");
-    auto *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsFieldPtr, "cow_old_bk");
-
-    auto *newDataPtr = emitArcAllocCollectionHeader(setHeaderTy_);
-
-    // Tight copy: allocate len (not cap) for elems
-    auto *elemsBufSize = builder_.CreateMul(oldFields.len,
-        llvm::ConstantInt::get(i64Ty_, elemSz), "cow_elems_size");
-    auto *newElems = builder_.CreateCall(getStdlibMalloc(), {elemsBufSize}, "cow_new_elems");
-    builder_.CreateCall(getStdlibMemcpy(), {newElems, oldFields.elems, elemsBufSize});
-
-    auto *bucketsBufSize = builder_.CreateMul(bucketCount,
-        llvm::ConstantInt::get(i64Ty_, bucketElemSize), "cow_bk_size");
-    auto *newBuckets = builder_.CreateCall(getStdlibMalloc(), {bucketsBufSize}, "cow_new_bk");
-    builder_.CreateCall(getStdlibMemcpy(), {newBuckets, oldBuckets, bucketsBufSize});
-
-    auto *newLenPtr = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 0, "cow_s_len_ptr");
-    builder_.CreateStore(oldFields.len, newLenPtr);
-    auto *newCapPtr = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 1, "cow_s_cap_ptr");
-    builder_.CreateStore(oldFields.len, newCapPtr);
-    auto *newElemsField = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 2, "cow_s_elems_ptr");
-    builder_.CreateStore(newElems, newElemsField);
-    auto *newBcPtr = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 3, "cow_s_bc_ptr");
-    builder_.CreateStore(bucketCount, newBcPtr);
-    auto *newBkField = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 4, "cow_s_bk_ptr");
-    builder_.CreateStore(newBuckets, newBkField);
-
-    // Note: no ARC element retain — see emitCowDeepCopyList for rationale.
-
-    return newDataPtr;
-}
+// Note: the per-kind deep-copy helpers (emitCowDeepCopyList/Map/Set) were
+// dissolved into the llvm_emit ABI (`ry_emit_cow_ensure_unique`) in #1970
+// — they were only ever called from `emitCowCheckSlot`, so the IR
+// construction now lives entirely inside the ABI layer alongside the
+// strong_count check, element-retain loops, slot overwrite, and PHI.
 
 llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
                                     llvm::AllocaInst *alloca,
@@ -196,142 +86,79 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
     if (!slotPtr)
         return dataPtr;
 
-    auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *headerPtr = emitArcGetHeaderFromData(dataPtr);
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "cow_strong_ptr");
-    // Acquire ordering in atomic context pairs with the atomicrmw retain/
-    // release in emitArcRetain/Release and closes the TOCTOU window TSan
-    // flagged when multiple workers CoW on the same captured value (#630).
-    auto *strong = emitAtomicI64Load(strongPtr,
-        isArcAtomic(dataPtr) ? llvm::AtomicOrdering::Acquire : llvm::AtomicOrdering::NotAtomic,
-        "cow_strong");
-
-    // Skip if unique (strong_count == 1) or immortal (string literals, etc.)
-    auto *isUnique = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, 1), "cow_unique");
-    auto *isImmortal = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "cow_immortal");
-    auto *skipCow = builder_.CreateOr(isUnique, isImmortal, "cow_skip");
-
-    auto *copyBB = llvm::BasicBlock::Create(*ctx_, "cow.copy", fn);
-    auto *contBB = llvm::BasicBlock::Create(*ctx_, "cow.cont", fn);
-    auto *origBB = builder_.GetInsertBlock();
-    builder_.CreateCondBr(skipCow, contBB, copyBB);
-
-    builder_.SetInsertPoint(copyBB);
-
-    // Determine whether elements need retention BEFORE cloning: the
-    // metadata query uses `dataPtr` which is the *old* container ptr that
-    // still carries the element-type metadata propagated at construction.
-    // The cloned buffer does not receive metadata automatically — we have
-    // to drive the retain loop from here rather than from
-    // `emitCowDeepCopyList` so the decision uses the correct source.
+    // Element-retention decision uses metadata stamped on the *old*
+    // container — the cloned buffer the ABI returns does not carry
+    // metadata. str elements always need retention because their
+    // destructors release them (#1046).
     CollectionKind elemArcKind = CollectionKind::List;
     bool hasArcElems = elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
-    // str elements: destructor now releases them, so we must always retain
-    // during CoW to keep reference counts balanced (#1046).
     bool doElemRetain = hasArcElems &&
         (retainElements || elemArcKind == CollectionKind::Str);
 
-    llvm::Value *newDataPtr = nullptr;
+    // Map<K, V> key retention is independent of value retention because
+    // elementTypeIsArcManaged only consults map_value_type_name.
+    bool doKeyRetain = false;
+    CollectionKind keyArcKind = CollectionKind::List;
+    if (kind == CollectionKind::Map) {
+        auto *meta = getMeta(dataPtr);
+        if (meta && !meta->map_key_type_name.empty()) {
+            doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind);
+        }
+    }
+
+    // Per-kind element / key / value byte sizes — the ABI uses these to
+    // size the malloc + memcpy for the cloned buffers. The kind enum
+    // values must match RyCowKind (List=0, Map=1, Set=2).
+    int kindCode = 0;
+    uint64_t elemSize = 0;
+    uint64_t keySize = 0;
+    uint64_t valSize = 0;
+    const llvm::DataLayout &dl = mod_->getDataLayout();
     switch (kind) {
     case CollectionKind::List: {
+        kindCode = 0;
         auto *elemTy = getListElementType(dataPtr);
         if (!elemTy) elemTy = i64Ty_;
-        newDataPtr = emitCowDeepCopyList(dataPtr, elemTy);
+        elemSize = dl.getTypeAllocSize(elemTy);
         break;
     }
     case CollectionKind::Map: {
+        kindCode = 1;
         auto *keyTy = getMapKeyType(dataPtr);
         auto *valTy = getMapValueType(dataPtr);
         if (!keyTy) keyTy = i64Ty_;
         if (!valTy) valTy = i64Ty_;
-        newDataPtr = emitCowDeepCopyMap(dataPtr, keyTy, valTy);
+        keySize = dl.getTypeAllocSize(keyTy);
+        valSize = dl.getTypeAllocSize(valTy);
         break;
     }
     case CollectionKind::Set: {
+        kindCode = 2;
         auto *elemTy = getSetElementType(dataPtr);
         if (!elemTy) elemTy = i64Ty_;
-        newDataPtr = emitCowDeepCopySet(dataPtr, elemTy);
+        elemSize = dl.getTypeAllocSize(elemTy);
         break;
     }
     case CollectionKind::Str:
-        // str is immutable — CoW is not applicable; this path should never be reached.
-        llvm_unreachable("emitCowClone: CollectionKind::Str is not a CoW container");
+        llvm_unreachable("emitCowCheckSlot: CollectionKind::Str is not a CoW container");
     }
 
-    // Retain each ARC-managed element in the cloned buffer so the clone
-    // shares ownership of nested state with the original. Without this,
-    // the subsequent release of the old header would drop the strong
-    // count of elements still reachable through the original alias to
-    // zero, corrupting heap state. This is what wires up the previously-
-    // unused `emitCowRetainArcElements` helper (#854 path CoW).
-    if (doElemRetain) {
-        llvm::Value *elemBuf = nullptr;
-        llvm::Value *elemLen = nullptr;
-        switch (kind) {
-        case CollectionKind::List: {
-            auto *lenPtr = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
-            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
-            auto *dataField = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 2, "cow_ret_data_field");
-            elemBuf = builder_.CreateLoad(ptrTy_, dataField, "cow_ret_data");
-            break;
-        }
-        case CollectionKind::Map: {
-            auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
-            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
-            auto *valsField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 3, "cow_ret_vals_field");
-            elemBuf = builder_.CreateLoad(ptrTy_, valsField, "cow_ret_vals");
-            break;
-        }
-        case CollectionKind::Set: {
-            auto *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
-            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
-            auto *elemsField = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 2, "cow_ret_elems_field");
-            elemBuf = builder_.CreateLoad(ptrTy_, elemsField, "cow_ret_elems");
-            break;
-        }
-        case CollectionKind::Str:
-            llvm_unreachable("emitCowClone retain loop: CollectionKind::Str is not a CoW container");
-        }
-        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem", elemArcKind);
-    }
+    bool atomic = isArcAtomic(dataPtr);
+    llvm::FunctionCallee destructor = getOrCreateCollectionDestructor(kind);
+    llvm::Value *destructorVal =
+        destructor ? llvm::cast<llvm::Value>(destructor.getCallee()) : nullptr;
 
-    // CoW key retention for Map<str, V>: elementTypeIsArcManaged only checked
-    // map_value_type_name — retain str keys independently so reference counts
-    // stay balanced after the old header is released.
-    if (kind == CollectionKind::Map) {
-        auto *meta = getMeta(dataPtr);
-        if (meta && !meta->map_key_type_name.empty()) {
-            CollectionKind keyArcKind = CollectionKind::List;
-            bool doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind);
-            if (doKeyRetain) {
-                auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_kret_len_ptr");
-                auto *keyLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_kret_len");
-                auto *keysField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 2, "cow_kret_keys_field");
-                auto *keyBuf = builder_.CreateLoad(ptrTy_, keysField, "cow_kret_keys");
-                emitCowRetainArcElements(keyBuf, keyLen, "cow_key", keyArcKind);
-            }
-        }
-    }
+    auto op = codegen::lowering::lowerCowEnsureUnique(
+        *this, dataPtr, slotPtr, kindCode, atomic, elemSize, keySize, valSize,
+        doElemRetain, elemArcKind == CollectionKind::Str,
+        doKeyRetain, keyArcKind == CollectionKind::Str,
+        destructorVal);
 
-    // Reuse headerPtr (dominates copyBB) instead of re-computing
-    emitArcRelease(headerPtr, isArcAtomic(dataPtr),
-                   getOrCreateCollectionDestructor(kind));
+    auto *phi = codegen::emission::emitCowEnsureUnique(*this, op);
 
-    builder_.CreateStore(newDataPtr, slotPtr);
-    arc_owned_values_.insert(newDataPtr);
-
-    auto *copyEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(contBB);
-
-    builder_.SetInsertPoint(contBB);
-    auto *phi = builder_.CreatePHI(ptrTy_, 2, "cow_ptr");
-    phi->addIncoming(dataPtr, origBB);
-    phi->addIncoming(newDataPtr, copyEndBB);
-
-    // Propagate metadata so downstream type queries on the result work.
-    // When the slot is an alloca we can use the existing propagateMeta
-    // keyed on the alloca; otherwise we copy from the source ptr which
-    // still has its metadata.
+    // Propagate metadata so downstream type queries on the PHI result work.
+    // When the slot is an alloca we use propagateMeta keyed on the alloca;
+    // otherwise we copy from the source ptr which still has its metadata.
     if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(slotPtr)) {
         propagateMeta(alloca, phi);
     } else {

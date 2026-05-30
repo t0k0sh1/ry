@@ -876,4 +876,352 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
     return ry_emit_intern(ctx, result);
 }
 
+RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
+                                    const RyCowEnsureUniqueDesc *desc) {
+    // ABI input validation: malformed external callers (Rust reimplementation
+    // in #1950, fuzz harnesses, etc.) get the invalid sentinel (0) instead of
+    // crashing the emitter. Mirrors the guard pattern in ry_emit_runtime_call
+    // (#1978 review). Per .claude/rules/runtime-memory-safety.md "外部入力の
+    // NULL チェック".
+    if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
+        ctx->builder == nullptr || desc == nullptr)
+        return 0;
+
+    auto *dataPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->data_ptr_id));
+    auto *slotPtr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->slot_ptr_id));
+    if (dataPtr == nullptr || slotPtr == nullptr)
+        return 0;
+
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *i8Ty = llvm::Type::getInt8Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+
+    auto *arcHeaderTy = llvm::StructType::get(*ctx->context, {i64Ty, i64Ty});
+    // Anonymous mirrors of CodeGen's listHeaderTy_ / mapHeaderTy_ / setHeaderTy_
+    // (defined in src/codegen.cpp:56-60). Field order MUST stay in sync:
+    //   ListHeader { i64 len, i64 cap, ptr data }
+    //   MapHeader  { i64 len, i64 cap, ptr keys, ptr vals, i64 bucket_count, ptr buckets }
+    //   SetHeader  { i64 len, i64 cap, ptr elems, i64 bucket_count, ptr buckets }
+    llvm::StructType *headerTy = nullptr;
+    unsigned dataFieldIdx = 0; // index of element buffer in header (for retain loop)
+    unsigned keyFieldIdx = 0;  // index of key buffer (Map only)
+    switch (static_cast<RyCowKind>(desc->kind)) {
+    case RY_COW_LIST:
+        headerTy = llvm::StructType::get(*ctx->context, {i64Ty, i64Ty, ptrTy});
+        dataFieldIdx = 2;
+        break;
+    case RY_COW_MAP:
+        headerTy = llvm::StructType::get(
+            *ctx->context, {i64Ty, i64Ty, ptrTy, ptrTy, i64Ty, ptrTy});
+        dataFieldIdx = 3;
+        keyFieldIdx = 2;
+        break;
+    case RY_COW_SET:
+        headerTy = llvm::StructType::get(
+            *ctx->context, {i64Ty, i64Ty, ptrTy, i64Ty, ptrTy});
+        dataFieldIdx = 2;
+        break;
+    default:
+        // External / fuzz callers may supply an unknown kind — return the
+        // invalid sentinel rather than crashing via __builtin_unreachable.
+        return 0;
+    }
+
+    const llvm::DataLayout &dl = ctx->module->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(headerTy);
+
+    // headerPtr = dataPtr - ARC_HEADER_SIZE (mirrors emitArcGetHeaderFromData).
+    auto *headerPtr = ctx->builder->CreateGEP(
+        i8Ty, dataPtr,
+        llvm::ConstantInt::getSigned(
+            i64Ty, -static_cast<int64_t>(ry::ARC_HEADER_SIZE)),
+        "cow_hdr");
+
+    // Acquire ordering in atomic context pairs with retain/release's
+    // atomicrmw SeqCst and closes the TOCTOU window TSan flagged when
+    // multiple workers CoW on the same captured value (#630).
+    auto atomicMode = static_cast<RyArcAtomic>(desc->atomic);
+    auto *strongPtr = ctx->builder->CreateStructGEP(arcHeaderTy, headerPtr, 0,
+                                                    "cow_strong_ptr");
+    auto *strong = emitAtomicI64Load(
+        *ctx->builder, i64Ty, strongPtr,
+        atomicMode == RY_ARC_ATOMIC ? llvm::AtomicOrdering::Acquire
+                                    : llvm::AtomicOrdering::NotAtomic,
+        "cow_strong");
+
+    // Skip if unique (strong_count == 1) or immortal (string literals, etc.).
+    auto *isUnique = ctx->builder->CreateICmpEQ(
+        strong, llvm::ConstantInt::get(i64Ty, 1), "cow_unique");
+    auto *isImmortal = ctx->builder->CreateICmpEQ(
+        strong, llvm::ConstantInt::get(i64Ty, ry::ARC_IMMORTAL),
+        "cow_immortal");
+    auto *skipCow = ctx->builder->CreateOr(isUnique, isImmortal, "cow_skip");
+
+    // Builder-derived parent — see ry_emit_arc_retain for the rationale
+    // (cross-function reference hazard when cg.fn_ tracks the outer function
+    // while the builder has been retargeted to a nested function body).
+    auto *fn = ctx->builder->GetInsertBlock()->getParent();
+    auto *copyBB = llvm::BasicBlock::Create(*ctx->context, "cow.copy", fn);
+    auto *contBB = llvm::BasicBlock::Create(*ctx->context, "cow.cont", fn);
+    auto *origBB = ctx->builder->GetInsertBlock();
+    ctx->builder->CreateCondBr(skipCow, contBB, copyBB);
+
+    ctx->builder->SetInsertPoint(copyBB);
+
+    auto allocBuf = [&](llvm::Value *byteSize, const llvm::Twine &name) {
+        auto *mallocTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
+        auto malloc = ctx->module->getOrInsertFunction("malloc", mallocTy);
+        return ctx->builder->CreateCall(malloc, {byteSize}, name);
+    };
+    auto memcpyTo = [&](llvm::Value *dst, llvm::Value *src,
+                        llvm::Value *byteSize) {
+        auto *memcpyTy =
+            llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i64Ty}, false);
+        auto mcpy = ctx->module->getOrInsertFunction("memcpy", memcpyTy);
+        ctx->builder->CreateCall(mcpy, {dst, src, byteSize});
+    };
+
+    // Allocate the ARC-backed collection header. Mirrors emitArcAlloc +
+    // emitArcGetDataPtr but does NOT register newDataPtr in
+    // arc_owned_values_ — see #1970 verification notes.
+    auto *boxSize = llvm::ConstantInt::get(
+        i64Ty, static_cast<uint64_t>(ry::ARC_HEADER_SIZE) + headerSize);
+    auto *box = allocBuf(boxSize, "cow_box");
+    emitArcCounterDeltaIR(*ctx->builder, i64Ty, ptrTy, 1);
+    auto *newStrongPtr = ctx->builder->CreateStructGEP(
+        arcHeaderTy, box, 0, "cow_new_strong_ptr");
+    ctx->builder->CreateStore(llvm::ConstantInt::get(i64Ty, 1), newStrongPtr);
+    auto *newWeakPtr = ctx->builder->CreateStructGEP(arcHeaderTy, box, 1,
+                                                     "cow_new_weak_ptr");
+    ctx->builder->CreateStore(llvm::ConstantInt::get(i64Ty, 0), newWeakPtr);
+    auto *newDataPtr = ctx->builder->CreateGEP(
+        i8Ty, box,
+        llvm::ConstantInt::get(i64Ty,
+                               static_cast<int64_t>(ry::ARC_HEADER_SIZE)),
+        "cow_new_data");
+
+    // Load len from the OLD header (field 0); the new header is tight
+    // (cap = len).
+    auto *oldLenPtr = ctx->builder->CreateStructGEP(headerTy, dataPtr, 0,
+                                                    "cow_old_len_ptr");
+    auto *oldLen = ctx->builder->CreateLoad(i64Ty, oldLenPtr, "cow_old_len");
+
+    // Per-kind deep copy: malloc + memcpy each contiguous buffer, store back
+    // into the new header. ARC element retain happens in the dedicated
+    // retain loops below; collection destructors do not release elements,
+    // so retaining here would leak.
+    switch (static_cast<RyCowKind>(desc->kind)) {
+    case RY_COW_LIST: {
+        auto *oldDataField = ctx->builder->CreateStructGEP(
+            headerTy, dataPtr, 2, "cow_old_data_field");
+        auto *oldData =
+            ctx->builder->CreateLoad(ptrTy, oldDataField, "cow_old_data");
+        auto *bufSize = ctx->builder->CreateMul(
+            oldLen, llvm::ConstantInt::get(i64Ty, desc->elem_size),
+            "cow_buf_size");
+        auto *newBuf = allocBuf(bufSize, "cow_new_buf");
+        memcpyTo(newBuf, oldData, bufSize);
+
+        auto *newLenPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 0, "cow_new_len_ptr");
+        ctx->builder->CreateStore(oldLen, newLenPtr);
+        auto *newCapPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 1, "cow_new_cap_ptr");
+        ctx->builder->CreateStore(oldLen, newCapPtr);
+        auto *newDataField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 2, "cow_new_data_ptr");
+        ctx->builder->CreateStore(newBuf, newDataField);
+        break;
+    }
+    case RY_COW_MAP: {
+        auto *oldKeysField = ctx->builder->CreateStructGEP(
+            headerTy, dataPtr, 2, "cow_old_keys_field");
+        auto *oldKeys =
+            ctx->builder->CreateLoad(ptrTy, oldKeysField, "cow_old_keys");
+        auto *oldValsField = ctx->builder->CreateStructGEP(
+            headerTy, dataPtr, 3, "cow_old_vals_field");
+        auto *oldVals =
+            ctx->builder->CreateLoad(ptrTy, oldValsField, "cow_old_vals");
+        auto *oldBcPtr = ctx->builder->CreateStructGEP(headerTy, dataPtr, 4,
+                                                       "cow_old_bc_ptr");
+        auto *oldBc = ctx->builder->CreateLoad(i64Ty, oldBcPtr, "cow_old_bc");
+        auto *oldBkField = ctx->builder->CreateStructGEP(headerTy, dataPtr, 5,
+                                                         "cow_old_bk_ptr");
+        auto *oldBk =
+            ctx->builder->CreateLoad(ptrTy, oldBkField, "cow_old_bk");
+
+        auto *keysSize = ctx->builder->CreateMul(
+            oldLen, llvm::ConstantInt::get(i64Ty, desc->key_size),
+            "cow_keys_size");
+        auto *newKeys = allocBuf(keysSize, "cow_new_keys");
+        memcpyTo(newKeys, oldKeys, keysSize);
+
+        auto *valsSize = ctx->builder->CreateMul(
+            oldLen, llvm::ConstantInt::get(i64Ty, desc->val_size),
+            "cow_vals_size");
+        auto *newVals = allocBuf(valsSize, "cow_new_vals");
+        memcpyTo(newVals, oldVals, valsSize);
+
+        auto *bkSize = ctx->builder->CreateMul(
+            oldBc, llvm::ConstantInt::get(i64Ty, 8 /* sizeof(i64) */),
+            "cow_bk_size");
+        auto *newBk = allocBuf(bkSize, "cow_new_bk");
+        memcpyTo(newBk, oldBk, bkSize);
+
+        auto *newLenPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 0, "cow_m_len_ptr");
+        ctx->builder->CreateStore(oldLen, newLenPtr);
+        auto *newCapPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 1, "cow_m_cap_ptr");
+        ctx->builder->CreateStore(oldLen, newCapPtr);
+        auto *newKeysField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 2, "cow_m_keys_ptr");
+        ctx->builder->CreateStore(newKeys, newKeysField);
+        auto *newValsField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 3, "cow_m_vals_ptr");
+        ctx->builder->CreateStore(newVals, newValsField);
+        auto *newBcPtr = ctx->builder->CreateStructGEP(headerTy, newDataPtr, 4,
+                                                       "cow_m_bc_ptr");
+        ctx->builder->CreateStore(oldBc, newBcPtr);
+        auto *newBkField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 5, "cow_m_bk_ptr");
+        ctx->builder->CreateStore(newBk, newBkField);
+        break;
+    }
+    case RY_COW_SET: {
+        auto *oldElemsField = ctx->builder->CreateStructGEP(
+            headerTy, dataPtr, 2, "cow_old_elems_field");
+        auto *oldElems =
+            ctx->builder->CreateLoad(ptrTy, oldElemsField, "cow_old_elems");
+        auto *oldBcPtr = ctx->builder->CreateStructGEP(headerTy, dataPtr, 3,
+                                                       "cow_old_bc_ptr");
+        auto *oldBc = ctx->builder->CreateLoad(i64Ty, oldBcPtr, "cow_old_bc");
+        auto *oldBkField = ctx->builder->CreateStructGEP(headerTy, dataPtr, 4,
+                                                         "cow_old_bk_ptr");
+        auto *oldBk =
+            ctx->builder->CreateLoad(ptrTy, oldBkField, "cow_old_bk");
+
+        auto *elemsSize = ctx->builder->CreateMul(
+            oldLen, llvm::ConstantInt::get(i64Ty, desc->elem_size),
+            "cow_elems_size");
+        auto *newElems = allocBuf(elemsSize, "cow_new_elems");
+        memcpyTo(newElems, oldElems, elemsSize);
+
+        auto *bkSize = ctx->builder->CreateMul(
+            oldBc, llvm::ConstantInt::get(i64Ty, 8 /* sizeof(i64) */),
+            "cow_bk_size");
+        auto *newBk = allocBuf(bkSize, "cow_new_bk");
+        memcpyTo(newBk, oldBk, bkSize);
+
+        auto *newLenPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 0, "cow_s_len_ptr");
+        ctx->builder->CreateStore(oldLen, newLenPtr);
+        auto *newCapPtr = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 1, "cow_s_cap_ptr");
+        ctx->builder->CreateStore(oldLen, newCapPtr);
+        auto *newElemsField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 2, "cow_s_elems_ptr");
+        ctx->builder->CreateStore(newElems, newElemsField);
+        auto *newBcPtr = ctx->builder->CreateStructGEP(headerTy, newDataPtr, 3,
+                                                       "cow_s_bc_ptr");
+        ctx->builder->CreateStore(oldBc, newBcPtr);
+        auto *newBkField = ctx->builder->CreateStructGEP(
+            headerTy, newDataPtr, 4, "cow_s_bk_ptr");
+        ctx->builder->CreateStore(newBk, newBkField);
+        break;
+    }
+    default:
+        // First switch above returns 0 for unknown kinds, so this branch is
+        // unreachable in practice — but return 0 instead of
+        // __builtin_unreachable for defense in depth (mirrors first switch).
+        return 0;
+    } // end switch (desc->kind)
+
+    // Element / key retain loops. Always RY_ARC_NONATOMIC: the freshly-cloned
+    // container is private to the calling thread for the duration of the
+    // retain loop, so the element refcount bumps cannot race.
+    auto emitRetainLoop = [&](unsigned fieldIdx, int isStr, const char *tag) {
+        auto *lenFieldPtr =
+            ctx->builder->CreateStructGEP(headerTy, newDataPtr, 0,
+                                          std::string("cow_") + tag + "_len_ptr");
+        auto *count = ctx->builder->CreateLoad(
+            i64Ty, lenFieldPtr, std::string("cow_") + tag + "_len");
+        auto *bufFieldPtr =
+            ctx->builder->CreateStructGEP(headerTy, newDataPtr, fieldIdx,
+                                          std::string("cow_") + tag + "_buf_field");
+        auto *buf = ctx->builder->CreateLoad(
+            ptrTy, bufFieldPtr, std::string("cow_") + tag + "_buf");
+
+        auto *loopFn = ctx->builder->GetInsertBlock()->getParent();
+        auto *loopBB = llvm::BasicBlock::Create(
+            *ctx->context, std::string("cow.") + tag + "_loop", loopFn);
+        auto *bodyBB = llvm::BasicBlock::Create(
+            *ctx->context, std::string("cow.") + tag + "_body", loopFn);
+        auto *loopDoneBB = llvm::BasicBlock::Create(
+            *ctx->context, std::string("cow.") + tag + "_done", loopFn);
+
+        auto *preLoopBB = ctx->builder->GetInsertBlock();
+        ctx->builder->CreateBr(loopBB);
+        ctx->builder->SetInsertPoint(loopBB);
+        auto *idx = ctx->builder->CreatePHI(i64Ty, 2,
+                                            std::string("cow_") + tag + "_idx");
+        idx->addIncoming(llvm::ConstantInt::get(i64Ty, 0), preLoopBB);
+        auto *cond = ctx->builder->CreateICmpSLT(
+            idx, count, std::string("cow_") + tag + "_cond");
+        ctx->builder->CreateCondBr(cond, bodyBB, loopDoneBB);
+
+        ctx->builder->SetInsertPoint(bodyBB);
+        auto *elemPtr = ctx->builder->CreateGEP(
+            ptrTy, buf, idx, std::string("cow_") + tag + "_ptr");
+        auto *elem = ctx->builder->CreateLoad(
+            ptrTy, elemPtr, std::string("cow_") + tag + "_val");
+        // str elements have StringHeader at offset -24; other ARC-managed
+        // objects use ArcHeader at -16.
+        int64_t hdrOffset =
+            isStr != 0 ? -static_cast<int64_t>(ry::STRING_HEADER_SIZE)
+                       : -static_cast<int64_t>(ry::ARC_HEADER_SIZE);
+        auto *elemHdr = ctx->builder->CreateGEP(
+            i8Ty, elem, llvm::ConstantInt::getSigned(i64Ty, hdrOffset),
+            std::string("cow_") + tag + "_hdr");
+        // Internal call into the sibling ABI helper. RY_ARC_NONATOMIC mirrors
+        // emitCowRetainArcElements's `emitArcRetain(hdr, false)`.
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, elemHdr),
+                           RY_ARC_NONATOMIC);
+        auto *next = ctx->builder->CreateAdd(
+            idx, llvm::ConstantInt::get(i64Ty, 1),
+            std::string("cow_") + tag + "_next");
+        // Use builder's current BB (advanced past the retain helper's BBs)
+        // for the back-edge incoming, not bodyBB.
+        idx->addIncoming(next, ctx->builder->GetInsertBlock());
+        ctx->builder->CreateBr(loopBB);
+
+        ctx->builder->SetInsertPoint(loopDoneBB);
+    };
+    if (desc->do_elem_retain != 0)
+        emitRetainLoop(dataFieldIdx, desc->elem_is_str, "elem");
+    if (desc->do_key_retain != 0)
+        emitRetainLoop(keyFieldIdx, desc->key_is_str, "key");
+
+    // Release the old header. Reuse headerPtr (dominates copyBB). The
+    // internal helper handles the immortal / dead / weak-ref / free paths,
+    // emits the GC track / untrack calls, and leaves the builder on
+    // `arc.done` ready for the slot store.
+    ry_emit_arc_release(ctx, ry_emit_intern(ctx, headerPtr), atomicMode,
+                        desc->destructor_callee, /*gc_visit_fn=*/nullptr);
+
+    ctx->builder->CreateStore(newDataPtr, slotPtr);
+
+    auto *copyEndBB = ctx->builder->GetInsertBlock();
+    ctx->builder->CreateBr(contBB);
+
+    ctx->builder->SetInsertPoint(contBB);
+    auto *phi = ctx->builder->CreatePHI(ptrTy, 2, "cow_ptr");
+    phi->addIncoming(dataPtr, origBB);
+    phi->addIncoming(newDataPtr, copyEndBB);
+
+    return ry_emit_intern(ctx, phi);
+}
+
 } // extern "C"
