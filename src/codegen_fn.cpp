@@ -1011,8 +1011,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
         }
 
-        llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
+        llvm::FunctionCallee spawnFn = getRuntimeFn(
+            "__ry_task_spawn", ptrTy_, {ptrTy_, ptrTy_, i64Ty_});
         llvm::Value *task = builder_.CreateCall(
             spawnFn,
             {

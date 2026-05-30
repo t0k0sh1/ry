@@ -1029,8 +1029,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     if (lhsIsStr && rhsIsStr) {
         llvm::Value *lenL = emitStringByteLen(lhs);
         llvm::Value *lenR = emitStringByteLen(rhs);
-        auto strCmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
-        auto strCmpFn = mod_->getOrInsertFunction("__ry_str_cmp", strCmpTy);
+        auto strCmpFn = getRuntimeFn("__ry_str_cmp", i32Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         llvm::Value *cmp = builder_.CreateCall(strCmpFn, {lhs, lenL, rhs, lenR}, "str_cmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
         if (op == "==") return builder_.CreateICmpEQ(cmp, zero, "str_eq");
@@ -1265,8 +1264,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         // emitRuntimeError ends with CreateUnreachable(); no fall-through.
 
         builder_.SetInsertPoint(catAllocBB);
-        auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+        auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
         llvm::Value *buf = builder_.CreateCall(makeUninitFn, {total}, "concat_buf");
         builder_.CreateCall(getStdlibMemcpy(), {buf, lhs, lenL});
         llvm::Value *dst = builder_.CreateGEP(i8Ty_, buf, lenL, "concat_dst");
@@ -1540,8 +1538,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
                 anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.elem");
                 builder_.CreateStore(elem, anyElemPtr);
                 anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.cand");
-                llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-                anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+                anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
             }
 
             // Linear search loop

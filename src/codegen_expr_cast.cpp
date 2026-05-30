@@ -286,8 +286,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
 // strVal must be a StringHeader handle (ptr), n must be i64.
 llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     auto memcpyFn = getStdlibMemcpy();
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
 
     // NUL-safe: read byte_len from StringHeader
     llvm::Value *strLen = emitStringByteLen(strVal);

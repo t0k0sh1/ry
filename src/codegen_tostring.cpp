@@ -484,8 +484,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     // operations (e.g. "prefix" + 42).  We allocate via __ry_string_make_uninit
     // (which sets byte_len = capacity), then overwrite byte_len with the actual
     // character count from snprintf's return value.
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     // snprintfStr: emit buf = makeUninit(32); nw = snprintf(buf, 32, fmt, ...);
     //              byte_len(buf) = nw;  return buf.
     auto snprintfStr = [&](llvm::Constant *fmt,
@@ -654,8 +653,7 @@ llvm::Value *CodeGen::concatStringParts(
     const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
     const std::string &prefix) {
     auto memcpyFn = getStdlibMemcpy();
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
 
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts)

@@ -445,8 +445,7 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
             anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.elem");
             builder_.CreateStore(elem, anyElemPtr);
             anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.cand");
-            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+            anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
         }
         llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "slin.cond",  fn_);
         llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "slin.body",  fn_);
@@ -516,8 +515,7 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
             anyKeyPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.key");
             builder_.CreateStore(key, anyKeyPtr);
             anyKeyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.cand");
-            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+            anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
         }
         llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "mklin.cond",  fn_);
         llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "mklin.body",  fn_);
@@ -601,9 +599,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "bc");
     llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "bmask");
 
-    llvm::FunctionType *insertTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee insertFn = mod_->getOrInsertFunction("__ry_ht_insert", insertTy);
+    llvm::FunctionCallee insertFn = getRuntimeFn("__ry_ht_insert", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
     builder_.CreateCall(insertFn, {bucketsPtr, bucketMask, hashVal, denseIndex});
 
     // Check load factor: len * 4 > bucketCount * 3 (i.e. len/bucketCount > 75%)

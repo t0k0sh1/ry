@@ -15,8 +15,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("toInt() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
-        auto fnTy = fnTy_ptr_ptr_to_i64_;
-        auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
+        auto fn = getRuntimeFn("__ry_str_to_int", i64Ty_, {ptrTy_, ptrTy_});
         used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
@@ -37,7 +36,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("toFloat() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
-        auto fn = mod_->getOrInsertFunction("__ry_str_to_float", fnTy_ptr_ptr_to_i64_);
+        auto fn = getRuntimeFn("__ry_str_to_float", i64Ty_, {ptrTy_, ptrTy_});
         used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_float_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
@@ -518,8 +517,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             codegenError("args() takes no arguments");
 
         // Call __ry_args_count()
-        llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
-        llvm::FunctionCallee countFn = mod_->getOrInsertFunction("__ry_args_count", countTy);
+        llvm::FunctionCallee countFn = getRuntimeFn("__ry_args_count", i32Ty_, {});
         llvm::Value *count32 = builder_.CreateCall(countFn, {}, "argc");
         llvm::Value *count = builder_.CreateSExt(count32, i64Ty_, "argc64");
 
@@ -540,8 +538,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.CreateStore(zero, iVar);
 
         // __ry_args_get function type
-        llvm::FunctionType *getTy = llvm::FunctionType::get(ptrTy_, {i32Ty_}, false);
-        llvm::FunctionCallee getFn = mod_->getOrInsertFunction("__ry_args_get", getTy);
+        llvm::FunctionCallee getFn = getRuntimeFn("__ry_args_get", ptrTy_, {i32Ty_});
 
         llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "args.cond", fn_);
         llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "args.body", fn_);
@@ -578,8 +575,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (!e.args.empty())
             codegenError("availableParallelism() takes no arguments");
 
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_available_parallelism", fnTy);
+        llvm::FunctionCallee fn = getRuntimeFn("__ry_available_parallelism", i64Ty_, {});
         return builder_.CreateCall(fn, {}, "availableParallelism");
     }
 
@@ -596,9 +592,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (duration->getType() != i64Ty_)
             codegenError("sleep() requires int argument");
 
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {i64Ty_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_sleep", fnTy);
+        llvm::FunctionCallee fn = getRuntimeFn("__ry_sleep", llvm::Type::getVoidTy(*ctx_), {i64Ty_});
         return builder_.CreateCall(fn, {duration});
     }
 
@@ -621,12 +615,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Value *prompt = emitExpr(*e.args[0]);
             if (prompt->getType() != ptrTy_)
                 codegenError("input() prompt must be str");
-            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_io_input_prompt", fnTy);
+            auto fn = getRuntimeFn("__ry_io_input_prompt", i64Ty_, {ptrTy_, ptrTy_});
             status = builder_.CreateCall(fn, {prompt, outAlloca}, "inp_status");
         } else {
-            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_io_read_line", fnTy);
+            auto fn = getRuntimeFn("__ry_io_read_line", i64Ty_, {ptrTy_});
             status = builder_.CreateCall(fn, {outAlloca}, "inp_status");
         }
 
@@ -653,8 +645,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
         // __ry_env_get wraps getenv() result in a StringHeader-managed handle
         // so that byte_len / length / etc. work correctly on the returned str.
-        auto envGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-        auto envGetFn = mod_->getOrInsertFunction("__ry_env_get", envGetTy);
+        auto envGetFn = getRuntimeFn("__ry_env_get", ptrTy_, {ptrTy_});
         llvm::Value *result = builder_.CreateCall(envGetFn, {key}, "env_result");
         llvm::Value *isNull = builder_.CreateICmpEQ(result,
             llvm::ConstantPointerNull::get(
@@ -678,9 +669,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *data = emitExpr(*e.args[1]);
         if (!getListElementType(data) || getListElementType(data) != i8Ty_)
             codegenError("send() with TcpStream/TlsStream requires List<u8> as second argument");
-        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
         std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
-        auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
+        auto fn = getRuntimeFn(rtFn.c_str(), i64Ty_, {ptrTy_, ptrTy_});
         llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
         // Wrap in Result<int, Error>
         llvm::Value *isErr = builder_.CreateICmpSLT(sent,
@@ -698,9 +688,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
             codegenError("receive() requires TcpStream or TlsStream as first argument");
         llvm::Value *maxBytes = emitExpr(*e.args[1]);
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_receive" : "__ry_tcp_receive";
-        auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
+        auto fn = getRuntimeFn(rtFn.c_str(), ptrTy_, {ptrTy_, i64Ty_});
         llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_receive");
         // Wrap in Result<List<u8>, Error>: nullptr = Err, non-null = Ok
         llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
@@ -730,8 +719,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             // The io runtime symbol lives in libry_io — register the library so
             // bare close(f) calls (no enclosing io import path) resolve.
             used_native_libraries_.insert("io");
-            auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_io_file_close", fnTy);
+            auto fn = getRuntimeFn("__ry_io_file_close", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
             builder_.CreateCall(fn, {val});
             return llvm::ConstantInt::get(i8Ty_, 0); // Unit
         }
@@ -887,8 +875,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             return loadListHeader(ptr, "list").len;
         // String: call __ry_utf8_len_n (NUL-safe character count)
         llvm::Value *byteLen = emitStringByteLen(ptr);
-        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
-        auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len_n", utf8LenTy);
+        auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
         return builder_.CreateCall(utf8LenFn, {ptr, byteLen}, "str_len");
     }
 

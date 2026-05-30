@@ -96,37 +96,25 @@ llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry
 }
 
 std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestItFunctions() {
-    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionType *voidTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), false);
     return {
-        mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy),
-        mod_->getOrInsertFunction("__ry_test_it_end", voidTy)
+        getRuntimeFn("__ry_test_it_begin", llvm::Type::getVoidTy(*ctx_), {ptrTy_}),
+        getRuntimeFn("__ry_test_it_end", llvm::Type::getVoidTy(*ctx_), {})
     };
 }
 
 std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestDescribeFunctions() {
-    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionType *voidTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), false);
     return {
-        mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy),
-        mod_->getOrInsertFunction("__ry_test_describe_end", voidTy)
+        getRuntimeFn("__ry_test_describe_begin", llvm::Type::getVoidTy(*ctx_), {ptrTy_}),
+        getRuntimeFn("__ry_test_describe_end", llvm::Type::getVoidTy(*ctx_), {})
     };
 }
 
 llvm::FunctionCallee CodeGen::getTestItSkipFunction() {
-    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    return mod_->getOrInsertFunction("__ry_test_it_skip", voidStrTy);
+    return getRuntimeFn("__ry_test_it_skip", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
 }
 
 llvm::FunctionCallee CodeGen::getTestItTodoFunction() {
-    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    return mod_->getOrInsertFunction("__ry_test_it_todo", voidStrTy);
+    return getRuntimeFn("__ry_test_it_todo", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
 }
 
 // Reject mutually exclusive combinations of test-selection directives. At
@@ -279,18 +267,12 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
                                   const std::vector<llvm::Value*> &capturedVals) {
     auto [itBeginFn, itEndFn] = getTestItFunctions();
 
-    llvm::FunctionType *initRngTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
-    llvm::FunctionCallee initRngFn = mod_->getOrInsertFunction("__ry_test_prop_init_rng", initRngTy);
-    llvm::FunctionType *randIntTy = llvm::FunctionType::get(i64Ty_, false);
-    llvm::FunctionCallee randIntFn = mod_->getOrInsertFunction("__ry_test_rand_int", randIntTy);
-    llvm::FunctionType *randFloatTy = llvm::FunctionType::get(f64Ty_, false);
-    llvm::FunctionCallee randFloatFn = mod_->getOrInsertFunction("__ry_test_rand_float", randFloatTy);
-    llvm::FunctionType *randBoolTy = llvm::FunctionType::get(i64Ty_, false);
-    llvm::FunctionCallee randBoolFn = mod_->getOrInsertFunction("__ry_test_rand_bool", randBoolTy);
-    llvm::FunctionType *randStrTy = llvm::FunctionType::get(ptrTy_, false);
-    llvm::FunctionCallee randStrFn = mod_->getOrInsertFunction("__ry_test_rand_str", randStrTy);
-    llvm::FunctionType *isFailedTy = llvm::FunctionType::get(i64Ty_, false);
-    llvm::FunctionCallee isFailedFn = mod_->getOrInsertFunction("__ry_test_it_is_failed", isFailedTy);
+    llvm::FunctionCallee initRngFn = getRuntimeFn("__ry_test_prop_init_rng", llvm::Type::getVoidTy(*ctx_), {});
+    llvm::FunctionCallee randIntFn = getRuntimeFn("__ry_test_rand_int", i64Ty_, {});
+    llvm::FunctionCallee randFloatFn = getRuntimeFn("__ry_test_rand_float", f64Ty_, {});
+    llvm::FunctionCallee randBoolFn = getRuntimeFn("__ry_test_rand_bool", i64Ty_, {});
+    llvm::FunctionCallee randStrFn = getRuntimeFn("__ry_test_rand_str", ptrTy_, {});
+    llvm::FunctionCallee isFailedFn = getRuntimeFn("__ry_test_it_is_failed", i64Ty_, {});
 
     builder_.CreateCall(initRngFn);
     builder_.CreateCall(itBeginFn, {descVal});
@@ -344,9 +326,7 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
         auto printfFn = getStdlibPrintf();
         // Fetch the current describe-nesting indent at runtime so Counterexample:
         // aligns with the surrounding test output regardless of nesting depth.
-        llvm::FunctionType *indentTy = llvm::FunctionType::get(
-            ptrTy_, {llvm::Type::getInt32Ty(*ctx_)}, false);
-        llvm::FunctionCallee indentFn = mod_->getOrInsertFunction("__ry_test_indent", indentTy);
+        llvm::FunctionCallee indentFn = getRuntimeFn("__ry_test_indent", ptrTy_, {i32Ty_});
         llvm::Value *indentStr = builder_.CreateCall(
             indentFn, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*ctx_), 2)}, "ce_indent");
 
@@ -563,18 +543,10 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                                  const OverloadEntry &entry,
                                  std::vector<StmtNode> *beforeEachBody,
                                  std::vector<StmtNode> *afterEachBody) {
-    llvm::FunctionType *voidStrI64Ty = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
-    llvm::FunctionType *voidTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), false);
-    llvm::FunctionType *getPtrTy = llvm::FunctionType::get(ptrTy_, false);
-    llvm::FunctionType *sigsetjmpTy = llvm::FunctionType::get(
-        i32Ty_, {ptrTy_, i32Ty_}, false);
-
-    auto beginFn = mod_->getOrInsertFunction("__ry_test_it_begin_with_timeout", voidStrI64Ty);
-    auto endFn = mod_->getOrInsertFunction("__ry_test_it_end_with_timeout", voidTy);
-    auto timeoutFn = mod_->getOrInsertFunction("__ry_test_it_timeout", voidTy);
-    auto getJmpbufFn = mod_->getOrInsertFunction("__ry_test_get_timeout_jmpbuf", getPtrTy);
+    auto beginFn = getRuntimeFn("__ry_test_it_begin_with_timeout", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
+    auto endFn = getRuntimeFn("__ry_test_it_end_with_timeout", llvm::Type::getVoidTy(*ctx_), {});
+    auto timeoutFn = getRuntimeFn("__ry_test_it_timeout", llvm::Type::getVoidTy(*ctx_), {});
+    auto getJmpbufFn = getRuntimeFn("__ry_test_get_timeout_jmpbuf", ptrTy_, {});
 
     // glibc declares `sigsetjmp` as a macro that expands to `__sigsetjmp`;
     // the symbol exposed by libc is the latter. macOS / musl / BSD expose
@@ -586,7 +558,7 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
 #else
     const char *kSigsetjmpSym = "sigsetjmp";
 #endif
-    auto sigsetjmpFn = mod_->getOrInsertFunction(kSigsetjmpSym, sigsetjmpTy);
+    auto sigsetjmpFn = getRuntimeFn(kSigsetjmpSym, i32Ty_, {ptrTy_, i32Ty_});
 
     llvm::Value *jmpbuf = builder_.CreateCall(getJmpbufFn, {}, "it.jmpbuf");
     llvm::Value *retVal = builder_.CreateCall(
@@ -1105,9 +1077,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
 
     if (fnInfo->capturedVars.empty()) {
         // Non-capturing: register plain function pointer.
-        llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+        llvm::FunctionCallee mockSetFn = getRuntimeFn("__ry_mock_set", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_});
         builder_.CreateCall(mockSetFn, {nameStr, replacement});
         return;
     }
@@ -1131,11 +1101,8 @@ void CodeGen::emitMockCall(CallStmt &s) {
     auto *envHdr = emitArcGetHeaderFromData(replacement);
     emitArcRetain(envHdr, false);
 
-    llvm::FunctionType *mockSetClosureTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
     llvm::FunctionCallee mockSetClosureFn =
-        mod_->getOrInsertFunction("__ry_mock_set_closure", mockSetClosureTy);
+        getRuntimeFn("__ry_mock_set_closure", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
     builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
 }
 
@@ -1245,9 +1212,7 @@ void CodeGen::emitNativeMockCall(CallStmt &s,
     if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
 
     if (fnInfo->capturedVars.empty()) {
-        llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+        llvm::FunctionCallee mockSetFn = getRuntimeFn("__ry_mock_set", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_});
         builder_.CreateCall(mockSetFn, {nameStr, replacement});
         return;
     }
@@ -1263,11 +1228,8 @@ void CodeGen::emitNativeMockCall(CallStmt &s,
         : llvm::cast<llvm::Value>(nullPtr);
     auto *envHdr = emitArcGetHeaderFromData(replacement);
     emitArcRetain(envHdr, false);
-    llvm::FunctionType *mockSetClosureTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
     llvm::FunctionCallee mockSetClosureFn =
-        mod_->getOrInsertFunction("__ry_mock_set_closure", mockSetClosureTy);
+        getRuntimeFn("__ry_mock_set_closure", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
     builder_.CreateCall(mockSetClosureFn, {nameStr, thunk, replacement, envDtorVal});
 }
 
@@ -1316,10 +1278,8 @@ void CodeGen::emitNativeSpyCall(CallStmt &s,
         for (const auto *sig : nativeSigs) targets.push_back(sig);
     }
 
-    llvm::FunctionType *spyRegTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionCallee spyRegFn =
-        mod_->getOrInsertFunction("__ry_spy_register", spyRegTy);
+        getRuntimeFn("__ry_spy_register", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
     for (const auto *sig : targets) {
         const std::string canonicalSig = buildCanonicalSig(bareName, sigParamNames(sig));
         spied_functions_.insert(canonicalSig);
@@ -1489,11 +1449,8 @@ void CodeGen::emitNativeMockReturnValueOnceCall(
         ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
         : llvm::cast<llvm::Value>(nullPtr);
 
-    llvm::FunctionType *registerOnceTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee registerOnceFn = mod_->getOrInsertFunction(
-        "__ry_mock_register_once", registerOnceTy);
+    llvm::FunctionCallee registerOnceFn =
+        getRuntimeFn("__ry_mock_register_once", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
     builder_.CreateCall(registerOnceFn, {nameStr, thunk, envData, envDtorVal});
 }
 
@@ -1977,11 +1934,8 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
         ? llvm::cast<llvm::Value>(envDtorCallee.getCallee())
         : llvm::cast<llvm::Value>(nullPtr);
 
-    llvm::FunctionType *registerOnceTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee registerOnceFn = mod_->getOrInsertFunction(
-        "__ry_mock_register_once", registerOnceTy);
+    llvm::FunctionCallee registerOnceFn =
+        getRuntimeFn("__ry_mock_register_once", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
     builder_.CreateCall(registerOnceFn, {nameStr, thunk, envData, envDtorVal});
 }
 
@@ -2048,10 +2002,8 @@ void CodeGen::emitSpyCall(CallStmt &s) {
         for (auto &ov : *fitOverloads) targets.push_back(&ov);
     }
 
-    llvm::FunctionType *spyRegTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionCallee spyRegFn =
-        mod_->getOrInsertFunction("__ry_spy_register", spyRegTy);
+        getRuntimeFn("__ry_spy_register", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
     for (auto *ov : targets) {
         const std::string canonicalSig = buildCanonicalSig(bareName, ov->paramTypeNames);
         spied_functions_.insert(canonicalSig);
@@ -2082,27 +2034,16 @@ void CodeGen::emitSpyCall(CallStmt &s) {
 void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
                                     const std::vector<llvm::Value *> &argVals,
                                     OverloadEntry *matchedEntry) {
-    llvm::FunctionType *mockBeginRecTy =
-        llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-    llvm::FunctionCallee mockBeginRecFn = mod_->getOrInsertFunction(
-        "__ry_mock_begin_call_record", mockBeginRecTy);
-    llvm::FunctionType *mockStoreArgTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
-    llvm::FunctionCallee mockStoreArgFn = mod_->getOrInsertFunction(
-        "__ry_mock_store_arg", mockStoreArgTy);
-    llvm::FunctionType *mockStoreArgListTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_}, false);
-    llvm::FunctionCallee mockStoreArgListFn = mod_->getOrInsertFunction(
-        "__ry_mock_store_arg_list", mockStoreArgListTy);
-    llvm::FunctionCallee mockStoreArgSetFn = mod_->getOrInsertFunction(
-        "__ry_mock_store_arg_set", mockStoreArgListTy);
-    llvm::FunctionType *mockStoreArgMapTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_),
-        {ptrTy_, ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_, ptrTy_}, false);
-    llvm::FunctionCallee mockStoreArgMapFn = mod_->getOrInsertFunction(
-        "__ry_mock_store_arg_map", mockStoreArgMapTy);
+    llvm::FunctionCallee mockBeginRecFn =
+        getRuntimeFn("__ry_mock_begin_call_record", ptrTy_, {ptrTy_});
+    llvm::FunctionCallee mockStoreArgFn =
+        getRuntimeFn("__ry_mock_store_arg", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_});
+    llvm::FunctionCallee mockStoreArgListFn =
+        getRuntimeFn("__ry_mock_store_arg_list", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_});
+    llvm::FunctionCallee mockStoreArgSetFn =
+        getRuntimeFn("__ry_mock_store_arg_set", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, i64Ty_, i64Ty_, ptrTy_});
+    llvm::FunctionCallee mockStoreArgMapFn =
+        getRuntimeFn("__ry_mock_store_arg_map", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_, ptrTy_});
     llvm::Value *callRec = builder_.CreateCall(
         mockBeginRecFn, {nameStr}, "mock_call_rec");
 
@@ -2271,15 +2212,10 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
                         kinds.push_back(k);
                     }
                     if (allOk && !info.fields.empty()) {
-                        llvm::FunctionType *mockStoreArgRecordTy =
-                            llvm::FunctionType::get(
-                                llvm::Type::getVoidTy(*ctx_),
-                                {ptrTy_, ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
-                                false);
                         llvm::FunctionCallee mockStoreArgRecordFn =
-                            mod_->getOrInsertFunction(
-                                "__ry_mock_store_arg_record",
-                                mockStoreArgRecordTy);
+                            getRuntimeFn("__ry_mock_store_arg_record",
+                                llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_});
                         llvm::Constant *typeNameStr = cachedGlobalString(
                             recName, llvm::Twine(".mock.record_name.") + recName);
                         int64_t fieldCount =
@@ -2376,15 +2312,10 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
                     kinds.push_back(k);
                 }
                 if (allOk) {
-                    llvm::FunctionType *mockStoreArgTupleTy =
-                        llvm::FunctionType::get(
-                            llvm::Type::getVoidTy(*ctx_),
-                            {ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_},
-                            false);
                     llvm::FunctionCallee mockStoreArgTupleFn =
-                        mod_->getOrInsertFunction(
-                            "__ry_mock_store_arg_tuple",
-                            mockStoreArgTupleTy);
+                        getRuntimeFn("__ry_mock_store_arg_tuple",
+                            llvm::Type::getVoidTy(*ctx_),
+                            {ptrTy_, i64Ty_, ptrTy_, ptrTy_, ptrTy_});
                     llvm::Value *kindsAlloca =
                         builder_.CreateAlloca(
                             i8Ty_,
@@ -2457,13 +2388,10 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
                     ptrTy_, thunkField, "mock_fn.thunk");
                 llvm::Value *envPtr = builder_.CreateLoad(
                     ptrTy_, envField, "mock_fn.env");
-                llvm::FunctionType *mockStoreArgFnTy =
-                    llvm::FunctionType::get(
-                        llvm::Type::getVoidTy(*ctx_),
-                        {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
                 llvm::FunctionCallee mockStoreArgFnFn =
-                    mod_->getOrInsertFunction(
-                        "__ry_mock_store_arg_fn", mockStoreArgFnTy);
+                    getRuntimeFn("__ry_mock_store_arg_fn",
+                        llvm::Type::getVoidTy(*ctx_),
+                        {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
                 builder_.CreateCall(
                     mockStoreArgFnFn,
                     {callRec, thunkPtr, envPtr, nameStr});
@@ -2608,28 +2536,18 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     llvm::Value *kindsArr = builder_.CreateAlloca(arrTy, nullptr, "vcw_kinds");
     llvm::Value *valuesArr = builder_.CreateAlloca(arrTy, nullptr, "vcw_values");
 
-    llvm::FunctionType *makeListSnapshotTy = llvm::FunctionType::get(
-        ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee makeListSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_list_snapshot", makeListSnapshotTy);
-    llvm::FunctionCallee makeSetSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_set_snapshot", makeListSnapshotTy);
-    llvm::FunctionType *makeMapSnapshotTy = llvm::FunctionType::get(
-        ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee makeMapSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_map_snapshot", makeMapSnapshotTy);
-    llvm::FunctionType *makeRecordSnapshotTy = llvm::FunctionType::get(
-        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee makeRecordSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_record_snapshot", makeRecordSnapshotTy);
-    llvm::FunctionType *makeTupleSnapshotTy = llvm::FunctionType::get(
-        ptrTy_, {i64Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee makeTupleSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_tuple_snapshot", makeTupleSnapshotTy);
-    llvm::FunctionType *makeFnSnapshotTy = llvm::FunctionType::get(
-        ptrTy_, {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee makeFnSnapshotFn = mod_->getOrInsertFunction(
-        "__ry_mock_make_fn_snapshot", makeFnSnapshotTy);
+    llvm::FunctionCallee makeListSnapshotFn =
+        getRuntimeFn("__ry_mock_make_list_snapshot", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
+    llvm::FunctionCallee makeSetSnapshotFn =
+        getRuntimeFn("__ry_mock_make_set_snapshot", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
+    llvm::FunctionCallee makeMapSnapshotFn =
+        getRuntimeFn("__ry_mock_make_map_snapshot", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_});
+    llvm::FunctionCallee makeRecordSnapshotFn =
+        getRuntimeFn("__ry_mock_make_record_snapshot", ptrTy_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_});
+    llvm::FunctionCallee makeTupleSnapshotFn =
+        getRuntimeFn("__ry_mock_make_tuple_snapshot", ptrTy_, {i64Ty_, ptrTy_, ptrTy_});
+    llvm::FunctionCallee makeFnSnapshotFn =
+        getRuntimeFn("__ry_mock_make_fn_snapshot", ptrTy_, {ptrTy_, ptrTy_});
 
     auto isSupportedCollElemName = [](const std::string &n) {
         return n == "int" || n == "float" || n == "bool" || n == "str";
@@ -3414,10 +3332,8 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         builder_.CreateStore(valI64, valGEP);
     }
 
-    llvm::FunctionType *countFnTy = llvm::FunctionType::get(
-        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee countFn = mod_->getOrInsertFunction(
-        "__ry_mock_count_matching_calls", countFnTy);
+    llvm::FunctionCallee countFn =
+        getRuntimeFn("__ry_mock_count_matching_calls", i64Ty_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_});
     return builder_.CreateCall(countFn, {nameStr, numArgsConst, kindsArr, valuesArr},
                                 "vcw_count");
 }
@@ -3808,8 +3724,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else {
             // NUL-safe string character count via __ry_utf8_len_n
             llvm::Value *byteLen = emitStringByteLen(actualVal);
-            auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
-            auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len_n", utf8LenTy);
+            auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
             len = builder_.CreateCall(utf8LenFn, {actualVal, byteLen}, "str_len");
         }
 
@@ -3874,9 +3789,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                 ": toMatch: requires str operands");
         llvm::Value *patternLen = emitStringByteLen(expectedVal);
         llvm::Value *textLen    = emitStringByteLen(actualVal);
-        auto isMatchTy = llvm::FunctionType::get(
-            i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
-        auto isMatchFn = mod_->getOrInsertFunction("__ry_regex_is_match", isMatchTy);
+        auto isMatchFn = getRuntimeFn("__ry_regex_is_match", i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         llvm::Value *r = builder_.CreateCall(
             isMatchFn, {expectedVal, patternLen, actualVal, textLen}, "regex_is_match");
 
@@ -3890,8 +3803,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         builder_.CreateCondBr(isErr, errBB, okBB);
 
         builder_.SetInsertPoint(errBB);
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        auto errFn = getRuntimeFn("__ry_regex_get_last_error", ptrTy_, {});
         llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_err_msg");
         emitRuntimeError("error: %s\n", ".regex_runtime_err", {msgPtr});
 
@@ -3951,9 +3863,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     // Fail block: call __ry_test_expect_fail(line, actual_str, expected_str)
     builder_.SetInsertPoint(failBB);
 
-    llvm::FunctionType *failFnTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee failFn = mod_->getOrInsertFunction("__ry_test_expect_fail", failFnTy);
+    llvm::FunctionCallee failFn =
+        getRuntimeFn("__ry_test_expect_fail", llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_, ptrTy_});
 
     // For now, format actual and expected as string representations
     // Use snprintf to format values at runtime
@@ -4103,10 +4014,8 @@ void CodeGen::emitFailCall(CallStmt &s) {
     if (s.args.size() > 1)
         codegenError("fail() expects 0 or 1 argument(s), but got " + std::to_string(s.args.size()));
 
-    llvm::FunctionType *failFnTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_}, false);
     llvm::FunctionCallee failFn =
-        mod_->getOrInsertFunction("__ry_test_fail", failFnTy);
+        getRuntimeFn("__ry_test_fail", llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_});
 
     llvm::Value *lineVal =
         llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line));

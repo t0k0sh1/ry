@@ -247,6 +247,32 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
                          RyArcAtomic atomic, void *destructor_callee,
                          void *gc_visit_fn);
 
+// Stage 2-C entry — RuntimeCall (#1969).
+// Resolve `name` against `mod_->getOrInsertFunction(name, fnTy)` where fnTy
+// is constructed from `ret_ty_ptr` + `arg_ty_ptrs[0..arg_ty_count]`
+// (non-variadic), and emit a single `CreateCall` against it with the
+// argument handles supplied via `arg_ids[0..arg_count]`. Returns the call
+// result as a RyValueId — for void-returning calls, the handle still
+// resolves to the CallInst itself (callers that need to distinguish void
+// results should inspect ret_ty_ptr).
+//
+// `name_hint` is the LLVM SSA name hint for the call result; pass NULL for
+// no hint (matches the third positional argument of
+// `IRBuilder<>::CreateCall(callee, args, name)`).
+//
+// Creates no basic blocks, no precondition on ry_emit_ctx_set_function.
+//
+// Categories 1/2 not migrated yet: ret_ty_ptr (llvm::Type *) and each
+// arg_ty_ptrs[i] (llvm::Type *) cross as transitional void* (mirrors
+// error_ty_ptr / res_ty_ptr in existing helpers). #1973 (ControlFlow +
+// category 1/2) replaces them with typed opaque handles.
+RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
+                               void *ret_ty_ptr /* llvm::Type * */,
+                               void *const *arg_ty_ptrs /* llvm::Type *[] */,
+                               uint32_t arg_ty_count,
+                               const RyValueId *arg_ids,
+                               uint32_t arg_count, const char *name_hint);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

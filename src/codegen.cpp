@@ -258,9 +258,8 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
         __ry_coverage_register_line(gid, loc.line);
 
     // Emit runtime hit call
-    auto *ft = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_, i32Ty_}, false);
-    auto hitFn = mod_->getOrInsertFunction("__ry_coverage_hit", ft);
+    auto hitFn = getRuntimeFn("__ry_coverage_hit", llvm::Type::getVoidTy(*ctx_),
+                              {i32Ty_, i32Ty_});
     builder_.CreateCall(hitFn,
         {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(gid)),
          llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line))});
@@ -1037,8 +1036,7 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     if (!builder_.GetInsertBlock()->getTerminator()) {
         if (test_mode_ && !outline_mode_) {
             // Call __ry_test_summary() and return its result as exit code
-            llvm::FunctionType *summaryTy = llvm::FunctionType::get(i32Ty_, false);
-            llvm::FunctionCallee summaryFn = mod_->getOrInsertFunction("__ry_test_summary", summaryTy);
+            llvm::FunctionCallee summaryFn = getRuntimeFn("__ry_test_summary", i32Ty_, {});
             llvm::Value *result = builder_.CreateCall(summaryFn, {}, "test_result");
             builder_.CreateRet(result);
         } else {

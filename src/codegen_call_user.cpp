@@ -387,22 +387,18 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         // recording, then fall through to the normal call path below.
         auto &nameStr = mock_name_strings_[mockKey];
         if (!nameStr) nameStr = cachedGlobalString(mockKey, ".mock." + mockKey);
-        llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction(
-            "__ry_mock_increment_call", mockIncTy);
+        auto mockIncFn = getRuntimeFn("__ry_mock_increment_call",
+                                      llvm::Type::getVoidTy(*ctx_), {ptrTy_});
         builder_.CreateCall(mockIncFn, {nameStr});
         emitMockArgRecording(nameStr, argVals, matchedEntry);
         // fall through to L862+ normal call path
     }
 
     if (isMocked) {
-        llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-        llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
-        llvm::FunctionCallee mockGetEnvFn = mod_->getOrInsertFunction("__ry_mock_get_env", mockGetTy);
-        llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
+        auto mockGetFn = getRuntimeFn("__ry_mock_get", ptrTy_, {ptrTy_});
+        auto mockGetEnvFn = getRuntimeFn("__ry_mock_get_env", ptrTy_, {ptrTy_});
+        auto mockIncFn = getRuntimeFn("__ry_mock_increment_call",
+                                      llvm::Type::getVoidTy(*ctx_), {ptrTy_});
 
         auto &nameStr = mock_name_strings_[mockKey];
         if (!nameStr) nameStr = cachedGlobalString(mockKey, ".mock." + mockKey);

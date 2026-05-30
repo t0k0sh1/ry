@@ -467,10 +467,18 @@ RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
     auto *isErr = static_cast<llvm::Value *>(ry_emit_resolve(ctx, is_err_id));
     auto *resTy = static_cast<llvm::StructType *>(res_ty_ptr);
 
-    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "res.ok", ctx->function);
-    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "res.err", ctx->function);
+    // Derive parent function from the builder's current insertion block, not
+    // from ctx->function: like ARC ops, result-branch helpers may be invoked
+    // inside destructor / lambda / thunk bodies where cg.fn_ tracks the outer
+    // function while the builder has already been retargeted to the nested
+    // function. Using ctx->function would place new BBs in the wrong function
+    // and produce cross-function references that fail LLVM verify (the same
+    // hazard fixed for ry_emit_arc_retain / ry_emit_arc_release in #1968).
+    auto *fn = ctx->builder->GetInsertBlock()->getParent();
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "res.ok", fn);
+    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "res.err", fn);
     auto *mergeBB =
-        llvm::BasicBlock::Create(*ctx->context, "res.merge", ctx->function);
+        llvm::BasicBlock::Create(*ctx->context, "res.merge", fn);
     ctx->builder->CreateCondBr(isErr, errBB, okBB);
 
     ctx->builder->SetInsertPoint(okBB);
@@ -511,6 +519,40 @@ RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, void *opt_ty_ptr) {
     val = ctx->builder->CreateInsertValue(
         val, llvm::UndefValue::get(optTy->getElementType(1)), 1);
     return ry_emit_intern(ctx, val);
+}
+
+RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
+                               void *ret_ty_ptr,
+                               void *const *arg_ty_ptrs,
+                               uint32_t arg_ty_count,
+                               const RyValueId *arg_ids,
+                               uint32_t arg_count, const char *name_hint) {
+    auto *retTy = static_cast<llvm::Type *>(ret_ty_ptr);
+    std::vector<llvm::Type *> argTys;
+    argTys.reserve(arg_ty_count);
+    for (uint32_t i = 0; i < arg_ty_count; ++i)
+        argTys.push_back(static_cast<llvm::Type *>(arg_ty_ptrs[i]));
+
+    auto *fnTy = llvm::FunctionType::get(retTy, argTys, /*isVarArg=*/false);
+    auto callee = ctx->module->getOrInsertFunction(name, fnTy);
+
+    std::vector<llvm::Value *> args;
+    args.reserve(arg_count);
+    for (uint32_t i = 0; i < arg_count; ++i)
+        args.push_back(
+            static_cast<llvm::Value *>(ry_emit_resolve(ctx, arg_ids[i])));
+
+    // CreateCall asserts when given a non-empty SSA name for a void-returning
+    // call (LLVM forbids naming void instructions). Pass empty name in that
+    // case regardless of what the caller supplied.
+    llvm::Value *result;
+    if (retTy->isVoidTy()) {
+        result = ctx->builder->CreateCall(callee, args);
+    } else {
+        result = ctx->builder->CreateCall(callee, args,
+                                          name_hint ? name_hint : "");
+    }
+    return ry_emit_intern(ctx, result);
 }
 
 } // extern "C"
