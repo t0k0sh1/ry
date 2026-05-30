@@ -273,6 +273,88 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
                                const RyValueId *arg_ids,
                                uint32_t arg_count, const char *name_hint);
 
+// Stage 2-C entry — List append (in-place mutation):
+//   len = list.len; cap = list.cap;
+//   if (len >= cap) {
+//     append.grow: data = __ry_list_grow(list_ptr, elem_size); goto append.store;
+//   } else {
+//     append.nogrow: data = list.data; goto append.store;
+//   }
+//   append.store: *(data + len * elem_size) = val; list.len = len + 1;
+// list_header_ty_ptr is the `{i64 len, i64 cap, ptr data}` StructType.
+// ARC retain on `val` (if the element type warrants it) MUST be emitted by
+// the caller BEFORE invoking this ABI — append does not retain internally.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it).
+void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                               RyValueId val_id,
+                               void *list_header_ty_ptr /* llvm::StructType* */,
+                               void *elem_ty_ptr /* llvm::Type* */,
+                               uint64_t elem_size);
+
+// Stage 2-C entry — List insert at index (in-place mutation with shift):
+//   wrapped_idx = ry_emit_negative_index_wrap(idx, len + 1);
+//   ry_emit_bounds_check(wrapped_idx, len + 1, INSERT);   // [0, len] inclusive
+//   if (len >= cap) data = __ry_list_grow(list_ptr, elem_size);
+//   else            data = list.data;
+//   memmove(data + (wrapped_idx + 1) * elem_size,
+//           data + wrapped_idx * elem_size,
+//           (len - wrapped_idx) * elem_size);
+//   *(data + wrapped_idx * elem_size) = val;
+//   list.len = len + 1;
+// Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
+// ARC retain on `val` (if the element type warrants it) MUST be emitted by
+// the caller BEFORE invoking this ABI.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it).
+void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                               RyValueId idx_id, RyValueId val_id,
+                               void *list_header_ty_ptr /* llvm::StructType* */,
+                               void *elem_ty_ptr /* llvm::Type* */,
+                               uint64_t elem_size);
+
+// Stage 2-C entry — List remove at index (in-place mutation with shift):
+//   wrapped_idx = ry_emit_negative_index_wrap(idx, len);
+//   ry_emit_bounds_check(wrapped_idx, len, REMOVE);       // [0, len) exclusive
+//   removed = *(data + wrapped_idx * elem_size);
+//   memmove(data + wrapped_idx * elem_size,
+//           data + (wrapped_idx + 1) * elem_size,
+//           (len - wrapped_idx - 1) * elem_size);
+//   list.len = len - 1;
+//   return removed;
+// Returns the RyValueId of the removed element (caller is responsible for
+// any ARC release decision based on its type metadata).
+// Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it).
+RyValueId ry_emit_collection_remove_at(
+    RyEmitCtx *ctx, RyValueId list_ptr_id, RyValueId idx_id,
+    void *list_header_ty_ptr /* llvm::StructType* */,
+    void *elem_ty_ptr /* llvm::Type* */, uint64_t elem_size);
+
+// Stage 2-C entry — List slice (produces a new heap data buffer):
+//   src_len = list.len; src_data = list.data;
+//   // CreateSelect clamps both endpoints to [0, src_len]; if start >= end the
+//   // result is an empty slice (count = 0, new_data = malloc(0) sized for at
+//   // least 1 elem to keep downstream pointer math defined).
+//   s = clamp(start, 0, src_len); e = clamp(end_excl, s, src_len);
+//   count = e - s;
+//   alloc_bytes = max(count, 1) * elem_size;
+//   new_data = malloc(alloc_bytes);
+//   memcpy(new_data, src_data + s * elem_size, count * elem_size);
+//   *out_count = count; *out_new_data = new_data;
+// Branchless (no new BBs): uses CreateSelect for clamping plus a single
+// malloc+memcpy call. The new ARC header allocation, type-metadata copy,
+// and per-element ARC retain loop stay on the codegen side (after the ABI
+// returns) because they need ValueMetadata that does not cross the ABI.
+// Precondition: NONE — ry_emit_ctx_set_function need not have been called.
+void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                        RyValueId start_id, RyValueId end_excl_id,
+                        void *list_header_ty_ptr /* llvm::StructType* */,
+                        void *elem_ty_ptr /* llvm::Type* */,
+                        uint64_t elem_size, RyValueId *out_count,
+                        RyValueId *out_new_data);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

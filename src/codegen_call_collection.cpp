@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 
 
@@ -397,41 +398,10 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
                 codegenError("append() element type mismatch");
         }
 
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
-        auto freeFn = getStdlibFree();
-
-        auto lf = loadListHeader(listPtr, "app");
-
-        // Check if realloc needed
-        llvm::Value *needGrow = builder_.CreateICmpEQ(lf.len, lf.cap, "app_need_grow");
-        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "app.grow", fn_);
-        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "app.store", fn_);
-
-        builder_.CreateCondBr(needGrow, growBB, storeBB);
-
-        // Grow: new_cap = cap * 2 (min 4)
-        builder_.SetInsertPoint(growBB);
-        llvm::Value *four = llvm::ConstantInt::get(i64Ty_, 4);
-        llvm::Value *doubled = builder_.CreateMul(lf.cap, llvm::ConstantInt::get(i64Ty_, 2), "app_doubled");
-        llvm::Value *newCap = builder_.CreateSelect(
-            builder_.CreateICmpSGT(doubled, four, "cap_gt4"), doubled, four, "app_new_cap");
-        llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "app_new_size");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {newSize}, "app_new_data");
-        llvm::Value *oldSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "app_old_size");
-        builder_.CreateCall(memcpyFn, {newData, lf.data, oldSize});
-        builder_.CreateCall(freeFn, {lf.data});
-        builder_.CreateStore(newData, lf.dataPtr);
-        builder_.CreateStore(newCap, lf.capPtr);
-        builder_.CreateBr(storeBB);
-
-        // Store the new element
-        builder_.SetInsertPoint(storeBB);
-        llvm::Value *curData = builder_.CreateLoad(ptrTy_, lf.dataPtr, "app_cur_data");
-        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lf.lenPtr, "app_cur_len");
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, curData, curLen, "app_elem_ptr");
+        // ARC retain decision uses ValueMetadata which does not cross the ABI,
+        // so it must happen on the codegen side BEFORE delegating to emission.
+        // Reordering relative to the original (which retained inside storeBB)
+        // is semantically equivalent because `val` is not mutated by grow.
         if (elemTy == ptrTy_) {
             auto *listMeta = getMeta(listPtr);
             const std::string &appElemName =
@@ -443,9 +413,12 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
                 retainArcValue(val);
             }
         }
-        builder_.CreateStore(val, elemPtr);
-        llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "app_new_len");
-        builder_.CreateStore(newLen, lf.lenPtr);
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+        auto op = codegen::lowering::lowerCollectionAppend(
+            *this, listPtr, val, listHeaderTy_, elemTy, elemSize);
+        codegen::emission::emitCollectionAppend(*this, op);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -603,33 +576,19 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
                                      llvm::Type *elemTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *slLen  = builder_.CreateLoad(i64Ty_,
-        builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr"), "sl_len");
-    llvm::Value *slData = builder_.CreateLoad(ptrTy_,
-        builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "sl_data_ptr"), "sl_data");
-
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
-    clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSGT(clampedStart, slLen), slLen, clampedStart, "sl_cstart2");
-    llvm::Value *clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(endExclVal, zero), zero, endExclVal, "sl_cend");
-    clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSGT(clampedEnd, slLen), slLen, clampedEnd, "sl_cend2");
-
-    llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
-    llvm::Value *count = builder_.CreateSelect(
-        builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
+    // Delegate the clamp + malloc + memcpy chain to the llvm_emit ABI. The
+    // ABI returns (count, new_data); header allocation, metadata propagation
+    // and per-element ARC retain stay on the codegen side because they need
+    // ValueMetadata that does not cross the ABI boundary.
+    auto op = codegen::lowering::lowerListSlice(*this, listPtr, startVal,
+                                                endExclVal, listHeaderTy_,
+                                                elemTy, elemSize);
+    auto result = codegen::emission::emitListSlice(*this, op);
+    llvm::Value *count = result.count;
+    llvm::Value *newData = result.new_data;
 
     llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-    llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
-    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
-    llvm::Value *srcOffset = builder_.CreateGEP(elemTy, slData, clampedStart, "sl_src_off");
-    builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
     // Reference-typed elements share ownership with the source list.  memcpy
     // duplicates raw pointers without bumping refcounts; without retention,
@@ -762,64 +721,11 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
                 codegenError("insert() element type mismatch");
         }
 
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
-        auto freeFn = getStdlibFree();
-        auto memmoveFn = getStdlibMemmove();
-
-        auto lf = loadListHeader(listPtr, "ins");
-
-        // insert() valid range is [0, len], so negative index -k maps to len+1-k.
-        // This differs from removeAt() which wraps against len (valid range [0, len-1]).
-        llvm::Value *origIdx = idx;
-        llvm::Value *wrapBase = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_wrap_base");
-        idx = emitNegativeIndexWrap(idx, wrapBase, "ins");
-
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, zero),
-            builder_.CreateICmpSGT(idx, lf.len), "ins_oob");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "ins.err", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "ins.ok", fn_);
-        builder_.CreateCondBr(outOfBounds, errBB, okBB);
-        builder_.SetInsertPoint(errBB);
-        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for insert() on list of length %lld\n", ".ins_oob_err");
-
-        builder_.SetInsertPoint(okBB);
-        // Check if realloc needed
-        llvm::Value *needGrow = builder_.CreateICmpEQ(lf.len, lf.cap, "ins_need_grow");
-        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "ins.grow", fn_);
-        llvm::BasicBlock *moveBB = llvm::BasicBlock::Create(*ctx_, "ins.move", fn_);
-        builder_.CreateCondBr(needGrow, growBB, moveBB);
-
-        builder_.SetInsertPoint(growBB);
-        llvm::Value *four = llvm::ConstantInt::get(i64Ty_, 4);
-        llvm::Value *doubled = builder_.CreateMul(lf.cap, llvm::ConstantInt::get(i64Ty_, 2), "ins_doubled");
-        llvm::Value *newCap = builder_.CreateSelect(
-            builder_.CreateICmpSGT(doubled, four), doubled, four, "ins_new_cap");
-        llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "ins_new_size");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {newSize}, "ins_new_data");
-        llvm::Value *oldSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "ins_old_size");
-        builder_.CreateCall(memcpyFn, {newData, lf.data, oldSize});
-        builder_.CreateCall(freeFn, {lf.data});
-        builder_.CreateStore(newData, lf.dataPtr);
-        builder_.CreateStore(newCap, lf.capPtr);
-        builder_.CreateBr(moveBB);
-
-        builder_.SetInsertPoint(moveBB);
-        llvm::Value *curData = builder_.CreateLoad(ptrTy_, lf.dataPtr, "ins_cur_data");
-        // memmove elements from idx to idx+1
-        llvm::Value *srcPtr = builder_.CreateGEP(elemTy, curData, {idx}, "ins_src");
-        llvm::Value *dstPtr = builder_.CreateGEP(elemTy, curData,
-            {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "ins_dst");
-        llvm::Value *moveCount = builder_.CreateSub(lf.len, idx, "ins_move_count");
-        llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "ins_move_bytes");
-        builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
-        // Store new element at idx
-        llvm::Value *insertPtr = builder_.CreateGEP(elemTy, curData, {idx}, "ins_ptr");
+        // ARC retain decision uses ValueMetadata which does not cross the ABI,
+        // so it must happen on the codegen side BEFORE delegating to emission.
+        // The retain is safe to hoist out of the previous post-bounds-check
+        // position because `val` is independent of len/cap/idx and a bounds
+        // failure aborts the program without observable refcount differences.
         if (elemTy == ptrTy_) {
             auto *insMeta = getMeta(listPtr);
             const std::string &insElemName =
@@ -831,10 +737,12 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
                 retainArcValue(val);
             }
         }
-        builder_.CreateStore(val, insertPtr);
-        // len++
-        llvm::Value *newLen = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_new_len");
-        builder_.CreateStore(newLen, lf.lenPtr);
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+        auto op = codegen::lowering::lowerCollectionInsert(
+            *this, listPtr, idx, val, listHeaderTy_, elemTy, elemSize);
+        codegen::emission::emitCollectionInsert(*this, op);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -855,40 +763,9 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-        auto memmoveFn = getStdlibMemmove();
-
-        auto lf = loadListHeader(listPtr, "rmat");
-
-        llvm::Value *origIdx = idx;
-        idx = emitNegativeIndexWrap(idx, lf.len, "rmat");
-
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, zero),
-            builder_.CreateICmpSGE(idx, lf.len), "rmat_oob");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "rmat.err", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "rmat.ok", fn_);
-        builder_.CreateCondBr(outOfBounds, errBB, okBB);
-        builder_.SetInsertPoint(errBB);
-        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for removeAt() on list of length %lld\n", ".rmat_oob_err");
-
-        builder_.SetInsertPoint(okBB);
-        // Save element to return
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, {idx}, "rmat_elem_ptr");
-        llvm::Value *removedVal = builder_.CreateLoad(elemTy, elemPtr, "rmat_val");
-        // memmove elements from idx+1 to idx
-        llvm::Value *srcPtr = builder_.CreateGEP(elemTy, lf.data,
-            {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "rmat_src");
-        llvm::Value *moveCount = builder_.CreateSub(
-            builder_.CreateSub(lf.len, idx), llvm::ConstantInt::get(i64Ty_, 1), "rmat_move_count");
-        llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "rmat_move_bytes");
-        builder_.CreateCall(memmoveFn, {elemPtr, srcPtr, moveBytes});
-        // len--
-        llvm::Value *newLen = builder_.CreateSub(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "rmat_new_len");
-        builder_.CreateStore(newLen, lf.lenPtr);
-
-        return removedVal;
+        auto op = codegen::lowering::lowerCollectionRemoveAt(
+            *this, listPtr, idx, listHeaderTy_, elemTy, elemSize);
+        return codegen::emission::emitCollectionRemoveAt(*this, op);
     }
     return nullptr;
 }
