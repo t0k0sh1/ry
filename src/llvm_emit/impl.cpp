@@ -112,9 +112,19 @@ RyValueId ry_emit_negative_index_wrap(RyEmitCtx *ctx, RyValueId idx_id,
     auto *idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, idx_id));
     auto *wrapBase =
         static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrap_base_id));
-    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty, 0);
     std::string p = prefix ? prefix : "";
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    // Standalone ABI helper — normalize narrow operands to i64 defensively
+    // (callers that go through ry_emit_bounds_check already widen, but direct
+    // callers from future caller-side migrations are not guaranteed to).
+    if (idx->getType() != i64Ty)
+        idx = ctx->builder->CreateIntCast(idx, i64Ty, /*isSigned=*/true,
+                                          p + "_idx_i64");
+    if (wrapBase->getType() != i64Ty)
+        wrapBase = ctx->builder->CreateIntCast(wrapBase, i64Ty,
+                                               /*isSigned=*/true,
+                                               p + "_wrap_base_i64");
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty, 0);
     llvm::Value *isNeg = ctx->builder->CreateICmpSLT(idx, zero, p + "_is_neg");
     llvm::Value *wrapped = ctx->builder->CreateAdd(idx, wrapBase, p + "_wrapped");
     llvm::Value *result =
