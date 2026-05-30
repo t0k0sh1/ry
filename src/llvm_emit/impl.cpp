@@ -428,9 +428,16 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
     }
     // Only free the entire block when no weak references remain.
     // When weak_count > 0, the header must stay alive for weak ref resolution.
+    // In atomic mode the load must be atomic — weak retain / weak rel in
+    // codegen_arc.cpp update this slot with atomicrmw Monotonic, so a plain
+    // load races with them and would be flagged as a data race.
     auto *weakPtr = ctx->builder->CreateStructGEP(arcHeaderTy, headerPtr, 1,
                                                   "arc_weak_ptr");
-    auto *weakCount = ctx->builder->CreateLoad(i64Ty, weakPtr, "arc_weak");
+    auto *weakCount = emitAtomicI64Load(
+        *ctx->builder, i64Ty, weakPtr,
+        atomic == RY_ARC_ATOMIC ? llvm::AtomicOrdering::Acquire
+                                : llvm::AtomicOrdering::NotAtomic,
+        "arc_weak");
     auto *noWeak = ctx->builder->CreateICmpEQ(
         weakCount, llvm::ConstantInt::get(i64Ty, 0), "arc_no_weak");
 
