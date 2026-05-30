@@ -158,6 +158,10 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id, RyValueId len_i
                                    ry_emit_intern(ctx, origIndex),
                                    ry_emit_intern(ctx, len), fmtMsg,
                                    global_name);
+    else
+        // Defensive: if the caller forgot to register a callback, terminate
+        // oobBB with unreachable so LLVM verify still accepts the function.
+        ctx->builder->CreateUnreachable();
 
     ctx->builder->SetInsertPoint(okBB);
     return ry_emit_intern(ctx, idx);
