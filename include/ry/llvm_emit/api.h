@@ -5,26 +5,27 @@
 // starting from #1949). It is C-only so the layer can be reimplemented in
 // Rust (#1950) behind the same ABI.
 //
+// Stage 2-B (#1964) completes the category-3 migration:
+//   - All five category-3 helpers from llvm-ir-emission-boundary.md cross
+//     the ABI: ry_emit_get_runtime_fn, ry_emit_build_error_from_runtime,
+//     ry_emit_bounds_check, ry_emit_result_branch, ry_emit_negative_index_wrap,
+//     and ry_emit_bounds_error. wrapPtrAsResult / wrapStatusAsResult are
+//     thin wrappers over ry_emit_result_branch on the CodeGen side and do
+//     not need their own ABI entry.
+//   - getResultType's StructType cache stays in CodeGen (its reverse map
+//     `reverse_result_types_` is consumed in codegen_any.cpp/codegen_arc.cpp
+//     for ARC release and Any wrapping); resTy crosses as `void*`, mirroring
+//     errorTy_ in ry_emit_build_error_from_runtime.
+//   - The previous `RyEmitCallbacks` slot is removed — negative-index wrap
+//     and bounds error are now proper ABI functions rather than callbacks
+//     into CodeGen.
+//
 // Stage 2-A (scaffolding, #1949):
 //   - Opaque handles for LLVM values are defined as `uint32_t` (RyValueId).
-//   - Three "category-3" helpers from llvm-ir-emission-boundary.md cross
-//     the ABI: ry_emit_get_runtime_fn, ry_emit_build_error_from_runtime,
-//     and the BoundsCheck op (ry_emit_bounds_check).
-//   - The other two category-3 helpers (wrapPtrAsResult / wrapStatusAsResult)
-//     stay as CodeGen methods in this PR because their bodies pull in
-//     getResultType (a pointer-identity-sensitive cache), buildOkValue /
-//     buildErrValue (which call propagateMeta + tryRetainArcSource), and
-//     emitResultBranch (which builds BBs + PHI from caller-supplied
-//     callbacks). Migrating them belongs in the same successor PR that
-//     ABI's the `ResultWrap` lowered op.
 //   - Module / IRBuilder / LLVMContext / Function pointers are still passed
 //     as `void*` because categories 1 (LLVM context handles) and 2 (primitive
-//     type accessors) have not crossed the ABI yet. Successor PRs will
-//     replace these with opaque handles.
-//   - The currently-unmigrated callbacks (emitNegativeIndexWrap,
-//     emitBoundsError) are reachable through the RyEmitCallbacks slot. This
-//     is a transitional shape; future PRs will turn each callback into a
-//     proper ABI function.
+//     type accessors) have not crossed the ABI yet. Successor PRs (Stage 2-C
+//     and beyond) will replace these with opaque handles.
 //
 // Constraint enforced for every signature in this header (per #1824 AC):
 //   LLVM-owned types (`llvm::Value*`, `llvm::Module&`, `llvm::IRBuilder<>`,
@@ -68,18 +69,11 @@ typedef enum {
     RY_BOUNDS_ARRAY = 1
 } RyBoundsKind;
 
-// Callback table for CodeGen-owned helpers that have not crossed the ABI yet.
-// Future PRs will replace each callback with a `ry_emit_*` function and shrink
-// this struct. user_ctx is opaque to the emission layer; CodeGen passes its
-// own `this`. Callback inputs/outputs use RyValueId; thunks on the CodeGen
-// side perform the intern/resolve.
-typedef struct RyEmitCallbacks {
-    void *user_ctx;
-    RyValueId (*emit_negative_index_wrap)(void *user, RyValueId idx,
-                                          RyValueId len, const char *prefix);
-    void (*emit_bounds_error)(void *user, RyValueId orig_idx, RyValueId len,
-                              const char *fmt_msg, const char *global_name);
-} RyEmitCallbacks;
+// Callback type for ok/err value builders consumed by ry_emit_result_branch.
+// Stage 2-B keeps callbacks at the C ABI boundary (function pointer +
+// user_ctx) — the C++ side translates `llvm::function_ref<>` closures into
+// this shape via a trampoline. user_ctx is opaque to the emission layer.
+typedef RyValueId (*RyBuildValueFn)(void *user_ctx);
 
 // Lifecycle. Create at the top of CodeGen::compile() and destroy on exit.
 // module_ptr/builder_ptr/context_ptr/function_ptr are `void*` only as a
@@ -91,10 +85,6 @@ void ry_emit_ctx_destroy(RyEmitCtx *ctx);
 // Update the current LLVM function pointer mid-compile (function_ptr changes
 // when CodeGen emits a new function body).
 void ry_emit_ctx_set_function(RyEmitCtx *ctx, void *function_ptr);
-
-// Register CodeGen-side callbacks. May be called at any time; the most recent
-// values are used by subsequent ABI calls that need them.
-void ry_emit_ctx_set_callbacks(RyEmitCtx *ctx, const RyEmitCallbacks *cbs);
 
 // Handle marshalling. ry_emit_intern returns 0 if `value_ptr` is NULL; every
 // other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
@@ -126,13 +116,50 @@ void *ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name, void *fn_ty_ptr);
 
 // Emit a bounds-check IR sequence. Inputs are the un-wrapped index and the
 // container length; the return value is the wrapped index suitable for the
-// caller's subsequent GEP. emit_negative_index_wrap and emit_bounds_error
-// are dispatched through the RyEmitCallbacks slot until those helpers cross
-// the ABI in a successor PR.
+// caller's subsequent GEP. Internally invokes ry_emit_negative_index_wrap
+// for the wrap step and ry_emit_bounds_error for the OOB exit (both proper
+// ABI functions since Stage 2-B).
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it).
 RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id,
                                RyValueId len_id, RyBoundsKind kind,
                                const char *global_name,
                                const char *bb_prefix);
+
+// Emit a Result-branch IR sequence: three BBs (res.ok / res.err / res.merge)
+// joined by a PHI. build_ok and build_err run inside okBB / errBB
+// respectively (the helper switches the builder's insert point before each
+// callback). user_ctx is forwarded to both callbacks unchanged.
+// res_ty_ptr is the LLVM StructType handle for Result<T, E>, passed as
+// `void*` until the type-handle category crosses the ABI (mirrors
+// error_ty_ptr in ry_emit_build_error_from_runtime).
+// Returns the PHI handle holding the merged Result value.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (three BBs are created inside it).
+RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
+                                void *res_ty_ptr /* llvm::StructType* */,
+                                RyBuildValueFn build_ok,
+                                RyBuildValueFn build_err,
+                                void *user_ctx);
+
+// Emit a negative-index wrap sequence (used by string/list/array index
+// expressions): wrapped = (idx < 0) ? idx + wrap_base : idx. Returns the
+// wrapped index handle (i64).
+RyValueId ry_emit_negative_index_wrap(RyEmitCtx *ctx, RyValueId idx_id,
+                                      RyValueId wrap_base_id,
+                                      const char *prefix);
+
+// Emit a bounds-error exit sequence: fprintf(stderr, fmt_msg, orig_idx, len)
+// → fflush(stdout) → fflush(stderr) → _Exit(1) → unreachable. fmt_msg must
+// contain two %lld format specifiers for orig_idx and len. global_name is
+// used as the LLVM global name hint for the format-string global; the
+// emission layer deduplicates identical fmt_msg strings within RyEmitCtx so
+// repeated calls do not generate redundant globals.
+// The caller is responsible for splitting BBs around this call (this helper
+// terminates the current block with `unreachable`).
+void ry_emit_bounds_error(RyEmitCtx *ctx, RyValueId orig_idx_id,
+                          RyValueId len_id, const char *fmt_msg,
+                          const char *global_name);
 
 #ifdef __cplusplus
 } // extern "C"

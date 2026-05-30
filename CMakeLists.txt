@@ -184,6 +184,8 @@ add_library(ry_lib STATIC
     src/codegen_call_user.cpp
     src/codegen_lowering_bounds_check.cpp
     src/codegen_emission_bounds_check.cpp
+    src/codegen_lowering_result_branch.cpp
+    src/codegen_emission_result_branch.cpp
     src/runtime/core/error.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp
