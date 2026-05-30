@@ -335,12 +335,15 @@ RyValueId ry_emit_collection_remove_at(
 // Stage 2-C entry — List slice (produces a new heap data buffer):
 //   src_len = list.len; src_data = list.data;
 //   // CreateSelect clamps both endpoints to [0, src_len]; if start >= end the
-//   // result is an empty slice (count = 0, new_data = malloc(0) sized for at
-//   // least 1 elem to keep downstream pointer math defined).
+//   // result is an empty slice (count = 0). For count=0 the malloc receives 0
+//   // bytes; the returned pointer is libc-defined (glibc / macOS libmalloc
+//   // both return a non-NULL unique pointer) and the subsequent memcpy is a
+//   // zero-byte copy (well-defined). This matches the pre-migration behavior
+//   // (PR #1971 byte-for-byte parity); tightening to max(count, 1) * elem_size
+//   // would be a defensive change worth a separate issue.
 //   s = clamp(start, 0, src_len); e = clamp(end_excl, s, src_len);
 //   count = e - s;
-//   alloc_bytes = max(count, 1) * elem_size;
-//   new_data = malloc(alloc_bytes);
+//   new_data = malloc(count * elem_size);
 //   memcpy(new_data, src_data + s * elem_size, count * elem_size);
 //   *out_count = count; *out_new_data = new_data;
 // Branchless (no new BBs): uses CreateSelect for clamping plus a single
