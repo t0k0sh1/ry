@@ -92,7 +92,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
   - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
-- **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。`/triage-side-finding` Q4(b) で「別 issue 起票」と判定された場合のみ、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること 参照)
+- **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。**Claude Code が `/triage-side-finding` Q4(b)「起票許可を求める」と自律判断した場合のみ**、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること / §起票判断における選択肢提示の禁止 参照)
 - **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
 
 ## 内部挙動の解析に trace を使う
@@ -156,7 +156,7 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 
 #### 副次的発見への対応
 
-副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 3 択判定 [即時修正 / 別 issue 起票 / ユーザー確認]) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。
+副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 Claude Code 自律判断 2 分岐 [即時修正 / 起票許可を求める]) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。Q4 の自律判断要件は §"起票判断における選択肢提示の禁止" 参照。
 
 #### 副次的発見の判断優先順位
 
@@ -168,12 +168,20 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 
 > **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (§"ナレッジベース" の catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
 
+#### 起票判断における選択肢提示の禁止
+
+- **MUST (例外なし)**: Claude Code がユーザーに提示する選択肢に「別 issue に起票する」を含めてはならない。これは `AskUserQuestion` ツールの options、テキストの選択肢列挙 (「(a)... (b)... (c)...」「以下のいずれか: ...」等)、口頭での 3 択提示など、形態を問わない。起票要否は Claude Code が自律判断する責務であり、ユーザーへの選択肢提示で代替してはならない
+- 起票が必要と Claude Code が自律判断した場合は `/git-create-issue` Step 1 (preview 6 項目 [起票理由 / 概要 / 粒度 / 解決確度 / ラベル案 / マイルストーン候補] → 明示許可待ち) に従う。preview は「起票内容の提示」であって「選択肢の提示」ではない (ユーザーは 1 つの起票案に対して許可/decline のみ判断する)
+- **適用範囲**: 「ユーザーが自発的に『別 issue にすべきか』と問いかけた場合」は Q2 (informed-consent gate) 経由のユーザー指示として扱い、`/triage-side-finding` Q2 のフロー (What / Where / 推定サイズ / Dependency risk を提示してから指示を仰ぐ) に従う。本ルールは「Claude Code 起点で 3 択以上を提示する行為」を禁止するもので、ユーザー起点の問いかけには影響しない
+- **Why**: #1851 の自律誘導失敗 (Claude Code が「別 issue 起票」を選択肢として提示しユーザーを誘導した事故) の再発防止 / `/git-create-issue` permission gate との二重化排除 / ユーザーが判断材料なしで即決を求められる問題の排除
+- 関連: `/triage-side-finding` Q4 (自律判断 2 分岐)、`/triage-side-finding` Issue Creation Steps Step 1 escalate 節 (1 択推奨)、`/git-create-issue` Step 1 (preview gate)
+
 ### ユーザーが明示的に指示すること
 
 - 外部レビュー（GitHub PR レビュー等）
 - git add / commit / push
 - PR 作成
-- **新規 issue の起票 (`gh issue create`)** — Claude Code は起票内容 (理由 / 概要 / 粒度 / 解決確度 / ラベル案 / マイルストーン候補) を提示するに留め、ユーザーの明示許可 (「起票して」 / 「OK」等) を待つ。CI 失敗・サニタイザー検出・fuzz crash 等の repo 全体に影響する事故も口頭 (テキスト) 報告のみで、自律起票しない。詳細手順は `/git-create-issue` 参照
+- **新規 issue の起票 (`gh issue create`)** — Claude Code は起票内容 (理由 / 概要 / 粒度 / 解決確度 / ラベル案 / マイルストーン候補) を提示するに留め、ユーザーの明示許可 (「起票して」 / 「OK」等) を待つ。CI 失敗・サニタイザー検出・fuzz crash 等の repo 全体に影響する事故も口頭 (テキスト) 報告のみで、自律起票しない。詳細手順は `/git-create-issue` 参照。**起票の要否判断時に「別 issue にする」を選択肢としてユーザーに提示してはならない** → §"起票判断における選択肢提示の禁止" も参照
   - **例外**: `preparing-for-release` skill 経由 (Release prep / Release / Cleanup issue) は `/preparing-for-release <X.Y.Z>` のユーザー起動が起票許可を兼ねるため、この許可制の対象外
 
 ### PR レビュー対応

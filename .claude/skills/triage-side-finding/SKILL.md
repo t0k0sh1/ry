@@ -1,18 +1,20 @@
 ---
 name: triage-side-finding
-description: Triage hub for side findings — short-circuits via Q1 (hard-to-reproduce CI detection) / Q2 (explicit user direction) / Q3 (bug-forensics-analyst) / Q4 (three-way 即時修正 / 別 issue 起票 / ユーザー確認). Use during implementation, self-verification, or PR review when an out-of-scope finding surfaces. Origin diagnosis (regression vs pre-existing) is delegated to `bug-forensics-analyst` and reached only via Q3. Also fires on Japanese triggers 副次的な発見, side finding, scope, ついでに直したい, 別 issue 起票, 即時修正, OPEN PR 依存, fold-only, orphan issue 防止, triage, 判定フロー.
+description: Triage hub for side findings — short-circuits via Q1 (hard-to-reproduce CI detection) / Q2 (explicit user direction) / Q3 (bug-forensics-analyst) / Q4 (Claude Code 自律判断 2 分岐 即時修正 / 起票許可を求める). Use during implementation, self-verification, or PR review when an out-of-scope finding surfaces. Origin diagnosis (regression vs pre-existing) is delegated to `bug-forensics-analyst` and reached only via Q3. Also fires on Japanese triggers 副次的な発見, side finding, scope, ついでに直したい, 別 issue 起票, 即時修正, OPEN PR 依存, fold-only, orphan issue 防止, triage, 判定フロー, 起票許可, 自律判断.
 allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Bash(gh api:*), Agent
 ---
 
 # Triage Side Finding
 
-Neutral triage hub for side findings detected during implementation, self-verification, or PR review. Routes to one of three outcomes — (a) 即時修正 / (b) 別 issue 起票 / (c) ユーザー確認.
+Neutral triage hub for side findings detected during implementation, self-verification, or PR review. Q4 では Claude Code が自律的に 2 分岐 — (a) 即時修正 / (b) 起票許可を求める — のいずれかを判定する (旧 3 択 [即時修正 / 別 issue 起票 / ユーザー確認] は廃止)。
 
-> **Source-of-truth note**: previously in `AGENTS.md` §"責務の分離 > スコープ外の問題を発見した場合の対応ルール"; relocated by #1384. The "OPEN PR dependency" gate (Q4(b) Step 1 + fold-only rule) was added by #1694. The Q1-Q4 short-circuit redesign and `bug-forensics-analyst` integration came in #1752.
+> **Source-of-truth note**: previously in `AGENTS.md` §"責務の分離 > スコープ外の問題を発見した場合の対応ルール"; relocated by #1384. The "OPEN PR dependency" gate (Q4(b) Step 1 + fold-only rule) was added by #1694. The Q1-Q4 short-circuit redesign and `bug-forensics-analyst` integration came in #1752. Q4 の自律判断 2 分岐化 (旧 3 択廃止) は #1981 で導入 — AGENTS.md §"起票判断における選択肢提示の禁止" の MUST ルールに準拠。
 
 ## Design intent
 
 The skill must **not** bias side findings toward "file a separate issue." The previous `scope-out-issue` skill did, producing two failure modes (#1752): (a) hard-to-reproduce CI findings (ASan / TSan / UBSan / libFuzzer crashes) went stale before triage finished; (b) when the user said "fix it now," rule discipline overrode the call.
+
+加えて #1981 で、Q4 の判定を「ユーザーへの選択肢提示」に丸投げする旧 3 択 (即時修正 / 別 issue 起票 / ユーザー確認) も廃止した。起票要否は Claude Code が自律判断すべき責務であり、ユーザー選択肢に「別 issue に起票する」を含めることは AGENTS.md §"起票判断における選択肢提示の禁止" の MUST ルールで禁止されている。「禁止対象 = 旧 `scope-out-issue` 型の常時起票バイアス + 選択肢としてのユーザー提示」「許容 = Claude Code 自律判断後の `/git-create-issue` Step 1 経由 1 択 preview による許可要求 (選択肢ではない)」と区別する。
 
 Q1 / Q2 short-circuit to immediate fix without invoking any agent or advisor, preserving the reproduction window. Q3 / Q4 run only when Q1 / Q2 did not settle the case.
 
@@ -69,15 +71,37 @@ The agent emits (full spec in `.claude/agents/bug-forensics-analyst.md`):
 
 > **Caller responsibility**: keep the agent's input context (PR diff / blame range / failing test output) visible in conversation history; same session ⇒ no explicit transfer needed.
 
-### Q4: Three-way verdict
+### Q4: Claude Code 自律判断 2 分岐
 
-Using Q3's analysis and `/plan-rubric`'s PR-size discipline (1 issue ≒ 1 PR), pick one:
+**MUST (#1981)**: ここで 3 択以上の選択肢 (旧 [即時修正 / 別 issue 起票 / ユーザー確認]) をユーザーに提示してはならない。起票要否は Claude Code が自律判断する。詳細は AGENTS.md §"起票判断における選択肢提示の禁止" を参照。
 
-**(a) 即時修正** — fix diff is related to the current PR's scope and doesn't grow it materially; judged a regression; simple fix with low side-effect risk. → Land in the feature branch / current PR.
+Q3 の analysis (origin verdict / impact surface / coverage gap / fix-direction) を input とし、`/plan-rubric` の PR-size discipline (1 issue ≒ 1 PR) を踏まえ、以下の判断基準で **Claude Code が自律的に 2 分岐のいずれかを選ぶ**:
 
-**(b) 別 issue 起票** — unrelated concern (e.g. parser bug surfaced alongside a codegen improvement); materially expands the current PR's scope; pre-existing and loosely related. → Proceed to "Issue Creation Steps" below.
+**判断基準** — 4 軸で評価する:
+1. **PR スコープ関連性**: 現 PR の scope (issue 本体の目的) と直接関係するか
+2. **拡大度**: 修正を含めると PR の diff サイズ・review コストが材料的に膨張するか
+3. **Origin verdict** (Q3 出力): regression (現 PR が混入) / pre-existing exposed (現 PR が露出させた) / pure pre-existing (現 PR と独立)
+4. **サイドエフェクトリスク**: 修正が現 PR の他の変更に副作用を持つ可能性
 
-**(c) ユーザー確認** — design choice is open (multiple fix approaches); regression vs pre-existing boundary is blurry; mid-sized so both (a) and (b) look reasonable. → Present **What / Where / Context / estimated size / recommended option (with reason)** and wait.
+#### 分岐 (a) 即時修正
+
+**条件 (全て満たす場合)**: PR スコープと関連 + 非拡大 (diff 増加が現 PR と同オーダー以下) + regression または pre-existing exposed + 低リスク (狭い影響範囲、確立されたパターン)。
+
+→ feature branch / 現 PR にコミットして対処。`/plan-rubric` の no-incidental-fix rule は「現 PR と無関係な cleanup」を禁止する規則であり、本分岐は「Q1-Q4 トリアージを経て同 PR で対処すべきと自律判断したもの」のため衝突しない。
+
+#### 分岐 (b) 起票許可を求める
+
+**条件**: (a) の条件を 1 つ以上満たさない場合は、自律的に「起票許可を求める」分岐に倒し、**Issue Creation Steps** に進む。
+
+**曖昧ケースの扱い** (旧 Q4(c) 該当): 設計選択肢が複数ある / regression vs pre-existing の境界が曖昧 / mid-sized で (a)/(b) 両方が成立しうる、といった不確実性は **preview 6 項目の Confidence: Medium/Low と理由付き** で表現する (Step 2 の preview gate でユーザーが判断材料を得られる)。ユーザーに 3 択を提示して判断を委ねてはならない。
+
+**decline 時のフォールバック (Q2 への再ルート)**: ユーザーが Step 2 の preview を decline した場合は、**Q2 (informed-consent gate) への再ルート**として扱う:
+
+1. 「現 PR で吸収可能か」を Claude Code が再評価し、`What / Where / 推定サイズ / 推奨アクション (理由付き)` を **1 つの推奨案として提示** してユーザー指示を仰ぐ (複数選択肢の列挙はしない)
+2. ユーザーが「現 PR で対処」を選べば Q2 = Yes として実装、「対処しない」を選べば「発見を記録、現 PR では未対処」を 1 行報告して終了する
+3. 再度メニュー (3 択以上) を提示してはならない (MUST ルール遵守)
+
+> **用語注意**: ここでの「現 PR で吸収」は Step 1 escalate 節の `fold` (OPEN PR 依存時に PR author に scope 拡張を依頼) とは別概念。混同を避けるため本節では `fold` 流用ではなく「Q2 への再ルート」と表現する。
 
 ## Issue Creation Steps
 
@@ -102,9 +126,9 @@ gh pr view <number> --json files,state,headRefName --jq '{state, branch: .headRe
 
 3. **Fold (propose scope expansion)**: ask the PR author to absorb the new finding via PR comment and obtain agreement — do not unilaterally push commits. If you are the author, add a commit to your own feature branch.
 
-4. **Escalate (when fold isn't viable)**: present **What** / **Where** / **estimated size** to the user when any of: extra work materially changes PR scope (design rethink); added diff is comparable to or larger than the PR's existing diff; PR is review-complete / merge-ready and re-review cost is high.
+4. **Escalate (when fold isn't viable)**: present **What** / **Where** / **estimated size** / **推奨アクション (理由付き、1 つに絞る)** to the user when any of: extra work materially changes PR scope (design rethink); added diff is comparable to or larger than the PR's existing diff; PR is review-complete / merge-ready and re-review cost is high.
 
-The user then chooses: file an independent issue, expand the PR's scope, branch off, etc.
+Claude Code は PR スコープ判定 (Q4 判断基準と同じ 4 軸) に基づき、最も妥当な対処方針を 1 つ推奨してユーザーの許可を待つ。**3 択以上の選択肢列挙はしない** (AGENTS.md §"起票判断における選択肢提示の禁止" の MUST ルール)。Claude Code 内部での候補としては典型的に「独立 issue 起票」が選ばれるが、状況により「現 PR scope 拡張」「別ブランチで対応」等もあり得る — ただしこれらは内部判断のための列挙であり、ユーザー提示時は 1 つに絞る。ユーザーが推奨を decline した場合のみ、別の選択肢を再評価して 1 つだけ提示し直す。
 
 **Motivating example (#1692)**: #1692 was filed as a v2 extension of unmerged PR #1693 (`verifyCalledWith`), depending on `__ry_mock_store_arg` / kind tag enum / `mockArgEqual` / `__ry_mock_count_matching_calls` from there — an orphan until #1693 merged. With this gate, the same case routes to fold (extend #1693's scope) or escalate.
 
