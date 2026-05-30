@@ -878,10 +878,21 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
 
 RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
                                     const RyCowEnsureUniqueDesc *desc) {
+    // ABI input validation: malformed external callers (Rust reimplementation
+    // in #1950, fuzz harnesses, etc.) get the invalid sentinel (0) instead of
+    // crashing the emitter. Mirrors the guard pattern in ry_emit_runtime_call
+    // (#1978 review). Per .claude/rules/runtime-memory-safety.md "外部入力の
+    // NULL チェック".
+    if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
+        ctx->builder == nullptr || desc == nullptr)
+        return 0;
+
     auto *dataPtr =
         static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->data_ptr_id));
     auto *slotPtr =
         static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->slot_ptr_id));
+    if (dataPtr == nullptr || slotPtr == nullptr)
+        return 0;
 
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *i8Ty = llvm::Type::getInt8Ty(*ctx->context);
@@ -913,9 +924,9 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
         dataFieldIdx = 2;
         break;
     default:
-        // RyCowKind has only the three values above; the caller (CodeGen
-        // lowering shim) validates `kind` before populating the descriptor.
-        __builtin_unreachable();
+        // External / fuzz callers may supply an unknown kind — return the
+        // invalid sentinel rather than crashing via __builtin_unreachable.
+        return 0;
     }
 
     const llvm::DataLayout &dl = ctx->module->getDataLayout();
@@ -1122,8 +1133,10 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
         break;
     }
     default:
-        // See first switch above — kind is pre-validated by CodeGen.
-        __builtin_unreachable();
+        // First switch above returns 0 for unknown kinds, so this branch is
+        // unreachable in practice — but return 0 instead of
+        // __builtin_unreachable for defense in depth (mirrors first switch).
+        return 0;
     } // end switch (desc->kind)
 
     // Element / key retain loops. Always RY_ARC_NONATOMIC: the freshly-cloned
