@@ -527,20 +527,39 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
                                uint32_t arg_ty_count,
                                const RyValueId *arg_ids,
                                uint32_t arg_count, const char *name_hint) {
+    // ABI input validation: malformed external callers (Rust reimplementation
+    // in #1950, fuzz harnesses, etc.) get the invalid sentinel (0) instead of
+    // crashing the emitter. Per .claude/rules/runtime-memory-safety.md
+    // "外部入力の NULL チェック". `name_hint` is optional and may be NULL.
+    if (ctx == nullptr || ctx->module == nullptr || ctx->builder == nullptr ||
+        name == nullptr || ret_ty_ptr == nullptr)
+        return 0;
+    if ((arg_ty_count > 0 && arg_ty_ptrs == nullptr) ||
+        (arg_count > 0 && arg_ids == nullptr))
+        return 0;
+    if (arg_ty_count != arg_count)
+        return 0;
+
     auto *retTy = static_cast<llvm::Type *>(ret_ty_ptr);
     std::vector<llvm::Type *> argTys;
     argTys.reserve(arg_ty_count);
-    for (uint32_t i = 0; i < arg_ty_count; ++i)
+    for (uint32_t i = 0; i < arg_ty_count; ++i) {
+        if (arg_ty_ptrs[i] == nullptr)
+            return 0;
         argTys.push_back(static_cast<llvm::Type *>(arg_ty_ptrs[i]));
+    }
 
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, /*isVarArg=*/false);
     auto callee = ctx->module->getOrInsertFunction(name, fnTy);
 
     std::vector<llvm::Value *> args;
     args.reserve(arg_count);
-    for (uint32_t i = 0; i < arg_count; ++i)
-        args.push_back(
-            static_cast<llvm::Value *>(ry_emit_resolve(ctx, arg_ids[i])));
+    for (uint32_t i = 0; i < arg_count; ++i) {
+        auto *arg = static_cast<llvm::Value *>(ry_emit_resolve(ctx, arg_ids[i]));
+        if (arg == nullptr)
+            return 0;
+        args.push_back(arg);
+    }
 
     // CreateCall asserts when given a non-empty SSA name for a void-returning
     // call (LLVM forbids naming void instructions). Pass empty name in that
