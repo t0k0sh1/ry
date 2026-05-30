@@ -291,8 +291,8 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     if (isRegex(oldStr) && isStringValue(s)) {
         if (!isStringValue(newStr))
             codegenError("replace() requires str arguments");
-        auto fn = mod_->getOrInsertFunction("__ry_regex_replace",
-                                            fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
+        auto fn = getRuntimeFn("__ry_regex_replace",
+                               ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         auto *r = builder_.CreateCall(fn,
             {oldStr, emitStringByteLen(oldStr),
              s,      emitStringByteLen(s),
@@ -305,8 +305,7 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_replace.ok", fn_);
         builder_.CreateCondBr(isNull, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        auto errFn = getRuntimeFn("__ry_regex_get_last_error", ptrTy_, {});
         llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_replace_err_msg");
         emitRuntimeError("error: %s\n", ".regex_replace_runtime_err", {msgPtr});
         builder_.SetInsertPoint(okBB);
@@ -335,8 +334,7 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
         codegenError("toUpper() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "upper_buf");
 
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "upper_i");
@@ -378,8 +376,7 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
         codegenError("toLower() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "lower_buf");
 
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lower_i");
@@ -485,8 +482,7 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
     llvm::Value *isNeg = builder_.CreateICmpSLT(resultLen, zero, "trim_neg");
     llvm::Value *safeLen = builder_.CreateSelect(isNeg, zero, resultLen, "trim_safe_len");
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {safeLen}, "trim_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "trim_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, safeLen});
@@ -530,8 +526,7 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     builder_.SetInsertPoint(endBB);
     llvm::Value *finalStart = builder_.CreateLoad(i64Ty_, startVar, "tstart_final");
     llvm::Value *resultLen = builder_.CreateSub(len, finalStart, "tstart_rlen");
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "tstart_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "tstart_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, resultLen});
@@ -576,8 +571,7 @@ llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
 
     builder_.SetInsertPoint(endBB);
     llvm::Value *finalEnd = builder_.CreateLoad(i64Ty_, endVar, "tend_final");
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {finalEnd}, "tend_buf");
     builder_.CreateCall(memcpyFn, {buf, s, finalEnd});
     arc_str_owned_values_.insert(buf);
@@ -678,8 +672,8 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     // Regex overload: split(text, /pattern/) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(delim) && isStringValue(s)) {
-        auto fn = mod_->getOrInsertFunction("__ry_regex_split",
-                                            fnTy_ptr_i64_ptr_i64_to_ptr_);
+        auto fn = getRuntimeFn("__ry_regex_split",
+                               ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         llvm::Value *r = builder_.CreateCall(fn,
             {delim, emitStringByteLen(delim), s, emitStringByteLen(s)},
             "regex_split");
@@ -690,8 +684,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_split.ok", fn_);
         builder_.CreateCondBr(isNull, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        auto errFn = getRuntimeFn("__ry_regex_get_last_error", ptrTy_, {});
         llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_split_err_msg");
         emitRuntimeError("error: %s\n", ".regex_split_runtime_err", {msgPtr});
         builder_.SetInsertPoint(okBB);
@@ -721,16 +714,14 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
     // --- Empty delimiter path: call __ry_split_chars runtime ---
     builder_.SetInsertPoint(emptyDelimBB);
-    auto splitCharsFn = mod_->getOrInsertFunction("__ry_split_chars", fnTy_ptr_i64_to_ptr_);
+    auto splitCharsFn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_, i64Ty_});
     llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s, emitStringByteLen(s)},
                                                    "split_chars");
     builder_.CreateBr(doneBB);
 
     // --- Normal delimiter path: NUL-safe runtime helper (#1051) ---
     builder_.SetInsertPoint(normalBB);
-    auto splitFnTy = llvm::FunctionType::get(
-        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
-    auto splitFn = mod_->getOrInsertFunction("__ry_str_split", splitFnTy);
+    auto splitFn = getRuntimeFn("__ry_str_split", ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
     llvm::Value *normalResult = builder_.CreateCall(
         splitFn, {s, emitStringByteLen(s), delim, delimLen}, "split_normal");
     builder_.CreateBr(doneBB);
@@ -774,8 +765,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     if (elemTy != ptrTy_)
         codegenError("join() requires List<str> as first argument");
     auto memcpyFn = getStdlibMemcpy();
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
 
     auto lf = loadListHeader(listPtr, "join");
     llvm::Value *listLen = lf.len;

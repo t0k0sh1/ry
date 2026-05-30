@@ -804,10 +804,8 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     auto &nameStr = mock_name_strings_[canonicalSig];
     if (!nameStr) nameStr = cachedGlobalString(canonicalSig, ".mock." + canonicalSig);
 
-    llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionCallee mockIncFn =
-        mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
+        getRuntimeFn("__ry_mock_increment_call", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
 
     // Spy-only: emit linear increment, then delegate to the customEmitter
     // (which emits args + the original call).
@@ -820,9 +818,8 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     // args so we can split into mockBB / origBB and emit args independently
     // in each branch — args may have side effects, so we want exactly one
     // evaluation per runtime path (not two if we pre-emitted).
-    llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-    llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
-    llvm::FunctionCallee mockGetEnvFn = mod_->getOrInsertFunction("__ry_mock_get_env", mockGetTy);
+    llvm::FunctionCallee mockGetFn    = getRuntimeFn("__ry_mock_get",     ptrTy_, {ptrTy_});
+    llvm::FunctionCallee mockGetEnvFn = getRuntimeFn("__ry_mock_get_env", ptrTy_, {ptrTy_});
 
     llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
     llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));

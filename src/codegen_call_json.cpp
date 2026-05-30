@@ -162,9 +162,8 @@ static llvm::Value *emitJsonDumpFile(CodeGen &cg, const CallExpr &e) {
             cg.codegenError("dump() indent must be an int");
     }
 
-    llvm::Type *paramTys[] = {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_};
-    auto *fnTy = llvm::FunctionType::get(cg.i64Ty_, paramTys, false);
-    auto fn = cg.mod_->getOrInsertFunction("__ry_json_dump_file", fnTy);
+    auto fn = cg.getRuntimeFn("__ry_json_dump_file", cg.i64Ty_,
+                              {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
     llvm::Value *status = cg.builder_.CreateCall(
         fn, {fileHandle, slot, indent}, "json_dump_status");
     return cg.wrapStatusAsResult(status);

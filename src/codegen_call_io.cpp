@@ -39,7 +39,8 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // After the swap, interleave each arg with its NUL-safe byte length.
     auto emitRegexCall = [&](const std::string &runtimeName,
                              const std::string &publicName, size_t nargs,
-                             llvm::FunctionType *fnTy) -> llvm::Value * {
+                             llvm::Type *retTy,
+                             llvm::ArrayRef<llvm::Type *> argTys) -> llvm::Value * {
         requireArgs(e, nargs);
         std::vector<llvm::Value *> raw;
         for (size_t i = 0; i < nargs; ++i) {
@@ -57,13 +58,12 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
             args.push_back(a);
             args.push_back(emitStringByteLen(a));
         }
-        auto fn = mod_->getOrInsertFunction("__ry_" + runtimeName, fnTy);
+        auto fn = getRuntimeFn(("__ry_" + runtimeName).c_str(), retTy, argTys);
         return builder_.CreateCall(fn, args, runtimeName);
     };
 
     auto emitRegexRuntimeError = [&]() {
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        auto errFn = getRuntimeFn("__ry_regex_get_last_error", ptrTy_, {});
         llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_err_msg");
         emitRuntimeError("error: %s\n", ".regex_runtime_err", {msgPtr});
     };
@@ -98,26 +98,26 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regexMatch(text, pattern) -> bool
     if (e.callee == "regexMatch") {
         llvm::Value *r = emitRegexCall("regex_match", "regexMatch", 2,
-                                       fnTy_ptr_i64_ptr_i64_to_i64_);
+                                       i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         r = emitRegexI64Guard(r, kRegexMatchError, "regex_match");
         return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
     // regexSearch(text, pattern) -> int
     if (e.callee == "regexSearch") {
         llvm::Value *r = emitRegexCall("regex_search", "regexSearch", 2,
-                                       fnTy_ptr_i64_ptr_i64_to_i64_);
+                                       i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         return emitRegexI64Guard(r, kRegexSearchError, "regex_search");
     }
     // regexReplace(text, pattern, replacement) -> str
     if (e.callee == "regexReplace")
         return emitRegexPtrGuard(
             emitRegexCall("regex_replace", "regexReplace", 3,
-                          fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_),
+                          ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}),
             "regex_replace");
     // regexSplit(text, pattern) -> List<str>
     if (e.callee == "regexSplit") {
         llvm::Value *r = emitRegexCall("regex_split", "regexSplit", 2,
-                                       fnTy_ptr_i64_ptr_i64_to_ptr_);
+                                       ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         r = emitRegexPtrGuard(r, "regex_split");
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
@@ -125,7 +125,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regexFindAll(text, pattern) -> List<Match>
     if (e.callee == "regexFindAll") {
         llvm::Value *r = emitRegexCall("regex_find_all", "regexFindAll", 2,
-                                       fnTy_ptr_i64_ptr_i64_to_ptr_);
+                                       ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         r = emitRegexPtrGuard(r, "regex_find_all");
         setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
         getOrCreateMeta(r).list_elem_type_name = "Match";
@@ -137,17 +137,18 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // UFCS (text, pattern) args where the second arg is a Regex value.
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     auto emitUfcsRegex = [&](const std::string &rtName,
-                              llvm::FunctionType *fnTy) -> llvm::Value * {
+                              llvm::Type *retTy,
+                              llvm::ArrayRef<llvm::Type *> argTys) -> llvm::Value * {
         llvm::Value *text    = emitExpr(*e.args[0]);
         llvm::Value *pattern = emitExpr(*e.args[1]);
         if (!isRegex(pattern) || !isStringValue(text)) return nullptr;
         llvm::Value *patternLen = emitStringByteLen(pattern);
         llvm::Value *textLen    = emitStringByteLen(text);
-        auto fn = mod_->getOrInsertFunction("__ry_" + rtName, fnTy);
+        auto fn = getRuntimeFn(("__ry_" + rtName).c_str(), retTy, argTys);
         // Runtime expects (pattern, patternLen, text, textLen).
         llvm::Value *r = builder_.CreateCall(fn, {pattern, patternLen, text, textLen},
                                              rtName);
-        if (fnTy->getReturnType() == i64Ty_) {
+        if (retTy == i64Ty_) {
             int64_t sentinel = rtName == "regex_search" ? kRegexSearchError : kRegexMatchError;
             return emitRegexI64Guard(r, sentinel, rtName);
         }
@@ -156,17 +157,17 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     if (e.callee == "isMatch" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_is_match",
-                                    fnTy_ptr_i64_ptr_i64_to_i64_))
+                                    i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}))
             return builder_.CreateTrunc(r, i1Ty_, "is_match_bool");
     }
     if (e.callee == "search" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_search",
-                                    fnTy_ptr_i64_ptr_i64_to_i64_))
+                                    i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}))
             return r;
     }
     if (e.callee == "findAll" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_find_all",
-                                    fnTy_ptr_i64_ptr_i64_to_ptr_)) {
+                                    ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_})) {
             setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
             getOrCreateMeta(r).list_elem_type_name = "Match";
             return r;
@@ -184,9 +185,7 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
     llvm::Value *mode = cg.emitExpr(*e.args[1]);
     if (!cg.isStringValue(path) || !cg.isStringValue(mode))
         cg.codegenError("open() requires str arguments (path, mode)");
-    auto fn = cg.mod_->getOrInsertFunction(
-        "__ry_io_file_open",
-        llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_}, false));
+    auto fn = cg.getRuntimeFn("__ry_io_file_open", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
     llvm::Value *res = cg.wrapPtrAsResult(ptr);
     cg.addResourceKind(res, rk_file);
@@ -194,9 +193,7 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
 }
 
 static llvm::Value *emitFileReadAll(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
-    auto fn = cg.mod_->getOrInsertFunction(
-        "__ry_io_file_read_all",
-        llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_}, false));
+    auto fn = cg.getRuntimeFn("__ry_io_file_read_all", cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {fileHandle}, "file_read_all_ptr");
     return cg.wrapPtrAsResult(ptr);
 }
@@ -205,9 +202,7 @@ static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::
     llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "rl_out");
     cg.builder_.CreateStore(
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
-    auto fn = cg.mod_->getOrInsertFunction(
-        "__ry_io_file_read_line",
-        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+    auto fn = cg.getRuntimeFn("__ry_io_file_read_line", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, outAlloca}, "rl_status");
     llvm::Value *isErr = cg.builder_.CreateICmpSLT(
         status, llvm::ConstantInt::get(cg.i64Ty_, 0), "rl_iserr");
@@ -227,9 +222,7 @@ static llvm::Value *emitStdinReadLine(CodeGen &cg, const CallExpr & /*e*/) {
     llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "srl_out");
     cg.builder_.CreateStore(
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
-    auto fn = cg.mod_->getOrInsertFunction(
-        "__ry_io_read_line",
-        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_}, false));
+    auto fn = cg.getRuntimeFn("__ry_io_read_line", cg.i64Ty_, {cg.ptrTy_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {outAlloca}, "srl_status");
     llvm::Value *isErr = cg.builder_.CreateICmpSLT(
         status, llvm::ConstantInt::get(cg.i64Ty_, 0), "srl_iserr");
@@ -279,9 +272,7 @@ static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Val
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)),
             outAlloca);
 
-        auto readLineFn = cg.mod_->getOrInsertFunction(
-            "__ry_io_file_read_line",
-            llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+        auto readLineFn = cg.getRuntimeFn("__ry_io_file_read_line", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(
             readLineFn, {file, outAlloca}, "fl_status");
         llvm::Value *isLine = cg.builder_.CreateICmpEQ(
@@ -337,9 +328,7 @@ static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Valu
     llvm::Value *s = cg.emitExpr(*e.args[1]);
     if (!cg.isStringValue(s))
         cg.codegenError("writeText(file, s): second argument must be str");
-    auto fn = cg.mod_->getOrInsertFunction(
-        "__ry_io_file_write_text",
-        llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+    auto fn = cg.getRuntimeFn("__ry_io_file_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, s}, "file_wt_status");
     return cg.wrapStatusAsResult(status);
 }
@@ -433,8 +422,7 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         llvm::Value *content = cg.emitExpr(*e.args[1]);
         if (!cg.isStringValue(arg0) || !cg.isStringValue(content))
             cg.codegenError("writeText(path, content) requires str arguments");
-        auto fn = cg.mod_->getOrInsertFunction("__ry_write_text",
-            llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_}, false));
+        auto fn = cg.getRuntimeFn("__ry_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
         return cg.wrapStatusAsResult(status);
     }
@@ -462,7 +450,7 @@ static llvm::Value *emitNetBind(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 2);
     llvm::Value *host = cg.emitExpr(*e.args[0]);
     llvm::Value *port = cg.emitExpr(*e.args[1]);
-    auto fn = cg.mod_->getOrInsertFunction("__ry_bind", cg.fnTy_ptr_i64_to_ptr_);
+    auto fn = cg.getRuntimeFn("__ry_bind", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, "bind_result");
     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
     cg.addResourceKind(res, rk_tcp_listener);
@@ -491,7 +479,7 @@ static llvm::Value *emitNetAccept(CodeGen &cg, const CallExpr &e) {
     llvm::Value *listener = cg.emitExpr(*e.args[0]);
     if (!cg.isTcpListener(listener))
         cg.codegenError("accept() requires TcpListener argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_accept", cg.fnTy_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn("__ry_accept", cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {listener}, "accept_result");
     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
     cg.addResourceKind(res, rk_tcp_stream);
@@ -503,7 +491,7 @@ static llvm::Value *emitNetListenerPort(CodeGen &cg, const CallExpr &e) {
     llvm::Value *listener = cg.emitExpr(*e.args[0]);
     if (!cg.isTcpListener(listener))
         cg.codegenError("listenerPort() requires TcpListener argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_listener_port", cg.fnTy_ptr_to_i64_);
+    auto fn = cg.getRuntimeFn("__ry_listener_port", cg.i64Ty_, {cg.ptrTy_});
     return cg.builder_.CreateCall(fn, {listener}, "listener_port");
 }
 
@@ -512,7 +500,7 @@ static llvm::Value *emitNetShutdown(CodeGen &cg, const CallExpr &e) {
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (!cg.isTcpListener(val))
         cg.codegenError("shutdown() requires TcpListener argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", cg.fnTy_ptr_to_void_);
+    auto fn = cg.getRuntimeFn("__ry_tcp_listener_shutdown", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_});
     return cg.builder_.CreateCall(fn, {val});
 }
 
@@ -521,8 +509,8 @@ static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
     llvm::Value *host = cg.emitExpr(*e.args[0]);
     llvm::Value *port = cg.emitExpr(*e.args[1]);
     bool isTls = e.callee == "tlsConnect";
-    auto fn = cg.mod_->getOrInsertFunction(
-        isTls ? "__ry_tls_connect" : "__ry_connect", cg.fnTy_ptr_i64_to_ptr_);
+    auto fn = cg.getRuntimeFn(
+        isTls ? "__ry_tls_connect" : "__ry_connect", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
     if (isTls) {
@@ -541,8 +529,6 @@ static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
     llvm::Value *ms = cg.emitExpr(*e.args[1]);
     if (!cg.isTcpStream(stream) && !cg.isTlsStream(stream))
         cg.codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
-    auto *voidTy = llvm::Type::getVoidTy(*cg.ctx_);
-    auto fnTy = llvm::FunctionType::get(voidTy, {cg.ptrTy_, cg.i64Ty_}, false);
     bool isTls = cg.isTlsStream(stream);
     std::string prefix = isTls ? "__ry_tls_" : "__ry_tcp_";
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
@@ -551,7 +537,8 @@ static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
     else if (e.callee == "setReceiveTimeout") rtName = "set_recv_timeout";
     else if (e.callee == "setSendTimeout")    rtName = "set_send_timeout";
     else                                      rtName = e.callee;
-    auto fn = cg.mod_->getOrInsertFunction(prefix + rtName, fnTy);
+    auto fn = cg.getRuntimeFn((prefix + rtName).c_str(),
+                              llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
     return cg.builder_.CreateCall(fn, {stream, ms});
 }
 
@@ -581,8 +568,7 @@ static llvm::Value *dispatchNet(CodeGen &cg, const CallExpr &e) {
 
 // Emit a NUL check on a Ry str value. Returns an i1: true if NUL found (= Err path).
 static llvm::Value *emitHttpNulCheck(CodeGen &cg, llvm::Value *strVal, const std::string &hint) {
-    auto nulFnTy = llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_}, false);
-    auto nulFn = cg.mod_->getOrInsertFunction("__ry_http_str_has_nul", nulFnTy);
+    auto nulFn = cg.getRuntimeFn("__ry_http_str_has_nul", cg.i64Ty_, {cg.ptrTy_});
     llvm::Value *hasNul = cg.builder_.CreateCall(nulFn, {strVal}, hint + "_has_nul");
     return cg.builder_.CreateICmpNE(hasNul, llvm::ConstantInt::get(cg.i64Ty_, 0), hint + "_is_nul");
 }
@@ -610,7 +596,7 @@ static llvm::Value *emitHttpRequestStr(CodeGen &cg, const CallExpr &e) {
     llvm::Value *req = cg.emitExpr(*e.args[0]);
     if (!cg.isHttpRequest(req))
         cg.codegenError(e.callee + "() requires HttpRequest argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn(("__ry_http_" + e.callee).c_str(), cg.ptrTy_, {cg.ptrTy_});
     return cg.builder_.CreateCall(fn, {req}, e.callee);
 }
 
@@ -618,11 +604,11 @@ static llvm::Value *emitHttpBody(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *arg = cg.emitExpr(*e.args[0]);
     if (cg.isHttpRequest(arg)) {
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_body", cg.fnTy_ptr_to_ptr_);
+        auto fn = cg.getRuntimeFn("__ry_http_body", cg.ptrTy_, {cg.ptrTy_});
         return cg.builder_.CreateCall(fn, {arg}, "body");
     }
     if (cg.isHttpClientResponse(arg)) {
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_body", cg.fnTy_ptr_to_ptr_);
+        auto fn = cg.getRuntimeFn("__ry_http_client_body", cg.ptrTy_, {cg.ptrTy_});
         return cg.builder_.CreateCall(fn, {arg}, "body");
     }
     cg.codegenError("body() requires HttpRequest or HttpClientResponse argument");
@@ -638,7 +624,7 @@ static llvm::Value *emitHttpBodyBytes(CodeGen &cg, const CallExpr &e) {
         rtName = "__ry_http_client_body_bytes";
     else
         cg.codegenError("bodyBytes() requires HttpRequest or HttpClientResponse argument");
-    auto fn = cg.mod_->getOrInsertFunction(rtName, cg.fnTy_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {arg}, "body_bytes");
     cg.setTypeMeta(CodeGen::TypeMeta::ListElem, result, cg.i8Ty_);
     return result;
@@ -659,7 +645,7 @@ static llvm::Value *emitHttpHeader(CodeGen &cg, const CallExpr &e) {
     if (cg.isHttpRequest(arg)) {
         return cg.emitResultBranch(isNul, resTy,
             [&]() {
-                auto fn = cg.mod_->getOrInsertFunction("__ry_http_header", cg.fnTy_ptr_ptr_to_ptr_);
+                auto fn = cg.getRuntimeFn("__ry_http_header", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
                 llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_hdr");
                 return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_hdr"), resTy);
             },
@@ -672,7 +658,7 @@ static llvm::Value *emitHttpHeader(CodeGen &cg, const CallExpr &e) {
     if (cg.isHttpClientResponse(arg)) {
         return cg.emitResultBranch(isNul, resTy,
             [&]() {
-                auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_header", cg.fnTy_ptr_ptr_to_ptr_);
+                auto fn = cg.getRuntimeFn("__ry_http_client_header", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
                 llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_client_hdr");
                 return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_client_hdr"), resTy);
             },
@@ -707,7 +693,7 @@ static llvm::Value *emitHttpOptionField(CodeGen &cg, const CallExpr &e) {
     std::string errMsg = e.callee + ": key contains embedded NUL";
     std::string errName = ".http_opt_nul_" + std::to_string(optNulCtr++);
 
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + rtName, cg.fnTy_ptr_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn(("__ry_http_" + rtName).c_str(), cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
     return cg.emitResultBranch(isNul, resTy,
         [&]() {
             llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, hint);
@@ -728,7 +714,7 @@ static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
     if (e.callee == "queryAll")        rtName = "query_all";
     else if (e.callee == "formFields") rtName = "form_fields";
     else                               rtName = e.callee;
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + rtName, cg.fnTy_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn(("__ry_http_" + rtName).c_str(), cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + rtName);
     cg.setTypeMeta(CodeGen::TypeMeta::MapKey, result, cg.ptrTy_);
     cg.setTypeMeta(CodeGen::TypeMeta::MapValue, result, cg.ptrTy_);
@@ -749,7 +735,7 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
     llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
     static int ffNulCtr = 0;
 
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_form_file", cg.fnTy_ptr_ptr_to_ptr_);
+    auto fn = cg.getRuntimeFn("__ry_http_form_file", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *res = cg.emitResultBranch(isNul, resTy,
         [&]() {
             llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
@@ -837,7 +823,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     llvm::BasicBlock *returnBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_return", cg.fn_);
 
     // 1. bind(host, port)
-    auto bindFn = cg.mod_->getOrInsertFunction("__ry_bind", cg.fnTy_ptr_i64_to_ptr_);
+    auto bindFn = cg.getRuntimeFn("__ry_bind", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
     llvm::Value *listener = cg.builder_.CreateCall(bindFn, {host, port}, "http_listener");
 
     llvm::Value *isNull = cg.builder_.CreateICmpEQ(listener,
@@ -867,7 +853,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     cg.builder_.SetInsertPoint(listenFailBB);
     {
-        auto earlyCloseFn = cg.mod_->getOrInsertFunction("__ry_tcp_listener_close", cg.fnTy_ptr_to_void_);
+        auto earlyCloseFn = cg.getRuntimeFn("__ry_tcp_listener_close", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_});
         cg.builder_.CreateCall(earlyCloseFn, {listener});
         static int listenErrCtr = 0;
         llvm::Value *errVal = cg.buildErrValue(
@@ -894,10 +880,11 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         cg.builder_.CreateStore(llvm::ConstantInt::get(cg.i64Ty_, 0), counterAlloca);
     }
 
-    auto closeFn = cg.mod_->getOrInsertFunction("__ry_tcp_close", cg.fnTy_ptr_to_void_);
-    auto listenerCloseFn = cg.mod_->getOrInsertFunction("__ry_tcp_listener_close", cg.fnTy_ptr_to_void_);
-    auto freeReqFn = cg.mod_->getOrInsertFunction("__ry_http_request_free", cg.fnTy_ptr_to_void_);
-    auto freeRespFn = cg.mod_->getOrInsertFunction("__ry_http_response_free", cg.fnTy_ptr_to_void_);
+    auto *voidTy = llvm::Type::getVoidTy(*cg.ctx_);
+    auto closeFn = cg.getRuntimeFn("__ry_tcp_close", voidTy, {cg.ptrTy_});
+    auto listenerCloseFn = cg.getRuntimeFn("__ry_tcp_listener_close", voidTy, {cg.ptrTy_});
+    auto freeReqFn = cg.getRuntimeFn("__ry_http_request_free", voidTy, {cg.ptrTy_});
+    auto freeRespFn = cg.getRuntimeFn("__ry_http_response_free", voidTy, {cg.ptrTy_});
 
     // 3. accept loop
     llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*cg.ctx_, "http.loop", cg.fn_);
@@ -907,7 +894,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateBr(loopBB);
     cg.builder_.SetInsertPoint(loopBB);
 
-    auto acceptFn = cg.mod_->getOrInsertFunction("__ry_accept", cg.fnTy_ptr_to_ptr_);
+    auto acceptFn = cg.getRuntimeFn("__ry_accept", cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *conn = cg.builder_.CreateCall(acceptFn, {listener}, "http_conn");
 
     llvm::Value *connNull = cg.builder_.CreateICmpEQ(conn,
@@ -916,7 +903,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     cg.builder_.SetInsertPoint(loopBodyBB);
 
-    auto readReqFn = cg.mod_->getOrInsertFunction("__ry_http_read_request", cg.fnTy_ptr_to_ptr_);
+    auto readReqFn = cg.getRuntimeFn("__ry_http_read_request", cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *req = cg.builder_.CreateCall(readReqFn, {conn}, "http_req");
     cg.addResourceKind(req, rk_http_request);
 
@@ -952,8 +939,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         cg.builder_.CreateBr(respMergeBB);
 
         cg.builder_.SetInsertPoint(respErrBB);
-        auto defRespFnTy = llvm::FunctionType::get(cg.ptrTy_, {cg.i64Ty_}, false);
-        auto defRespFn = cg.mod_->getOrInsertFunction("__ry_http_default_error_response", defRespFnTy);
+        auto defRespFn = cg.getRuntimeFn("__ry_http_default_error_response", cg.ptrTy_, {cg.i64Ty_});
         llvm::Value *errResp = cg.builder_.CreateCall(
             defRespFn, {llvm::ConstantInt::get(cg.i64Ty_, 500)}, "default_500");
         cg.builder_.CreateBr(respMergeBB);
@@ -1028,7 +1014,7 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
             static int getUrlNulCtr = 0;
             return emitResultBranchWithMeta(cg, urlNul, getResTy,
                 [&](llvm::Value *&okIncoming) {
-                    auto fn = cg.mod_->getOrInsertFunction("__ry_http_get", cg.fnTy_ptr_to_ptr_);
+                    auto fn = cg.getRuntimeFn("__ry_http_get", cg.ptrTy_, {cg.ptrTy_});
                     llvm::Value *result = cg.builder_.CreateCall(fn, {url}, "http_get_result");
                     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
                     cg.addResourceKind(res, rk_http_client_response);
@@ -1059,7 +1045,7 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
             static int postUrlNulCtr = 0;
             return emitResultBranchWithMeta(cg, urlNul, postResTy,
                 [&](llvm::Value *&okIncoming) {
-                    auto fn = cg.mod_->getOrInsertFunction("__ry_http_post", cg.fnTy_ptr_ptr_ptr_to_ptr_);
+                    auto fn = cg.getRuntimeFn("__ry_http_post", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.ptrTy_});
                     llvm::Value *result = cg.builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
                     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
                     cg.addResourceKind(res, rk_http_client_response);
@@ -1124,7 +1110,7 @@ static llvm::Value *emitHttpStatus(CodeGen &cg, const CallExpr &e) {
     llvm::Value *resp = cg.emitExpr(*e.args[0]);
     if (!cg.isHttpClientResponse(resp))
         cg.codegenError("status() requires HttpClientResponse argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_status", cg.fnTy_ptr_to_i64_);
+    auto fn = cg.getRuntimeFn("__ry_http_client_status", cg.i64Ty_, {cg.ptrTy_});
     return cg.builder_.CreateCall(fn, {resp}, "http_client_status");
 }
 
@@ -1133,7 +1119,7 @@ static llvm::Value *emitHttpClientFree(CodeGen &cg, const CallExpr &e) {
     llvm::Value *resp = cg.emitExpr(*e.args[0]);
     if (!cg.isHttpClientResponse(resp))
         cg.codegenError("httpClientResponseFree() requires HttpClientResponse argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_response_free", cg.fnTy_ptr_to_void_);
+    auto fn = cg.getRuntimeFn("__ry_http_client_response_free", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_});
     cg.builder_.CreateCall(fn, {resp});
     return llvm::ConstantInt::get(cg.i64Ty_, 0);
 }

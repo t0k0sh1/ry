@@ -190,6 +190,8 @@ add_library(ry_lib STATIC
     src/codegen_emission_option_wrap.cpp
     src/codegen_lowering_arc.cpp
     src/codegen_emission_arc.cpp
+    src/codegen_lowering_runtime_call.cpp
+    src/codegen_emission_runtime_call.cpp
     src/runtime/core/error.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp

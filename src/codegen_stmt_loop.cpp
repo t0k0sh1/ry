@@ -830,9 +830,9 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         builder_.CreateRetVoid();
     }
 
-    llvm::FunctionType *parallelTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
+    llvm::FunctionCallee parallelFn = getRuntimeFn(
+        "__ry_parallel_for_i64", llvm::Type::getVoidTy(*ctx_),
+        {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_});
     builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
 }
 

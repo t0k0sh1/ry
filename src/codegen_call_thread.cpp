@@ -396,9 +396,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
     }
 
     // Call __ry_thread_spawn(thunk, env, result_size)
-    auto spawnTy = llvm::FunctionType::get(
-        cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_}, false);
-    auto spawnFn = cg.mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
+    auto spawnFn = cg.getRuntimeFn("__ry_thread_spawn", cg.ptrTy_,
+                                   {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
     llvm::Value *thread = cg.builder_.CreateCall(
         spawnFn,
         {thunk, envPtr, llvm::ConstantInt::get(cg.i64Ty_, static_cast<uint64_t>(resultSize))},

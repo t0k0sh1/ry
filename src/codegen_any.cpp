@@ -907,10 +907,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
         llvm::Value *innerMsgLen = emitStringByteLen(innerMsg);
         llvm::Value *totalLen = builder_.CreateAdd(
             prefixLen, innerMsgLen, "tryrec.fld_" + f.name + ".msg.total");
-        auto makeUninitTy =
-            llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto makeUninitFn = mod_->getOrInsertFunction(
-            "__ry_string_make_uninit", makeUninitTy);
+        auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
         llvm::Value *newBuf = builder_.CreateCall(
             makeUninitFn, {totalLen}, "tryrec.fld_" + f.name + ".msg.buf");
         builder_.CreateCall(getStdlibMemcpy(),
@@ -1198,9 +1195,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
     llvm::Value *innerMsgLen = emitStringByteLen(innerMsg);
     llvm::Value *totalLen =
         builder_.CreateAdd(prefixLen, innerMsgLen, "trylst.tot");
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction(
-        "__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *newBuf =
         builder_.CreateCall(makeUninitFn, {totalLen}, "trylst.err.buf");
     auto memcpyFn = getStdlibMemcpy();
@@ -1469,9 +1464,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     llvm::Value *innerMsgLen = emitStringByteLen(innerMsg);
     llvm::Value *totalLen =
         builder_.CreateAdd(prefixLen, innerMsgLen, "trymap.tot");
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction(
-        "__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *newBuf =
         builder_.CreateCall(makeUninitFn, {totalLen}, "trymap.err.buf");
     auto memcpyFn = getStdlibMemcpy();
@@ -1522,8 +1515,8 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     builder_.SetInsertPoint(bcExitBB);
     llvm::Value *bcFinal = builder_.CreateLoad(i64Ty_, bcSlot, "trymap.bc.final");
 
-    auto rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    auto rehashFn = mod_->getOrInsertFunction("__ry_ht_rehash_str", rehashTy);
+    auto rehashFn = getRuntimeFn("__ry_ht_rehash_str", ptrTy_,
+                                  {ptrTy_, i64Ty_, i64Ty_});
     llvm::Value *buckets = builder_.CreateCall(rehashFn,
         {destKeysPtr, srcLen, bcFinal}, "trymap.buckets");
 
@@ -1632,10 +1625,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
     llvm::Value *innerMsgLen = emitStringByteLen(innerMsg);
     llvm::Value *totalLen = builder_.CreateAdd(
         prefixLen, innerMsgLen, "tryopt.err.total");
-    auto makeUninitTy =
-        llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction(
-        "__ry_string_make_uninit", makeUninitTy);
+    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
     llvm::Value *newBuf =
         builder_.CreateCall(makeUninitFn, {totalLen}, "tryopt.err.buf");
     auto memcpyFn = getStdlibMemcpy();
@@ -1857,9 +1847,8 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     builder_.SetInsertPoint(recBB);
     auto *recPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.rec.ptr");
     auto *recHdr = emitArcGetHeaderFromData(recPtr);
-    auto *trampolineTy = llvm::FunctionType::get(builder_.getVoidTy(), {ptrTy_}, false);
-    auto trampoline = mod_->getOrInsertFunction("__ry_arc_dtor_record_dispatch",
-                                                trampolineTy);
+    auto trampoline = getRuntimeFn("__ry_arc_dtor_record_dispatch",
+                                   builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
     builder_.CreateBr(doneBB);
 
@@ -1874,8 +1863,8 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     builder_.SetInsertPoint(enumBB);
     auto *enumPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.enum.ptr");
     auto *enumHdr = emitArcGetHeaderFromData(enumPtr);
-    auto enumTrampoline = mod_->getOrInsertFunction(
-        "__ry_arc_dtor_enum_dispatch", trampolineTy);
+    auto enumTrampoline = getRuntimeFn("__ry_arc_dtor_enum_dispatch",
+                                       builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
     builder_.CreateBr(doneBB);
 
@@ -2031,9 +2020,8 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     builder_.SetInsertPoint(recBB);
     auto *recPtr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.rec.ptr");
     auto *recHdr = emitArcGetHeaderFromData(recPtr);
-    auto *trampolineTy = llvm::FunctionType::get(builder_.getVoidTy(), {ptrTy_}, false);
-    auto trampoline = mod_->getOrInsertFunction("__ry_arc_dtor_record_dispatch",
-                                                trampolineTy);
+    auto trampoline = getRuntimeFn("__ry_arc_dtor_record_dispatch",
+                                   builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
     builder_.CreateBr(doneBB);
 
@@ -2041,8 +2029,8 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     builder_.SetInsertPoint(enumBB);
     auto *enumPtr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.enum.ptr");
     auto *enumHdr = emitArcGetHeaderFromData(enumPtr);
-    auto enumTrampoline = mod_->getOrInsertFunction(
-        "__ry_arc_dtor_enum_dispatch", trampolineTy);
+    auto enumTrampoline = getRuntimeFn("__ry_arc_dtor_enum_dispatch",
+                                       builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
     builder_.CreateBr(doneBB);
 
@@ -2106,9 +2094,8 @@ llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
     builder_.CreateStore(operand, opPtr);
     llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.result");
 
-    llvm::FunctionType *fnTy = llvm::FunctionType::get(
-        builder_.getVoidTy(), {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_any_neg", fnTy);
+    llvm::FunctionCallee fn = getRuntimeFn("__ry_any_neg", builder_.getVoidTy(),
+                                            {ptrTy_, ptrTy_});
     builder_.CreateCall(fn, {resultPtr, opPtr});
     return builder_.CreateLoad(anyTy_, resultPtr, "any.neg");
 }
