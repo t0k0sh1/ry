@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_result_branch.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
@@ -428,29 +429,16 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 
 // ===== Shared Result-wrapping helpers =====
 
+// Thin shim over emission::emitResultBranch. The actual three-BB + PHI IR
+// construction lives in the llvm_emit ABI layer (ry_emit_result_branch);
+// this method exists only to bridge the function_ref-style call sites
+// (wrapPtrAsResult, emitResultBranchWithMeta, http nest paths, etc.)
+// without churning every caller.
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
                                         llvm::function_ref<llvm::Value*()> buildOk,
                                         llvm::function_ref<llvm::Value*()> buildErr) {
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok", fn_);
-    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "res.err", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.merge", fn_);
-    builder_.CreateCondBr(isErr, errBB, okBB);
-
-    builder_.SetInsertPoint(okBB);
-    llvm::Value *okVal = buildOk();
-    builder_.CreateBr(mergeBB);
-    okBB = builder_.GetInsertBlock();
-
-    builder_.SetInsertPoint(errBB);
-    llvm::Value *errVal = buildErr();
-    builder_.CreateBr(mergeBB);
-    errBB = builder_.GetInsertBlock();
-
-    builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(resTy, 2, "result");
-    phi->addIncoming(okVal, okBB);
-    phi->addIncoming(errVal, errBB);
-    return phi;
+    auto op = codegen::lowering::lowerResultBranch(*this, isErr, resTy);
+    return codegen::emission::emitResultBranch(*this, op, buildOk, buildErr);
 }
 
 llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {

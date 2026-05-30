@@ -7,10 +7,10 @@
 // `<ry/llvm_emit/api.h>` and the only place where the ABI handle types are
 // resolved to concrete LLVM objects.
 //
-// Stage 2-A note: module / builder / context / function pointers cross the
-// ABI as `void*` for now (see api.h for the migration roadmap). The cast
-// helpers below centralize the reinterpretation so a single later edit can
-// replace them once categories 1/2 cross the ABI.
+// Stage 2-B note: module / builder / context / function pointers still cross
+// the ABI as `void*` (see api.h for the migration roadmap). The cast helpers
+// below centralize the reinterpretation so a single later edit can replace
+// them once categories 1/2 cross the ABI.
 
 #include "ry/llvm_emit/api.h"
 
@@ -18,12 +18,14 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -41,7 +43,12 @@ struct RyEmitCtx {
     llvm::LLVMContext *context;
     llvm::Function *function;
     std::vector<llvm::Value *> values;
-    RyEmitCallbacks cbs;
+    // Dedup cache for ry_emit_bounds_error format-string globals. The emission
+    // layer owns its own cache (separate from CodeGen's global_string_cache_)
+    // to keep this TU self-contained; functional impact is limited to
+    // potential duplication of identical fmt_msg globals across the
+    // CodeGen-managed and emission-managed sides, which LLVM tolerates.
+    std::unordered_map<std::string, llvm::Constant *> bounds_msg_cache;
 };
 
 extern "C" {
@@ -55,7 +62,6 @@ RyEmitCtx *ry_emit_ctx_create(void *module_ptr, void *builder_ptr,
     ctx->function = asFunction(function_ptr);
     // Reserve handle 0 as the "invalid" sentinel; ry_emit_resolve(_, 0) returns NULL.
     ctx->values.push_back(nullptr);
-    ctx->cbs = RyEmitCallbacks{};
     return ctx;
 }
 
@@ -63,13 +69,6 @@ void ry_emit_ctx_destroy(RyEmitCtx *ctx) { delete ctx; }
 
 void ry_emit_ctx_set_function(RyEmitCtx *ctx, void *function_ptr) {
     ctx->function = asFunction(function_ptr);
-}
-
-void ry_emit_ctx_set_callbacks(RyEmitCtx *ctx, const RyEmitCallbacks *cbs) {
-    if (cbs)
-        ctx->cbs = *cbs;
-    else
-        ctx->cbs = RyEmitCallbacks{};
 }
 
 RyValueId ry_emit_intern(RyEmitCtx *ctx, void *value_ptr) {
@@ -107,12 +106,93 @@ void *ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name, void *fn_ty_ptr) 
     return callee.getCallee();
 }
 
+RyValueId ry_emit_negative_index_wrap(RyEmitCtx *ctx, RyValueId idx_id,
+                                      RyValueId wrap_base_id,
+                                      const char *prefix) {
+    auto *idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, idx_id));
+    auto *wrapBase =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrap_base_id));
+    std::string p = prefix ? prefix : "";
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    // Standalone ABI helper — normalize narrow operands to i64 defensively
+    // (callers that go through ry_emit_bounds_check already widen, but direct
+    // callers from future caller-side migrations are not guaranteed to).
+    if (idx->getType() != i64Ty)
+        idx = ctx->builder->CreateIntCast(idx, i64Ty, /*isSigned=*/true,
+                                          p + "_idx_i64");
+    if (wrapBase->getType() != i64Ty)
+        wrapBase = ctx->builder->CreateIntCast(wrapBase, i64Ty,
+                                               /*isSigned=*/true,
+                                               p + "_wrap_base_i64");
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty, 0);
+    llvm::Value *isNeg = ctx->builder->CreateICmpSLT(idx, zero, p + "_is_neg");
+    llvm::Value *wrapped = ctx->builder->CreateAdd(idx, wrapBase, p + "_wrapped");
+    llvm::Value *result =
+        ctx->builder->CreateSelect(isNeg, wrapped, idx, p + "_idx");
+    return ry_emit_intern(ctx, result);
+}
+
+void ry_emit_bounds_error(RyEmitCtx *ctx, RyValueId orig_idx_id,
+                          RyValueId len_id, const char *fmt_msg,
+                          const char *global_name) {
+    auto *origIdx =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, orig_idx_id));
+    auto *len = static_cast<llvm::Value *>(ry_emit_resolve(ctx, len_id));
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *i32Ty = llvm::Type::getInt32Ty(*ctx->context);
+#ifdef __APPLE__
+    const char *stdoutName = "__stdoutp";
+    const char *stderrName = "__stderrp";
+#else
+    const char *stdoutName = "stdout";
+    const char *stderrName = "stderr";
+#endif
+    auto *stderrGlobal = ctx->module->getOrInsertGlobal(stderrName, ptrTy);
+    auto *stdoutGlobal = ctx->module->getOrInsertGlobal(stdoutName, ptrTy);
+    llvm::Value *stderrVal =
+        ctx->builder->CreateLoad(ptrTy, stderrGlobal, "stderr");
+    llvm::Value *stdoutVal =
+        ctx->builder->CreateLoad(ptrTy, stdoutGlobal, "stdout");
+
+    // Dedup the format-string global within this RyEmitCtx so repeated
+    // emissions of the same message reuse a single private constant.
+    std::string fmtKey = fmt_msg ? fmt_msg : "";
+    llvm::Constant *errMsg;
+    auto it = ctx->bounds_msg_cache.find(fmtKey);
+    if (it != ctx->bounds_msg_cache.end()) {
+        errMsg = it->second;
+    } else {
+        auto *strData =
+            llvm::ConstantDataArray::getString(*ctx->context, fmtKey);
+        std::string name = global_name ? global_name : ".bounds_err_msg";
+        auto *gv = new llvm::GlobalVariable(
+            *ctx->module, strData->getType(), /*isConstant=*/true,
+            llvm::GlobalValue::PrivateLinkage, strData, name);
+        gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        gv->setAlignment(llvm::Align(1));
+        errMsg = gv;
+        ctx->bounds_msg_cache[fmtKey] = errMsg;
+    }
+
+    auto fprintfTy = llvm::FunctionType::get(i32Ty, {ptrTy, ptrTy}, true);
+    auto fprintfFn = ctx->module->getOrInsertFunction("fprintf", fprintfTy);
+    ctx->builder->CreateCall(fprintfFn, {stderrVal, errMsg, origIdx, len});
+
+    auto fflushTy = llvm::FunctionType::get(i32Ty, {ptrTy}, false);
+    auto fflushFn = ctx->module->getOrInsertFunction("fflush", fflushTy);
+    ctx->builder->CreateCall(fflushFn, {stdoutVal});
+    ctx->builder->CreateCall(fflushFn, {stderrVal});
+
+    auto exitTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx->context), {i32Ty}, false);
+    auto exitFn = ctx->module->getOrInsertFunction("_Exit", exitTy);
+    ctx->builder->CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty, 1)});
+    ctx->builder->CreateUnreachable();
+}
+
 RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id, RyValueId len_id,
                                RyBoundsKind kind, const char *global_name,
                                const char *bb_prefix) {
-    (void)global_name; // Forwarded via callback below; kept as a parameter to
-                       // pin the ABI shape ahead of cache-keyed lookups landing
-                       // on the LLVM side in a successor PR.
     auto *idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, idx_id));
     auto *len = static_cast<llvm::Value *>(ry_emit_resolve(ctx, len_id));
     auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
@@ -122,15 +202,10 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id, RyValueId len_i
 
     llvm::Value *origIndex = idx;
 
-    // Negative-index wrap is still owned by CodeGen; reach it through the
-    // callback slot (transitional — successor PRs will turn this into a
-    // proper ABI function).
-    if (ctx->cbs.emit_negative_index_wrap) {
-        RyValueId wrappedId = ctx->cbs.emit_negative_index_wrap(
-            ctx->cbs.user_ctx, ry_emit_intern(ctx, idx),
-            ry_emit_intern(ctx, len), bb_prefix);
-        idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrappedId));
-    }
+    // Negative-index wrap is now a proper ABI function (Stage 2-B).
+    RyValueId wrappedId = ry_emit_negative_index_wrap(
+        ctx, ry_emit_intern(ctx, idx), ry_emit_intern(ctx, len), bb_prefix);
+    idx = static_cast<llvm::Value *>(ry_emit_resolve(ctx, wrappedId));
 
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty, 0);
     std::string negLabel = std::string(bb_prefix) + "_neg";
@@ -153,18 +228,42 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id, RyValueId len_i
         ? "runtime error: index %lld out of bounds for list of length %lld\n"
         : "runtime error: index %lld out of bounds for array of length %lld\n";
 
-    if (ctx->cbs.emit_bounds_error)
-        ctx->cbs.emit_bounds_error(ctx->cbs.user_ctx,
-                                   ry_emit_intern(ctx, origIndex),
-                                   ry_emit_intern(ctx, len), fmtMsg,
-                                   global_name);
-    else
-        // Defensive: if the caller forgot to register a callback, terminate
-        // oobBB with unreachable so LLVM verify still accepts the function.
-        ctx->builder->CreateUnreachable();
+    ry_emit_bounds_error(ctx, ry_emit_intern(ctx, origIndex),
+                         ry_emit_intern(ctx, len), fmtMsg, global_name);
 
     ctx->builder->SetInsertPoint(okBB);
     return ry_emit_intern(ctx, idx);
+}
+
+RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
+                                void *res_ty_ptr, RyBuildValueFn build_ok,
+                                RyBuildValueFn build_err, void *user_ctx) {
+    auto *isErr = static_cast<llvm::Value *>(ry_emit_resolve(ctx, is_err_id));
+    auto *resTy = static_cast<llvm::StructType *>(res_ty_ptr);
+
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "res.ok", ctx->function);
+    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "res.err", ctx->function);
+    auto *mergeBB =
+        llvm::BasicBlock::Create(*ctx->context, "res.merge", ctx->function);
+    ctx->builder->CreateCondBr(isErr, errBB, okBB);
+
+    ctx->builder->SetInsertPoint(okBB);
+    auto *okVal = static_cast<llvm::Value *>(
+        ry_emit_resolve(ctx, build_ok(user_ctx)));
+    ctx->builder->CreateBr(mergeBB);
+    okBB = ctx->builder->GetInsertBlock();
+
+    ctx->builder->SetInsertPoint(errBB);
+    auto *errVal = static_cast<llvm::Value *>(
+        ry_emit_resolve(ctx, build_err(user_ctx)));
+    ctx->builder->CreateBr(mergeBB);
+    errBB = ctx->builder->GetInsertBlock();
+
+    ctx->builder->SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = ctx->builder->CreatePHI(resTy, 2, "result");
+    phi->addIncoming(okVal, okBB);
+    phi->addIncoming(errVal, errBB);
+    return ry_emit_intern(ctx, phi);
 }
 
 } // extern "C"

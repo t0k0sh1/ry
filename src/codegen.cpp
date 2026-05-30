@@ -91,34 +91,12 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 
-    // Initialize the LLVM IR emission ABI context (#1949 scaffolding).
-    // Functions reached via the ABI: getRuntimeFn / buildErrorFromRuntime /
-    // emitBoundsCheck. The fn_ slot is set as bodies are emitted.
+    // Initialize the LLVM IR emission ABI context (Stage 2-B, #1964).
+    // All category-3 helpers cross the ABI now: getRuntimeFn,
+    // buildErrorFromRuntime, emitBoundsCheck, resultBranch,
+    // negativeIndexWrap, boundsError. The fn_ slot is set as bodies are
+    // emitted via ry_emit_ctx_set_function.
     emit_ctx_ = ry_emit_ctx_create(mod_.get(), &builder_, ctx_.get(), nullptr);
-    RyEmitCallbacks cbs = {};
-    cbs.user_ctx = this;
-    cbs.emit_negative_index_wrap = [](void *user, RyValueId idx_id,
-                                      RyValueId len_id,
-                                      const char *prefix) -> RyValueId {
-        auto *cg = static_cast<CodeGen *>(user);
-        auto *idx =
-            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, idx_id));
-        auto *len =
-            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, len_id));
-        llvm::Value *wrapped = cg->emitNegativeIndexWrap(idx, len, prefix);
-        return ry_emit_intern(cg->emit_ctx_, wrapped);
-    };
-    cbs.emit_bounds_error = [](void *user, RyValueId orig_idx_id,
-                               RyValueId len_id, const char *fmt,
-                               const char *global) {
-        auto *cg = static_cast<CodeGen *>(user);
-        auto *idx = static_cast<llvm::Value *>(
-            ry_emit_resolve(cg->emit_ctx_, orig_idx_id));
-        auto *len =
-            static_cast<llvm::Value *>(ry_emit_resolve(cg->emit_ctx_, len_id));
-        cg->emitBoundsError(idx, len, fmt, global);
-    };
-    ry_emit_ctx_set_callbacks(emit_ctx_, &cbs);
 }
 
 CodeGen::~CodeGen() {
