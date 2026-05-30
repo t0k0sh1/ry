@@ -5,6 +5,18 @@
 // starting from #1949). It is C-only so the layer can be reimplemented in
 // Rust (#1950) behind the same ABI.
 //
+// Stage 2-C (#1968) begins per-op migration of category-1 ARC primitives:
+//   - ry_emit_arc_retain / ry_emit_arc_release cross the ABI. The destructor
+//     parameter is reduced to a single `void *destructor_callee` (the C
+//     function pointer); the FunctionType `void(*)(void*)` is reconstructed
+//     inside the emission layer. gc_visit_fn is nullable; when NULL the
+//     `arc.gc_track` BB is omitted entirely. The atomic flag flows through
+//     as `int` (RyArcAtomic), preserving the @parallel for SeqCst contract.
+//   - The arcHeader StructType is generated locally inside the emission
+//     layer (anonymous `{i64, i64}`); CodeGen's named "ArcHeader" struct is
+//     retired. FileCheck CHECK patterns never reference the named struct,
+//     so this is a private representation change.
+//
 // Stage 2-B (#1964) completes the category-3 migration:
 //   - All five category-3 helpers from llvm-ir-emission-boundary.md cross
 //     the ABI: ry_emit_get_runtime_fn, ry_emit_build_error_from_runtime,
@@ -77,6 +89,16 @@ typedef enum {
     RY_BOUNDS_LIST = 0,
     RY_BOUNDS_ARRAY = 1
 } RyBoundsKind;
+
+// ARC atomic mode selector. RY_ARC_NONATOMIC uses plain Load/Store/Sub for
+// counter updates; RY_ARC_ATOMIC uses atomicrmw with SequentiallyConsistent
+// ordering (required inside @parallel for thunks because captured values are
+// shared across workers). The immortal-check load stays Monotonic in both
+// modes (it tolerates stale reads — INT64_MAX never changes).
+typedef enum {
+    RY_ARC_NONATOMIC = 0,
+    RY_ARC_ATOMIC = 1
+} RyArcAtomic;
 
 // Callback type for ok/err value builders consumed by ry_emit_result_branch.
 // Stage 2-B keeps callbacks at the C ABI boundary (function pointer +
@@ -187,6 +209,43 @@ RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
 // precondition on ry_emit_ctx_set_function.
 RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx,
                                    void *opt_ty_ptr /* llvm::StructType* */);
+
+// Emit an ARC retain on header_ptr (`{i64 strong_count, i64 weak_count}`):
+//   if (strong_count == INT64_MAX) goto arc.retain.done;  // immortal sentinel
+//   else strong_count += 1; goto arc.retain.done;
+// The immortal check uses a Monotonic load in both atomic modes; the
+// increment uses atomicrmw add SeqCst when atomic == RY_ARC_ATOMIC, plain
+// Load/Add/Store otherwise. BB labels are emitted as `arc.retain` and
+// `arc.retain.done` (FileCheck-stable).
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it).
+void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
+                        RyArcAtomic atomic);
+
+// Emit an ARC release on header_ptr:
+//   if (strong_count == INT64_MAX) goto arc.done;                // immortal
+//   old = strong_count.dec(); is_dead = (old == 1);
+//   if (gc_visit_fn && !is_dead) {
+//       arc.gc_track: __ry_gc_track(header_ptr, gc_visit_fn, destructor);
+//       goto arc.done;
+//   } else if (!is_dead) goto arc.done;
+//   arc.release: __ry_gc_untrack(header_ptr);
+//                if (destructor) destructor(header_ptr + ARC_HEADER_SIZE);
+//                if (weak_count == 0) goto arc.free; else goto arc.skip_free;
+//   arc.free: __ry_arc_counter_delta(-1); free(header_ptr); goto arc.done;
+//   arc.skip_free: goto arc.done;
+// destructor_callee may be NULL (skip destructor call); gc_visit_fn may be
+// NULL (skip the arc.gc_track BB entirely, dead → arc.release, alive → done).
+// Both pointers are C function pointers (`void (*)(void *)` for destructor,
+// `void (*)(void *)` for gc_visit_fn) — the emission layer reconstructs the
+// FunctionType locally so no LLVM type identity crosses the ABI.
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (BBs are created inside it). The
+// caller must additionally register "gc" in CodeGen.used_native_libraries_
+// because release emits __ry_gc_track / __ry_gc_untrack calls.
+void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
+                         RyArcAtomic atomic, void *destructor_callee,
+                         void *gc_visit_fn);
 
 #ifdef __cplusplus
 } // extern "C"

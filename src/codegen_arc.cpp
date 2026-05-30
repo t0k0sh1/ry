@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_arc.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 #include <cstdint>
@@ -118,127 +119,27 @@ llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
 }
 
 void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_retain_ptr");
-
-    // Skip immortal objects (strong_count == INT64_MAX). Monotonic is
-    // sufficient because ARC_IMMORTAL is a sticky sentinel — but the load
-    // must still be atomic in atomic mode so it doesn't race with a
-    // concurrent atomicrmw (#630).
-    auto *cur = emitAtomicI64Load(strongPtr,
-        atomic ? llvm::AtomicOrdering::Monotonic : llvm::AtomicOrdering::NotAtomic,
-        "arc_strong");
-    auto *isImmortal = builder_.CreateICmpEQ(cur, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "arc_immortal");
-
-    auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *retainBB = llvm::BasicBlock::Create(*ctx_, "arc.retain", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "arc.retain.done", fn);
-    builder_.CreateCondBr(isImmortal, doneBB, retainBB);
-
-    builder_.SetInsertPoint(retainBB);
-    if (atomic) {
-        builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, strongPtr,
-                                 llvm::ConstantInt::get(i64Ty_, 1),
-                                 llvm::MaybeAlign(),
-                                 llvm::AtomicOrdering::SequentiallyConsistent);
-    } else {
-        auto *inc = builder_.CreateAdd(cur, llvm::ConstantInt::get(i64Ty_, 1), "arc_inc");
-        builder_.CreateStore(inc, strongPtr);
-    }
-    builder_.CreateBr(doneBB);
-
-    builder_.SetInsertPoint(doneBB);
+    // Stage 2-C (#1968): IR construction moved to llvm_emit ABI
+    // (ry_emit_arc_retain). This shim is the codegen-side bridge —
+    // lower → emit (passthrough lowering).
+    auto op = codegen::lowering::lowerArcRetain(*this, headerPtr, atomic);
+    codegen::emission::emitArcRetain(*this, op);
 }
 
 void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
                               llvm::FunctionCallee destructor,
                               llvm::Function *gcVisitFn) {
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_rel_ptr");
-
-    // Skip immortal objects (strong_count == INT64_MAX). See emitArcRetain
-    // for the atomic-mode rationale (#630).
-    auto *curCheck = emitAtomicI64Load(strongPtr,
-        atomic ? llvm::AtomicOrdering::Monotonic : llvm::AtomicOrdering::NotAtomic,
-        "arc_strong_check");
-    auto *isImmortal = builder_.CreateICmpEQ(curCheck, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "arc_immortal");
-
-    auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "arc.release.body", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "arc.done", fn);
-    builder_.CreateCondBr(isImmortal, doneBB, releaseBB);
-
-    builder_.SetInsertPoint(releaseBB);
-    llvm::Value *isZero;
-    if (atomic) {
-        // atomicrmw returns the OLD value; object is dead when old == 1
-        auto *old = builder_.CreateAtomicRMW(
-            llvm::AtomicRMWInst::Sub, strongPtr,
-            llvm::ConstantInt::get(i64Ty_, 1),
-            llvm::MaybeAlign(),
-            llvm::AtomicOrdering::SequentiallyConsistent);
-        isZero = builder_.CreateICmpEQ(old, llvm::ConstantInt::get(i64Ty_, 1), "arc_dead");
-    } else {
-        auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "arc_strong");
-        auto *dec = builder_.CreateSub(cur, llvm::ConstantInt::get(i64Ty_, 1), "arc_dec");
-        builder_.CreateStore(dec, strongPtr);
-        isZero = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "arc_dead");
-    }
-
-    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "arc.release", fn);
-
-    // When gcVisitFn is provided, track the object as a GC candidate when
-    // strong_count > 0 (potential cycle member).
-    if (gcVisitFn) {
-        auto *trackBB = llvm::BasicBlock::Create(*ctx_, "arc.gc_track", fn);
-        builder_.CreateCondBr(isZero, freeBB, trackBB);
-
-        builder_.SetInsertPoint(trackBB);
-        // Call __ry_gc_track(headerPtr, visitFn, dtorFn)
-        auto *gcTrackFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_),
-            {ptrTy_, ptrTy_, ptrTy_}, false);
-        auto gcTrackFn = mod_->getOrInsertFunction("__ry_gc_track", gcTrackFnTy);
-        used_native_libraries_.insert("gc");
-        llvm::Value *dtorPtr = destructor
-            ? llvm::cast<llvm::Value>(destructor.getCallee())
-            : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        builder_.CreateCall(gcTrackFn, {headerPtr, gcVisitFn, dtorPtr});
-        builder_.CreateBr(doneBB);
-    } else {
-        builder_.CreateCondBr(isZero, freeBB, doneBB);
-    }
-
-    builder_.SetInsertPoint(freeBB);
-    // Untrack from GC candidate set before freeing. This is safe even if the
-    // object was never tracked or has already been untracked.
-    auto *gcUntrackFnTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    auto gcUntrackFn = mod_->getOrInsertFunction("__ry_gc_untrack", gcUntrackFnTy);
-    builder_.CreateCall(gcUntrackFn, {headerPtr});
-    used_native_libraries_.insert("gc");
-    if (destructor) {
-        auto *dataPtr = emitArcGetDataPtr(headerPtr);
-        builder_.CreateCall(destructor, {dataPtr});
-    }
-    // Only free the entire block when no weak references remain.
-    // When weak_count > 0, the header must stay alive for weak ref resolution.
-    auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "arc_weak_ptr");
-    auto *weakCount = builder_.CreateLoad(i64Ty_, weakPtr, "arc_weak");
-    auto *noWeak = builder_.CreateICmpEQ(weakCount, llvm::ConstantInt::get(i64Ty_, 0), "arc_no_weak");
-
-    auto *realFreeBB = llvm::BasicBlock::Create(*ctx_, "arc.free", fn);
-    auto *skipFreeBB = llvm::BasicBlock::Create(*ctx_, "arc.skip_free", fn);
-    builder_.CreateCondBr(noWeak, realFreeBB, skipFreeBB);
-
-    builder_.SetInsertPoint(realFreeBB);
-    // Decrement the ARC live-count balance counter inline (no new symbol).
-    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
-    builder_.CreateCall(getStdlibFree(), {headerPtr});
-    builder_.CreateBr(doneBB);
-
-    builder_.SetInsertPoint(skipFreeBB);
-    builder_.CreateBr(doneBB);
-
-    builder_.SetInsertPoint(doneBB);
+    // Stage 2-C (#1968): IR construction moved to llvm_emit ABI
+    // (ry_emit_arc_release). The lowering layer extracts the C-fnptr
+    // Value* from FunctionCallee so the LLVM-typed pair does not need
+    // to cross the ABI. used_native_libraries_.insert("gc") is now
+    // emitted by codegen_emission_arc.cpp.
+    llvm::Value *dtorCallee = destructor
+        ? llvm::cast<llvm::Value>(destructor.getCallee())
+        : nullptr;
+    auto op = codegen::lowering::lowerArcRelease(
+        *this, headerPtr, atomic, dtorCallee, gcVisitFn);
+    codegen::emission::emitArcRelease(*this, op);
 }
 
 bool CodeGen::isArcAtomic(llvm::Value *val) const {
