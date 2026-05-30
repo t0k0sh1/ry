@@ -1,6 +1,6 @@
 ---
 name: "fuzzer-runner"
-description: "libFuzzer harness (fuzz_parser / fuzz_json / fuzz_utf8) の実行・crash 解析を独立 context で行う subagent。main agent から foreground 並列起動して使う (target 別に複数 fuzzer-runner を同時起動可能)。`/pre-commit-checklist` §3.6 の自動化版。`run-fuzz.sh` を起動し、crash した場合は corpus path と原因要約を短い report で返す。tests/fuzz/regressions/ と tests/fuzz/corpus/ の両方に crash 入力を保存する。コード変更は行わない (修正は呼び出し元 main agent の責務)。"
+description: "libFuzzer harness (fuzz_parser / fuzz_json / fuzz_utf8 / fuzz_io_open) の実行・crash 解析を独立 context で行う subagent。main agent から foreground 並列起動して使う (target 別に複数 fuzzer-runner を同時起動可能)。`/pre-commit-checklist` §3.6 の自動化版。`run-fuzz.sh` を起動し、crash した場合は corpus path と原因要約を短い report で返す。tests/fuzz/regressions/ と tests/fuzz/corpus/ の両方に crash 入力を保存する。コード変更は行わない (修正は呼び出し元 main agent の責務)。"
 tools: Bash, Read, Write
 model: sonnet
 color: orange
@@ -11,7 +11,7 @@ You are a libFuzzer execution and crash-analysis specialist. Your role is to run
 ## Input from caller
 
 The main agent specifies which target(s) to run:
-- `all` — `./.claude/skills/pre-commit-checklist/run-fuzz.sh` (default; runs `fuzz_parser` / `fuzz_json` / `fuzz_utf8` for 60s each)
+- `all` — `./.claude/skills/pre-commit-checklist/run-fuzz.sh` (default; runs `fuzz_parser` / `fuzz_json` / `fuzz_utf8` / `fuzz_io_open` for 60s each)
 - `<target>` — `./docker/run.sh fuzz <target> <duration> <rss_mb>` for a single target (e.g. `fuzz_parser`)
 - `<target>:<seconds>` — same but with explicit duration override
 
@@ -39,7 +39,7 @@ Return to the main agent in this shape:
 
 ```
 RESULT: PASS  (or CRASH)
-TARGETS: fuzz_parser, fuzz_json, fuzz_utf8  (or single target name)
+TARGETS: fuzz_parser, fuzz_json, fuzz_utf8, fuzz_io_open  (or single target name)
 DURATION: <wall-clock seconds>
 CRASHES:
   - <target>: <detector> <type> at file:line — artifact tests/fuzz/regressions/<target>/<hash> (also copied to tests/fuzz/corpus/<target>/<hash>) — one-sentence summary

@@ -9,6 +9,7 @@ Coverage-guided fuzzing for the ry compiler and runtime using [LLVM libFuzzer](h
 | `fuzz_parser` | `ry::Lexer` + `ry::Parser::parseProgram()` | Lexer + parser pipeline on arbitrary byte sequences |
 | `fuzz_json` | `__ry_json_parse` | JSON parser on arbitrary byte sequences |
 | `fuzz_utf8` | `__ry_utf8_len_n`, `__ry_utf8_char_at_checked`, `__ry_utf8_reverse`, `__ry_utf8_substring` | Bounded UTF-8 walker functions |
+| `fuzz_io_open` | `__ry_io_file_open` | I/O file-open path-string handling on arbitrary byte sequences across `"r"` / `"w"` / `"a"` / invalid modes |
 
 **Regex is not fuzzed** — `RegexParser::parse()` calls `exit(1)` on malformed patterns, which terminates the libFuzzer process. See the follow-up issue for the planned refactor.
 
@@ -52,7 +53,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
     -artifact_prefix=tests/fuzz/regressions/parser/ \
     tests/fuzz/corpus/parser
 
-# Same pattern for fuzz_json and fuzz_utf8
+# Same pattern for fuzz_json, fuzz_utf8, and fuzz_io_open
 ```
 
 `-rss_limit_mb=512` prevents OOM — compiler-input harnesses can peak high.
@@ -64,14 +65,17 @@ tests/fuzz/
 ├── fuzz_parser.cpp          # Harness: lexer + parser
 ├── fuzz_json.cpp            # Harness: JSON parser
 ├── fuzz_utf8.cpp            # Harness: bounded UTF-8 walkers
+├── fuzz_io_open.cpp         # Harness: __ry_io_file_open path-string handling
 ├── corpus/
 │   ├── parser/              # Seed inputs for fuzz_parser (*.ry snippets)
 │   ├── json/                # Seed inputs for fuzz_json
-│   └── utf8/                # Seed inputs for fuzz_utf8 (text + binary)
+│   ├── utf8/                # Seed inputs for fuzz_utf8 (text + binary)
+│   └── fuzz_io_open/        # Seed inputs for fuzz_io_open (arbitrary path bytes)
 └── regressions/
     ├── parser/              # Saved crash inputs for fuzz_parser
     ├── json/                # Saved crash inputs for fuzz_json
-    └── utf8/                # Saved crash inputs for fuzz_utf8
+    ├── utf8/                # Saved crash inputs for fuzz_utf8
+    └── fuzz_io_open/        # Saved crash inputs for fuzz_io_open
 ```
 
 **Corpus policy**: hand-curated seeds that cover representative input shapes. libFuzzer augments the corpus with discovered interesting cases at runtime (in-memory only; the on-disk corpus is the starting point). When a regression is fixed, add the crashing input to both `regressions/<name>/` (for reference) and `corpus/<name>/` (so the fuzzer starts from it).
