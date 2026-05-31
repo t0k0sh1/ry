@@ -1323,6 +1323,10 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
     if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
         ctx->builder == nullptr || desc == nullptr || desc->any_ty_ptr == nullptr)
         return 0;
+    // RyAnyWrapKind: 0=NonBox, 1=RecordBox, 2=EnumBox. Reject unknown kinds
+    // explicitly instead of silently falling through to the NonBox arm.
+    if (desc->kind > 2)
+        return 0;
 
     auto *val = static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->val_id));
     auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
@@ -1341,6 +1345,16 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
         auto *descriptor = static_cast<llvm::Constant *>(
             ry_emit_resolve(ctx, desc->descriptor_id));
         if (layoutTy == nullptr || descriptor == nullptr)
+            return 0;
+
+        // Reject inconsistent box_data_size — a desync between the CodeGen
+        // shim's precomputed size and the actual layoutTy allocation would
+        // produce an under/over-allocated ArcHeader that the rest of this
+        // function silently corrupts. Recompute from the DataLayout and
+        // compare.
+        const uint64_t expectedBoxDataSize =
+            ctx->module->getDataLayout().getTypeAllocSize(layoutTy);
+        if (desc->box_data_size != expectedBoxDataSize)
             return 0;
 
         auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty, desc->box_data_size);
@@ -1420,6 +1434,10 @@ RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
     if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
         ctx->builder == nullptr || desc == nullptr ||
         desc->any_ty_ptr == nullptr)
+        return 0;
+    // RyAnyUnwrapKind: 0=Standard, 1=F64Promote, 2=Record. Reject unknown
+    // kinds explicitly instead of silently falling through to the Standard arm.
+    if (desc->kind > 2)
         return 0;
 
     auto *anyVal =
@@ -1624,6 +1642,10 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
         ctx->builder == nullptr || desc == nullptr ||
         desc->any_ty_ptr == nullptr || desc->res_ty_ptr == nullptr ||
         desc->error_ty_ptr == nullptr)
+        return 0;
+    // RyAnyTryUnwrapKind: 0=Standard, 1=F64Promote. Reject unknown kinds
+    // explicitly instead of silently falling through to the Standard arm.
+    if (desc->kind > 1)
         return 0;
 
     auto *anyVal =
