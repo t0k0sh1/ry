@@ -1,4 +1,5 @@
 #include "test_codegen_common.hpp"
+#include <cerrno>
 #include <cstdlib>
 #include <string>
 #include <thread>
@@ -130,8 +131,12 @@ static int accept_with_timeout(int srv, int timeout_sec) {
     struct pollfd pfd{};
     pfd.fd = srv;
     pfd.events = POLLIN;
-    int ready = ::poll(&pfd, 1, timeout_sec * 1000);
+    int ready;
+    do {
+        ready = ::poll(&pfd, 1, timeout_sec * 1000);
+    } while (ready < 0 && errno == EINTR);
     if (ready <= 0) return -1;
+    if (pfd.revents & (POLLERR | POLLNVAL | POLLHUP)) return -1;
     struct sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
     return ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
