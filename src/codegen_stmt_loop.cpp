@@ -53,16 +53,16 @@ static bool isWildcardForBinding(const Pattern &pattern) {
 
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "while.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "while.end", fn_);
+    llvm::BasicBlock *condBB = createBB("while.cond");
+    llvm::BasicBlock *bodyBB = createBB("while.body");
+    llvm::BasicBlock *endBB  = createBB("while.end");
 
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(condBB);
     llvm::Value *cond = emitExpr(*s->condition);
     cond = toBool(cond);
-    builder_.CreateCondBr(cond, bodyBB, endBB);
+    emitBranchCond(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     loop_stack_.push_back({condBB, endBB, scope_stack_.size()});
@@ -72,7 +72,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     popScope();
     loop_stack_.pop_back();
     if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
 }
@@ -138,15 +138,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::StructType *optTy = getOptionType(iterElemTy);
         llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "foriter.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "foriter.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "foriter.end", fn_);
+        llvm::BasicBlock *condBB = createBB("foriter.cond");
+        llvm::BasicBlock *bodyBB = createBB("foriter.body");
+        llvm::BasicBlock *endBB = createBB("foriter.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "foriter_opt");
         llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "foriter_has");
-        builder_.CreateCondBr(hasVal, bodyBB, endBB);
+        emitBranchCond(hasVal, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         loop_stack_.push_back({condBB, endBB, scope_stack_.size()});
@@ -161,7 +161,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         popScope();
         loop_stack_.pop_back();
         if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         return;
@@ -467,16 +467,16 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.body", fn_);
-    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "for.step", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
+    llvm::BasicBlock *condBB = createBB("for.cond");
+    llvm::BasicBlock *bodyBB = createBB("for.body");
+    llvm::BasicBlock *stepBB = createBB("for.step");
+    llvm::BasicBlock *endBB  = createBB("for.end");
 
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
     llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
-    builder_.CreateCondBr(cond, bodyBB, endBB);
+    emitBranchCond(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     loop_stack_.push_back({stepBB, endBB, scope_stack_.size()});
@@ -491,13 +491,13 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
     popScope();
     loop_stack_.pop_back();
     if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(stepBB);
+        emitBranchUncond(stepBB);
 
     builder_.SetInsertPoint(stepBB);
     llvm::Value *iNext = builder_.CreateAdd(
         builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
     builder_.CreateStore(iNext, iVar);
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
 }
@@ -510,9 +510,9 @@ void CodeGen::emitStmt(BreakStmt &s) {
     // Release ARC vars from current scope down to loop's scope depth
     size_t loopDepth = std::get<2>(loop_stack_.back());
     emitScopeCleanupToDepth(loopDepth);
-    builder_.CreateBr(std::get<1>(loop_stack_.back()));
+    emitBranchUncond(std::get<1>(loop_stack_.back()));
     // Create unreachable block for subsequent code
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "break.dead", fn_);
+    llvm::BasicBlock *deadBB = createBB("break.dead");
     builder_.SetInsertPoint(deadBB);
 }
 
@@ -524,8 +524,8 @@ void CodeGen::emitStmt(ContinueStmt &s) {
     // Release ARC vars from current scope down to loop's scope depth
     size_t loopDepth = std::get<2>(loop_stack_.back());
     emitScopeCleanupToDepth(loopDepth);
-    builder_.CreateBr(std::get<0>(loop_stack_.back()));
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "continue.dead", fn_);
+    emitBranchUncond(std::get<0>(loop_stack_.back()));
+    llvm::BasicBlock *deadBB = createBB("continue.dead");
     builder_.SetInsertPoint(deadBB);
 }
 
@@ -717,7 +717,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
 
         pushScope();
 
-        llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        llvm::BasicBlock *entryBB = createBBInFn("entry", thunk);
         builder_.SetInsertPoint(entryBB);
 
         auto argIt = thunk->arg_begin();
@@ -772,9 +772,9 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                     dataPtr,
                     llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
                     "par_retain_null");
-                auto *retainBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain", thunk);
-                auto *skipBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain.skip", thunk);
-                builder_.CreateCondBr(isNull, skipBB, retainBB);
+                auto *retainBB = createBBInFn("arc.par_retain", thunk);
+                auto *skipBB = createBBInFn("arc.par_retain.skip", thunk);
+                emitBranchCond(isNull, skipBB, retainBB);
 
                 builder_.SetInsertPoint(retainBB);
                 // str handles have StringHeader at offset -24; use the
@@ -782,7 +782,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 auto *hdr = capIsArcStr[i] ? emitStrGetHeaderFromData(dataPtr)
                                            : emitArcGetHeaderFromData(dataPtr);
                 emitArcRetain(hdr, /*atomic=*/true);
-                builder_.CreateBr(skipBB);
+                emitBranchUncond(skipBB);
 
                 builder_.SetInsertPoint(skipBB);
             }
@@ -791,12 +791,12 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, loopVarName);
         builder_.CreateStore(chunkBegin, iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "parallel.cond", thunk);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "parallel.body", thunk);
-        llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "parallel.step", thunk);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "parallel.end", thunk);
+        llvm::BasicBlock *condBB = createBBInFn("parallel.cond", thunk);
+        llvm::BasicBlock *bodyBB = createBBInFn("parallel.body", thunk);
+        llvm::BasicBlock *stepBB = createBBInFn("parallel.step", thunk);
+        llvm::BasicBlock *endBB = createBBInFn("parallel.end", thunk);
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "parallel_i");
@@ -804,7 +804,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         llvm::Value *posCond = builder_.CreateICmpSLT(iCur, chunkEnd, "parallel_pos_cond");
         llvm::Value *negCond = builder_.CreateICmpSGT(iCur, chunkEnd, "parallel_neg_cond");
         llvm::Value *loopCond = builder_.CreateSelect(stepPos, posCond, negCond, "parallel_cond");
-        builder_.CreateCondBr(loopCond, bodyBB, endBB);
+        emitBranchCond(loopCond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         pushScope();
@@ -813,13 +813,13 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(stepBB);
+            emitBranchUncond(stepBB);
 
         builder_.SetInsertPoint(stepBB);
         llvm::Value *iNext = builder_.CreateAdd(
             builder_.CreateLoad(i64Ty_, iVar, "parallel_i_step"), stepArg, "parallel_i_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         // Pop the captures scope to run emitScopeCleanup → emitArcReleaseVar
