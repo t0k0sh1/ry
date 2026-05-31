@@ -201,11 +201,10 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     llvm::Value *isOk = builder_.CreateICmpEQ(
         disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
 
-    llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
-    llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
-    llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
-    builder_.CreateCondBr(isOk, okBB, errBB);
+    llvm::BasicBlock *okBB    = createBB("res.coerce.ok");
+    llvm::BasicBlock *errBB   = createBB("res.coerce.err");
+    llvm::BasicBlock *mergeBB = createBB("res.coerce.merge");
+    emitBranchCond(isOk, okBB, errBB);
 
     // Ok path
     builder_.SetInsertPoint(okBB);
@@ -215,7 +214,7 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
     coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
     coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
     // Err path
@@ -226,13 +225,13 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
     coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
     coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
-    phi->addIncoming(coercedOk, okEndBB);
-    phi->addIncoming(coercedErr, errEndBB);
+    llvm::PHINode *phi = createPhi(dstResTy,
+                                    {{coercedOk, okEndBB}, {coercedErr, errEndBB}},
+                                    "res.coerced");
 
     propagateMeta(val, phi);
     return phi;
@@ -1579,10 +1578,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
             oldVal,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             s.name + ".arc_old_null");
-        auto *parentFn = builder_.GetInsertBlock()->getParent();
-        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
-        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
-        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
+        auto *releaseBB = createBB((s.name + ".arc_release").c_str());
+        auto *storeBB = createBB((s.name + ".arc_store").c_str());
+        emitBranchCond(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
         auto *oldHdr = emitArcHeaderForAlloca(oldVal, ptr);
@@ -1595,7 +1593,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             }
         }
         emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
-        builder_.CreateBr(storeBB);
+        emitBranchUncond(storeBB);
 
         builder_.SetInsertPoint(storeBB);
     }
@@ -1841,10 +1839,9 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             oldVal,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             s.name + ".arc_old_null");
-        auto *parentFn = builder_.GetInsertBlock()->getParent();
-        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
-        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
-        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
+        auto *releaseBB = createBB((s.name + ".arc_release").c_str());
+        auto *storeBB = createBB((s.name + ".arc_store").c_str());
+        emitBranchCond(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
         auto *oldHdr = b.is_str ? emitStrGetHeaderFromData(oldVal)
@@ -1854,7 +1851,7 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
             gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
         emitArcRelease(oldHdr, b.is_arc_atomic, b.destructor, gcVisitFn);
-        builder_.CreateBr(storeBB);
+        emitBranchUncond(storeBB);
 
         builder_.SetInsertPoint(storeBB);
     }
