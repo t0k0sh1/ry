@@ -16,9 +16,11 @@ llvm::Value *emitOptionWrap(CodeGen &cg, const lowered::OptionWrapOp &op) {
     RyValueId resultId;
     if (op.is_some) {
         RyValueId innerId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.inner));
-        resultId = ry_emit_option_wrap_some(cg.emit_ctx_, innerId, op.opt_ty);
+        resultId = ry_emit_option_wrap_some(cg.emit_ctx_, innerId,
+                                             ry::llvm_emit::asRyType(op.opt_ty));
     } else {
-        resultId = ry_emit_option_wrap_none(cg.emit_ctx_, op.opt_ty);
+        resultId = ry_emit_option_wrap_none(cg.emit_ctx_,
+                                             ry::llvm_emit::asRyType(op.opt_ty));
     }
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(cg.emit_ctx_, resultId));
 }

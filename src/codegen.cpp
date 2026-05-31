@@ -121,8 +121,8 @@ const std::unordered_set<std::string> &CodeGen::getTestingIntrinsicsImported() c
 llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
-    auto *callee = static_cast<llvm::Value *>(
-        ry_emit_get_runtime_fn(emit_ctx_, name, fnTy));
+    auto *callee = ry::llvm_emit::asLlvmValue(
+        ry_emit_get_runtime_fn(emit_ctx_, name, ry::llvm_emit::asRyFuncType(fnTy)));
     return llvm::FunctionCallee(fnTy, callee);
 }
 

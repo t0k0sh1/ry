@@ -25,7 +25,7 @@ llvm::Value *emitCowEnsureUnique(CodeGen &cg,
     desc.elem_is_str = op.elem_is_str ? 1 : 0;
     desc.do_key_retain = op.do_key_retain ? 1 : 0;
     desc.key_is_str = op.key_is_str ? 1 : 0;
-    desc.destructor_callee = static_cast<void *>(op.destructor_callee);
+    desc.destructor_callee = ry::llvm_emit::asRyValue(op.destructor_callee);
 
     RyValueId newDataId = ry_emit_cow_ensure_unique(cg.emit_ctx_, &desc);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(cg.emit_ctx_, newDataId));

@@ -42,7 +42,8 @@ llvm::Value *emitResultBranch(CodeGen &cg, const lowered::ResultBranchOp &op,
     ResultBranchTrampolineCtx tctx{build_ok, build_err, cg.emit_ctx_};
     RyValueId isErrId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.is_err));
     RyValueId resultId = ry_emit_result_branch(
-        cg.emit_ctx_, isErrId, op.res_ty, &trampolineOk, &trampolineErr, &tctx);
+        cg.emit_ctx_, isErrId, ry::llvm_emit::asRyType(op.res_ty),
+        &trampolineOk, &trampolineErr, &tctx);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(cg.emit_ctx_, resultId));
 }
 

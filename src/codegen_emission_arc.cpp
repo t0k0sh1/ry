@@ -21,8 +21,8 @@ void emitArcRelease(CodeGen &cg, const lowered::ArcReleaseOp &op) {
     RyValueId headerId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.header_ptr));
     ry_emit_arc_release(cg.emit_ctx_, headerId,
                         op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC,
-                        static_cast<void *>(op.destructor_callee),
-                        static_cast<void *>(op.gc_visit_fn));
+                        ry::llvm_emit::asRyValue(op.destructor_callee),
+                        ry::llvm_emit::asRyValue(op.gc_visit_fn));
 }
 
 } // namespace ry::codegen::emission

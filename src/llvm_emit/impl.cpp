@@ -241,8 +241,8 @@ RyValueRef ry_emit_resolve(RyEmitCtx *ctx, RyValueId id) {
 }
 
 RyValueId ry_emit_build_error_from_runtime(RyEmitCtx *ctx, const char *err_fn_name,
-                                           void *error_ty_ptr) {
-    auto *errorTy = static_cast<llvm::StructType *>(error_ty_ptr);
+                                           RyTypeRef error_ty) {
+    auto *errorTy = llvm::cast<llvm::StructType>(asType(error_ty));
     auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *errFnTy = llvm::FunctionType::get(ptrTy, {}, false);
@@ -255,10 +255,10 @@ RyValueId ry_emit_build_error_from_runtime(RyEmitCtx *ctx, const char *err_fn_na
     return ry_emit_intern(ctx, toRyValue(errStruct));
 }
 
-void *ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name, void *fn_ty_ptr) {
-    auto *fnTy = static_cast<llvm::FunctionType *>(fn_ty_ptr);
+RyValueRef ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name, RyFuncTypeRef fn_ty) {
+    auto *fnTy = asFuncType(fn_ty);
     auto callee = ctx->module->getOrInsertFunction(name, fnTy);
-    return callee.getCallee();
+    return toRyValue(callee.getCallee());
 }
 
 RyValueId ry_emit_negative_index_wrap(RyEmitCtx *ctx, RyValueId idx_id,
@@ -441,8 +441,8 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 }
 
 void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
-                         RyArcAtomic atomic, void *destructor_callee,
-                         void *gc_visit_fn) {
+                         RyArcAtomic atomic, RyValueRef destructor_callee,
+                         RyValueRef gc_visit_fn) {
     auto *headerPtr =
         asValue(ry_emit_resolve(ctx, header_ptr_id));
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
@@ -510,10 +510,10 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
         auto gcTrackFn =
             ctx->module->getOrInsertFunction("__ry_gc_track", gcTrackFnTy);
         llvm::Value *dtorPtr = (destructor_callee != nullptr)
-            ? static_cast<llvm::Value *>(destructor_callee)
+            ? asValue(destructor_callee)
             : llvm::cast<llvm::Value>(llvm::ConstantPointerNull::get(
                   llvm::cast<llvm::PointerType>(ptrTy)));
-        auto *gcVisitFnVal = static_cast<llvm::Value *>(gc_visit_fn);
+        auto *gcVisitFnVal = asValue(gc_visit_fn);
         ctx->builder->CreateCall(gcTrackFn,
                                  {headerPtr, gcVisitFnVal, dtorPtr});
         ctx->builder->CreateBr(doneBB);
@@ -540,7 +540,7 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
         auto *destructorFnTy =
             llvm::FunctionType::get(voidTy, {ptrTy}, false);
         auto destructor = llvm::FunctionCallee(
-            destructorFnTy, static_cast<llvm::Value *>(destructor_callee));
+            destructorFnTy, asValue(destructor_callee));
         ctx->builder->CreateCall(destructor, {dataPtr});
     }
     // Only free the entire block when no weak references remain.
@@ -617,13 +617,13 @@ ListHeaderLoad loadListHeaderImpl(llvm::IRBuilder<> &builder,
 } // namespace
 
 void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
-                               RyValueId val_id, void *list_header_ty_ptr,
-                               void *elem_ty_ptr, uint64_t elem_size) {
+                               RyValueId val_id, RyTypeRef list_header_ty,
+                               RyTypeRef elem_ty, uint64_t elem_size) {
     auto *listPtr =
         asValue(ry_emit_resolve(ctx, list_ptr_id));
     auto *val = asValue(ry_emit_resolve(ctx, val_id));
-    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
-    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *listHeaderTy = llvm::cast<llvm::StructType>(asType(list_header_ty));
+    auto *elemTy = asType(elem_ty);
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
     auto *voidTy = llvm::Type::getVoidTy(*ctx->context);
@@ -675,14 +675,14 @@ void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
 
 void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                RyValueId idx_id, RyValueId val_id,
-                               void *list_header_ty_ptr, void *elem_ty_ptr,
+                               RyTypeRef list_header_ty, RyTypeRef elem_ty,
                                uint64_t elem_size) {
     auto *listPtr =
         asValue(ry_emit_resolve(ctx, list_ptr_id));
     auto *origIdx = asValue(ry_emit_resolve(ctx, idx_id));
     auto *val = asValue(ry_emit_resolve(ctx, val_id));
-    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
-    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *listHeaderTy = llvm::cast<llvm::StructType>(asType(list_header_ty));
+    auto *elemTy = asType(elem_ty);
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
     auto *voidTy = llvm::Type::getVoidTy(*ctx->context);
@@ -768,14 +768,14 @@ void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
 
 RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                         RyValueId idx_id,
-                                        void *list_header_ty_ptr,
-                                        void *elem_ty_ptr,
+                                        RyTypeRef list_header_ty,
+                                        RyTypeRef elem_ty,
                                         uint64_t elem_size) {
     auto *listPtr =
         asValue(ry_emit_resolve(ctx, list_ptr_id));
     auto *origIdx = asValue(ry_emit_resolve(ctx, idx_id));
-    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
-    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *listHeaderTy = llvm::cast<llvm::StructType>(asType(list_header_ty));
+    auto *elemTy = asType(elem_ty);
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
     auto &builder = *ctx->builder;
@@ -828,7 +828,7 @@ RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
 
 void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         RyValueId start_id, RyValueId end_excl_id,
-                        void *list_header_ty_ptr, void *elem_ty_ptr,
+                        RyTypeRef list_header_ty, RyTypeRef elem_ty,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data) {
     auto *listPtr =
@@ -837,8 +837,8 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
         asValue(ry_emit_resolve(ctx, start_id));
     auto *endExclVal =
         asValue(ry_emit_resolve(ctx, end_excl_id));
-    auto *listHeaderTy = static_cast<llvm::StructType *>(list_header_ty_ptr);
-    auto *elemTy = static_cast<llvm::Type *>(elem_ty_ptr);
+    auto *listHeaderTy = llvm::cast<llvm::StructType>(asType(list_header_ty));
+    auto *elemTy = asType(elem_ty);
     auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
     auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
 
@@ -881,10 +881,10 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
 }
 
 RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
-                                void *res_ty_ptr, RyBuildValueFn build_ok,
+                                RyTypeRef res_ty, RyBuildValueFn build_ok,
                                 RyBuildValueFn build_err, void *user_ctx) {
     auto *isErr = asValue(ry_emit_resolve(ctx, is_err_id));
-    auto *resTy = static_cast<llvm::StructType *>(res_ty_ptr);
+    auto *resTy = llvm::cast<llvm::StructType>(asType(res_ty));
 
     // Derive parent function from the builder's current insertion block, not
     // from ctx->function: like ARC ops, result-branch helpers may be invoked
@@ -918,8 +918,8 @@ RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
 }
 
 RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
-                                   void *opt_ty_ptr) {
-    auto *optTy = static_cast<llvm::StructType *>(opt_ty_ptr);
+                                   RyTypeRef opt_ty) {
+    auto *optTy = llvm::cast<llvm::StructType>(asType(opt_ty));
     auto *inner = asValue(ry_emit_resolve(ctx, inner_id));
     auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
     llvm::Value *val = llvm::UndefValue::get(optTy);
@@ -928,8 +928,8 @@ RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
     return ry_emit_intern(ctx, toRyValue(val));
 }
 
-RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, void *opt_ty_ptr) {
-    auto *optTy = static_cast<llvm::StructType *>(opt_ty_ptr);
+RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, RyTypeRef opt_ty) {
+    auto *optTy = llvm::cast<llvm::StructType>(asType(opt_ty));
     auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
     llvm::Value *val = llvm::UndefValue::get(optTy);
     val = ctx->builder->CreateInsertValue(val, llvm::ConstantInt::get(i1Ty, 0), 0);
@@ -939,8 +939,8 @@ RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, void *opt_ty_ptr) {
 }
 
 RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
-                               void *ret_ty_ptr,
-                               void *const *arg_ty_ptrs,
+                               RyTypeRef ret_ty,
+                               const RyTypeRef *arg_tys,
                                uint32_t arg_ty_count,
                                const RyValueId *arg_ids,
                                uint32_t arg_count, const char *name_hint) {
@@ -949,21 +949,21 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
     // crashing the emitter. Per .claude/rules/runtime-memory-safety.md
     // "外部入力の NULL チェック". `name_hint` is optional and may be NULL.
     if (ctx == nullptr || ctx->module == nullptr || ctx->builder == nullptr ||
-        name == nullptr || ret_ty_ptr == nullptr)
+        name == nullptr || ret_ty == nullptr)
         return 0;
-    if ((arg_ty_count > 0 && arg_ty_ptrs == nullptr) ||
+    if ((arg_ty_count > 0 && arg_tys == nullptr) ||
         (arg_count > 0 && arg_ids == nullptr))
         return 0;
     if (arg_ty_count != arg_count)
         return 0;
 
-    auto *retTy = static_cast<llvm::Type *>(ret_ty_ptr);
+    auto *retTy = asType(ret_ty);
     std::vector<llvm::Type *> argTys;
     argTys.reserve(arg_ty_count);
     for (uint32_t i = 0; i < arg_ty_count; ++i) {
-        if (arg_ty_ptrs[i] == nullptr)
+        if (arg_tys[i] == nullptr)
             return 0;
-        argTys.push_back(static_cast<llvm::Type *>(arg_ty_ptrs[i]));
+        argTys.push_back(asType(arg_tys[i]));
     }
 
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, /*isVarArg=*/false);
@@ -1344,7 +1344,7 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
     // / fuzz harnesses) get the invalid sentinel (0) instead of crashing the
     // emitter. Mirrors ry_emit_runtime_call / ry_emit_cow_ensure_unique.
     if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
-        ctx->builder == nullptr || desc == nullptr || desc->any_ty_ptr == nullptr)
+        ctx->builder == nullptr || desc == nullptr || desc->any_ty == nullptr)
         return 0;
     // RyAnyWrapKind: 0=NonBox, 1=RecordBox, 2=EnumBox. Reject unknown kinds
     // explicitly instead of silently falling through to the NonBox arm.
@@ -1352,7 +1352,7 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
         return 0;
 
     auto *val = asValue(ry_emit_resolve(ctx, desc->val_id));
-    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
+    auto *anyTy = llvm::cast<llvm::StructType>(asType(desc->any_ty));
     if (val == nullptr)
         return 0;
 
@@ -1364,7 +1364,7 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
     // `[ ArcHeader (16B) | desc ptr (8B) | payload ]`.
     if (desc->kind == 1 || desc->kind == 2) {
         auto *layoutTy =
-            static_cast<llvm::StructType *>(desc->box_layout_ty_ptr);
+            llvm::cast<llvm::StructType>(asType(desc->box_layout_ty));
         auto *descriptor = llvm::cast_or_null<llvm::Constant>(
             asValue(ry_emit_resolve(ctx, desc->descriptor_id)));
         if (layoutTy == nullptr || descriptor == nullptr)
@@ -1456,7 +1456,7 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
 RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
     if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
         ctx->builder == nullptr || desc == nullptr ||
-        desc->any_ty_ptr == nullptr)
+        desc->any_ty == nullptr)
         return 0;
     // RyAnyUnwrapKind: 0=Standard, 1=F64Promote, 2=Record. Reject unknown
     // kinds explicitly instead of silently falling through to the Standard arm.
@@ -1465,7 +1465,7 @@ RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
 
     auto *anyVal =
         asValue(ry_emit_resolve(ctx, desc->any_val_id));
-    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
+    auto *anyTy = llvm::cast<llvm::StructType>(asType(desc->any_ty));
     if (anyVal == nullptr)
         return 0;
 
@@ -1490,9 +1490,9 @@ RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
     // .desc_check / .desc_err.
     if (desc->kind == 2) {
         auto *layoutTy =
-            static_cast<llvm::StructType *>(desc->box_layout_ty_ptr);
+            llvm::cast<llvm::StructType>(asType(desc->box_layout_ty));
         auto *recordStructTy =
-            static_cast<llvm::StructType *>(desc->record_struct_ty_ptr);
+            llvm::cast<llvm::StructType>(asType(desc->record_struct_ty));
         auto *expectedDesc = llvm::cast_or_null<llvm::Constant>(
             asValue(ry_emit_resolve(ctx, desc->expected_desc_id)));
         if (layoutTy == nullptr || recordStructTy == nullptr ||
@@ -1616,7 +1616,7 @@ RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
 
     // Standard=0 — 2-way path. tag check → matchBB (alloca + store + GEP +
     // load + optional retain) / mismatchBB (emitRuntimeError).
-    auto *targetTy = static_cast<llvm::Type *>(desc->target_ty_ptr);
+    auto *targetTy = asType(desc->target_ty);
     if (targetTy == nullptr)
         return 0;
 
@@ -1663,8 +1663,8 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
                                  const RyAnyTryUnwrapDesc *desc) {
     if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
         ctx->builder == nullptr || desc == nullptr ||
-        desc->any_ty_ptr == nullptr || desc->res_ty_ptr == nullptr ||
-        desc->error_ty_ptr == nullptr)
+        desc->any_ty == nullptr || desc->res_ty == nullptr ||
+        desc->error_ty == nullptr)
         return 0;
     // RyAnyTryUnwrapKind: 0=Standard, 1=F64Promote. Reject unknown kinds
     // explicitly instead of silently falling through to the Standard arm.
@@ -1673,9 +1673,9 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
 
     auto *anyVal =
         asValue(ry_emit_resolve(ctx, desc->any_val_id));
-    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
-    auto *resTy = static_cast<llvm::StructType *>(desc->res_ty_ptr);
-    auto *errorTy = static_cast<llvm::StructType *>(desc->error_ty_ptr);
+    auto *anyTy = llvm::cast<llvm::StructType>(asType(desc->any_ty));
+    auto *resTy = llvm::cast<llvm::StructType>(asType(desc->res_ty));
+    auto *errorTy = llvm::cast<llvm::StructType>(asType(desc->error_ty));
     auto *errMsgStr =
         asValue(ry_emit_resolve(ctx, desc->err_msg_str_id));
     if (anyVal == nullptr || errMsgStr == nullptr)
@@ -1775,7 +1775,7 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
 
     // Standard=0 — tag-check primitive arm. Ok-branch: alloca + store + GEP +
     // load + optional ARC retain + buildOk. Err-branch: buildErr.
-    auto *targetTy = static_cast<llvm::Type *>(desc->target_ty_ptr);
+    auto *targetTy = asType(desc->target_ty);
     if (targetTy == nullptr)
         return 0;
 

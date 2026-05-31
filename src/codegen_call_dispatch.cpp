@@ -443,8 +443,8 @@ llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *res
 }
 
 llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {
-    RyValueId id =
-        ry_emit_build_error_from_runtime(emit_ctx_, errFnName, errorTy_);
+    RyValueId id = ry_emit_build_error_from_runtime(
+        emit_ctx_, errFnName, ry::llvm_emit::asRyType(errorTy_));
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
