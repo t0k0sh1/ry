@@ -1129,8 +1129,8 @@ static llvm::Value *emitMathAbs(CodeGen &cg, const CallExpr &e) {
         llvm::Value *intMin = llvm::ConstantInt::get(
             cg.i64Ty_, llvm::APInt::getSignedMinValue(64));
         llvm::Value *isIntMin = cg.builder_.CreateICmpEQ(x, intMin, "abs_is_imin");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_ok", cg.fn_);
+        llvm::BasicBlock *errBB = cg.createBB("abs.imin_err");
+        llvm::BasicBlock *okBB  = cg.createBB("abs.imin_ok");
         cg.emitBranchCond(isIntMin, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError("runtime error: integer overflow\n",
@@ -1275,13 +1275,13 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
 
         llvm::BasicBlock *curBB = cg.builder_.GetInsertBlock();
         llvm::BasicBlock *errBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.err", cg.fn_);
+            cg.createBB("pow_int.err");
         llvm::BasicBlock *condBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.cond", cg.fn_);
+            cg.createBB("pow_int.cond");
         llvm::BasicBlock *bodyBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.body", cg.fn_);
+            cg.createBB("pow_int.body");
         llvm::BasicBlock *endBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.end", cg.fn_);
+            cg.createBB("pow_int.end");
         cg.emitBranchCond(isNeg, errBB, condBB);
 
         cg.builder_.SetInsertPoint(errBB);
@@ -1378,8 +1378,8 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     {
         static int negCounter = 0;
         llvm::Value *isNeg = cg.builder_.CreateICmpSLT(n, zero, "digits_n_neg");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_ok",  cg.fn_);
+        llvm::BasicBlock *errBB = cg.createBB("digits.n_err");
+        llvm::BasicBlock *okBB  = cg.createBB("digits.n_ok");
         cg.emitBranchCond(isNeg, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError(
@@ -1392,8 +1392,8 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     {
         static int baseCounter = 0;
         llvm::Value *isLow = cg.builder_.CreateICmpSLT(base, two, "digits_base_low");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_ok",  cg.fn_);
+        llvm::BasicBlock *errBB = cg.createBB("digits.base_err");
+        llvm::BasicBlock *okBB  = cg.createBB("digits.base_ok");
         cg.emitBranchCond(isLow, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError(
@@ -1409,8 +1409,8 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(zero, countSlot);
     cg.builder_.CreateStore(n, qSlot);
 
-    llvm::BasicBlock *countBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.body", cg.fn_);
-    llvm::BasicBlock *countEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.end",  cg.fn_);
+    llvm::BasicBlock *countBodyBB = cg.createBB("digits.count.body");
+    llvm::BasicBlock *countEndBB  = cg.createBB("digits.count.end");
     cg.emitBranchUncond(countBodyBB);
 
     cg.builder_.SetInsertPoint(countBodyBB);
@@ -1440,9 +1440,9 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(zero, iSlot);
     cg.builder_.CreateStore(n, fSlot);
 
-    llvm::BasicBlock *fillCondBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.cond", cg.fn_);
-    llvm::BasicBlock *fillBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.body", cg.fn_);
-    llvm::BasicBlock *fillEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.end",  cg.fn_);
+    llvm::BasicBlock *fillCondBB = cg.createBB("digits.fill.cond");
+    llvm::BasicBlock *fillBodyBB = cg.createBB("digits.fill.body");
+    llvm::BasicBlock *fillEndBB  = cg.createBB("digits.fill.end");
     cg.emitBranchUncond(fillCondBB);
 
     cg.builder_.SetInsertPoint(fillCondBB);

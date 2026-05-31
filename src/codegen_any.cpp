@@ -672,10 +672,8 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
             slot, llvm::ConstantInt::getSigned(i64Ty_, -1),
             ("tryrec." + f.name + ".miss").c_str());
 
-        auto *missBB  = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".miss",  fn);
-        auto *foundBB = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".found", fn);
+        auto *missBB  = createBBInFn(("tryrec.fld_" + f.name + ".miss").c_str(), fn);
+        auto *foundBB = createBBInFn(("tryrec.fld_" + f.name + ".found").c_str(), fn);
         emitBranchCond(isMiss, missBB, foundBB);
 
         // Missing-field arm.
@@ -701,10 +699,8 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
         llvm::Value *subDisc = builder_.CreateExtractValue(
             subResult, {0}, "tryrec.fld_" + f.name + ".sub.disc");
 
-        auto *subOkBB  = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".sub_ok",  fn);
-        auto *subErrBB = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".sub_err", fn);
+        auto *subOkBB  = createBBInFn(("tryrec.fld_" + f.name + ".sub_ok").c_str(), fn);
+        auto *subErrBB = createBBInFn(("tryrec.fld_" + f.name + ".sub_err").c_str(), fn);
         emitBranchCond(subDisc, subOkBB, subErrBB);
 
         // SubErr arm: release collected, build prefixed Err via runtime concat.
@@ -1700,12 +1696,9 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
                                               siteLabel + ".any.retain.data");
 
-    auto *strBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.str",
-                                             parentFn);
-    auto *collBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.coll",
-                                             parentFn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
-                                             parentFn);
+    auto *strBB  = createBBInFn((siteLabel + ".any.retain.str").c_str(), parentFn);
+    auto *collBB = createBBInFn((siteLabel + ".any.retain.coll").c_str(), parentFn);
+    auto *doneBB = createBBInFn((siteLabel + ".any.retain.done").c_str(), parentFn);
 
     auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);

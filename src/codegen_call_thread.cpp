@@ -212,7 +212,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             cg.fn_ = thunk;
             cg.pushScope();
 
-            llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+            llvm::BasicBlock *entryBB = cg.createBBInFn("entry", thunk);
             cg.builder_.SetInsertPoint(entryBB);
 
             auto argIt = thunk->arg_begin();
@@ -335,7 +335,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             {
                 CodeGen::FnScope guard(cg);
                 cg.fn_ = thunk;
-                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+                llvm::BasicBlock *entryBB = cg.createBBInFn("entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
                 // Thunk signature is now (env, result_buf); result_buf is
@@ -376,7 +376,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             {
                 CodeGen::FnScope guard(cg);
                 cg.fn_ = thunk;
-                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+                llvm::BasicBlock *entryBB = cg.createBBInFn("entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
                 // Thunk signature is now (env, result_buf); result_buf unused.

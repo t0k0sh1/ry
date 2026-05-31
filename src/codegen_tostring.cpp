@@ -107,8 +107,8 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             phi->addIncoming(unknownStr, defaultBB);
 
             for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {
-                llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
-                    *ctx_, "vts.union.case" + std::to_string(i), fn_);
+                llvm::BasicBlock *caseBB =
+                    createBB(("vts.union.case" + std::to_string(i)).c_str());
                 sw->addCase(llvm::ConstantInt::get(
                     llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
                 builder_.SetInsertPoint(caseBB);

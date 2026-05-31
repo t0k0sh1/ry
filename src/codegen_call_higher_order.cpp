@@ -287,7 +287,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");

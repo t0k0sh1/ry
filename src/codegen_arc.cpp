@@ -908,16 +908,11 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
                                        CollectionKind innerKind,
                                        const std::string &innerElemSig,
                                        const std::string &innerValSig) {
-        auto *loopHdrBB  = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_clhdr_") + tag, dtorFn);
-        auto *loopBodyBB = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_clbody_") + tag, dtorFn);
-        auto *doRelBB    = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_cldorel_") + tag, dtorFn);
-        auto *latchBB    = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_cllatch_") + tag, dtorFn);
-        auto *postBB     = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_clpost_") + tag, dtorFn);
+        auto *loopHdrBB  = createBBInFn((std::string("dtor_clhdr_") + tag).c_str(), dtorFn);
+        auto *loopBodyBB = createBBInFn((std::string("dtor_clbody_") + tag).c_str(), dtorFn);
+        auto *doRelBB    = createBBInFn((std::string("dtor_cldorel_") + tag).c_str(), dtorFn);
+        auto *latchBB    = createBBInFn((std::string("dtor_cllatch_") + tag).c_str(), dtorFn);
+        auto *postBB     = createBBInFn((std::string("dtor_clpost_") + tag).c_str(), dtorFn);
 
         auto *prevBB = builder_.GetInsertBlock();
         emitBranchUncond(loopHdrBB);
@@ -999,16 +994,11 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     // dense ptr-array [0, len).  After the call builder_ is in post_loop BB.
     auto emitStrElemLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
                                 const char *tag) {
-        auto *loopHdrBB  = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_lhdr_") + tag, dtorFn);
-        auto *loopBodyBB = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_lbody_") + tag, dtorFn);
-        auto *doRelBB    = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_dorel_") + tag, dtorFn);
-        auto *latchBB    = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_latch_") + tag, dtorFn);
-        auto *postBB     = llvm::BasicBlock::Create(*ctx_,
-            std::string("dtor_post_") + tag, dtorFn);
+        auto *loopHdrBB  = createBBInFn((std::string("dtor_lhdr_") + tag).c_str(), dtorFn);
+        auto *loopBodyBB = createBBInFn((std::string("dtor_lbody_") + tag).c_str(), dtorFn);
+        auto *doRelBB    = createBBInFn((std::string("dtor_dorel_") + tag).c_str(), dtorFn);
+        auto *latchBB    = createBBInFn((std::string("dtor_latch_") + tag).c_str(), dtorFn);
+        auto *postBB     = createBBInFn((std::string("dtor_post_") + tag).c_str(), dtorFn);
 
         auto *prevBB = builder_.GetInsertBlock();
         emitBranchUncond(loopHdrBB);
@@ -1299,10 +1289,10 @@ void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
         // release with the appropriate header offset.
         auto *val = builder_.CreateLoad(ptrTy_, fieldGEP,
             std::string(tagPrefix) + "_v" + std::to_string(i));
-        auto *nullBB = llvm::BasicBlock::Create(*ctx_,
-            std::string(tagPrefix) + "_skip" + std::to_string(i), fn);
-        auto *relBB  = llvm::BasicBlock::Create(*ctx_,
-            std::string(tagPrefix) + "_rel"  + std::to_string(i), fn);
+        auto *nullBB = createBBInFn(
+            (std::string(tagPrefix) + "_skip" + std::to_string(i)).c_str(), fn);
+        auto *relBB  = createBBInFn(
+            (std::string(tagPrefix) + "_rel"  + std::to_string(i)).c_str(), fn);
         auto *isNull = builder_.CreateICmpEQ(val,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
@@ -1439,10 +1429,10 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
 
         auto *val = builder_.CreateLoad(ptrTy_, fieldGEP,
             tagPrefix + "_v" + std::to_string(i));
-        auto *nullBB = llvm::BasicBlock::Create(*ctx_,
-            tagPrefix + "_skip" + std::to_string(i), fn);
-        auto *retBB  = llvm::BasicBlock::Create(*ctx_,
-            tagPrefix + "_do"   + std::to_string(i), fn);
+        auto *nullBB = createBBInFn(
+            (tagPrefix + "_skip" + std::to_string(i)).c_str(), fn);
+        auto *retBB  = createBBInFn(
+            (tagPrefix + "_do"   + std::to_string(i)).c_str(), fn);
         auto *isNull = builder_.CreateICmpEQ(val,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
@@ -1814,8 +1804,7 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
                     sw->addCase(tagConst, doneBB);
                     continue;
                 }
-                auto *caseBB = llvm::BasicBlock::Create(
-                    *ctx_, "adt.dtor." + vname, fn);
+                auto *caseBB = createBBInFn(("adt.dtor." + vname).c_str(), fn);
                 sw->addCase(tagConst, caseBB);
                 builder_.SetInsertPoint(caseBB);
                 const VariantFieldInfo &vfi = vfIt->second;

@@ -26,7 +26,7 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
     auto *preLoopBB = builder_.GetInsertBlock();
     emitBranchUncond(loopBB);
     builder_.SetInsertPoint(loopBB);
-    auto *idx = builder_.CreatePHI(i64Ty_, 2, "cow_" + tag + "_idx");
+    auto *idx = createPhi(i64Ty_, {}, ("cow_" + tag + "_idx").c_str());
     idx->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), preLoopBB);
     auto *cond = builder_.CreateICmpSLT(idx, len, "cow_" + tag + "_cond");
     emitBranchCond(cond, bodyBB, doneBB);

@@ -347,7 +347,7 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "upper_idx");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "upper_cond"), bodyBB, endBB);
+    emitBranchCond(builder_.CreateICmpSLT(i, len, "upper_cond"), bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "upper_i_cur");
@@ -389,7 +389,7 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "lower_idx");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "lower_cond"), bodyBB, endBB);
+    emitBranchCond(builder_.CreateICmpSLT(i, len, "lower_cond"), bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lower_i_cur");
@@ -511,7 +511,7 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *idx = builder_.CreateLoad(i64Ty_, startVar, "tstart_idx");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "tstart_bound"), checkBB, endBB);
+    emitBranchCond(builder_.CreateICmpSLT(idx, len, "tstart_bound"), checkBB, endBB);
 
     builder_.SetInsertPoint(checkBB);
     llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "tstart_ptr");
@@ -620,7 +620,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "rev_idx");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "rev_i_cur");
@@ -809,7 +809,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     emitBranchUncond(len1CondBB);
     builder_.SetInsertPoint(len1CondBB);
     llvm::Value *i1 = builder_.CreateLoad(i64Ty_, iVar, "join_i1");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i1, listLen, "join_len_cond"), len1BodyBB, len1EndBB);
+    emitBranchCond(builder_.CreateICmpSLT(i1, listLen, "join_len_cond"), len1BodyBB, len1EndBB);
 
     builder_.SetInsertPoint(len1BodyBB);
     llvm::Value *i1Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i1_cur");
@@ -842,7 +842,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     emitBranchUncond(buildCondBB);
     builder_.SetInsertPoint(buildCondBB);
     llvm::Value *i2 = builder_.CreateLoad(i64Ty_, iVar, "join_i2");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i2, listLen, "join_build_cond"), buildBodyBB, buildEndBB);
+    emitBranchCond(builder_.CreateICmpSLT(i2, listLen, "join_build_cond"), buildBodyBB, buildEndBB);
 
     builder_.SetInsertPoint(buildBodyBB);
     llvm::Value *i2Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i2_cur");

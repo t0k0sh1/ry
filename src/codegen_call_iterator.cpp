@@ -77,7 +77,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
                 llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
                 llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
-                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+                emitBranchCond(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
                 llvm::Value *elem = builder_.CreateLoad(elemTy,
@@ -150,7 +150,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
                 llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
                 llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
-                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+                emitBranchCond(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
                 llvm::Value *key = builder_.CreateLoad(keyTy,
@@ -239,7 +239,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "tl_elem");
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_cur_len");
         llvm::Value *curCap = builder_.CreateLoad(i64Ty_, capVar, "tl_cur_cap");
-        builder_.CreateCondBr(builder_.CreateICmpEQ(curLen, curCap, "tl_need_grow"), growBB, storeBB);
+        emitBranchCond(builder_.CreateICmpEQ(curLen, curCap, "tl_need_grow"), growBB, storeBB);
 
         builder_.SetInsertPoint(growBB);
         llvm::Value *newCap = builder_.CreateMul(curCap, llvm::ConstantInt::get(i64Ty_, 2), "tl_new_cap");

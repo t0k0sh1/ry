@@ -314,8 +314,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
             continue;
         }
 
-        auto *caseBB = llvm::BasicBlock::Create(
-            *ctx_, "gc.visit." + variantName, visitFn);
+        auto *caseBB = createBBInFn(("gc.visit." + variantName).c_str(), visitFn);
         sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal))), caseBB);
         builder_.SetInsertPoint(caseBB);
 
