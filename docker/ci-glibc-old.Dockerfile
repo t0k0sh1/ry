@@ -13,6 +13,8 @@
 #
 # Multi-arch: linux/amd64 + linux/arm64. No `apt` or `apt-get`
 # invocations anywhere — see ci.Dockerfile header for the reasoning.
+# Rust is the sole non-github.com source (static.rust-lang.org), added
+# for #1950 (Rust LLVM IR emission shared library).
 
 FROM gcc:14-bookworm AS cmake-bootstrap
 
@@ -130,13 +132,37 @@ RUN set -eux; \
     cd /tmp; \
     rm -rf "llvm-project-${LLVM_VERSION}.src" "llvm-project-${LLVM_VERSION}.src.tar.xz"
 
+#
+# Rust toolchain (standalone tarball from static.rust-lang.org). See
+# docker/ci.Dockerfile rust-bootstrap stage for the rationale and the
+# distribution-source justification (#1950).
+#
+FROM gcc:14-bookworm AS rust-bootstrap
+
+ARG RUST_VERSION=1.83.0
+ARG TARGETARCH
+
+WORKDIR /tmp
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64)  RARCH=x86_64-unknown-linux-gnu ;; \
+        arm64)  RARCH=aarch64-unknown-linux-gnu ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    wget -q "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    tar -xJf "rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    "rust-${RUST_VERSION}-${RARCH}/install.sh" \
+        --prefix=/opt/rust \
+        --components="rustc,cargo,rust-std-${RARCH}"; \
+    rm -rf "rust-${RUST_VERSION}-${RARCH}" "rust-${RUST_VERSION}-${RARCH}.tar.xz"
+
 FROM gcc:14-bookworm
 
 ARG LLVM_VERSION=21.1.8
 ARG GTEST_VERSION=1.17.0
 
 LABEL org.opencontainers.image.source=https://github.com/t0k0sh1/ry
-LABEL org.opencontainers.image.description="ry release CI image — gcc:14-bookworm (glibc 2.36) + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache. Built entirely from github.com sources; no apt anywhere."
+LABEL org.opencontainers.image.description="ry release CI image — gcc:14-bookworm (glibc 2.36) + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache + Rust (static.rust-lang.org). Built entirely from github.com + rust-lang.org sources; no apt anywhere."
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 COPY --from=cmake-bootstrap /opt/cmake /opt/cmake
@@ -144,18 +170,21 @@ COPY --from=ninja-bootstrap /opt/ninja /opt/ninja
 COPY --from=ccache-bootstrap /opt/ccache /usr/local/bin/ccache
 COPY --from=openssl-builder /opt/openssl /opt/openssl
 COPY --from=llvm-builder /usr/local/llvm /usr/local/llvm
+COPY --from=rust-bootstrap /opt/rust /opt/rust
 
 WORKDIR /opt/gtest
 RUN set -eux; \
     wget -q "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz" \
         -O "/opt/gtest/googletest-v${GTEST_VERSION}.tar.gz"
 
-ENV PATH=/opt/cmake/bin:/opt/ninja/bin:/usr/local/llvm/bin:${PATH}
-ENV LD_LIBRARY_PATH=/opt/openssl/lib64:/opt/openssl/lib:/usr/local/llvm/lib
+ENV PATH=/opt/cmake/bin:/opt/ninja/bin:/usr/local/llvm/bin:/opt/rust/bin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/openssl/lib64:/opt/openssl/lib:/usr/local/llvm/lib:/opt/rust/lib
 ENV OPENSSL_ROOT_DIR=/opt/openssl
 ENV LLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 ENV CC=/usr/local/llvm/bin/clang
 ENV CXX=/usr/local/llvm/bin/clang++
 ENV RY_VENDORED_GTEST_TARBALL=/opt/gtest/googletest-v${GTEST_VERSION}.tar.gz
+ENV CARGO_HOME=/opt/cargo
+ENV LLVM_SYS_211_PREFIX=/usr/local/llvm
 
 WORKDIR /workspace
