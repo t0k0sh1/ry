@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <poll.h>
 #include <unistd.h>
 
 
@@ -120,6 +121,20 @@ static int get_server_port(int srv) {
     socklen_t len = sizeof(addr);
     ::getsockname(srv, reinterpret_cast<struct sockaddr *>(&addr), &len);
     return ntohs(addr.sin_port);
+}
+
+// Wait up to timeout_sec for a connection on `srv`, then accept.
+// Returns -1 on timeout/error so the caller's ADD_FAILURE path runs and
+// the server thread exits, allowing JoinGuard to join without hanging.
+static int accept_with_timeout(int srv, int timeout_sec) {
+    struct pollfd pfd{};
+    pfd.fd = srv;
+    pfd.events = POLLIN;
+    int ready = ::poll(&pfd, 1, timeout_sec * 1000);
+    if (ready <= 0) return -1;
+    struct sockaddr_in client_addr{};
+    socklen_t client_len = sizeof(client_addr);
+    return ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
 }
 
 struct JoinGuard {
@@ -380,9 +395,7 @@ TEST_F(CodeGenHttpClientTest, HttpGetCaseBindingPreservesHttpClientResponseMetad
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
-        struct sockaddr_in client_addr{};
-        socklen_t client_len = sizeof(client_addr);
-        int conn = ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
+        int conn = accept_with_timeout(srv, 10);
         if (conn < 0) {
             ADD_FAILURE() << "accept failed";
             return;
@@ -412,9 +425,7 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
 
     std::string captured_request;
     std::thread server_thread([&]() {
-        struct sockaddr_in client_addr{};
-        socklen_t client_len = sizeof(client_addr);
-        int conn = ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
+        int conn = accept_with_timeout(srv, 10);
         if (conn < 0) {
             ADD_FAILURE() << "accept failed";
             return;
