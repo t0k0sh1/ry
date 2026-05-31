@@ -28,6 +28,14 @@ option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(ENABLE_FUZZER "Enable libFuzzer coverage-guided fuzzing (Clang-only; use 'fuzz' preset)" OFF)
+# RY_LLVM_EMIT_IMPL_RUST — #1950 transition flag. When OFF (default),
+# `ry_llvm_emit` is the original C++ SHARED library built from
+# src/llvm_emit/impl.cpp. When ON, the same library name is provided by
+# the Rust cdylib in crates/ry_llvm_emit/ (built via corrosion-rs). The
+# C ABI is locked by #1949 (include/ry/llvm_emit/api.h), so call sites
+# never change. Default flips to ON in Task 4 Phase 4-C of the #1950
+# plan, and the flag plus the C++ implementation are removed in Task 5.
+option(RY_LLVM_EMIT_IMPL_RUST "Use the Rust implementation of ry_llvm_emit (issue #1950)" OFF)
 
 if(ENABLE_TSAN AND (ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_FUZZER))
     message(FATAL_ERROR "ENABLE_TSAN cannot be combined with ENABLE_ASAN, ENABLE_UBSAN, or ENABLE_FUZZER")
@@ -319,9 +327,9 @@ add_ry_native_lib(http       src/runtime/native/http/http.cpp src/runtime/native
                              src/runtime/native/http/tls.cpp src/runtime/core/hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
-# ===== LLVM IR emission shared library (#1949 scaffolding) =====
-# Built as a SHARED target so the LLVM-touching subset of CodeGen can later
-# be reimplemented in Rust (#1950) behind the same extern "C" ABI. LLVM is
+# ===== LLVM IR emission shared library (#1949 scaffolding / #1950) =====
+# Built as a SHARED target so the LLVM-touching subset of CodeGen can be
+# reimplemented in Rust (#1950) behind the same extern "C" ABI. LLVM is
 # NOT linked into this lib — its symbols resolve from the main process at
 # runtime (-undefined dynamic_lookup on macOS, -rdynamic on Linux), mirroring
 # the add_ry_native_lib() pattern above. Unlike the stdlib native libs
@@ -330,19 +338,55 @@ target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Thre
 # explicitly into every executable that uses ry_lib — kept out of
 # RY_NATIVE_LIBS for that reason. The ABI surface lives in
 # include/ry/llvm_emit/api.h; the concrete handle lifetimes live in
-# src/llvm_emit/impl.cpp.
-add_library(ry_llvm_emit SHARED src/llvm_emit/impl.cpp)
-target_include_directories(ry_llvm_emit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(ry_llvm_emit SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-set_target_properties(ry_llvm_emit PROPERTIES
-    OUTPUT_NAME "ry_llvm_emit"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    MACOSX_RPATH TRUE
-    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
-    INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,\$ORIGIN>")
-target_compile_options(ry_llvm_emit PRIVATE ${RY_WARNING_FLAGS})
-if(APPLE)
-    target_link_options(ry_llvm_emit PRIVATE -undefined dynamic_lookup)
+# src/llvm_emit/impl.cpp (C++) or crates/ry_llvm_emit/src/lib.rs (Rust).
+#
+# Selector: option(RY_LLVM_EMIT_IMPL_RUST OFF). The OFF / ON branches
+# produce a target named `ry_llvm_emit` with identical link semantics,
+# so downstream `target_link_libraries(ry PRIVATE ... ry_llvm_emit ...)`
+# does not change between modes.
+if(RY_LLVM_EMIT_IMPL_RUST)
+    # Rust implementation via corrosion-rs (#1950). Corrosion pulls cargo
+    # in as a build step and exposes the cdylib as an IMPORTED target named
+    # after the crate (`ry_llvm_emit`). LLVM symbols resolve from the host
+    # process exactly as in the C++ branch — see crates/ry_llvm_emit/build.rs
+    # for the macOS `-undefined dynamic_lookup` glue.
+    FetchContent_Declare(
+        Corrosion
+        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+        GIT_TAG v0.5.0
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(Corrosion)
+    corrosion_import_crate(
+        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/ry_llvm_emit/Cargo.toml"
+        CRATES ry_llvm_emit
+    )
+    set_target_properties(ry_llvm_emit PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    # LLVM_SYS_211_PREFIX gates how llvm-sys finds LLVM at build time. If
+    # the env var is unset, derive the prefix from the LLVM CMake config
+    # already discovered by find_package(LLVM) above, instead of a fixed
+    # /usr/local/llvm — that keeps the Rust mode usable on Homebrew,
+    # distro-packaged LLVM, and custom prefixes without env tweaks.
+    if(NOT DEFINED ENV{LLVM_SYS_211_PREFIX})
+        get_filename_component(_ry_llvm_emit_llvm_prefix "${LLVM_TOOLS_BINARY_DIR}" DIRECTORY)
+        corrosion_set_env_vars(ry_llvm_emit "LLVM_SYS_211_PREFIX=${_ry_llvm_emit_llvm_prefix}")
+        unset(_ry_llvm_emit_llvm_prefix)
+    endif()
+else()
+    add_library(ry_llvm_emit SHARED src/llvm_emit/impl.cpp)
+    target_include_directories(ry_llvm_emit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_include_directories(ry_llvm_emit SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+    set_target_properties(ry_llvm_emit PROPERTIES
+        OUTPUT_NAME "ry_llvm_emit"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        MACOSX_RPATH TRUE
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+        INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,\$ORIGIN>")
+    target_compile_options(ry_llvm_emit PRIVATE ${RY_WARNING_FLAGS})
+    if(APPLE)
+        target_link_options(ry_llvm_emit PRIVATE -undefined dynamic_lookup)
+    endif()
 endif()
 
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)

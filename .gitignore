@@ -57,11 +57,16 @@ build-scan-docker/
 
 .DS_Store
 
+# Cargo build output (workspace target dir). Cargo.lock at the workspace
+# root IS committed so binary builds are reproducible (#1950).
+target/
+
 # libFuzzer-generated corpus entries (extensionless SHA1 hash filenames).
 # Already-tracked named seeds (*.ry, *.json, *.txt, *.bin, crash-*) are unaffected.
 tests/fuzz/corpus/parser/*
 tests/fuzz/corpus/json/*
 tests/fuzz/corpus/utf8/*
+tests/fuzz/corpus/fuzz_io_open/*
 !tests/fuzz/corpus/**/*.ry
 !tests/fuzz/corpus/**/*.json
 !tests/fuzz/corpus/**/*.txt

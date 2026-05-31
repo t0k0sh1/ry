@@ -5,12 +5,16 @@
 # Built by .github/workflows/build-ci-image.yml and pushed to
 # ghcr.io/<owner>/ry-ci:llvm-21-rev<N> (immutable) and :latest.
 #
-# All dependencies are sourced from github.com — either by downloading
+# Dependencies are sourced from github.com — either by downloading
 # pre-built tarballs from a project's GitHub Releases page (cmake,
 # ninja, ccache) or by source-building from a GitHub Releases source
-# tarball (LLVM, OpenSSL, cppcheck, gtest). No `apt` or `apt-get`
-# invocations anywhere — that is the central immunity property the
-# image provides against Ubuntu apt mirror outages (issue #1505).
+# tarball (LLVM, OpenSSL, cppcheck, gtest). The Rust toolchain is the
+# sole exception: it is installed from static.rust-lang.org/dist (the
+# official Rust binary distribution channel, used for issue #1950's
+# Rust reimplementation of the LLVM IR emission shared library). No
+# `apt` or `apt-get` invocations anywhere — that is the central
+# immunity property the image provides against Ubuntu apt mirror
+# outages (issue #1505).
 #
 # Multi-arch: linux/amd64 + linux/arm64. Per-arch builds run on native
 # GitHub-hosted runners (ubuntu-24.04 + ubuntu-24.04-arm) and the
@@ -160,7 +164,50 @@ RUN set -eux; \
     rm -rf "llvm-project-${LLVM_VERSION}.src" "llvm-project-${LLVM_VERSION}.src.tar.xz"
 
 #
-# Stage 6: cppcheck-builder — source-build cppcheck.
+# Stage 6: rust-bootstrap — install Rust standalone toolchain.
+#
+# Rust is distributed from static.rust-lang.org, the official binary
+# distribution channel. This is the only non-github.com source in the
+# image; rust-lang.org is as stable a primary distribution as github
+# and provides the canonical tarball + cryptographic install scripts.
+# We do NOT use rustup (toolchain manager) — only the standalone Rust
+# tarball — to keep the image immutable and offline-friendly.
+#
+# Required for crates/ry_llvm_emit (issue #1950, Rust reimplementation
+# of the LLVM IR emission shared library behind the same C ABI).
+# LLVM_SYS_211_PREFIX is wired in the final image to the existing
+# /usr/local/llvm install so llvm-sys = "210" finds LLVM 21 at build.
+#
+FROM gcc:14-trixie AS rust-bootstrap
+
+ARG RUST_VERSION=1.83.0
+ARG TARGETARCH
+
+# The tarball + matching .sha256 are both fetched from static.rust-lang.org/dist
+# and verified via `sha256sum -c` before extraction. The .sha256 file is the
+# canonical companion published by the Rust release infrastructure
+# (https://static.rust-lang.org/dist/rust-<ver>-<arch>.tar.xz.sha256); this
+# defends against a corrupted / tampered tarball without hardcoding hashes
+# (the .sha256 file is regenerated alongside each release).
+WORKDIR /tmp
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64)  RARCH=x86_64-unknown-linux-gnu ;; \
+        arm64)  RARCH=aarch64-unknown-linux-gnu ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    TARBALL="rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}.sha256"; \
+    sha256sum -c "${TARBALL}.sha256"; \
+    tar -xJf "${TARBALL}"; \
+    "rust-${RUST_VERSION}-${RARCH}/install.sh" \
+        --prefix=/opt/rust \
+        --components="rustc,cargo,rust-std-${RARCH}"; \
+    rm -rf "rust-${RUST_VERSION}-${RARCH}" "${TARBALL}" "${TARBALL}.sha256"
+
+#
+# Stage 7: cppcheck-builder — source-build cppcheck.
 #
 FROM gcc:14-trixie AS cppcheck-builder
 
@@ -194,7 +241,7 @@ ARG LLVM_VERSION=21.1.8
 ARG GTEST_VERSION=1.17.0
 
 LABEL org.opencontainers.image.source=https://github.com/t0k0sh1/ry
-LABEL org.opencontainers.image.description="ry CI image — gcc:14-trixie + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache + cppcheck. Built entirely from github.com sources; no apt anywhere."
+LABEL org.opencontainers.image.description="ry CI image — gcc:14-trixie + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache + cppcheck + Rust (static.rust-lang.org). Built entirely from github.com + rust-lang.org sources; no apt anywhere."
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 # Copy artefacts from builder stages.
@@ -204,6 +251,7 @@ COPY --from=ccache-bootstrap /opt/ccache /usr/local/bin/ccache
 COPY --from=openssl-builder /opt/openssl /opt/openssl
 COPY --from=llvm-builder /usr/local/llvm /usr/local/llvm
 COPY --from=cppcheck-builder /opt/cppcheck /opt/cppcheck
+COPY --from=rust-bootstrap /opt/rust /opt/rust
 
 # Vendor the GoogleTest source tarball at /opt/gtest. CMakeLists.txt
 # is updated in the same PR to consume this via FetchContent_Declare
@@ -213,12 +261,14 @@ RUN set -eux; \
     wget -q "https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz" \
         -O "/opt/gtest/googletest-v${GTEST_VERSION}.tar.gz"
 
-ENV PATH=/opt/cmake/bin:/opt/ninja/bin:/opt/cppcheck/bin:/usr/local/llvm/bin:${PATH}
-ENV LD_LIBRARY_PATH=/opt/openssl/lib64:/opt/openssl/lib:/usr/local/llvm/lib
+ENV PATH=/opt/cmake/bin:/opt/ninja/bin:/opt/cppcheck/bin:/usr/local/llvm/bin:/opt/rust/bin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/openssl/lib64:/opt/openssl/lib:/usr/local/llvm/lib:/opt/rust/lib
 ENV OPENSSL_ROOT_DIR=/opt/openssl
 ENV LLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 ENV CC=/usr/local/llvm/bin/clang
 ENV CXX=/usr/local/llvm/bin/clang++
 ENV RY_VENDORED_GTEST_TARBALL=/opt/gtest/googletest-v${GTEST_VERSION}.tar.gz
+ENV CARGO_HOME=/opt/cargo
+ENV LLVM_SYS_211_PREFIX=/usr/local/llvm
 
 WORKDIR /workspace
