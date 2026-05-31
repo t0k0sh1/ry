@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_any.hpp"
 
 
 namespace ry {
@@ -53,34 +54,23 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
         const llvm::DataLayout &dl = mod_->getDataLayout();
         auto *layoutTy = enumBoxLayoutType(payloadTy);
         uint64_t boxDataSize = dl.getTypeAllocSize(layoutTy);
-        auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty_, boxDataSize);
-
         auto *desc = getOrCreateEnumDescriptor(enumName, payloadTy);
-        auto *headerPtr = emitArcAlloc(boxDataSizeC);
-        auto *dataPtr = emitArcGetDataPtr(headerPtr);
-
-        auto *descPtrSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
-                                                     "any.enum.desc.slot");
-        builder_.CreateStore(desc, descPtrSlot);
-        auto *payloadSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
-                                                     "any.enum.payload.slot");
-        builder_.CreateStore(val, payloadSlot);
 
         // Field-wise retain on existing aliases. Fresh constructions (Call /
         // Invoke) are sole owners and need no retain — mirror the record
-        // ARC reassignment guard.
+        // ARC reassignment guard. Done on the CodeGen side because the helper
+        // depends on enum-name + payload-type metadata that does not cross the
+        // ABI surface.
         if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
             emitEnumBoxArcFieldsRetain(val, enumName, payloadTy);
         }
 
-        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.enum.tmp");
-        auto *tagSlot = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.enum.tag");
-        builder_.CreateStore(llvm::ConstantInt::get(
-                                 i64Ty_, static_cast<uint64_t>(RyAnyTag::Enum)),
-                             tagSlot);
-        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.enum.data");
-        builder_.CreateStore(dataPtr, anyDataSlot);
-        return builder_.CreateLoad(anyTy_, tmp, "any.enum.val");
+        auto op = codegen::lowering::lowerAnyWrap(
+            *this, codegen::lowered::AnyWrapKind::EnumBox,
+            static_cast<int64_t>(RyAnyTag::Enum), val,
+            /*do_collection_retain=*/false, /*do_str_retain=*/false,
+            desc, layoutTy, boxDataSize, anyTy_);
+        return codegen::emission::emitAnyWrap(*this, op);
     }
 
     // Record types are stored on the heap as `[ ArcHeader (16B) | descriptor ptr
@@ -102,18 +92,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
         const llvm::DataLayout &dl = mod_->getDataLayout();
         auto *layoutTy = recordBoxLayoutType(recordStructTy);
         uint64_t boxDataSize = dl.getTypeAllocSize(layoutTy);
-        auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty_, boxDataSize);
-
         auto *desc = getOrCreateRecordDescriptor(typeName, recordStructTy);
-        auto *headerPtr = emitArcAlloc(boxDataSizeC);
-        auto *dataPtr = emitArcGetDataPtr(headerPtr);
-
-        auto *descPtrSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
-                                                     "any.rec.desc.slot");
-        builder_.CreateStore(desc, descPtrSlot);
-        auto *fieldsSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
-                                                    "any.rec.fields.slot");
-        builder_.CreateStore(val, fieldsSlot);
 
         // Per [[codegen-arc-cow]] "Record ARC reassignment guard": every value
         // that is not a fresh `CallInst` / `InvokeInst` is treated as a view —
@@ -125,14 +104,12 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
             emitRecordArcFieldsRetain(val, recordStructTy);
         }
 
-        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.rec.tmp");
-        auto *tagSlot = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.rec.tag");
-        builder_.CreateStore(llvm::ConstantInt::get(
-                                 i64Ty_, static_cast<uint64_t>(RyAnyTag::Record)),
-                             tagSlot);
-        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.rec.data");
-        builder_.CreateStore(dataPtr, anyDataSlot);
-        return builder_.CreateLoad(anyTy_, tmp, "any.rec.val");
+        auto op = codegen::lowering::lowerAnyWrap(
+            *this, codegen::lowered::AnyWrapKind::RecordBox,
+            static_cast<int64_t>(RyAnyTag::Record), val,
+            /*do_collection_retain=*/false, /*do_str_retain=*/false,
+            desc, layoutTy, boxDataSize, anyTy_);
+        return codegen::emission::emitAnyWrap(*this, op);
     }
 
     // Collections (List / Map / Set) are wrap-eligible from #1697; resources,
@@ -153,20 +130,12 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     int64_t tag = isCollection ? getAnyTypeTagForValue(val)
                                : getAnyTypeTag(val->getType());
 
-    // Bool (i1) must be zero-extended to i64 so that the runtime's 8-byte
-    // memcpy reads a well-defined 0/1 value instead of uninitialized bytes.
-    if (val->getType()->isIntegerTy(1))
-        val = builder_.CreateZExt(val, i64Ty_, "any.bool.zext");
-
-    // Collection wrap retains the underlying header so the inner List/Map/Set
-    // outlives the source binding even if the source goes out of scope first.
-    // Pairs with the scope-end release emitted by `emitAnyReleaseVar`.
-    // str payloads are also retained — they are ARC-managed via StringHeader
-    // (offset -24, NOT -16 — use emitStrGetHeaderFromData not
-    // emitArcGetHeaderFromData). Literals are guarded by ARC_IMMORTAL inside
-    // emitArcRetain so the increment is a no-op.
+    // typed_coll registration must happen BEFORE the ABI emits its internal
+    // ARC retain — `__ry_any_register_typed_coll` is keyed by the header
+    // pointer and must be associated before the retain bumps the strong
+    // count. Element-type metadata that drives this lookup is CodeGen-private
+    // (lives on `ValueMetadata`), so the call stays here.
     if (isCollection) {
-        auto *hdr = emitArcGetHeaderFromData(val);
         // Element-type-erasure (#1697) means the stringify_any path cannot
         // see whether the inner buffer uses 16-byte RyAny stride or a
         // narrower native stride. For typed-non-any collections, record
@@ -201,19 +170,17 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
                 builder_.CreateCall(regFn, {val, nameGlobal});
             }
         }
-        emitArcRetain(hdr);
-    } else if (isStringValue(val)) {
-        auto *hdr = emitStrGetHeaderFromData(val);
-        emitArcRetain(hdr);
     }
 
-    // alloca required: data field is [8 x i8], val type differs (type punning)
-    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
-    auto *tagPtr = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.tag");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tag)), tagPtr);
-    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data");
-    builder_.CreateStore(val, dataPtr);
-    return builder_.CreateLoad(anyTy_, tmp, "any.val");
+    bool doStrRetain = !isCollection && isStringValue(val);
+
+    auto op = codegen::lowering::lowerAnyWrap(
+        *this, codegen::lowered::AnyWrapKind::NonBox, tag, val,
+        /*do_collection_retain=*/isCollection,
+        /*do_str_retain=*/doStrRetain,
+        /*descriptor=*/nullptr, /*box_layout_ty=*/nullptr,
+        /*box_data_size=*/0, anyTy_);
+    return codegen::emission::emitAnyWrap(*this, op);
 }
 
 llvm::Value *CodeGen::buildUnitAny() {
@@ -234,23 +201,14 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
     // `ry::util::isMapTypeName` / `ry::util::isSetTypeName`, enum-descriptor cache key in
     // `unwrapEnumFromAny`, error message, record `findRecordTypeName`) sees
     // the concrete type rather than the raw "T". No-op when `type_param_scope_`
-    // is empty, so non-generic call sites stay byte-identical. Mirrors the
-    // entry-point substitution in `resolveType` (codegen_type.cpp:18).
+    // is empty, so non-generic call sites stay byte-identical.
     const std::string targetTypeName = substituteTypeParamsInName(rawTargetTypeName);
 
-    // Collection element-type guard (#1698): `any` slots are 16 bytes (RyAny);
-    // collection unwrap currently does not coerce per-element, so a
-    // `List<int>` unwrap of a `List<any>` payload strides 8-byte ints over a
-    // 16-byte buffer and silently produces garbage (outcome b in the original
-    // advisor analysis). The only context where this PR newly exposes the
-    // hazard is generic monomorphization of `load[T]` (and any user-defined
-    // `fn f<T>(a: any) -> T` analog): the JSON parser materializes
-    // `List<any>` but the substituted `T` claims `List<int>`. Direct unwraps
-    // like `let ys: List<int> = a` where the source was actually a `List<int>`
-    // remain legitimate (covered by the any.test.ry roundtrip tests), so we
-    // only reject when substitution rewrote a type parameter — i.e. the
-    // user-written annotation referred to a generic `T` rather than the
-    // concrete shape.
+    // Collection element-type guard (#1698): generic monomorphization of
+    // `load[T]` (and `fn f<T>(a: any) -> T` analogs) can produce strides that
+    // walk off the 16-byte RyAny slot. Only fire when substitution actually
+    // rewrote a type parameter; literal annotations stay covered by the
+    // var-decl side gate (#1883).
     const bool fromGenericSubstitution =
         targetTypeName != rawTargetTypeName;
     if (fromGenericSubstitution && targetTy == ptrTy_ && !targetTypeName.empty()) {
@@ -291,9 +249,6 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         }
     }
 
-    llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
-    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
-
     // Enum (organic / Option / Result) unwrap. Detect BEFORE the record
     // StructType branch so an enum-struct target does not error out via
     // `findRecordInfoForType` rejection. Symmetric to wrapInAny.
@@ -309,12 +264,11 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         return unwrapEnumFromAny(anyVal, targetTy, targetTypeName);
     }
 
-    // Record unwrap must dispatch at entry: `getAnyTypeTag(targetTy)` below
+    // Record unwrap dispatches at entry: `getAnyTypeTag(targetTy)` below
     // emits `codegenError` when `targetTy` is a `StructType`, so the standard
-    // 2-way path never sees record targets. Compare against the expected
-    // descriptor pointer to enforce exact-type unwrap; cross-type projection
-    // (`let p: Parent = anyHoldingChild`) is intentionally out of scope and
-    // traps at runtime via the descriptor-mismatch branch.
+    // 2-way path never sees record targets. Descriptor-chain walk admits
+    // exact-type and subtype unwrap (#1802); unrelated records trap at
+    // runtime via the descriptor-mismatch branch.
     if (auto *recordStructTy = llvm::dyn_cast<llvm::StructType>(targetTy)) {
         const RecordInfo *info = findRecordInfoForType(recordStructTy);
         if (!info)
@@ -328,105 +282,39 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         auto *expectedDesc = getOrCreateRecordDescriptor(typeName, recordStructTy);
         auto *layoutTy = recordBoxLayoutType(recordStructTy);
 
-        auto *tagMatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.tag_ok", fn);
-        auto *tagMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.tag_err", fn);
-        auto *descCheckBB = llvm::BasicBlock::Create(*ctx_, "any.rec.desc_check", fn);
-        auto *descMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.rec.desc_err", fn);
+        std::string mismatchMsg = "runtime error: any type mismatch (expected " +
+                                  typeName + ", got non-record)\n";
+        std::string descMismatchMsg =
+            "runtime error: any record type mismatch (expected " + typeName +
+            ", got a different record type)\n";
 
-        llvm::Value *isRecord = builder_.CreateICmpEQ(
-            tag, llvm::ConstantInt::get(
-                     i64Ty_, static_cast<uint64_t>(RyAnyTag::Record)),
-            "any.is_record");
-        builder_.CreateCondBr(isRecord, tagMatchBB, tagMismatchBB);
-
-        builder_.SetInsertPoint(tagMismatchBB);
-        emitRuntimeError("runtime error: any type mismatch (expected " + typeName +
-                             ", got non-record)\n",
-                         ".any_type_err");
-
-        // Stash anyVal into an alloca so we can re-read the data field as ptr.
-        builder_.SetInsertPoint(tagMatchBB);
-        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.rec.tmp");
-        builder_.CreateStore(anyVal, tmp);
-        auto *anyDataSlot = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.rec.data.ptr");
-        auto *dataPtr = builder_.CreateLoad(ptrTy_, anyDataSlot, "any.rec.data");
-        auto *descSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 0,
-                                                  "any.rec.desc.slot");
-        auto *actualDesc = builder_.CreateLoad(ptrTy_, descSlot, "any.rec.desc");
-        // Walk the runtime descriptor `parent_desc` chain to admit subtype
-        // unwrap (`let a: Parent = anyHoldingChild`) (#1802). Exact-type
-        // unwrap stays valid: actual == expected returns true on the first
-        // iteration; unrelated records walk to null and return false.
-        llvm::FunctionType *isSubtypeTy =
-            llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee isSubtypeFn = mod_->getOrInsertFunction(
-            "__ry_record_is_subtype_desc", isSubtypeTy);
-        llvm::Value *chainOk = builder_.CreateCall(
-            isSubtypeFn, {actualDesc, expectedDesc}, "any.rec.chain.ok");
-        llvm::Value *chainBool = builder_.CreateICmpNE(
-            chainOk, llvm::ConstantInt::get(i64Ty_, 0), "any.rec.chain.bool");
-        builder_.CreateCondBr(chainBool, descCheckBB, descMismatchBB);
-
-        builder_.SetInsertPoint(descMismatchBB);
-        // Unrelated record types still trap. Descriptor pointer identity ==
-        // record-type identity (one global per record type), and the chain
-        // walk reaches null without finding `expectedDesc`.
-        emitRuntimeError("runtime error: any record type mismatch (expected " +
-                             typeName + ", got a different record type)\n",
-                         ".any_rec_err");
-
-        builder_.SetInsertPoint(descCheckBB);
-        auto *fieldsSlot = builder_.CreateStructGEP(layoutTy, dataPtr, 1,
-                                                    "any.rec.fields.slot");
-        llvm::Value *recordVal = builder_.CreateLoad(recordStructTy, fieldsSlot,
-                                                     "any.rec.unwrap.val");
-        // The unwrapped record becomes a new alias to the boxed value.
-        // ARC fields in the inner record need to be retained so the unwrapped
-        // value can release them independently from the box's own dtor when
-        // the box is later dropped.
+        auto op = codegen::lowering::lowerAnyUnwrap(
+            *this, codegen::lowered::AnyUnwrapKind::Record, anyVal, anyTy_,
+            targetTy, static_cast<int64_t>(RyAnyTag::Record),
+            /*do_collection_retain=*/false, /*do_str_retain=*/false,
+            mismatchMsg, ".any_type_err", expectedDesc, layoutTy,
+            recordStructTy, descMismatchMsg, ".any_rec_err");
+        llvm::Value *recordVal = codegen::emission::emitAnyUnwrap(*this, op);
+        // The unwrapped record becomes a new alias to the boxed value. Field
+        // -wise retain so it can release independently from the box dtor at
+        // scope exit. Caller-side per [[lowered_any]] AnyUnwrapKind::Record
+        // contract — depends on `recordStructTy` which does not cross the ABI.
         emitRecordArcFieldsRetain(recordVal, recordStructTy);
         return recordVal;
     }
 
-    // int→float auto-promotion: accept both static_cast<int64_t>(RyAnyTag::Float) and static_cast<int64_t>(RyAnyTag::Int)
+    // int→float auto-promotion: accept both Float and Int tags.
     if (targetTy == f64Ty_) {
-        auto *floatBB = llvm::BasicBlock::Create(*ctx_, "any.float", fn);
-        auto *checkIntBB = llvm::BasicBlock::Create(*ctx_, "any.check_int", fn);
-        auto *intPromoteBB = llvm::BasicBlock::Create(*ctx_, "any.int2float", fn);
-        auto *mismatchBB = llvm::BasicBlock::Create(*ctx_, "any.mismatch", fn);
-        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "any.merge", fn);
-
-        // Shared alloca for type-punning the data field (used by both branches)
-        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp.fp");
-        builder_.CreateStore(anyVal, tmp);
-        auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.fp");
-
-        llvm::Value *isFloat = builder_.CreateICmpEQ(
-            tag, llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Float)), "is.float");
-        builder_.CreateCondBr(isFloat, floatBB, checkIntBB);
-
-        builder_.SetInsertPoint(checkIntBB);
-        llvm::Value *isInt = builder_.CreateICmpEQ(
-            tag, llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Int)), "is.int");
-        builder_.CreateCondBr(isInt, intPromoteBB, mismatchBB);
-
-        builder_.SetInsertPoint(mismatchBB);
-        emitRuntimeError("runtime error: any type mismatch (expected float or int)\n", ".any_type_err");
-
-        builder_.SetInsertPoint(floatBB);
-        llvm::Value *floatVal = builder_.CreateLoad(f64Ty_, dataPtr, "any.f64");
-        builder_.CreateBr(mergeBB);
-
-        builder_.SetInsertPoint(intPromoteBB);
-        llvm::Value *intVal = builder_.CreateLoad(i64Ty_, dataPtr, "any.i64");
-        llvm::Value *promoted = builder_.CreateSIToFP(intVal, f64Ty_, "any.i2f");
-        builder_.CreateBr(mergeBB);
-
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(f64Ty_, 2, "any.unwrap.f64");
-        phi->addIncoming(floatVal, floatBB);
-        phi->addIncoming(promoted, intPromoteBB);
-        return phi;
+        auto op = codegen::lowering::lowerAnyUnwrap(
+            *this, codegen::lowered::AnyUnwrapKind::F64Promote, anyVal, anyTy_,
+            f64Ty_, /*expected_tag=*/0,
+            /*do_collection_retain=*/false, /*do_str_retain=*/false,
+            "runtime error: any type mismatch (expected float or int)\n",
+            ".any_type_err", /*expected_desc=*/nullptr,
+            /*box_layout_ty=*/nullptr, /*record_struct_ty=*/nullptr,
+            /*desc_mismatch_msg=*/std::string{},
+            /*desc_mismatch_global_name=*/std::string{});
+        return codegen::emission::emitAnyUnwrap(*this, op);
     }
 
     // Standard 2-way: exact tag match or error. For collection unwraps the
@@ -448,21 +336,11 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
             isCollectionUnwrap = true;
         }
     }
-    // str unwrap creates a new alias to the inner StringHeader. Mirror the
-    // collection retain so the unwrapped destination can release at its own
-    // scope exit without double-freeing the source.
+    // str unwrap creates a new alias to the inner StringHeader.
     bool isStrUnwrap =
         targetTy == ptrTy_ && !isCollectionUnwrap &&
         expectedTag == static_cast<int64_t>(RyAnyTag::Str);
-    llvm::Value *cmp = builder_.CreateICmpEQ(
-        tag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(expectedTag)), "any.tag.check");
 
-    auto *matchBB = llvm::BasicBlock::Create(*ctx_, "any.match", fn);
-    auto *mismatchBB = llvm::BasicBlock::Create(*ctx_, "any.mismatch", fn);
-
-    builder_.CreateCondBr(cmp, matchBB, mismatchBB);
-
-    builder_.SetInsertPoint(mismatchBB);
     std::string typeName;
     if (!targetTypeName.empty()) {
         typeName = targetTypeName;
@@ -472,29 +350,20 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                  : (targetTy == ptrTy_) ? "str"
                                         : "unknown";
     }
-    emitRuntimeError("runtime error: any type mismatch (expected " + typeName + ")\n",
-                     ".any_type_err");
+    std::string mismatchMsg =
+        "runtime error: any type mismatch (expected " + typeName + ")\n";
 
-    // Use anyTy_ alloca for proper alignment when type-punning the data field
-    builder_.SetInsertPoint(matchBB);
-    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
-    builder_.CreateStore(anyVal, tmp);
-    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.ptr");
-    llvm::Value *unwrapped = builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
-
-    // Collection unwrap creates a new alias to the inner header — retain so
-    // both the source `any` and the unwrapped destination can release
-    // independently at their respective scope exits. str follows the same
-    // pattern but uses the StringHeader offset (-24) via
-    // emitStrGetHeaderFromData.
-    if (isCollectionUnwrap) {
-        auto *hdr = emitArcGetHeaderFromData(unwrapped);
-        emitArcRetain(hdr);
-    } else if (isStrUnwrap) {
-        auto *hdr = emitStrGetHeaderFromData(unwrapped);
-        emitArcRetain(hdr);
-    }
-    return unwrapped;
+    auto op = codegen::lowering::lowerAnyUnwrap(
+        *this, codegen::lowered::AnyUnwrapKind::Standard, anyVal, anyTy_,
+        targetTy, expectedTag,
+        /*do_collection_retain=*/isCollectionUnwrap,
+        /*do_str_retain=*/isStrUnwrap,
+        mismatchMsg, ".any_type_err",
+        /*expected_desc=*/nullptr, /*box_layout_ty=*/nullptr,
+        /*record_struct_ty=*/nullptr,
+        /*desc_mismatch_msg=*/std::string{},
+        /*desc_mismatch_global_name=*/std::string{});
+    return codegen::emission::emitAnyUnwrap(*this, op);
 }
 
 llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
@@ -520,8 +389,10 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         return buildErrValue(buildInlineError(msg), resTy);
     };
 
-    // Records dispatch to the dedicated Map<str,any>→Record reconstructor.
-    // Result / enum (struct & simple) / Option are deferred to follow-ups.
+    // Sub-helper dispatch stays CodeGen-private per [[lowered_any]] Path 1
+    // design: each helper uses `record_types_` / `reverse_option_types_` /
+    // per-record / per-Map<str, V> reconstruction that depends on CodeGen
+    // state not exposed across the ABI surface.
     if (auto *st = llvm::dyn_cast<llvm::StructType>(targetTy)) {
         bool isEnumOrResult = !findAdtEnumName(st).empty() || isResultType(st);
         if (isEnumOrResult) {
@@ -564,13 +435,9 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         return emitUnsupportedErr("simple enum");
     }
 
-    // Typed `List<T>` / `Map<str, V>` dispatch (#1852): a fresh dest header
-    // is allocated and each element is recursively unwrapped via
-    // `tryUnwrapFromAny` to overcome the 16B-vs-native stride mismatch of
-    // #1698. `Set<T>` and `Map<non-str, ...>` are still rejected — the JSON
-    // parser does not produce sets, and Map<non-str, _> requires hashing the
-    // unwrapped key through the right `__ry_ht_rehash_*` variant which is out
-    // of scope for #1852.
+    // Typed `List<T>` / `Map<str, V>` dispatch (#1852): per-element recursive
+    // unwrap that walks the 16-byte RyAny stride. `Set<T>` and
+    // `Map<non-str, _>` are still rejected (out of scope for #1852).
     if (targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
         if (ry::util::isListTypeName(resolved)) {
@@ -617,51 +484,19 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         }
     }
 
-    llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "tryany.tag");
-
     // Float target: accept both `Float` and `Int` tags (Int auto-promote).
-    // Both loads from the same dataPtr alloca are safe — we choose the
-    // representation via `select(isFloat, fVal, promoted)`.
     if (targetTy == f64Ty_) {
-        llvm::AllocaInst *tmp =
-            builder_.CreateAlloca(anyTy_, nullptr, "tryany.fp.tmp");
-        builder_.CreateStore(anyVal, tmp);
-        auto *dataPtr =
-            builder_.CreateStructGEP(anyTy_, tmp, 1, "tryany.fp.data");
-        llvm::Value *fVal =
-            builder_.CreateLoad(f64Ty_, dataPtr, "tryany.fp.fval");
-        llvm::Value *iVal =
-            builder_.CreateLoad(i64Ty_, dataPtr, "tryany.fp.ival");
-        llvm::Value *promoted =
-            builder_.CreateSIToFP(iVal, f64Ty_, "tryany.fp.i2f");
-        llvm::Value *isFloat = builder_.CreateICmpEQ(
-            tag,
-            llvm::ConstantInt::get(
-                i64Ty_, static_cast<int64_t>(RyAnyTag::Float)),
-            "tryany.fp.is_float");
-        llvm::Value *isInt = builder_.CreateICmpEQ(
-            tag,
-            llvm::ConstantInt::get(
-                i64Ty_, static_cast<int64_t>(RyAnyTag::Int)),
-            "tryany.fp.is_int");
-        llvm::Value *isAccept =
-            builder_.CreateOr(isFloat, isInt, "tryany.fp.is_accept");
-        llvm::Value *isErr =
-            builder_.CreateNot(isAccept, "tryany.fp.is_err");
         std::string typeForMsg =
             targetTypeName.empty() ? "float" : targetTypeName;
         std::string msg =
             "load[" + typeForMsg + "]: expected float or int";
-        return emitResultBranch(
-            isErr, resTy,
-            [&]() -> llvm::Value * {
-                llvm::Value *chosen = builder_.CreateSelect(
-                    isFloat, fVal, promoted, "tryany.fp.val");
-                return buildOkValue(chosen, resTy);
-            },
-            [&]() -> llvm::Value * {
-                return buildErrValue(buildInlineError(msg), resTy);
-            });
+        llvm::Value *errMsgStr = cachedGlobalString(msg);
+        auto op = codegen::lowering::lowerAnyTryUnwrap(
+            *this, codegen::lowered::AnyTryUnwrapKind::F64Promote, anyVal,
+            anyTy_, resTy, errorTy_, f64Ty_, /*expected_tag=*/0,
+            /*do_collection_retain=*/false, /*do_str_retain=*/false,
+            errMsgStr);
+        return codegen::emission::emitAnyTryUnwrap(*this, op);
     }
 
     // Standard 2-way path: tag comparison → Ok(extracted) / Err(msg).
@@ -686,12 +521,6 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     bool isStrUnwrap = targetTy == ptrTy_ && !isCollectionUnwrap &&
                        expectedTag == static_cast<int64_t>(RyAnyTag::Str);
 
-    llvm::Value *cmp = builder_.CreateICmpEQ(
-        tag,
-        llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(expectedTag)),
-        "tryany.tag.eq");
-    llvm::Value *isErr = builder_.CreateNot(cmp, "tryany.is_err");
-
     std::string typeForMsg;
     if (!targetTypeName.empty()) {
         typeForMsg = targetTypeName;
@@ -702,29 +531,14 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                                             : "unknown";
     }
     std::string msg = "load[" + typeForMsg + "]: expected " + typeForMsg;
+    llvm::Value *errMsgStr = cachedGlobalString(msg);
 
-    return emitResultBranch(
-        isErr, resTy,
-        [&]() -> llvm::Value * {
-            llvm::AllocaInst *tmp =
-                builder_.CreateAlloca(anyTy_, nullptr, "tryany.tmp");
-            builder_.CreateStore(anyVal, tmp);
-            auto *dataPtr =
-                builder_.CreateStructGEP(anyTy_, tmp, 1, "tryany.data");
-            llvm::Value *unwrapped =
-                builder_.CreateLoad(targetTy, dataPtr, "tryany.val");
-            if (isCollectionUnwrap) {
-                auto *hdr = emitArcGetHeaderFromData(unwrapped);
-                emitArcRetain(hdr);
-            } else if (isStrUnwrap) {
-                auto *hdr = emitStrGetHeaderFromData(unwrapped);
-                emitArcRetain(hdr);
-            }
-            return buildOkValue(unwrapped, resTy);
-        },
-        [&]() -> llvm::Value * {
-            return buildErrValue(buildInlineError(msg), resTy);
-        });
+    auto op = codegen::lowering::lowerAnyTryUnwrap(
+        *this, codegen::lowered::AnyTryUnwrapKind::Standard, anyVal, anyTy_,
+        resTy, errorTy_, targetTy, expectedTag,
+        /*do_collection_retain=*/isCollectionUnwrap,
+        /*do_str_retain=*/isStrUnwrap, errMsgStr);
+    return codegen::emission::emitAnyTryUnwrap(*this, op);
 }
 
 llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,

@@ -473,6 +473,180 @@ typedef struct {
 RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
                                     const RyCowEnsureUniqueDesc *desc);
 
+// Stage 2-C entry — Any-wrap (#1972).
+// Numerically aligned with the C++ enum `ry::RyAnyTag` in
+// `include/ry/ry_layout.hpp`:
+//   Int=0, Float=1, Bool=2, Str=3, Unit=4, List=5, Map=6, Set=7,
+//   Record=8, Enum=9. The descriptor passes `target_tag` as a raw int64_t
+//   so the ABI side does not need to share the enum class identifier.
+//
+// kind selector:
+//   0 = NonBox    — primitive (int/float/bool) / str / collection pointer
+//                   stored directly in any.data[8]. Bool (i1) is ZExt'd to
+//                   i64 by the ABI ("any.bool.zext") when val's LLVM type
+//                   is i1. The do_collection_retain / do_str_retain ints
+//                   select whether the ABI emits emitArcGetHeaderFromData
+//                   (offset -16, "arc_hdr_from_data") or
+//                   emitStrGetHeaderFromData (offset -24,
+//                   "str_hdr_from_data") + an internal
+//                   ry_emit_arc_retain BEFORE the alloca+store sequence.
+//   1 = RecordBox — heap-box layout `[ ArcHeader (16B) | desc ptr (8B) |
+//                   record struct ]` via emitArcAlloc (malloc + counter
+//                   delta +1, strong=1, weak=0). The descriptor and
+//                   box_layout_ty come from the per-type lookup on the
+//                   CodeGen side. target_tag must be Record=8.
+//   2 = EnumBox   — structurally identical to RecordBox. target_tag must
+//                   be Enum=9.
+//
+// CodeGen-side responsibilities NOT carried in the descriptor:
+//   - typed_coll registration via __ry_any_register_typed_coll for NonBox
+//     wraps whose ValueMetadata says the element type is non-any
+//   - Field-wise retain via emitRecordArcFieldsRetain /
+//     emitEnumBoxArcFieldsRetain (gated by `!isa<CallInst> &&
+//     !isa<InvokeInst>`)
+//
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call. The ABI invokes emitArcAlloc
+// (which calls malloc + emits an inline atomic counter delta on the
+// process-global ARC live-count balance counter) and ry_emit_arc_retain
+// internally for Box arms and NonBox-with-retain arms; both helpers
+// derive parent function from the builder so retargeted callers (lambda /
+// @parallel for / iterator-next codegen) work safely.
+typedef struct {
+    // 0 = NonBox, 1 = RecordBox, 2 = EnumBox.
+    int kind;
+    // RyAnyTag value to store in any.tag. Matches the C++ enum class
+    // `ry::RyAnyTag` numerically (0..9).
+    int64_t target_tag;
+    // Value to wrap. NonBox: primitive / bool / str / collection pointer.
+    // Box arms: payload (record struct value or enum payload value).
+    RyValueId val_id;
+    // NonBox only: 1 = emit emitArcGetHeaderFromData + ry_emit_arc_retain
+    // (collection element header at offset -16) before the alloca/store.
+    int do_collection_retain;
+    // NonBox only: 1 = emit emitStrGetHeaderFromData + ry_emit_arc_retain
+    // (StringHeader at offset -24) before the alloca/store. Mutually
+    // exclusive with do_collection_retain.
+    int do_str_retain;
+    // Box arms only: per-type descriptor LLVM Constant handle.
+    RyValueId descriptor_id;
+    // Box arms only: `{ ptr desc, payload }` StructType handle.
+    void *box_layout_ty_ptr;
+    // Box arms only: DataLayout-derived allocation size of box_layout_ty,
+    // in bytes. Passed as a plain integer so the ABI does not need to
+    // consult DataLayout itself.
+    uint64_t box_data_size;
+    // Common: the LLVM StructType for `any` (anyTy_ on the CodeGen side).
+    void *any_ty_ptr;
+} RyAnyWrapDesc;
+
+RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc);
+
+// Stage 2-C entry — Any-unwrap (#1972).
+// kind selector:
+//   0 = Standard   — 2-way path. tag check -> matchBB(alloca+store+GEP+load+
+//                    optional ARC retain) or mismatchBB(emitRuntimeError
+//                    terminating with unreachable). BB labels: `any.match`,
+//                    `any.mismatch`.
+//   1 = F64Promote — 5-BB path: `any.float` / `any.check_int` /
+//                    `any.int2float` / `any.mismatch` / `any.merge`,
+//                    returning a PHI(f64) joining the float load with
+//                    sitofp(int load).
+//   2 = Record     — tag check + descriptor chain walk via
+//                    `__ry_record_is_subtype_desc(actualDesc,
+//                    expected_desc_id)`. BB labels: `any.rec.tag_ok`,
+//                    `any.rec.tag_err`, `any.rec.desc_check`,
+//                    `any.rec.desc_err`. Payload GEP/load uses
+//                    `record_struct_ty_ptr` (Parent struct is a prefix of
+//                    Child by Ry's record-inheritance ABI).
+//
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (multiple BBs are created
+// inside it).
+typedef struct {
+    // 0 = Standard, 1 = F64Promote, 2 = Record.
+    int kind;
+    // Source any value.
+    RyValueId any_val_id;
+    // anyTy_ StructType handle.
+    void *any_ty_ptr;
+    // Standard / Record: target LLVM type handle. For Standard: i64 / i1 /
+    // ptr / etc. For Record: ignored (record_struct_ty_ptr is used). For
+    // F64Promote: ignored.
+    void *target_ty_ptr;
+    // Standard / Record: expected RyAnyTag value (matches the C++ enum
+    // class `ry::RyAnyTag`).
+    int64_t expected_tag;
+    // Standard only: 1 = emit emitArcGetHeaderFromData + ry_emit_arc_retain
+    // after the load inside matchBB.
+    int do_collection_retain;
+    // Standard only: 1 = emit emitStrGetHeaderFromData + ry_emit_arc_retain
+    // after the load. Mutually exclusive with do_collection_retain.
+    int do_str_retain;
+    // Standard / F64Promote / Record: tag-mismatch error message and global
+    // name hint for the cachedGlobalString'd format string.
+    const char *mismatch_msg;
+    const char *mismatch_global_name;
+    // Record only: expected per-type descriptor LLVM Constant handle.
+    RyValueId expected_desc_id;
+    // Record only: `{ ptr desc, record struct }` StructType handle.
+    void *box_layout_ty_ptr;
+    // Record only: the record's struct type for the payload GEP/load.
+    void *record_struct_ty_ptr;
+    // Record only: descriptor-mismatch error message and global name hint.
+    const char *desc_mismatch_msg;
+    const char *desc_mismatch_global_name;
+} RyAnyUnwrapDesc;
+
+RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc);
+
+// Stage 2-C entry — Any-try-unwrap (#1972).
+// kind selector:
+//   0 = Standard   — tag-check primitive arm via ry_emit_result_branch.
+//                    Ok-branch: alloca + store + GEP + load + optional ARC
+//                    retain + buildOkValue (UndefValue + 3 InsertValues).
+//                    Err-branch: buildErrValue with inline Error
+//                    `{ err_msg_str, 0 }`. BB labels match the existing
+//                    `tryany.*` prefix.
+//   1 = F64Promote — f64 target with int auto-promote via
+//                    ry_emit_result_branch. Both loads share one alloca;
+//                    the Ok branch picks via select(isFloat, fVal,
+//                    sitofp(iVal)).
+//
+// Typed arms (Record / List<T> / Map<str,V> / Option / Result / simple
+// enum / Set<T>) stay CodeGen-private and are dispatched before this op
+// is reached.
+//
+// Precondition: ry_emit_ctx_set_function must have been called with the
+// current LLVM function before this call (ry_emit_result_branch creates
+// three BBs inside it).
+typedef struct {
+    // 0 = Standard, 1 = F64Promote.
+    int kind;
+    // Source any value.
+    RyValueId any_val_id;
+    // anyTy_ StructType handle.
+    void *any_ty_ptr;
+    // Result<targetTy, Error> StructType handle.
+    void *res_ty_ptr;
+    // Error StructType handle (errorTy_ on the CodeGen side).
+    void *error_ty_ptr;
+    // Standard only: target LLVM type (i64 / i1 / ptr / etc.).
+    // F64Promote: ignored (f64Ty_ is hard-coded).
+    void *target_ty_ptr;
+    // Standard only: expected RyAnyTag value.
+    int64_t expected_tag;
+    // Standard only: ARC retain flags (same semantics as RyAnyUnwrapDesc).
+    int do_collection_retain;
+    int do_str_retain;
+    // Both kinds: error message string handle (the result of
+    // cachedGlobalString on the CodeGen side). Stored into Error slot 0.
+    RyValueId err_msg_str_id;
+} RyAnyTryUnwrapDesc;
+
+RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
+                                 const RyAnyTryUnwrapDesc *desc);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

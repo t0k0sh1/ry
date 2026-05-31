@@ -89,6 +89,98 @@ struct RyEmitCtx {
     std::unordered_map<std::string, llvm::Constant *> bounds_msg_cache;
 };
 
+namespace {
+
+// Reuses bounds_msg_cache (semantically generic "msg dedup" cache; the
+// `bounds_` prefix is historical from when it only served ry_emit_bounds_error).
+llvm::Constant *getOrCreateMsgGlobal(RyEmitCtx *ctx, const std::string &msg,
+                                     const std::string &name_hint) {
+    auto it = ctx->bounds_msg_cache.find(msg);
+    if (it != ctx->bounds_msg_cache.end())
+        return it->second;
+    auto *strData = llvm::ConstantDataArray::getString(*ctx->context, msg);
+    std::string name = name_hint.empty() ? std::string(".any_err_msg") : name_hint;
+    auto *gv = new llvm::GlobalVariable(
+        *ctx->module, strData->getType(), /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, strData, name);
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    gv->setAlignment(llvm::Align(1));
+    ctx->bounds_msg_cache[msg] = gv;
+    return gv;
+}
+
+// Local mirror of CodeGen::emitRuntimeError (codegen_call_user.cpp:736).
+// Emits the fprintf + fflush + _Exit + unreachable terminator sequence and
+// leaves the builder positioned after the unreachable — the caller is
+// responsible for pre-splitting into err / ok BBs and switching the insert
+// point per `.claude/rules/codegen-llvm-ir-conventions.md` "emitRuntimeError
+// terminates its block".
+void emitInlineRuntimeError(RyEmitCtx *ctx, const std::string &msg,
+                            const std::string &name_hint) {
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *i32Ty = llvm::Type::getInt32Ty(*ctx->context);
+    auto *voidTy = llvm::Type::getVoidTy(*ctx->context);
+#ifdef __APPLE__
+    const char *stdoutName = "__stdoutp";
+    const char *stderrName = "__stderrp";
+#else
+    const char *stdoutName = "stdout";
+    const char *stderrName = "stderr";
+#endif
+    auto *stderrGlobal = ctx->module->getOrInsertGlobal(stderrName, ptrTy);
+    auto *stdoutGlobal = ctx->module->getOrInsertGlobal(stdoutName, ptrTy);
+    llvm::Value *stderrVal =
+        ctx->builder->CreateLoad(ptrTy, stderrGlobal, "stderr");
+    llvm::Value *stdoutVal =
+        ctx->builder->CreateLoad(ptrTy, stdoutGlobal, "stdout");
+    llvm::Constant *errMsg = getOrCreateMsgGlobal(ctx, msg, name_hint);
+
+    auto fprintfTy = llvm::FunctionType::get(i32Ty, {ptrTy, ptrTy}, true);
+    auto fprintfFn = ctx->module->getOrInsertFunction("fprintf", fprintfTy);
+    ctx->builder->CreateCall(fprintfFn, {stderrVal, errMsg});
+
+    auto fflushTy = llvm::FunctionType::get(i32Ty, {ptrTy}, false);
+    auto fflushFn = ctx->module->getOrInsertFunction("fflush", fflushTy);
+    ctx->builder->CreateCall(fflushFn, {stdoutVal});
+    ctx->builder->CreateCall(fflushFn, {stderrVal});
+
+    auto exitTy = llvm::FunctionType::get(voidTy, {i32Ty}, false);
+    auto exitFn = ctx->module->getOrInsertFunction("_Exit", exitTy);
+    ctx->builder->CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty, 1)});
+    ctx->builder->CreateUnreachable();
+}
+
+// Local mirror of CodeGen::emitArcAlloc (codegen_arc.cpp:32). Allocates
+// `ARC_HEADER_SIZE + boxDataSize` bytes via malloc, emits an inline ARC
+// counter delta (+1) on the process-global balance counter, initializes
+// strong=1 / weak=0, and returns the headerPtr (NOT the dataPtr — caller
+// must GEP +ARC_HEADER_SIZE for the dataPtr).
+llvm::Value *emitInlineArcAlloc(RyEmitCtx *ctx, llvm::Value *boxDataSize) {
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *arcHeaderTy = llvm::StructType::get(*ctx->context, {i64Ty, i64Ty});
+
+    auto *headerSizeC = llvm::ConstantInt::get(
+        i64Ty, static_cast<uint64_t>(ry::ARC_HEADER_SIZE));
+    auto *totalSize = ctx->builder->CreateAdd(headerSizeC, boxDataSize,
+                                              "arc_alloc_size");
+    auto *mallocTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
+    auto mallocFn = ctx->module->getOrInsertFunction("malloc", mallocTy);
+    auto *headerPtr =
+        ctx->builder->CreateCall(mallocFn, {totalSize}, "arc_box");
+
+    emitArcCounterDeltaIR(*ctx->builder, i64Ty, ptrTy, 1);
+    auto *strongPtr = ctx->builder->CreateStructGEP(arcHeaderTy, headerPtr, 0,
+                                                    "arc_box_strong_ptr");
+    ctx->builder->CreateStore(llvm::ConstantInt::get(i64Ty, 1), strongPtr);
+    auto *weakPtr = ctx->builder->CreateStructGEP(arcHeaderTy, headerPtr, 1,
+                                                  "arc_box_weak_ptr");
+    ctx->builder->CreateStore(llvm::ConstantInt::get(i64Ty, 0), weakPtr);
+    return headerPtr;
+}
+
+} // namespace
+
 extern "C" {
 
 RyEmitCtx *ry_emit_ctx_create(void *module_ptr, void *builder_ptr,
@@ -1221,6 +1313,473 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
     phi->addIncoming(dataPtr, origBB);
     phi->addIncoming(newDataPtr, copyEndBB);
 
+    return ry_emit_intern(ctx, phi);
+}
+
+RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc) {
+    // ABI input validation: malformed external callers (Rust reimplementation
+    // / fuzz harnesses) get the invalid sentinel (0) instead of crashing the
+    // emitter. Mirrors ry_emit_runtime_call / ry_emit_cow_ensure_unique.
+    if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
+        ctx->builder == nullptr || desc == nullptr || desc->any_ty_ptr == nullptr)
+        return 0;
+
+    auto *val = static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->val_id));
+    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
+    if (val == nullptr)
+        return 0;
+
+    auto *i8Ty = llvm::Type::getInt8Ty(*ctx->context);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
+
+    // RecordBox=1 / EnumBox=2 — heap-box layout
+    // `[ ArcHeader (16B) | desc ptr (8B) | payload ]`.
+    if (desc->kind == 1 || desc->kind == 2) {
+        auto *layoutTy =
+            static_cast<llvm::StructType *>(desc->box_layout_ty_ptr);
+        auto *descriptor = static_cast<llvm::Constant *>(
+            ry_emit_resolve(ctx, desc->descriptor_id));
+        if (layoutTy == nullptr || descriptor == nullptr)
+            return 0;
+
+        auto *boxDataSizeC = llvm::ConstantInt::get(i64Ty, desc->box_data_size);
+        auto *headerPtr = emitInlineArcAlloc(ctx, boxDataSizeC);
+        auto *dataPtr = ctx->builder->CreateGEP(
+            i8Ty, headerPtr,
+            llvm::ConstantInt::get(i64Ty,
+                                   static_cast<uint64_t>(ry::ARC_HEADER_SIZE)),
+            "arc_box_data");
+
+        // BB labels split between RecordBox ("any.rec.*") and EnumBox
+        // ("any.enum.*") to preserve the verbatim names from codegen_any.cpp.
+        const char *descSlotLbl =
+            desc->kind == 2 ? "any.enum.desc.slot" : "any.rec.desc.slot";
+        const char *payloadSlotLbl =
+            desc->kind == 2 ? "any.enum.payload.slot" : "any.rec.fields.slot";
+        const char *tmpLbl = desc->kind == 2 ? "any.enum.tmp" : "any.rec.tmp";
+        const char *tagLbl = desc->kind == 2 ? "any.enum.tag" : "any.rec.tag";
+        const char *dataLbl = desc->kind == 2 ? "any.enum.data" : "any.rec.data";
+        const char *valLbl = desc->kind == 2 ? "any.enum.val" : "any.rec.val";
+
+        auto *descPtrSlot =
+            ctx->builder->CreateStructGEP(layoutTy, dataPtr, 0, descSlotLbl);
+        ctx->builder->CreateStore(descriptor, descPtrSlot);
+        auto *payloadSlot =
+            ctx->builder->CreateStructGEP(layoutTy, dataPtr, 1, payloadSlotLbl);
+        ctx->builder->CreateStore(val, payloadSlot);
+
+        auto *tmp = ctx->builder->CreateAlloca(anyTy, nullptr, tmpLbl);
+        auto *tagSlot = ctx->builder->CreateStructGEP(anyTy, tmp, 0, tagLbl);
+        ctx->builder->CreateStore(
+            llvm::ConstantInt::get(i64Ty,
+                                   static_cast<uint64_t>(desc->target_tag)),
+            tagSlot);
+        auto *anyDataSlot =
+            ctx->builder->CreateStructGEP(anyTy, tmp, 1, dataLbl);
+        ctx->builder->CreateStore(dataPtr, anyDataSlot);
+        auto *result = ctx->builder->CreateLoad(anyTy, tmp, valLbl);
+        return ry_emit_intern(ctx, result);
+    }
+
+    // NonBox=0 — primitive (int / float / bool) / str / collection pointer.
+    // Retain BEFORE the alloca+store so the slot binding owns one refcount.
+    // The two retain flags are mutually exclusive (caller enforces).
+    if (desc->do_collection_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, val,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::ARC_HEADER_SIZE)),
+            "arc_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    } else if (desc->do_str_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, val,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::STRING_HEADER_SIZE)),
+            "str_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    }
+
+    // Bool (i1) → ZExt to i64 so the 8-byte slot read is well-defined.
+    if (val->getType() == i1Ty)
+        val = ctx->builder->CreateZExt(val, i64Ty, "any.bool.zext");
+
+    auto *tmp = ctx->builder->CreateAlloca(anyTy, nullptr, "any.tmp");
+    auto *tagPtr = ctx->builder->CreateStructGEP(anyTy, tmp, 0, "any.tag");
+    ctx->builder->CreateStore(
+        llvm::ConstantInt::get(i64Ty, static_cast<uint64_t>(desc->target_tag)),
+        tagPtr);
+    auto *dataPtr = ctx->builder->CreateStructGEP(anyTy, tmp, 1, "any.data");
+    ctx->builder->CreateStore(val, dataPtr);
+    auto *result = ctx->builder->CreateLoad(anyTy, tmp, "any.val");
+    return ry_emit_intern(ctx, result);
+}
+
+RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc) {
+    if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
+        ctx->builder == nullptr || desc == nullptr ||
+        desc->any_ty_ptr == nullptr)
+        return 0;
+
+    auto *anyVal =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->any_val_id));
+    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
+    if (anyVal == nullptr)
+        return 0;
+
+    auto *i8Ty = llvm::Type::getInt8Ty(*ctx->context);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *ptrTy = llvm::PointerType::getUnqual(*ctx->context);
+    auto *f64Ty = llvm::Type::getDoubleTy(*ctx->context);
+
+    auto *tag = ctx->builder->CreateExtractValue(anyVal, 0, "any.tag.val");
+    // Builder-derived parent — required by
+    // `.claude/rules/codegen-llvm-ir-conventions.md` "llvm_emit ABI helpers
+    // must derive parent function from the builder".
+    auto *fn = ctx->builder->GetInsertBlock()->getParent();
+
+    std::string mismatchMsg =
+        desc->mismatch_msg ? desc->mismatch_msg : "";
+    std::string mismatchName =
+        desc->mismatch_global_name ? desc->mismatch_global_name : "";
+
+    // Record=2 — tag check + descriptor chain walk via
+    // __ry_record_is_subtype_desc. 4 BBs: any.rec.tag_ok / .tag_err /
+    // .desc_check / .desc_err.
+    if (desc->kind == 2) {
+        auto *layoutTy =
+            static_cast<llvm::StructType *>(desc->box_layout_ty_ptr);
+        auto *recordStructTy =
+            static_cast<llvm::StructType *>(desc->record_struct_ty_ptr);
+        auto *expectedDesc = static_cast<llvm::Constant *>(
+            ry_emit_resolve(ctx, desc->expected_desc_id));
+        if (layoutTy == nullptr || recordStructTy == nullptr ||
+            expectedDesc == nullptr)
+            return 0;
+        std::string descMismatchMsg =
+            desc->desc_mismatch_msg ? desc->desc_mismatch_msg : "";
+        std::string descMismatchName =
+            desc->desc_mismatch_global_name ? desc->desc_mismatch_global_name : "";
+
+        auto *tagMatchBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.rec.tag_ok", fn);
+        auto *tagMismatchBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.rec.tag_err", fn);
+        auto *descCheckBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.rec.desc_check", fn);
+        auto *descMismatchBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.rec.desc_err", fn);
+
+        llvm::Value *isRecord = ctx->builder->CreateICmpEQ(
+            tag, llvm::ConstantInt::get(
+                     i64Ty, static_cast<uint64_t>(desc->expected_tag)),
+            "any.is_record");
+        ctx->builder->CreateCondBr(isRecord, tagMatchBB, tagMismatchBB);
+
+        ctx->builder->SetInsertPoint(tagMismatchBB);
+        emitInlineRuntimeError(ctx, mismatchMsg, mismatchName);
+
+        ctx->builder->SetInsertPoint(tagMatchBB);
+        auto *tmp =
+            ctx->builder->CreateAlloca(anyTy, nullptr, "any.rec.tmp");
+        ctx->builder->CreateStore(anyVal, tmp);
+        auto *anyDataSlot =
+            ctx->builder->CreateStructGEP(anyTy, tmp, 1, "any.rec.data.ptr");
+        auto *dataPtr =
+            ctx->builder->CreateLoad(ptrTy, anyDataSlot, "any.rec.data");
+        auto *descSlot =
+            ctx->builder->CreateStructGEP(layoutTy, dataPtr, 0,
+                                          "any.rec.desc.slot");
+        auto *actualDesc =
+            ctx->builder->CreateLoad(ptrTy, descSlot, "any.rec.desc");
+
+        auto isSubtypeTy =
+            llvm::FunctionType::get(i64Ty, {ptrTy, ptrTy}, false);
+        auto isSubtypeFn = ctx->module->getOrInsertFunction(
+            "__ry_record_is_subtype_desc", isSubtypeTy);
+        llvm::Value *chainOk = ctx->builder->CreateCall(
+            isSubtypeFn, {actualDesc, expectedDesc}, "any.rec.chain.ok");
+        llvm::Value *chainBool = ctx->builder->CreateICmpNE(
+            chainOk, llvm::ConstantInt::get(i64Ty, 0), "any.rec.chain.bool");
+        ctx->builder->CreateCondBr(chainBool, descCheckBB, descMismatchBB);
+
+        ctx->builder->SetInsertPoint(descMismatchBB);
+        emitInlineRuntimeError(ctx, descMismatchMsg, descMismatchName);
+
+        ctx->builder->SetInsertPoint(descCheckBB);
+        auto *fieldsSlot =
+            ctx->builder->CreateStructGEP(layoutTy, dataPtr, 1,
+                                          "any.rec.fields.slot");
+        auto *recordVal = ctx->builder->CreateLoad(
+            recordStructTy, fieldsSlot, "any.rec.unwrap.val");
+        return ry_emit_intern(ctx, recordVal);
+    }
+
+    // F64Promote=1 — 5 BBs: any.float / any.check_int / any.int2float /
+    // any.mismatch / any.merge; merge PHI(f64).
+    if (desc->kind == 1) {
+        auto *floatBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.float", fn);
+        auto *checkIntBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.check_int", fn);
+        auto *intPromoteBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.int2float", fn);
+        auto *mismatchBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.mismatch", fn);
+        auto *mergeBB =
+            llvm::BasicBlock::Create(*ctx->context, "any.merge", fn);
+
+        auto *tmp = ctx->builder->CreateAlloca(anyTy, nullptr, "any.tmp.fp");
+        ctx->builder->CreateStore(anyVal, tmp);
+        auto *dataPtr =
+            ctx->builder->CreateStructGEP(anyTy, tmp, 1, "any.data.fp");
+
+        llvm::Value *isFloat = ctx->builder->CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(
+                i64Ty, static_cast<int64_t>(ry::RyAnyTag::Float)),
+            "is.float");
+        ctx->builder->CreateCondBr(isFloat, floatBB, checkIntBB);
+
+        ctx->builder->SetInsertPoint(checkIntBB);
+        llvm::Value *isInt = ctx->builder->CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(
+                i64Ty, static_cast<int64_t>(ry::RyAnyTag::Int)),
+            "is.int");
+        ctx->builder->CreateCondBr(isInt, intPromoteBB, mismatchBB);
+
+        ctx->builder->SetInsertPoint(mismatchBB);
+        emitInlineRuntimeError(ctx, mismatchMsg, mismatchName);
+
+        ctx->builder->SetInsertPoint(floatBB);
+        llvm::Value *floatVal =
+            ctx->builder->CreateLoad(f64Ty, dataPtr, "any.f64");
+        ctx->builder->CreateBr(mergeBB);
+
+        ctx->builder->SetInsertPoint(intPromoteBB);
+        llvm::Value *intVal =
+            ctx->builder->CreateLoad(i64Ty, dataPtr, "any.i64");
+        llvm::Value *promoted =
+            ctx->builder->CreateSIToFP(intVal, f64Ty, "any.i2f");
+        ctx->builder->CreateBr(mergeBB);
+
+        ctx->builder->SetInsertPoint(mergeBB);
+        llvm::PHINode *phi =
+            ctx->builder->CreatePHI(f64Ty, 2, "any.unwrap.f64");
+        phi->addIncoming(floatVal, floatBB);
+        phi->addIncoming(promoted, intPromoteBB);
+        return ry_emit_intern(ctx, phi);
+    }
+
+    // Standard=0 — 2-way path. tag check → matchBB (alloca + store + GEP +
+    // load + optional retain) / mismatchBB (emitRuntimeError).
+    auto *targetTy = static_cast<llvm::Type *>(desc->target_ty_ptr);
+    if (targetTy == nullptr)
+        return 0;
+
+    llvm::Value *cmp = ctx->builder->CreateICmpEQ(
+        tag,
+        llvm::ConstantInt::get(i64Ty, static_cast<uint64_t>(desc->expected_tag)),
+        "any.tag.check");
+
+    auto *matchBB = llvm::BasicBlock::Create(*ctx->context, "any.match", fn);
+    auto *mismatchBB =
+        llvm::BasicBlock::Create(*ctx->context, "any.mismatch", fn);
+    ctx->builder->CreateCondBr(cmp, matchBB, mismatchBB);
+
+    ctx->builder->SetInsertPoint(mismatchBB);
+    emitInlineRuntimeError(ctx, mismatchMsg, mismatchName);
+
+    ctx->builder->SetInsertPoint(matchBB);
+    auto *tmp = ctx->builder->CreateAlloca(anyTy, nullptr, "any.tmp");
+    ctx->builder->CreateStore(anyVal, tmp);
+    auto *dataPtr =
+        ctx->builder->CreateStructGEP(anyTy, tmp, 1, "any.data.ptr");
+    llvm::Value *unwrapped =
+        ctx->builder->CreateLoad(targetTy, dataPtr, "any.unwrap.val");
+
+    if (desc->do_collection_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, unwrapped,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::ARC_HEADER_SIZE)),
+            "arc_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    } else if (desc->do_str_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, unwrapped,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::STRING_HEADER_SIZE)),
+            "str_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    }
+    return ry_emit_intern(ctx, unwrapped);
+}
+
+RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
+                                 const RyAnyTryUnwrapDesc *desc) {
+    if (ctx == nullptr || ctx->context == nullptr || ctx->module == nullptr ||
+        ctx->builder == nullptr || desc == nullptr ||
+        desc->any_ty_ptr == nullptr || desc->res_ty_ptr == nullptr ||
+        desc->error_ty_ptr == nullptr)
+        return 0;
+
+    auto *anyVal =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->any_val_id));
+    auto *anyTy = static_cast<llvm::StructType *>(desc->any_ty_ptr);
+    auto *resTy = static_cast<llvm::StructType *>(desc->res_ty_ptr);
+    auto *errorTy = static_cast<llvm::StructType *>(desc->error_ty_ptr);
+    auto *errMsgStr =
+        static_cast<llvm::Value *>(ry_emit_resolve(ctx, desc->err_msg_str_id));
+    if (anyVal == nullptr || errMsgStr == nullptr)
+        return 0;
+
+    auto *i8Ty = llvm::Type::getInt8Ty(*ctx->context);
+    auto *i64Ty = llvm::Type::getInt64Ty(*ctx->context);
+    auto *i1Ty = llvm::Type::getInt1Ty(*ctx->context);
+    auto *f64Ty = llvm::Type::getDoubleTy(*ctx->context);
+
+    auto *tag = ctx->builder->CreateExtractValue(anyVal, 0, "tryany.tag");
+    auto *fn = ctx->builder->GetInsertBlock()->getParent();
+
+    // Inline buildOkValue / buildErrValue lambdas. Mirror codegen_type.cpp:331-355
+    // (ConstantAggregateZero + 3 InsertValues); the tryRetainArcSource call
+    // there is a no-op for freshly-extracted loads (the alloca is not in
+    // arc_managed_vars_), so we omit it on the ABI side and the explicit
+    // emitArcRetain via do_collection_retain / do_str_retain flags carries the
+    // actual retain.
+    auto buildOk = [&](llvm::Value *inner) -> llvm::Value * {
+        llvm::Value *v = llvm::ConstantAggregateZero::get(resTy);
+        v = ctx->builder->CreateInsertValue(
+            v, llvm::ConstantInt::get(i1Ty, 1), 0, "res.ok");
+        v = ctx->builder->CreateInsertValue(v, inner, 1, "res.ok_val");
+        v = ctx->builder->CreateInsertValue(
+            v, llvm::Constant::getNullValue(resTy->getElementType(2)), 2);
+        return v;
+    };
+    auto buildErr = [&]() -> llvm::Value * {
+        llvm::Value *errVal = llvm::UndefValue::get(errorTy);
+        errVal = ctx->builder->CreateInsertValue(errVal, errMsgStr, {0});
+        errVal = ctx->builder->CreateInsertValue(
+            errVal, llvm::ConstantInt::get(i64Ty, 0), {1});
+
+        llvm::Value *v = llvm::ConstantAggregateZero::get(resTy);
+        v = ctx->builder->CreateInsertValue(
+            v, llvm::ConstantInt::get(i1Ty, 0), 0, "res.err");
+        v = ctx->builder->CreateInsertValue(
+            v, llvm::Constant::getNullValue(resTy->getElementType(1)), 1);
+        v = ctx->builder->CreateInsertValue(v, errVal, 2, "res.err_val");
+        return v;
+    };
+
+    // F64Promote=1 — both loads share one alloca; Ok arm selects between
+    // floatVal and sitofp(intVal) via select(isFloat, fVal, promoted).
+    if (desc->kind == 1) {
+        auto *tmp =
+            ctx->builder->CreateAlloca(anyTy, nullptr, "tryany.fp.tmp");
+        ctx->builder->CreateStore(anyVal, tmp);
+        auto *dataPtr =
+            ctx->builder->CreateStructGEP(anyTy, tmp, 1, "tryany.fp.data");
+        llvm::Value *fVal =
+            ctx->builder->CreateLoad(f64Ty, dataPtr, "tryany.fp.fval");
+        llvm::Value *iVal =
+            ctx->builder->CreateLoad(i64Ty, dataPtr, "tryany.fp.ival");
+        llvm::Value *promoted =
+            ctx->builder->CreateSIToFP(iVal, f64Ty, "tryany.fp.i2f");
+        llvm::Value *isFloat = ctx->builder->CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(
+                i64Ty, static_cast<int64_t>(ry::RyAnyTag::Float)),
+            "tryany.fp.is_float");
+        llvm::Value *isInt = ctx->builder->CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(
+                i64Ty, static_cast<int64_t>(ry::RyAnyTag::Int)),
+            "tryany.fp.is_int");
+        llvm::Value *isAccept =
+            ctx->builder->CreateOr(isFloat, isInt, "tryany.fp.is_accept");
+        llvm::Value *isErr =
+            ctx->builder->CreateNot(isAccept, "tryany.fp.is_err");
+
+        auto *okBB = llvm::BasicBlock::Create(*ctx->context, "res.ok", fn);
+        auto *errBB = llvm::BasicBlock::Create(*ctx->context, "res.err", fn);
+        auto *mergeBB =
+            llvm::BasicBlock::Create(*ctx->context, "res.merge", fn);
+        ctx->builder->CreateCondBr(isErr, errBB, okBB);
+
+        ctx->builder->SetInsertPoint(okBB);
+        llvm::Value *chosen = ctx->builder->CreateSelect(
+            isFloat, fVal, promoted, "tryany.fp.val");
+        llvm::Value *okVal = buildOk(chosen);
+        ctx->builder->CreateBr(mergeBB);
+        auto *okIncoming = ctx->builder->GetInsertBlock();
+
+        ctx->builder->SetInsertPoint(errBB);
+        llvm::Value *errVal = buildErr();
+        ctx->builder->CreateBr(mergeBB);
+        auto *errIncoming = ctx->builder->GetInsertBlock();
+
+        ctx->builder->SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = ctx->builder->CreatePHI(resTy, 2, "result");
+        phi->addIncoming(okVal, okIncoming);
+        phi->addIncoming(errVal, errIncoming);
+        return ry_emit_intern(ctx, phi);
+    }
+
+    // Standard=0 — tag-check primitive arm. Ok-branch: alloca + store + GEP +
+    // load + optional ARC retain + buildOk. Err-branch: buildErr.
+    auto *targetTy = static_cast<llvm::Type *>(desc->target_ty_ptr);
+    if (targetTy == nullptr)
+        return 0;
+
+    llvm::Value *cmp = ctx->builder->CreateICmpEQ(
+        tag,
+        llvm::ConstantInt::get(i64Ty, static_cast<uint64_t>(desc->expected_tag)),
+        "tryany.tag.eq");
+    llvm::Value *isErr = ctx->builder->CreateNot(cmp, "tryany.is_err");
+
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, "res.ok", fn);
+    auto *errBB = llvm::BasicBlock::Create(*ctx->context, "res.err", fn);
+    auto *mergeBB = llvm::BasicBlock::Create(*ctx->context, "res.merge", fn);
+    ctx->builder->CreateCondBr(isErr, errBB, okBB);
+
+    ctx->builder->SetInsertPoint(okBB);
+    auto *tmp = ctx->builder->CreateAlloca(anyTy, nullptr, "tryany.tmp");
+    ctx->builder->CreateStore(anyVal, tmp);
+    auto *dataPtr =
+        ctx->builder->CreateStructGEP(anyTy, tmp, 1, "tryany.data");
+    llvm::Value *unwrapped =
+        ctx->builder->CreateLoad(targetTy, dataPtr, "tryany.val");
+    if (desc->do_collection_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, unwrapped,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::ARC_HEADER_SIZE)),
+            "arc_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    } else if (desc->do_str_retain != 0) {
+        auto *hdr = ctx->builder->CreateGEP(
+            i8Ty, unwrapped,
+            llvm::ConstantInt::getSigned(
+                i64Ty, -static_cast<int64_t>(ry::STRING_HEADER_SIZE)),
+            "str_hdr_from_data");
+        ry_emit_arc_retain(ctx, ry_emit_intern(ctx, hdr), RY_ARC_NONATOMIC);
+    }
+    llvm::Value *okVal = buildOk(unwrapped);
+    ctx->builder->CreateBr(mergeBB);
+    auto *okIncoming = ctx->builder->GetInsertBlock();
+
+    ctx->builder->SetInsertPoint(errBB);
+    llvm::Value *errVal = buildErr();
+    ctx->builder->CreateBr(mergeBB);
+    auto *errIncoming = ctx->builder->GetInsertBlock();
+
+    ctx->builder->SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = ctx->builder->CreatePHI(resTy, 2, "result");
+    phi->addIncoming(okVal, okIncoming);
+    phi->addIncoming(errVal, errIncoming);
     return ry_emit_intern(ctx, phi);
 }
 
