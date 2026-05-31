@@ -66,13 +66,18 @@ fi
 
 # Check for `void *` outside the user_ctx carve-outs.
 # Carve-outs are matched first and removed before the forbidden check.
+# The regex tolerates `void*` / `void *` / `void  *` / `const void *` / etc.
+# so the lint doesn't get bypassed by whitespace or const-qualifier variants.
+# NB: `\b` is not portable in BSD/macOS sed -E; use surrounding context
+# (start-of-pattern via non-word chars, `user_ctx` is followed by a
+# non-word boundary anyway) to anchor.
 filtered="$(
     echo "$non_comment" |
     sed -E \
-        -e 's/void \*user_ctx//g'
+        -e 's/(const[[:space:]]+)?void[[:space:]]*\*[[:space:]]*user_ctx//g'
 )"
 
-if echo "$filtered" | grep -nE '\bvoid \*' >&2; then
+if echo "$filtered" | grep -E '(const[[:space:]]+)?void[[:space:]]*\*+' >&2; then
     echo "check-llvm-emit-abi-header: transitional 'void *' must NOT appear in $HEADER" >&2
     echo "  Allowed carve-outs: 'void *user_ctx' in RyBuildValueFn / ry_emit_result_branch." >&2
     echo "  All other transitional 'void *' parameters from Stage 2-A / 2-B must be migrated to typed handles." >&2
