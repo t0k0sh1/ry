@@ -676,6 +676,54 @@ typedef struct {
 RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
                                  const RyAnyTryUnwrapDesc *desc);
 
+// ===========================================================================
+// Stage 2-C / #1973 — ControlFlow primitives.
+//
+// These thin ABI entries wrap the IRBuilder<>::Create* calls that previously
+// appeared in src/codegen_*.cpp for control-flow construction (basic blocks,
+// conditional / unconditional branches, PHI assembly). They are intentionally
+// minimal — the lowering layer has no semantic decision to make for primitive
+// CF per `docs/architecture/codegen-layering-plan.md` §"Explicit non-inclusion"
+// — so no `lowered_control_flow.hpp` struct layer is introduced. The CodeGen-
+// side inline wrappers in `include/ry/codegen.hpp` (createBB / emitBranchCond
+// / emitBranchUncond / createPhi) bridge call sites to these entries without
+// per-site reinterpret_cast clutter.
+//
+// SetInsertPoint / GetInsertBlock are intentionally NOT exposed: they are
+// IRBuilder *state* operations that emit no IR (no `Create*` call), so they
+// fall outside the "no IRBuilder<>::Create* in src/codegen_*.cpp" AC. Call
+// sites continue to use `builder_.SetInsertPoint(bb)` / `builder_.GetInsertBlock()`
+// directly.
+// ===========================================================================
+
+// Create a fresh basic block named `name` inside the function `fn`. Returns
+// an opaque handle to the new BB. The caller chooses the parent function
+// explicitly — for the common "current function" case the CodeGen-side
+// wrapper `createBB` derives it from `builder_.GetInsertBlock()->getParent()`
+// per the rule in `.claude/rules/codegen-llvm-ir-conventions.md`.
+RyBasicBlockRef ry_emit_create_basic_block(RyEmitCtx *ctx, const char *name,
+                                           RyFunctionHandle fn);
+
+// Emit a conditional branch at the builder's current insert point. `cond` is
+// an interned i1 value; `true_bb` / `false_bb` are the destination blocks.
+// Does not change the builder's insert point.
+void ry_emit_branch_cond(RyEmitCtx *ctx, RyValueId cond,
+                         RyBasicBlockRef true_bb, RyBasicBlockRef false_bb);
+
+// Emit an unconditional branch to `target` at the builder's current insert
+// point. Does not change the builder's insert point.
+void ry_emit_branch_uncond(RyEmitCtx *ctx, RyBasicBlockRef target);
+
+// Emit a PHI node at the builder's current insert point with the supplied
+// incoming pairs and `ty` as the result type. `count` is the number of
+// (value, block) pairs in `incoming_values[]` / `incoming_blocks[]` (parallel
+// arrays). `name_hint` is the LLVM SSA name hint (NULL for none). Returns the
+// interned PHI value handle.
+RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
+                             const RyValueId *incoming_values,
+                             const RyBasicBlockRef *incoming_blocks,
+                             uint32_t count, const char *name_hint);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

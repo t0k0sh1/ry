@@ -1992,6 +1992,42 @@ public:
     llvm::FunctionCallee getRuntimeFn(const char *name, llvm::Type *retTy,
                                        llvm::ArrayRef<llvm::Type*> argTys);
 
+    // ControlFlow primitives — Stage 2-C / #1973.
+    // Thin CodeGen-side wrappers around the `ry_emit_*` ABI entries in
+    // `include/ry/llvm_emit/api.h`. Call sites use these methods so no
+    // `IRBuilder<>::Create{CondBr,Br,PHI}` / `BasicBlock::Create` survives in
+    // `src/codegen_*.cpp` per the #1973 acceptance criterion. The methods do
+    // NOT touch `builder_.SetInsertPoint()` / `GetInsertBlock()` — those are
+    // pure builder state queries (no IR emitted) and remain direct on the
+    // call sites.
+
+    // Create a fresh basic block in the function currently held by the
+    // builder. Derives the parent function from
+    // `builder_.GetInsertBlock()->getParent()` per the rule in
+    // `.claude/rules/codegen-llvm-ir-conventions.md` (cg.fn_ may be stale in
+    // ARC / lambda / thunk / destructor / iterator-next contexts).
+    llvm::BasicBlock *createBB(const char *name);
+    // Create a fresh basic block in an explicitly-named parent function.
+    // Use when the builder's current insert block is in a different function
+    // (e.g. setting up the entry BB of a fresh @parallel for thunk before
+    // the builder is repositioned).
+    llvm::BasicBlock *createBBInFn(const char *name, llvm::Function *fn);
+    // Emit a conditional branch at the builder's current insert point.
+    void emitBranchCond(llvm::Value *cond, llvm::BasicBlock *true_bb,
+                        llvm::BasicBlock *false_bb);
+    // Emit an unconditional branch at the builder's current insert point.
+    void emitBranchUncond(llvm::BasicBlock *target);
+    // Emit a PHI node at the builder's current insert point with the supplied
+    // incoming (value, block) pairs. Returns the PHI as `llvm::PHINode *` so
+    // call sites that need to add more incomings later (loop PHIs, fan-in
+    // patterns) can extend it via `phi->addIncoming(...)` directly — those
+    // additional `addIncoming` calls are NOT `Create*` and therefore stay
+    // outside the AC's "no IRBuilder<>::Create*" gate.
+    llvm::PHINode *createPhi(llvm::Type *ty,
+                              llvm::ArrayRef<std::pair<llvm::Value *,
+                                                        llvm::BasicBlock *>> incoming,
+                              const char *name_hint = "");
+
     // C stdlib function helpers
     llvm::FunctionCallee getStdlibMalloc();
     llvm::FunctionCallee getStdlibRealloc();

@@ -56,11 +56,17 @@ llvm::Function *asFunction(RyFunctionHandle h) {
 llvm::Value *asValue(RyValueRef p) {
     return reinterpret_cast<llvm::Value *>(p);
 }
-[[maybe_unused]] llvm::Type *asType(RyTypeRef p) {
+llvm::Type *asType(RyTypeRef p) {
     return reinterpret_cast<llvm::Type *>(p);
 }
-[[maybe_unused]] llvm::FunctionType *asFuncType(RyFuncTypeRef p) {
+llvm::FunctionType *asFuncType(RyFuncTypeRef p) {
     return reinterpret_cast<llvm::FunctionType *>(p);
+}
+llvm::BasicBlock *asBasicBlock(RyBasicBlockRef p) {
+    return reinterpret_cast<llvm::BasicBlock *>(p);
+}
+RyBasicBlockRef toRyBasicBlock(llvm::BasicBlock *bb) {
+    return reinterpret_cast<RyBasicBlockRef>(bb);
 }
 RyValueRef toRyValue(llvm::Value *v) {
     return reinterpret_cast<RyValueRef>(v);
@@ -1825,6 +1831,40 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
     llvm::PHINode *phi = ctx->builder->CreatePHI(resTy, 2, "result");
     phi->addIncoming(okVal, okIncoming);
     phi->addIncoming(errVal, errIncoming);
+    return ry_emit_intern(ctx, toRyValue(phi));
+}
+
+// === ControlFlow primitives (Stage 2-C / #1973) ===
+
+RyBasicBlockRef ry_emit_create_basic_block(RyEmitCtx *ctx, const char *name,
+                                           RyFunctionHandle fn) {
+    auto *bb = llvm::BasicBlock::Create(*ctx->context,
+                                         name == nullptr ? "" : name,
+                                         asFunction(fn));
+    return toRyBasicBlock(bb);
+}
+
+void ry_emit_branch_cond(RyEmitCtx *ctx, RyValueId cond,
+                         RyBasicBlockRef true_bb, RyBasicBlockRef false_bb) {
+    auto *condVal = asValue(ry_emit_resolve(ctx, cond));
+    ctx->builder->CreateCondBr(condVal, asBasicBlock(true_bb),
+                                asBasicBlock(false_bb));
+}
+
+void ry_emit_branch_uncond(RyEmitCtx *ctx, RyBasicBlockRef target) {
+    ctx->builder->CreateBr(asBasicBlock(target));
+}
+
+RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
+                             const RyValueId *incoming_values,
+                             const RyBasicBlockRef *incoming_blocks,
+                             uint32_t count, const char *name_hint) {
+    auto *phi = ctx->builder->CreatePHI(asType(ty), count,
+                                         name_hint == nullptr ? "" : name_hint);
+    for (uint32_t i = 0; i < count; ++i) {
+        phi->addIncoming(asValue(ry_emit_resolve(ctx, incoming_values[i])),
+                          asBasicBlock(incoming_blocks[i]));
+    }
     return ry_emit_intern(ctx, toRyValue(phi));
 }
 

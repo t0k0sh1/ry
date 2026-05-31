@@ -126,6 +126,52 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
     return llvm::FunctionCallee(fnTy, callee);
 }
 
+// === ControlFlow primitives (Stage 2-C / #1973) ===
+
+llvm::BasicBlock *CodeGen::createBB(const char *name) {
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    return createBBInFn(name, fn);
+}
+
+llvm::BasicBlock *CodeGen::createBBInFn(const char *name, llvm::Function *fn) {
+    auto handle = ry_emit_create_basic_block(
+        emit_ctx_, name, ry::llvm_emit::asRyFunction(fn));
+    return ry::llvm_emit::asLlvmBasicBlock(handle);
+}
+
+void CodeGen::emitBranchCond(llvm::Value *cond, llvm::BasicBlock *true_bb,
+                              llvm::BasicBlock *false_bb) {
+    RyValueId condId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(cond));
+    ry_emit_branch_cond(emit_ctx_, condId, ry::llvm_emit::asRyBasicBlock(true_bb),
+                         ry::llvm_emit::asRyBasicBlock(false_bb));
+}
+
+void CodeGen::emitBranchUncond(llvm::BasicBlock *target) {
+    ry_emit_branch_uncond(emit_ctx_, ry::llvm_emit::asRyBasicBlock(target));
+}
+
+llvm::PHINode *CodeGen::createPhi(
+    llvm::Type *ty,
+    llvm::ArrayRef<std::pair<llvm::Value *, llvm::BasicBlock *>> incoming,
+    const char *name_hint) {
+    std::vector<RyValueId> value_ids;
+    std::vector<RyBasicBlockRef> block_refs;
+    value_ids.reserve(incoming.size());
+    block_refs.reserve(incoming.size());
+    for (const auto &pair : incoming) {
+        value_ids.push_back(
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(pair.first)));
+        block_refs.push_back(ry::llvm_emit::asRyBasicBlock(pair.second));
+    }
+    RyValueId phiId =
+        ry_emit_create_phi(emit_ctx_, ry::llvm_emit::asRyType(ty),
+                            value_ids.data(), block_refs.data(),
+                            static_cast<uint32_t>(value_ids.size()),
+                            name_hint == nullptr ? "" : name_hint);
+    return llvm::cast<llvm::PHINode>(
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, phiId)));
+}
+
 int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {
     auto [it, inserted] = canonical_type_ids_.try_emplace(canonicalName, next_type_id_);
     if (inserted) ++next_type_id_;
