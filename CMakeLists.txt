@@ -363,10 +363,15 @@ if(RY_LLVM_EMIT_IMPL_RUST)
     )
     set_target_properties(ry_llvm_emit PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-    # LLVM_SYS_211_PREFIX gates how llvm-sys finds LLVM at build time. The
-    # CI image bakes this in; local builds inherit from the environment.
+    # LLVM_SYS_211_PREFIX gates how llvm-sys finds LLVM at build time. If
+    # the env var is unset, derive the prefix from the LLVM CMake config
+    # already discovered by find_package(LLVM) above, instead of a fixed
+    # /usr/local/llvm — that keeps the Rust mode usable on Homebrew,
+    # distro-packaged LLVM, and custom prefixes without env tweaks.
     if(NOT DEFINED ENV{LLVM_SYS_211_PREFIX})
-        corrosion_set_env_vars(ry_llvm_emit LLVM_SYS_211_PREFIX=/usr/local/llvm)
+        get_filename_component(_ry_llvm_emit_llvm_prefix "${LLVM_TOOLS_BINARY_DIR}" DIRECTORY)
+        corrosion_set_env_vars(ry_llvm_emit "LLVM_SYS_211_PREFIX=${_ry_llvm_emit_llvm_prefix}")
+        unset(_ry_llvm_emit_llvm_prefix)
     endif()
 else()
     add_library(ry_llvm_emit SHARED src/llvm_emit/impl.cpp)

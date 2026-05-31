@@ -142,6 +142,8 @@ FROM gcc:14-bookworm AS rust-bootstrap
 ARG RUST_VERSION=1.83.0
 ARG TARGETARCH
 
+# Integrity verification via the published .sha256 companion file; see the
+# rust-bootstrap stage in docker/ci.Dockerfile for the rationale.
 WORKDIR /tmp
 RUN set -eux; \
     case "${TARGETARCH}" in \
@@ -149,12 +151,15 @@ RUN set -eux; \
         arm64)  RARCH=aarch64-unknown-linux-gnu ;; \
         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    wget -q "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
-    tar -xJf "rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    TARBALL="rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}.sha256"; \
+    sha256sum -c "${TARBALL}.sha256"; \
+    tar -xJf "${TARBALL}"; \
     "rust-${RUST_VERSION}-${RARCH}/install.sh" \
         --prefix=/opt/rust \
         --components="rustc,cargo,rust-std-${RARCH}"; \
-    rm -rf "rust-${RUST_VERSION}-${RARCH}" "rust-${RUST_VERSION}-${RARCH}.tar.xz"
+    rm -rf "rust-${RUST_VERSION}-${RARCH}" "${TARBALL}" "${TARBALL}.sha256"
 
 FROM gcc:14-bookworm
 

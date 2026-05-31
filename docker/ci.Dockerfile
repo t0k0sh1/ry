@@ -183,6 +183,12 @@ FROM gcc:14-trixie AS rust-bootstrap
 ARG RUST_VERSION=1.83.0
 ARG TARGETARCH
 
+# The tarball + matching .sha256 are both fetched from static.rust-lang.org/dist
+# and verified via `sha256sum -c` before extraction. The .sha256 file is the
+# canonical companion published by the Rust release infrastructure
+# (https://static.rust-lang.org/dist/rust-<ver>-<arch>.tar.xz.sha256); this
+# defends against a corrupted / tampered tarball without hardcoding hashes
+# (the .sha256 file is regenerated alongside each release).
 WORKDIR /tmp
 RUN set -eux; \
     case "${TARGETARCH}" in \
@@ -190,12 +196,15 @@ RUN set -eux; \
         arm64)  RARCH=aarch64-unknown-linux-gnu ;; \
         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    wget -q "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
-    tar -xJf "rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    TARBALL="rust-${RUST_VERSION}-${RARCH}.tar.xz"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}"; \
+    wget -q "https://static.rust-lang.org/dist/${TARBALL}.sha256"; \
+    sha256sum -c "${TARBALL}.sha256"; \
+    tar -xJf "${TARBALL}"; \
     "rust-${RUST_VERSION}-${RARCH}/install.sh" \
         --prefix=/opt/rust \
         --components="rustc,cargo,rust-std-${RARCH}"; \
-    rm -rf "rust-${RUST_VERSION}-${RARCH}" "rust-${RUST_VERSION}-${RARCH}.tar.xz"
+    rm -rf "rust-${RUST_VERSION}-${RARCH}" "${TARBALL}" "${TARBALL}.sha256"
 
 #
 # Stage 7: cppcheck-builder — source-build cppcheck.
