@@ -119,7 +119,8 @@
 ; ---------- Decorators / attributes ----------
 (decorator
   "@" @attribute
-  (identifier) @attribute)
+  (identifier) @attribute
+  (#set! "priority" 105))  ; outrank the generic `(identifier) @variable` fallback (default priority 100)
 
 ; ---------- Records / Enums ----------
 (record_declaration
