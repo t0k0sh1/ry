@@ -1,6 +1,7 @@
 #include "ry/codegen/lowered_cow.hpp"
 #include "ry/codegen.hpp"
 #include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Value.h>
@@ -9,12 +10,12 @@ namespace ry::codegen::emission {
 
 llvm::Value *emitCowEnsureUnique(CodeGen &cg,
                                  const lowered::CowEnsureUniqueOp &op) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_);
+    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
     cg.used_native_libraries_.insert("gc");
 
     RyCowEnsureUniqueDesc desc{};
-    desc.data_ptr_id = ry_emit_intern(cg.emit_ctx_, op.data_ptr);
-    desc.slot_ptr_id = ry_emit_intern(cg.emit_ctx_, op.slot_ptr);
+    desc.data_ptr_id = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.data_ptr));
+    desc.slot_ptr_id = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.slot_ptr));
     desc.kind = op.kind;
     desc.atomic = op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC;
     desc.elem_size = op.elem_size;
@@ -27,7 +28,7 @@ llvm::Value *emitCowEnsureUnique(CodeGen &cg,
     desc.destructor_callee = static_cast<void *>(op.destructor_callee);
 
     RyValueId newDataId = ry_emit_cow_ensure_unique(cg.emit_ctx_, &desc);
-    return static_cast<llvm::Value *>(ry_emit_resolve(cg.emit_ctx_, newDataId));
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(cg.emit_ctx_, newDataId));
 }
 
 } // namespace ry::codegen::emission

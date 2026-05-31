@@ -2,6 +2,7 @@
 #include "ry/coverage/coverage_runtime.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -91,12 +92,17 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 
-    // Initialize the LLVM IR emission ABI context (Stage 2-B, #1964).
-    // All category-3 helpers cross the ABI now: getRuntimeFn,
-    // buildErrorFromRuntime, emitBoundsCheck, resultBranch,
-    // negativeIndexWrap, boundsError. The fn_ slot is set as bodies are
-    // emitted via ry_emit_ctx_set_function.
-    emit_ctx_ = ry_emit_ctx_create(mod_.get(), &builder_, ctx_.get(), nullptr);
+    // Initialize the LLVM IR emission ABI context. Stage 2-C / #1973 migrated
+    // module / builder / context / function pointers to typed opaque handles
+    // (RyModuleHandle / RyBuilderHandle / RyContextHandle / RyFunctionHandle);
+    // the cast helpers in include/ry/llvm_emit/cast_helpers.hpp keep the call
+    // sites readable. The fn_ slot is set as bodies are emitted via
+    // ry_emit_ctx_set_function.
+    emit_ctx_ = ry_emit_ctx_create(
+        ry::llvm_emit::asRyModule(mod_.get()),
+        ry::llvm_emit::asRyBuilder(&builder_),
+        ry::llvm_emit::asRyContext(ctx_.get()),
+        ry::llvm_emit::asRyFunction(nullptr));
 }
 
 CodeGen::~CodeGen() {

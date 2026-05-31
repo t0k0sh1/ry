@@ -97,15 +97,56 @@ extern "C" {
 // per RyEmitCtx and are not reused for the lifetime of the context.
 typedef uint32_t RyValueId;
 
-// Opaque handle for an LLVM FunctionCallee. Reserved for future use; the
-// scaffold uses transitional void* in places that need a callee.
-typedef uint32_t RyFuncId;
-
-// Opaque handle for an LLVM Type. Reserved for future use.
-typedef uint32_t RyTypeId;
-
 // Opaque per-compile() emission context.
 typedef struct RyEmitCtx RyEmitCtx;
+
+// ===========================================================================
+// Stage 2-C / #1973: typed opaque handles for category 1 (LLVM context state)
+// and category 2 (primitive type accessors).
+//
+// Each typedef is a pointer to an incomplete struct, so the C/C++ type system
+// treats it as a distinct named pointer type. At runtime the pointer value is
+// reinterpret_cast'd between the LLVM-owning side (`src/llvm_emit/impl.cpp`)
+// and the CodeGen-owning side. No LLVM types and no `void *` appear in any
+// public signature — opaque pointer typedefs satisfy the constraint enforced
+// by the header-level lint introduced in #1973.
+//
+// CodeGen-side cast helpers live in `include/ry/llvm_emit/cast_helpers.hpp`
+// (a C++-only header that re-includes both api.h and the LLVM headers); use
+// `asRyValue` / `asLlvmValue` / `asRyType` / etc. there rather than sprinkling
+// reinterpret_cast across call sites.
+// ===========================================================================
+
+// === Category 1: LLVM context handles ===
+typedef struct RyModuleOpaque   *RyModuleHandle;   // llvm::Module *
+typedef struct RyBuilderOpaque  *RyBuilderHandle;  // llvm::IRBuilder<> *
+typedef struct RyContextOpaque  *RyContextHandle;  // llvm::LLVMContext *
+typedef struct RyFunctionOpaque *RyFunctionHandle; // llvm::Function *
+
+// === Category 2: primitive type accessors ===
+// `RyTypeRef` covers both `llvm::Type *` (primitives, pointers) and
+// `llvm::StructType *` (named aggregates) — LLVM's StructType IS a Type, so
+// no separate typedef is needed. dyn_cast<StructType> happens inside impl.cpp
+// when a specific subtype is required.
+typedef struct RyTypeOpaque     *RyTypeRef;
+typedef struct RyFuncTypeOpaque *RyFuncTypeRef;    // llvm::FunctionType *
+
+// === ABI ingress/egress pointer types ===
+// `RyValueRef` is the source-side pointer for `ry_emit_intern` /
+// `ry_emit_resolve`. It crosses the boundary as an opaque pointer; inside the
+// emission layer it is held in the intern table behind `RyValueId`.
+typedef struct RyValueOpaque    *RyValueRef;       // llvm::Value *
+
+// === C function pointer types ===
+// Destructor / GC-visit callbacks are plain C function pointers — no LLVM
+// type identity crosses the ABI (the emission layer reconstructs the
+// FunctionType locally from `void(*)(void*)`).
+typedef void (*RyDestructorFn)(void *header_data);
+typedef void (*RyGcVisitFn)(void *header_data);
+
+// === BasicBlock handle (used by ControlFlow ABI added in #1973) ===
+typedef struct RyBasicBlockOpaque *RyBasicBlockRef; // llvm::BasicBlock *
+typedef uint32_t RyBasicBlockId;                    // intern handle
 
 // Bounds-check kind selector. Numbers chosen to match the order in
 // `lowered::BoundsKind`; do not reorder without updating both sides.
@@ -141,21 +182,24 @@ typedef enum {
 typedef RyValueId (*RyBuildValueFn)(void *user_ctx);
 
 // Lifecycle. Create at the top of CodeGen::compile() and destroy on exit.
-// module_ptr/builder_ptr/context_ptr/function_ptr are `void*` only as a
-// transitional shape; they will become opaque handles in a successor PR.
-RyEmitCtx *ry_emit_ctx_create(void *module_ptr, void *builder_ptr,
-                              void *context_ptr, void *function_ptr);
+// Categories 1 (LLVM context handles) crossed the ABI as typed opaque handles
+// in Stage 2-C / #1973: RyModuleHandle / RyBuilderHandle / RyContextHandle /
+// RyFunctionHandle replace the transitional `void *` shape from Stage 2-A.
+RyEmitCtx *ry_emit_ctx_create(RyModuleHandle module, RyBuilderHandle builder,
+                              RyContextHandle context,
+                              RyFunctionHandle function);
 void ry_emit_ctx_destroy(RyEmitCtx *ctx);
 
-// Update the current LLVM function pointer mid-compile (function_ptr changes
-// when CodeGen emits a new function body).
-void ry_emit_ctx_set_function(RyEmitCtx *ctx, void *function_ptr);
+// Update the current LLVM function handle mid-compile (it changes when
+// CodeGen emits a new function body — lambdas, @parallel for thunks,
+// destructors, iterator-next bodies, etc.).
+void ry_emit_ctx_set_function(RyEmitCtx *ctx, RyFunctionHandle function);
 
-// Handle marshalling. ry_emit_intern returns 0 if `value_ptr` is NULL; every
+// Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; every
 // other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
 // and for any out-of-range handle.
-RyValueId ry_emit_intern(RyEmitCtx *ctx, void *value_ptr /* llvm::Value* */);
-void *ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
+RyValueId ry_emit_intern(RyEmitCtx *ctx, RyValueRef value);
+RyValueRef ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
 
 // Category-3 helpers (from llvm-ir-emission-boundary.md). Each one wraps a
 // canonical emission pattern as an atomic ABI call so the LLVM-side BB / PHI

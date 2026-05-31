@@ -1,6 +1,7 @@
 #include "ry/codegen/lowered_result_branch.hpp"
 #include "ry/codegen.hpp"
 #include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 
 #include <llvm/IR/Value.h>
 
@@ -22,13 +23,13 @@ struct ResultBranchTrampolineCtx {
 RyValueId trampolineOk(void *user) {
     auto *t = static_cast<ResultBranchTrampolineCtx *>(user);
     llvm::Value *v = t->build_ok();
-    return ry_emit_intern(t->emit_ctx, v);
+    return ry_emit_intern(t->emit_ctx, ry::llvm_emit::asRyValue(v));
 }
 
 RyValueId trampolineErr(void *user) {
     auto *t = static_cast<ResultBranchTrampolineCtx *>(user);
     llvm::Value *v = t->build_err();
-    return ry_emit_intern(t->emit_ctx, v);
+    return ry_emit_intern(t->emit_ctx, ry::llvm_emit::asRyValue(v));
 }
 
 } // namespace
@@ -36,13 +37,13 @@ RyValueId trampolineErr(void *user) {
 llvm::Value *emitResultBranch(CodeGen &cg, const lowered::ResultBranchOp &op,
                               llvm::function_ref<llvm::Value *()> build_ok,
                               llvm::function_ref<llvm::Value *()> build_err) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_);
+    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
 
     ResultBranchTrampolineCtx tctx{build_ok, build_err, cg.emit_ctx_};
-    RyValueId isErrId = ry_emit_intern(cg.emit_ctx_, op.is_err);
+    RyValueId isErrId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.is_err));
     RyValueId resultId = ry_emit_result_branch(
         cg.emit_ctx_, isErrId, op.res_ty, &trampolineOk, &trampolineErr, &tctx);
-    return static_cast<llvm::Value *>(ry_emit_resolve(cg.emit_ctx_, resultId));
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(cg.emit_ctx_, resultId));
 }
 
 } // namespace ry::codegen::emission
