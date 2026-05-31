@@ -178,7 +178,7 @@ Agent tool example:
 - **`/test-checklist`** — inductive complement to `/test-design-techniques`; run during implementation
 - **`/tdd-cycle`** — TDD tasks stay as one bundled task in plans (Red-Green-Refactor not split)
 - **`.claude/agents/devils-advocate.md`** — plan-critique mode (Phase 1-4)
-- **`/triage-side-finding`** — Q1-Q4 verdict (Q1 hard-to-reproduce CI / Q2 explicit user / Q3 `bug-forensics-analyst` / Q4 three-way) and Issue Creation Steps for Axis 2 side findings
+- **`/triage-side-finding`** — Q1-Q4 verdict (Q1 hard-to-reproduce CI / Q2 explicit user / Q3 `bug-forensics-analyst` / Q4 two-branch (autonomous)) and Issue Creation Steps for Axis 2 side findings
 - **`/pre-commit-checklist`** — post-implementation completion check (not a plan-stage target)
 
 ---

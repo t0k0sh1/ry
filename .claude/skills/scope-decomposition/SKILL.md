@@ -38,7 +38,7 @@ Net effect: REQ-1 at #1797 filing would have turned #1802 from an "in-Plan disco
 
 | Timing | Trigger | REQs to apply |
 |---|---|---|
-| **Issue creation** | After `/triage-side-finding` Q4(b) judges "file a separate issue", before running `gh issue create`; or when deciding to split an existing issue | REQ-1, REQ-2, REQ-3 |
+| **Issue creation** | After `/triage-side-finding` Q4(b) autonomously judges 起票許可を求める (new issue creation needed), before running `gh issue create`; or when deciding to split an existing issue | REQ-1, REQ-2, REQ-3 |
 | **Plan mode** | After `EnterPlanMode`, when re-scanning the target issue's scope | REQ-4 |
 
 ---
