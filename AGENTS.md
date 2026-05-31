@@ -93,7 +93,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
   - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
 - **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。**Claude Code が `/triage-side-finding` Q4(b)「起票許可を求める」と自律判断した場合のみ**、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること / §起票判断における選択肢提示の禁止 参照)
-- **対象 issue の分割禁止 (target-shrinking)**: Plan モード中に**対象 issue 自体を分割して scope を縮小する**提案は禁止 (実装計画が狂うため)。orthogonal な側次的発見の Q4(b) 別 issue 起票は本ルールの対象外 (対象 issue の scope を変更しないため)。詳細は `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2 参照。oversize と判明した場合は **Plan モード開始前**に `/scope-decomposition` REQ-5 で分割判断を済ませる
+- **対象 issue の分割禁止 (target-shrinking)**: Plan モード中に**対象 issue 自体を分割して scope を縮小する**提案は禁止 (実装計画が狂うため)。orthogonal な副次的発見の Q4(b) 別 issue 起票は本ルールの対象外 (対象 issue の scope を変更しないため)。詳細は `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2 参照。oversize と判明した場合は **Plan モード開始前**に `/scope-decomposition` REQ-5 で分割判断を済ませる
 - **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
 
 ## 内部挙動の解析に trace を使う
