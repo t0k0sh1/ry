@@ -71,10 +71,9 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
         label + ".arc_old_null");
 
-    auto *parentFn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "elem.arc_release", parentFn);
-    auto *joinBB = llvm::BasicBlock::Create(*ctx_, "elem.arc_release_done", parentFn);
-    builder_.CreateCondBr(isOldNull, joinBB, releaseBB);
+    auto *releaseBB = createBB("elem.arc_release");
+    auto *joinBB = createBB("elem.arc_release_done");
+    emitBranchCond(isOldNull, joinBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     if (elemKind == CollectionKind::Str) {
@@ -107,7 +106,7 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
                        getOrCreateCollectionDestructor(elemKind, innerElemSig, innerValSig),
                        /*gcVisitFn=*/nullptr);
     }
-    builder_.CreateBr(joinBB);
+    emitBranchUncond(joinBB);
 
     builder_.SetInsertPoint(joinBB);
 }
@@ -408,9 +407,9 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
             llvm::Value *slot = emitMapKeyLookup(containerPtr, indexVal, mapKeyTy);
             llvm::Value *missing = builder_.CreateICmpSLT(slot, llvm::ConstantInt::get(i64Ty_, 0), "map_key_missing");
             auto *fn = builder_.GetInsertBlock()->getParent();
-            auto *errBB = llvm::BasicBlock::Create(*ctx_, "map_chain_missing", fn);
-            auto *okBB = llvm::BasicBlock::Create(*ctx_, "map_chain_ok", fn);
-            builder_.CreateCondBr(missing, errBB, okBB);
+            auto *errBB = createBBInFn("map_chain_missing", fn);
+            auto *okBB = createBBInFn("map_chain_ok", fn);
+            emitBranchCond(missing, errBB, okBB);
             builder_.SetInsertPoint(errBB);
             emitRuntimeError("runtime error: missing map key in chained field assignment\n",
                              ".map_chain_missing");
@@ -682,9 +681,9 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
         ListFields lf = loadListHeader(val, "destruct");
         llvm::Value *expected = llvm::ConstantInt::get(i64Ty_, s.names.size());
         llvm::Value *mismatch = builder_.CreateICmpNE(lf.len, expected, "destruct_len_mismatch");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "destruct.len_err", fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "destruct.ok", fn_);
-        builder_.CreateCondBr(mismatch, errBB, okBB);
+        llvm::BasicBlock *errBB = createBB("destruct.len_err");
+        llvm::BasicBlock *okBB  = createBB("destruct.ok");
+        emitBranchCond(mismatch, errBB, okBB);
 
         builder_.SetInsertPoint(errBB);
         emitRuntimeError(
@@ -780,14 +779,14 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
     emitCoverage(s->loc);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
+    llvm::BasicBlock *mergeBB = createBB("if.end");
     llvm::Value *cond = emitExpr(*s->branch.condition);
     cond = toBool(cond);
     emitTraceIfBranch(cond, s->loc);
 
-    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
-    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
-    builder_.CreateCondBr(cond, thenBB, elseBB);
+    llvm::BasicBlock *thenBB = createBB("if.then");
+    llvm::BasicBlock *elseBB = createBB("if.else");
+    emitBranchCond(cond, thenBB, elseBB);
 
     builder_.SetInsertPoint(thenBB);
     pushScope();
@@ -795,7 +794,7 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
     popScope();
     if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(elseBB);
 
@@ -806,23 +805,23 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
         popScope();
     }
     if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
 }
 
 void CodeGen::emitStmt(std::unique_ptr<CaseCondStmt> &s) {
     emitCoverage(s->loc);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.end", fn_);
+    llvm::BasicBlock *mergeBB = createBB("case.end");
     int armIndex = 0;
 
     for (auto &arm : s->arms) {
         llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "case.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "case.next", fn_);
-        builder_.CreateCondBr(cond, thenBB, nextBB);
+        llvm::BasicBlock *thenBB = createBB("case.then");
+        llvm::BasicBlock *nextBB = createBB("case.next");
+        emitBranchCond(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
         emitTraceWhenBranch(armIndex++, s->loc);
@@ -831,7 +830,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseCondStmt> &s) {
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(nextBB);
     }
@@ -844,7 +843,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseCondStmt> &s) {
         popScope();
     }
     if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
 }
@@ -1156,10 +1155,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         if (s.compound_op) {
             llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
-            auto *parentFn = builder_.GetInsertBlock()->getParent();
-            auto *missBB = llvm::BasicBlock::Create(*ctx_, "map.compound_missing", parentFn);
-            auto *okBB = llvm::BasicBlock::Create(*ctx_, "map.compound_ok", parentFn);
-            builder_.CreateCondBr(found, okBB, missBB);
+            auto *missBB = createBB("map.compound_missing");
+            auto *okBB = createBB("map.compound_ok");
+            emitBranchCond(found, okBB, missBB);
             builder_.SetInsertPoint(missBB);
             emitRuntimeError("runtime error: compound assignment to missing map key\n",
                              ".map_compound_missing");
@@ -1192,11 +1190,11 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
-        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "map.update", fn_);
-        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "map.insert", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "map.assign_end", fn_);
+        llvm::BasicBlock *updateBB = createBB("map.update");
+        llvm::BasicBlock *insertBB = createBB("map.insert");
+        llvm::BasicBlock *endBB = createBB("map.assign_end");
 
-        builder_.CreateCondBr(found, updateBB, insertBB);
+        emitBranchCond(found, updateBB, insertBB);
 
         builder_.SetInsertPoint(updateBB);
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
@@ -1211,7 +1209,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             emitArcReleaseLoadedElement(oldVal, mapValArcKind, mapValTypeName, "map_val");
         }
         builder_.CreateStore(rhsVal, valElemPtr);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
 
         builder_.SetInsertPoint(insertBB);
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 0, "map_len_ptr");
@@ -1221,9 +1219,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
         // Check if we need to grow
         llvm::Value *needGrow = builder_.CreateICmpEQ(length, cap, "need_grow");
-        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "map.grow", fn_);
-        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "map.store", fn_);
-        builder_.CreateCondBr(needGrow, growBB, storeBB);
+        llvm::BasicBlock *growBB = createBB("map.grow");
+        llvm::BasicBlock *storeBB = createBB("map.store");
+        emitBranchCond(needGrow, growBB, storeBB);
 
         // Grow: realloc keys and values arrays
         builder_.SetInsertPoint(growBB);
@@ -1266,7 +1264,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         builder_.CreateStore(newValsPtr, valsPtrField2);
         builder_.CreateStore(newCap, capPtr);
 
-        builder_.CreateBr(storeBB);
+        emitBranchUncond(storeBB);
 
         // Store new key-value at index = length.  Retain to give the map
         // an independent strong reference (#1242).  `retainArcValue` routes
@@ -1304,7 +1302,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         // Insert into hash table buckets and check rehash
         emitBucketInsertAndRehashCheck(objPtr, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, key, mapKeyTy, curLen);
 
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
 
         builder_.SetInsertPoint(endBB);
         return;

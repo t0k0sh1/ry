@@ -73,9 +73,9 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *isErr = builder_.CreateICmpEQ(
             result, llvm::ConstantInt::get(*ctx_, llvm::APInt(64, static_cast<uint64_t>(errSentinel), true)),
             prefix + "_is_err");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, prefix + ".err", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, prefix + ".ok", fn_);
-        builder_.CreateCondBr(isErr, errBB, okBB);
+        llvm::BasicBlock *errBB = createBBInFn((prefix + ".err").c_str(), fn_);
+        llvm::BasicBlock *okBB = createBBInFn((prefix + ".ok").c_str(), fn_);
+        emitBranchCond(isErr, errBB, okBB);
         builder_.SetInsertPoint(errBB);
         emitRegexRuntimeError();
         builder_.SetInsertPoint(okBB);
@@ -86,9 +86,9 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *isNull = builder_.CreateICmpEQ(
             result, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             prefix + "_is_null");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, prefix + ".err", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, prefix + ".ok", fn_);
-        builder_.CreateCondBr(isNull, errBB, okBB);
+        llvm::BasicBlock *errBB = createBBInFn((prefix + ".err").c_str(), fn_);
+        llvm::BasicBlock *okBB = createBBInFn((prefix + ".ok").c_str(), fn_);
+        emitBranchCond(isNull, errBB, okBB);
         builder_.SetInsertPoint(errBB);
         emitRegexRuntimeError();
         builder_.SetInsertPoint(okBB);
@@ -280,7 +280,7 @@ static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Val
 
         llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*cg.ctx_, "some", nextFn);
         llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*cg.ctx_, "none", nextFn);
-        cg.builder_.CreateCondBr(isLine, someBB, noneBB);
+        cg.emitBranchCond(isLine, someBB, noneBB);
 
         cg.builder_.SetInsertPoint(someBB);
         llvm::Value *line = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "fl_line");
@@ -830,14 +830,14 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), "bind_null");
     llvm::BasicBlock *bindFailBB = llvm::BasicBlock::Create(*cg.ctx_, "http.bind_fail", cg.fn_);
     llvm::BasicBlock *bindOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.bind_ok", cg.fn_);
-    cg.builder_.CreateCondBr(isNull, bindFailBB, bindOkBB);
+    cg.emitBranchCond(isNull, bindFailBB, bindOkBB);
 
     cg.builder_.SetInsertPoint(bindFailBB);
     {
         llvm::Value *errVal = cg.buildErrValue(
             cg.buildErrorFromRuntime("__ry_net_get_last_error"), unitResTy);
         cg.builder_.CreateStore(errVal, resultAlloca);
-        cg.builder_.CreateBr(returnBB);
+        cg.emitBranchUncond(returnBB);
     }
 
     // 2. listen(listener, 128)
@@ -849,7 +849,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         llvm::ConstantInt::get(cg.i64Ty_, 0), "listen_failed");
     llvm::BasicBlock *listenFailBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_fail", cg.fn_);
     llvm::BasicBlock *listenOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_ok", cg.fn_);
-    cg.builder_.CreateCondBr(listenFailed, listenFailBB, listenOkBB);
+    cg.emitBranchCond(listenFailed, listenFailBB, listenOkBB);
 
     cg.builder_.SetInsertPoint(listenFailBB);
     {
@@ -860,7 +860,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
             cg.buildStaticError("listen failed", ".http_listen_err_" + std::to_string(listenErrCtr++)),
             unitResTy);
         cg.builder_.CreateStore(errVal, resultAlloca);
-        cg.builder_.CreateBr(returnBB);
+        cg.emitBranchUncond(returnBB);
     }
 
     cg.builder_.SetInsertPoint(listenOkBB);
@@ -891,7 +891,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     llvm::BasicBlock *loopBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "http.loop_body", cg.fn_);
     llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*cg.ctx_, "http.loop_end", cg.fn_);
 
-    cg.builder_.CreateBr(loopBB);
+    cg.emitBranchUncond(loopBB);
     cg.builder_.SetInsertPoint(loopBB);
 
     auto acceptFn = cg.getRuntimeFn("__ry_accept", cg.ptrTy_, {cg.ptrTy_});
@@ -899,7 +899,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     llvm::Value *connNull = cg.builder_.CreateICmpEQ(conn,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), "conn_null");
-    cg.builder_.CreateCondBr(connNull, loopBB, loopBodyBB);
+    cg.emitBranchCond(connNull, loopBB, loopBodyBB);
 
     cg.builder_.SetInsertPoint(loopBodyBB);
 
@@ -911,11 +911,11 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), "req_null");
     llvm::BasicBlock *reqOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.req_ok", cg.fn_);
     llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*cg.ctx_, "http.req_bad", cg.fn_);
-    cg.builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
+    cg.emitBranchCond(reqNull, reqBadBB, reqOkBB);
 
     cg.builder_.SetInsertPoint(reqBadBB);
     cg.builder_.CreateCall(closeFn, {conn});
-    cg.builder_.CreateBr(loopBB);
+    cg.emitBranchUncond(loopBB);
 
     cg.builder_.SetInsertPoint(reqOkBB);
 
@@ -932,20 +932,20 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         llvm::BasicBlock *respOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_ok", cg.fn_);
         llvm::BasicBlock *respErrBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_err", cg.fn_);
         llvm::BasicBlock *respMergeBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_merge", cg.fn_);
-        cg.builder_.CreateCondBr(isOk, respOkBB, respErrBB);
+        cg.emitBranchCond(isOk, respOkBB, respErrBB);
 
         cg.builder_.SetInsertPoint(respOkBB);
         llvm::Value *okResp = cg.builder_.CreateExtractValue(handlerResult, {1}, "resp_ok_ptr");
-        cg.builder_.CreateBr(respMergeBB);
+        cg.emitBranchUncond(respMergeBB);
 
         cg.builder_.SetInsertPoint(respErrBB);
         auto defRespFn = cg.getRuntimeFn("__ry_http_default_error_response", cg.ptrTy_, {cg.i64Ty_});
         llvm::Value *errResp = cg.builder_.CreateCall(
             defRespFn, {llvm::ConstantInt::get(cg.i64Ty_, 500)}, "default_500");
-        cg.builder_.CreateBr(respMergeBB);
+        cg.emitBranchUncond(respMergeBB);
 
         cg.builder_.SetInsertPoint(respMergeBB);
-        llvm::PHINode *phi = cg.builder_.CreatePHI(cg.ptrTy_, 2, "final_resp");
+        llvm::PHINode *phi = cg.createPhi(cg.ptrTy_, {}, "final_resp");
         phi->addIncoming(okResp, respOkBB);
         phi->addIncoming(errResp, respErrBB);
         resp = phi;
@@ -970,12 +970,12 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
         llvm::Value *limitReached = cg.builder_.CreateICmpSGE(newCount, maxReqs, "limit_reached");
         llvm::BasicBlock *shutdownBB = llvm::BasicBlock::Create(*cg.ctx_, "http.shutdown", cg.fn_);
         llvm::BasicBlock *kaCheckBB = llvm::BasicBlock::Create(*cg.ctx_, "http.ka_check", cg.fn_);
-        cg.builder_.CreateCondBr(limitReached, shutdownBB, kaCheckBB);
+        cg.emitBranchCond(limitReached, shutdownBB, kaCheckBB);
 
         cg.builder_.SetInsertPoint(shutdownBB);
         cg.builder_.CreateCall(closeFn, {conn});
         cg.builder_.CreateCall(listenerCloseFn, {listener});
-        cg.builder_.CreateBr(loopEndBB);
+        cg.emitBranchUncond(loopEndBB);
 
         cg.builder_.SetInsertPoint(kaCheckBB);
     }
@@ -983,18 +983,18 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     llvm::Value *isKeepAlive = cg.builder_.CreateICmpNE(keepAlive,
         llvm::ConstantInt::get(cg.i64Ty_, 0), "is_keep_alive");
     llvm::BasicBlock *closeBB = llvm::BasicBlock::Create(*cg.ctx_, "http.close_conn", cg.fn_);
-    cg.builder_.CreateCondBr(isKeepAlive, loopBodyBB, closeBB);
+    cg.emitBranchCond(isKeepAlive, loopBodyBB, closeBB);
 
     cg.builder_.SetInsertPoint(closeBB);
     cg.builder_.CreateCall(closeFn, {conn});
-    cg.builder_.CreateBr(loopBB);
+    cg.emitBranchUncond(loopBB);
 
     // Loop completed normally
     cg.builder_.SetInsertPoint(loopEndBB);
     {
         llvm::Value *okVal = cg.buildOkValue(llvm::ConstantInt::get(cg.i8Ty_, 0), unitResTy);
         cg.builder_.CreateStore(okVal, resultAlloca);
-        cg.builder_.CreateBr(returnBB);
+        cg.emitBranchUncond(returnBB);
     }
 
     // Final return block

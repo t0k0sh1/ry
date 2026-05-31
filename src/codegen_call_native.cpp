@@ -825,10 +825,10 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
     llvm::Value *mockActive = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
 
-    llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
-    llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
-    builder_.CreateCondBr(mockActive, mockBB, origBB);
+    llvm::BasicBlock *mockBB = createBB("mock_bb");
+    llvm::BasicBlock *origBB = createBB("orig_bb");
+    llvm::BasicBlock *mergeBB = createBB("merge_bb");
+    emitBranchCond(mockActive, mockBB, origBB);
 
     // Mock path: emit args fresh, increment, dispatch via plain or capture
     // ABI based on env pointer.
@@ -853,9 +853,9 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     llvm::Value *envPtr = builder_.CreateCall(mockGetEnvFn, {nameStr}, "mock_env");
     llvm::Value *isCapture = builder_.CreateICmpNE(envPtr, nullPtr, "is_capture_mock");
 
-    llvm::BasicBlock *plainBB = llvm::BasicBlock::Create(*ctx_, "mock_plain_bb", fn_);
-    llvm::BasicBlock *captureBB = llvm::BasicBlock::Create(*ctx_, "mock_capture_bb", fn_);
-    builder_.CreateCondBr(isCapture, captureBB, plainBB);
+    llvm::BasicBlock *plainBB = createBB("mock_plain_bb");
+    llvm::BasicBlock *captureBB = createBB("mock_capture_bb");
+    emitBranchCond(isCapture, captureBB, plainBB);
 
     std::vector<llvm::Type *> captureParamTys = mockParamTys;
     captureParamTys.push_back(ptrTy_);
@@ -870,7 +870,7 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
         : builder_.CreateCall(mockFnTy, mockPtr, mockArgs, "mock_result_plain");
     if (mockRetTy->isVoidTy())
         builder_.CreateCall(mockFnTy, mockPtr, mockArgs);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     llvm::BasicBlock *plainEndBB = builder_.GetInsertBlock();
 
     builder_.SetInsertPoint(captureBB);
@@ -879,7 +879,7 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
         : builder_.CreateCall(captureFnTy, mockPtr, captureArgs, "mock_result_capture");
     if (mockRetTy->isVoidTy())
         builder_.CreateCall(captureFnTy, mockPtr, captureArgs);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     llvm::BasicBlock *captureEndBB = builder_.GetInsertBlock();
 
     // Original path: delegate to customEmitter (which emits its own args).
@@ -887,14 +887,14 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     if (isSpied)
         builder_.CreateCall(mockIncFn, {nameStr});
     llvm::Value *origResult = entry->customEmitter(*this, e);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
 
     builder_.SetInsertPoint(mergeBB);
     if (mockRetTy->isVoidTy())
         return llvm::ConstantInt::get(i8Ty_, 0);
 
-    llvm::PHINode *phi = builder_.CreatePHI(mockRetTy, 3, "call_result");
+    llvm::PHINode *phi = createPhi(mockRetTy, {}, "call_result");
     phi->addIncoming(mockResultPlain, plainEndBB);
     phi->addIncoming(mockResultCapture, captureEndBB);
     phi->addIncoming(origResult, origEndBB);

@@ -64,7 +64,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 FnScope guard(*this);
                 fn_ = nextFn;
                 pushScope();
-                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                llvm::BasicBlock *entry = createBBInFn("entry", nextFn);
                 builder_.SetInsertPoint(entry);
 
                 llvm::Value *statePtr = nextFn->getArg(0);
@@ -75,8 +75,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 2, "idx_field");
                 llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
 
-                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
-                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
+                llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
                 builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
@@ -135,7 +135,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 FnScope guard(*this);
                 fn_ = nextFn;
                 pushScope();
-                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                llvm::BasicBlock *entry = createBBInFn("entry", nextFn);
                 builder_.SetInsertPoint(entry);
 
                 llvm::Value *statePtr = nextFn->getArg(0);
@@ -148,8 +148,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 3, "idx_field");
                 llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
 
-                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
-                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
+                llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
                 builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
@@ -222,18 +222,18 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         llvm::StructType *optTy = getOptionType(elemTy);
         llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tl.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tl.body", fn_);
-        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "tl.grow", fn_);
-        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "tl.store", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tl.end", fn_);
+        llvm::BasicBlock *condBB = createBB("tl.cond");
+        llvm::BasicBlock *bodyBB = createBB("tl.body");
+        llvm::BasicBlock *growBB = createBB("tl.grow");
+        llvm::BasicBlock *storeBB = createBB("tl.store");
+        llvm::BasicBlock *endBB = createBB("tl.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "tl_opt");
         llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "tl_has");
-        builder_.CreateCondBr(hasVal, bodyBB, endBB);
+        emitBranchCond(hasVal, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "tl_elem");
@@ -249,7 +249,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "tl_new_size")
         }, "tl_new_data");
         builder_.CreateStore(newData, dataVar);
-        builder_.CreateBr(storeBB);
+        emitBranchUncond(storeBB);
 
         builder_.SetInsertPoint(storeBB);
         llvm::Value *storeLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_store_len");
@@ -257,7 +257,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(elem, builder_.CreateGEP(elemTy, storeData, {storeLen}, "tl_dst_ptr"));
         builder_.CreateStore(
             builder_.CreateAdd(storeLen, llvm::ConstantInt::get(i64Ty_, 1), "tl_new_len"), lenVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         builder_.CreateStore(builder_.CreateLoad(i64Ty_, lenVar, "tl_final_len"),
@@ -320,7 +320,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             FnScope guard(*this);
             fn_ = filterNextFn;
             pushScope();
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", filterNextFn);
+            llvm::BasicBlock *entry = createBBInFn("entry", filterNextFn);
             builder_.SetInsertPoint(entry);
 
             llvm::Value *statePtr = filterNextFn->getArg(0);
@@ -332,21 +332,21 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 builder_.CreateStructGEP(stateTy, statePtr, 2), "pred_ptr");
 
             llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "loop", filterNextFn);
-            builder_.CreateBr(loopBB);
+            llvm::BasicBlock *loopBB = createBBInFn("loop", filterNextFn);
+            emitBranchUncond(loopBB);
 
             builder_.SetInsertPoint(loopBB);
             llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
             llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
-            llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "check", filterNextFn);
-            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", filterNextFn);
-            builder_.CreateCondBr(hasVal, checkBB, noneBB);
+            llvm::BasicBlock *checkBB = createBBInFn("check", filterNextFn);
+            llvm::BasicBlock *noneBB = createBBInFn("none", filterNextFn);
+            emitBranchCond(hasVal, checkBB, noneBB);
 
             builder_.SetInsertPoint(checkBB);
             llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
             llvm::Value *predResult = emitLambdaCall(predPtr, info, {elem}, "pred_result");
-            llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "match", filterNextFn);
-            builder_.CreateCondBr(predResult, matchBB, loopBB);
+            llvm::BasicBlock *matchBB = createBBInFn("match", filterNextFn);
+            emitBranchCond(predResult, matchBB, loopBB);
 
             builder_.SetInsertPoint(matchBB);
             builder_.CreateRet(buildSomeValue(elem, optTy));
@@ -400,7 +400,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             FnScope guard(*this);
             fn_ = mapNextFn;
             pushScope();
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", mapNextFn);
+            llvm::BasicBlock *entry = createBBInFn("entry", mapNextFn);
             builder_.SetInsertPoint(entry);
 
             llvm::Value *statePtr = mapNextFn->getArg(0);
@@ -415,9 +415,9 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
             llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
 
-            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", mapNextFn);
-            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", mapNextFn);
-            builder_.CreateCondBr(hasVal, someBB, noneBB);
+            llvm::BasicBlock *someBB = createBBInFn("some", mapNextFn);
+            llvm::BasicBlock *noneBB = createBBInFn("none", mapNextFn);
+            emitBranchCond(hasVal, someBB, noneBB);
 
             builder_.SetInsertPoint(someBB);
             llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
@@ -466,7 +466,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             FnScope guard(*this);
             fn_ = takeNextFn;
             pushScope();
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", takeNextFn);
+            llvm::BasicBlock *entry = createBBInFn("entry", takeNextFn);
             builder_.SetInsertPoint(entry);
 
             llvm::Value *statePtr = takeNextFn->getArg(0);
@@ -477,8 +477,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             llvm::Value *remField = builder_.CreateStructGEP(stateTy, statePtr, 2, "rem_f");
             llvm::Value *remaining = builder_.CreateLoad(i64Ty_, remField, "remaining");
 
-            llvm::BasicBlock *callBB = llvm::BasicBlock::Create(*ctx_, "call", takeNextFn);
-            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", takeNextFn);
+            llvm::BasicBlock *callBB = createBBInFn("call", takeNextFn);
+            llvm::BasicBlock *noneBB = createBBInFn("none", takeNextFn);
             builder_.CreateCondBr(
                 builder_.CreateICmpSGT(remaining, llvm::ConstantInt::get(i64Ty_, 0), "has_rem"),
                 callBB, noneBB);

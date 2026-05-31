@@ -779,9 +779,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy, setElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
-        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "setlit.insert", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "setlit.next", fn_);
-        builder_.CreateCondBr(found, nextBB, insertBB);
+        llvm::BasicBlock *insertBB = createBB("setlit.insert");
+        llvm::BasicBlock *nextBB = createBB("setlit.next");
+        emitBranchCond(found, nextBB, insertBB);
 
         builder_.SetInsertPoint(insertBB);
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
@@ -800,7 +800,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         emitBucketInsertAndRehashCheck(headerPtr, setHeaderTy_,
             kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx,
             vals[static_cast<size_t>(i)], elemTy, curLen);
-        builder_.CreateBr(nextBB);
+        emitBranchUncond(nextBB);
 
         builder_.SetInsertPoint(nextBB);
     }
@@ -976,10 +976,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             llvm::StructType *optTy = getOptionType(mapValTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "trymap_found");
 
-            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "trymap.found", fn_);
-            llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "trymap.notfound", fn_);
-            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "trymap.merge", fn_);
-            builder_.CreateCondBr(found, foundBB, notFoundBB);
+            llvm::BasicBlock *foundBB = createBB("trymap.found");
+            llvm::BasicBlock *notFoundBB = createBB("trymap.notfound");
+            llvm::BasicBlock *mergeBB = createBB("trymap.merge");
+            emitBranchCond(found, foundBB, notFoundBB);
 
             builder_.SetInsertPoint(foundBB);
             llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "trymap_vals_field");
@@ -995,16 +995,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
                     getOrCreateMeta(foundVal).str_elem = true;
             }
             llvm::Value *someVal = buildSomeValue(foundVal, optTy);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
             llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
 
             builder_.SetInsertPoint(notFoundBB);
             llvm::Value *noneVal = buildNoneValue(optTy);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
             llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
 
             builder_.SetInsertPoint(mergeBB);
-            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "trymap_result");
+            llvm::PHINode *phi = createPhi(optTy, {}, "trymap_result");
             phi->addIncoming(someVal, foundEndBB);
             phi->addIncoming(noneVal, notFoundEndBB);
             propagateMeta(someVal, phi);
@@ -1014,10 +1014,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         // Check if found
         llvm::Value *notFound = builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0), "not_found");
 
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "map.notfound", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "map.found", fn_);
+        llvm::BasicBlock *failBB = createBB("map.notfound");
+        llvm::BasicBlock *okBB = createBB("map.found");
 
-        builder_.CreateCondBr(notFound, failBB, okBB);
+        emitBranchCond(notFound, failBB, okBB);
 
         // Not found: print error and exit
         builder_.SetInsertPoint(failBB);
@@ -1117,10 +1117,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "tryidx_oob");
 
         llvm::StructType *optTy = getOptionType(elemTy);
-        llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "trylist.oob", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "trylist.ok", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "trylist.merge", fn_);
-        builder_.CreateCondBr(oob, oobBB, okBB);
+        llvm::BasicBlock *oobBB = createBB("trylist.oob");
+        llvm::BasicBlock *okBB = createBB("trylist.ok");
+        llvm::BasicBlock *mergeBB = createBB("trylist.merge");
+        emitBranchCond(oob, oobBB, okBB);
 
         builder_.SetInsertPoint(okBB);
         llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
@@ -1129,16 +1129,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "tryelem");
         stampLoadedElem(elem);
         llvm::Value *someVal = buildSomeValue(elem, optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(oobBB);
         llvm::Value *noneVal = buildNoneValue(optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *oobEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "trylist_result");
+        llvm::PHINode *phi = createPhi(optTy, {}, "trylist_result");
         phi->addIncoming(someVal, okEndBB);
         phi->addIncoming(noneVal, oobEndBB);
         propagateMeta(someVal, phi);

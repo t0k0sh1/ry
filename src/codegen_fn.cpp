@@ -196,7 +196,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         // Note: Do not emit function-exit tracing here; LLVM requires
                         // a musttail call to be immediately followed by the ret.
                         builder_.CreateRet(val);
-                        llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+                        llvm::BasicBlock *dead = createBB("dead");
                         builder_.SetInsertPoint(dead);
                         return;
                     }
@@ -282,7 +282,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         emitTraceFunctionExit(current_function_name_, s.loc);
         builder_.CreateRet(val);
     }
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+    llvm::BasicBlock *deadBB = createBB("dead");
     builder_.SetInsertPoint(deadBB);
 }
 
@@ -851,7 +851,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         current_function_name_ = s->name;
         pushScope();
 
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
+        llvm::BasicBlock *entry = createBBInFn("entry", targetFunc);
         builder_.SetInsertPoint(entry);
         emitTraceFunctionEnter(s->name, s->loc);
 
@@ -958,7 +958,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     {
         FnScope guard(*this);
         fn_ = thunk;
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        llvm::BasicBlock *entry = createBBInFn("entry", thunk);
         builder_.SetInsertPoint(entry);
 
         auto argIt = thunk->arg_begin();
@@ -988,7 +988,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         FnScope guard(*this);
         fn_ = func;
         current_fn_return_type_ = exposedReturnTypeName;
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        llvm::BasicBlock *entry = createBBInFn("entry", func);
         builder_.SetInsertPoint(entry);
 
         llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);

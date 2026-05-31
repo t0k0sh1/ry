@@ -237,15 +237,15 @@ llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, int rk,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
         "res_free_null");
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "res_free.release", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res_free.done", fn);
-    builder_.CreateCondBr(isNull, doneBB, releaseBB);
+    auto *releaseBB = createBBInFn("res_free.release", fn);
+    auto *doneBB = createBBInFn("res_free.done", fn);
+    emitBranchCond(isNull, doneBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     auto *hdr = emitArcGetHeaderFromData(dataPtr);
     bool atomic = isArcAtomic(dataPtr);
     emitArcRelease(hdr, atomic, getOrCreateResourceDestructor(rk));
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
     nullifyResourceVar(argExpr);
@@ -271,7 +271,7 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
         dtorTy, llvm::Function::InternalLinkage, dtorName, mod_.get());
     dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    auto *entryBB = createBBInFn("entry", dtorFn);
 
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
@@ -320,9 +320,9 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
         "arc_null_check");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "arc.var_release", fn);
-    auto *skipBB = llvm::BasicBlock::Create(*ctx_, "arc.var_skip", fn);
-    builder_.CreateCondBr(isNull, skipBB, releaseBB);
+    auto *releaseBB = createBBInFn("arc.var_release", fn);
+    auto *skipBB = createBBInFn("arc.var_skip", fn);
+    emitBranchCond(isNull, skipBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     const bool isStrVar = arc_str_managed_vars_.count(alloca) > 0;
@@ -340,7 +340,7 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
     llvm::FunctionCallee destructor = isStrVar ? llvm::FunctionCallee{}
                                                : resolveDestructor(alloca);
     emitArcRelease(headerPtr, isArcAtomic(val), destructor, gcVisitFn);
-    builder_.CreateBr(skipBB);
+    emitBranchUncond(skipBB);
 
     builder_.SetInsertPoint(skipBB);
 }
@@ -458,14 +458,14 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             fd.name + ".record_retain_null");
         auto *fn = builder_.GetInsertBlock()->getParent();
-        auto *retainBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain", fn);
-        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain_skip", fn);
-        builder_.CreateCondBr(isNull, skipBB, retainBB);
+        auto *retainBB = createBBInFn("record.field_retain", fn);
+        auto *skipBB = createBBInFn("record.field_retain_skip", fn);
+        emitBranchCond(isNull, skipBB, retainBB);
         builder_.SetInsertPoint(retainBB);
         auto *hdr = (fk == CollectionKind::Str) ? emitStrGetHeaderFromData(fieldVal)
                                                  : emitArcGetHeaderFromData(fieldVal);
         emitArcRetain(hdr, /*atomic=*/false);
-        builder_.CreateBr(skipBB);
+        emitBranchUncond(skipBB);
         builder_.SetInsertPoint(skipBB);
     }
 }
@@ -538,14 +538,13 @@ void CodeGen::emitTaggedUnionRelease(llvm::AllocaInst *alloca,
                          fieldTypeIsArcManaged(errName, &errKind);
     if (!okArc && !errArc) return;
 
-    auto *parentFn = builder_.GetInsertBlock()->getParent();
-    auto *okBB = llvm::BasicBlock::Create(*ctx_, "tu.ok", parentFn);
-    auto *errBB = llvm::BasicBlock::Create(*ctx_, "tu.err", parentFn);
-    auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "tu.merge", parentFn);
+    auto *okBB = createBB("tu.ok");
+    auto *errBB = createBB("tu.err");
+    auto *mergeBB = createBB("tu.merge");
 
     llvm::Value *loaded = builder_.CreateLoad(ty, alloca, "tu.load");
     llvm::Value *tag = builder_.CreateExtractValue(loaded, 0, "tu.tag");
-    builder_.CreateCondBr(tag, okBB, errBB);
+    emitBranchCond(tag, okBB, errBB);
 
     // Ok / Some path
     builder_.SetInsertPoint(okBB);
@@ -553,7 +552,7 @@ void CodeGen::emitTaggedUnionRelease(llvm::AllocaInst *alloca,
         llvm::Value *okVal = builder_.CreateExtractValue(loaded, 1, "tu.ok_val");
         emitArcReleaseLoadedElement(okVal, okKind, okName, "tu.ok");
     }
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     // Err path (Result only; Option's None has no payload)
     builder_.SetInsertPoint(errBB);
@@ -561,7 +560,7 @@ void CodeGen::emitTaggedUnionRelease(llvm::AllocaInst *alloca,
         llvm::Value *errVal = builder_.CreateExtractValue(loaded, 2, "tu.err_val");
         emitArcReleaseLoadedElement(errVal, errKind, errName, "tu.err");
     }
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
 }
@@ -622,9 +621,9 @@ void CodeGen::emitWeakRetain(llvm::Value *headerPtr) {
     auto *isImmortal = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_retain_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *retainBB = llvm::BasicBlock::Create(*ctx_, "weak.retain", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.retain.done", fn);
-    builder_.CreateCondBr(isImmortal, doneBB, retainBB);
+    auto *retainBB = createBBInFn("weak.retain", fn);
+    auto *doneBB = createBBInFn("weak.retain.done", fn);
+    emitBranchCond(isImmortal, doneBB, retainBB);
 
     builder_.SetInsertPoint(retainBB);
     auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_retain_ptr");
@@ -632,7 +631,7 @@ void CodeGen::emitWeakRetain(llvm::Value *headerPtr) {
                              llvm::ConstantInt::get(i64Ty_, 1),
                              llvm::MaybeAlign(),
                              llvm::AtomicOrdering::SequentiallyConsistent);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }
@@ -644,9 +643,9 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
     auto *isImmortal = builder_.CreateICmpEQ(strongCheck, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_rel_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "weak.release.body", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.done", fn);
-    builder_.CreateCondBr(isImmortal, doneBB, releaseBB);
+    auto *releaseBB = createBBInFn("weak.release.body", fn);
+    auto *doneBB = createBBInFn("weak.done", fn);
+    emitBranchCond(isImmortal, doneBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_rel_ptr");
@@ -657,22 +656,22 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
         llvm::AtomicOrdering::SequentiallyConsistent);
     auto *isZeroWeak = builder_.CreateICmpEQ(oldWeak, llvm::ConstantInt::get(i64Ty_, 1), "weak_zero");
 
-    auto *checkStrongBB = llvm::BasicBlock::Create(*ctx_, "weak.check_strong", fn);
-    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "weak.free", fn);
-    builder_.CreateCondBr(isZeroWeak, checkStrongBB, doneBB);
+    auto *checkStrongBB = createBBInFn("weak.check_strong", fn);
+    auto *freeBB = createBBInFn("weak.free", fn);
+    emitBranchCond(isZeroWeak, checkStrongBB, doneBB);
 
     builder_.SetInsertPoint(checkStrongBB);
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_strong_ptr");
     auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "weak_strong");
     strong->setAtomic(llvm::AtomicOrdering::Acquire);
     auto *isZeroStrong = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, 0), "strong_zero");
-    builder_.CreateCondBr(isZeroStrong, freeBB, doneBB);
+    emitBranchCond(isZeroStrong, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
     // Decrement the ARC live-count balance counter inline (weak release path).
     emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
     builder_.CreateCall(getStdlibFree(), {headerPtr});
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }
@@ -688,18 +687,18 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_up_strong_ptr");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *immortalBB = llvm::BasicBlock::Create(*ctx_, "weak.immortal", fn);
-    auto *loopBB = llvm::BasicBlock::Create(*ctx_, "weak.cas_loop", fn);
-    auto *tryIncBB = llvm::BasicBlock::Create(*ctx_, "weak.try_inc", fn);
-    auto *successBB = llvm::BasicBlock::Create(*ctx_, "weak.success", fn);
-    auto *deadBB = llvm::BasicBlock::Create(*ctx_, "weak.dead", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.upgrade_done", fn);
+    auto *immortalBB = createBBInFn("weak.immortal", fn);
+    auto *loopBB = createBBInFn("weak.cas_loop", fn);
+    auto *tryIncBB = createBBInFn("weak.try_inc", fn);
+    auto *successBB = createBBInFn("weak.success", fn);
+    auto *deadBB = createBBInFn("weak.dead", fn);
+    auto *doneBB = createBBInFn("weak.upgrade_done", fn);
 
     // Immortal objects are always alive — skip CAS and return Some directly
     auto *initCur = builder_.CreateLoad(i64Ty_, strongPtr, "weak_up_init");
     initCur->setAtomic(llvm::AtomicOrdering::Acquire);
     auto *isImmortal = builder_.CreateICmpEQ(initCur, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_up_immortal");
-    builder_.CreateCondBr(isImmortal, immortalBB, loopBB);
+    emitBranchCond(isImmortal, immortalBB, loopBB);
 
     // Immortal path: return Some(data_ptr) without incrementing
     builder_.SetInsertPoint(immortalBB);
@@ -709,14 +708,14 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
         : emitArcGetDataPtr(headerPtr);
     auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
     builder_.CreateStore(immortalSome, resultAlloca);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // CAS loop
     builder_.SetInsertPoint(loopBB);
     auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "weak_up_cur");
     cur->setAtomic(llvm::AtomicOrdering::Acquire);
     auto *isAlive = builder_.CreateICmpSGT(cur, llvm::ConstantInt::get(i64Ty_, 0), "weak_alive");
-    builder_.CreateCondBr(isAlive, tryIncBB, deadBB);
+    emitBranchCond(isAlive, tryIncBB, deadBB);
 
     // Try CAS: compare_exchange(strongPtr, cur, cur+1)
     builder_.SetInsertPoint(tryIncBB);
@@ -727,7 +726,7 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
         llvm::AtomicOrdering::AcquireRelease,
         llvm::AtomicOrdering::Monotonic);
     auto *success = builder_.CreateExtractValue(cmpxchg, 1, "weak_cas_ok");
-    builder_.CreateCondBr(success, successBB, loopBB);
+    emitBranchCond(success, successBB, loopBB);
 
     // Success: strong_count incremented, return Some(data_ptr)
     builder_.SetInsertPoint(successBB);
@@ -736,13 +735,13 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
         : emitArcGetDataPtr(headerPtr);
     auto *someVal = buildSomeValue(dataPtr, optionTy);
     builder_.CreateStore(someVal, resultAlloca);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Dead: strong_count == 0, return None
     builder_.SetInsertPoint(deadBB);
     auto *noneVal = buildNoneValue(optionTy);
     builder_.CreateStore(noneVal, resultAlloca);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
     return builder_.CreateLoad(optionTy, resultAlloca, "weak_upgraded");
@@ -755,13 +754,13 @@ void CodeGen::emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *allo
         "weak_null_check");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "weak.var_release", fn);
-    auto *skipBB = llvm::BasicBlock::Create(*ctx_, "weak.var_skip", fn);
-    builder_.CreateCondBr(isNull, skipBB, releaseBB);
+    auto *releaseBB = createBBInFn("weak.var_release", fn);
+    auto *skipBB = createBBInFn("weak.var_skip", fn);
+    emitBranchCond(isNull, skipBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     emitWeakRelease(val);
-    builder_.CreateBr(skipBB);
+    emitBranchUncond(skipBB);
 
     builder_.SetInsertPoint(skipBB);
 }
@@ -890,7 +889,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         dtorTy, llvm::Function::InternalLinkage, name, mod_.get());
     dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    auto *entryBB = createBBInFn("entry", dtorFn);
 
     // Save current builder state
     auto *savedBB = builder_.GetInsertBlock();
@@ -921,7 +920,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
             std::string("dtor_clpost_") + tag, dtorFn);
 
         auto *prevBB = builder_.GetInsertBlock();
-        builder_.CreateBr(loopHdrBB);
+        emitBranchUncond(loopHdrBB);
 
         builder_.SetInsertPoint(loopHdrBB);
         auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
@@ -929,7 +928,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
         auto *done = builder_.CreateICmpEQ(iPhi, len,
             std::string("dtor_cdone_") + tag);
-        builder_.CreateCondBr(done, postBB, loopBodyBB);
+        emitBranchCond(done, postBB, loopBodyBB);
 
         builder_.SetInsertPoint(loopBodyBB);
         auto *elemGEP = builder_.CreateGEP(ptrTy_, arrayPtr, {iPhi},
@@ -940,21 +939,21 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
             std::string("dtor_cnull_") + tag);
-        builder_.CreateCondBr(isNull, latchBB, doRelBB);
+        emitBranchCond(isNull, latchBB, doRelBB);
 
         builder_.SetInsertPoint(doRelBB);
         auto *hdr = emitArcGetHeaderFromData(elem);
         auto innerDtor = getOrCreateCollectionDestructor(innerKind, innerElemSig, innerValSig);
         emitArcRelease(hdr, /*atomic=*/false, innerDtor, nullptr);
         // emitArcRelease leaves builder_ in its doneBB
-        builder_.CreateBr(latchBB);
+        emitBranchUncond(latchBB);
 
         builder_.SetInsertPoint(latchBB);
         auto *iNext = builder_.CreateAdd(iPhi,
             llvm::ConstantInt::get(i64Ty_, 1),
             std::string("dtor_cinext_") + tag);
         iPhi->addIncoming(iNext, latchBB);
-        builder_.CreateBr(loopHdrBB);
+        emitBranchUncond(loopHdrBB);
 
         builder_.SetInsertPoint(postBB);
     };
@@ -1012,7 +1011,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
             std::string("dtor_post_") + tag, dtorFn);
 
         auto *prevBB = builder_.GetInsertBlock();
-        builder_.CreateBr(loopHdrBB);
+        emitBranchUncond(loopHdrBB);
 
         // loop header: phi i=0/i_next, exit when i == len
         builder_.SetInsertPoint(loopHdrBB);
@@ -1021,7 +1020,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
         auto *done = builder_.CreateICmpEQ(iPhi, len,
             std::string("dtor_done_") + tag);
-        builder_.CreateCondBr(done, postBB, loopBodyBB);
+        emitBranchCond(done, postBB, loopBodyBB);
 
         // loop body: load element, skip if null
         builder_.SetInsertPoint(loopBodyBB);
@@ -1033,14 +1032,14 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
             std::string("dtor_null_") + tag);
-        builder_.CreateCondBr(isNull, latchBB, doRelBB);
+        emitBranchCond(isNull, latchBB, doRelBB);
 
         // do_rel: ARC-release the str element
         builder_.SetInsertPoint(doRelBB);
         auto *hdr = emitStrGetHeaderFromData(elem);
         emitArcRelease(hdr, /*atomic=*/false, {}, nullptr);
         // emitArcRelease leaves builder_ in its doneBB
-        builder_.CreateBr(latchBB);
+        emitBranchUncond(latchBB);
 
         // latch: increment i and loop back
         builder_.SetInsertPoint(latchBB);
@@ -1048,7 +1047,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
             llvm::ConstantInt::get(i64Ty_, 1),
             std::string("dtor_inext_") + tag);
         iPhi->addIncoming(iNext, latchBB);
-        builder_.CreateBr(loopHdrBB);
+        emitBranchUncond(loopHdrBB);
 
         builder_.SetInsertPoint(postBB);
     };
@@ -1308,7 +1307,7 @@ void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
             std::string(tagPrefix) + "_isnull" + std::to_string(i));
-        builder_.CreateCondBr(isNull, nullBB, relBB);
+        emitBranchCond(isNull, nullBB, relBB);
 
         builder_.SetInsertPoint(relBB);
         if (isStr) {
@@ -1340,7 +1339,7 @@ void CodeGen::emitTupleElemReleaseSlot(llvm::Value *slotPtr,
                             /*atomic=*/false, innerDtor, nullptr);
         }
         // emitArcRelease leaves cursor in its own done BB.
-        builder_.CreateBr(nullBB);
+        emitBranchUncond(nullBB);
 
         builder_.SetInsertPoint(nullBB);
     }
@@ -1379,7 +1378,7 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
     emitTupleElemReleaseSlot(slotPtr, tagPrefix.c_str(), tupleSig, tupleTy);
 
     // After all components, branch to the loop latch.
-    builder_.CreateBr(loop.latch);
+    emitBranchUncond(loop.latch);
     builder_.SetInsertPoint(loop.post);
 }
 
@@ -1448,7 +1447,7 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)),
             tagPrefix + "_isnull" + std::to_string(i));
-        builder_.CreateCondBr(isNull, nullBB, retBB);
+        emitBranchCond(isNull, nullBB, retBB);
 
         builder_.SetInsertPoint(retBB);
         if (isStr) {
@@ -1456,12 +1455,12 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
         } else {
             emitArcRetain(emitArcGetHeaderFromData(val), isArcAtomic(val));
         }
-        builder_.CreateBr(nullBB);
+        emitBranchUncond(nullBB);
 
         builder_.SetInsertPoint(nullBB);
     }
 
-    builder_.CreateBr(loop.latch);
+    emitBranchUncond(loop.latch);
     builder_.SetInsertPoint(loop.post);
 }
 
@@ -1491,7 +1490,7 @@ llvm::Function *CodeGen::getOrCreateRecordBoxDtor(const std::string &typeName,
                                        "__ry_record_box_dtor_" + typeName, mod_.get());
     record_dtor_cache_[typeName] = fn;
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    auto *entry = createBBInFn("entry", fn);
     builder_.SetInsertPoint(entry);
     auto *dataPtr = fn->getArg(0);
     auto *layoutTy = recordBoxLayoutType(st);
@@ -1518,7 +1517,7 @@ llvm::Function *CodeGen::getOrCreateRecordBoxEq(const std::string &typeName,
                                        "__ry_record_box_eq_" + typeName, mod_.get());
     record_eq_cache_[typeName] = fn;
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    auto *entry = createBBInFn("entry", fn);
     builder_.SetInsertPoint(entry);
     // Args point at the record-struct region inside the box (i.e. data + 8).
     auto *recA = builder_.CreateLoad(st, fn->getArg(0), "rec.a");
@@ -1733,7 +1732,7 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
                                        "__ry_enum_box_dtor_" + typeName, mod_.get());
     enum_dtor_cache_[typeName] = fn;
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    auto *entry = createBBInFn("entry", fn);
     builder_.SetInsertPoint(entry);
     auto *dataPtr = fn->getArg(0);
     auto *layoutTy = enumBoxLayoutType(payloadTy);
@@ -1750,13 +1749,13 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
         CollectionKind innerKind;
         if (fieldTypeIsArcManaged(args[0], &innerKind)) {
             auto *tag = builder_.CreateExtractValue(payload, 0, "opt.has");
-            auto *someBB = llvm::BasicBlock::Create(*ctx_, "opt.some.dtor", fn);
-            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "opt.done.dtor", fn);
-            builder_.CreateCondBr(tag, someBB, doneBB);
+            auto *someBB = createBBInFn("opt.some.dtor", fn);
+            auto *doneBB = createBBInFn("opt.done.dtor", fn);
+            emitBranchCond(tag, someBB, doneBB);
             builder_.SetInsertPoint(someBB);
             auto *inner = builder_.CreateExtractValue(payload, 1, "opt.inner");
             emitArcReleaseLoadedElement(inner, innerKind, args[0], "opt.dtor");
-            builder_.CreateBr(doneBB);
+            emitBranchUncond(doneBB);
             builder_.SetInsertPoint(doneBB);
         }
     } else if (head == "Result" && args.size() == 2) {
@@ -1767,22 +1766,22 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
         bool errArc = fieldTypeIsArcManaged(args[1], &errKind);
         if (okArc || errArc) {
             auto *tag = builder_.CreateExtractValue(payload, 0, "res.is_ok");
-            auto *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok.dtor", fn);
-            auto *errBB = llvm::BasicBlock::Create(*ctx_, "res.err.dtor", fn);
-            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res.done.dtor", fn);
-            builder_.CreateCondBr(tag, okBB, errBB);
+            auto *okBB = createBBInFn("res.ok.dtor", fn);
+            auto *errBB = createBBInFn("res.err.dtor", fn);
+            auto *doneBB = createBBInFn("res.done.dtor", fn);
+            emitBranchCond(tag, okBB, errBB);
             builder_.SetInsertPoint(okBB);
             if (okArc) {
                 auto *okVal = builder_.CreateExtractValue(payload, 1, "res.ok_val");
                 emitArcReleaseLoadedElement(okVal, okKind, args[0], "res.ok.dtor");
             }
-            builder_.CreateBr(doneBB);
+            emitBranchUncond(doneBB);
             builder_.SetInsertPoint(errBB);
             if (errArc) {
                 auto *errVal = builder_.CreateExtractValue(payload, 2, "res.err_val");
                 emitArcReleaseLoadedElement(errVal, errKind, args[1], "res.err.dtor");
             }
-            builder_.CreateBr(doneBB);
+            emitBranchUncond(doneBB);
             builder_.SetInsertPoint(doneBB);
         }
     } else {
@@ -1796,7 +1795,7 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
             auto *payloadBytesPtr = builder_.CreateStructGEP(adtSt, payloadPtr, 1,
                                                               "adt.payload.ptr");
 
-            auto *doneBB = llvm::BasicBlock::Create(*ctx_, "adt.dtor.done", fn);
+            auto *doneBB = createBBInFn("adt.dtor.done", fn);
             auto *sw = builder_.CreateSwitch(tag, doneBB,
                                               static_cast<unsigned>(info->variantOrder.size()));
 
@@ -1840,7 +1839,7 @@ llvm::Function *CodeGen::getOrCreateEnumBoxDtor(const std::string &typeName,
                     }
                     offset += dl.getTypeAllocSize(fieldTy);
                 }
-                builder_.CreateBr(doneBB);
+                emitBranchUncond(doneBB);
             }
             builder_.SetInsertPoint(doneBB);
         }
@@ -1861,7 +1860,7 @@ llvm::Function *CodeGen::getOrCreateEnumBoxEq(const std::string &typeName,
                                        "__ry_enum_box_eq_" + typeName, mod_.get());
     enum_eq_cache_[typeName] = fn;
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    auto *entry = createBBInFn("entry", fn);
     builder_.SetInsertPoint(entry);
     // Args point at the payload region (box+8).
     auto *payloadA = builder_.CreateLoad(payloadTy, fn->getArg(0), "enum.eq.a");
@@ -1926,15 +1925,14 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
         auto *isNull = builder_.CreateICmpEQ(
             slot, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             "enum.retain.null");
-        auto *parentFn = builder_.GetInsertBlock()->getParent();
-        auto *retainBB = llvm::BasicBlock::Create(*ctx_, "enum.field_retain", parentFn);
-        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "enum.field_retain_skip", parentFn);
-        builder_.CreateCondBr(isNull, skipBB, retainBB);
+        auto *retainBB = createBB("enum.field_retain");
+        auto *skipBB = createBB("enum.field_retain_skip");
+        emitBranchCond(isNull, skipBB, retainBB);
         builder_.SetInsertPoint(retainBB);
         auto *hdr = (kind == CollectionKind::Str) ? emitStrGetHeaderFromData(slot)
                                                     : emitArcGetHeaderFromData(slot);
         emitArcRetain(hdr, /*atomic=*/false);
-        builder_.CreateBr(skipBB);
+        emitBranchUncond(skipBB);
         builder_.SetInsertPoint(skipBB);
         (void)innerName;
     };
@@ -1943,14 +1941,13 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
         CollectionKind innerKind;
         if (!fieldTypeIsArcManaged(args[0], &innerKind)) return;
         auto *tag = builder_.CreateExtractValue(payloadVal, 0, "opt.retain.tag");
-        auto *parentFn = builder_.GetInsertBlock()->getParent();
-        auto *someBB = llvm::BasicBlock::Create(*ctx_, "opt.retain.some", parentFn);
-        auto *doneBB = llvm::BasicBlock::Create(*ctx_, "opt.retain.done", parentFn);
-        builder_.CreateCondBr(tag, someBB, doneBB);
+        auto *someBB = createBB("opt.retain.some");
+        auto *doneBB = createBB("opt.retain.done");
+        emitBranchCond(tag, someBB, doneBB);
         builder_.SetInsertPoint(someBB);
         auto *inner = builder_.CreateExtractValue(payloadVal, 1, "opt.retain.inner");
         retainSlot(inner, args[0], innerKind);
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
         builder_.SetInsertPoint(doneBB);
         return;
     }
@@ -1960,23 +1957,22 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
         bool errArc = fieldTypeIsArcManaged(args[1], &errKind);
         if (!okArc && !errArc) return;
         auto *tag = builder_.CreateExtractValue(payloadVal, 0, "res.retain.tag");
-        auto *parentFn = builder_.GetInsertBlock()->getParent();
-        auto *okBB = llvm::BasicBlock::Create(*ctx_, "res.retain.ok", parentFn);
-        auto *errBB = llvm::BasicBlock::Create(*ctx_, "res.retain.err", parentFn);
-        auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res.retain.done", parentFn);
-        builder_.CreateCondBr(tag, okBB, errBB);
+        auto *okBB = createBB("res.retain.ok");
+        auto *errBB = createBB("res.retain.err");
+        auto *doneBB = createBB("res.retain.done");
+        emitBranchCond(tag, okBB, errBB);
         builder_.SetInsertPoint(okBB);
         if (okArc) {
             auto *okVal = builder_.CreateExtractValue(payloadVal, 1, "res.retain.ok_val");
             retainSlot(okVal, args[0], okKind);
         }
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
         builder_.SetInsertPoint(errBB);
         if (errArc) {
             auto *errVal = builder_.CreateExtractValue(payloadVal, 2, "res.retain.err_val");
             retainSlot(errVal, args[1], errKind);
         }
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
         builder_.SetInsertPoint(doneBB);
         return;
     }
@@ -1986,8 +1982,7 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
         return;
     auto *adtSt = info->adtType;
     auto *tag = builder_.CreateExtractValue(payloadVal, 0, "adt.retain.tag");
-    auto *parentFn = builder_.GetInsertBlock()->getParent();
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "adt.retain.done", parentFn);
+    auto *doneBB = createBB("adt.retain.done");
     // Stack-spill the payload struct so we can GEP into the byte array.
     auto *spill = builder_.CreateAlloca(adtSt, nullptr, "adt.retain.spill");
     builder_.CreateStore(payloadVal, spill);
@@ -2005,8 +2000,7 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
         auto *tagConst = llvm::cast<llvm::ConstantInt>(
             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal)));
         if (!hasArc) { sw->addCase(tagConst, doneBB); continue; }
-        auto *caseBB = llvm::BasicBlock::Create(
-            *ctx_, "adt.retain." + vname, parentFn);
+        auto *caseBB = createBB(("adt.retain." + vname).c_str());
         sw->addCase(tagConst, caseBB);
         builder_.SetInsertPoint(caseBB);
         const VariantFieldInfo &vfi = vfIt->second;
@@ -2029,7 +2023,7 @@ void CodeGen::emitEnumBoxArcFieldsRetain(llvm::Value *payloadVal,
             }
             offset += dl.getTypeAllocSize(fieldTy);
         }
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
     }
     builder_.SetInsertPoint(doneBB);
 }

@@ -363,7 +363,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         current_fn_return_type_ = retTypeStr;
         pushScope();
 
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        llvm::BasicBlock *entry = createBBInFn("entry", func);
         builder_.SetInsertPoint(entry);
 
         // Set up user parameters
@@ -1205,7 +1205,7 @@ llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, cons
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    auto *entry = createBBInFn("entry", thunk);
     builder_.SetInsertPoint(entry);
 
     // Forward user args to realFn
@@ -1297,7 +1297,7 @@ llvm::Function *CodeGen::materializeNativeThunk(const std::string &name) {
         fn_ = thunk;
         pushScope();
 
-        auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        auto *entry = createBBInFn("entry", thunk);
         builder_.SetInsertPoint(entry);
 
         unsigned idx = 0;
@@ -1361,7 +1361,7 @@ llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    auto *entry = createBBInFn("entry", thunk);
     builder_.SetInsertPoint(entry);
 
     // env is the last argument
@@ -1416,7 +1416,7 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    auto *entryBB = createBBInFn("entry", dtorFn);
     builder_.SetInsertPoint(entryBB);
 
     auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env, env_dtor}
@@ -1428,9 +1428,9 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     // If env is non-null, release it with its destructor
     auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
     auto *isEnvNull = builder_.CreateICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
-    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.release", dtorFn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.done", dtorFn);
-    builder_.CreateCondBr(isEnvNull, doneBB, releaseBB);
+    auto *releaseBB = createBBInFn("uc_dtor.release", dtorFn);
+    auto *doneBB = createBBInFn("uc_dtor.done", dtorFn);
+    emitBranchCond(isEnvNull, doneBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     auto *hdr = emitArcGetHeaderFromData(envVal);
@@ -1442,26 +1442,26 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     builder_.CreateStore(dec, strongPtr);
     auto *isDead = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "uc_dtor.dead");
 
-    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.free", dtorFn);
-    builder_.CreateCondBr(isDead, freeBB, doneBB);
+    auto *freeBB = createBBInFn("uc_dtor.free", dtorFn);
+    emitBranchCond(isDead, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
     // Call env_dtor(envVal) if non-null to release captured ARC values
     auto *isDtorNull = builder_.CreateICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
-    auto *callDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.call_dtor", dtorFn);
-    auto *afterDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.after_dtor", dtorFn);
-    builder_.CreateCondBr(isDtorNull, afterDtorBB, callDtorBB);
+    auto *callDtorBB = createBBInFn("uc_dtor.call_dtor", dtorFn);
+    auto *afterDtorBB = createBBInFn("uc_dtor.after_dtor", dtorFn);
+    emitBranchCond(isDtorNull, afterDtorBB, callDtorBB);
 
     builder_.SetInsertPoint(callDtorBB);
     auto *envDtorFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     builder_.CreateCall(envDtorFnTy, envDtorVal, {envVal});
-    builder_.CreateBr(afterDtorBB);
+    emitBranchUncond(afterDtorBB);
 
     builder_.SetInsertPoint(afterDtorBB);
     auto freeFn = mod_->getOrInsertFunction("free",
         llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false));
     builder_.CreateCall(freeFn, {hdr});
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
     builder_.CreateRetVoid();

@@ -191,14 +191,14 @@ void CodeGen::emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
             fieldVal,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             "gc.visit.null");
-        auto *visitBB = llvm::BasicBlock::Create(*ctx_, "gc.visit.ptr", parentFn);
-        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "gc.skip.ptr", parentFn);
-        builder_.CreateCondBr(isNull, skipBB, visitBB);
+        auto *visitBB = createBB("gc.visit.ptr");
+        auto *skipBB = createBB("gc.skip.ptr");
+        emitBranchCond(isNull, skipBB, visitBB);
 
         builder_.SetInsertPoint(visitBB);
         auto *hdr = emitArcGetHeaderFromData(fieldVal);
         builder_.CreateCall(visitorCallTy, visitorFn, {hdr});
-        builder_.CreateBr(skipBB);
+        emitBranchUncond(skipBB);
 
         builder_.SetInsertPoint(skipBB);
     } else if (llvm::isa<llvm::StructType>(fieldTy)) {
@@ -222,7 +222,7 @@ llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
         "__ry_gc_visit_" + typeName, *mod_);
     visitFn->setDoesNotThrow();
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", visitFn);
+    auto *entryBB = createBBInFn("entry", visitFn);
     builder_.SetInsertPoint(entryBB);
 
     llvm::Value *dataPtr = visitFn->getArg(0);
@@ -269,7 +269,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
         "__ry_gc_visit_" + typeName, *mod_);
     visitFn->setDoesNotThrow();
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", visitFn);
+    auto *entryBB = createBBInFn("entry", visitFn);
     builder_.SetInsertPoint(entryBB);
 
     llvm::Value *dataPtr = visitFn->getArg(0);
@@ -284,7 +284,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
     auto *payloadPtr = builder_.CreateStructGEP(info.adtType, dataPtr, 1, "gc_payload");
 
     // Create switch on tag to visit the right variant's fields.
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "gc.visit.done", visitFn);
+    auto *doneBB = createBBInFn("gc.visit.done", visitFn);
     auto *sw = builder_.CreateSwitch(tag, doneBB, static_cast<unsigned>(info.variantOrder.size()));
 
     // Visitor call function type: void(ptr)
@@ -341,7 +341,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
             offset += dl.getTypeAllocSize(fieldTy);
         }
 
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
     }
 
     builder_.SetInsertPoint(doneBB);

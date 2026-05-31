@@ -447,15 +447,15 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
             anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.cand");
             anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
         }
-        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "slin.cond",  fn_);
-        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "slin.body",  fn_);
-        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "slin.match", fn_);
-        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "slin.next",  fn_);
-        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "slin.end",   fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB  = createBB("slin.cond");
+        llvm::BasicBlock *bodyBB  = createBB("slin.body");
+        llvm::BasicBlock *matchBB = createBB("slin.match");
+        llvm::BasicBlock *nextBB  = createBB("slin.next");
+        llvm::BasicBlock *endBB   = createBB("slin.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "slin_cj");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(j, sf.len), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(j, sf.len), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *cp   = builder_.CreateGEP(elemTy, sf.elems, {j}, "slin_cp");
         llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
@@ -469,13 +469,13 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         } else {
             eq = emitComparisonOp("==", elem, cand, "", "");
         }
-        builder_.CreateCondBr(eq, matchBB, nextBB);
+        emitBranchCond(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         builder_.SetInsertPoint(nextBB);
         builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(i64Ty_, resVar, "slin_result");
     }
@@ -517,15 +517,15 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
             anyKeyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.cand");
             anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
         }
-        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "mklin.cond",  fn_);
-        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "mklin.body",  fn_);
-        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "mklin.match", fn_);
-        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "mklin.next",  fn_);
-        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "mklin.end",   fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB  = createBB("mklin.cond");
+        llvm::BasicBlock *bodyBB  = createBB("mklin.body");
+        llvm::BasicBlock *matchBB = createBB("mklin.match");
+        llvm::BasicBlock *nextBB  = createBB("mklin.next");
+        llvm::BasicBlock *endBB   = createBB("mklin.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "mklin_cj");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(j, mf.len), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(j, mf.len), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
         llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
@@ -540,13 +540,13 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         } else {
             eq = emitComparisonOp("==", key, cand, "", "");
         }
-        builder_.CreateCondBr(eq, matchBB, nextBB);
+        emitBranchCond(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         builder_.SetInsertPoint(nextBB);
         builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(i64Ty_, resVar, "mklin_result");
     }
@@ -609,9 +609,9 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *bc3 = builder_.CreateMul(bucketCount, llvm::ConstantInt::get(i64Ty_, 3), "bc3");
     llvm::Value *needRehash = builder_.CreateICmpSGT(len4, bc3, "need_rehash");
 
-    llvm::BasicBlock *rehashBB = llvm::BasicBlock::Create(*ctx_, "rehash", fn_);
-    llvm::BasicBlock *doneRehashBB = llvm::BasicBlock::Create(*ctx_, "rehash.done", fn_);
-    builder_.CreateCondBr(needRehash, rehashBB, doneRehashBB);
+    llvm::BasicBlock *rehashBB = createBB("rehash");
+    llvm::BasicBlock *doneRehashBB = createBB("rehash.done");
+    emitBranchCond(needRehash, rehashBB, doneRehashBB);
 
     builder_.SetInsertPoint(rehashBB);
     // newBucketCount = bucketCount * 2
@@ -636,7 +636,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     builder_.CreateStore(newBuckets, bucketsField);
     builder_.CreateStore(newBc, bcField);
 
-    builder_.CreateBr(doneRehashBB);
+    emitBranchUncond(doneRehashBB);
     builder_.SetInsertPoint(doneRehashBB);
 }
 
