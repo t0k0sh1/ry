@@ -1,6 +1,6 @@
 ---
 name: plan-rubric
-description: 4-axis pass/fail rubric to review a plan immediately before ExitPlanMode — abstraction (WHAT/HOW separation), scope, testability, and dependency citation. Covers how to invoke /test-design-techniques inside a plan and how to use devils-advocate as a plan critic. Invoke on explicit user request: "計画レビュー", "計画抽象度", "WHAT/HOW", "HOW 漏れ", "計画の粒度", "プラン批評".
+description: 4-axis pass/fail rubric to review a plan immediately before ExitPlanMode — abstraction (WHAT/HOW separation), scope (incl. target-shrinking split forbidden in Plan mode), testability, and dependency citation. Covers how to invoke /test-design-techniques inside a plan and how to use devils-advocate as a plan critic. Invoke on explicit user request: "計画レビュー", "計画抽象度", "WHAT/HOW", "HOW 漏れ", "計画の粒度", "プラン批評", "対象 issue 分割", "target shrinking".
 allowed-tools: Read, Grep, Glob
 ---
 
@@ -89,14 +89,15 @@ Why OK: states acceptance as the success condition and the rule to comply with; 
 
 ### Axis 2: Scope (Pass / Fail)
 
-**Pass**: every task maps to the issue's acceptance criteria, and the plan body records (a) a `/triage-side-finding` Q1-Q4 verdict for any side finding, and (b) a `/scope-decomposition` REQ-4 (re-sweep) result — either "no symmetry gap", or an entry under "out of scope".
-**Fail**: any of the above is missing.
+**Pass**: every task maps to the issue's acceptance criteria, and the plan body records (a) a `/triage-side-finding` Q1-Q4 verdict for any side finding, and (b) a `/scope-decomposition` REQ-4 (re-sweep) result — either "no symmetry gap", or an entry under "out of scope". **Plus**: no task proposes splitting the target issue itself (target-shrinking split forbidden in Plan mode).
+**Fail**: any of the above is missing, or the plan contains a task that proposes splitting the target issue.
 
 Conditional rules for side findings:
 
 - **Q1 (hard-to-reproduce CI detection) / Q2 (explicit user instruction)** — "immediate design fixes" handled in the same PR; not "no incidental fixes" violations.
 - **Q4(a)** — fold into plan tasks.
-- **Q4(b)** — record as a "file separate issue" task, and apply `/scope-decomposition` REQ-1 (4-axis symmetry) / REQ-2 (3 reasons to split) / REQ-3 (chain-depth guard) before drafting the issue.
+- **Q4(b)** — record as a "file separate issue" task, and apply `/scope-decomposition` REQ-1 (4-axis symmetry) / REQ-2 (3 reasons to split) / REQ-3 (chain-depth guard) before drafting the issue. **Allowed even in Plan mode** because Q4(b) creates an orthogonal new issue without touching the target issue's scope.
+- **Target-shrinking split is forbidden in Plan mode** — the plan must not propose splitting the target issue itself (e.g. "対象 issue が大きすぎるので 2 つに分けよう" / "この部分は別 issue にして scope を絞ろう"). This is the `/scope-decomposition` REQ-4 MUST rule (AGENTS.md §"Plan モードのルール" のユーザー方針). 判別: 「対象 issue の作業内容を狭めるか?」(YES → 禁止) / 「対象 issue とは直交する独立発見か?」(YES → Q4(b) で別 issue 起票可). If oversize is detected only at Plan mode, record it under "out of scope" instead — splitting decisions must happen before Plan mode (`/scope-decomposition` REQ-5 at issue creation / split judgment).
 - Plans must not contain incidental-fix items without a Q1-Q4 verdict.
 
 ---
@@ -178,7 +179,8 @@ Agent tool example:
 - **`/test-checklist`** — inductive complement to `/test-design-techniques`; run during implementation
 - **`/tdd-cycle`** — TDD tasks stay as one bundled task in plans (Red-Green-Refactor not split)
 - **`.claude/agents/devils-advocate.md`** — plan-critique mode (Phase 1-4)
-- **`/triage-side-finding`** — Q1-Q4 verdict (Q1 hard-to-reproduce CI / Q2 explicit user / Q3 `bug-forensics-analyst` / Q4 two-branch (autonomous)) and Issue Creation Steps for Axis 2 side findings
+- **`/triage-side-finding`** — Q1-Q4 verdict (Q1 hard-to-reproduce CI / Q2 explicit user / Q3 `bug-forensics-analyst` / Q4 phase-aware autonomous: Phase A 2 分岐, Phase B 同 PR 吸収 default + 1000 行閾値) and Issue Creation Steps for Axis 2 side findings
+- **`/scope-decomposition`** — REQ-4 (Plan モード re-sweep + target-shrinking split forbidden) / REQ-5 (oversize n-piece single-preview split, applied before Plan mode)
 - **`/pre-commit-checklist`** — post-implementation completion check (not a plan-stage target)
 
 ---
