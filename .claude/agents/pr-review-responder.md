@@ -45,7 +45,7 @@ For each unresolved comment, produce:
 
 1. **Classification**:
    - `correct` — reviewer is right, code change needed
-   - `correct-but-out-of-scope` — valid concern, but should be a separate issue (cite `/scope-decomposition` reasoning)
+   - `correct-but-out-of-scope` — valid concern, scope-out from current PR. PR review = Phase B under `/triage-side-finding`: crash-class (ASan/UBSan/TSan/libFuzzer + abort/SEGV/UAF/leak/corruption) ⇒ Q4(a) fix in same PR regardless of size; non-crash ≤ 1000 行 ⇒ Q4(a) fix in same PR; non-crash > 1000 行 ⇒ Q2 informed-consent gate (escalate to user — Claude Code does NOT autonomously file a separate issue in Phase B). Cite `/scope-decomposition` reasoning only when explaining why the finding sits outside the current scope, not as a default redirect to issue creation
    - `partially-correct` — accept some, push back on rest
    - `incorrect` — reviewer's premise is wrong (typically rule conflict, misread of code, or stale context); push back with citation
    - `clarification-needed` — ambiguous; reply asks a specific question

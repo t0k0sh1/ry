@@ -76,7 +76,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
 - **リポジトリ**: `t0k0sh1/ry`
 - **開始**: ユーザーが issue 番号 / URL を指定 → 内容把握 → Plan モード。「次の issue を探して」指示時は open issue 取得 (`wip` 除外)・バグ優先で候補提示 → 選択後に Plan モード
 - **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-close-pr` Step 7 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
-- **issue 分割時のスコープ検証**: 派生 issue を起票・分離する判断は `/scope-decomposition` で対称性 (4 軸) / 分割理由 (3 分類) / 派生連鎖警戒 (3 段目以降) を確認する
+- **issue 分割時のスコープ検証**: 派生 issue を起票・分離する判断は `/scope-decomposition` で対称性 (4 軸 REQ-1) / 分割理由 (3 分類 REQ-2) / 派生連鎖警戒 (3 段目以降 REQ-3) / oversize 起票時の n 個分割 single preview (REQ-5) を確認する。Plan モード中の target-shrinking split は REQ-4 で禁止
 
 ## Plan モードのルール
 
@@ -93,6 +93,7 @@ issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も a
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
   - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
 - **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。**Claude Code が `/triage-side-finding` Q4(b)「起票許可を求める」と自律判断した場合のみ**、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること / §起票判断における選択肢提示の禁止 参照)
+- **対象 issue の分割禁止 (target-shrinking)**: Plan モード中に**対象 issue 自体を分割して scope を縮小する**提案は禁止 (実装計画が狂うため)。orthogonal な副次的発見の Q4(b) 別 issue 起票は本ルールの対象外 (対象 issue の scope を変更しないため)。詳細は `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2 参照。oversize と判明した場合は **Plan モード開始前**に `/scope-decomposition` REQ-5 で分割判断を済ませる
 - **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
 
 ## 内部挙動の解析に trace を使う
@@ -156,7 +157,7 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 
 #### 副次的発見への対応
 
-副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 Claude Code 自律判断 2 分岐 [即時修正 / 起票許可を求める]) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。Q4 の自律判断要件は §"起票判断における選択肢提示の禁止" 参照。
+副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 Claude Code 自律判断、**フェーズ別**) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。Q4 はトリアージ発生フェーズで分岐 — **Phase A** (起票・分割・Plan モード中) は (a) 即時修正 / (b) 起票許可の 2 分岐、**Phase B** (実装中・レビュー対応中) は同 PR 吸収を default とし、クラッシュ系 (ASan/UBSan/TSan/libFuzzer + abort/SEGV/UAF/memory leak/corruption) は無条件、非クラッシュ系は **1000 行閾値** (added + removed の raw line count) で Q2 再ルートに escalate。Q4 の自律判断要件は §"起票判断における選択肢提示の禁止" 参照。
 
 #### 副次的発見の判断優先順位
 

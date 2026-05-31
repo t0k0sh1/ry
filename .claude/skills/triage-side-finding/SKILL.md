@@ -1,6 +1,6 @@
 ---
 name: triage-side-finding
-description: Triage hub for side findings — short-circuits via Q1 (hard-to-reproduce CI detection) / Q2 (explicit user direction) / Q3 (bug-forensics-analyst) / Q4 (Claude Code 自律判断 2 分岐 即時修正 / 起票許可を求める). Use during implementation, self-verification, or PR review when an out-of-scope finding surfaces. Origin diagnosis (regression vs pre-existing) is delegated to `bug-forensics-analyst` and reached only via Q3. Also fires on Japanese triggers 副次的な発見, side finding, scope, ついでに直したい, 別 issue 起票, 即時修正, OPEN PR 依存, fold-only, orphan issue 防止, triage, 判定フロー, 起票許可, 自律判断.
+description: Triage hub for side findings — short-circuits via Q1 (hard-to-reproduce CI detection) / Q2 (explicit user direction) / Q3 (bug-forensics-analyst) / Q4 (Claude Code 自律判断、フェーズ別 — Phase A 起票/分割/Plan モード時は即時修正/起票許可の 2 分岐、Phase B 実装中/レビュー対応中は同 PR 吸収 default + クラッシュ系無条件 + 非クラッシュは 1000 行閾値で Q2 再ルート). Use during implementation, self-verification, or PR review when an out-of-scope finding surfaces. Origin diagnosis (regression vs pre-existing) is delegated to `bug-forensics-analyst` and reached only via Q3. Also fires on Japanese triggers 副次的な発見, side finding, scope, ついでに直したい, 別 issue 起票, 即時修正, OPEN PR 依存, fold-only, orphan issue 防止, triage, 判定フロー, 起票許可, 自律判断, フェーズ別, 実装中スコープ外, 1000 行閾値, クラッシュ系.
 allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(gh pr:*), Bash(gh api:*), Agent
 ---
 
@@ -71,9 +71,22 @@ The agent emits (full spec in `.claude/agents/bug-forensics-analyst.md`):
 
 > **Caller responsibility**: keep the agent's input context (PR diff / blame range / failing test output) visible in conversation history; same session ⇒ no explicit transfer needed.
 
-### Q4: Claude Code 自律判断 2 分岐
+### Q4: Claude Code 自律判断 (フェーズ別)
 
 **MUST (#1981)**: ここで 3 択以上の選択肢 (旧 [即時修正 / 別 issue 起票 / ユーザー確認]) をユーザーに提示してはならない。起票要否は Claude Code が自律判断する。詳細は AGENTS.md §"起票判断における選択肢提示の禁止" を参照。
+
+#### Phase determination (Q4 判定の前提)
+
+トリアージの発生フェーズによって Q4 の挙動を切り替える:
+
+| Phase | 発生条件 | Q4 default | 自律的に Q4(b) 起票許可を起動するか |
+|---|---|---|---|
+| **A: 起票・分割・Plan モード中** | issue 起票時 / 既存 issue の分割判断時 / Plan モードでの scope 検討中 | (a)/(b) 自律判断 | あり (orthogonal な発見は (b) へ) |
+| **B: 実装中・レビュー対応中** | コード編集中 / セルフ検証中 / PR レビュー対応中 | 同 PR 吸収を default | **なし** (Claude Code は自律的に (b) を選ばない、Q2 再ルートに倒す) |
+
+**Why Phase B suppresses Q4(b)**: 着手中の issue は実装計画に沿って進めるため、separate issue 起票で実装計画を中断したくない (AGENTS.md §"副次的発見への対応" のフェーズ別ルール、ユーザー方針)。「実装中の発見は基本同 PR で対処、大規模ならユーザー判断」が default。
+
+#### Phase A: 起票・分割・Plan モードでの判定
 
 Q3 の analysis (origin verdict / impact surface / coverage gap / fix-direction) を input とし、`/plan-rubric` の PR-size discipline (1 issue ≒ 1 PR) を踏まえ、以下の判断基準で **Claude Code が自律的に 2 分岐のいずれかを選ぶ**:
 
@@ -83,13 +96,13 @@ Q3 の analysis (origin verdict / impact surface / coverage gap / fix-direction)
 3. **Origin verdict** (Q3 出力): regression (現 PR が混入) / pre-existing exposed (現 PR が露出させた) / pure pre-existing (現 PR と独立)
 4. **サイドエフェクトリスク**: 修正が現 PR の他の変更に副作用を持つ可能性
 
-#### 分岐 (a) 即時修正
+##### 分岐 (a) 即時修正 (Phase A)
 
 **条件 (全て満たす場合)**: PR スコープと関連 + 非拡大 (diff 増加が現 PR と同オーダー以下) + regression または pre-existing exposed + 低リスク (狭い影響範囲、確立されたパターン)。
 
 → feature branch / 現 PR にコミットして対処。`/plan-rubric` の no-incidental-fix rule は「現 PR と無関係な cleanup」を禁止する規則であり、本分岐は「Q1-Q4 トリアージを経て同 PR で対処すべきと自律判断したもの」のため衝突しない。
 
-#### 分岐 (b) 起票許可を求める
+##### 分岐 (b) 起票許可を求める (Phase A)
 
 **条件**: (a) の条件を 1 つ以上満たさない場合は、自律的に「起票許可を求める」分岐に倒し、**Issue Creation Steps** に進む。
 
@@ -102,6 +115,48 @@ Q3 の analysis (origin verdict / impact surface / coverage gap / fix-direction)
 3. 再度メニュー (3 択以上) を提示してはならない (MUST ルール遵守)
 
 > **用語注意**: ここでの「現 PR で吸収」は Step 1 escalate 節の `fold` (OPEN PR 依存時に PR author に scope 拡張を依頼) とは別概念。混同を避けるため本節では `fold` 流用ではなく「Q2 への再ルート」と表現する。
+
+#### Phase B: 実装中・レビュー対応中の判定
+
+Phase B では separate issue 起票を Claude Code が自律的に選ぶことはしない。代わりに以下の閾値で「同 PR 吸収」と「Q2 再ルート (ユーザー判断)」を判定する。
+
+##### クラッシュ系の定義
+
+以下のいずれかに該当する発見:
+- ASan / UBSan / TSan / libFuzzer が検出
+- `abort()` / SEGV / use-after-free (UAF) / memory leak / memory corruption の経路
+
+> **安全側の境界**: assertion failure / data-corrupting race / infinite loop は本カテゴリ**外** (= 非クラッシュ系として扱う)。これらは sanitizer 経路ではないため別判定にしないと「small but critical」が漏れる可能性があるが、user 方針 (1K 行で判断委譲) との整合を優先する。判定が曖昧な場合は非クラッシュ系として扱い、サイズが小さければ Q4(a) 即時修正、大きければ Q2 再ルートに進む。
+
+##### 規模見積もりの方法
+
+estimated diff = **追加行 + 削除行の合計**を、検出時点で見積もる。raw line count (空行・コメント含む) を使う (検出時点で正確な分析コストを払わないため)。
+
+##### 判定フロー (Phase B)
+
+| 条件 | 判定 |
+|---|---|
+| クラッシュ系 (規模問わず) | **Q4(a) 即時修正** — 同 PR 内で対処 |
+| 非クラッシュ系 かつ ≤ 1000 行 | **Q4(a) 即時修正** — 影響範囲が限定的 |
+| 非クラッシュ系 かつ > 1000 行 | **Q2 (informed-consent gate) への再ルート** — ユーザー判断 |
+
+##### Q2 再ルートの提示形式 (Phase B, 非クラッシュ > 1000 行)
+
+ユーザーに以下を 1 メッセージで提示し、対応方針の指示を仰ぐ:
+
+- **What** — 発見した問題 (file / function / 動作)
+- **Where** — 影響範囲 (modules / tests / dependencies)
+- **推定 diff サイズ** — added + removed 見積値 (1000 行超の根拠)
+- **対応方法の選択肢** — 複数の対応アプローチがある場合は提示する。**「別 issue 起票」は選択肢に含めない** (AGENTS.md §"起票判断における選択肢提示の禁止" の MUST ルール、および Phase B の方針)。典型例: 「現 PR scope を拡張して対応」「修正範囲を最小化して対処」「発見を記録、現 PR では未対処」等
+- **推奨アクション** — 1 つに絞って提示 (理由付き)
+
+ユーザーが decline / 別案を提示した場合は再評価して 1 つ提示し直す。再度 3 択以上のメニューを提示してはならない (MUST ルール遵守)。
+
+##### 実装中の閾値跨ぎ (≤ 1000 → > 1000)
+
+検出時に「≤ 1000 行」と見積もって Q4(a) で開始した修正が、実装途中で diff が 1000 行を超えそうだと判明した場合は、その時点で実装を一旦停止し、**Q2 再ルート**にエスカレートする (上記提示形式に従う)。現時点の diff / 残作業見積 / 推奨アクションを提示してユーザー判断を仰ぐ。
+
+> **Phase B での (b) 起票許可分岐は不採用**: Phase B で「同 PR で対処すべきでないほど大規模/直交な発見」が浮上した場合も、Claude Code は自律的に Q4(b) を選択せず、Q2 再ルートに倒してユーザー判断に委ねる。ユーザーが明示的に「別 issue にすべき」と判断した場合は Q2 = Yes 経由で `/git-create-issue` を起動する (ユーザー起点なので #1851 の MUST ルールには抵触しない)。
 
 ## Issue Creation Steps
 
@@ -142,7 +197,7 @@ Present the following six items and wait for explicit creation permission ("起�
 |---|---|
 | **Reason for filing** | Why this finding doesn't belong in the current PR (separation of concerns / scope size / pre-existing / Q4(b) rationale) |
 | **Summary** | 1-3 lines of gist (not full body) |
-| **Granularity** | Fits in 1 PR? Will Step 4 split it? |
+| **Granularity** | Fits in 1 PR? **Apply `/scope-decomposition` REQ-5 thresholds** (estimated diff > 1000 lines / ≥ 2 REQ-1 symmetry gaps / REQ-2 (c) size-only rationale). If any threshold is hit, escalate to REQ-5 single-preview split in Step 4 before continuing this Step 2 preview. |
 | **Confidence** | High (reproduction available) / Medium (hypothesis + verification path) / Low (hypothesis only), with reasoning |
 | **Label suggestion** | Auto-pick (e.g. `bug` / `enhancement` / `documentation` / `refactor`). **At least one required; never empty.** |
 | **Milestone candidate** | Run `gh api repos/t0k0sh1/ry/milestones?state=open` and propose the current dev-version milestone as a **candidate**. **Do not auto-inherit** — let the user choose adopt / override / unset. |
@@ -178,9 +233,13 @@ If the finding has multiple independent concerns or the estimate clearly exceeds
 
 Example: parser bug + codegen improvement → 2 issues; correctness fix and performance work on the same runtime function → 2 issues.
 
-When splitting, the **classification of split rationale (feature boundary / dependency / size), symmetry check (typed↔any / wrap↔unwrap / read↔write / base↔derived), and 3rd-level-derivative guard** are in `/scope-decomposition` REQ-1〜3.
+When splitting, apply `/scope-decomposition`:
+- **REQ-1** (4-axis symmetry: typed↔any / wrap↔unwrap / read↔write / base↔derived)
+- **REQ-2** (3 split-rationale categories: feature boundary / dependency / size)
+- **REQ-3** (3rd-level-derivative chain guard)
+- **REQ-5** (oversize threshold + **single-preview n-piece split format**: present 1 split plan with titles / 1〜3 line summaries / REQ-2 justification / dependency order; no multi-pattern enumeration)
 
-If splitting, present the split proposal (titles + granularity) to the user and obtain permission again (equivalent to Step 2).
+Present the REQ-5 single-preview split proposal to the user and obtain permission. If approved, file each piece via `/git-create-issue` (Step 1 skipped per its skip condition — Step 2 of this skill already approved per-issue parameters in the split preview).
 
 ### Step 5: Create the issue
 
