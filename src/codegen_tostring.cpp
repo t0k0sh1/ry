@@ -28,7 +28,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                     llvm::BasicBlock *defaultBB = createBB("vts.enum.default");
                     auto *sw = builder_.CreateSwitch(val, defaultBB, static_cast<unsigned>(einfo.variantCount));
                     builder_.SetInsertPoint(mergeBB);
-                    auto *namePhi = builder_.CreatePHI(ptrTy_, static_cast<unsigned>(einfo.variantCount + 1), "vts.enum.name");
+                    auto *namePhi = createPhi(ptrTy_, {}, "vts.enum.name");
                     for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
                         const auto &vname = einfo.variantOrder[i];
                         int64_t vval = einfo.variants.at(vname);
@@ -103,7 +103,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             emitBranchUncond(mergeBB);
 
             builder_.SetInsertPoint(mergeBB);
-            auto *phi = builder_.CreatePHI(ptrTy_, static_cast<unsigned>(uinfo.componentTypes.size() + 1), "vts.union.str");
+            auto *phi = createPhi(ptrTy_, {}, "vts.union.str");
             phi->addIncoming(unknownStr, defaultBB);
 
             for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {
@@ -249,9 +249,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
 
             builder_.SetInsertPoint(condBB);
             llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-            builder_.CreateCondBr(
-                builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, arrSize)),
-                bodyBB, endBB);
+            emitBranchCond(builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, arrSize)), bodyBB, endBB);
 
             builder_.SetInsertPoint(bodyBB);
             llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
@@ -259,9 +257,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             // Comma separator if not first element
             llvm::BasicBlock *commaBB = createBB("vts_arr.comma");
             llvm::BasicBlock *elemBB  = createBB("vts_arr.elem");
-            builder_.CreateCondBr(
-                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
-                commaBB, elemBB);
+            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, elemBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_arr_comma")});
@@ -334,9 +330,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_set.comma");
             llvm::BasicBlock *elemBB  = createBB("vts_set.elem");
-            builder_.CreateCondBr(
-                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
-                commaBB, elemBB);
+            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, elemBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_set_comma")});
@@ -387,9 +381,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_map.comma");
             llvm::BasicBlock *kvBB    = createBB("vts_map.kv");
-            builder_.CreateCondBr(
-                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
-                commaBB, kvBB);
+            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, kvBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_map_comma")});
@@ -443,9 +435,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_list.comma");
             llvm::BasicBlock *elemBB  = createBB("vts_list.elem");
-            builder_.CreateCondBr(
-                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
-                commaBB, elemBB);
+            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, elemBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_list_comma")});

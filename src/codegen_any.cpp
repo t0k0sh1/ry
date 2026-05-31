@@ -763,9 +763,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
 
     // Merge.
     builder_.SetInsertPoint(doneBB);
-    llvm::PHINode *phi = builder_.CreatePHI(
-        resTy, static_cast<unsigned>(errIncomings.size()) + 1,
-        "tryrec.result");
+    llvm::PHINode *phi = createPhi(resTy, {}, "tryrec.result");
     for (auto &p : errIncomings)
         phi->addIncoming(p.first, p.second);
     phi->addIncoming(okVal, okEndBB);

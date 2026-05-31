@@ -479,7 +479,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
             llvm::BasicBlock *callBB = createBBInFn("call", takeNextFn);
             llvm::BasicBlock *noneBB = createBBInFn("none", takeNextFn);
-            builder_.CreateCondBr(
+            emitBranchCond(
                 builder_.CreateICmpSGT(remaining, llvm::ConstantInt::get(i64Ty_, 0), "has_rem"),
                 callBB, noneBB);
 

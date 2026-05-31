@@ -918,8 +918,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         emitBranchUncond(loopHdrBB);
 
         builder_.SetInsertPoint(loopHdrBB);
-        auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
-            std::string("dtor_ci_") + tag);
+        auto *iPhi = createPhi(i64Ty_, {}, (std::string("dtor_ci_") + tag).c_str());
         iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
         auto *done = builder_.CreateICmpEQ(iPhi, len,
             std::string("dtor_cdone_") + tag);
@@ -1005,8 +1004,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
 
         // loop header: phi i=0/i_next, exit when i == len
         builder_.SetInsertPoint(loopHdrBB);
-        auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
-            std::string("dtor_i_") + tag);
+        auto *iPhi = createPhi(i64Ty_, {}, (std::string("dtor_i_") + tag).c_str());
         iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
         auto *done = builder_.CreateICmpEQ(iPhi, len,
             std::string("dtor_done_") + tag);
@@ -1215,33 +1213,32 @@ struct CountedLoopBlocks {
 };
 } // anonymous
 
-static CountedLoopBlocks emitCountedLoopShell(llvm::IRBuilder<> &b,
-                                               llvm::LLVMContext &ctx,
+static CountedLoopBlocks emitCountedLoopShell(ry::CodeGen &cg,
                                                llvm::Function *fn,
                                                llvm::Value *len,
                                                llvm::Type *i64Ty,
                                                const std::string &tagPrefix) {
-    auto *hdr   = llvm::BasicBlock::Create(ctx, tagPrefix + "_hdr",   fn);
-    auto *body  = llvm::BasicBlock::Create(ctx, tagPrefix + "_body",  fn);
-    auto *latch = llvm::BasicBlock::Create(ctx, tagPrefix + "_latch", fn);
-    auto *post  = llvm::BasicBlock::Create(ctx, tagPrefix + "_post",  fn);
+    auto *hdr   = cg.createBBInFn((tagPrefix + "_hdr").c_str(),   fn);
+    auto *body  = cg.createBBInFn((tagPrefix + "_body").c_str(),  fn);
+    auto *latch = cg.createBBInFn((tagPrefix + "_latch").c_str(), fn);
+    auto *post  = cg.createBBInFn((tagPrefix + "_post").c_str(),  fn);
 
-    auto *prevBB = b.GetInsertBlock();
-    b.CreateBr(hdr);
+    auto *prevBB = cg.builder_.GetInsertBlock();
+    cg.emitBranchUncond(hdr);
 
-    b.SetInsertPoint(hdr);
-    auto *iPhi = b.CreatePHI(i64Ty, 2, tagPrefix + "_i");
+    cg.builder_.SetInsertPoint(hdr);
+    auto *iPhi = cg.createPhi(i64Ty, {}, (tagPrefix + "_i").c_str());
     iPhi->addIncoming(llvm::ConstantInt::get(i64Ty, 0), prevBB);
-    auto *done = b.CreateICmpEQ(iPhi, len, tagPrefix + "_done");
-    b.CreateCondBr(done, post, body);
+    auto *done = cg.builder_.CreateICmpEQ(iPhi, len, tagPrefix + "_done");
+    cg.emitBranchCond(done, post, body);
 
-    b.SetInsertPoint(latch);
-    auto *iNext = b.CreateAdd(iPhi, llvm::ConstantInt::get(i64Ty, 1),
-                               tagPrefix + "_inext");
+    cg.builder_.SetInsertPoint(latch);
+    auto *iNext = cg.builder_.CreateAdd(iPhi, llvm::ConstantInt::get(i64Ty, 1),
+                                         tagPrefix + "_inext");
     iPhi->addIncoming(iNext, latch);
-    b.CreateBr(hdr);
+    cg.emitBranchUncond(hdr);
 
-    b.SetInsertPoint(body);
+    cg.builder_.SetInsertPoint(body);
     return {body, latch, post, iPhi};
 }
 
@@ -1359,7 +1356,7 @@ void CodeGen::emitTupleElemReleaseLoop(llvm::Value *arrayPtr, llvm::Value *len,
 
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     std::string tagPrefix = std::string("dtor_tup_") + tag;
-    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
+    auto loop = emitCountedLoopShell(*this, fn, len, i64Ty_,
                                        tagPrefix);
 
     // body: GEP into the i'th tuple slot, then release each component.
@@ -1395,7 +1392,7 @@ void CodeGen::emitTupleElemRetainLoop(llvm::Value *arrayPtr, llvm::Value *len,
 
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     std::string tagPrefix = std::string("ret_tup_") + tag;
-    auto loop = emitCountedLoopShell(builder_, *ctx_, fn, len, i64Ty_,
+    auto loop = emitCountedLoopShell(*this, fn, len, i64Ty_,
                                        tagPrefix);
 
     auto *slotPtr = builder_.CreateGEP(tupleTy, arrayPtr, {loop.iPhi},
