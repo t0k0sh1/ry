@@ -24,7 +24,7 @@ Evaluate in order. **Once a stage settles, do not run later stages** (no `bug-fo
 
 ### Q1: Reproducing now, but hard to reproduce later?
 
-Covers CI-only sanitizer hits (ASan / TSan / UBSan), libFuzzer crashes, concurrency races, and probabilistic memory corruption — observable right now but flaky on local reproduction.
+Covers CI-only sanitizer hits (ASan / TSan / UBSan), libFuzzer crashes, concurrency races, and probabilistic memory corruption — observable right now but with non-deterministic local reproducibility because the timing / environment trigger conditions are not yet identified.
 
 **Falsifiable criteria** (any one ⇒ Q1 = Yes):
 

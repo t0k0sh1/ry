@@ -135,6 +135,31 @@ single message に multiple `Agent` tool calls を入れて **subagent を foreg
 - **`/tmp` の限定的例外**: GitHub CLI や外部ツールの仕様上、コマンドライン引数 / ヒアドキュメントだけでは渡せず、どうしてもファイルパスを渡す必要がある場合に限り `/tmp/` 配下のファイルを使ってよい。**ただし作成したファイルは削除しない・削除を試みない**こと (`rm /tmp/...` / `unlink` / cleanup trap を書かない)。OS の tmp cleanup に委ねる
 - 「最終的に削除するファイル」を意図的に作成して回避策にすることは禁止 (プロジェクト内は完全禁止、`/tmp` でも削除コマンドを書かない)。検証手段としては `/ry-playground` (heredoc) / 既存テストファイル本体への追記 / `/tmp` (削除なし) のいずれかを選ぶ
 
+## 禁止用語: flake / flaky
+
+CI #2578 で Claude Code が `tests/spec/collection_meta_propagation.test.ry` のクラッシュを「flake なので re-run」と結論した事故が契機 (#1990)。本来 1% 未満の非決定的事象を指す用語が、50% 以上の確率で発生する現象にも繰り返し適用されてきた。決定論的な Von Neumann 型計算機上で真の意味で flaky な事象は存在せず、条件が満たされれば必ず起きる現象を「flaky」と呼ぶことは **root cause analysis の放棄** と同義。何度も指摘されたが改善されないため、全面禁止以外の選択肢がなくなった。
+
+### 禁止ルール (例外なし)
+
+- **MUST**: Claude Code はあらゆる説明・出力 (応答 / commit message / PR description / 新規 KNOWLEDGE 追記 / コードコメント / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` 等) で `flake` / `flaky` の語を **あらゆる言語で** 使用してはならない
+  - 日本語訳・カタカナ表記 (フレーク / フレーキー / フレーク的 / フレーキーなテスト 等) を含む
+  - 他言語の同義語 (`unstable` / `intermittent` 等) を **`flake` / `flaky` の言い換えとして使う行為** も禁止 (下記「代替表現の要求」に従わない使い方は不可)
+- **MUST**: Claude Code は `flake` / `flaky` を **CI 失敗・テスト失敗の理由・結論** として用いてはならない (口頭・テキスト・自律トリアージ判断のいずれにおいても)
+
+### 代替表現の要求
+
+CI 失敗・テスト失敗を説明する際、Claude Code は以下のいずれかを必須とする:
+
+- **(a) 発生条件の明示**: 例「LLVM ORC JIT teardown で heap consolidation が走るタイミングと glibc tcache の状態が衝突した場合に発生」のように、現象が発生する条件を具体的に特定して書く
+- **(b) `KNOWLEDGE.md` の既存 entry への明示リンク**: issue 番号 + 行番号 (例: `KNOWLEDGE.md` L261, #1895) を必ず付ける。entry 名のみのふんわり参照は不可
+- **(c) root cause 未特定の場合**: 「**発生条件未特定。再現条件の調査が未完了**」と明記する。この場合、**安易な再実行 (re-run) 提案を禁止** する。代わりに、調査タスクとして起票するか、ユーザーに調査着手の許可を求めること
+
+### 既存記述の扱い
+
+- `KNOWLEDGE.md` / `CHANGELOG.md` の歴史的記述 (例: `KNOWLEDGE.md` L261 #1895 の `~5-10 % Linux CI flake`、`CHANGELOG.md` L598 の `Linux CI flake (~5-10 %)` 等) は **変更しない**。理由: 検索性維持。upstream LLVM issue や CI 解析ログ・GitHub Issue との cross-reference が壊れる
+- 本ルールは **新規執筆 (今後の `KNOWLEDGE.md` 追記 / commit message / PR description / Claude Code の応答 / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` 等)** のみを対象とする
+- **MUST**: 歴史的 flake 記述を **引用・参照して `flake` を結論に再導入する行為** も禁止 (CI #2578 の事故経路と同じため)。歴史的記述に当たった症状を説明する場合は (a)/(b)/(c) のいずれかに変換してから書く
+
 ## Git ブランチ運用ルール
 
 - フィーチャーブランチは `main` から作成し、PR は `main` に向けて作成する。`main` への直接コミットは禁止

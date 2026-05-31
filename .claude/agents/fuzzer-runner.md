@@ -53,7 +53,7 @@ If PASS, omit CRASHES.
 
 - If the fuzzer build (`cmake --preset fuzz`) fails: report `RESULT: BUILD_FAIL` with the last 30 lines of build output and stop. Do not retry.
 - If a target hangs past the wall-clock timeout without producing libFuzzer output (no `#NUMBER` progress lines): report `RESULT: HANG` with the last 30 lines and stop.
-- If the crash input cannot be reproduced in the diagnosis re-run (flaky / OS-noise crash): report `RESULT: CRASH` with `REPRO: FAILED` in NOTES and the original libFuzzer output — the main agent decides whether to investigate further or accept as a flake.
+- If the crash input cannot be reproduced in the diagnosis re-run (reproduction conditions not yet identified; possible factors include OS-noise or timing-dependent triggers): report `RESULT: CRASH` with `REPRO: FAILED` in NOTES and the original libFuzzer output — the main agent decides whether to investigate further or to defer with the trigger conditions documented as unidentified.
 
 ## Scope guardrails
 
