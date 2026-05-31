@@ -262,24 +262,24 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcData = lf.data;
 
         llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
-        llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "first.empty", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "first.merge", fn_);
-        builder_.CreateCondBr(isEmptyF, emptyBB, okBB);
+        llvm::BasicBlock *emptyBB = createBB("first.empty");
+        llvm::BasicBlock *okBB = createBB("first.ok");
+        llvm::BasicBlock *mergeBB = createBB("first.merge");
+        emitBranchCond(isEmptyF, emptyBB, okBB);
 
         builder_.SetInsertPoint(emptyBB);
         llvm::Value *noneVal = buildNoneValue(optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(okBB);
         llvm::Value *firstVal = builder_.CreateLoad(elemTy, srcData, "first_val");
         llvm::Value *someVal = buildSomeValue(firstVal, optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "first_result");
+        llvm::PHINode *phi = createPhi(optTy, {}, "first_result");
         phi->addIncoming(noneVal, emptyEndBB);
         phi->addIncoming(someVal, okEndBB);
         return phi;
@@ -297,14 +297,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcData = lf.data;
 
         llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
-        llvm::BasicBlock *emptyBBL = llvm::BasicBlock::Create(*ctx_, "last.empty", fn_);
-        llvm::BasicBlock *okBBL = llvm::BasicBlock::Create(*ctx_, "last.ok", fn_);
-        llvm::BasicBlock *mergeBBL = llvm::BasicBlock::Create(*ctx_, "last.merge", fn_);
-        builder_.CreateCondBr(isEmptyL, emptyBBL, okBBL);
+        llvm::BasicBlock *emptyBBL = createBB("last.empty");
+        llvm::BasicBlock *okBBL = createBB("last.ok");
+        llvm::BasicBlock *mergeBBL = createBB("last.merge");
+        emitBranchCond(isEmptyL, emptyBBL, okBBL);
 
         builder_.SetInsertPoint(emptyBBL);
         llvm::Value *noneValL = buildNoneValue(optTy);
-        builder_.CreateBr(mergeBBL);
+        emitBranchUncond(mergeBBL);
         llvm::BasicBlock *emptyEndBBL = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(okBBL);
@@ -312,11 +312,11 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
         llvm::Value *lastVal = builder_.CreateLoad(elemTy, elemPtr, "last_val");
         llvm::Value *someValL = buildSomeValue(lastVal, optTy);
-        builder_.CreateBr(mergeBBL);
+        emitBranchUncond(mergeBBL);
         llvm::BasicBlock *okEndBBL = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(mergeBBL);
-        llvm::PHINode *phiL = builder_.CreatePHI(optTy, 2, "last_result");
+        llvm::PHINode *phiL = createPhi(optTy, {}, "last_result");
         phiL->addIncoming(noneValL, emptyEndBBL);
         phiL->addIncoming(someValL, okEndBBL);
         return phiL;
@@ -382,13 +382,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "enum_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "enum.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "enum.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "enum.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("enum.cond");
+        llvm::BasicBlock *bodyBB = createBB("enum.body");
+        llvm::BasicBlock *endBB = createBB("enum.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ei");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "enum_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "enum_elem");
@@ -405,7 +405,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "enum_dp");
         builder_.CreateStore(tupleVal, dstPtr);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, srcLen, srcLen, newData);
@@ -460,13 +460,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "zip_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "zip.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "zip.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "zip.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("zip.cond");
+        llvm::BasicBlock *bodyBB = createBB("zip.body");
+        llvm::BasicBlock *endBB = createBB("zip.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "zi");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, minLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, minLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *ep1 = builder_.CreateGEP(elemTy1, data1, {i}, "zip_ep1");
         llvm::Value *ep2 = builder_.CreateGEP(elemTy2, data2, {i}, "zip_ep2");
@@ -486,7 +486,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "zip_dp");
         builder_.CreateStore(tupleVal, dstPtr);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, minLen, minLen, newData);
@@ -540,16 +540,16 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // __ry_args_get function type
         llvm::FunctionCallee getFn = getRuntimeFn("__ry_args_get", ptrTy_, {i32Ty_});
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "args.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "args.body", fn_);
-        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "args.end", fn_);
+        llvm::BasicBlock *condBB = createBB("args.cond");
+        llvm::BasicBlock *bodyBB = createBB("args.body");
+        llvm::BasicBlock *endBB  = createBB("args.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ai");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "args_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
+        emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ai_cur");
@@ -559,7 +559,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.CreateStore(argStr, elemPtr);
         llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ai_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
 
@@ -774,9 +774,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Runtime check: step == 0 → error
         if (e.args.size() == 3) {
             llvm::Value *stepZero = builder_.CreateICmpEQ(step, zero, "step_zero");
-            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "range.step_err", fn_);
-            llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "range.step_ok", fn_);
-            builder_.CreateCondBr(stepZero, errBB, okBB);
+            llvm::BasicBlock *errBB = createBB("range.step_err");
+            llvm::BasicBlock *okBB = createBB("range.step_ok");
+            emitBranchCond(stepZero, errBB, okBB);
             builder_.SetInsertPoint(errBB);
             emitRuntimeError("runtime error: range() step must not be zero\n", ".range_step_err");
             builder_.SetInsertPoint(okBB);
@@ -818,16 +818,16 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
         builder_.CreateStore(zero, iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "range.body", fn_);
-        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "range.end", fn_);
+        llvm::BasicBlock *condBB = createBB("range.cond");
+        llvm::BasicBlock *bodyBB = createBB("range.body");
+        llvm::BasicBlock *endBB  = createBB("range.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ri");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "range_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
+        emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ri_cur");
@@ -837,7 +837,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.CreateStore(val, elemPtr);
         llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ri_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
 
@@ -1129,9 +1129,9 @@ static llvm::Value *emitMathAbs(CodeGen &cg, const CallExpr &e) {
         llvm::Value *intMin = llvm::ConstantInt::get(
             cg.i64Ty_, llvm::APInt::getSignedMinValue(64));
         llvm::Value *isIntMin = cg.builder_.CreateICmpEQ(x, intMin, "abs_is_imin");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_ok", cg.fn_);
-        cg.builder_.CreateCondBr(isIntMin, errBB, okBB);
+        llvm::BasicBlock *errBB = cg.createBB("abs.imin_err");
+        llvm::BasicBlock *okBB  = cg.createBB("abs.imin_ok");
+        cg.emitBranchCond(isIntMin, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError("runtime error: integer overflow\n",
                             ".math_abs_overflow_err_" + std::to_string(cg.overflow_err_counter_++));
@@ -1275,14 +1275,14 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
 
         llvm::BasicBlock *curBB = cg.builder_.GetInsertBlock();
         llvm::BasicBlock *errBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.err", cg.fn_);
+            cg.createBB("pow_int.err");
         llvm::BasicBlock *condBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.cond", cg.fn_);
+            cg.createBB("pow_int.cond");
         llvm::BasicBlock *bodyBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.body", cg.fn_);
+            cg.createBB("pow_int.body");
         llvm::BasicBlock *endBB =
-            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.end", cg.fn_);
-        cg.builder_.CreateCondBr(isNeg, errBB, condBB);
+            cg.createBB("pow_int.end");
+        cg.emitBranchCond(isNeg, errBB, condBB);
 
         cg.builder_.SetInsertPoint(errBB);
         static int powErrCounter = 0;
@@ -1292,16 +1292,16 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
 
         cg.builder_.SetInsertPoint(condBB);
         llvm::PHINode *resultPhi =
-            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_result");
+            cg.createPhi(cg.i64Ty_, {}, "pow_result");
         llvm::PHINode *basePhi =
-            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_base");
+            cg.createPhi(cg.i64Ty_, {}, "pow_base");
         llvm::PHINode *expPhi =
-            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_exp");
+            cg.createPhi(cg.i64Ty_, {}, "pow_exp");
         resultPhi->addIncoming(one, curBB);
         basePhi->addIncoming(x, curBB);
         expPhi->addIncoming(y, curBB);
         llvm::Value *done = cg.builder_.CreateICmpEQ(expPhi, zero, "pow_done");
-        cg.builder_.CreateCondBr(done, endBB, bodyBB);
+        cg.emitBranchCond(done, endBB, bodyBB);
 
         cg.builder_.SetInsertPoint(bodyBB);
         llvm::Value *loBit = cg.builder_.CreateAnd(expPhi, one, "pow_lo_bit");
@@ -1313,7 +1313,7 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
         resultPhi->addIncoming(resultNext, bodyBB);
         basePhi->addIncoming(baseSq, bodyBB);
         expPhi->addIncoming(expShr, bodyBB);
-        cg.builder_.CreateBr(condBB);
+        cg.emitBranchUncond(condBB);
 
         cg.builder_.SetInsertPoint(endBB);
         return resultPhi;
@@ -1378,9 +1378,9 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     {
         static int negCounter = 0;
         llvm::Value *isNeg = cg.builder_.CreateICmpSLT(n, zero, "digits_n_neg");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_ok",  cg.fn_);
-        cg.builder_.CreateCondBr(isNeg, errBB, okBB);
+        llvm::BasicBlock *errBB = cg.createBB("digits.n_err");
+        llvm::BasicBlock *okBB  = cg.createBB("digits.n_ok");
+        cg.emitBranchCond(isNeg, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError(
             "runtime error: digits() n must be non-negative, got %lld\n",
@@ -1392,9 +1392,9 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     {
         static int baseCounter = 0;
         llvm::Value *isLow = cg.builder_.CreateICmpSLT(base, two, "digits_base_low");
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_err", cg.fn_);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_ok",  cg.fn_);
-        cg.builder_.CreateCondBr(isLow, errBB, okBB);
+        llvm::BasicBlock *errBB = cg.createBB("digits.base_err");
+        llvm::BasicBlock *okBB  = cg.createBB("digits.base_ok");
+        cg.emitBranchCond(isLow, errBB, okBB);
         cg.builder_.SetInsertPoint(errBB);
         cg.emitRuntimeError(
             "runtime error: digits() base must be >= 2, got %lld\n",
@@ -1409,9 +1409,9 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(zero, countSlot);
     cg.builder_.CreateStore(n, qSlot);
 
-    llvm::BasicBlock *countBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.body", cg.fn_);
-    llvm::BasicBlock *countEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.end",  cg.fn_);
-    cg.builder_.CreateBr(countBodyBB);
+    llvm::BasicBlock *countBodyBB = cg.createBB("digits.count.body");
+    llvm::BasicBlock *countEndBB  = cg.createBB("digits.count.end");
+    cg.emitBranchUncond(countBodyBB);
 
     cg.builder_.SetInsertPoint(countBodyBB);
     llvm::Value *qCur     = cg.builder_.CreateLoad(cg.i64Ty_, qSlot, "digits_q_cur");
@@ -1421,7 +1421,7 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(qNext, qSlot);
     cg.builder_.CreateStore(cNext, countSlot);
     llvm::Value *qDone = cg.builder_.CreateICmpEQ(qNext, zero, "digits_count_done");
-    cg.builder_.CreateCondBr(qDone, countEndBB, countBodyBB);
+    cg.emitBranchCond(qDone, countEndBB, countBodyBB);
 
     cg.builder_.SetInsertPoint(countEndBB);
     llvm::Value *count = cg.builder_.CreateLoad(cg.i64Ty_, countSlot, "digits_count_final");
@@ -1440,15 +1440,15 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(zero, iSlot);
     cg.builder_.CreateStore(n, fSlot);
 
-    llvm::BasicBlock *fillCondBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.cond", cg.fn_);
-    llvm::BasicBlock *fillBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.body", cg.fn_);
-    llvm::BasicBlock *fillEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.end",  cg.fn_);
-    cg.builder_.CreateBr(fillCondBB);
+    llvm::BasicBlock *fillCondBB = cg.createBB("digits.fill.cond");
+    llvm::BasicBlock *fillBodyBB = cg.createBB("digits.fill.body");
+    llvm::BasicBlock *fillEndBB  = cg.createBB("digits.fill.end");
+    cg.emitBranchUncond(fillCondBB);
 
     cg.builder_.SetInsertPoint(fillCondBB);
     llvm::Value *iVal = cg.builder_.CreateLoad(cg.i64Ty_, iSlot, "digits_i_val");
     llvm::Value *cont = cg.builder_.CreateICmpSLT(iVal, count, "digits_fill_cond");
-    cg.builder_.CreateCondBr(cont, fillBodyBB, fillEndBB);
+    cg.emitBranchCond(cont, fillBodyBB, fillEndBB);
 
     cg.builder_.SetInsertPoint(fillBodyBB);
     llvm::Value *iCur     = cg.builder_.CreateLoad(cg.i64Ty_, iSlot, "digits_i_cur");
@@ -1460,7 +1460,7 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateStore(fNext, fSlot);
     llvm::Value *iNext = cg.builder_.CreateAdd(iCur, one, "digits_i_next");
     cg.builder_.CreateStore(iNext, iSlot);
-    cg.builder_.CreateBr(fillCondBB);
+    cg.emitBranchUncond(fillCondBB);
 
     cg.builder_.SetInsertPoint(fillEndBB);
 

@@ -621,18 +621,18 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
         llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Map)),
         "tryrec.is_map");
 
-    auto *tagOkBB  = llvm::BasicBlock::Create(*ctx_, "tryrec.tag_ok",  fn);
-    auto *tagErrBB = llvm::BasicBlock::Create(*ctx_, "tryrec.tag_err", fn);
-    auto *doneBB   = llvm::BasicBlock::Create(*ctx_, "tryrec.done",    fn);
+    auto *tagOkBB  = createBBInFn("tryrec.tag_ok", fn);
+    auto *tagErrBB = createBBInFn("tryrec.tag_err", fn);
+    auto *doneBB   = createBBInFn("tryrec.done", fn);
 
-    builder_.CreateCondBr(isMap, tagOkBB, tagErrBB);
+    emitBranchCond(isMap, tagOkBB, tagErrBB);
 
     // Tag-mismatch arm: build Err and branch to done. No collected ARC yet.
     builder_.SetInsertPoint(tagErrBB);
     llvm::Value *tagErrVal = buildErrValue(
         buildInlineError(prefix + "expected JSON object"), resTy);
     llvm::BasicBlock *tagErrEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Tag-ok: extract Map pointer from any.data[8].
     builder_.SetInsertPoint(tagOkBB);
@@ -672,11 +672,9 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
             slot, llvm::ConstantInt::getSigned(i64Ty_, -1),
             ("tryrec." + f.name + ".miss").c_str());
 
-        auto *missBB  = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".miss",  fn);
-        auto *foundBB = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".found", fn);
-        builder_.CreateCondBr(isMiss, missBB, foundBB);
+        auto *missBB  = createBBInFn(("tryrec.fld_" + f.name + ".miss").c_str(), fn);
+        auto *foundBB = createBBInFn(("tryrec.fld_" + f.name + ".found").c_str(), fn);
+        emitBranchCond(isMiss, missBB, foundBB);
 
         // Missing-field arm.
         builder_.SetInsertPoint(missBB);
@@ -685,7 +683,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
             buildInlineError(prefix + "field '" + f.name + "' missing"),
             resTy);
         llvm::BasicBlock *missEndBB = builder_.GetInsertBlock();
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
         errIncomings.emplace_back(missErr, missEndBB);
 
         // Found arm: load slot value (vals is RyAny[], stride = anyTy_).
@@ -701,11 +699,9 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
         llvm::Value *subDisc = builder_.CreateExtractValue(
             subResult, {0}, "tryrec.fld_" + f.name + ".sub.disc");
 
-        auto *subOkBB  = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".sub_ok",  fn);
-        auto *subErrBB = llvm::BasicBlock::Create(
-            *ctx_, "tryrec.fld_" + f.name + ".sub_err", fn);
-        builder_.CreateCondBr(subDisc, subOkBB, subErrBB);
+        auto *subOkBB  = createBBInFn(("tryrec.fld_" + f.name + ".sub_ok").c_str(), fn);
+        auto *subErrBB = createBBInFn(("tryrec.fld_" + f.name + ".sub_err").c_str(), fn);
+        emitBranchCond(subDisc, subOkBB, subErrBB);
 
         // SubErr arm: release collected, build prefixed Err via runtime concat.
         builder_.SetInsertPoint(subErrBB);
@@ -742,7 +738,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
             prefixedErr, llvm::ConstantInt::get(i64Ty_, 0), {1});
         llvm::Value *subErrVal = buildErrValue(prefixedErr, resTy);
         llvm::BasicBlock *subErrEndBB = builder_.GetInsertBlock();
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
         errIncomings.emplace_back(subErrVal, subErrEndBB);
 
         // SubOk arm: extract Ok value, InsertValue into rec, track for ARC.
@@ -763,13 +759,11 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
     // exactly once already.
     llvm::Value *okVal = buildOkValue(rec, resTy);
     llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Merge.
     builder_.SetInsertPoint(doneBB);
-    llvm::PHINode *phi = builder_.CreatePHI(
-        resTy, static_cast<unsigned>(errIncomings.size()) + 1,
-        "tryrec.result");
+    llvm::PHINode *phi = createPhi(resTy, {}, "tryrec.result");
     for (auto &p : errIncomings)
         phi->addIncoming(p.first, p.second);
     phi->addIncoming(okVal, okEndBB);
@@ -826,17 +820,17 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::List)),
         "trylst.is_list");
 
-    auto *tagOkBB  = llvm::BasicBlock::Create(*ctx_, "trylst.tag_ok",  fn);
-    auto *tagErrBB = llvm::BasicBlock::Create(*ctx_, "trylst.tag_err", fn);
-    auto *doneBB   = llvm::BasicBlock::Create(*ctx_, "trylst.done",    fn);
+    auto *tagOkBB  = createBBInFn("trylst.tag_ok", fn);
+    auto *tagErrBB = createBBInFn("trylst.tag_err", fn);
+    auto *doneBB   = createBBInFn("trylst.done", fn);
 
-    builder_.CreateCondBr(isList, tagOkBB, tagErrBB);
+    emitBranchCond(isList, tagOkBB, tagErrBB);
 
     builder_.SetInsertPoint(tagErrBB);
     llvm::Value *tagErrVal = buildErrValue(
         buildInlineError(prefix + "expected JSON array"), resTy);
     llvm::BasicBlock *tagErrEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Tag-ok: load source list header from any.data[8].
     builder_.SetInsertPoint(tagOkBB);
@@ -883,16 +877,16 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         builder_.CreateAlloca(i64Ty_, nullptr, "trylst.count.slot");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countSlot);
 
-    auto *headerBB = llvm::BasicBlock::Create(*ctx_, "trylst.loop.header", fn);
-    auto *bodyBB   = llvm::BasicBlock::Create(*ctx_, "trylst.loop.body",   fn);
-    auto *errBB    = llvm::BasicBlock::Create(*ctx_, "trylst.loop.err",    fn);
-    auto *exitBB   = llvm::BasicBlock::Create(*ctx_, "trylst.loop.exit",   fn);
+    auto *headerBB = createBBInFn("trylst.loop.header", fn);
+    auto *bodyBB   = createBBInFn("trylst.loop.body", fn);
+    auto *errBB    = createBBInFn("trylst.loop.err", fn);
+    auto *exitBB   = createBBInFn("trylst.loop.exit", fn);
 
-    builder_.CreateBr(headerBB);
+    emitBranchUncond(headerBB);
     builder_.SetInsertPoint(headerBB);
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iSlot, "trylst.i");
     llvm::Value *iLt = builder_.CreateICmpSLT(iCur, srcLen, "trylst.i.lt");
-    builder_.CreateCondBr(iLt, bodyBB, exitBB);
+    emitBranchCond(iLt, bodyBB, exitBB);
 
     builder_.SetInsertPoint(bodyBB);
     // GEP source slot (any stride = 16B) and load any value.
@@ -906,12 +900,12 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         tryUnwrapFromAny(srcAny, elemTy, elemTypeName);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "trylst.sub.disc");
-    auto *subOkBB = llvm::BasicBlock::Create(*ctx_, "trylst.sub.ok", fn);
+    auto *subOkBB = createBBInFn("trylst.sub.ok", fn);
 
     // On sub-Err, propagate to errBB carrying the inner Error value so we can
     // prefix its message before returning.
     auto *prevBlock = builder_.GetInsertBlock();
-    builder_.CreateCondBr(subDisc, subOkBB, errBB);
+    emitBranchCond(subDisc, subOkBB, errBB);
 
     builder_.SetInsertPoint(subOkBB);
     llvm::Value *subOkVal = builder_.CreateExtractValue(
@@ -928,7 +922,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
     llvm::Value *iNext = builder_.CreateAdd(
         iCur, llvm::ConstantInt::get(i64Ty_, 1), "trylst.i.next");
     builder_.CreateStore(iNext, iSlot);
-    builder_.CreateBr(headerBB);
+    emitBranchUncond(headerBB);
 
     // Err arm: release all populated elements [0, count_done), free dest
     // buffers, build prefixed Err.
@@ -945,14 +939,14 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         llvm::AllocaInst *jSlot =
             builder_.CreateAlloca(i64Ty_, nullptr, "trylst.rel.j.slot");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jSlot);
-        auto *relHdrBB  = llvm::BasicBlock::Create(*ctx_, "trylst.rel.header", fn);
-        auto *relBodyBB = llvm::BasicBlock::Create(*ctx_, "trylst.rel.body",   fn);
-        auto *relExitBB = llvm::BasicBlock::Create(*ctx_, "trylst.rel.exit",   fn);
-        builder_.CreateBr(relHdrBB);
+        auto *relHdrBB  = createBBInFn("trylst.rel.header", fn);
+        auto *relBodyBB = createBBInFn("trylst.rel.body", fn);
+        auto *relExitBB = createBBInFn("trylst.rel.exit", fn);
+        emitBranchUncond(relHdrBB);
         builder_.SetInsertPoint(relHdrBB);
         llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jSlot, "trylst.rel.j");
         llvm::Value *jLt = builder_.CreateICmpSLT(jCur, populated, "trylst.rel.j.lt");
-        builder_.CreateCondBr(jLt, relBodyBB, relExitBB);
+        emitBranchCond(jLt, relBodyBB, relExitBB);
         builder_.SetInsertPoint(relBodyBB);
         llvm::Value *relSlot = builder_.CreateGEP(
             elemTy, destDataPtr, jCur, "trylst.rel.slot");
@@ -979,7 +973,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         llvm::Value *jNext = builder_.CreateAdd(
             jCur, llvm::ConstantInt::get(i64Ty_, 1), "trylst.rel.j.next");
         builder_.CreateStore(jNext, jSlot);
-        builder_.CreateBr(relHdrBB);
+        emitBranchUncond(relHdrBB);
         builder_.SetInsertPoint(relExitBB);
     }
 
@@ -1027,7 +1021,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
         prefixedErr, llvm::ConstantInt::get(i64Ty_, 0), {1});
     llvm::Value *errResVal = buildErrValue(prefixedErr, resTy);
     llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Exit arm: store header fields and Ok.
     builder_.SetInsertPoint(exitBB);
@@ -1039,11 +1033,11 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
     }
     llvm::Value *okVal = buildOkValue(destHdr, resTy);
     llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Merge.
     builder_.SetInsertPoint(doneBB);
-    llvm::PHINode *phi = builder_.CreatePHI(resTy, 3, "trylst.result");
+    llvm::PHINode *phi = createPhi(resTy, {}, "trylst.result");
     phi->addIncoming(tagErrVal, tagErrEndBB);
     phi->addIncoming(errResVal, errEndBB);
     phi->addIncoming(okVal, okEndBB);
@@ -1076,17 +1070,17 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Map)),
         "trymap.is_map");
 
-    auto *tagOkBB  = llvm::BasicBlock::Create(*ctx_, "trymap.tag_ok",  fn);
-    auto *tagErrBB = llvm::BasicBlock::Create(*ctx_, "trymap.tag_err", fn);
-    auto *doneBB   = llvm::BasicBlock::Create(*ctx_, "trymap.done",    fn);
+    auto *tagOkBB  = createBBInFn("trymap.tag_ok", fn);
+    auto *tagErrBB = createBBInFn("trymap.tag_err", fn);
+    auto *doneBB   = createBBInFn("trymap.done", fn);
 
-    builder_.CreateCondBr(isMap, tagOkBB, tagErrBB);
+    emitBranchCond(isMap, tagOkBB, tagErrBB);
 
     builder_.SetInsertPoint(tagErrBB);
     llvm::Value *tagErrVal = buildErrValue(
         buildInlineError(prefix + "expected JSON object"), resTy);
     llvm::BasicBlock *tagErrEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Tag-ok: load source map header from any.data[8].
     builder_.SetInsertPoint(tagOkBB);
@@ -1138,16 +1132,16 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         builder_.CreateAlloca(i64Ty_, nullptr, "trymap.count.slot");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countSlot);
 
-    auto *headerBB = llvm::BasicBlock::Create(*ctx_, "trymap.loop.header", fn);
-    auto *bodyBB   = llvm::BasicBlock::Create(*ctx_, "trymap.loop.body",   fn);
-    auto *errBB    = llvm::BasicBlock::Create(*ctx_, "trymap.loop.err",    fn);
-    auto *exitBB   = llvm::BasicBlock::Create(*ctx_, "trymap.loop.exit",   fn);
+    auto *headerBB = createBBInFn("trymap.loop.header", fn);
+    auto *bodyBB   = createBBInFn("trymap.loop.body", fn);
+    auto *errBB    = createBBInFn("trymap.loop.err", fn);
+    auto *exitBB   = createBBInFn("trymap.loop.exit", fn);
 
-    builder_.CreateBr(headerBB);
+    emitBranchUncond(headerBB);
     builder_.SetInsertPoint(headerBB);
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iSlot, "trymap.i");
     llvm::Value *iLt = builder_.CreateICmpSLT(iCur, srcLen, "trymap.i.lt");
-    builder_.CreateCondBr(iLt, bodyBB, exitBB);
+    emitBranchCond(iLt, bodyBB, exitBB);
 
     builder_.SetInsertPoint(bodyBB);
     // Load source key (str ptr, native stride 8B).
@@ -1170,8 +1164,8 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         tryUnwrapFromAny(srcAny, valTy, valTypeName);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "trymap.sub.disc");
-    auto *subOkBB = llvm::BasicBlock::Create(*ctx_, "trymap.sub.ok", fn);
-    builder_.CreateCondBr(subDisc, subOkBB, errBB);
+    auto *subOkBB = createBBInFn("trymap.sub.ok", fn);
+    emitBranchCond(subDisc, subOkBB, errBB);
 
     builder_.SetInsertPoint(subOkBB);
     llvm::Value *subOkVal = builder_.CreateExtractValue(
@@ -1189,7 +1183,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     llvm::Value *iNext = builder_.CreateAdd(
         iCur, llvm::ConstantInt::get(i64Ty_, 1), "trymap.i.next");
     builder_.CreateStore(iNext, iSlot);
-    builder_.CreateBr(headerBB);
+    emitBranchUncond(headerBB);
 
     // Err arm.
     builder_.SetInsertPoint(errBB);
@@ -1210,14 +1204,14 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         llvm::AllocaInst *jSlot =
             builder_.CreateAlloca(i64Ty_, nullptr, "trymap.rel.j.slot");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jSlot);
-        auto *relHdrBB  = llvm::BasicBlock::Create(*ctx_, "trymap.rel.header", fn);
-        auto *relBodyBB = llvm::BasicBlock::Create(*ctx_, "trymap.rel.body",   fn);
-        auto *relExitBB = llvm::BasicBlock::Create(*ctx_, "trymap.rel.exit",   fn);
-        builder_.CreateBr(relHdrBB);
+        auto *relHdrBB  = createBBInFn("trymap.rel.header", fn);
+        auto *relBodyBB = createBBInFn("trymap.rel.body", fn);
+        auto *relExitBB = createBBInFn("trymap.rel.exit", fn);
+        emitBranchUncond(relHdrBB);
         builder_.SetInsertPoint(relHdrBB);
         llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jSlot, "trymap.rel.j");
         llvm::Value *jLt = builder_.CreateICmpSLT(jCur, populated, "trymap.rel.j.lt");
-        builder_.CreateCondBr(jLt, relBodyBB, relExitBB);
+        emitBranchCond(jLt, relBodyBB, relExitBB);
         builder_.SetInsertPoint(relBodyBB);
         // Release key.
         llvm::Value *relKeyPtr = builder_.CreateGEP(
@@ -1255,7 +1249,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         llvm::Value *jNext = builder_.CreateAdd(
             jCur, llvm::ConstantInt::get(i64Ty_, 1), "trymap.rel.j.next");
         builder_.CreateStore(jNext, jSlot);
-        builder_.CreateBr(relHdrBB);
+        emitBranchUncond(relHdrBB);
         builder_.SetInsertPoint(relExitBB);
     }
 
@@ -1294,7 +1288,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         prefixedErr, llvm::ConstantInt::get(i64Ty_, 0), {1});
     llvm::Value *errResVal = buildErrValue(prefixedErr, resTy);
     llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Exit: rebuild hash index via __ry_ht_rehash_str, store fields, Ok.
     builder_.SetInsertPoint(exitBB);
@@ -1310,22 +1304,22 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     llvm::AllocaInst *bcSlot =
         builder_.CreateAlloca(i64Ty_, nullptr, "trymap.bc.slot");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 8), bcSlot);
-    auto *bcHdrBB  = llvm::BasicBlock::Create(*ctx_, "trymap.bc.header", fn);
-    auto *bcBodyBB = llvm::BasicBlock::Create(*ctx_, "trymap.bc.body",   fn);
-    auto *bcExitBB = llvm::BasicBlock::Create(*ctx_, "trymap.bc.exit",   fn);
-    builder_.CreateBr(bcHdrBB);
+    auto *bcHdrBB  = createBBInFn("trymap.bc.header", fn);
+    auto *bcBodyBB = createBBInFn("trymap.bc.body", fn);
+    auto *bcExitBB = createBBInFn("trymap.bc.exit", fn);
+    emitBranchUncond(bcHdrBB);
     builder_.SetInsertPoint(bcHdrBB);
     llvm::Value *bcCur = builder_.CreateLoad(i64Ty_, bcSlot, "trymap.bc.cur");
     llvm::Value *bcTimes3 = builder_.CreateMul(
         bcCur, llvm::ConstantInt::get(i64Ty_, 3), "trymap.bc.3x");
     llvm::Value *bcLt =
         builder_.CreateICmpSLT(bcTimes3, fourLen, "trymap.bc.lt");
-    builder_.CreateCondBr(bcLt, bcBodyBB, bcExitBB);
+    emitBranchCond(bcLt, bcBodyBB, bcExitBB);
     builder_.SetInsertPoint(bcBodyBB);
     llvm::Value *bcDoubled = builder_.CreateShl(
         bcCur, llvm::ConstantInt::get(i64Ty_, 1), "trymap.bc.x2");
     builder_.CreateStore(bcDoubled, bcSlot);
-    builder_.CreateBr(bcHdrBB);
+    emitBranchUncond(bcHdrBB);
     builder_.SetInsertPoint(bcExitBB);
     llvm::Value *bcFinal = builder_.CreateLoad(i64Ty_, bcSlot, "trymap.bc.final");
 
@@ -1351,10 +1345,10 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
     }
     llvm::Value *okVal = buildOkValue(destHdr, resTy);
     llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
-    llvm::PHINode *phi = builder_.CreatePHI(resTy, 3, "trymap.result");
+    llvm::PHINode *phi = createPhi(resTy, {}, "trymap.result");
     phi->addIncoming(tagErrVal, tagErrEndBB);
     phi->addIncoming(errResVal, errEndBB);
     phi->addIncoming(okVal, okEndBB);
@@ -1382,20 +1376,20 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
         llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Unit)),
         "tryopt.is_unit");
 
-    auto *noneBB     = llvm::BasicBlock::Create(*ctx_, "tryopt.none",     fn);
-    auto *recurseBB  = llvm::BasicBlock::Create(*ctx_, "tryopt.recurse",  fn);
-    auto *innerOkBB  = llvm::BasicBlock::Create(*ctx_, "tryopt.inner_ok", fn);
-    auto *innerErrBB = llvm::BasicBlock::Create(*ctx_, "tryopt.inner_err",fn);
-    auto *doneBB     = llvm::BasicBlock::Create(*ctx_, "tryopt.done",     fn);
+    auto *noneBB     = createBBInFn("tryopt.none", fn);
+    auto *recurseBB  = createBBInFn("tryopt.recurse", fn);
+    auto *innerOkBB  = createBBInFn("tryopt.inner_ok", fn);
+    auto *innerErrBB = createBBInFn("tryopt.inner_err", fn);
+    auto *doneBB     = createBBInFn("tryopt.done", fn);
 
-    builder_.CreateCondBr(isUnit, noneBB, recurseBB);
+    emitBranchCond(isUnit, noneBB, recurseBB);
 
     // None arm: build Ok(None).
     builder_.SetInsertPoint(noneBB);
     llvm::Value *noneVal = buildNoneValue(optTy);
     llvm::Value *noneOk = buildOkValue(noneVal, resTy);
     llvm::BasicBlock *noneEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Recurse arm: hand the same `any` to the inner unwrap. Note the inner
     // call inspects the tag itself and emits its own type-mismatch errors
@@ -1405,7 +1399,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
         tryUnwrapFromAny(anyVal, innerTy, innerTypeName);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "tryopt.sub.disc");
-    builder_.CreateCondBr(subDisc, innerOkBB, innerErrBB);
+    emitBranchCond(subDisc, innerOkBB, innerErrBB);
 
     // Inner Ok: extract value, propagate metadata (so str-prefixed metadata
     // from a Result<str, _>-inner doesn't get lost when wrapped in Some), then
@@ -1420,7 +1414,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
     llvm::Value *someVal = buildSomeValue(innerOkVal, optTy);
     llvm::Value *someOk = buildOkValue(someVal, resTy);
     llvm::BasicBlock *innerOkEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Inner Err: prepend `load[Option<X>]: expected null or ` to the inner
     // message via __ry_string_make_uninit + memcpy (the same prefix-concat
@@ -1457,11 +1451,11 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
         prefixedErr, llvm::ConstantInt::get(i64Ty_, 0), {1});
     llvm::Value *errResVal = buildErrValue(prefixedErr, resTy);
     llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Merge.
     builder_.SetInsertPoint(doneBB);
-    llvm::PHINode *phi = builder_.CreatePHI(resTy, 3, "tryopt.result");
+    llvm::PHINode *phi = createPhi(resTy, {}, "tryopt.result");
     phi->addIncoming(noneOk, noneEndBB);
     phi->addIncoming(someOk, innerOkEndBB);
     phi->addIncoming(errResVal, errEndBB);
@@ -1510,16 +1504,16 @@ llvm::Value *CodeGen::unwrapEnumFromAny(llvm::Value *anyVal, llvm::Type *targetT
     auto *expectedDesc = getOrCreateEnumDescriptor(typeName, targetTy);
     auto *layoutTy = enumBoxLayoutType(targetTy);
 
-    auto *tagMatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.tag_ok", fn);
-    auto *tagMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.tag_err", fn);
-    auto *descMatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.desc_ok", fn);
-    auto *descMismatchBB = llvm::BasicBlock::Create(*ctx_, "any.enum.desc_err", fn);
+    auto *tagMatchBB = createBBInFn("any.enum.tag_ok", fn);
+    auto *tagMismatchBB = createBBInFn("any.enum.tag_err", fn);
+    auto *descMatchBB = createBBInFn("any.enum.desc_ok", fn);
+    auto *descMismatchBB = createBBInFn("any.enum.desc_err", fn);
 
     llvm::Value *isEnum = builder_.CreateICmpEQ(
         tag, llvm::ConstantInt::get(
                  i64Ty_, static_cast<uint64_t>(RyAnyTag::Enum)),
         "any.is_enum");
-    builder_.CreateCondBr(isEnum, tagMatchBB, tagMismatchBB);
+    emitBranchCond(isEnum, tagMatchBB, tagMismatchBB);
 
     builder_.SetInsertPoint(tagMismatchBB);
     emitRuntimeError("runtime error: any type mismatch (expected " + typeName +
@@ -1536,7 +1530,7 @@ llvm::Value *CodeGen::unwrapEnumFromAny(llvm::Value *anyVal, llvm::Type *targetT
     auto *actualDesc = builder_.CreateLoad(ptrTy_, descSlot, "any.enum.desc");
     llvm::Value *descEq = builder_.CreateICmpEQ(actualDesc, expectedDesc,
                                                 "any.enum.desc.eq");
-    builder_.CreateCondBr(descEq, descMatchBB, descMismatchBB);
+    emitBranchCond(descEq, descMatchBB, descMismatchBB);
 
     builder_.SetInsertPoint(descMismatchBB);
     emitRuntimeError("runtime error: any enum type mismatch (expected " +
@@ -1579,13 +1573,13 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto *tagVal = builder_.CreateExtractValue(loaded, 0, name + ".any.tag");
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, alloca, 1, name + ".any.data");
 
-    auto *strBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.str",  parentFn);
-    auto *listBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.list", parentFn);
-    auto *mapBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.map",  parentFn);
-    auto *setBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.set",  parentFn);
-    auto *recBB  = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.rec",  parentFn);
-    auto *enumBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.enum", parentFn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, name + ".any.rel.done", parentFn);
+    auto *strBB  = createBBInFn((name + ".any.rel.str").c_str(), parentFn);
+    auto *listBB = createBBInFn((name + ".any.rel.list").c_str(), parentFn);
+    auto *mapBB  = createBBInFn((name + ".any.rel.map").c_str(), parentFn);
+    auto *setBB  = createBBInFn((name + ".any.rel.set").c_str(), parentFn);
+    auto *recBB  = createBBInFn((name + ".any.rel.rec").c_str(), parentFn);
+    auto *enumBB = createBBInFn((name + ".any.rel.enum").c_str(), parentFn);
+    auto *doneBB = createBBInFn((name + ".any.rel.done").c_str(), parentFn);
 
     auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
@@ -1604,7 +1598,7 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto *strPtr = builder_.CreateLoad(ptrTy_, dataPtr, name + ".any.str.ptr");
     auto *strHdr = emitStrGetHeaderFromData(strPtr);
     emitArcRelease(strHdr, isArcAtomic(strPtr), llvm::FunctionCallee{}, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
                            const std::string &fallbackTypeName) {
@@ -1643,7 +1637,7 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
                                      name + ".any." + fallbackTypeName);
         // emitArcReleaseLoadedElement leaves builder_ on its own continuation
         // block; branch from there to the merge.
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
     };
 
     releaseSlot(listBB, CollectionKind::List, "List");
@@ -1664,7 +1658,7 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto trampoline = getRuntimeFn("__ry_arc_dtor_record_dispatch",
                                    builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Enum release path — symmetric to Record. The box layout
     // `[ArcHeader 16B | descriptor ptr 8B | payload]` matches Record's
@@ -1680,7 +1674,7 @@ void CodeGen::emitAnyReleaseVar(const std::string &name,
     auto enumTrampoline = getRuntimeFn("__ry_arc_dtor_enum_dispatch",
                                        builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }
@@ -1700,12 +1694,9 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
                                               siteLabel + ".any.retain.data");
 
-    auto *strBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.str",
-                                             parentFn);
-    auto *collBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.coll",
-                                             parentFn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.retain.done",
-                                             parentFn);
+    auto *strBB  = createBBInFn((siteLabel + ".any.retain.str").c_str(), parentFn);
+    auto *collBB = createBBInFn((siteLabel + ".any.retain.coll").c_str(), parentFn);
+    auto *doneBB = createBBInFn((siteLabel + ".any.retain.done").c_str(), parentFn);
 
     auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
@@ -1735,7 +1726,7 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
                                          siteLabel + ".any.retain.str.ptr");
     auto *strHdrR = emitStrGetHeaderFromData(strPtrR);
     emitArcRetain(strHdrR);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // All three collection tags route to the same retain block — the inner
     // header layout is identical (ARC_HEADER_SIZE prefix) for List / Map /
@@ -1745,7 +1736,7 @@ void CodeGen::emitAnyRetainPayload(llvm::Value *anyVal,
     auto *ptr = builder_.CreateLoad(ptrTy_, dataPtr, siteLabel + ".any.retain.ptr");
     auto *hdr = emitArcGetHeaderFromData(ptr);
     emitArcRetain(hdr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }
@@ -1764,13 +1755,13 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1,
                                               siteLabel + ".any.rel.data");
 
-    auto *strBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.str",  parentFn);
-    auto *listBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.list", parentFn);
-    auto *mapBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.map",  parentFn);
-    auto *setBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.set",  parentFn);
-    auto *recBB  = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.rec",  parentFn);
-    auto *enumBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.enum", parentFn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, siteLabel + ".any.rel.done", parentFn);
+    auto *strBB  = createBBInFn((siteLabel + ".any.rel.str").c_str(), parentFn);
+    auto *listBB = createBBInFn((siteLabel + ".any.rel.list").c_str(), parentFn);
+    auto *mapBB  = createBBInFn((siteLabel + ".any.rel.map").c_str(), parentFn);
+    auto *setBB  = createBBInFn((siteLabel + ".any.rel.set").c_str(), parentFn);
+    auto *recBB  = createBBInFn((siteLabel + ".any.rel.rec").c_str(), parentFn);
+    auto *enumBB = createBBInFn((siteLabel + ".any.rel.enum").c_str(), parentFn);
+    auto *doneBB = createBBInFn((siteLabel + ".any.rel.done").c_str(), parentFn);
 
     auto *sw = builder_.CreateSwitch(tagVal, doneBB, 6);
     auto *intTy = llvm::cast<llvm::IntegerType>(i64Ty_);
@@ -1788,7 +1779,7 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
                                            siteLabel + ".any.rel.str.ptr");
     auto *strHdrRel = emitStrGetHeaderFromData(strPtrRel);
     emitArcRelease(strHdrRel, isArcAtomic(strPtrRel), llvm::FunctionCallee{}, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     auto releaseSlot = [&](llvm::BasicBlock *bb, CollectionKind kind,
                            const std::string &fallbackTypeName) {
@@ -1823,7 +1814,7 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
         }
         emitArcReleaseLoadedElement(ptr, kind, useTypeName,
                                      siteLabel + ".any." + fallbackTypeName);
-        builder_.CreateBr(doneBB);
+        emitBranchUncond(doneBB);
     };
 
     releaseSlot(listBB, CollectionKind::List, "List");
@@ -1837,7 +1828,7 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto trampoline = getRuntimeFn("__ry_arc_dtor_record_dispatch",
                                    builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(recHdr, isArcAtomic(recPtr), trampoline, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     // Enum release path — symmetric to Record.
     builder_.SetInsertPoint(enumBB);
@@ -1846,7 +1837,7 @@ void CodeGen::emitAnyReleasePayload(llvm::Value *anyVal,
     auto enumTrampoline = getRuntimeFn("__ry_arc_dtor_enum_dispatch",
                                        builder_.getVoidTy(), {ptrTy_});
     emitArcRelease(enumHdr, isArcAtomic(enumPtr), enumTrampoline, nullptr);
-    builder_.CreateBr(doneBB);
+    emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }

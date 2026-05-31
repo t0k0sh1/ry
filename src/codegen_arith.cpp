@@ -159,9 +159,9 @@ llvm::Value *CodeGen::emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
     llvm::Value *value = builder_.CreateExtractValue(result, 0, opName + "_val");
     llvm::Value *overflow = builder_.CreateExtractValue(result, 1, opName + "_flag");
 
-    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, opName + ".overflow_err", fn_);
-    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, opName + ".ok", fn_);
-    builder_.CreateCondBr(overflow, errBB, okBB);
+    llvm::BasicBlock *errBB = createBBInFn((opName + ".overflow_err").c_str(), fn_);
+    llvm::BasicBlock *okBB  = createBBInFn((opName + ".ok").c_str(), fn_);
+    emitBranchCond(overflow, errBB, okBB);
 
     builder_.SetInsertPoint(errBB);
     emitRuntimeError("runtime error: integer overflow\n",

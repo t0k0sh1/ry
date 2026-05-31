@@ -406,11 +406,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *mockActive = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
 
-        llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
-        llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
+        llvm::BasicBlock *mockBB = createBB("mock_bb");
+        llvm::BasicBlock *origBB = createBB("orig_bb");
+        llvm::BasicBlock *mergeBB = createBB("merge_bb");
 
-        builder_.CreateCondBr(mockActive, mockBB, origBB);
+        emitBranchCond(mockActive, mockBB, origBB);
 
         // Mock path: branch on env ptr to choose plain vs capture-closure ABI.
         builder_.SetInsertPoint(mockBB);
@@ -421,9 +421,9 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::Value *envPtr = builder_.CreateCall(mockGetEnvFn, {nameStr}, "mock_env");
         llvm::Value *isCapture = builder_.CreateICmpNE(envPtr, nullPtr, "is_capture_mock");
 
-        llvm::BasicBlock *plainBB = llvm::BasicBlock::Create(*ctx_, "mock_plain_bb", fn_);
-        llvm::BasicBlock *captureBB = llvm::BasicBlock::Create(*ctx_, "mock_capture_bb", fn_);
-        builder_.CreateCondBr(isCapture, captureBB, plainBB);
+        llvm::BasicBlock *plainBB = createBB("mock_plain_bb");
+        llvm::BasicBlock *captureBB = createBB("mock_capture_bb");
+        emitBranchCond(isCapture, captureBB, plainBB);
 
         llvm::FunctionType *fnTy = fn->getFunctionType();
         // Capture-thunk ABI matches getOrCreateCapturingThunk: (user_params..., env).
@@ -438,11 +438,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         if (fn->getReturnType()->isVoidTy()) {
             builder_.SetInsertPoint(plainBB);
             builder_.CreateCall(fnTy, mockPtr, argVals);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
 
             builder_.SetInsertPoint(captureBB);
             builder_.CreateCall(captureFnTy, mockPtr, captureArgs);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
 
             // Original path (void case)
             builder_.SetInsertPoint(origBB);
@@ -455,7 +455,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
                 emitMockArgRecording(nameStr, argVals, matchedEntry);
             }
             builder_.CreateCall(fn, argVals);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
 
             builder_.SetInsertPoint(mergeBB);
             releaseUniformClosureTemps(uniformClosureTemps);
@@ -464,13 +464,13 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         builder_.SetInsertPoint(plainBB);
         llvm::Value *mockResultPlain = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result_plain");
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *plainEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(captureBB);
         llvm::Value *mockResultCapture = builder_.CreateCall(
             captureFnTy, mockPtr, captureArgs, "mock_result_capture");
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *captureEndBB = builder_.GetInsertBlock();
 
         // Original path
@@ -483,12 +483,12 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             emitMockArgRecording(nameStr, argVals, matchedEntry);
         }
         llvm::Value *origResult = builder_.CreateCall(fn, argVals, "orig_result");
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
 
         // Merge
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 3, "call_result");
+        llvm::PHINode *phi = createPhi(fn->getReturnType(), {}, "call_result");
         phi->addIncoming(mockResultPlain, plainEndBB);
         phi->addIncoming(mockResultCapture, captureEndBB);
         phi->addIncoming(origResult, origEndBB);
@@ -780,9 +780,9 @@ void CodeGen::emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPre
                                    const std::string &errMsg) {
     llvm::Value *isZero = builder_.CreateICmpEQ(
         divisor, llvm::ConstantInt::get(divisor->getType(), 0), bbPrefix + "_zero");
-    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".err", fn_);
-    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
-    builder_.CreateCondBr(isZero, errBB, okBB);
+    llvm::BasicBlock *errBB = createBBInFn((bbPrefix + ".err").c_str(), fn_);
+    llvm::BasicBlock *okBB  = createBBInFn((bbPrefix + ".ok").c_str(), fn_);
+    emitBranchCond(isZero, errBB, okBB);
     builder_.SetInsertPoint(errBB);
     emitRuntimeError(errMsg,
                       "." + bbPrefix + "_err_" + std::to_string(arith_zero_err_counter_++));
@@ -797,9 +797,9 @@ void CodeGen::emitIntDivOverflowGuard(llvm::Value *dividend, llvm::Value *diviso
     llvm::Value *isMinusOne = builder_.CreateICmpEQ(divisor, minusOne, bbPrefix + "_div_m1");
     llvm::Value *isIntMin = builder_.CreateICmpEQ(dividend, intMin, bbPrefix + "_dvd_imin");
     llvm::Value *isOverflow = builder_.CreateAnd(isMinusOne, isIntMin, bbPrefix + "_div_ovf");
-    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".div_ovf_err", fn_);
-    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".div_ovf_ok", fn_);
-    builder_.CreateCondBr(isOverflow, errBB, okBB);
+    llvm::BasicBlock *errBB = createBBInFn((bbPrefix + ".div_ovf_err").c_str(), fn_);
+    llvm::BasicBlock *okBB  = createBBInFn((bbPrefix + ".div_ovf_ok").c_str(), fn_);
+    emitBranchCond(isOverflow, errBB, okBB);
     builder_.SetInsertPoint(errBB);
     emitRuntimeError("runtime error: integer overflow\n",
                       ".int_div_overflow_err_" + std::to_string(overflow_err_counter_++));
@@ -847,9 +847,9 @@ llvm::Value *CodeGen::emitCheckedFPToInt(llvm::Value *val, llvm::Type *targetTy,
     llvm::Value *tooHigh = builder_.CreateFCmpUGE(valF64, hiC, bbPrefix + "_hi");
     llvm::Value *invalid = builder_.CreateOr(tooLow, tooHigh, bbPrefix + "_invalid");
 
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".fail", fn_);
-    llvm::BasicBlock *okBB   = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok",   fn_);
-    builder_.CreateCondBr(invalid, failBB, okBB);
+    llvm::BasicBlock *failBB = createBBInFn((bbPrefix + ".fail").c_str(), fn_);
+    llvm::BasicBlock *okBB   = createBBInFn((bbPrefix + ".ok").c_str(), fn_);
+    emitBranchCond(invalid, failBB, okBB);
 
     builder_.SetInsertPoint(failBB);
     std::string msg = siteLabel.empty()

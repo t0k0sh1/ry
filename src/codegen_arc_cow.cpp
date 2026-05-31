@@ -19,17 +19,17 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
                                         const std::string &tag,
                                         CollectionKind elemArcKind) {
     auto *fn = builder_.GetInsertBlock()->getParent();
-    auto *loopBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_loop", fn);
-    auto *bodyBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_body", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_done", fn);
+    auto *loopBB = createBBInFn(("cow." + tag + "_loop").c_str(), fn);
+    auto *bodyBB = createBBInFn(("cow." + tag + "_body").c_str(), fn);
+    auto *doneBB = createBBInFn(("cow." + tag + "_done").c_str(), fn);
 
     auto *preLoopBB = builder_.GetInsertBlock();
-    builder_.CreateBr(loopBB);
+    emitBranchUncond(loopBB);
     builder_.SetInsertPoint(loopBB);
-    auto *idx = builder_.CreatePHI(i64Ty_, 2, "cow_" + tag + "_idx");
+    auto *idx = createPhi(i64Ty_, {}, ("cow_" + tag + "_idx").c_str());
     idx->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), preLoopBB);
     auto *cond = builder_.CreateICmpSLT(idx, len, "cow_" + tag + "_cond");
-    builder_.CreateCondBr(cond, bodyBB, doneBB);
+    emitBranchCond(cond, bodyBB, doneBB);
 
     builder_.SetInsertPoint(bodyBB);
     auto *elemPtr = builder_.CreateGEP(ptrTy_, buf, idx, "cow_" + tag + "_ptr");
@@ -40,7 +40,7 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
     emitArcRetain(hdr, false);
     auto *next = builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "cow_" + tag + "_next");
     idx->addIncoming(next, builder_.GetInsertBlock());
-    builder_.CreateBr(loopBB);
+    emitBranchUncond(loopBB);
 
     builder_.SetInsertPoint(doneBB);
 }
@@ -239,9 +239,9 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             llvm::Value *missing = builder_.CreateICmpSLT(
                 slot, llvm::ConstantInt::get(i64Ty_, 0), "pcow_map_missing");
             auto *fn = builder_.GetInsertBlock()->getParent();
-            auto *errBB = llvm::BasicBlock::Create(*ctx_, "pcow_map_err", fn);
-            auto *okBB = llvm::BasicBlock::Create(*ctx_, "pcow_map_ok", fn);
-            builder_.CreateCondBr(missing, errBB, okBB);
+            auto *errBB = createBBInFn("pcow_map_err", fn);
+            auto *okBB = createBBInFn("pcow_map_ok", fn);
+            emitBranchCond(missing, errBB, okBB);
             builder_.SetInsertPoint(errBB);
             emitRuntimeError("runtime error: missing map key in nested assignment\n",
                              ".pcow_map_missing");
@@ -431,7 +431,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         dtorTy, llvm::Function::InternalLinkage, name, mod_.get());
     dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
 
-    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    auto *entryBB = createBBInFn("entry", dtorFn);
 
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
@@ -460,9 +460,9 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
             "dtor.null_check." + std::to_string(i));
 
-        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "dtor.release." + std::to_string(i), dtorFn);
-        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "dtor.skip." + std::to_string(i), dtorFn);
-        builder_.CreateCondBr(isNull, skipBB, releaseBB);
+        auto *releaseBB = createBBInFn(("dtor.release." + std::to_string(i)).c_str(), dtorFn);
+        auto *skipBB = createBBInFn(("dtor.skip." + std::to_string(i)).c_str(), dtorFn);
+        emitBranchCond(isNull, skipBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
         auto *hdr = (info.capturedArcKinds[i] == CapturedArcKind::Str)
@@ -510,7 +510,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         }
 
         emitArcRelease(hdr, false, subDtor);
-        builder_.CreateBr(skipBB);
+        emitBranchUncond(skipBB);
 
         builder_.SetInsertPoint(skipBB);
     }

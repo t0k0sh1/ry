@@ -17,10 +17,10 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
     std::string preposition = (kind == "invariant") ? " for " : " in ";
     std::string msg = "Contract violation: " + kind + " failed" + preposition + fn_name + suffix + "\n";
 
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, kind + ".fail", fn_);
-    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, kind + ".ok", fn_);
+    llvm::BasicBlock *failBB = createBBInFn((kind + ".fail").c_str(), fn_);
+    llvm::BasicBlock *nextBB = createBBInFn((kind + ".ok").c_str(), fn_);
 
-    builder_.CreateCondBr(condVal, nextBB, failBB);
+    emitBranchCond(condVal, nextBB, failBB);
 
     builder_.SetInsertPoint(failBB);
     emitRuntimeError(msg, errName);
@@ -999,7 +999,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         current_fn_return_type_ = exposedReturnTypeName;
         pushScope();
 
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        llvm::BasicBlock *entry = createBBInFn("entry", func);
         builder_.SetInsertPoint(entry);
 
         unsigned idx = 0;

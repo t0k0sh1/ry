@@ -458,11 +458,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         llvm::Value *bothSome = builder_.CreateAnd(lhsFlag, rhsFlag, "both_some");
 
         llvm::BasicBlock *startBB    = builder_.GetInsertBlock();
-        llvm::Function   *curFn      = startBB->getParent();
-        llvm::BasicBlock *cmpInnerBB = llvm::BasicBlock::Create(*ctx_, "opt.cmp_inner", curFn);
-        llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "opt.merge",     curFn);
+        llvm::BasicBlock *cmpInnerBB = createBB("opt.cmp_inner");
+        llvm::BasicBlock *mergeBB    = createBB("opt.merge");
 
-        builder_.CreateCondBr(bothSome, cmpInnerBB, mergeBB);
+        emitBranchCond(bothSome, cmpInnerBB, mergeBB);
 
         builder_.SetInsertPoint(cmpInnerBB);
         llvm::Value *lhsInner = builder_.CreateExtractValue(lhs, 1, "opt_l_inner");
@@ -482,10 +481,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
 
         llvm::Value *innerEq  = emitComparisonOp("==", lhsInner, rhsInner, "", "");
         llvm::BasicBlock *cmpDoneBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 2, "opt_eq");
+        llvm::PHINode *eqResult = createPhi(i1Ty_, {}, "opt_eq");
         eqResult->addIncoming(bothNone, startBB);
         eqResult->addIncoming(innerEq, cmpDoneBB);
         if (op == "!=") return builder_.CreateNot(eqResult, "opt_ne");
@@ -500,17 +499,16 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         llvm::Value *rhsOk   = builder_.CreateExtractValue(rhs, 0, "rhs_is_ok");
         llvm::Value *flagsEq = builder_.CreateICmpEQ(lhsOk, rhsOk, "flags_eq");
 
-        llvm::Function   *curFn     = builder_.GetInsertBlock()->getParent();
         llvm::BasicBlock *startBB   = builder_.GetInsertBlock();
-        llvm::BasicBlock *sameKindBB = llvm::BasicBlock::Create(*ctx_, "req.same",  curFn);
-        llvm::BasicBlock *isOkBB    = llvm::BasicBlock::Create(*ctx_, "req.ok",    curFn);
-        llvm::BasicBlock *isErrBB   = llvm::BasicBlock::Create(*ctx_, "req.err",   curFn);
-        llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "req.merge", curFn);
+        llvm::BasicBlock *sameKindBB = createBB("req.same");
+        llvm::BasicBlock *isOkBB    = createBB("req.ok");
+        llvm::BasicBlock *isErrBB   = createBB("req.err");
+        llvm::BasicBlock *mergeBB   = createBB("req.merge");
 
-        builder_.CreateCondBr(flagsEq, sameKindBB, mergeBB);
+        emitBranchCond(flagsEq, sameKindBB, mergeBB);
 
         builder_.SetInsertPoint(sameKindBB);
-        builder_.CreateCondBr(lhsOk, isOkBB, isErrBB);
+        emitBranchCond(lhsOk, isOkBB, isErrBB);
 
         // Result<Collection, E>: ExtractValue drops ValueMetadata; rebuild from outer aggregate.
         // Snapshot name before propagateTypeMeta — it may rehash value_metadata_ (KNOWLEDGE #858).
@@ -533,7 +531,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         }
         llvm::Value *okEq = emitComparisonOp("==", lhsOkPayload, rhsOkPayload, "", "");
         llvm::BasicBlock *okDoneBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(isErrBB);
         llvm::Value *lhsErrPayload = builder_.CreateExtractValue(lhs, 2, "lhs_err");
@@ -544,10 +542,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         }
         llvm::Value *errEq = emitComparisonOp("==", lhsErrPayload, rhsErrPayload, "", "");
         llvm::BasicBlock *errDoneBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 3, "res_eq");
+        llvm::PHINode *eqResult = createPhi(i1Ty_, {}, "res_eq");
         eqResult->addIncoming(llvm::ConstantInt::getFalse(*ctx_), startBB);
         eqResult->addIncoming(okEq, okDoneBB);
         eqResult->addIncoming(errEq, errDoneBB);
@@ -614,13 +612,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     // Full comparison: tag mismatch → false; tag match → switch per-variant
                     llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.etag");
                     llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.etag");
-                    llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
-                    llvm::BasicBlock *sameTagBB  = llvm::BasicBlock::Create(*ctx_, "aeq.same",  curFn);
-                    llvm::BasicBlock *invalidBB  = llvm::BasicBlock::Create(*ctx_, "aeq.inv",   curFn);
-                    llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "aeq.merge", curFn);
+                    llvm::BasicBlock *sameTagBB  = createBB("aeq.same");
+                    llvm::BasicBlock *invalidBB  = createBB("aeq.inv");
+                    llvm::BasicBlock *mergeBB    = createBB("aeq.merge");
 
                     llvm::BasicBlock *entryBB = builder_.GetInsertBlock();
-                    builder_.CreateCondBr(
+                    emitBranchCond(
                         builder_.CreateICmpEQ(lhsTag, rhsTag, "aeq_tag"), sameTagBB, mergeBB);
 
                     builder_.SetInsertPoint(sameTagBB);
@@ -640,21 +637,18 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                         static_cast<unsigned>(einfo.variantOrder.size()));
 
                     builder_.SetInsertPoint(invalidBB);
-                    builder_.CreateBr(mergeBB);
+                    emitBranchUncond(mergeBB);
 
                     // PHI: entry→false, invalid→false, per-variant→result
                     builder_.SetInsertPoint(mergeBB);
-                    auto *phi = builder_.CreatePHI(
-                        i1Ty_,
-                        static_cast<unsigned>(einfo.variantOrder.size() + 2),
-                        "aeq.phi");
+                    auto *phi = createPhi(i1Ty_, {}, "aeq.phi");
                     phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
                     phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
 
                     for (const auto &vname : einfo.variantOrder) {
                         auto tagVal = static_cast<uint64_t>(einfo.variants.at(vname));
-                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
-                            *ctx_, "aeq.v." + vname, curFn);
+                        llvm::BasicBlock *caseBB =
+                            createBB(("aeq.v." + vname).c_str());
                         sw->addCase(
                             llvm::ConstantInt::get(
                                 llvm::cast<llvm::IntegerType>(i64Ty_), tagVal),
@@ -668,7 +662,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                         if (!hasFields) {
                             // No payload: tags matched → equal
                             phi->addIncoming(llvm::ConstantInt::getTrue(*ctx_), caseBB);
-                            builder_.CreateBr(mergeBB);
+                            emitBranchUncond(mergeBB);
                             continue;
                         }
 
@@ -700,15 +694,15 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
 
                             // Branch on previous result before loading this field
                             if (fi > 0) {
-                                llvm::BasicBlock *continBB = llvm::BasicBlock::Create(
-                                    *ctx_, "aeq.fc." + sfx, curFn);
-                                llvm::BasicBlock *shortBB = llvm::BasicBlock::Create(
-                                    *ctx_, "aeq.fs." + sfx, curFn);
-                                builder_.CreateCondBr(lastEq, continBB, shortBB);
+                                llvm::BasicBlock *continBB =
+                                    createBB(("aeq.fc." + sfx).c_str());
+                                llvm::BasicBlock *shortBB =
+                                    createBB(("aeq.fs." + sfx).c_str());
+                                emitBranchCond(lastEq, continBB, shortBB);
 
                                 builder_.SetInsertPoint(shortBB);
                                 phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), shortBB);
-                                builder_.CreateBr(mergeBB);
+                                emitBranchUncond(mergeBB);
 
                                 builder_.SetInsertPoint(continBB);
                             }
@@ -740,7 +734,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                         }
 
                         phi->addIncoming(lastEq, builder_.GetInsertBlock());
-                        builder_.CreateBr(mergeBB);
+                        emitBranchUncond(mergeBB);
                     }
 
                     builder_.SetInsertPoint(mergeBB);
@@ -759,15 +753,14 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                             "function-typed variant '" + cname + "'");
                 }
 
-                llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
-                llvm::BasicBlock *sameTagBB = llvm::BasicBlock::Create(*ctx_, "ueq.same",  curFn);
-                llvm::BasicBlock *invalidBB = llvm::BasicBlock::Create(*ctx_, "ueq.inv",   curFn);
-                llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "ueq.merge", curFn);
+                llvm::BasicBlock *sameTagBB = createBB("ueq.same");
+                llvm::BasicBlock *invalidBB = createBB("ueq.inv");
+                llvm::BasicBlock *mergeBB   = createBB("ueq.merge");
 
                 llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.utag");
                 llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.utag");
                 llvm::BasicBlock *entryBB = builder_.GetInsertBlock();
-                builder_.CreateCondBr(
+                emitBranchCond(
                     builder_.CreateICmpEQ(lhsTag, rhsTag, "utag_eq"), sameTagBB, mergeBB);
 
                 builder_.SetInsertPoint(sameTagBB);
@@ -782,17 +775,16 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     lhsTag, invalidBB, static_cast<unsigned>(uinfo.componentTypes.size()));
 
                 builder_.SetInsertPoint(invalidBB);
-                builder_.CreateBr(mergeBB);
+                emitBranchUncond(mergeBB);
 
                 builder_.SetInsertPoint(mergeBB);
-                auto *phi = builder_.CreatePHI(
-                    i1Ty_, static_cast<unsigned>(uinfo.componentTypes.size() + 2), "ueq.phi");
+                auto *phi = createPhi(i1Ty_, {}, "ueq.phi");
                 phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
                 phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
 
                 for (size_t ci = 0; ci < uinfo.componentTypes.size(); ++ci) {
-                    llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
-                        *ctx_, "ueq.c" + std::to_string(ci), curFn);
+                    llvm::BasicBlock *caseBB =
+                        createBB(("ueq.c" + std::to_string(ci)).c_str());
                     sw->addCase(
                         llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(i64Ty_), ci),
                         caseBB);
@@ -808,7 +800,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     }
                     llvm::Value *caseEq = emitComparisonOp("==", li, ri, "", "");
                     phi->addIncoming(caseEq, builder_.GetInsertBlock());
-                    builder_.CreateBr(mergeBB);
+                    emitBranchUncond(mergeBB);
                 }
 
                 builder_.SetInsertPoint(mergeBB);
@@ -838,23 +830,22 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             }
             auto lf = loadListHeader(lhs, "leq_l");
             auto rf = loadListHeader(rhs, "leq_r");
-            llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
             llvm::BasicBlock *entryBB   = builder_.GetInsertBlock();
-            llvm::BasicBlock *sameLenBB = llvm::BasicBlock::Create(*ctx_, "leq.slen",  curFn);
-            llvm::BasicBlock *condBB    = llvm::BasicBlock::Create(*ctx_, "leq.cond",  curFn);
-            llvm::BasicBlock *bodyBB    = llvm::BasicBlock::Create(*ctx_, "leq.body",  curFn);
-            llvm::BasicBlock *nextBB    = llvm::BasicBlock::Create(*ctx_, "leq.next",  curFn);
-            llvm::BasicBlock *failBB    = llvm::BasicBlock::Create(*ctx_, "leq.fail",  curFn);
-            llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "leq.merge", curFn);
-            builder_.CreateCondBr(
+            llvm::BasicBlock *sameLenBB = createBB("leq.slen");
+            llvm::BasicBlock *condBB    = createBB("leq.cond");
+            llvm::BasicBlock *bodyBB    = createBB("leq.body");
+            llvm::BasicBlock *nextBB    = createBB("leq.next");
+            llvm::BasicBlock *failBB    = createBB("leq.fail");
+            llvm::BasicBlock *mergeBB   = createBB("leq.merge");
+            emitBranchCond(
                 builder_.CreateICmpEQ(lf.len, rf.len, "leq_leneq"), sameLenBB, mergeBB);
             builder_.SetInsertPoint(sameLenBB);
             llvm::AllocaInst *leqI = builder_.CreateAlloca(i64Ty_, nullptr, "leq_i");
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), leqI);
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
             builder_.SetInsertPoint(condBB);
             llvm::Value *leqIv = builder_.CreateLoad(i64Ty_, leqI, "leq_iv");
-            builder_.CreateCondBr(builder_.CreateICmpSLT(leqIv, lf.len), bodyBB, mergeBB);
+            emitBranchCond(builder_.CreateICmpSLT(leqIv, lf.len), bodyBB, mergeBB);
             builder_.SetInsertPoint(bodyBB);
             llvm::Value *leqIc = builder_.CreateLoad(i64Ty_, leqI, "leq_ic");
             llvm::Value *le = builder_.CreateLoad(lhsElemTy,
@@ -867,15 +858,15 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 propagateTypeMeta(leqElemName, le);
                 propagateMeta(le, re);  // copy from le; avoids re-parsing the type name
             }
-            builder_.CreateCondBr(emitComparisonOp("==", le, re, "", ""), nextBB, failBB);
+            emitBranchCond(emitComparisonOp("==", le, re, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
                 builder_.CreateAdd(leqIc, llvm::ConstantInt::get(i64Ty_, 1), "leq_in"), leqI);
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
             builder_.SetInsertPoint(failBB);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
             builder_.SetInsertPoint(mergeBB);
-            auto *leqPhi = builder_.CreatePHI(i1Ty_, 3, "leq.phi");
+            auto *leqPhi = createPhi(i1Ty_, {}, "leq.phi");
             leqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
             leqPhi->addIncoming(llvm::ConstantInt::getTrue(*ctx_),  condBB);
             leqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), failBB);
@@ -899,20 +890,19 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Value *lenEq = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
 
             // Short-circuit: skip the subset-check loop when lengths differ.
-            llvm::Function   *curFn    = builder_.GetInsertBlock()->getParent();
             llvm::BasicBlock *startBB  = builder_.GetInsertBlock();
-            llvm::BasicBlock *checkBB  = llvm::BasicBlock::Create(*ctx_, "seq.check", curFn);
-            llvm::BasicBlock *mergeBB  = llvm::BasicBlock::Create(*ctx_, "seq.merge",  curFn);
+            llvm::BasicBlock *checkBB  = createBB("seq.check");
+            llvm::BasicBlock *mergeBB  = createBB("seq.merge");
 
-            builder_.CreateCondBr(lenEq, checkBB, mergeBB);
+            emitBranchCond(lenEq, checkBB, mergeBB);
 
             builder_.SetInsertPoint(checkBB);
             llvm::Value *isSubset = emitSubsetCheck(lhs, rhs, "seq_sub");
             llvm::BasicBlock *checkDoneBB = builder_.GetInsertBlock();
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
 
             builder_.SetInsertPoint(mergeBB);
-            llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 2, "seq_eq");
+            llvm::PHINode *eqResult = createPhi(i1Ty_, {}, "seq_eq");
             eqResult->addIncoming(llvm::ConstantInt::getFalse(*ctx_), startBB);
             eqResult->addIncoming(isSubset, checkDoneBB);
 
@@ -960,30 +950,29 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             }
             auto lf = loadMapHeader(lhs, "meq_l");
             auto rf = loadMapHeader(rhs, "meq_r");
-            llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
             llvm::BasicBlock *entryBB   = builder_.GetInsertBlock();
-            llvm::BasicBlock *sameLenBB = llvm::BasicBlock::Create(*ctx_, "meq.slen",  curFn);
-            llvm::BasicBlock *condBB    = llvm::BasicBlock::Create(*ctx_, "meq.cond",  curFn);
-            llvm::BasicBlock *bodyBB    = llvm::BasicBlock::Create(*ctx_, "meq.body",  curFn);
-            llvm::BasicBlock *valBB     = llvm::BasicBlock::Create(*ctx_, "meq.val",   curFn);
-            llvm::BasicBlock *nextBB    = llvm::BasicBlock::Create(*ctx_, "meq.next",  curFn);
-            llvm::BasicBlock *failBB    = llvm::BasicBlock::Create(*ctx_, "meq.fail",  curFn);
-            llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "meq.merge", curFn);
-            builder_.CreateCondBr(
+            llvm::BasicBlock *sameLenBB = createBB("meq.slen");
+            llvm::BasicBlock *condBB    = createBB("meq.cond");
+            llvm::BasicBlock *bodyBB    = createBB("meq.body");
+            llvm::BasicBlock *valBB     = createBB("meq.val");
+            llvm::BasicBlock *nextBB    = createBB("meq.next");
+            llvm::BasicBlock *failBB    = createBB("meq.fail");
+            llvm::BasicBlock *mergeBB   = createBB("meq.merge");
+            emitBranchCond(
                 builder_.CreateICmpEQ(lf.len, rf.len, "meq_leneq"), sameLenBB, mergeBB);
             builder_.SetInsertPoint(sameLenBB);
             llvm::AllocaInst *meqI = builder_.CreateAlloca(i64Ty_, nullptr, "meq_i");
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), meqI);
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
             builder_.SetInsertPoint(condBB);
             llvm::Value *meqIv = builder_.CreateLoad(i64Ty_, meqI, "meq_iv");
-            builder_.CreateCondBr(builder_.CreateICmpSLT(meqIv, lf.len), bodyBB, mergeBB);
+            emitBranchCond(builder_.CreateICmpSLT(meqIv, lf.len), bodyBB, mergeBB);
             builder_.SetInsertPoint(bodyBB);
             llvm::Value *meqIc = builder_.CreateLoad(i64Ty_, meqI, "meq_ic");
             llvm::Value *key = builder_.CreateLoad(lhsKeyTy,
                 builder_.CreateGEP(lhsKeyTy, lf.keys, {meqIc}, "meq_kep"), "meq_k");
             llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy, meqKeyName);
-            builder_.CreateCondBr(
+            emitBranchCond(
                 builder_.CreateICmpSGE(rhsIdx, llvm::ConstantInt::get(i64Ty_, 0), "meq_found"),
                 valBB, failBB);
             builder_.SetInsertPoint(valBB);
@@ -997,15 +986,15 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 propagateTypeMeta(meqValName, lv);
                 propagateMeta(lv, rv);  // copy from lv; avoids re-parsing the type name
             }
-            builder_.CreateCondBr(emitComparisonOp("==", lv, rv, "", ""), nextBB, failBB);
+            emitBranchCond(emitComparisonOp("==", lv, rv, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
                 builder_.CreateAdd(meqIc, llvm::ConstantInt::get(i64Ty_, 1), "meq_in"), meqI);
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
             builder_.SetInsertPoint(failBB);
-            builder_.CreateBr(mergeBB);
+            emitBranchUncond(mergeBB);
             builder_.SetInsertPoint(mergeBB);
-            auto *meqPhi = builder_.CreatePHI(i1Ty_, 3, "meq.phi");
+            auto *meqPhi = createPhi(i1Ty_, {}, "meq.phi");
             meqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
             meqPhi->addIncoming(llvm::ConstantInt::getTrue(*ctx_),  condBB);
             meqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), failBB);
@@ -1255,9 +1244,9 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         // Overflow guard: if lenL + lenR wraps (total < lenL for non-negative inputs),
         // abort before underallocating the buffer.
         llvm::Value *catOverflow = builder_.CreateICmpSLT(total, lenL, "cat_ovf");
-        llvm::BasicBlock *catErrBB   = llvm::BasicBlock::Create(*ctx_, "str_cat.ovf_err",  fn_);
-        llvm::BasicBlock *catAllocBB = llvm::BasicBlock::Create(*ctx_, "str_cat.alloc",    fn_);
-        builder_.CreateCondBr(catOverflow, catErrBB, catAllocBB);
+        llvm::BasicBlock *catErrBB   = createBB("\1");
+        llvm::BasicBlock *catAllocBB = createBB("\1");
+        emitBranchCond(catOverflow, catErrBB, catAllocBB);
 
         builder_.SetInsertPoint(catErrBB);
         emitRuntimeError("runtime error: str + str overflows\n", ".str_cat_overflow");
@@ -1552,15 +1541,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "in_i");
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "in.cond", fn_);
-            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "in.body", fn_);
-            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "in.end", fn_);
+            llvm::BasicBlock *condBB = createBB("in.cond");
+            llvm::BasicBlock *bodyBB = createBB("in.body");
+            llvm::BasicBlock *endBB = createBB("in.end");
 
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
             builder_.SetInsertPoint(condBB);
             llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "in_iv");
             llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "in_cond");
-            builder_.CreateCondBr(cond, bodyBB, endBB);
+            emitBranchCond(cond, bodyBB, endBB);
 
             builder_.SetInsertPoint(bodyBB);
             llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "in_ic");
@@ -1594,18 +1583,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
                 match = builder_.CreateICmpEQ(elem, listElem, "in_match");
             }
 
-            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "in.found", fn_);
-            llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "in.next", fn_);
-            builder_.CreateCondBr(match, foundBB, nextBB);
+            llvm::BasicBlock *foundBB = createBB("in.found");
+            llvm::BasicBlock *nextBB = createBB("in.next");
+            emitBranchCond(match, foundBB, nextBB);
 
             builder_.SetInsertPoint(foundBB);
             builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
-            builder_.CreateBr(endBB);
+            emitBranchUncond(endBB);
 
             builder_.SetInsertPoint(nextBB);
             llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "in_next");
             builder_.CreateStore(iNext, iVar);
-            builder_.CreateBr(condBB);
+            emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(endBB);
             llvm::Value *result = builder_.CreateLoad(i1Ty_, foundVar, "in_result");
@@ -1648,23 +1637,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Value *lhs = emitExpr(*e->lhs);
         llvm::Value *lhsBool = toBool(lhs);
 
-        llvm::BasicBlock *rhsBB = llvm::BasicBlock::Create(*ctx_, "sc.rhs", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sc.merge", fn_);
+        llvm::BasicBlock *rhsBB = createBB("sc.rhs");
+        llvm::BasicBlock *mergeBB = createBB("sc.merge");
         llvm::BasicBlock *lhsBB = builder_.GetInsertBlock();
 
         if (e->op == "and")
-            builder_.CreateCondBr(lhsBool, rhsBB, mergeBB);
+            emitBranchCond(lhsBool, rhsBB, mergeBB);
         else
-            builder_.CreateCondBr(lhsBool, mergeBB, rhsBB);
+            emitBranchCond(lhsBool, mergeBB, rhsBB);
 
         builder_.SetInsertPoint(rhsBB);
         llvm::Value *rhs = emitExpr(*e->rhs);
         llvm::Value *rhsBool = toBool(rhs);
         llvm::BasicBlock *rhsEndBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, e->op);
+        llvm::PHINode *phi = createPhi(i1Ty_, {}, e->op.c_str());
         phi->addIncoming(lhsBool, lhsBB);
         phi->addIncoming(rhsBool, rhsEndBB);
         return phi;
@@ -1745,7 +1734,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
     }
     llvm::Type *caseCondFallback = caseCondHint ? caseCondHint : option_decl_annotation_inner_;
 
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
+    llvm::BasicBlock *mergeBB = createBB("case.expr.merge");
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
     llvm::Value *firstVal = nullptr;
@@ -1755,9 +1744,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "case.expr.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "case.expr.next", fn_);
-        builder_.CreateCondBr(cond, thenBB, nextBB);
+        llvm::BasicBlock *thenBB = createBB("case.expr.then");
+        llvm::BasicBlock *nextBB = createBB("case.expr.next");
+        emitBranchCond(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
         llvm::Value *armVal;
@@ -1768,7 +1757,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "case expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         incoming.push_back({armVal, armEndBB});
 
         builder_.SetInsertPoint(nextBB);
@@ -1782,13 +1771,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
     if (!firstVal) firstVal = elseVal;
     else validateBranchTypes(firstVal, elseVal, "case expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
     incoming.push_back({elseVal, elseEndBB});
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), static_cast<unsigned>(incoming.size()), "case.expr");
-    for (auto &[val, bb] : incoming)
-        phi->addIncoming(val, bb);
+    llvm::PHINode *phi = createPhi(firstVal->getType(), incoming, "case.expr");
     propagateMeta(firstVal, phi);
     return phi;
 }
@@ -1802,28 +1789,28 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
     llvm::Type *ifExprHint = computeBranchOptionInnerHint(*e->then_value, *e->else_value);
     llvm::Type *ifExprFallback = ifExprHint ? ifExprHint : option_decl_annotation_inner_;
 
-    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
-    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
+    llvm::BasicBlock *thenBB = createBB("if.expr.then");
+    llvm::BasicBlock *elseBB = createBB("if.expr.else");
+    llvm::BasicBlock *mergeBB = createBB("if.expr.merge");
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
     // Install the arm hint only after the condition has been emitted.
     OptionNoneHintGuard ifExprGuard(*this, ifExprFallback);
-    builder_.CreateCondBr(cond, thenBB, elseBB);
+    emitBranchCond(cond, thenBB, elseBB);
 
     builder_.SetInsertPoint(thenBB);
     llvm::Value *thenVal = emitExpr(*e->then_value);
     llvm::BasicBlock *thenEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(elseBB);
     llvm::Value *elseVal = emitExpr(*e->else_value);
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
     validateBranchTypes(thenVal, elseVal, "if expression");
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(thenVal->getType(), 2, "if.expr");
+    llvm::PHINode *phi = createPhi(thenVal->getType(), {}, "if.expr");
     phi->addIncoming(thenVal, thenEndBB);
     phi->addIncoming(elseVal, elseEndBB);
     propagateMeta(thenVal, phi);
@@ -1880,22 +1867,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
         return {val, builder_.GetInsertBlock()};
     };
 
-    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.block.then", fn_);
-    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.block.else", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.block.merge", fn_);
+    llvm::BasicBlock *thenBB = createBB("if.block.then");
+    llvm::BasicBlock *elseBB = createBB("if.block.else");
+    llvm::BasicBlock *mergeBB = createBB("if.block.merge");
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
-    builder_.CreateCondBr(cond, thenBB, elseBB);
+    emitBranchCond(cond, thenBB, elseBB);
 
     auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail, ifBlockFallback);
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail, ifBlockFallback);
     validateBranchTypes(thenVal, elseVal, "if expression");
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(thenVal->getType(), 2, "if.block.expr");
+    llvm::PHINode *phi = createPhi(thenVal->getType(), {}, "if.block.expr");
     phi->addIncoming(thenVal, thenEndBB);
     phi->addIncoming(elseVal, elseEndBB);
     propagateMeta(thenVal, phi);
@@ -1945,10 +1932,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
             llvm::Value *isOk =
                 builder_.CreateExtractValue(operandVal, 0, "is_ok");
             llvm::BasicBlock *okBB =
-                llvm::BasicBlock::Create(*ctx_, "try.top.ok", fn_);
+                createBB("try.top.ok");
             llvm::BasicBlock *errBB =
-                llvm::BasicBlock::Create(*ctx_, "try.top.err", fn_);
-            builder_.CreateCondBr(isOk, okBB, errBB);
+                createBB("try.top.err");
+            emitBranchCond(isOk, okBB, errBB);
 
             builder_.SetInsertPoint(errBB);
             llvm::Value *errVal =
@@ -1968,10 +1955,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
         llvm::Value *hasVal =
             builder_.CreateExtractValue(operandVal, 0, "has_val");
         llvm::BasicBlock *someBB =
-            llvm::BasicBlock::Create(*ctx_, "try.top.some", fn_);
+            createBB("try.top.some");
         llvm::BasicBlock *noneBB =
-            llvm::BasicBlock::Create(*ctx_, "try.top.none", fn_);
-        builder_.CreateCondBr(hasVal, someBB, noneBB);
+            createBB("try.top.none");
+        emitBranchCond(hasVal, someBB, noneBB);
 
         builder_.SetInsertPoint(noneBB);
         emitRuntimeError("error: unexpected None\n", ".top_ep_none");
@@ -1995,9 +1982,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
         llvm::Type *retErrTy = retResultTy->getElementType(2);
 
         llvm::Value *isOk = builder_.CreateExtractValue(operandVal, 0, "is_ok");
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "try.ok", fn_);
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "try.err", fn_);
-        builder_.CreateCondBr(isOk, okBB, errBB);
+        llvm::BasicBlock *okBB = createBB("try.ok");
+        llvm::BasicBlock *errBB = createBB("try.err");
+        emitBranchCond(isOk, okBB, errBB);
 
         // Err path: extract error, wrap in function return type, return
         builder_.SetInsertPoint(errBB);
@@ -2026,9 +2013,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     llvm::StructType *retOptionTy = llvm::cast<llvm::StructType>(fnRetTy);
 
     llvm::Value *hasVal = builder_.CreateExtractValue(operandVal, 0, "has_val");
-    llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "try.some", fn_);
-    llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "try.none", fn_);
-    builder_.CreateCondBr(hasVal, someBB, noneBB);
+    llvm::BasicBlock *someBB = createBB("try.some");
+    llvm::BasicBlock *noneBB = createBB("try.none");
+    emitBranchCond(hasVal, someBB, noneBB);
 
     // None path: return None in the enclosing function's Option type.
     builder_.SetInsertPoint(noneBB);

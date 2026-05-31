@@ -697,9 +697,9 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                 val, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(allowed)), "lit_cmp");
             anyMatch = builder_.CreateOr(anyMatch, cmp, "lit_or");
         }
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(anyMatch, okBB, failBB);
+        llvm::BasicBlock *okBB = createBB("constraint.ok");
+        llvm::BasicBlock *failBB = createBB("constraint.fail");
+        emitBranchCond(anyMatch, okBB, failBB);
         builder_.SetInsertPoint(failBB);
         emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
@@ -724,9 +724,9 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         llvm::Value *leHigh = builder_.CreateICmpSLE(
             val, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(constraint.range_high)), "range_le");
         llvm::Value *inRange = builder_.CreateAnd(geLow, leHigh, "in_range");
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(inRange, okBB, failBB);
+        llvm::BasicBlock *okBB = createBB("constraint.ok");
+        llvm::BasicBlock *failBB = createBB("constraint.fail");
+        emitBranchCond(inRange, okBB, failBB);
         builder_.SetInsertPoint(failBB);
         emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
@@ -749,9 +749,9 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                 cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
             anyMatch = builder_.CreateOr(anyMatch, isEq, "str_or");
         }
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(anyMatch, okBB, failBB);
+        llvm::BasicBlock *okBB = createBB("constraint.ok");
+        llvm::BasicBlock *failBB = createBB("constraint.fail");
+        emitBranchCond(anyMatch, okBB, failBB);
         builder_.SetInsertPoint(failBB);
         emitRuntimeError("runtime error: value not in allowed set for '" + varName + "'\n",
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));

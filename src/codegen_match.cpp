@@ -337,10 +337,9 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 // Unconditional payload loads would reinterpret wrong-typed bytes (e.g.
                 // an int payload read as a str pointer) and could crash nested tests like strcmp.
                 llvm::BasicBlock *tagMatchBB = builder_.GetInsertBlock();
-                llvm::Function *fn = tagMatchBB->getParent();
-                auto *payloadBB = llvm::BasicBlock::Create(*ctx_, "ecp.payload", fn);
-                auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "ecp.merge", fn);
-                builder_.CreateCondBr(testResult, payloadBB, mergeBB);
+                auto *payloadBB = createBB("ecp.payload");
+                auto *mergeBB = createBB("ecp.merge");
+                emitBranchCond(testResult, payloadBB, mergeBB);
 
                 builder_.SetInsertPoint(payloadBB);
                 llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "ecp.test.tmp");
@@ -367,13 +366,13 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                     offset += dl.getTypeAllocSize(fieldTy);
                 }
                 llvm::BasicBlock *payloadEndBB = builder_.GetInsertBlock();
-                builder_.CreateBr(mergeBB);
+                emitBranchUncond(mergeBB);
 
                 builder_.SetInsertPoint(mergeBB);
-                llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ecp.final");
-                phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), tagMatchBB);
-                phi->addIncoming(fieldsMatch, payloadEndBB);
-                testResult = phi;
+                testResult = createPhi(i1Ty_,
+                    {{llvm::ConstantInt::get(i1Ty_, 0), tagMatchBB},
+                     {fieldsMatch, payloadEndBB}},
+                    "ecp.final");
             }
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (!isOptionType(subjectTy))
@@ -869,7 +868,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumName);
 
     // --- Code generation: chain of conditional branches ---
-    llvm::BasicBlock *matchEndBB = llvm::BasicBlock::Create(*ctx_, "match.end", fn_);
+    llvm::BasicBlock *matchEndBB = createBB("match.end");
 
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
     builder_.CreateStore(subject, subjectAlloca);
@@ -882,9 +881,9 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
-        llvm::BasicBlock *armBodyBB = llvm::BasicBlock::Create(*ctx_, "match.arm.body", fn_);
+        llvm::BasicBlock *armBodyBB = createBB("match.arm.body");
         llvm::BasicBlock *nextArmBB = (i + 1 < s->arms.size())
-            ? llvm::BasicBlock::Create(*ctx_, "match.arm.test", fn_)
+            ? createBB("match.arm.test")
             : matchEndBB;
 
         llvm::Value *subjectVal = builder_.CreateLoad(subjectTy, subjectAlloca, "match.subj");
@@ -892,8 +891,8 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
                                                   subjectEnumName, subjectSourceTypeName);
 
         if (arm.guard) {
-            llvm::BasicBlock *guardBB = llvm::BasicBlock::Create(*ctx_, "match.guard", fn_);
-            builder_.CreateCondBr(testResult, guardBB, nextArmBB);
+            llvm::BasicBlock *guardBB = createBB("match.guard");
+            emitBranchCond(testResult, guardBB, nextArmBB);
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
@@ -906,9 +905,9 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
             guardVal = toBool(guardVal);
             popScope();
 
-            builder_.CreateCondBr(guardVal, armBodyBB, nextArmBB);
+            emitBranchCond(guardVal, armBodyBB, nextArmBB);
         } else {
-            builder_.CreateCondBr(testResult, armBodyBB, nextArmBB);
+            emitBranchCond(testResult, armBodyBB, nextArmBB);
         }
 
         builder_.SetInsertPoint(armBodyBB);
@@ -922,7 +921,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
 
         popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(matchEndBB);
+            emitBranchUncond(matchEndBB);
 
         if (i + 1 < s->arms.size())
             builder_.SetInsertPoint(nextArmBB);
@@ -947,7 +946,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumName);
 
     // --- Code generation with PHI node ---
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "match.expr.merge", fn_);
+    llvm::BasicBlock *mergeBB = createBB("match.expr.merge");
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
@@ -976,12 +975,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
         llvm::Value *testResult = emitPatternTest(arm.pattern, subjectVal, subjectTy,
                                                   subjectEnumName, subjectSourceTypeName);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "match.expr.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "match.expr.next", fn_);
+        llvm::BasicBlock *thenBB = createBB("match.expr.then");
+        llvm::BasicBlock *nextBB = createBB("match.expr.next");
 
         if (arm.guard) {
-            llvm::BasicBlock *guardBB = llvm::BasicBlock::Create(*ctx_, "match.expr.guard", fn_);
-            builder_.CreateCondBr(testResult, guardBB, nextBB);
+            llvm::BasicBlock *guardBB = createBB("match.expr.guard");
+            emitBranchCond(testResult, guardBB, nextBB);
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
@@ -994,9 +993,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
             guardVal = toBool(guardVal);
             popScope();
 
-            builder_.CreateCondBr(guardVal, thenBB, nextBB);
+            emitBranchCond(guardVal, thenBB, nextBB);
         } else {
-            builder_.CreateCondBr(testResult, thenBB, nextBB);
+            emitBranchCond(testResult, thenBB, nextBB);
         }
 
         builder_.SetInsertPoint(thenBB);
@@ -1010,7 +1009,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
         popScope();
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         incoming.push_back({armVal, armEndBB});
 
         builder_.SetInsertPoint(nextBB);
@@ -1021,9 +1020,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
     builder_.SetInsertPoint(mergeBB);
     assert(firstVal != nullptr && "match expression must have at least one arm");
-    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), static_cast<unsigned>(incoming.size()), "match.expr");
-    for (auto &[val, bb] : incoming)
-        phi->addIncoming(val, bb);
+    llvm::PHINode *phi = createPhi(firstVal->getType(), incoming, "match.expr");
     propagateMeta(firstVal, phi);
     return phi;
 }
@@ -1209,7 +1206,7 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     // dead block so trailing IR does not land on a terminated block and trip
     // LLVM verification (#821). LLVM DCE removes the unreachable block.
     llvm::BasicBlock *deadBB =
-        llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
+        createBB("exit.dead");
     builder_.SetInsertPoint(deadBB);
 }
 

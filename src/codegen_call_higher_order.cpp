@@ -55,19 +55,19 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *outVar = builder_.CreateAlloca(i64Ty_, nullptr, "filter_out");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), outVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "filter.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "filter.body", fn_);
-        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "filter.store", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "filter.next", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "filter.end", fn_);
+        llvm::BasicBlock *condBB = createBB("filter.cond");
+        llvm::BasicBlock *bodyBB = createBB("filter.body");
+        llvm::BasicBlock *storeBB = createBB("filter.store");
+        llvm::BasicBlock *nextBB = createBB("filter.next");
+        llvm::BasicBlock *endBB = createBB("filter.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         // Condition: i < srcLen
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "fi");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "filter_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
+        emitBranchCond(cond, bodyBB, endBB);
 
         // Body: load element, call predicate
         builder_.SetInsertPoint(bodyBB);
@@ -75,7 +75,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "filter_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "filter_elem");
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "filter_pred");
-        builder_.CreateCondBr(pred, storeBB, nextBB);
+        emitBranchCond(pred, storeBB, nextBB);
 
         // Store: add element to output
         builder_.SetInsertPoint(storeBB);
@@ -84,14 +84,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateStore(elem, dstPtr);
         llvm::Value *outNext = builder_.CreateAdd(outIdx, llvm::ConstantInt::get(i64Ty_, 1), "filter_out_next");
         builder_.CreateStore(outNext, outVar);
-        builder_.CreateBr(nextBB);
+        emitBranchUncond(nextBB);
 
         // Next: increment i
         builder_.SetInsertPoint(nextBB);
         llvm::Value *iCur2 = builder_.CreateLoad(i64Ty_, iVar, "fi_cur2");
         llvm::Value *iNext = builder_.CreateAdd(iCur2, llvm::ConstantInt::get(i64Ty_, 1), "fi_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         // End: set final length
         builder_.SetInsertPoint(endBB);
@@ -182,16 +182,16 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "map_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "map.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "map.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "map.end", fn_);
+        llvm::BasicBlock *condBB = createBB("map.cond");
+        llvm::BasicBlock *bodyBB = createBB("map.body");
+        llvm::BasicBlock *endBB = createBB("map.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "mi");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "map_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
+        emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "mi_cur");
@@ -202,7 +202,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateStore(mapped, dstElemPtr);
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "mi_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         setTypeMeta(TypeMeta::ListElem, newHeader, outElemTy);
@@ -280,14 +280,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "revm_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "revm.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "revm.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "revm.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("revm.cond");
+        llvm::BasicBlock *bodyBB = createBB("revm.body");
+        llvm::BasicBlock *endBB = createBB("revm.end");
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");
@@ -299,7 +299,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateStore(vj, ptrI);
         builder_.CreateStore(vi, ptrJ);
         builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         return llvm::ConstantInt::get(i64Ty_, 0);
@@ -329,14 +329,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         llvm::Value *isEmpty = builder_.CreateICmpEQ(
             srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
-        llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "reduce.empty", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "reduce.ok", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "reduce.merge", fn_);
-        builder_.CreateCondBr(isEmpty, emptyBB, okBB);
+        llvm::BasicBlock *emptyBB = createBB("reduce.empty");
+        llvm::BasicBlock *okBB = createBB("reduce.ok");
+        llvm::BasicBlock *mergeBB = createBB("reduce.merge");
+        emitBranchCond(isEmpty, emptyBB, okBB);
 
         builder_.SetInsertPoint(emptyBB);
         llvm::Value *noneVal = buildNoneValue(optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
         // Seed accumulator with element[0]; the loop below starts at i=1.
@@ -352,13 +352,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "reduce_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "reduce.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "reduce.body", fn_);
-        llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*ctx_, "reduce.loop_end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("reduce.cond");
+        llvm::BasicBlock *bodyBB = createBB("reduce.body");
+        llvm::BasicBlock *loopEndBB = createBB("reduce.loop_end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ri");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, loopEndBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, loopEndBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "reduce_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "reduce_elem");
@@ -366,15 +366,15 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "reduce_call");
         builder_.CreateStore(result, accVar);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(loopEndBB);
         llvm::Value *finalAcc = builder_.CreateLoad(info.returnType, accVar, "reduce_final");
         llvm::Value *someVal = buildSomeValue(finalAcc, optTy);
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
         llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "reduce_result");
+        llvm::PHINode *phi = createPhi(optTy, {}, "reduce_result");
         phi->addIncoming(noneVal, emptyEndBB);
         phi->addIncoming(someVal, okEndBB);
         return phi;
@@ -412,13 +412,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "fold_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "fold.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "fold.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "fold.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("fold.cond");
+        llvm::BasicBlock *bodyBB = createBB("fold.body");
+        llvm::BasicBlock *endBB = createBB("fold.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "fi");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "fold_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "fold_elem");
@@ -426,7 +426,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "fold_call");
         builder_.CreateStore(result, accVar);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(info.returnType, accVar, "fold_result");
     }
@@ -456,23 +456,23 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "any_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "any.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "any.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "any.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("any.cond");
+        llvm::BasicBlock *bodyBB = createBB("any.body");
+        llvm::BasicBlock *endBB = createBB("any.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ai");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "any_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "any_elem");
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "any_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "any.found", fn_);
-        builder_.CreateCondBr(pred, foundBB, condBB);
+        llvm::BasicBlock *foundBB = createBB("any.found");
+        emitBranchCond(pred, foundBB, condBB);
         builder_.SetInsertPoint(foundBB);
         builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), resultVar);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(i1Ty_, resultVar, "any_final");
     }
@@ -502,23 +502,23 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "all_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "all.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "all.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "all.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("all.cond");
+        llvm::BasicBlock *bodyBB = createBB("all.body");
+        llvm::BasicBlock *endBB = createBB("all.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ali");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "all_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "all_elem");
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "all_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "all.fail", fn_);
-        builder_.CreateCondBr(pred, condBB, failBB);
+        llvm::BasicBlock *failBB = createBB("all.fail");
+        emitBranchCond(pred, condBB, failBB);
         builder_.SetInsertPoint(failBB);
         builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(i1Ty_, resultVar, "all_final");
     }
@@ -544,13 +544,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "sum_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "sum.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "sum.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "sum.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("sum.cond");
+        llvm::BasicBlock *bodyBB = createBB("sum.body");
+        llvm::BasicBlock *endBB = createBB("sum.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "si");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "sum_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "sum_elem");
@@ -562,7 +562,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
             newAcc = builder_.CreateAdd(acc, elem, "sum_add");
         builder_.CreateStore(newAcc, accVar);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(elemTy, accVar, "sum_result");
     }
@@ -583,9 +583,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         // Check empty list
         llvm::Value *isEmptyMM = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "mm_empty");
-        llvm::BasicBlock *errBBMM = llvm::BasicBlock::Create(*ctx_, "mm.err", fn_);
-        llvm::BasicBlock *okBBMM = llvm::BasicBlock::Create(*ctx_, "mm.ok", fn_);
-        builder_.CreateCondBr(isEmptyMM, errBBMM, okBBMM);
+        llvm::BasicBlock *errBBMM = createBB("mm.err");
+        llvm::BasicBlock *okBBMM = createBB("mm.ok");
+        emitBranchCond(isEmptyMM, errBBMM, okBBMM);
         builder_.SetInsertPoint(errBBMM);
         emitRuntimeError("runtime error: " + e.callee + "() on empty list\n", ".mm_empty_err");
         builder_.SetInsertPoint(okBBMM);
@@ -596,15 +596,15 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mm_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "mm.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "mm.body", fn_);
-        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mm.update", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "mm.next", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mm.end", fn_);
-        builder_.CreateBr(condBB);
+        llvm::BasicBlock *condBB = createBB("mm.cond");
+        llvm::BasicBlock *bodyBB = createBB("mm.body");
+        llvm::BasicBlock *updateBB = createBB("mm.update");
+        llvm::BasicBlock *nextBB = createBB("mm.next");
+        llvm::BasicBlock *endBB = createBB("mm.end");
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mi");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "mm_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "mm_elem");
@@ -616,13 +616,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         else
             cmp = isMax ? builder_.CreateICmpSGT(elem, best, "mm_cmp")
                         : builder_.CreateICmpSLT(elem, best, "mm_cmp");
-        builder_.CreateCondBr(cmp, updateBB, nextBB);
+        emitBranchCond(cmp, updateBB, nextBB);
         builder_.SetInsertPoint(updateBB);
         builder_.CreateStore(elem, bestVar);
-        builder_.CreateBr(nextBB);
+        emitBranchUncond(nextBB);
         builder_.SetInsertPoint(nextBB);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
         return builder_.CreateLoad(elemTy, bestVar, "mm_result");
     }
@@ -654,16 +654,16 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "tap_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tap.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tap.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tap.end", fn_);
+        llvm::BasicBlock *condBB = createBB("tap.cond");
+        llvm::BasicBlock *bodyBB = createBB("tap.body");
+        llvm::BasicBlock *endBB = createBB("tap.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "tap_iv");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "tap_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
+        emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
@@ -672,7 +672,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
         return listVal;
@@ -746,26 +746,26 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "seq_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "seq.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "seq.body", fn_);
-        llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "seq.cont", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "seq.fail", fn_);
-        llvm::BasicBlock *finBB = llvm::BasicBlock::Create(*ctx_, "seq.fin", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "seq.end", fn_);
+        llvm::BasicBlock *condBB = createBB("seq.cond");
+        llvm::BasicBlock *bodyBB = createBB("seq.body");
+        llvm::BasicBlock *contBB = createBB("seq.cont");
+        llvm::BasicBlock *failBB = createBB("seq.fail");
+        llvm::BasicBlock *finBB = createBB("seq.fin");
+        llvm::BasicBlock *endBB = createBB("seq.end");
 
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "seq_iv");
         llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "seq_cond");
-        builder_.CreateCondBr(cond, bodyBB, finBB);
+        emitBranchCond(cond, bodyBB, finBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "seq_ic");
         llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "seq_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "seq_elem");
         llvm::Value *tag = builder_.CreateExtractValue(srcElem, {0u}, "seq_tag");
-        builder_.CreateCondBr(tag, contBB, failBB);
+        emitBranchCond(tag, contBB, failBB);
 
         builder_.SetInsertPoint(contBB);
         llvm::Value *payload = builder_.CreateExtractValue(srcElem, {1u}, "seq_payload");
@@ -779,7 +779,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "seq_inext");
         builder_.CreateStore(iNext, iVar);
         builder_.CreateStore(iNext, outLenPtr);
-        builder_.CreateBr(condBB);
+        emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(failBB);
         llvm::Value *failResult;
@@ -795,19 +795,19 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
             llvm::Value *outArcHdrPtr = emitArcGetHeaderFromData(outHeader);
             emitArcRelease(outArcHdrPtr, false, dtor);
         }
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         llvm::BasicBlock *failEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(finBB);
         llvm::Value *successResult = isResult
             ? buildOkValue(outHeader, outResultTy)
             : buildSomeValue(outHeader, outOptionTy);
-        builder_.CreateBr(endBB);
+        emitBranchUncond(endBB);
         llvm::BasicBlock *finEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(endBB);
         llvm::Type *resultPhiTy = isResult ? outResultTy : outOptionTy;
-        llvm::PHINode *phi = builder_.CreatePHI(resultPhiTy, 2, "seq_result");
+        llvm::PHINode *phi = createPhi(resultPhiTy, {}, "seq_result");
         phi->addIncoming(failResult, failEndBB);
         phi->addIncoming(successResult, finEndBB);
 
@@ -894,7 +894,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     {
         FnScope guard(*this);
         fn_ = trampFn;
-        llvm::BasicBlock *trampBB = llvm::BasicBlock::Create(*ctx_, "entry", trampFn);
+        llvm::BasicBlock *trampBB = createBBInFn("entry", trampFn);
         builder_.SetInsertPoint(trampBB);
 
         llvm::Value *valA = builder_.CreateLoad(elemTy, argA, "val_a");

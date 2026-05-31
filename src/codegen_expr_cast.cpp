@@ -255,18 +255,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     storeListHeaderFields(headerPtr, length, length, dataPtr);
 
     // Fill data with start..end
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "range.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "range.end", fn_);
+    llvm::BasicBlock *condBB = createBB("range.cond");
+    llvm::BasicBlock *bodyBB = createBB("range.body");
+    llvm::BasicBlock *endBB  = createBB("range.end");
 
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
     llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "range_cond");
-    builder_.CreateCondBr(cond, bodyBB, endBB);
+    emitBranchCond(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
@@ -275,7 +275,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     builder_.CreateStore(val, elemPtr);
     llvm::Value *nextI = builder_.CreateAdd(curI, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iVar);
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
     setTypeMeta(TypeMeta::ListElem, headerPtr, i64Ty_);
@@ -294,17 +294,17 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     // If n <= 0, return empty string (a StringHeader global)
     llvm::Value *nPos = builder_.CreateICmpSGT(n, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
 
-    llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
-    llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "str_rep.repeat", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "str_rep.merge", fn_);
+    llvm::BasicBlock *emptyBB = createBB("str_rep.empty");
+    llvm::BasicBlock *repeatBB = createBB("str_rep.repeat");
+    llvm::BasicBlock *mergeBB = createBB("str_rep.merge");
 
-    builder_.CreateCondBr(nPos, repeatBB, emptyBB);
+    emitBranchCond(nPos, repeatBB, emptyBB);
 
     // Empty case: heap-allocate so the PHI result is uniformly ARC-managed;
     // cachedGlobalString returns an immortal global that must not be released.
     builder_.SetInsertPoint(emptyBB);
     llvm::Value *emptyStr = builder_.CreateCall(makeUninitFn, {llvm::ConstantInt::get(i64Ty_, 0)}, "empty_buf");
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     // Repeat case: guard against strLen * n overflowing int64, then allocate.
     builder_.SetInsertPoint(repeatBB);
@@ -312,16 +312,16 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     // Overflow is only possible when strLen > 0.
     llvm::Value *strLenPos = builder_.CreateICmpSGT(
         strLen, llvm::ConstantInt::get(i64Ty_, 0), "slen_pos");
-    llvm::BasicBlock *ovfCheckBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_check", fn_);
-    llvm::BasicBlock *allocBB    = llvm::BasicBlock::Create(*ctx_, "str_rep.alloc",     fn_);
-    builder_.CreateCondBr(strLenPos, ovfCheckBB, emptyBB);
+    llvm::BasicBlock *ovfCheckBB = createBB("str_rep.ovf_check");
+    llvm::BasicBlock *allocBB    = createBB("str_rep.alloc");
+    emitBranchCond(strLenPos, ovfCheckBB, emptyBB);
 
     builder_.SetInsertPoint(ovfCheckBB);
     llvm::Value *maxN = builder_.CreateSDiv(
         llvm::ConstantInt::get(i64Ty_, INT64_MAX), strLen, "max_n");
     llvm::Value *wouldOverflow = builder_.CreateICmpSGT(n, maxN, "would_overflow");
-    llvm::BasicBlock *ovfErrBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_err", fn_);
-    builder_.CreateCondBr(wouldOverflow, ovfErrBB, allocBB);
+    llvm::BasicBlock *ovfErrBB = createBB("str_rep.ovf_err");
+    emitBranchCond(wouldOverflow, ovfErrBB, allocBB);
 
     builder_.SetInsertPoint(ovfErrBB);
     emitRuntimeError("runtime error: str * count overflows\n", ".str_rep_overflow");
@@ -333,13 +333,13 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, "rep_buf");
 
     // Loop: copy strVal into buf n times
-    llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
-    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "str_rep.done", fn_);
+    llvm::BasicBlock *loopBB = createBB("str_rep.loop");
+    llvm::BasicBlock *doneBB = createBB("str_rep.done");
 
-    builder_.CreateBr(loopBB);
+    emitBranchUncond(loopBB);
     builder_.SetInsertPoint(loopBB);
 
-    llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
+    llvm::PHINode *i = createPhi(i64Ty_, {}, "i");
     i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), allocBB);
 
     llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
@@ -349,15 +349,15 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
     i->addIncoming(iNext, loopBB);
     llvm::Value *cond = builder_.CreateICmpSLT(iNext, n, "loop_cond");
-    builder_.CreateCondBr(cond, loopBB, doneBB);
+    emitBranchCond(cond, loopBB, doneBB);
 
     builder_.SetInsertPoint(doneBB);
     // NUL at buf[totalLen] already written by __ry_string_make_uninit
-    builder_.CreateBr(mergeBB);
+    emitBranchUncond(mergeBB);
 
     // Merge
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
+    llvm::PHINode *result = createPhi(ptrTy_, {}, "str_rep_result");
     result->addIncoming(emptyStr, emptyBB);
     result->addIncoming(buf, doneBB);
     arc_str_owned_values_.insert(result);

@@ -146,7 +146,7 @@ llvm::Function *CodeGen::emitTestFunction(
         fn_ = testFunc;
         pushScope();
 
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
+        llvm::BasicBlock *entry = createBBInFn("entry", testFunc);
         builder_.SetInsertPoint(entry);
 
         for (unsigned i = 0; i < paramTypes.size(); ++i) {
@@ -208,15 +208,15 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
     llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "each_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
 
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "each.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "each.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "each.end",  fn_);
+    llvm::BasicBlock *condBB = createBBInFn("each.cond", fn_);
+    llvm::BasicBlock *bodyBB = createBBInFn("each.body", fn_);
+    llvm::BasicBlock *endBB  = createBBInFn("each.end", fn_);
 
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
     llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "each_cond");
-    builder_.CreateCondBr(cond, bodyBB, endBB);
+    emitBranchCond(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iVal}, "each_elem_ptr");
@@ -256,7 +256,7 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
 
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iAlloca);
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
 }
@@ -280,15 +280,15 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "prop_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
 
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "prop.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "prop.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "prop.end",  fn_);
+    llvm::BasicBlock *condBB = createBBInFn("prop.cond", fn_);
+    llvm::BasicBlock *bodyBB = createBBInFn("prop.body", fn_);
+    llvm::BasicBlock *endBB  = createBBInFn("prop.end", fn_);
 
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
     llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), "prop_cond");
-    builder_.CreateCondBr(cond, bodyBB, endBB);
+    emitBranchCond(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
 
@@ -317,9 +317,9 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     llvm::Value *failed = builder_.CreateCall(isFailedFn, {}, "is_failed");
     llvm::Value *didFail = builder_.CreateICmpNE(failed, llvm::ConstantInt::get(i64Ty_, 0), "did_fail");
 
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "prop.fail", fn_);
-    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "prop.cont", fn_);
-    builder_.CreateCondBr(didFail, failBB, contBB);
+    llvm::BasicBlock *failBB = createBBInFn("prop.fail", fn_);
+    llvm::BasicBlock *contBB = createBBInFn("prop.cont", fn_);
+    emitBranchCond(didFail, failBB, contBB);
 
     builder_.SetInsertPoint(failBB);
     {
@@ -348,7 +348,7 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
             builder_.CreateCall(getStdlibFree(), {hdr});
         }
     }
-    builder_.CreateBr(endBB);
+    emitBranchUncond(endBB);
 
     builder_.SetInsertPoint(contBB);
     for (unsigned i = 0; i < paramTypes.size(); ++i) {
@@ -359,7 +359,7 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     }
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iAlloca);
-    builder_.CreateBr(condBB);
+    emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
     builder_.CreateCall(itEndFn);
@@ -566,10 +566,10 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
     llvm::Value *isNormal = builder_.CreateICmpEQ(
         retVal, llvm::ConstantInt::get(i32Ty_, 0), "it.timeout.is_normal");
 
-    llvm::BasicBlock *normalBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.normal", fn_);
-    llvm::BasicBlock *timeoutBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.fired", fn_);
-    llvm::BasicBlock *afterBB = llvm::BasicBlock::Create(*ctx_, "it.timeout.after", fn_);
-    builder_.CreateCondBr(isNormal, normalBB, timeoutBB);
+    llvm::BasicBlock *normalBB = createBBInFn("it.timeout.normal", fn_);
+    llvm::BasicBlock *timeoutBB = createBBInFn("it.timeout.fired", fn_);
+    llvm::BasicBlock *afterBB = createBBInFn("it.timeout.after", fn_);
+    emitBranchCond(isNormal, normalBB, timeoutBB);
 
     builder_.SetInsertPoint(normalBB);
     builder_.CreateCall(beginFn,
@@ -590,11 +590,11 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
     }
     builder_.CreateCall(endFn);
-    builder_.CreateBr(afterBB);
+    emitBranchUncond(afterBB);
 
     builder_.SetInsertPoint(timeoutBB);
     builder_.CreateCall(timeoutFn);
-    builder_.CreateBr(afterBB);
+    emitBranchUncond(afterBB);
 
     builder_.SetInsertPoint(afterBB);
 }
@@ -1515,24 +1515,24 @@ void CodeGen::retainValueReturnResult(llvm::Value *val,
         auto *isOk = builder_.CreateICmpEQ(tag,
             llvm::ConstantInt::get(tag->getType(), 1), "vret.retain.is_ok");
         auto *fn = builder_.GetInsertBlock()->getParent();
-        auto *okBB    = llvm::BasicBlock::Create(*ctx_, "vret.retain.ok", fn);
-        auto *errBB   = llvm::BasicBlock::Create(*ctx_, "vret.retain.err", fn);
-        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "vret.retain.merge", fn);
-        builder_.CreateCondBr(isOk, okBB, errBB);
+        auto *okBB    = createBBInFn("vret.retain.ok", fn);
+        auto *errBB   = createBBInFn("vret.retain.err", fn);
+        auto *mergeBB = createBBInFn("vret.retain.merge", fn);
+        emitBranchCond(isOk, okBB, errBB);
 
         builder_.SetInsertPoint(okBB);
         if (st->getNumElements() >= 2 && !okName.empty()) {
             auto *okSlot = builder_.CreateExtractValue(val, {1}, "vret.retain.ok_slot");
             retainValueReturnResult(okSlot, st->getElementType(1), okName);
         }
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(errBB);
         if (isResult && st->getNumElements() >= 3 && !errName.empty()) {
             auto *errSlot = builder_.CreateExtractValue(val, {2}, "vret.retain.err_slot");
             retainValueReturnResult(errSlot, st->getElementType(2), errName);
         }
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
         return;
@@ -1588,24 +1588,24 @@ void CodeGen::releaseValueReturnResult(llvm::Value *val,
         auto *isOk = builder_.CreateICmpEQ(tag,
             llvm::ConstantInt::get(tag->getType(), 1), "vret.rel.is_ok");
         auto *fn = builder_.GetInsertBlock()->getParent();
-        auto *okBB    = llvm::BasicBlock::Create(*ctx_, "vret.rel.ok", fn);
-        auto *errBB   = llvm::BasicBlock::Create(*ctx_, "vret.rel.err", fn);
-        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "vret.rel.merge", fn);
-        builder_.CreateCondBr(isOk, okBB, errBB);
+        auto *okBB    = createBBInFn("vret.rel.ok", fn);
+        auto *errBB   = createBBInFn("vret.rel.err", fn);
+        auto *mergeBB = createBBInFn("vret.rel.merge", fn);
+        emitBranchCond(isOk, okBB, errBB);
 
         builder_.SetInsertPoint(okBB);
         if (st->getNumElements() >= 2 && !okName.empty()) {
             auto *okSlot = builder_.CreateExtractValue(val, {1}, "vret.rel.ok_slot");
             releaseValueReturnResult(okSlot, st->getElementType(1), okName);
         }
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(errBB);
         if (isResult && st->getNumElements() >= 3 && !errName.empty()) {
             auto *errSlot = builder_.CreateExtractValue(val, {2}, "vret.rel.err_slot");
             releaseValueReturnResult(errSlot, st->getElementType(2), errName);
         }
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
         return;
@@ -1632,7 +1632,7 @@ llvm::Function *CodeGen::buildValueReturnThunk(
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    auto *entry = createBBInFn("entry", thunk);
     builder_.SetInsertPoint(entry);
 
     if (retTy->isVoidTy()) {
@@ -1737,7 +1737,7 @@ llvm::FunctionCallee CodeGen::getOrCreateValueReturnEnvDestructor(
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    auto *entry = createBBInFn("entry", dtorFn);
     builder_.SetInsertPoint(entry);
     auto *envPtr = dtorFn->getArg(0);
     auto *loaded = builder_.CreateLoad(retTy, envPtr, "vret.dtor.val");
@@ -3513,15 +3513,15 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
             llvm::Function *currentFnContain = builder_.GetInsertBlock()->getParent();
-            llvm::BasicBlock *cBB = llvm::BasicBlock::Create(*ctx_, "contain.cond", currentFnContain);
-            llvm::BasicBlock *bBB = llvm::BasicBlock::Create(*ctx_, "contain.body", currentFnContain);
-            llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, "contain.next", currentFnContain);
-            llvm::BasicBlock *eBB = llvm::BasicBlock::Create(*ctx_, "contain.end", currentFnContain);
+            llvm::BasicBlock *cBB = createBBInFn("contain.cond", currentFnContain);
+            llvm::BasicBlock *bBB = createBBInFn("contain.body", currentFnContain);
+            llvm::BasicBlock *nBB = createBBInFn("contain.next", currentFnContain);
+            llvm::BasicBlock *eBB = createBBInFn("contain.end", currentFnContain);
 
-            builder_.CreateBr(cBB);
+            emitBranchUncond(cBB);
             builder_.SetInsertPoint(cBB);
             llvm::Value *ci = builder_.CreateLoad(i64Ty_, iVar, "ci");
-            builder_.CreateCondBr(builder_.CreateICmpSLT(ci, len, "clt"), bBB, eBB);
+            emitBranchCond(builder_.CreateICmpSLT(ci, len, "clt"), bBB, eBB);
 
             builder_.SetInsertPoint(bBB);
             llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
@@ -3540,17 +3540,17 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             } else
                 eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
 
-            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "contain.found", currentFnContain);
-            builder_.CreateCondBr(eq, foundBB, nBB);
+            llvm::BasicBlock *foundBB = createBBInFn("contain.found", currentFnContain);
+            emitBranchCond(eq, foundBB, nBB);
             builder_.SetInsertPoint(foundBB);
             builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
-            builder_.CreateBr(eBB);
+            emitBranchUncond(eBB);
 
             builder_.SetInsertPoint(nBB);
             llvm::Value *nextI = builder_.CreateAdd(
                 builder_.CreateLoad(i64Ty_, iVar, "ni"), llvm::ConstantInt::get(i64Ty_, 1), "next_i");
             builder_.CreateStore(nextI, iVar);
-            builder_.CreateBr(cBB);
+            emitBranchUncond(cBB);
 
             builder_.SetInsertPoint(eBB);
             containResult = builder_.CreateLoad(i1Ty_, foundVar, "contain_result");
@@ -3670,15 +3670,15 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
         llvm::Function *currentFnOO = builder_.GetInsertBlock()->getParent();
-        llvm::BasicBlock *cBB = llvm::BasicBlock::Create(*ctx_, "oneof.cond", currentFnOO);
-        llvm::BasicBlock *bBB = llvm::BasicBlock::Create(*ctx_, "oneof.body", currentFnOO);
-        llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, "oneof.next", currentFnOO);
-        llvm::BasicBlock *eBB = llvm::BasicBlock::Create(*ctx_, "oneof.end", currentFnOO);
+        llvm::BasicBlock *cBB = createBBInFn("oneof.cond", currentFnOO);
+        llvm::BasicBlock *bBB = createBBInFn("oneof.body", currentFnOO);
+        llvm::BasicBlock *nBB = createBBInFn("oneof.next", currentFnOO);
+        llvm::BasicBlock *eBB = createBBInFn("oneof.end", currentFnOO);
 
-        builder_.CreateBr(cBB);
+        emitBranchUncond(cBB);
         builder_.SetInsertPoint(cBB);
         llvm::Value *ci = builder_.CreateLoad(i64Ty_, iVar, "oo_ci");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(ci, len, "oo_clt"), bBB, eBB);
+        emitBranchCond(builder_.CreateICmpSLT(ci, len, "oo_clt"), bBB, eBB);
 
         builder_.SetInsertPoint(bBB);
         llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "oo_cur_i");
@@ -3695,17 +3695,17 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             eq = builder_.CreateICmpEQ(actualVal, elem, "oo_eq");
         }
 
-        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "oneof.found", currentFnOO);
-        builder_.CreateCondBr(eq, foundBB, nBB);
+        llvm::BasicBlock *foundBB = createBBInFn("oneof.found", currentFnOO);
+        emitBranchCond(eq, foundBB, nBB);
         builder_.SetInsertPoint(foundBB);
         builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
-        builder_.CreateBr(eBB);
+        emitBranchUncond(eBB);
 
         builder_.SetInsertPoint(nBB);
         llvm::Value *nextI = builder_.CreateAdd(
             builder_.CreateLoad(i64Ty_, iVar, "oo_ni"), llvm::ConstantInt::get(i64Ty_, 1), "oo_next_i");
         builder_.CreateStore(nextI, iVar);
-        builder_.CreateBr(cBB);
+        emitBranchUncond(cBB);
 
         builder_.SetInsertPoint(eBB);
         cmpResult = builder_.CreateLoad(i1Ty_, foundVar, "oo_result");
@@ -3763,21 +3763,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Value *tooLong = builder_.CreateICmpUGT(suffixLen, sLen, "too_long");
 
         llvm::Function *curFnEW = builder_.GetInsertBlock()->getParent();
-        llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "ew.check", curFnEW);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ew.merge", curFnEW);
+        llvm::BasicBlock *checkBB = createBBInFn("ew.check", curFnEW);
+        llvm::BasicBlock *mergeBB = createBBInFn("ew.merge", curFnEW);
         llvm::BasicBlock *curBB = builder_.GetInsertBlock();
 
-        builder_.CreateCondBr(tooLong, mergeBB, checkBB);
+        emitBranchCond(tooLong, mergeBB, checkBB);
 
         builder_.SetInsertPoint(checkBB);
         llvm::Value *offset = builder_.CreateSub(sLen, suffixLen, "offset");
         llvm::Value *tailPtr = builder_.CreateGEP(builder_.getInt8Ty(), actualVal, offset, "tail_ptr");
         llvm::Value *cmp = builder_.CreateCall(strncmpFn, {tailPtr, expectedVal, suffixLen}, "strncmp");
         llvm::Value *match = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match");
-        builder_.CreateBr(mergeBB);
+        emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ends_with");
+        llvm::PHINode *phi = createPhi(i1Ty_, {}, "ends_with");
         phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
         phi->addIncoming(match, checkBB);
         cmpResult = phi;
@@ -3798,9 +3798,9 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             r, llvm::ConstantInt::get(*ctx_, llvm::APInt(64, static_cast<uint64_t>(-1), true)),
             "regex_match_is_err");
         llvm::Function *curFnTM = builder_.GetInsertBlock()->getParent();
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_match.err", curFnTM);
-        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "regex_match.ok",  curFnTM);
-        builder_.CreateCondBr(isErr, errBB, okBB);
+        llvm::BasicBlock *errBB = createBBInFn("regex_match.err", curFnTM);
+        llvm::BasicBlock *okBB  = createBBInFn("regex_match.ok", curFnTM);
+        emitBranchCond(isErr, errBB, okBB);
 
         builder_.SetInsertPoint(errBB);
         auto errFn = getRuntimeFn("__ry_regex_get_last_error", ptrTy_, {});
@@ -3855,10 +3855,10 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
     // Branch: if cmpResult is false, call __ry_test_expect_fail
     llvm::Function *currentFn = builder_.GetInsertBlock()->getParent();
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "expect.fail", currentFn);
-    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "expect.cont", currentFn);
+    llvm::BasicBlock *failBB = createBBInFn("expect.fail", currentFn);
+    llvm::BasicBlock *contBB = createBBInFn("expect.cont", currentFn);
 
-    builder_.CreateCondBr(cmpResult, contBB, failBB);
+    emitBranchCond(cmpResult, contBB, failBB);
 
     // Fail block: call __ry_test_expect_fail(line, actual_str, expected_str)
     builder_.SetInsertPoint(failBB);
@@ -3997,7 +3997,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     }
 
     builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), actualStr, expectedStr});
-    builder_.CreateBr(contBB);
+    emitBranchUncond(contBB);
 
     // Continue block
     builder_.SetInsertPoint(contBB);

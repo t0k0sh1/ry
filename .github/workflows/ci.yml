@@ -36,6 +36,16 @@ jobs:
             echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime/core/alloc.hpp instead."
             exit 1
           fi
+      - name: Check llvm_emit ABI header (no LLVM types, no transitional void *)
+        run: |
+          # Enforces #1973 Stage 2-C AC: include/ry/llvm_emit/api.h must
+          # expose only opaque typedefs (RyValueRef / RyTypeRef /
+          # RyModuleHandle / RyBuilderHandle / RyContextHandle /
+          # RyFunctionHandle / RyFuncTypeRef / RyBasicBlockRef) — no
+          # `llvm::*` and no `void *` in public function signatures, with a
+          # documented carve-out for `void *user_ctx` in RyBuildValueFn /
+          # ry_emit_result_branch.
+          bash scripts/check-llvm-emit-abi-header.sh include/ry/llvm_emit/api.h
       - name: Check for banned direct exit() calls in runtime
         run: |
           # Trap-path runtime functions must use ry_runtime_trap_exit()

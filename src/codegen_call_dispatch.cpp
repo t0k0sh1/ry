@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_result_branch.hpp"
 #include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 
@@ -442,9 +443,9 @@ llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *res
 }
 
 llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {
-    RyValueId id =
-        ry_emit_build_error_from_runtime(emit_ctx_, errFnName, errorTy_);
-    return static_cast<llvm::Value *>(ry_emit_resolve(emit_ctx_, id));
+    RyValueId id = ry_emit_build_error_from_runtime(
+        emit_ctx_, errFnName, ry::llvm_emit::asRyType(errorTy_));
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
 llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const char *errFnName) {

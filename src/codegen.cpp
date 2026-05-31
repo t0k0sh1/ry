@@ -2,6 +2,7 @@
 #include "ry/coverage/coverage_runtime.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -91,12 +92,17 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 
-    // Initialize the LLVM IR emission ABI context (Stage 2-B, #1964).
-    // All category-3 helpers cross the ABI now: getRuntimeFn,
-    // buildErrorFromRuntime, emitBoundsCheck, resultBranch,
-    // negativeIndexWrap, boundsError. The fn_ slot is set as bodies are
-    // emitted via ry_emit_ctx_set_function.
-    emit_ctx_ = ry_emit_ctx_create(mod_.get(), &builder_, ctx_.get(), nullptr);
+    // Initialize the LLVM IR emission ABI context. Stage 2-C / #1973 migrated
+    // module / builder / context / function pointers to typed opaque handles
+    // (RyModuleHandle / RyBuilderHandle / RyContextHandle / RyFunctionHandle);
+    // the cast helpers in include/ry/llvm_emit/cast_helpers.hpp keep the call
+    // sites readable. The fn_ slot is set as bodies are emitted via
+    // ry_emit_ctx_set_function.
+    emit_ctx_ = ry_emit_ctx_create(
+        ry::llvm_emit::asRyModule(mod_.get()),
+        ry::llvm_emit::asRyBuilder(&builder_),
+        ry::llvm_emit::asRyContext(ctx_.get()),
+        ry::llvm_emit::asRyFunction(nullptr));
 }
 
 CodeGen::~CodeGen() {
@@ -115,9 +121,55 @@ const std::unordered_set<std::string> &CodeGen::getTestingIntrinsicsImported() c
 llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
-    auto *callee = static_cast<llvm::Value *>(
-        ry_emit_get_runtime_fn(emit_ctx_, name, fnTy));
+    auto *callee = ry::llvm_emit::asLlvmValue(
+        ry_emit_get_runtime_fn(emit_ctx_, name, ry::llvm_emit::asRyFuncType(fnTy)));
     return llvm::FunctionCallee(fnTy, callee);
+}
+
+// === ControlFlow primitives (Stage 2-C / #1973) ===
+
+llvm::BasicBlock *CodeGen::createBB(const char *name) {
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    return createBBInFn(name, fn);
+}
+
+llvm::BasicBlock *CodeGen::createBBInFn(const char *name, llvm::Function *fn) {
+    auto handle = ry_emit_create_basic_block(
+        emit_ctx_, name, ry::llvm_emit::asRyFunction(fn));
+    return ry::llvm_emit::asLlvmBasicBlock(handle);
+}
+
+void CodeGen::emitBranchCond(llvm::Value *cond, llvm::BasicBlock *true_bb,
+                              llvm::BasicBlock *false_bb) {
+    RyValueId condId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(cond));
+    ry_emit_branch_cond(emit_ctx_, condId, ry::llvm_emit::asRyBasicBlock(true_bb),
+                         ry::llvm_emit::asRyBasicBlock(false_bb));
+}
+
+void CodeGen::emitBranchUncond(llvm::BasicBlock *target) {
+    ry_emit_branch_uncond(emit_ctx_, ry::llvm_emit::asRyBasicBlock(target));
+}
+
+llvm::PHINode *CodeGen::createPhi(
+    llvm::Type *ty,
+    llvm::ArrayRef<std::pair<llvm::Value *, llvm::BasicBlock *>> incoming,
+    const char *name_hint) {
+    std::vector<RyValueId> value_ids;
+    std::vector<RyBasicBlockRef> block_refs;
+    value_ids.reserve(incoming.size());
+    block_refs.reserve(incoming.size());
+    for (const auto &pair : incoming) {
+        value_ids.push_back(
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(pair.first)));
+        block_refs.push_back(ry::llvm_emit::asRyBasicBlock(pair.second));
+    }
+    RyValueId phiId =
+        ry_emit_create_phi(emit_ctx_, ry::llvm_emit::asRyType(ty),
+                            value_ids.data(), block_refs.data(),
+                            static_cast<uint32_t>(value_ids.size()),
+                            name_hint == nullptr ? "" : name_hint);
+    return llvm::cast<llvm::PHINode>(
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, phiId)));
 }
 
 int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {

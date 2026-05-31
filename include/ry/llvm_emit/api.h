@@ -97,15 +97,49 @@ extern "C" {
 // per RyEmitCtx and are not reused for the lifetime of the context.
 typedef uint32_t RyValueId;
 
-// Opaque handle for an LLVM FunctionCallee. Reserved for future use; the
-// scaffold uses transitional void* in places that need a callee.
-typedef uint32_t RyFuncId;
-
-// Opaque handle for an LLVM Type. Reserved for future use.
-typedef uint32_t RyTypeId;
-
 // Opaque per-compile() emission context.
 typedef struct RyEmitCtx RyEmitCtx;
+
+// ===========================================================================
+// Stage 2-C / #1973: typed opaque handles for category 1 (LLVM context state)
+// and category 2 (primitive type accessors).
+//
+// Each typedef is a pointer to an incomplete struct, so the C/C++ type system
+// treats it as a distinct named pointer type. At runtime the pointer value is
+// reinterpret_cast'd between the LLVM-owning side (`src/llvm_emit/impl.cpp`)
+// and the CodeGen-owning side. No LLVM types and no `void *` appear in any
+// public signature — opaque pointer typedefs satisfy the constraint enforced
+// by the header-level lint introduced in #1973.
+//
+// CodeGen-side cast helpers live in `include/ry/llvm_emit/cast_helpers.hpp`
+// (a C++-only header that re-includes both api.h and the LLVM headers); use
+// `asRyValue` / `asLlvmValue` / `asRyType` / etc. there rather than sprinkling
+// reinterpret_cast across call sites.
+// ===========================================================================
+
+// === Category 1: LLVM context handles ===
+typedef struct RyModuleOpaque   *RyModuleHandle;   // llvm::Module *
+typedef struct RyBuilderOpaque  *RyBuilderHandle;  // llvm::IRBuilder<> *
+typedef struct RyContextOpaque  *RyContextHandle;  // llvm::LLVMContext *
+typedef struct RyFunctionOpaque *RyFunctionHandle; // llvm::Function *
+
+// === Category 2: primitive type accessors ===
+// `RyTypeRef` covers both `llvm::Type *` (primitives, pointers) and
+// `llvm::StructType *` (named aggregates) — LLVM's StructType IS a Type, so
+// no separate typedef is needed. dyn_cast<StructType> happens inside impl.cpp
+// when a specific subtype is required.
+typedef struct RyTypeOpaque     *RyTypeRef;
+typedef struct RyFuncTypeOpaque *RyFuncTypeRef;    // llvm::FunctionType *
+
+// === ABI ingress/egress pointer types ===
+// `RyValueRef` is the source-side pointer for `ry_emit_intern` /
+// `ry_emit_resolve`. It crosses the boundary as an opaque pointer; inside the
+// emission layer it is held in the intern table behind `RyValueId`.
+typedef struct RyValueOpaque    *RyValueRef;       // llvm::Value *
+
+// === BasicBlock handle (used by ControlFlow ABI added in #1973) ===
+typedef struct RyBasicBlockOpaque *RyBasicBlockRef; // llvm::BasicBlock *
+typedef uint32_t RyBasicBlockId;                    // intern handle
 
 // Bounds-check kind selector. Numbers chosen to match the order in
 // `lowered::BoundsKind`; do not reorder without updating both sides.
@@ -141,43 +175,46 @@ typedef enum {
 typedef RyValueId (*RyBuildValueFn)(void *user_ctx);
 
 // Lifecycle. Create at the top of CodeGen::compile() and destroy on exit.
-// module_ptr/builder_ptr/context_ptr/function_ptr are `void*` only as a
-// transitional shape; they will become opaque handles in a successor PR.
-RyEmitCtx *ry_emit_ctx_create(void *module_ptr, void *builder_ptr,
-                              void *context_ptr, void *function_ptr);
+// Categories 1 (LLVM context handles) crossed the ABI as typed opaque handles
+// in Stage 2-C / #1973: RyModuleHandle / RyBuilderHandle / RyContextHandle /
+// RyFunctionHandle replace the transitional `void *` shape from Stage 2-A.
+RyEmitCtx *ry_emit_ctx_create(RyModuleHandle module, RyBuilderHandle builder,
+                              RyContextHandle context,
+                              RyFunctionHandle function);
 void ry_emit_ctx_destroy(RyEmitCtx *ctx);
 
-// Update the current LLVM function pointer mid-compile (function_ptr changes
-// when CodeGen emits a new function body).
-void ry_emit_ctx_set_function(RyEmitCtx *ctx, void *function_ptr);
+// Update the current LLVM function handle mid-compile (it changes when
+// CodeGen emits a new function body — lambdas, @parallel for thunks,
+// destructors, iterator-next bodies, etc.).
+void ry_emit_ctx_set_function(RyEmitCtx *ctx, RyFunctionHandle function);
 
-// Handle marshalling. ry_emit_intern returns 0 if `value_ptr` is NULL; every
+// Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; every
 // other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
 // and for any out-of-range handle.
-RyValueId ry_emit_intern(RyEmitCtx *ctx, void *value_ptr /* llvm::Value* */);
-void *ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
+RyValueId ry_emit_intern(RyEmitCtx *ctx, RyValueRef value);
+RyValueRef ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
 
 // Category-3 helpers (from llvm-ir-emission-boundary.md). Each one wraps a
 // canonical emission pattern as an atomic ABI call so the LLVM-side BB / PHI
 // plumbing stays inside the shared library.
 
 // Build an Error struct by calling err_fn_name (a `const char *(*)()` runtime
-// symbol) and packaging the returned pointer with a zero code. error_ty_ptr
-// is the LLVM StructType handle (transitional `void*` until categories 1/2
-// cross the ABI); the scaffold accepts the value `CodeGen::errorTy_` resolves
-// to.
+// symbol) and packaging the returned pointer with a zero code. `error_ty`
+// is the opaque StructType handle for `errorTy_` on the CodeGen side
+// (RyTypeRef carries `llvm::StructType *` internally).
 RyValueId ry_emit_build_error_from_runtime(RyEmitCtx *ctx,
                                            const char *err_fn_name,
-                                           void *error_ty_ptr /* llvm::StructType* */);
+                                           RyTypeRef error_ty);
 
 // Resolve or insert a runtime symbol with the given LLVM FunctionType. The
-// caller constructs the FunctionType (still LLVM-side until categories 1/2
-// cross the ABI) and pairs the returned `Value*` callee with it to
-// reconstruct an `llvm::FunctionCallee` struct.
-//   fn_ty_ptr : llvm::FunctionType*
-// Returns the callee operand (`llvm::Value*`) suitable for the FunctionCallee
-// ctor; never NULL because `getOrInsertFunction` always synthesizes a callee.
-void *ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name, void *fn_ty_ptr);
+// caller constructs the FunctionType and pairs the returned callee handle
+// with it to reconstruct an `llvm::FunctionCallee` struct on the CodeGen
+// side. `fn_ty` is the opaque FunctionType handle. Returns the callee
+// operand handle (`RyValueRef` carrying `llvm::Value *` internally) suitable
+// for the FunctionCallee ctor; never NULL because `getOrInsertFunction`
+// always synthesizes a callee.
+RyValueRef ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name,
+                                  RyFuncTypeRef fn_ty);
 
 // Emit a bounds-check IR sequence. Inputs are the un-wrapped index and the
 // container length; the return value is the wrapped index suitable for the
@@ -195,17 +232,16 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id,
 // joined by a PHI. build_ok and build_err run inside okBB / errBB
 // respectively (the helper switches the builder's insert point before each
 // callback). user_ctx is forwarded to both callbacks unchanged.
-// res_ty_ptr is the LLVM StructType handle for Result<T, E>, passed as
-// `void*` until the type-handle category crosses the ABI (mirrors
-// error_ty_ptr in ry_emit_build_error_from_runtime).
-// Returns the PHI handle holding the merged Result value.
+// `res_ty` is the opaque StructType handle for Result<T, E> (mirrors
+// `error_ty` in ry_emit_build_error_from_runtime). Returns the PHI handle
+// holding the merged Result value.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (three BBs are created inside it).
+// NB: `user_ctx` remains `void *` because it is genuine opaque user data
+// (not an LLVM type) — the header lint carves it out.
 RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
-                                void *res_ty_ptr /* llvm::StructType* */,
-                                RyBuildValueFn build_ok,
-                                RyBuildValueFn build_err,
-                                void *user_ctx);
+                                RyTypeRef res_ty, RyBuildValueFn build_ok,
+                                RyBuildValueFn build_err, void *user_ctx);
 
 // Emit a negative-index wrap sequence (used by string/list/array index
 // expressions): wrapped = (idx < 0) ? idx + wrap_base : idx. Returns the
@@ -228,21 +264,19 @@ void ry_emit_bounds_error(RyEmitCtx *ctx, RyValueId orig_idx_id,
 
 // Stage 2-C entry — Option<T> Some-arm construction.
 // Builds UndefValue(opt_ty) + InsertValue(tag=1, 0) + InsertValue(inner, 1)
-// and returns a handle to the resulting aggregate. opt_ty_ptr is the LLVM
-// StructType handle for Option<T> (transitional `void*` until the type-handle
-// category crosses the ABI; mirrors res_ty_ptr in ry_emit_result_branch).
-// inner_id must resolve to a non-null payload value whose type matches
-// opt_ty's element-1 slot. Creates no basic blocks, no precondition on
-// ry_emit_ctx_set_function.
+// and returns a handle to the resulting aggregate. `opt_ty` is the opaque
+// StructType handle for Option<T> (mirrors `res_ty` in
+// ry_emit_result_branch). inner_id must resolve to a non-null payload value
+// whose type matches opt_ty's element-1 slot. Creates no basic blocks, no
+// precondition on ry_emit_ctx_set_function.
 RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
-                                   void *opt_ty_ptr /* llvm::StructType* */);
+                                   RyTypeRef opt_ty);
 
 // Stage 2-C entry — Option<T> None-arm construction.
 // Builds UndefValue(opt_ty) + InsertValue(tag=0, 0) + InsertValue(
 // UndefValue(opt_ty->getElementType(1)), 1). Creates no basic blocks, no
 // precondition on ry_emit_ctx_set_function.
-RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx,
-                                   void *opt_ty_ptr /* llvm::StructType* */);
+RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, RyTypeRef opt_ty);
 
 // Emit an ARC retain on header_ptr (`{i64 strong_count, i64 weak_count}`):
 //   if (strong_count == INT64_MAX) goto arc.retain.done;  // immortal sentinel
@@ -268,18 +302,20 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 //                if (weak_count == 0) goto arc.free; else goto arc.skip_free;
 //   arc.free: __ry_arc_counter_delta(-1); free(header_ptr); goto arc.done;
 //   arc.skip_free: goto arc.done;
-// destructor_callee may be NULL (skip destructor call); gc_visit_fn may be
-// NULL (skip the arc.gc_track BB entirely, dead → arc.release, alive → done).
-// Both pointers are C function pointers (`void (*)(void *)` for destructor,
-// `void (*)(void *)` for gc_visit_fn) — the emission layer reconstructs the
-// FunctionType locally so no LLVM type identity crosses the ABI.
+// `destructor_callee` may be NULL (skip destructor call); `gc_visit_fn` may
+// be NULL (skip the arc.gc_track BB entirely, dead → arc.release, alive →
+// done). Both are opaque LLVM-Value handles (the destructor is the callee
+// operand from `FunctionCallee::getCallee()`; the GC-visit slot is an
+// `llvm::Function *` cast to RyValueRef). The emission layer reconstructs
+// the `void (*)(void *)` LLVM FunctionType locally so no LLVM type identity
+// crosses the ABI.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it). The
 // caller must additionally register "gc" in CodeGen.used_native_libraries_
 // because release emits __ry_gc_track / __ry_gc_untrack calls.
 void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
-                         RyArcAtomic atomic, void *destructor_callee,
-                         void *gc_visit_fn);
+                         RyArcAtomic atomic, RyValueRef destructor_callee,
+                         RyValueRef gc_visit_fn);
 
 // Stage 2-C entry — RuntimeCall (#1969).
 // Resolve `name` against `mod_->getOrInsertFunction(name, fnTy)` where fnTy
@@ -296,16 +332,13 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
 //
 // Creates no basic blocks, no precondition on ry_emit_ctx_set_function.
 //
-// Categories 1/2 not migrated yet: ret_ty_ptr (llvm::Type *) and each
-// arg_ty_ptrs[i] (llvm::Type *) cross as transitional void* (mirrors
-// error_ty_ptr / res_ty_ptr in existing helpers). #1973 (ControlFlow +
-// category 1/2) replaces them with typed opaque handles.
+// Categories 1/2 migrated in #1973: `ret_ty` and each `arg_tys[i]` cross as
+// `RyTypeRef`. The implementation rebuilds the LLVM FunctionType locally.
 RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
-                               void *ret_ty_ptr /* llvm::Type * */,
-                               void *const *arg_ty_ptrs /* llvm::Type *[] */,
+                               RyTypeRef ret_ty, const RyTypeRef *arg_tys,
                                uint32_t arg_ty_count,
-                               const RyValueId *arg_ids,
-                               uint32_t arg_count, const char *name_hint);
+                               const RyValueId *arg_ids, uint32_t arg_count,
+                               const char *name_hint);
 
 // Stage 2-C entry — List append (in-place mutation):
 //   len = list.len; cap = list.cap;
@@ -315,16 +348,14 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
 //     append.nogrow: data = list.data; goto append.store;
 //   }
 //   append.store: *(data + len * elem_size) = val; list.len = len + 1;
-// list_header_ty_ptr is the `{i64 len, i64 cap, ptr data}` StructType.
+// `list_header_ty` is the `{i64 len, i64 cap, ptr data}` StructType handle.
 // ARC retain on `val` (if the element type warrants it) MUST be emitted by
 // the caller BEFORE invoking this ABI — append does not retain internally.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it).
 void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
-                               RyValueId val_id,
-                               void *list_header_ty_ptr /* llvm::StructType* */,
-                               void *elem_ty_ptr /* llvm::Type* */,
-                               uint64_t elem_size);
+                               RyValueId val_id, RyTypeRef list_header_ty,
+                               RyTypeRef elem_ty, uint64_t elem_size);
 
 // Stage 2-C entry — List insert at index (in-place mutation with shift):
 //   wrapped_idx = ry_emit_negative_index_wrap(idx, len + 1);
@@ -343,8 +374,7 @@ void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
 // current LLVM function before this call (BBs are created inside it).
 void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                RyValueId idx_id, RyValueId val_id,
-                               void *list_header_ty_ptr /* llvm::StructType* */,
-                               void *elem_ty_ptr /* llvm::Type* */,
+                               RyTypeRef list_header_ty, RyTypeRef elem_ty,
                                uint64_t elem_size);
 
 // Stage 2-C entry — List remove at index (in-place mutation with shift):
@@ -361,10 +391,10 @@ void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
 // Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it).
-RyValueId ry_emit_collection_remove_at(
-    RyEmitCtx *ctx, RyValueId list_ptr_id, RyValueId idx_id,
-    void *list_header_ty_ptr /* llvm::StructType* */,
-    void *elem_ty_ptr /* llvm::Type* */, uint64_t elem_size);
+RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                                       RyValueId idx_id,
+                                       RyTypeRef list_header_ty,
+                                       RyTypeRef elem_ty, uint64_t elem_size);
 
 // Stage 2-C entry — List slice (produces a new heap data buffer):
 //   src_len = list.len; src_data = list.data;
@@ -387,8 +417,7 @@ RyValueId ry_emit_collection_remove_at(
 // Precondition: NONE — ry_emit_ctx_set_function need not have been called.
 void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         RyValueId start_id, RyValueId end_excl_id,
-                        void *list_header_ty_ptr /* llvm::StructType* */,
-                        void *elem_ty_ptr /* llvm::Type* */,
+                        RyTypeRef list_header_ty, RyTypeRef elem_ty,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data);
 
@@ -429,10 +458,10 @@ typedef struct {
     // 1 = key retain uses StringHeader (offset -24); 0 = ArcHeader
     // (offset -16). Only consulted when do_key_retain == 1.
     int key_is_str;
-    // C function pointer `void (*)(void *)` for the per-kind collection
-    // destructor passed to the internal ry_emit_arc_release. May be NULL
-    // when the kind has no element-side cleanup to perform.
-    void *destructor_callee;
+    // Opaque LLVM-Value handle for the per-kind collection destructor passed
+    // to the internal ry_emit_arc_release (callee operand of FunctionCallee).
+    // May be NULL when the kind has no element-side cleanup to perform.
+    RyValueRef destructor_callee;
 } RyCowEnsureUniqueDesc;
 
 // Stage 2-C entry — Copy-on-Write uniqueness check (`emitCowCheckSlot`).
@@ -531,13 +560,13 @@ typedef struct {
     // Box arms only: per-type descriptor LLVM Constant handle.
     RyValueId descriptor_id;
     // Box arms only: `{ ptr desc, payload }` StructType handle.
-    void *box_layout_ty_ptr;
+    RyTypeRef box_layout_ty;
     // Box arms only: DataLayout-derived allocation size of box_layout_ty,
     // in bytes. Passed as a plain integer so the ABI does not need to
     // consult DataLayout itself.
     uint64_t box_data_size;
-    // Common: the LLVM StructType for `any` (anyTy_ on the CodeGen side).
-    void *any_ty_ptr;
+    // Common: the `any` StructType handle (anyTy_ on the CodeGen side).
+    RyTypeRef any_ty;
 } RyAnyWrapDesc;
 
 RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc);
@@ -568,12 +597,12 @@ typedef struct {
     int kind;
     // Source any value.
     RyValueId any_val_id;
-    // anyTy_ StructType handle.
-    void *any_ty_ptr;
+    // `any` StructType handle (anyTy_).
+    RyTypeRef any_ty;
     // Standard / Record: target LLVM type handle. For Standard: i64 / i1 /
-    // ptr / etc. For Record: ignored (record_struct_ty_ptr is used). For
+    // ptr / etc. For Record: ignored (record_struct_ty is used). For
     // F64Promote: ignored.
-    void *target_ty_ptr;
+    RyTypeRef target_ty;
     // Standard / Record: expected RyAnyTag value (matches the C++ enum
     // class `ry::RyAnyTag`).
     int64_t expected_tag;
@@ -590,9 +619,9 @@ typedef struct {
     // Record only: expected per-type descriptor LLVM Constant handle.
     RyValueId expected_desc_id;
     // Record only: `{ ptr desc, record struct }` StructType handle.
-    void *box_layout_ty_ptr;
+    RyTypeRef box_layout_ty;
     // Record only: the record's struct type for the payload GEP/load.
-    void *record_struct_ty_ptr;
+    RyTypeRef record_struct_ty;
     // Record only: descriptor-mismatch error message and global name hint.
     const char *desc_mismatch_msg;
     const char *desc_mismatch_global_name;
@@ -625,15 +654,15 @@ typedef struct {
     int kind;
     // Source any value.
     RyValueId any_val_id;
-    // anyTy_ StructType handle.
-    void *any_ty_ptr;
+    // `any` StructType handle (anyTy_).
+    RyTypeRef any_ty;
     // Result<targetTy, Error> StructType handle.
-    void *res_ty_ptr;
+    RyTypeRef res_ty;
     // Error StructType handle (errorTy_ on the CodeGen side).
-    void *error_ty_ptr;
+    RyTypeRef error_ty;
     // Standard only: target LLVM type (i64 / i1 / ptr / etc.).
     // F64Promote: ignored (f64Ty_ is hard-coded).
-    void *target_ty_ptr;
+    RyTypeRef target_ty;
     // Standard only: expected RyAnyTag value.
     int64_t expected_tag;
     // Standard only: ARC retain flags (same semantics as RyAnyUnwrapDesc).
@@ -646,6 +675,54 @@ typedef struct {
 
 RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
                                  const RyAnyTryUnwrapDesc *desc);
+
+// ===========================================================================
+// Stage 2-C / #1973 — ControlFlow primitives.
+//
+// These thin ABI entries wrap the IRBuilder<>::Create* calls that previously
+// appeared in src/codegen_*.cpp for control-flow construction (basic blocks,
+// conditional / unconditional branches, PHI assembly). They are intentionally
+// minimal — the lowering layer has no semantic decision to make for primitive
+// CF per `docs/architecture/codegen-layering-plan.md` §"Explicit non-inclusion"
+// — so no `lowered_control_flow.hpp` struct layer is introduced. The CodeGen-
+// side inline wrappers in `include/ry/codegen.hpp` (createBB / emitBranchCond
+// / emitBranchUncond / createPhi) bridge call sites to these entries without
+// per-site reinterpret_cast clutter.
+//
+// SetInsertPoint / GetInsertBlock are intentionally NOT exposed: they are
+// IRBuilder *state* operations that emit no IR (no `Create*` call), so they
+// fall outside the "no IRBuilder<>::Create* in src/codegen_*.cpp" AC. Call
+// sites continue to use `builder_.SetInsertPoint(bb)` / `builder_.GetInsertBlock()`
+// directly.
+// ===========================================================================
+
+// Create a fresh basic block named `name` inside the function `fn`. Returns
+// an opaque handle to the new BB. The caller chooses the parent function
+// explicitly — for the common "current function" case the CodeGen-side
+// wrapper `createBB` derives it from `builder_.GetInsertBlock()->getParent()`
+// per the rule in `.claude/rules/codegen-llvm-ir-conventions.md`.
+RyBasicBlockRef ry_emit_create_basic_block(RyEmitCtx *ctx, const char *name,
+                                           RyFunctionHandle fn);
+
+// Emit a conditional branch at the builder's current insert point. `cond` is
+// an interned i1 value; `true_bb` / `false_bb` are the destination blocks.
+// Does not change the builder's insert point.
+void ry_emit_branch_cond(RyEmitCtx *ctx, RyValueId cond,
+                         RyBasicBlockRef true_bb, RyBasicBlockRef false_bb);
+
+// Emit an unconditional branch to `target` at the builder's current insert
+// point. Does not change the builder's insert point.
+void ry_emit_branch_uncond(RyEmitCtx *ctx, RyBasicBlockRef target);
+
+// Emit a PHI node at the builder's current insert point with the supplied
+// incoming pairs and `ty` as the result type. `count` is the number of
+// (value, block) pairs in `incoming_values[]` / `incoming_blocks[]` (parallel
+// arrays). `name_hint` is the LLVM SSA name hint (NULL for none). Returns the
+// interned PHI value handle.
+RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
+                             const RyValueId *incoming_values,
+                             const RyBasicBlockRef *incoming_blocks,
+                             uint32_t count, const char *name_hint);
 
 #ifdef __cplusplus
 } // extern "C"
