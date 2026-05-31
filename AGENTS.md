@@ -1,231 +1,231 @@
-# ry - 開発ガイドライン
+# ry - Development Guidelines
 
 Situational playbooks live in `.claude/skills/`; trigger them by description or by `/<skill-name>`.
 
-> **用語（v0.0.17）**: 定義は `docs/reference/glossary.md`（#1480）。`module` = `from xxx import ...` の単位; `package` は将来予約; `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` は legacy 命名のまま据え置き。
+> **Terminology (v0.0.17)**: definitions are in `docs/reference/glossary.md` (#1480). `module` = the unit of `from xxx import ...`; `package` is reserved for future use; `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` retain their legacy naming.
 
-## ビルド & テスト
+## Build & Test
 
 ```bash
-cmake --preset default                                  # Ninja + LLVM（CMakePresets.json）
-cmake --build build                                     # Ninja が自動並列ビルド
-./build/ry_tests                                        # C++ テスト (GoogleTest)
-./build/ry test -p                                      # Ry セルフテスト (全 *.test.ry)
-./build/ry test tests/spec/<file>.test.ry               # 個別ファイル実行
+cmake --preset default                                  # Ninja + LLVM (CMakePresets.json)
+cmake --build build                                     # Ninja parallelizes automatically
+./build/ry_tests                                        # C++ tests (GoogleTest)
+./build/ry test -p                                      # Ry self-tests (all *.test.ry)
+./build/ry test tests/spec/<file>.test.ry               # run an individual file
 ```
 
-> repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
+> The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
 
-## tree-sitter グラマーのビルド & インストール
+## tree-sitter grammar build & install
 
-`docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` のいずれかを変更した PR では `ry.so` の再ビルドが必要。build/install コマンド・前提条件・落とし穴 (externals enum 順序 / `mark_end` / `valid_symbols` セマンティクス / highlights.scm) ・検証レシピは `.claude/skills/tree-sitter-grammar-editing/SKILL.md`（または `/tree-sitter-grammar-editing`）と `editor/tree-sitter/README.md`、セルフ検証手順は `/pre-commit-checklist` §3.6.5 を参照。`editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm` 編集時は同 skill が path-scoped rule 経由で自動 load される。
+A PR that modifies any of `docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` requires rebuilding `ry.so`. Build/install commands, prerequisites, pitfalls (externals enum order / `mark_end` / `valid_symbols` semantics / highlights.scm), and the verification recipe are in `.claude/skills/tree-sitter-grammar-editing/SKILL.md` (or `/tree-sitter-grammar-editing`) and `editor/tree-sitter/README.md`; the self-verification procedure is in `/pre-commit-checklist` §3.6.5. When editing `editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm`, that skill is auto-loaded via a path-scoped rule.
 
-## コンパイラ警告フラグ
+## Compiler warning flags
 
-コンパイラ警告フラグの詳細は `.claude/rules/build-warning-flags.md` を参照。
+Details on compiler warning flags are in `.claude/rules/build-warning-flags.md`.
 
-## IR ゴールデンテスト
+## IR golden tests
 
-LLVM IR ゴールデンテストの記法・実行手順は `.claude/rules/codegen-llvm-ir-conventions.md` を参照。
+The notation and execution procedure for LLVM IR golden tests are in `.claude/rules/codegen-llvm-ir-conventions.md`.
 
 ## CI: container image (GHCR pre-baked)
 
-CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、release.yml の glibc-old ジョブは immutable な `ry-ci-glibc-old:llvm-21-rev<N>` に pin) を使用 (#1505, #1508)。image build / バージョンバンプ / `rev<N>` tag / ロールバック / release pin 更新手順は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS は Homebrew 継続。
+CI Linux jobs use a pre-baked container (`ghcr.io/<owner>/ry-ci:llvm-21`; the glibc-old job in release.yml is pinned to the immutable `ry-ci-glibc-old:llvm-21-rev<N>`) (#1505, #1508). Image build, version bumps, `rev<N>` tags, rollback, and the release-pin update procedure are in `.claude/skills/ci-image-workflow/SKILL.md` (or `/ci-image-workflow`). macOS continues to use Homebrew.
 
-## ナレッジベース (.claude/rules/ + .claude/skills/ + .claude/agents/ + KNOWLEDGE.md)
+## Knowledge base (.claude/rules/ + .claude/skills/ + .claude/agents/ + KNOWLEDGE.md)
 
-- **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter `paths:` glob に一致するファイル編集時に自動 load
-- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。`description:` にマッチした時に呼び出される
-- **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。**並列化したい verification step は subagent を foreground で複数同時起動** (single message に multiple `Agent` tool calls)。Background 実行は禁止 (AGENTS.md §"Bash コマンドの実行ルール" 参照、#1947)。現状の catalog:
-    - `.claude/agents/devils-advocate.md` — Plan / 設計レビュー用の批評エージェント
-    - `.claude/agents/bug-forensics-analyst.md` — バグの起源判定 / git archaeology / テストギャップ分析 (`/triage-side-finding` Q3 経由で起動)
-    - `.claude/agents/sanitizer-runner.md` — ASan+UBSan / TSan を独立 context で実行・分析する subagent (並列化用)
-    - `.claude/agents/test-runner.md` — C++ ry_tests + Ry セルフテストを独立 context で実行・失敗解析する subagent (並列化用)
-    - `.claude/agents/fuzzer-runner.md` — libFuzzer harness を独立 context で実行・crash 解析する subagent (並列化用)
-    - `.claude/agents/pr-review-responder.md` — CodeRabbit / 人間レビュワー指摘の解析・返信生成・修正案作成を行う subagent
-- **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・「いつ書く」トリガー・昇格手順は `/knowledge-md-management` 参照
+- **`.claude/rules/<name>.md`** — path-scoped rule. Auto-loaded when editing a file matching the frontmatter `paths:` glob.
+- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill. Invoked when the `description:` matches.
+- **`.claude/agents/<name>.md`** — subagent definition. Launched as an **independent context** via the `Agent` tool with `subagent_type: <name>` (in contrast to skills, which run inside the same context). Cannot be invoked via the `/<name>` slash-command form (because it is an agent, not a skill). Use this for tasks like critique of plans, design, or implementation where you want the artifact evaluated in isolation from the main conversation history. **For parallelizable verification steps, launch multiple subagents foreground concurrently** (a single message with multiple `Agent` tool calls). Background execution is prohibited (see AGENTS.md §"Bash execution rules"; #1947). Current catalog:
+    - `.claude/agents/devils-advocate.md` — critique agent for plan / design review
+    - `.claude/agents/bug-forensics-analyst.md` — bug origin determination / git archaeology / test-gap analysis (launched via `/triage-side-finding` Q3)
+    - `.claude/agents/sanitizer-runner.md` — subagent that runs and analyzes ASan+UBSan / TSan in an independent context (for parallelization)
+    - `.claude/agents/test-runner.md` — subagent that runs and triages C++ ry_tests + Ry self-tests in an independent context (for parallelization)
+    - `.claude/agents/fuzzer-runner.md` — subagent that runs and triages libFuzzer harnesses in an independent context (for parallelization)
+    - `.claude/agents/pr-review-responder.md` — subagent that analyzes CodeRabbit / human reviewer comments and produces replies and fix proposals
+- **`KNOWLEDGE.md`** (repository root) — a provisional buffer for uncategorized findings. New knowledge that has no matching entry in rules / skills accumulates here, and once stable is promoted into rules / skills. Format, grep convention, external-reference policy, "when to write" triggers, and the promotion procedure are in `/knowledge-md-management`.
 
-## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
+## ASan + UBSan (Address + UndefinedBehavior Sanitizer)
 
-ローカル開発では `cmake --preset asan` で ASan + UBSan を同時有効化してテストを実行する。ビルドコマンド・実行時 env (`ASAN_OPTIONS=detect_container_overflow=0` / `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`) と各設定の根拠 (LLVM 混在 false positive 抑制 / `-fno-sanitize=vptr,function` の理由) は `.claude/skills/commands-environment-gotchas/SKILL.md`（または `/commands-environment-gotchas`）、セルフ検証手順は `/pre-commit-checklist` §3.5 を参照。
+For local development, use `cmake --preset asan` to enable ASan + UBSan together and run the tests. Build commands, runtime env (`ASAN_OPTIONS=detect_container_overflow=0` / `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`), and the rationale for each setting (suppressing LLVM mixed false positives / why `-fno-sanitize=vptr,function`) are in `.claude/skills/commands-environment-gotchas/SKILL.md` (or `/commands-environment-gotchas`); the self-verification procedure is in `/pre-commit-checklist` §3.5.
 
-ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
+Any issue detected by ASan or UBSan (memory leak, buffer overflow, use-after-free, undefined behavior, etc.) MUST be resolved. Do not commit with a sanitizer error left unresolved.
 
-ASan / UBSan の事故知見・既知問題（マスク機構・アロケータ差異・platform-specific 顕在化経路）は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクションを参照。
+Incident knowledge and known issues for ASan / UBSan (masking mechanisms, allocator differences, platform-specific manifestation paths) are in the `## Known sanitizer issues` section of `KNOWLEDGE.md`.
 
-## TSan（ThreadSanitizer）
+## TSan (ThreadSanitizer)
 
-スレッド安全性の検証は TSan preset を使う。ビルドコマンド (`cmake --preset tsan`) / ASan-UBSan との排他性 (`build-tsan/` 隔離) / required vs warn-only ジョブ分割 / 既知の upstream バグ (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) は `KNOWLEDGE.md` の `## サニタイザー既知問題` セクション、セルフ検証手順は `/pre-commit-checklist` §3.5 を参照。
+For verifying thread safety, use the TSan preset. The build command (`cmake --preset tsan`), exclusivity with ASan-UBSan (`build-tsan/` isolation), the required vs. warn-only job split, and known upstream bugs (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) are in the `## Known sanitizer issues` section of `KNOWLEDGE.md`; the self-verification procedure is in `/pre-commit-checklist` §3.5.
 
-> 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容しない。
+> If you introduce a new race, you MUST fix it within the same PR. Warn-only is only a workaround for the TSan allocator bug; it does not license the introduction of an actual race.
 
-## libFuzzer（カバレッジガイデッドファジング）
+## libFuzzer (coverage-guided fuzzing)
 
-**CI ジョブは現在無効** — フィーチャーブランチのセルフ検証で必ず手動実行すること（`/pre-commit-checklist` §3.6 参照）。クラッシュ入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存する。ハーネス要件・ビルドコマンド・既知制限は `.claude/skills/libfuzzer-harness/SKILL.md`（または `/libfuzzer-harness`）を参照。事故知見・既知問題は `KNOWLEDGE.md` の `## サニタイザー既知問題` も参照。
+**The CI job is currently disabled** — you MUST run it manually during feature-branch self-verification (see `/pre-commit-checklist` §3.6). Save crash inputs in both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/`. Harness requirements, build commands, and known limitations are in `.claude/skills/libfuzzer-harness/SKILL.md` (or `/libfuzzer-harness`). Incident knowledge and known issues are also in the `## Known sanitizer issues` section of `KNOWLEDGE.md`.
 
-## メモリ安全ルール（C++ ランタイム）
+## Memory-safety rules (C++ runtime)
 
-ランタイムメモリ安全ルール (禁止関数テーブル / `oom_abort(n)` / 外部入力の NULL チェック / CI lint 自動ブロック) は `.claude/rules/runtime-memory-safety.md` を参照。
+The runtime memory-safety rules (forbidden-function table / `oom_abort(n)` / NULL checks on external input / CI-lint auto-block) are in `.claude/rules/runtime-memory-safety.md`.
 
-## ワークフロー全体像
+## Workflow overview
 
-issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード (Task 1 = `/git-claim-issue` で `wip` 付与) → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。PR レビュー対応 → CI 確認 → push → マージを 1 コマンドで連鎖実行したい場合は `/git-close-pr` を使う (ブロッカー時は停止)。
+Issue review → consult the knowledge base (path-scoped rules also auto-load during implementation) → Plan mode (Task 1 = `/git-claim-issue` to attach `wip`) → TDD implementation → self-verification via `/pre-commit-checklist` → subsequent git operations (commit / push / PR / merge) follow "Separation of Concerns". If you want to chain PR review response → CI check → push → merge in a single command, use `/git-close-pr` (it stops on blockers).
 
-## issue 起点の開発
+## Issue-driven development
 
-- **リポジトリ**: `t0k0sh1/ry`
-- **開始**: ユーザーが issue 番号 / URL を指定 → 内容把握 → Plan モード。「次の issue を探して」指示時は open issue 取得 (`wip` 除外)・バグ優先で候補提示 → 選択後に Plan モード
-- **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-close-pr` Step 7 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
-- **issue 分割時のスコープ検証**: 派生 issue を起票・分離する判断は `/scope-decomposition` で対称性 (4 軸 REQ-1) / 分割理由 (3 分類 REQ-2) / 派生連鎖警戒 (3 段目以降 REQ-3) / oversize 起票時の n 個分割 single preview (REQ-5) を確認する。Plan モード中の target-shrinking split は REQ-4 で禁止
+- **Repository**: `t0k0sh1/ry`
+- **Start**: the user specifies an issue number / URL → understand the content → enter Plan mode. When instructed to "find the next issue", fetch open issues (excluding `wip`), present candidates with bugs prioritized → after selection, enter Plan mode.
+- **Label handling**: labels MUST be attached/removed via skills (`git-claim-issue` / `git-close-pr` Step 7 use `--add-label` / `--remove-label`, preserving existing labels).
+- **Scope verification when splitting an issue**: a decision to file or separate a derivative issue is checked via `/scope-decomposition` against symmetry (4 axes, REQ-1), split rationale (3 categories, REQ-2), derivative-chain caution (3rd-degree and beyond, REQ-3), and the single-preview-for-n-split rule when filing an oversized issue (REQ-5). Target-shrinking splits during Plan mode are prohibited by REQ-4.
 
-## Plan モードのルール
+## Plan mode rules
 
-- **開始条件**: 対象 issue の特定 (OPEN 状態を `gh issue view <n>` で確認)・リモートと最新化済み (`wip` 付与は Task 1 で実施するため事前付与不要)
-- **実装計画の最初のタスク (固定)**:
-  - **Task 1**: `/git-claim-issue` で issue に `wip` ラベルを付与する
-  - フィーチャーブランチ作成は `/git-push` 初回呼び出し時に自動で行われるため、Plan に独立タスクとして含めない
-- **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
-- **計画の抽象度（WHAT/HOW 分離）**: 計画は「何を達成するか」(WHAT) にとどめ、「どう実装するか」(HOW) は実装フェーズに委ねる。過剰な HOW 詳細が計画にあれば `/plan-rubric` で検出する
-- **実装計画に必ず含めるもの**:
-  - 最初のタスクが固定どおり (Task 1 = `/git-claim-issue`) であること。フィーチャーブランチ作成は `/git-push` 初回呼び出し時に自動で行われる
-  - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
-  - 仕様通りに実装できていることのセルフ検証タスク
-  - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
-  - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
-- **副次的発見への対応**: 「責務の分離」セクション「副次的発見への対応」に従う (`/triage-side-finding`)。**Claude Code が `/triage-side-finding` Q4(b)「起票許可を求める」と自律判断した場合のみ**、実装計画内に「別 issue 起票」タスクを含める (Q1 再現困難 / Q2 ユーザー指示 → 即時修正と判定された場合は同 PR 内で対処するため計画タスク化不要)。**ただし起票の実行はユーザーの明示許可後** — Plan 内に「別 issue 起票」タスクを含める場合も、Claude Code は起票内容を提示するに留め、ユーザー許可を待つ (「責務の分離」§ユーザーが明示的に指示すること / §起票判断における選択肢提示の禁止 参照)
-- **対象 issue の分割禁止 (target-shrinking)**: Plan モード中に**対象 issue 自体を分割して scope を縮小する**提案は禁止 (実装計画が狂うため)。orthogonal な副次的発見の Q4(b) 別 issue 起票は本ルールの対象外 (対象 issue の scope を変更しないため)。詳細は `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2 参照。oversize と判明した場合は **Plan モード開始前**に `/scope-decomposition` REQ-5 で分割判断を済ませる
-- **TDD サイクルの分割禁止**: Red / Green / Refactor は Plan 上で個別タスクに分割せず、1 つの「TDD サイクル」タスクとしてまとめる（各ケース毎にサイクルを内部で回す）
+- **Entry condition**: the target issue has been identified (OPEN state confirmed with `gh issue view <n>`) and is in sync with the remote (no need to pre-attach `wip`; Task 1 attaches it).
+- **First task of the implementation plan (fixed)**:
+  - **Task 1**: attach the `wip` label to the issue via `/git-claim-issue`.
+  - Feature-branch creation is performed automatically on the first `/git-push` call, so do not list it as an independent task in the plan.
+- **Implementation-plan scope**: through self-verification only (do not include git add / commit / push / PR creation).
+- **Plan abstraction level (WHAT/HOW separation)**: the plan stays at "what to achieve" (WHAT); "how to implement" (HOW) is deferred to the implementation phase. Excessive HOW detail in the plan is detected by `/plan-rubric`.
+- **The implementation plan MUST include**:
+  - The first task matches the fixed template (Task 1 = `/git-claim-issue`). Feature-branch creation is performed automatically on the first `/git-push` call.
+  - Whether you consulted the relevant entries in `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` for the paths you intend to edit (if such entries exist, quote them in the plan body and explain how you will use them).
+  - A self-verification task confirming the implementation matches the specification.
+  - An update to the English documentation (README.md / docs) — or a confirmation that no update is needed.
+  - When a terminology change or identifier rename is involved: include `/horizontal-sweep` as a plan task (the 4-step procedure is in `.claude/skills/horizontal-sweep/SKILL.md`).
+- **Handling side findings**: follow "Handling side findings" under "Separation of Concerns" (`/triage-side-finding`). **Only when Claude Code autonomously decides `/triage-side-finding` Q4(b) "request permission to file"** should an "open a separate issue" task be included in the implementation plan (in the Q1 hard-to-reproduce / Q2 user instruction → immediate-fix branches, the work is absorbed into the same PR, so no plan task is needed). **However, the actual filing waits for explicit user permission** — even when the plan contains an "open a separate issue" task, Claude Code only presents the proposed issue contents and waits for user permission (see "Separation of Concerns" §What the user explicitly directs / §Prohibition on presenting choices in filing decisions).
+- **Prohibition on splitting the target issue (target-shrinking)**: proposing to **split the target issue itself to shrink the scope** during Plan mode is prohibited (it derails the implementation plan). The Q4(b) separate-issue filing for orthogonal side findings is outside this rule (it does not change the target issue's scope). Details: `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2. If the issue is found to be oversized, resolve the split decision **before entering Plan mode** via `/scope-decomposition` REQ-5.
+- **Prohibition on splitting TDD cycles**: do not split Red / Green / Refactor into separate plan tasks; bundle them into a single "TDD cycle" task (turn the cycle internally per case).
 
-## 内部挙動の解析に trace を使う
+## Use trace to analyze internal behavior
 
-trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・import 解決・JIT 実行の解析) は `.claude/skills/ry-trace/SKILL.md`（または `/ry-trace`）を参照。
+Trace usage (`--trace` / `--trace-out` / JSON Lines / analyzing internal behavior, import resolution, JIT execution) is in `.claude/skills/ry-trace/SKILL.md` (or `/ry-trace`).
 
-## Bash コマンドの実行ルール
+## Bash execution rules
 
-### Claude 起動の background 実行を全面禁止
+### Total ban on Claude-initiated background execution
 
-Claude (メインエージェント) から起動するあらゆる background 実行を **全面禁止** する (#1947)。例外なし。
+Any background execution initiated by Claude (the main agent) is **totally banned** (#1947). No exceptions.
 
-**禁止対象:**
-- `Bash(run_in_background=true)` の使用 (用途・コマンドを問わず)
-- shell の末尾 `&` による background 起動 (`cmake --build &` 等)
-- `nohup` / `disown` / その他 detach 手段
+**Prohibited targets:**
+- Use of `Bash(run_in_background=true)` (regardless of purpose or command)
+- Background startup via trailing `&` in the shell (`cmake --build &`, etc.)
+- `nohup` / `disown` / any other detach mechanism
 - `Agent({run_in_background: true, ...})` (subagent background)
-- ビルド (`cmake --build`) / テスト (`./build/ry_tests`) / fuzzer / 長時間処理も含めてすべて foreground 同期実行のみ
+- Builds (`cmake --build`) / tests (`./build/ry_tests`) / fuzzers / any long-running process — all foreground-synchronous only
 
-**並列化が必要な場合:**
-single message に multiple `Agent` tool calls を入れて **subagent を foreground で複数同時起動** する。各 subagent は独立 context で foreground 実行、main agent は全戻り値の同期で待ち合わせる。`/pre-commit-checklist` の各 verification step (sanitizer / test / fuzzer / PR レビュー対応 等) には事前 subagent を `.claude/agents/` に整備済み — 使い分けは catalog (本 AGENTS.md §"ナレッジベース" 参照) で確認。
+**When parallelization is needed:**
+Put multiple `Agent` tool calls in a single message and **launch subagents concurrently in foreground**. Each subagent runs foreground in an independent context, and the main agent synchronizes on all return values. Dedicated subagents for the verification steps in `/pre-commit-checklist` (sanitizer / test / fuzzer / PR review response, etc.) are pre-provisioned in `.claude/agents/` — choose between them using the catalog (see AGENTS.md §"Knowledge base").
 
-**Why:** background 実行は task_id 記録漏れリスクが構造的に存在する (Bash 経由は OS プロセステーブルに乗るため OS-level スキャンに頼らざるを得ず、別 Claude Code セッションを誤検出する — #1944)。subagent background は task framework 内で `TaskStop` 可能だが、それでも「使い分け判断ミス」のリスクは残る。バックグラウンド実行という概念を完全に消すことで認知コストとリスクを根本から排除する。並列化は subagent foreground で十分実現できる。
+**Why:** background execution carries a structural risk of `task_id` recording loss (Bash-launched processes land in the OS process table and force reliance on OS-level scans, which misdetect separate Claude Code sessions — #1944). Subagent background can be `TaskStop`-ed inside the task framework, but the "misuse-of-mechanism" risk remains. Eliminating the concept of background execution outright removes the cognitive cost and risk at the root. Parallelization is fully achievable via foreground subagents.
 
-> **補足 (heredoc 入力の独立ルール)**: `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ず foreground 実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える。background 禁止前から有効な独立ルールで、本節の禁止対象ではない (heredoc + background の hang リスクは歴史的事項)。
+> **Side note (heredoc input has an independent rule)**: heredoc input such as `./build/ry -c <<'EOF' ... EOF` MUST be run foreground, or replaced with file input (`./build/ry script.ry`). This is an independent rule that predates the background ban and is not the subject of this section (the heredoc + background hang risk is a historical matter).
 
-### タイムアウトの設定
+### Timeout settings
 
-- Bash ツールの `timeout` パラメータは foreground 実行でも必ず設定する (デフォルト 120,000 ms = 2 分は短い場合がある)
-- ビルド系は `timeout: 300000`（5 分）、長時間テストでも `timeout: 600000`（10 分）を上限とする
-- 上限を超える処理は script 分割 / ステップ化、または subagent foreground 並列化で対処 (background 化での回避は禁止)
+- The Bash tool's `timeout` parameter MUST be set even for foreground execution (the 120,000 ms = 2 min default can be too short).
+- Build-class commands: `timeout: 300000` (5 min); even long tests cap at `timeout: 600000` (10 min).
+- For work exceeding these caps, split the script / step it, or parallelize via foreground subagents (do not work around with background execution).
 
-### 一時ファイル作成の禁止
+### Prohibition on temporary file creation
 
-- **プロジェクト内 (リポジトリ作業ツリー配下) での一時ファイル作成は例外なく禁止**。`tmp_*.ry` / リポジトリ直下のスクラッチファイル / 検証用 `*.ry` / scratch script など、後で削除する前提のファイルを作業ツリー内に置いてはならない。ユーザーに「ファイルを作って消すのを繰り返すな」と何度も指摘されている事項
-- Ry コードを ad-hoc 検証したい場合は `/ry-playground` skill（`.claude/skills/ry-playground/SKILL.md`）に従い `./build/ry -c <<'EOF' ... EOF` のヒアドキュメント形式で実行する（単一行・複数行いずれも可、single-quoted `'EOF'` でシェル展開抑止）。**ファイルを作成せずインラインで実行する**こと
-- 仕様や挙動を pin したい (永続化したい) 場合は `tests/spec/*.test.ry` の本体に直接追記する（spec test は永続資産）
-- C++ 側の検証は `tests/test_runtime_*.cpp` に追記してから `./build/ry_tests --gtest_filter=...` で実行する
-- **`/tmp` の限定的例外**: GitHub CLI や外部ツールの仕様上、コマンドライン引数 / ヒアドキュメントだけでは渡せず、どうしてもファイルパスを渡す必要がある場合に限り `/tmp/` 配下のファイルを使ってよい。**ただし作成したファイルは削除しない・削除を試みない**こと (`rm /tmp/...` / `unlink` / cleanup trap を書かない)。OS の tmp cleanup に委ねる
-- 「最終的に削除するファイル」を意図的に作成して回避策にすることは禁止 (プロジェクト内は完全禁止、`/tmp` でも削除コマンドを書かない)。検証手段としては `/ry-playground` (heredoc) / 既存テストファイル本体への追記 / `/tmp` (削除なし) のいずれかを選ぶ
+- **Temporary-file creation inside the project (under the repository working tree) is prohibited without exception**. Files created on the assumption that they will be deleted later — `tmp_*.ry`, scratch files at the repo root, throwaway verification `*.ry`, scratch scripts — MUST NOT be placed inside the working tree. The user has repeatedly objected to "creating and deleting files in a loop".
+- For ad-hoc verification of Ry code, follow the `/ry-playground` skill (`.claude/skills/ry-playground/SKILL.md`) and use the `./build/ry -c <<'EOF' ... EOF` heredoc form (single-line or multi-line both work; the single-quoted `'EOF'` suppresses shell expansion). **Run inline without creating a file.**
+- To pin a specification or behavior (i.e., persist it), append directly to the body of `tests/spec/*.test.ry` (spec tests are durable assets).
+- For C++-side verification, append to `tests/test_runtime_*.cpp` and run with `./build/ry_tests --gtest_filter=...`.
+- **Limited `/tmp` exception**: when the GitHub CLI or another external tool's interface requires a file path that cannot be expressed via command-line arguments or heredocs alone, you MAY use a file under `/tmp/`. **However, do not delete the created file and do not attempt to delete it** (do not write `rm /tmp/...` / `unlink` / cleanup traps). Defer to OS tmp cleanup.
+- Intentionally creating a "file to be deleted in the end" as a workaround is prohibited (inside the project completely; even in `/tmp` do not write delete commands). For verification, choose one of `/ry-playground` (heredoc) / appending into an existing test file / `/tmp` (no deletion).
 
-## 禁止用語: flake / flaky
+## Prohibited terminology: flake / flaky
 
-CI #2578 で Claude Code が `tests/spec/collection_meta_propagation.test.ry` のクラッシュを「flake なので re-run」と結論した事故が契機 (#1990)。本来 1% 未満の非決定的事象を指す用語が、50% 以上の確率で発生する現象にも繰り返し適用されてきた。決定論的な Von Neumann 型計算機上で真の意味で flaky な事象は存在せず、条件が満たされれば必ず起きる現象を「flaky」と呼ぶことは **root cause analysis の放棄** と同義。何度も指摘されたが改善されないため、全面禁止以外の選択肢がなくなった。
+CI #2578, in which Claude Code concluded that a crash in `tests/spec/collection_meta_propagation.test.ry` was "flake; re-run", triggered this rule (#1990). A term meant for non-deterministic phenomena occurring at under 1% has been repeatedly applied to phenomena that occur over 50% of the time. Truly flaky events do not exist on a deterministic Von Neumann machine, and calling a phenomenon that necessarily occurs when its conditions are met "flaky" is equivalent to **abandoning root-cause analysis**. After repeated objections without improvement, total prohibition is the only remaining option.
 
-### 禁止ルール (例外なし)
+### Prohibition rule (no exceptions)
 
-- **MUST**: Claude Code はあらゆる説明・出力 (応答 / commit message / PR description / 新規 KNOWLEDGE 追記 / コードコメント / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` 等) で `flake` / `flaky` の語を **あらゆる言語で** 使用してはならない
-  - 日本語訳・カタカナ表記 (フレーク / フレーキー / フレーク的 / フレーキーなテスト 等) を含む
-  - 他言語の同義語 (`unstable` / `intermittent` 等) を **`flake` / `flaky` の言い換えとして使う行為** も禁止 (下記「代替表現の要求」に従わない使い方は不可)
-- **MUST**: Claude Code は `flake` / `flaky` を **CI 失敗・テスト失敗の理由・結論** として用いてはならない (口頭・テキスト・自律トリアージ判断のいずれにおいても)
+- **MUST**: Claude Code MUST NOT use the words `flake` / `flaky` in any explanation or output (responses / commit messages / PR descriptions / new KNOWLEDGE entries / code comments / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.) **in any language**.
+  - This includes Japanese transliterations, katakana renderings, and any rendering in any other language.
+  - Substituting another-language synonym (e.g., `unstable`, `intermittent`) **as a stand-in for `flake` / `flaky`** is also prohibited (using it in any way that does not follow the "Required alternative wording" rule below is not allowed).
+- **MUST**: Claude Code MUST NOT use `flake` / `flaky` as the **reason or conclusion for a CI failure or test failure** (whether spoken, written, or as part of an autonomous triage decision).
 
-### 代替表現の要求
+### Required alternative wording
 
-CI 失敗・テスト失敗を説明する際、Claude Code は以下のいずれかを必須とする:
+When explaining a CI failure or test failure, Claude Code MUST use one of the following:
 
-- **(a) 発生条件の明示**: 例「LLVM ORC JIT teardown で heap consolidation が走るタイミングと glibc tcache の状態が衝突した場合に発生」のように、現象が発生する条件を具体的に特定して書く
-- **(b) `KNOWLEDGE.md` の既存 entry への明示リンク**: issue 番号 + 行番号 (例: `KNOWLEDGE.md` L261, #1895) を必ず付ける。entry 名のみのふんわり参照は不可
-- **(c) root cause 未特定の場合**: 「**発生条件未特定。再現条件の調査が未完了**」と明記する。この場合、**安易な再実行 (re-run) 提案を禁止** する。代わりに、調査タスクとして起票するか、ユーザーに調査着手の許可を求めること
+- **(a) Stating the occurrence condition**: e.g., "occurs when the timing at which heap consolidation runs during LLVM ORC JIT teardown collides with the state of glibc tcache" — specifically identify the conditions under which the phenomenon occurs.
+- **(b) An explicit link to an existing `KNOWLEDGE.md` entry**: always include the issue number + line number (e.g., `KNOWLEDGE.md` L261, #1895). A vague reference by entry name alone is not acceptable.
+- **(c) When the root cause is not yet identified**: write explicitly "**Occurrence condition not yet identified. Investigation of the reproduction condition is incomplete.**" In this case, **a casual re-run suggestion is prohibited**. Instead, either file the investigation as a task, or ask the user for permission to begin investigation.
 
-### 既存記述の扱い
+### Handling of existing text
 
-- `KNOWLEDGE.md` / `CHANGELOG.md` の歴史的記述 (例: `KNOWLEDGE.md` L261 #1895 の `~5-10 % Linux CI flake`、`CHANGELOG.md` L598 の `Linux CI flake (~5-10 %)` 等) は **変更しない**。理由: 検索性維持。upstream LLVM issue や CI 解析ログ・GitHub Issue との cross-reference が壊れる
-- 本ルールは **新規執筆 (今後の `KNOWLEDGE.md` 追記 / commit message / PR description / Claude Code の応答 / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` 等)** のみを対象とする
-- **MUST**: 歴史的 flake 記述を **引用・参照して `flake` を結論に再導入する行為** も禁止 (CI #2578 の事故経路と同じため)。歴史的記述に当たった症状を説明する場合は (a)/(b)/(c) のいずれかに変換してから書く
+- Historical text in `KNOWLEDGE.md` / `CHANGELOG.md` (e.g., `KNOWLEDGE.md` L261 #1895's `~5-10 % Linux CI flake`, `CHANGELOG.md` L598's `Linux CI flake (~5-10 %)`, etc.) MUST NOT be modified. Reason: searchability. Cross-references with upstream LLVM issues, CI analysis logs, and GitHub Issues would break.
+- This rule applies only to **new writing (future additions to `KNOWLEDGE.md` / commit messages / PR descriptions / Claude Code responses / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.)**.
+- **MUST**: **reintroducing `flake` as a conclusion by quoting or referencing historical flake text** is also prohibited (it is the same accident path as CI #2578). When describing a symptom that hits historical text, convert it into one of (a)/(b)/(c) before writing.
 
-## Git ブランチ運用ルール
+## Git branch policy
 
-- フィーチャーブランチは `main` から作成し、PR は `main` に向けて作成する。`main` への直接コミットは禁止
-- **MUST (例外なし)**: フィーチャーブランチ名に文字列 `main` を含めてはならない。判定はブランチ名を小文字化し英字以外 (`/`, `-`, `_`, 数字、記号など) を全て除去した文字列に対して行い、その中に `m`,`a`,`i`,`n` がこの順で連続出現する場合は違反 (記号・大文字小文字・kebab セグメント境界での迂回不可、`domain-driven` のように自然な単語に偶然含まれる場合も禁止)。理由: `git branch | grep -i main` 等の検索ノイズとスクリプト判定の誤マッチを完全排除するため。違反した場合は `git branch -m <new>` で改名してから push すること
-- フィーチャーブランチに main の最新を取り込む際は **`git rebase origin/main`** を使う (履歴の線形性を保つため)。merge commit による合流はしない。具体手順は `/git-push` / `/git-create-pr` / `/git-resolve-conflicts` を参照
-- rebase 後の push は **`git push --force-with-lease`** を使う (二回目以降は SHA が書き換わるため force push が必要。`--force-with-lease` は remote の予期しない進行を検知して上書きをブロックする)。`fetch` と `push` の間で `git fetch` を再実行しない (lease 保護が緩む)
-- 上記の rebase 方針はフィーチャーブランチへの main 取り込みに限る。`/preparing-for-release` での main 自体の更新は別系統で、`git pull --ff-only origin main` のまま (線形性が保証されているため変更不要)
-- PR マージ前に、未追跡ファイルや未コミットの変更がないか確認すること。ある場合はマージ前にユーザーに報告し、コミットの要否を確認する
-- `.serena/` ディレクトリに差分がある場合は、他の変更と一緒にコミットすること
+- Feature branches are created from `main`, and PRs target `main`. Direct commits to `main` are prohibited.
+- **MUST (no exceptions)**: a feature-branch name MUST NOT contain the string `main`. The check is performed against the branch name after lowercasing and stripping all non-alphabetic characters (`/`, `-`, `_`, digits, symbols, etc.); if `m`, `a`, `i`, `n` appear consecutively in that order in the resulting string, it is a violation (no evasion via symbols, case, or kebab segment boundaries; and even when the substring appears incidentally inside a natural word such as `domain-driven`, it is still prohibited). Reason: to fully eliminate search noise from queries like `git branch | grep -i main` and false matches in script-based detection. On a violation, rename via `git branch -m <new>` before pushing.
+- To bring the latest `main` into a feature branch, use **`git rebase origin/main`** (to keep history linear). Do not merge `main` into the feature branch. The concrete procedure is in `/git-push` / `/git-create-pr` / `/git-resolve-conflicts`.
+- For pushes after a rebase, use **`git push --force-with-lease`** (a force push is required from the second push onwards because SHAs are rewritten; `--force-with-lease` detects unexpected progression of the remote and blocks the overwrite). Do not re-run `git fetch` between `fetch` and `push` (it relaxes the lease guard).
+- The rebase policy above applies only to bringing `main` into a feature branch. The update of `main` itself in `/preparing-for-release` is on a separate path and remains `git pull --ff-only origin main` (linearity is guaranteed, so no change is needed).
+- Before merging a PR, verify there are no untracked files or uncommitted changes. If there are, report to the user before merging and confirm whether to commit them.
+- When there are diffs under `.serena/`, commit them together with the other changes.
 
-## 責務の分離
+## Separation of Concerns
 
-### Claude Code が自律的に行うこと
+### What Claude Code does autonomously
 
-- 実装
-- テスト実行
-- セルフ検証
-- ドキュメント更新
-- PR マージ後の `wip` ラベル除去（`git-close-pr` Step 7 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない。issue クローズは `Closes #xx` キーワードにより GitHub が自動で行う。ただしこれは feature が main に入った記録であり、リリース完了ではない — 「リリースワークフロー」参照）
+- Implementation
+- Test execution
+- Self-verification
+- Documentation updates
+- Removing the `wip` label after PR merge (consolidated into `git-close-pr` Step 7. Executed autonomously immediately after merge completion, without waiting for user instruction. Issue closure is performed automatically by GitHub via the `Closes #xx` keyword. Note that this is a record of the feature landing on `main`, not a release completion — see "Release Workflow").
 
-#### 副次的発見への対応
+#### Handling side findings
 
-副次的な発見 (side finding) を検出したときの early short-circuit フロー (Q1 再現困難 CI 問題 → Q2 ユーザー明示指示 → Q3 `bug-forensics-analyst` → Q4 Claude Code 自律判断、**フェーズ別**) と Issue Creation Steps は `.claude/skills/triage-side-finding/SKILL.md`（または `/triage-side-finding`）参照。Q4 はトリアージ発生フェーズで分岐 — **Phase A** (起票・分割・Plan モード中) は (a) 即時修正 / (b) 起票許可の 2 分岐、**Phase B** (実装中・レビュー対応中) は同 PR 吸収を default とし、クラッシュ系 (ASan/UBSan/TSan/libFuzzer + abort/SEGV/UAF/memory leak/corruption) は無条件、非クラッシュ系は **1000 行閾値** (added + removed の raw line count) で Q2 再ルートに escalate。Q4 の自律判断要件は §"起票判断における選択肢提示の禁止" 参照。
+The early short-circuit flow when detecting a side finding (Q1 hard-to-reproduce CI issue → Q2 explicit user instruction → Q3 `bug-forensics-analyst` → Q4 Claude Code autonomous decision; **phase-aware**) and the Issue Creation Steps are in `.claude/skills/triage-side-finding/SKILL.md` (or `/triage-side-finding`). Q4 branches by the phase in which triage occurred — **Phase A** (during filing / splitting / Plan mode) has two branches (a) immediate fix and (b) request permission to file; **Phase B** (during implementation / review response) defaults to same-PR absorption, with crash-class findings (ASan/UBSan/TSan/libFuzzer + abort/SEGV/UAF/memory leak/corruption) escalating unconditionally, and non-crash findings escalating via the **1000-line threshold** (added + removed raw line count) re-routing to Q2. The autonomous-decision requirements of Q4 are in §"Prohibition on presenting choices in filing decisions".
 
-#### 副次的発見の判断優先順位
+#### Priority order for side-finding decisions
 
-副次的発見のトリアージ (Q1-Q4) において以下の優先順位を適用する。**本サブセクションのルールは「副次的発見の扱いに関する判断」にのみ適用** — 品質ゲート系ルール (サニタイザーエラー禁止 / TDD サイクル分割禁止 / `main` 直接コミット禁止 / `.serena/` 差分の同時コミット 等) は本サブセクションで override されない。
+The following priority order applies to side-finding triage (Q1–Q4). **The rules in this subsection apply only to "decisions about how to handle a side finding"** — quality-gate rules (sanitizer-error ban / TDD-cycle split ban / direct-commit-to-`main` ban / committing `.serena/` diffs together / etc.) are NOT overridden by this subsection.
 
-1. **ユーザー要望優先**: 副次的発見の扱いについてユーザーが明示的に方針指示した場合 (`/triage-side-finding` Q2 = Yes)、判定フローよりユーザー指示を優先する。skill / agent / advisor の判断を根拠にユーザー指示を覆そうとしてはならない。**ただし副次的発見の判断にのみ適用** — サニタイザーエラー禁止 / TDD サイクル分割禁止などの品質ゲートは override しない。
-2. **再現困難問題の即時修正**: CI 検出の再現困難なメモリ破壊 / 並行性 race / fuzz crash 等 (`/triage-side-finding` Q1 = Yes に該当) は、起源判定 (regression vs pre-existing) より修正タイミングを優先する。再現中のウィンドウを逃さない原則。**ただし副次的発見の判断にのみ適用**。
-3. **分析より修正優先**: Q1 / Q2 該当時は `bug-forensics-analyst` / advisor を呼ばない。意味は「即時修正を選んだあと不要な分析で時間を消費しない」であり、root cause 分析投資原則 (`/plan-rubric` 等) と衝突せず、Q3 経由の分析完了後の修正着手を妨げない。
+1. **User wish takes priority**: when the user has explicitly directed how to handle the side finding (`/triage-side-finding` Q2 = Yes), the user's instruction takes priority over the decision flow. Skill / agent / advisor judgments MUST NOT be used as a reason to override a user instruction. **However, this applies only to side-finding decisions** — quality gates such as sanitizer-error ban / TDD-cycle split ban are NOT overridden.
+2. **Immediate fix for hard-to-reproduce issues**: hard-to-reproduce CI-detected memory corruption / concurrency races / fuzz crashes etc. (matching `/triage-side-finding` Q1 = Yes) prioritize the timing of the fix over origin determination (regression vs. pre-existing). The principle is not missing the reproduction window. **However, this applies only to side-finding decisions.**
+3. **Fixing takes priority over analysis**: when Q1 / Q2 applies, do not invoke `bug-forensics-analyst` / advisor. The meaning is "after choosing the immediate fix, do not burn time on unnecessary analysis"; it does not conflict with the root-cause analysis investment principle (`/plan-rubric` etc.) and does not impede starting the fix after the analysis via Q3 completes.
 
-> **用語注記**: `bug-forensics-analyst` は `.claude/agents/` 配下の subagent (§"ナレッジベース" の catalog 参照、backtick で表記)。advisor は Claude Code 組み込みの advisor tool あるいは外部レビュワーを指す汎用ロールで、`.claude/agents/` に独立ファイルを持たないため backtick なしで表記する。
+> **Terminology note**: `bug-forensics-analyst` is a subagent under `.claude/agents/` (see the catalog in §"Knowledge base"; written in backticks). `advisor` refers to either the advisor tool built into Claude Code or to an external reviewer in a generic role; it has no dedicated file in `.claude/agents/`, so it is written without backticks.
 
-#### 起票判断における選択肢提示の禁止
+#### Prohibition on presenting choices in filing decisions
 
-- **MUST (例外なし)**: Claude Code がユーザーに提示する選択肢に「別 issue に起票する」を含めてはならない。これは `AskUserQuestion` ツールの options、テキストの選択肢列挙 (「(a)... (b)... (c)...」「以下のいずれか: ...」等)、口頭での 3 択提示など、形態を問わない。起票要否は Claude Code が自律判断する責務であり、ユーザーへの選択肢提示で代替してはならない
-- 起票が必要と Claude Code が自律判断した場合は `/git-create-issue` Step 1 (preview 6 項目 [起票理由 / 概要 / 粒度 / 解決確度 / ラベル案 / マイルストーン候補] → 明示許可待ち) に従う。preview は「起票内容の提示」であって「選択肢の提示」ではない (ユーザーは 1 つの起票案に対して許可/decline のみ判断する)
-- **適用範囲**: 「ユーザーが自発的に『別 issue にすべきか』と問いかけた場合」は Q2 (informed-consent gate) 経由のユーザー指示として扱い、`/triage-side-finding` Q2 のフロー (What / Where / 推定サイズ / Dependency risk を提示してから指示を仰ぐ) に従う。本ルールは「Claude Code 起点で 3 択以上を提示する行為」を禁止するもので、ユーザー起点の問いかけには影響しない
-- **Why**: #1851 の自律誘導失敗 (Claude Code が「別 issue 起票」を選択肢として提示しユーザーを誘導した事故) の再発防止 / `/git-create-issue` permission gate との二重化排除 / ユーザーが判断材料なしで即決を求められる問題の排除
-- 関連: `/triage-side-finding` Q4 (自律判断 2 分岐)、`/triage-side-finding` Issue Creation Steps Step 1 escalate 節 (1 択推奨)、`/git-create-issue` Step 1 (preview gate)
+- **MUST (no exceptions)**: the choices Claude Code presents to the user MUST NOT include "open as a separate issue". This applies to `AskUserQuestion` options, textual enumerations of choices ("(a)... (b)... (c)..." / "either of: ..." etc.), spoken three-way prompts, and any other form. Filing decisions are Claude Code's autonomous responsibility, and MUST NOT be substituted by presenting choices to the user.
+- When Claude Code autonomously decides a filing is needed, follow `/git-create-issue` Step 1 (preview of 6 items [filing reason / overview / granularity / resolution confidence / proposed labels / milestone candidate] → wait for explicit permission). The preview is "presentation of the issue contents", not "presentation of choices" (the user judges only permit/decline against a single issue proposal).
+- **Applicable scope**: "When the user spontaneously asks 'should this be a separate issue?'" is treated as a user instruction via Q2 (informed-consent gate), and the flow of `/triage-side-finding` Q2 (present What / Where / estimated size / Dependency risk before soliciting the instruction) is followed. This rule prohibits "Claude Code initiating a three-or-more-way choice"; it does not affect user-initiated questions.
+- **Why**: regression prevention for the autonomous-induction failure of #1851 (where Claude Code presented "file as a separate issue" as a choice and steered the user); removing duplication with the `/git-create-issue` permission gate; eliminating the problem of users being asked to decide on the spot without basis.
+- Related: `/triage-side-finding` Q4 (two-branch autonomous decision); `/triage-side-finding` Issue Creation Steps Step 1 "escalate" subsection (single-choice recommendation); `/git-create-issue` Step 1 (preview gate).
 
-### ユーザーが明示的に指示すること
+### What the user explicitly directs
 
-- 外部レビュー（GitHub PR レビュー等）
+- External review (GitHub PR review, etc.)
 - git add / commit / push
-- PR 作成
-- **新規 issue の起票 (`gh issue create`)** — Claude Code は起票内容 (理由 / 概要 / 粒度 / 解決確度 / ラベル案 / マイルストーン候補) を提示するに留め、ユーザーの明示許可 (「起票して」 / 「OK」等) を待つ。CI 失敗・サニタイザー検出・fuzz crash 等の repo 全体に影響する事故も口頭 (テキスト) 報告のみで、自律起票しない。詳細手順は `/git-create-issue` 参照。**起票の要否判断時に「別 issue にする」を選択肢としてユーザーに提示してはならない** → §"起票判断における選択肢提示の禁止" も参照
-  - **例外**: `preparing-for-release` skill 経由 (Release prep / Release / Cleanup issue) は `/preparing-for-release <X.Y.Z>` のユーザー起動が起票許可を兼ねるため、この許可制の対象外
+- PR creation
+- **Filing a new issue (`gh issue create`)** — Claude Code only presents the proposed issue contents (reason / overview / granularity / resolution confidence / proposed labels / milestone candidate) and waits for explicit user permission ("file it" / "OK" etc.). Repo-wide incidents such as CI failures, sanitizer detections, fuzz crashes etc. are reported in text only; do not file autonomously. The detailed procedure is in `/git-create-issue`. **When deciding whether to file, MUST NOT present "open as a separate issue" as a choice to the user** → see also §"Prohibition on presenting choices in filing decisions".
+  - **Exception**: via the `preparing-for-release` skill (Release prep / Release / Cleanup issue), the user invocation of `/preparing-for-release <X.Y.Z>` doubles as filing permission, so this is outside the permission-required rule.
 
-### PR レビュー対応
+### PR review response
 
-- **コミット/プッシュの徹底**: 修正内容がコミット・プッシュされていなければ PR に反映されない。レビュー対応の完了時に未コミットの変更があればユーザーに必ず伝え、コミット・プッシュを促すこと
-- **Resolve 判断はレビュワーに委ねる**: CodeRabbit は返信内容を自動検証して自分で会話を Resolve するため、Claude Code が先回りで Resolve すると検証フローが機能しない。人間レビュワーのコメントも同様に、返信のみ行い Resolve 判断は委ねる
-- **マージ前の未 Resolve チェック**: `git-close-pr` Step 6 が自動で未 Resolve 会話を検出し、残っていればマージを中止する
+- **Committing/pushing is mandatory**: a fix that is not committed and pushed is not reflected in the PR. When review response is complete, if there are uncommitted changes, report them to the user without fail and encourage commit and push.
+- **Resolve decisions are delegated to the reviewer**: CodeRabbit auto-verifies reply content and resolves the conversation itself, so if Claude Code resolves preemptively, the verification flow does not work. Human reviewer comments are the same — reply only and delegate the resolve decision.
+- **Pre-merge unresolved check**: `git-close-pr` Step 6 automatically detects unresolved conversations and aborts the merge if any remain.
 
-### PR レビューから得た学びの蓄積
+### Accumulating lessons from PR reviews
 
-PR レビューで受けた指摘のうち他 PR にも再発しうるパターンは追記する: path-scope に収まれば対応 `.claude/rules/<name>.md`、横断的なら `.claude/skills/pr-review-recurring-patterns/SKILL.md`。追記は自律的に行い、レビュー対応コミットと一緒にプッシュする。単発の local 指摘は追記不要。
+For comments received in PR review that are likely to recur in other PRs, append: to the corresponding `.claude/rules/<name>.md` if it fits a path-scope, or to `.claude/skills/pr-review-recurring-patterns/SKILL.md` if it is cross-cutting. Append autonomously and push it together with the review-response commit. Single local comments do not require an addition.
 
-## 作業完了前チェックリスト
+## Pre-completion checklist
 
-タスクの完了前に必ず実行する手順 (ドキュメント反映 / CHANGELOG / rules+skills 更新 / 全テスト / ASan+UBSan / TSan / libFuzzer / バックグラウンドタスク / ラベル整理) は `.claude/skills/pre-commit-checklist/SKILL.md`（または `/pre-commit-checklist`）参照。
+The procedure to execute without fail before completing a task (documentation reflection / CHANGELOG / rules+skills update / full test / ASan+UBSan / TSan / libFuzzer / background-task check / label cleanup) is in `.claude/skills/pre-commit-checklist/SKILL.md` (or `/pre-commit-checklist`).
 
-## リリースワークフロー
+## Release Workflow
 
-> **注意**: main へのマージ = mainline 取り込みのみ。リリース (タグ push → GitHub Release) は別工程。
+> **Note**: merging into `main` = mainline landing only. The release (tag push → GitHub Release) is a separate process.
 
-リリース起動手順・タグ push 駆動の仕組み・マイルストーン close ポリシーの詳細は `.claude/skills/release-orchestrator/SKILL.md`（または `/release-orchestrator`）参照。feature-complete になったら `/preparing-for-release <X.Y.Z>` を起動する。
+Details on the release startup procedure, the tag-push-driven mechanism, and the milestone-close policy are in `.claude/skills/release-orchestrator/SKILL.md` (or `/release-orchestrator`). Once feature-complete, launch `/preparing-for-release <X.Y.Z>`.
