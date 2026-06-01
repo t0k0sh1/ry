@@ -166,3 +166,14 @@ fn boundsCheckingTests():
       xs = [1, 2, 3]
       ys = slice(xs, -2, -3)
       expect(ys).toHaveLen(0)
+
+  @describe("nested codegen contexts")
+  fn nestedCodegenContextTests():
+    @it("should bounds-check inside a closure indexing a list parameter")
+    fn shouldBoundsCheckInsideClosureIndexingListParameter():
+      pick = (items: List<int>) => items[0]
+      expect(pick([10, 20, 30])).toEq(10)
+    @it("should wrap a negative index inside a closure")
+    fn shouldWrapNegativeIndexInsideClosure():
+      pickLast = (items: List<int>) => items[-1]
+      expect(pickLast([10, 20, 30])).toEq(30)

@@ -1,0 +1,42 @@
+# FileCheck golden: array bounds-check basic blocks are emitted under the
+# ENCLOSING function (the lambda / the generic instantiation), not the outer
+# function. This pins that ry_emit_bounds_check derives the BasicBlock parent
+# from the builder's insertion block, consistent with every other ABI helper
+# (#1996).
+#
+# Each callee indexes a List<int> PARAMETER, so the length is non-constant and
+# lowerBoundsCheck does NOT constant-fold the check away (see the
+# "Lowering constant-fold and emission must agree" rule) — a runtime
+# bounds-check with .oob / .ok blocks is emitted. CHECK-LABEL anchors each
+# block of assertions to its enclosing function, so the .oob / .ok labels are
+# verified to live inside THAT function, i.e. under the correct parent.
+#
+# Destructor context is intentionally NOT covered: Ry has no user-writable
+# destructor (no Drop / __del__); ARC release is compiler-generated and never
+# indexes an array, so a "destructor indexing an array" case is not expressible
+# in Ry source. Closure + generic cover the user-reachable nested contexts.
+#
+# --- closure (lambda) parent function ---
+# CHECK-LABEL: define internal i64 @__lambda.{{[0-9]+}}(ptr %items)
+# CHECK:         icmp slt i64 {{.*}}, 0
+# CHECK:         icmp sge i64 {{.*}}, %length
+# CHECK:         br i1 {{.*}}, label %index.oob, label %index.ok
+# CHECK:       index.oob:
+# CHECK:       index.ok:
+#
+# --- generic instantiation parent function ---
+# CHECK-LABEL: define internal i64 @"firstOf<int>{{.*}}"(ptr %items)
+# CHECK:         icmp slt i64 {{.*}}, 0
+# CHECK:         icmp sge i64 {{.*}}, %length
+# CHECK:         br i1 {{.*}}, label %index.oob, label %index.ok
+# CHECK:       index.oob:
+# CHECK:       index.ok:
+
+fn firstOf<T>(items: List<T>) -> T:
+  return items[0]
+
+fn main() -> int:
+  pick = (items: List<int>) => items[0]
+  a = pick([10, 20, 30])
+  b = firstOf[int]([40, 50, 60])
+  return a + b
