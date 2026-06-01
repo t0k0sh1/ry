@@ -127,6 +127,41 @@ The final Stage 2-C PR closes #1965 by migrating the last lowered IR op (`Contro
 
 After this PR, the lowering / emission graduation documents (`codegen-{semantic-lowering,llvm-emission}-graduation.md`) can be written per `layer-graduation-workflow.md` — Stage 2 is complete, the lowered IR vocabulary has converged, existing tests pass against the post-extraction shape, and the emission layer's `extern "C"` ABI carries no LLVM-owned types (enforced by the header-level lint).
 
+## ABI struct-layout verification (#1995)
+
+`#[repr(C)]` on the Rust side guarantees a C-ABI-compatible layout, but it does **not** by itself guarantee that the Rust structs match the C++ structs in `include/ry/llvm_emit/api.h` byte-for-byte: field order, padding, and `enum` underlying-type interpretation can each drift incidentally when the two declarations are maintained by hand. Because the Rust reimplementation of `ry_llvm_emit` (#1950 / #1993) passes these descriptors across the FFI boundary by pointer, any such drift is a silent miscompile. The verification mechanism below is the safety net that turns that class of drift into a build failure.
+
+### Method A — paired compile-time assertions
+
+The check is implemented as two halves that assert against the **same** constants:
+
+- **C++ side** — `tests/test_abi_layout.cpp`: `static_assert(sizeof(...) == N)`, `static_assert(alignof(...) == N)`, and `static_assert(offsetof(..., field) == N)`. The TU includes only `api.h` + `<cstddef>` (no LLVM headers) and is compiled into `ry_tests` on every normal build.
+- **Rust side** — `crates/ry_llvm_emit/src/lib.rs`: `const _: () = assert!(core::mem::size_of::<T>() == N)` / `align_of` / `offset_of!`. These `const _` items are const-evaluated even under `cargo check`, so CI's `lint` job exercises them via `cargo check -p ry_llvm_emit` without building the full cdylib.
+
+Method A was chosen over a runtime layout-probe ABI helper (e.g. `size_t ry_layout_probe(uint32_t)`) deliberately: a probe would add a new `extern "C"` symbol to the emission ABI, which collides with the parent issue's "do not extend the production emission `extern "C"` ABI surface" constraint, and it would require linking the Rust cdylib (`RY_LLVM_EMIT_IMPL_RUST=ON`) before the C++ side could call it — making "always run in CI" harder. Method A adds no ABI surface and fails fast at build / check time.
+
+### Verification model and its residual gap
+
+Method A locks **each language side independently** to a reviewed constant. Its guarantees:
+
+- Incidental drift on **either** side (a reordered field, new padding, a changed type width) makes that side's `sizeof` / `offsetof` disagree with `N`, breaking that side's build. This is the realistic threat model when hand-porting the 28 function bodies in #1993 Sub-issue 3 — e.g. editing a Rust typedef is caught against the C++-derived constant.
+- It does **not** compare the C++ layout against the Rust layout directly. A deliberate edit to `api.h` that also updates the C++ constant but forgets the Rust struct would leave both sides individually green while the real layouts diverge. That residual is covered by process, not mechanism: `api.h` is the locked ABI ground truth, and any change to it must update the byte-for-byte Rust mirror. Closing the gap mechanically (cbindgen / a shared source-of-truth / a runtime probe) is intentionally **not** done here — it would contradict Method A's "add no ABI surface" premise and over-engineer against the realistic drift direction.
+
+The canonical constants below are the human-readable source of truth that a reviewer cross-checks both sides against.
+
+### Canonical layout (64-bit ABI: x86-64 / arm64)
+
+Descriptor structs — `sizeof` / `alignof` and every field offset (bytes):
+
+| Struct | size | align | field offsets |
+|---|---|---|---|
+| `RyCowEnsureUniqueDesc` | 64 | 8 | `data_ptr_id` 0, `slot_ptr_id` 4, `kind` 8, `atomic` 12, `elem_size` 16, `key_size` 24, `val_size` 32, `do_elem_retain` 40, `elem_is_str` 44, `do_key_retain` 48, `key_is_str` 52, `destructor_callee` 56 |
+| `RyAnyWrapDesc` | 56 | 8 | `kind` 0, `target_tag` 8, `val_id` 16, `do_collection_retain` 20, `do_str_retain` 24, `descriptor_id` 28, `box_layout_ty` 32, `box_data_size` 40, `any_ty` 48 |
+| `RyAnyUnwrapDesc` | 96 | 8 | `kind` 0, `any_val_id` 4, `any_ty` 8, `target_ty` 16, `expected_tag` 24, `do_collection_retain` 32, `do_str_retain` 36, `mismatch_msg` 40, `mismatch_global_name` 48, `expected_desc_id` 56, `box_layout_ty` 64, `record_struct_ty` 72, `desc_mismatch_msg` 80, `desc_mismatch_global_name` 88 |
+| `RyAnyTryUnwrapDesc` | 64 | 8 | `kind` 0, `any_val_id` 4, `any_ty` 8, `res_ty` 16, `error_ty` 24, `target_ty` 32, `expected_tag` 40, `do_collection_retain` 48, `do_str_retain` 52, `err_msg_str_id` 56 |
+
+Opaque handle typedefs — `sizeof` 8 / `alignof` 8 (pointers; per-field offset is N/A): `RyModuleHandle`, `RyBuilderHandle`, `RyContextHandle`, `RyFunctionHandle`, `RyTypeRef`, `RyFuncTypeRef`, `RyValueRef`, `RyBasicBlockRef`. Scalar intern handles `RyValueId` / `RyBasicBlockId` are `uint32_t` (`sizeof` 4). The four `Ry*Desc` above are the complete set of descriptor structs in `api.h`.
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

@@ -469,6 +469,7 @@ add_executable(ry_tests
     tests/test_spec_timeout.cpp
     tests/test_runtime_io_file.cpp
     tests/test_util_type_name.cpp
+    tests/test_abi_layout.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

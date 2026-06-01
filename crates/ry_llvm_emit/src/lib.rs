@@ -169,6 +169,98 @@ pub struct RyAnyTryUnwrapDesc {
 }
 
 // =============================================================
+// ABI struct-layout assertions (#1995).
+//
+// Compile-time checks that lock the Rust side of the ABI to the same
+// sizeof / alignof / field-offset constants asserted on the C++ side in
+// tests/test_abi_layout.cpp. Both sides assert against the SAME numbers,
+// so any incidental drift (field reorder, padding, type-width change) on
+// either side breaks the build. These `const _` items are evaluated even
+// under `cargo check`, so CI's lint step exercises them without a full
+// cdylib build. `core::mem::offset_of!` is const-evaluable since Rust
+// 1.77. See docs/architecture/llvm-ir-emission-boundary.md for the
+// verification model and the canonical value table.
+// =============================================================
+
+// --- Descriptor structs: sizeof + alignof + every field offset ---
+
+// RyCowEnsureUniqueDesc (12 fields).
+const _: () = assert!(core::mem::size_of::<RyCowEnsureUniqueDesc>() == 64);
+const _: () = assert!(core::mem::align_of::<RyCowEnsureUniqueDesc>() == 8);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, data_ptr_id) == 0);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, slot_ptr_id) == 4);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, kind) == 8);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, atomic) == 12);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, elem_size) == 16);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, key_size) == 24);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, val_size) == 32);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, do_elem_retain) == 40);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, elem_is_str) == 44);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, do_key_retain) == 48);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, key_is_str) == 52);
+const _: () = assert!(core::mem::offset_of!(RyCowEnsureUniqueDesc, destructor_callee) == 56);
+
+// RyAnyWrapDesc (9 fields).
+const _: () = assert!(core::mem::size_of::<RyAnyWrapDesc>() == 56);
+const _: () = assert!(core::mem::align_of::<RyAnyWrapDesc>() == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, kind) == 0);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, target_tag) == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, val_id) == 16);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, do_collection_retain) == 20);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, do_str_retain) == 24);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, descriptor_id) == 28);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, box_layout_ty) == 32);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, box_data_size) == 40);
+const _: () = assert!(core::mem::offset_of!(RyAnyWrapDesc, any_ty) == 48);
+
+// RyAnyUnwrapDesc (14 fields).
+const _: () = assert!(core::mem::size_of::<RyAnyUnwrapDesc>() == 96);
+const _: () = assert!(core::mem::align_of::<RyAnyUnwrapDesc>() == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, kind) == 0);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, any_val_id) == 4);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, any_ty) == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, target_ty) == 16);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, expected_tag) == 24);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, do_collection_retain) == 32);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, do_str_retain) == 36);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, mismatch_msg) == 40);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, mismatch_global_name) == 48);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, expected_desc_id) == 56);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, box_layout_ty) == 64);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, record_struct_ty) == 72);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, desc_mismatch_msg) == 80);
+const _: () = assert!(core::mem::offset_of!(RyAnyUnwrapDesc, desc_mismatch_global_name) == 88);
+
+// RyAnyTryUnwrapDesc (10 fields).
+const _: () = assert!(core::mem::size_of::<RyAnyTryUnwrapDesc>() == 64);
+const _: () = assert!(core::mem::align_of::<RyAnyTryUnwrapDesc>() == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, kind) == 0);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, any_val_id) == 4);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, any_ty) == 8);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, res_ty) == 16);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, error_ty) == 24);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, target_ty) == 32);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, expected_tag) == 40);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, do_collection_retain) == 48);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, do_str_retain) == 52);
+const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, err_msg_str_id) == 56);
+
+// --- Opaque handle typedefs: sizeof + alignof only (no fields) ---
+// All are `*mut <Opaque>` -> 8 bytes / 8-byte aligned on the 64-bit ABI.
+const _: () = assert!(core::mem::size_of::<RyModuleHandle>() == 8 && core::mem::align_of::<RyModuleHandle>() == 8);
+const _: () = assert!(core::mem::size_of::<RyBuilderHandle>() == 8 && core::mem::align_of::<RyBuilderHandle>() == 8);
+const _: () = assert!(core::mem::size_of::<RyContextHandle>() == 8 && core::mem::align_of::<RyContextHandle>() == 8);
+const _: () = assert!(core::mem::size_of::<RyFunctionHandle>() == 8 && core::mem::align_of::<RyFunctionHandle>() == 8);
+const _: () = assert!(core::mem::size_of::<RyTypeRef>() == 8 && core::mem::align_of::<RyTypeRef>() == 8);
+const _: () = assert!(core::mem::size_of::<RyFuncTypeRef>() == 8 && core::mem::align_of::<RyFuncTypeRef>() == 8);
+const _: () = assert!(core::mem::size_of::<RyValueRef>() == 8 && core::mem::align_of::<RyValueRef>() == 8);
+const _: () = assert!(core::mem::size_of::<RyBasicBlockRef>() == 8 && core::mem::align_of::<RyBasicBlockRef>() == 8);
+
+// --- Scalar intern-handle typedefs (u32) ---
+const _: () = assert!(core::mem::size_of::<RyValueId>() == 4 && core::mem::align_of::<RyValueId>() == 4);
+const _: () = assert!(core::mem::size_of::<RyBasicBlockId>() == 4 && core::mem::align_of::<RyBasicBlockId>() == 4);
+
+// =============================================================
 // ABI function stubs (27 total). All bodies are `unimplemented!()`
 // until Task 4 of #1950 implementation plan.
 //
