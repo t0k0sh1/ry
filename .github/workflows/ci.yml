@@ -86,6 +86,20 @@ jobs:
             --quiet \
             src/ include/
 
+      - name: Verify ry_llvm_emit ABI struct layout (Rust side, #1995)
+        run: |
+          # The Rust half of the C++ <-> Rust ABI struct-layout contract:
+          # the `const _: () = assert!(size_of / align_of / offset_of! ...)`
+          # items in crates/ry_llvm_emit/src/lib.rs are const-evaluated
+          # during `cargo check`, so this step fails on any layout drift.
+          # (The C++ half is the static_assert TU compiled into ry_tests by
+          # the `test` job.) cargo / CARGO_HOME / LLVM_SYS_211_PREFIX are
+          # baked into the CI image (docker/ci.Dockerfile). This is a narrow
+          # type-check + layout-assert pass; it does NOT build `ry` against
+          # the Rust cdylib (the full RY_LLVM_EMIT_IMPL_RUST=ON cutover is
+          # out of scope here — see #1993).
+          cargo check -p ry_llvm_emit
+
   test:
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21

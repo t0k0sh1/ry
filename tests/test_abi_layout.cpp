@@ -1,0 +1,117 @@
+// ABI struct-layout verification — C++ side (#1995).
+//
+// This translation unit is the C++ half of the C++ <-> Rust ABI layout
+// contract for the LLVM IR emission shared library. It pins the sizeof,
+// alignof, and every field offset of the descriptor structs, plus the
+// sizeof/alignof of the opaque handle typedefs declared in
+// include/ry/llvm_emit/api.h. The Rust half lives in
+// crates/ry_llvm_emit/src/lib.rs (the `const _: () = assert!(...)` block);
+// both sides assert against the SAME constants, so any incidental drift
+// (field reorder, padding, type-width change) on either side breaks the
+// build.
+//
+// Method A (#1995): paired compile-time assertions that add no new
+// extern "C" symbol to the ABI surface. The constants below are the
+// 64-bit-target layout (x86-64 / arm64); the ABI is not built for 32-bit
+// hosts. See docs/architecture/llvm-ir-emission-boundary.md for the
+// verification model and the canonical value table.
+
+#include "ry/llvm_emit/api.h"
+
+#include <cstddef>
+
+#include <gtest/gtest.h>
+
+// === Descriptor structs: sizeof + alignof + every field offset ===
+
+// RyCowEnsureUniqueDesc (12 fields) — api.h L429-465.
+static_assert(sizeof(RyCowEnsureUniqueDesc) == 64,
+              "RyCowEnsureUniqueDesc must be 64 bytes (mirror crates/ry_llvm_emit/src/lib.rs)");
+static_assert(alignof(RyCowEnsureUniqueDesc) == 8, "RyCowEnsureUniqueDesc must be 8-byte aligned");
+static_assert(offsetof(RyCowEnsureUniqueDesc, data_ptr_id) == 0, "RyCowEnsureUniqueDesc.data_ptr_id @ 0");
+static_assert(offsetof(RyCowEnsureUniqueDesc, slot_ptr_id) == 4, "RyCowEnsureUniqueDesc.slot_ptr_id @ 4");
+static_assert(offsetof(RyCowEnsureUniqueDesc, kind) == 8, "RyCowEnsureUniqueDesc.kind @ 8");
+static_assert(offsetof(RyCowEnsureUniqueDesc, atomic) == 12, "RyCowEnsureUniqueDesc.atomic @ 12");
+static_assert(offsetof(RyCowEnsureUniqueDesc, elem_size) == 16, "RyCowEnsureUniqueDesc.elem_size @ 16");
+static_assert(offsetof(RyCowEnsureUniqueDesc, key_size) == 24, "RyCowEnsureUniqueDesc.key_size @ 24");
+static_assert(offsetof(RyCowEnsureUniqueDesc, val_size) == 32, "RyCowEnsureUniqueDesc.val_size @ 32");
+static_assert(offsetof(RyCowEnsureUniqueDesc, do_elem_retain) == 40, "RyCowEnsureUniqueDesc.do_elem_retain @ 40");
+static_assert(offsetof(RyCowEnsureUniqueDesc, elem_is_str) == 44, "RyCowEnsureUniqueDesc.elem_is_str @ 44");
+static_assert(offsetof(RyCowEnsureUniqueDesc, do_key_retain) == 48, "RyCowEnsureUniqueDesc.do_key_retain @ 48");
+static_assert(offsetof(RyCowEnsureUniqueDesc, key_is_str) == 52, "RyCowEnsureUniqueDesc.key_is_str @ 52");
+static_assert(offsetof(RyCowEnsureUniqueDesc, destructor_callee) == 56,
+              "RyCowEnsureUniqueDesc.destructor_callee @ 56");
+
+// RyAnyWrapDesc (9 fields) — api.h L544-570.
+static_assert(sizeof(RyAnyWrapDesc) == 56, "RyAnyWrapDesc must be 56 bytes");
+static_assert(alignof(RyAnyWrapDesc) == 8, "RyAnyWrapDesc must be 8-byte aligned");
+static_assert(offsetof(RyAnyWrapDesc, kind) == 0, "RyAnyWrapDesc.kind @ 0");
+static_assert(offsetof(RyAnyWrapDesc, target_tag) == 8, "RyAnyWrapDesc.target_tag @ 8");
+static_assert(offsetof(RyAnyWrapDesc, val_id) == 16, "RyAnyWrapDesc.val_id @ 16");
+static_assert(offsetof(RyAnyWrapDesc, do_collection_retain) == 20, "RyAnyWrapDesc.do_collection_retain @ 20");
+static_assert(offsetof(RyAnyWrapDesc, do_str_retain) == 24, "RyAnyWrapDesc.do_str_retain @ 24");
+static_assert(offsetof(RyAnyWrapDesc, descriptor_id) == 28, "RyAnyWrapDesc.descriptor_id @ 28");
+static_assert(offsetof(RyAnyWrapDesc, box_layout_ty) == 32, "RyAnyWrapDesc.box_layout_ty @ 32");
+static_assert(offsetof(RyAnyWrapDesc, box_data_size) == 40, "RyAnyWrapDesc.box_data_size @ 40");
+static_assert(offsetof(RyAnyWrapDesc, any_ty) == 48, "RyAnyWrapDesc.any_ty @ 48");
+
+// RyAnyUnwrapDesc (14 fields) — api.h L595-628.
+static_assert(sizeof(RyAnyUnwrapDesc) == 96, "RyAnyUnwrapDesc must be 96 bytes");
+static_assert(alignof(RyAnyUnwrapDesc) == 8, "RyAnyUnwrapDesc must be 8-byte aligned");
+static_assert(offsetof(RyAnyUnwrapDesc, kind) == 0, "RyAnyUnwrapDesc.kind @ 0");
+static_assert(offsetof(RyAnyUnwrapDesc, any_val_id) == 4, "RyAnyUnwrapDesc.any_val_id @ 4");
+static_assert(offsetof(RyAnyUnwrapDesc, any_ty) == 8, "RyAnyUnwrapDesc.any_ty @ 8");
+static_assert(offsetof(RyAnyUnwrapDesc, target_ty) == 16, "RyAnyUnwrapDesc.target_ty @ 16");
+static_assert(offsetof(RyAnyUnwrapDesc, expected_tag) == 24, "RyAnyUnwrapDesc.expected_tag @ 24");
+static_assert(offsetof(RyAnyUnwrapDesc, do_collection_retain) == 32, "RyAnyUnwrapDesc.do_collection_retain @ 32");
+static_assert(offsetof(RyAnyUnwrapDesc, do_str_retain) == 36, "RyAnyUnwrapDesc.do_str_retain @ 36");
+static_assert(offsetof(RyAnyUnwrapDesc, mismatch_msg) == 40, "RyAnyUnwrapDesc.mismatch_msg @ 40");
+static_assert(offsetof(RyAnyUnwrapDesc, mismatch_global_name) == 48, "RyAnyUnwrapDesc.mismatch_global_name @ 48");
+static_assert(offsetof(RyAnyUnwrapDesc, expected_desc_id) == 56, "RyAnyUnwrapDesc.expected_desc_id @ 56");
+static_assert(offsetof(RyAnyUnwrapDesc, box_layout_ty) == 64, "RyAnyUnwrapDesc.box_layout_ty @ 64");
+static_assert(offsetof(RyAnyUnwrapDesc, record_struct_ty) == 72, "RyAnyUnwrapDesc.record_struct_ty @ 72");
+static_assert(offsetof(RyAnyUnwrapDesc, desc_mismatch_msg) == 80, "RyAnyUnwrapDesc.desc_mismatch_msg @ 80");
+static_assert(offsetof(RyAnyUnwrapDesc, desc_mismatch_global_name) == 88,
+              "RyAnyUnwrapDesc.desc_mismatch_global_name @ 88");
+
+// RyAnyTryUnwrapDesc (10 fields) — api.h L652-674.
+static_assert(sizeof(RyAnyTryUnwrapDesc) == 64, "RyAnyTryUnwrapDesc must be 64 bytes");
+static_assert(alignof(RyAnyTryUnwrapDesc) == 8, "RyAnyTryUnwrapDesc must be 8-byte aligned");
+static_assert(offsetof(RyAnyTryUnwrapDesc, kind) == 0, "RyAnyTryUnwrapDesc.kind @ 0");
+static_assert(offsetof(RyAnyTryUnwrapDesc, any_val_id) == 4, "RyAnyTryUnwrapDesc.any_val_id @ 4");
+static_assert(offsetof(RyAnyTryUnwrapDesc, any_ty) == 8, "RyAnyTryUnwrapDesc.any_ty @ 8");
+static_assert(offsetof(RyAnyTryUnwrapDesc, res_ty) == 16, "RyAnyTryUnwrapDesc.res_ty @ 16");
+static_assert(offsetof(RyAnyTryUnwrapDesc, error_ty) == 24, "RyAnyTryUnwrapDesc.error_ty @ 24");
+static_assert(offsetof(RyAnyTryUnwrapDesc, target_ty) == 32, "RyAnyTryUnwrapDesc.target_ty @ 32");
+static_assert(offsetof(RyAnyTryUnwrapDesc, expected_tag) == 40, "RyAnyTryUnwrapDesc.expected_tag @ 40");
+static_assert(offsetof(RyAnyTryUnwrapDesc, do_collection_retain) == 48, "RyAnyTryUnwrapDesc.do_collection_retain @ 48");
+static_assert(offsetof(RyAnyTryUnwrapDesc, do_str_retain) == 52, "RyAnyTryUnwrapDesc.do_str_retain @ 52");
+static_assert(offsetof(RyAnyTryUnwrapDesc, err_msg_str_id) == 56, "RyAnyTryUnwrapDesc.err_msg_str_id @ 56");
+
+// === Opaque handle typedefs: sizeof + alignof only (no fields) ===
+// All are pointers to incomplete structs -> 8 bytes / 8-byte aligned on
+// the 64-bit ABI. Per-field offset is N/A — handles carry no fields.
+static_assert(sizeof(RyModuleHandle) == 8 && alignof(RyModuleHandle) == 8, "RyModuleHandle is an 8-byte pointer");
+static_assert(sizeof(RyBuilderHandle) == 8 && alignof(RyBuilderHandle) == 8, "RyBuilderHandle is an 8-byte pointer");
+static_assert(sizeof(RyContextHandle) == 8 && alignof(RyContextHandle) == 8, "RyContextHandle is an 8-byte pointer");
+static_assert(sizeof(RyFunctionHandle) == 8 && alignof(RyFunctionHandle) == 8, "RyFunctionHandle is an 8-byte pointer");
+static_assert(sizeof(RyTypeRef) == 8 && alignof(RyTypeRef) == 8, "RyTypeRef is an 8-byte pointer");
+static_assert(sizeof(RyFuncTypeRef) == 8 && alignof(RyFuncTypeRef) == 8, "RyFuncTypeRef is an 8-byte pointer");
+static_assert(sizeof(RyValueRef) == 8 && alignof(RyValueRef) == 8, "RyValueRef is an 8-byte pointer");
+static_assert(sizeof(RyBasicBlockRef) == 8 && alignof(RyBasicBlockRef) == 8, "RyBasicBlockRef is an 8-byte pointer");
+
+// === Scalar intern-handle typedefs (uint32_t) ===
+static_assert(sizeof(RyValueId) == 4 && alignof(RyValueId) == 4, "RyValueId is a 4-byte uint32_t");
+static_assert(sizeof(RyBasicBlockId) == 4 && alignof(RyBasicBlockId) == 4, "RyBasicBlockId is a 4-byte uint32_t");
+
+// === Enum selectors: underlying type is `int` (4 bytes) ===
+// The descriptor structs store these as plain `int` fields; locking the
+// enum width here documents that the function-argument enums match the
+// Rust side's `c_int` representation. (No descriptor field is enum-typed.)
+static_assert(sizeof(RyBoundsKind) == sizeof(int), "RyBoundsKind underlying type is int");
+static_assert(sizeof(RyArcAtomic) == sizeof(int), "RyArcAtomic underlying type is int");
+static_assert(sizeof(RyCowKind) == sizeof(int), "RyCowKind underlying type is int");
+
+// A no-op runtime test so CTest shows a named green signal confirming this
+// TU (and therefore every static_assert above) compiled successfully.
+TEST(AbiLayout, LayoutContractCompiled) { SUCCEED(); }
