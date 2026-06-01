@@ -378,10 +378,18 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id, RyValueId len_i
 
     std::string oobBlockName = std::string(bb_prefix) + ".oob";
     std::string okBlockName = std::string(bb_prefix) + ".ok";
-    auto *oobBB =
-        llvm::BasicBlock::Create(*ctx->context, oobBlockName, ctx->function);
-    auto *okBB =
-        llvm::BasicBlock::Create(*ctx->context, okBlockName, ctx->function);
+    // Derive parent function from the builder's current insertion block, not
+    // from ctx->function: like ARC ops and result-branch, bounds-check may be
+    // emitted inside destructor / lambda / thunk / generic-instantiation
+    // bodies where cg.fn_ tracks the outer function while the builder has
+    // already been retargeted to the nested function. Using ctx->function
+    // would place new BBs in the wrong function and produce cross-function
+    // references that fail LLVM verify (the same hazard fixed for
+    // ry_emit_arc_retain / ry_emit_arc_release in #1968). This aligns the last
+    // remaining helper onto the builder-derived pattern (#1996).
+    auto *fn = ctx->builder->GetInsertBlock()->getParent();
+    auto *oobBB = llvm::BasicBlock::Create(*ctx->context, oobBlockName, fn);
+    auto *okBB = llvm::BasicBlock::Create(*ctx->context, okBlockName, fn);
     ctx->builder->CreateCondBr(oob, oobBB, okBB);
     ctx->builder->SetInsertPoint(oobBB);
 
