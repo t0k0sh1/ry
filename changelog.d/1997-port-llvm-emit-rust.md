@@ -1,0 +1,3 @@
+### Changed
+
+- codegen: ported all 28 LLVM IR emission ABI function bodies from the C++ implementation (`src/llvm_emit/impl.cpp`) to Rust (`crates/ry_llvm_emit/`) via the LLVM C API, producing byte-for-byte equivalent IR under `RY_LLVM_EMIT_IMPL_RUST=ON` (verified against the FileCheck goldens and the full Ry/C++ test suites). The C++ implementation and the `RY_LLVM_EMIT_IMPL_RUST` flag remain for now (removed in a follow-up sub-issue). ON builds require a shared libLLVM in the LLVM prefix so the host and the Rust cdylib share one LLVM instance — use `cmake --preset rust-emit` (Homebrew `llvm@21`); the default OFF (C++) build via `--preset default` is unchanged. (#1997)

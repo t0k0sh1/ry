@@ -93,6 +93,18 @@ llvm_map_components_to_libnames(LLVM_LIBS
     ${RY_ARCH_COMPONENTS} targetparser
 )
 
+# When the Rust ry_llvm_emit is active, `ry` and the Rust cdylib (built with
+# llvm-sys `force-dynamic`) MUST share ONE LLVM instance. Linking `ry` against
+# the static component archives above would embed its own LLVM copy while the
+# cdylib links shared libLLVM.dylib — two copies whose APFloat `fltSemantics`
+# singletons differ, hanging `ConstantFP::get`'s DenseMap lookup on any float
+# constant created on the Rust side (#1997). Link `ry` against shared libLLVM
+# so both reference the same libLLVM.dylib. Requires a shared libLLVM in the
+# LLVM prefix (Homebrew llvm@21 ships it; static-only /usr/local/llvm does not).
+if(RY_LLVM_EMIT_IMPL_RUST)
+    set(LLVM_LIBS LLVM)
+endif()
+
 # ===== GoogleTest (FetchContent) =====
 # In CI containers (docker/ci.Dockerfile and docker/ci-glibc-old.Dockerfile)
 # the gtest source tarball is pre-baked at $RY_VENDORED_GTEST_TARBALL so

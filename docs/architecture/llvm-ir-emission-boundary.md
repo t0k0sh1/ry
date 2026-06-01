@@ -162,6 +162,17 @@ Descriptor structs — `sizeof` / `alignof` and every field offset (bytes):
 
 Opaque handle typedefs — `sizeof` 8 / `alignof` 8 (pointers; per-field offset is N/A): `RyModuleHandle`, `RyBuilderHandle`, `RyContextHandle`, `RyFunctionHandle`, `RyTypeRef`, `RyFuncTypeRef`, `RyValueRef`, `RyBasicBlockRef`. Scalar intern handles `RyValueId` / `RyBasicBlockId` are `uint32_t` (`sizeof` 4). The four `Ry*Desc` above are the complete set of descriptor structs in `api.h`.
 
+## Sub-issue 3 landed (#1997 — 28 ABI bodies ported to Rust; shared-libLLVM link model)
+
+`crates/ry_llvm_emit/src/lib.rs` now implements all 28 `extern "C"` bodies via the LLVM C API (llvm-sys), byte-for-byte equivalent to `src/llvm_emit/impl.cpp` (verified: filecheck-15 identical under both backends; `ry test -p` 203/0 and `ry_tests` 2524 green with `RY_LLVM_EMIT_IMPL_RUST=ON`). The C++ impl and the flag remain (removed in Sub-issue 5). The handle ↔ `llvm-sys` cast is a plain pointer cast (`p as LLVMTypeRef`), mirroring impl.cpp's `reinterpret_cast`; the 28 functions preserve the internal call graph (`bounds_check` → `negative_index_wrap` + `bounds_error`; `cow_ensure_unique` → `arc_retain`/`arc_release`; `any_wrap` → `arc_retain`) and the three correctness rules (named↔anonymous struct sync, ARC `weak_count` Acquire-load, builder-derived parent function).
+
+**Load-bearing build requirement — ON builds need a SHARED libLLVM.** This was a latent defect in the #1949/#1950 scaffolding, exposed only here because Sub-issue 3 is the first time the Rust side builds real IR. Linking the Rust cdylib against the static LLVM component archives gives it its own LLVM copy, distinct from the one `ry` statically links — two copies whose `APFloat` `fltSemantics` singletons live at different addresses. When the Rust side calls `ConstantFP::get` on an `LLVMContext` created by the C++ side, the `FPConstants` DenseMap empty-key check (`isEqual(bucket, EmptyKey)`) compares against the *other* copy's singleton and never matches, so `LookupBucketFor` spins forever (any float constant — e.g. json `Result<float,…>` / NaN / INF). Integer / pointer / struct paths don't depend on a per-copy singleton, so they emit byte-identical IR and pass. The fix builds BOTH sides against ONE shared `libLLVM`:
+
+- `crates/ry_llvm_emit/Cargo.toml`: `llvm-sys` `force-dynamic` feature → links `libLLVM.dylib` instead of static archives.
+- `CMakeLists.txt`: `set(LLVM_LIBS LLVM)` under `RY_LLVM_EMIT_IMPL_RUST` → `ry` links shared `libLLVM` instead of static component libs.
+
+**Consequence — every ON environment must ship a shared libLLVM.** CI satisfies this (`docker/ci.Dockerfile` builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`); Homebrew `llvm@21` ships `lib/libLLVM.dylib`. The documented dev prefix `/usr/local/llvm` is **static-only** and does NOT — `cmake --preset rust-emit` (LLVM_DIR → Homebrew) is the local ON build. The OFF (C++ default) path is unaffected: it links the C++ impl into `ry`'s single LLVM (no second copy) and continues to use `/usr/local/llvm` static via `--preset default`.
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

@@ -16,6 +16,8 @@ cmake --build build                                     # Ninja parallelizes aut
 
 > The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
 
+> **Rust `ry_llvm_emit` (`RY_LLVM_EMIT_IMPL_RUST=ON`, #1950/#1993)**: build with `cmake --preset rust-emit` (→ `build-rust/`). This path REQUIRES a **shared libLLVM** in the LLVM prefix so `ry` and the Rust cdylib share one LLVM instance — otherwise `ConstantFP::get` hangs on float constants (two-LLVM `fltSemantics` split, #1997; see `docs/architecture/llvm-ir-emission-boundary.md` §"Sub-issue 3 landed"). The static-only `/usr/local/llvm` does NOT qualify; the `rust-emit` preset points `LLVM_DIR` at Homebrew `llvm@21` (ships `libLLVM.dylib`). CI's container already builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`. The default (OFF, C++ impl) path is unaffected and uses `--preset default` (`/usr/local/llvm` static).
+
 ## tree-sitter grammar build & install
 
 A PR that modifies any of `docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` requires rebuilding `ry.so`. Build/install commands, prerequisites, pitfalls (externals enum order / `mark_end` / `valid_symbols` semantics / highlights.scm), and the verification recipe are in `.claude/skills/tree-sitter-grammar-editing/SKILL.md` (or `/tree-sitter-grammar-editing`) and `editor/tree-sitter/README.md`; the self-verification procedure is in `/pre-commit-checklist` §3.6.5. When editing `editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm`, that skill is auto-loaded via a path-scoped rule.
