@@ -181,6 +181,19 @@ Opaque handle typedefs — `sizeof` 8 / `alignof` 8 (pointers; per-field offset 
 
 **Sanitizer instrumentation boundary (data for the Sub-issue 5 `KNOWLEDGE.md` entry).** corrosion does **not** propagate the CMake `-fsanitize=*` flags into the cargo build: `CMakeLists.txt` calls only `corrosion_set_env_vars(ry_llvm_emit "LLVM_SYS_211_PREFIX=...")`, never `corrosion_add_target_rustflags` / `corrosion_add_target_local_rustflags`, and `crates/ry_llvm_emit/build.rs` emits only the macOS `dynamic_lookup` link arg (no sanitizer logic). The CI Rust toolchain is stable (`-Zsanitizer` is nightly-only). So in the `asan` / `tsan` `rust` legs only the C++ side (`ry_lib` / `ry` / `ry_tests`) is instrumented; the Rust cdylib and shared `libLLVM` are not — the same posture as the `cpp` leg, where LLVM itself is linked uninstrumented. This is an intentional, documented gap, not an oversight.
 
+## Stage 2-C complete (#1993 — cutover to Rust)
+
+The migration is complete. The Rust crate `crates/ry_llvm_emit/` is the **sole** implementation of the LLVM IR emission shared library; the C++ translation unit `src/llvm_emit/impl.cpp` and the `RY_LLVM_EMIT_IMPL_RUST` CMake option are removed. **All post-cutover references to the emission implementation should point to `crates/ry_llvm_emit/src/lib.rs`.** This section supersedes the in-progress narrative in the Stage 2-A / 2-B / 2-C and Sub-issue 3 / 4 sections above — those are kept as a frozen historical record of the migration and still cite `src/llvm_emit/impl.cpp` as the then-current TU.
+
+Steady-state shape:
+
+- **`cdylib`.** The crate is a `cdylib` exposing the locked `extern "C"` ABI in `include/ry/llvm_emit/api.h`. CodeGen links it at compile time (it is not `dlopen`'d like the stdlib native libs); the CodeGen-side cast helpers in `include/ry/llvm_emit/cast_helpers.hpp` bridge `llvm::*` ↔ the opaque ABI handles.
+- **`llvm-sys = "211"`, not `inkwell`.** The crate goes through LLVM's raw C API (`llvm-sys`) rather than the safe `inkwell` wrapper because the migration requires IR that is **byte-for-byte equivalent** to what the C++ `IRBuilder<>` assembled; `inkwell`'s higher-level abstractions would obscure the exact call sequence the IR golden tests pin.
+- **Shared `libLLVM` is mandatory.** `ry` and the cdylib must share ONE LLVM instance (`llvm-sys` `force-dynamic` + an unconditional `set(LLVM_LIBS LLVM)`), otherwise `ConstantFP::get` hangs on float constants (the two-copy `fltSemantics` split documented in the Sub-issue 3 section above). CI containers and the Docker dev image build LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`; on macOS use `cmake --preset rust-emit` (Homebrew `llvm@21`). The static-only `/usr/local/llvm` does not qualify — `--preset default` no longer builds there.
+- **`LLVM_SYS_211_PREFIX` auto-derivation.** When the env var is unset, `CMakeLists.txt` derives the prefix from the LLVM CMake config already discovered by `find_package(LLVM)` (via `corrosion_set_env_vars`), so the build works on Homebrew, distro-packaged, and custom LLVM prefixes without an env tweak.
+- **Named ↔ anonymous struct sync.** The cdylib mirrors CodeGen's `listHeaderTy_` / `mapHeaderTy_` / `setHeaderTy_` named/anonymous struct decisions so the emitted aggregate types match what the rest of CodeGen expects; this constraint is part of the locked ABI behavior and is exercised by the IR golden tests.
+- **Toolchain.** A Rust 1.83+ toolchain is required for any local build outside the Docker image (the `ry-ci` image bakes Rust in). The cdylib's internal memory is outside the C++ sanitizer instrumentation scope — see `KNOWLEDGE.md` § サニタイザー既知問題.
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

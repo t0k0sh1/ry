@@ -57,5 +57,5 @@ Internal architecture references for working on the Ry compiler and runtime. The
 | Page | Contents |
 |------|----------|
 | [Compiler Layers](architecture/compiler-layers.md) | lexer → parser → AST → module → sema → codegen → runtime ABI dependency direction |
-| [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | Candidate shared-library boundary for the LLVM IR emission layer (#1949/#1950 prep) |
+| [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | The shared-library boundary for the LLVM IR emission layer, now implemented in Rust (#1949 / #1950 / #1993) |
 | [Runtime ABI Boundary](architecture/runtime-abi-boundary.md) | `__ry_*` `extern "C"` surface categorized by core/native for Rust migration planning |

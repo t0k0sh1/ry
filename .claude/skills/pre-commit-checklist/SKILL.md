@@ -102,6 +102,8 @@ If no entry is needed, state the reason (pure bug fix that won't recur, PR-local
 >
 > Empty output ⇒ skip. Record `Skipped §3 — no source code change` in the PR description.
 
+> **Precondition**: a Rust 1.83+ toolchain (`cargo` / `rustc`) must be on `PATH` — `cmake --preset {default,asan,tsan,fuzz}` all build the `ry_llvm_emit` Rust cdylib via corrosion, and the prefix must ship a shared `libLLVM`. See `AGENTS.md` § "Build & Test" (the `ry-ci` Docker image bakes both in).
+
 ```bash
 ./.claude/skills/pre-commit-checklist/run-tests.sh
 ```

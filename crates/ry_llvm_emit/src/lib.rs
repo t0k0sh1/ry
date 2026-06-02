@@ -1,21 +1,18 @@
 // Rust implementation of the LLVM IR emission ABI defined in
-// `include/ry/llvm_emit/api.h` (issue #1950, follow-up to #1949).
+// `include/ry/llvm_emit/api.h` (#1949 introduced the ABI; #1950 / #1993
+// ported the bodies from C++ to Rust).
 //
 // Every type and function here mirrors a declaration in api.h
 // byte-for-byte. The C ABI is locked by #1949 — do NOT widen or alter
 // the public signatures here without updating api.h and the
 // reinterpret_cast wrappers in include/ry/llvm_emit/cast_helpers.hpp.
 //
-// All functions are stubs (`unimplemented!()`) until Task 4 of the
-// #1950 implementation plan ports the bodies from src/llvm_emit/impl.cpp.
-// Building the cdylib at this point verifies that:
-//   - the 27 ABI symbols are exported (`nm -D` / `otool -L`),
+// Build-time invariants (verified whenever the cdylib compiles):
+//   - the 28 ABI symbols are exported (`nm -D` / `otool -L`),
 //   - the FFI types compile against api.h (sizeof / repr alignment),
 //   - corrosion-rs is wired correctly into the CMake build,
 //   - `-undefined dynamic_lookup` link arg flows through on macOS,
 //   - llvm-sys = "211" finds LLVM 21 via LLVM_SYS_211_PREFIX.
-// Tests of course fail with `unimplemented!()` panics — that is
-// expected during Task 3.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -270,10 +267,10 @@ const _: () = assert!(core::mem::size_of::<RyValueId>() == 4 && core::mem::align
 const _: () = assert!(core::mem::size_of::<RyBasicBlockId>() == 4 && core::mem::align_of::<RyBasicBlockId>() == 4);
 
 // =============================================================
-// Internal helpers (issue #1997). The 28 ABI bodies below are ported
-// from src/llvm_emit/impl.cpp to the LLVM C API (llvm-sys), producing
-// byte-for-byte equivalent IR. These mirror impl.cpp's anonymous-namespace
-// helpers and cast wrappers.
+// Internal helpers (issue #1997). The 28 ABI bodies below were ported
+// from the original C++ implementation to the LLVM C API (llvm-sys),
+// producing byte-for-byte equivalent IR. These mirror the C++ side's
+// anonymous-namespace helpers and cast wrappers.
 // =============================================================
 
 // Concrete object behind the opaque `*mut RyEmitCtx` handle (mirrors the
@@ -692,8 +689,8 @@ unsafe fn emit_cow_retain_loop(
 }
 
 // =============================================================
-// ABI function implementations (28 total), ported from
-// src/llvm_emit/impl.cpp to the LLVM C API (issue #1997).
+// ABI function implementations (28 total), ported from the
+// original C++ implementation to the LLVM C API (issue #1997).
 //
 // Grouped to match the migration phases documented in api.h:
 //   - Lifecycle / intern / resolve (5)

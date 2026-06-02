@@ -8,10 +8,10 @@
 // sprinkling reinterpret_cast across every call site.
 //
 // This header is C++-only and re-includes both `api.h` and the LLVM headers.
-// Do NOT include it from the emission-side shared library TU
-// (`src/llvm_emit/impl.cpp`); that TU has its own anonymous-namespace cast
-// helpers (`asModule` / `asBuilder` / ...) that operate in the reverse
-// direction (opaque ABI handle → llvm::*).
+// It is for the CodeGen (caller) side only. The emission side lives in the Rust
+// crate `crates/ry_llvm_emit/src/lib.rs`, which does its own conversions in the
+// reverse direction (opaque ABI handle → llvm::* via llvm-sys) and shares none
+// of this C++ bridging code.
 
 #ifndef RY_LLVM_EMIT_CAST_HELPERS_HPP
 #define RY_LLVM_EMIT_CAST_HELPERS_HPP

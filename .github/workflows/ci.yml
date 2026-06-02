@@ -3,10 +3,10 @@ on:
   pull_request:
   push:
     branches: [main]
-  # workflow_dispatch enables the on-demand macos-smoke-rust job below
-  # (#1993 Sub-issue 4). All other jobs run on pull_request / push as before;
-  # macos-smoke-rust is guarded by `if: github.event_name == 'workflow_dispatch'`
-  # so a manual dispatch is the only thing that spends a macOS runner.
+  # workflow_dispatch enables the on-demand macos-smoke-rust job below.
+  # All other jobs run on pull_request / push as before; macos-smoke-rust is
+  # guarded by `if: github.event_name == 'workflow_dispatch'` so a manual
+  # dispatch is the only thing that spends a macOS runner.
   workflow_dispatch:
 
 permissions:
@@ -101,39 +101,29 @@ jobs:
           # the `test` job.) cargo / CARGO_HOME / LLVM_SYS_211_PREFIX are
           # baked into the CI image (docker/ci.Dockerfile). This is a narrow
           # type-check + layout-assert pass; it does NOT build `ry` against
-          # the Rust cdylib (the full RY_LLVM_EMIT_IMPL_RUST=ON cutover is
-          # out of scope here — see #1993).
+          # the Rust cdylib — the full integration build is the `test` job.
           cargo check -p ry_llvm_emit
 
   test:
-    name: test (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    strategy:
-      fail-fast: false
-      matrix:
-        # cpp = default C++ ry_llvm_emit (flag OFF). rust = Rust cdylib
-        # (RY_LLVM_EMIT_IMPL_RUST=ON, #1993 Sub-issue 4 — validate the Rust
-        # path before the Sub-issue 5 cutover). The cpp leg must stay until
-        # the cutover removes the C++ impl. The container's /usr/local/llvm
-        # is built with LLVM_BUILD_LLVM_DYLIB=ON, so the rust leg's
-        # shared-libLLVM requirement (#1997) is met without an LLVM_DIR
-        # override (see docker/ci.Dockerfile).
-        emit: [cpp, rust]
     steps:
       - uses: actions/checkout@v4
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-test-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
+          key: ci-test-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-test-${{ matrix.emit }}-${{ github.ref }}-
-            ci-test-${{ matrix.emit }}-
+            ci-test-${{ github.ref }}-
             ci-test-
       - name: Build
+        # ry_llvm_emit is the Rust cdylib (the only implementation). The
+        # container's /usr/local/llvm is built with LLVM_BUILD_LLVM_DYLIB=ON,
+        # so the shared-libLLVM requirement (#1997) is met without an LLVM_DIR
+        # override (see docker/ci.Dockerfile).
         run: |
-          cmake --preset default ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
+          cmake --preset default
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
@@ -255,33 +245,25 @@ jobs:
         run: ctest --test-dir build -L filecheck --output-on-failure
 
   asan:
-    name: asan (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    strategy:
-      fail-fast: false
-      matrix:
-        # See the `test` job for the cpp/rust leg rationale. In the rust leg
-        # only the C++ side (ry_lib / ry / ry_tests) is ASan+UBSan-instrumented;
-        # the Rust cdylib and shared libLLVM are uninstrumented because
-        # corrosion does not propagate -fsanitize=* into the cargo build
-        # (#1993 Sub-issue 4 PR notes). This mirrors the cpp leg, where LLVM
-        # itself is also linked uninstrumented.
-        emit: [cpp, rust]
     steps:
       - uses: actions/checkout@v4
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-asan-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
+          key: ci-asan-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-asan-${{ matrix.emit }}-${{ github.ref }}-
-            ci-asan-${{ matrix.emit }}-
+            ci-asan-${{ github.ref }}-
             ci-asan-
       - name: Build (ASan + UBSan)
+        # Only the C++ side (ry_lib / ry / ry_tests) is ASan+UBSan-instrumented;
+        # the Rust cdylib and shared libLLVM are uninstrumented because corrosion
+        # does not propagate -fsanitize=* into the cargo build (#1993). This
+        # mirrors LLVM itself, which is also linked uninstrumented.
         run: |
-          cmake --preset asan ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
+          cmake --preset asan
           cmake --build build-asan
       - name: Test (C++ / ASan + UBSan)
         env:
@@ -295,21 +277,8 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
-    name: tsan (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    strategy:
-      fail-fast: false
-      matrix:
-        # See the `test` job for the cpp/rust leg rationale. The required /
-        # warn-only split documented below applies to BOTH legs. In the rust
-        # leg TSan instruments only the C++ side; the Rust cdylib and shared
-        # libLLVM are uninstrumented (corrosion does not propagate -fsanitize
-        # — see #1993 Sub-issue 4 PR notes). The cdylib's 28 ABI functions
-        # are single-threaded IR-builder calls, so the rust leg does not
-        # weaken the #630 race gate, which lives in the (instrumented) C++
-        # runtime exercised by ry_tests.
-        emit: [cpp, rust]
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
     # - The C++ test step is REQUIRED. It runs ry_tests, which
@@ -346,14 +315,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-tsan-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
+          key: ci-tsan-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-tsan-${{ matrix.emit }}-${{ github.ref }}-
-            ci-tsan-${{ matrix.emit }}-
+            ci-tsan-${{ github.ref }}-
             ci-tsan-
       - name: Build (TSan)
+        # TSan instruments only the C++ side; the Rust cdylib and shared libLLVM
+        # are uninstrumented (corrosion does not propagate -fsanitize=* into the
+        # cargo build — #1993). The cdylib's 28 ABI functions are single-threaded
+        # IR-builder calls, so this does not weaken the #630 race gate, which
+        # lives in the (instrumented) C++ runtime exercised by ry_tests.
         run: |
-          cmake --preset tsan ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
+          cmake --preset tsan
           cmake --build build-tsan
       - name: Test (C++ / TSan)
         env:
@@ -370,15 +343,16 @@ jobs:
         run: ./build-tsan/ry test -p
 
   macos-smoke-rust:
-    # macOS build/link smoke for the Rust ry_llvm_emit path (flag ON),
-    # #1993 Sub-issue 4. workflow_dispatch-only: macOS runners cost ~10x a
-    # Linux runner, and the purpose is to prove the Apple-linker path works
-    # on demand — specifically that the `-Wl,-undefined,dynamic_lookup`
-    # cdylib link arg in crates/ry_llvm_emit/build.rs resolves __ry_* and
-    # LLVM* symbols from the host process. The per-PR safety net is the
-    # Linux rust legs of test/asan/tsan above. Homebrew llvm@21 ships a
-    # shared libLLVM.dylib, satisfying the flag-ON shared-libLLVM
-    # requirement (#1997). Remove or fold into the cutover in Sub-issue 5.
+    # macOS build/link smoke for the ry_llvm_emit Rust cdylib.
+    # workflow_dispatch-only: macOS runners cost ~10x a Linux runner, and the
+    # purpose is to prove the Apple-linker path works on demand — specifically
+    # that the `-Wl,-undefined,dynamic_lookup` cdylib link arg in
+    # crates/ry_llvm_emit/build.rs resolves __ry_* and LLVM* symbols from the
+    # host process. The per-PR safety net is the Linux test/asan/tsan jobs
+    # above. Homebrew llvm@21 ships a shared libLLVM.dylib, satisfying the
+    # shared-libLLVM requirement (#1997). Retained past the #1993 cutover to
+    # keep continuous Apple-linker validation before the tag-push-driven
+    # release.yml runs.
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-14
     steps:
@@ -402,19 +376,18 @@ jobs:
           key: ci-macos-smoke-rust
           restore-keys: |
             ci-macos-smoke-rust-
-      - name: Build (flag ON / Rust ry_llvm_emit)
-        # Homebrew llvm@21 provides the shared libLLVM.dylib that
-        # RY_LLVM_EMIT_IMPL_RUST=ON requires; cargo/rustc are pre-installed
-        # on GitHub macOS runners. LLVM_SYS_211_PREFIX is derived by CMake
-        # from LLVM_DIR via corrosion_set_env_vars (see CMakeLists.txt), so
-        # llvm-sys finds the same Homebrew LLVM. This is the CI form of the
-        # documented local `cmake --preset rust-emit` build.
+      - name: Build (Rust ry_llvm_emit)
+        # Homebrew llvm@21 provides the shared libLLVM.dylib that the Rust
+        # cdylib requires; cargo/rustc are pre-installed on GitHub macOS
+        # runners. LLVM_SYS_211_PREFIX is derived by CMake from LLVM_DIR via
+        # corrosion_set_env_vars (see CMakeLists.txt), so llvm-sys finds the
+        # same Homebrew LLVM. This is the CI form of the local
+        # `cmake --preset rust-emit` build.
         run: |
           cmake -B build -G Ninja \
             -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
             -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DRY_LLVM_EMIT_IMPL_RUST=ON
+            -DCMAKE_BUILD_TYPE=Release
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
@@ -480,6 +453,17 @@ jobs:
 #            -rss_limit_mb=512 \
 #            -artifact_prefix=tests/fuzz/regressions/utf8/ \
 #            tests/fuzz/corpus/utf8
+#      - name: Fuzz io_open (60s)
+#        continue-on-error: true
+#        env:
+#          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+#          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+#        run: |
+#          ./build-fuzz/fuzz_io_open \
+#            -max_total_time=60 \
+#            -rss_limit_mb=512 \
+#            -artifact_prefix=tests/fuzz/regressions/fuzz_io_open/ \
+#            tests/fuzz/corpus/fuzz_io_open
 #      - name: Upload crash artifacts
 #        if: always()
 #        uses: actions/upload-artifact@v4

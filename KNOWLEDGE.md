@@ -436,6 +436,15 @@ int for INT64_MIN` entry. The UBSan-side lesson is that the UBSan job is the mos
 channel for catching `INT64_MIN`-edge bugs — even if the wrong-bits result happens not to
 be observed by any test, UBSan flags the offending negation immediately.
 
+### Rust (corrosion)
+
+#### Rust cdylib (`ry_llvm_emit`) internal memory is outside the C++ sanitizer instrumentation scope
+
+**Source**: #1993 (2026-06-03, cutover to Rust)
+**Tags**: sanitizer, asan, ubsan, tsan, rust, corrosion, cdylib, ry_llvm_emit, instrumentation-scope, ffi-boundary
+
+**Rule**: The Rust cdylib `crates/ry_llvm_emit` (the LLVM IR emission shared library) has internal memory that is **outside** the instrumentation scope of the C++ sanitizers (ASan / UBSan / TSan). corrosion does not propagate the CMake `-fsanitize=*` flags into the cargo build (`CMakeLists.txt` calls only `corrosion_set_env_vars(... LLVM_SYS_211_PREFIX=...)`, never `corrosion_add_target_rustflags`; `crates/ry_llvm_emit/build.rs` emits only the macOS `dynamic_lookup` link arg), and the CI Rust toolchain is stable (`-Zsanitizer` is nightly-only). The FFI boundary, the host process, and the `ry_runtime_*` libraries remain fully instrumented — only the cdylib's own internal allocations/accesses are not. This mirrors how LLVM itself is linked uninstrumented in both the C++ and Rust eras. Adopting nightly Rust `-Zsanitizer=*` for the cdylib is out of scope (deferred, per #1993).
+
 ### libFuzzer
 
 _(follow-up issue で集約予定 — 現状の手順は `.claude/skills/libfuzzer-harness/SKILL.md`)_

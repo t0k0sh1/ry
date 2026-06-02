@@ -348,12 +348,12 @@ gh pr view <PR> --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeS
 
 ---
 
-### In-container `RY_LLVM_EMIT_IMPL_RUST=ON` verification: pull the `ry-ci` image, don't use `docker/run.sh`'s dev image
+### In-container Rust cdylib / fuzz verification: pull the `ry-ci` image, don't use `docker/run.sh`'s dev image
 
-**Source**: #1998 (2026-06-03, Sub-issue 4 self-verification)
-**Tags**: docker, ry-llvm-emit, rust, cdylib, flag-on, fuzz, in-container, cargo
+**Source**: #1998 (2026-06-03, Sub-issue 4 self-verification); updated for the cutover by #1993
+**Tags**: docker, ry-llvm-emit, rust, cdylib, fuzz, in-container, cargo
 
-**Wrong**: verifying a `RY_LLVM_EMIT_IMPL_RUST=ON` build inside the local `docker/run.sh` dev image (`ry-linux-dev:latest`). Two failures: (a) the locally-built dev image can lag the published `ry-ci:llvm-21` base and predate the baked Rust toolchain — `cargo`/`rustc`/`/opt/cargo` don't exist and corrosion's configure fails with `rustc not found`; (b) even on a current image, `docker/run.sh`'s presets are all flag-OFF and `entrypoint.sh` pre-builds `cmake --preset <p>` (flag OFF) before dispatching any command, forcing a wasteful double build. macOS host can't substitute either: the `fuzz` preset rejects AppleClang (requires real Clang) and macOS-host fuzzing has libFuzzer/SDKROOT friction (#1865).
+**Wrong**: building the Rust cdylib (e.g. the fuzz harnesses) inside the local `docker/run.sh` dev image (`ry-linux-dev:latest`). Two failures: (a) the locally-built dev image can lag the published `ry-ci:llvm-21` base and predate the baked Rust toolchain — `cargo`/`rustc`/`/opt/cargo` don't exist and corrosion's configure fails with `rustc not found`; (b) `entrypoint.sh` pre-builds `cmake --preset <p>` before dispatching any command, forcing a wasteful double build. macOS host can't substitute either: the `fuzz` preset rejects AppleClang (requires real Clang) and macOS-host fuzzing has libFuzzer/SDKROOT friction (#1865).
 
 **Correct**: pull the current CI image and run it directly as root (GitHub runs container jobs as root; `/opt/cargo` is root-writable there — note it may not exist until cargo's first build creates it), source bind-mounted read-only, build into a **named volume** (not under the repo mount — sidesteps the macOS Mach-O leak guard and persists across chunked builds when one `cmake --build` exceeds the foreground time budget):
 
@@ -363,10 +363,10 @@ docker run --rm -v "$PWD:/src:ro" -v ry-fuzz-rust-ci-build:/build \
   --entrypoint bash ghcr.io/t0k0sh1/ry-ci:llvm-21 -c '
     cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
       -DENABLE_FUZZER=ON -DENABLE_ASAN=ON -DENABLE_UBSAN=ON \
-      -DRY_LLVM_EMIT_IMPL_RUST=ON -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
+      -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
     cmake --build /build --target fuzz_parser fuzz_json fuzz_utf8 fuzz_io_open'
 ```
 
-`LLVM_SYS_211_PREFIX=/usr/local/llvm` is baked as ENV (preserved under `--entrypoint bash`), so llvm-sys/corrosion find the shared libLLVM the flag requires (the image builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`). The cdylib lands at `/build/lib/libry_llvm_emit.so` (`file` → ELF shared object), proving the Rust side links on Linux.
+`LLVM_SYS_211_PREFIX=/usr/local/llvm` is baked as ENV (preserved under `--entrypoint bash`), so llvm-sys/corrosion find the shared libLLVM the cdylib requires (the image builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`). The cdylib lands at `/build/lib/libry_llvm_emit.so` (`file` → ELF shared object), proving the Rust side links on Linux.
 
-**Why it recurs**: the fuzz CI job stays disabled, so this in-container run is the *only* validation of the flag-ON fuzz build (it is NOT covered by the test/asan/tsan rust matrix legs, which exercise `ry`/`ry_tests`, not the fuzz harnesses). Sub-issue 5 (the cutover) and any future cdylib work need the same procedure. If Docker disk fills mid-pull (`no space left on device`), `docker builder prune -a -f` reclaims shared build cache without touching images/volumes.
+**Why it recurs**: the fuzz CI job stays disabled, so this in-container run is the *only* validation of the cdylib fuzz build (it is NOT covered by the test/asan/tsan jobs, which exercise `ry`/`ry_tests`, not the fuzz harnesses). Any future cdylib work needs the same procedure. If Docker disk fills mid-pull (`no space left on device`), `docker builder prune -a -f` reclaims shared build cache without touching images/volumes.
