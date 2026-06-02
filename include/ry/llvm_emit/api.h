@@ -2,8 +2,9 @@
 //
 // This header is the candidate boundary between Ry semantic lowering and
 // LLVM IR emission (designed in #1820/#1824, implemented incrementally
-// starting from #1949). It is C-only so the layer can be reimplemented in
-// Rust (#1950) behind the same ABI.
+// starting from #1949). It is C-only so the layer is implemented in Rust
+// (crates/ry_llvm_emit/) behind the same C ABI — the Rust implementation is
+// now the only one.
 //
 // Stage 2-C (#1968) begins per-op migration of category-1 ARC primitives:
 //   - ry_emit_arc_retain / ry_emit_arc_release cross the ABI. The destructor
@@ -106,7 +107,7 @@ typedef struct RyEmitCtx RyEmitCtx;
 //
 // Each typedef is a pointer to an incomplete struct, so the C/C++ type system
 // treats it as a distinct named pointer type. At runtime the pointer value is
-// reinterpret_cast'd between the LLVM-owning side (`src/llvm_emit/impl.cpp`)
+// reinterpret_cast'd between the LLVM-owning side (`crates/ry_llvm_emit/src/lib.rs`)
 // and the CodeGen-owning side. No LLVM types and no `void *` appear in any
 // public signature — opaque pointer typedefs satisfy the constraint enforced
 // by the header-level lint introduced in #1973.
@@ -126,8 +127,8 @@ typedef struct RyFunctionOpaque *RyFunctionHandle; // llvm::Function *
 // === Category 2: primitive type accessors ===
 // `RyTypeRef` covers both `llvm::Type *` (primitives, pointers) and
 // `llvm::StructType *` (named aggregates) — LLVM's StructType IS a Type, so
-// no separate typedef is needed. dyn_cast<StructType> happens inside impl.cpp
-// when a specific subtype is required.
+// no separate typedef is needed. Narrowing to a specific subtype happens inside
+// the Rust implementation (`crates/ry_llvm_emit/src/lib.rs`) when required.
 typedef struct RyTypeOpaque     *RyTypeRef;
 typedef struct RyFuncTypeOpaque *RyFuncTypeRef;    // llvm::FunctionType *
 

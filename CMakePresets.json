@@ -52,7 +52,6 @@
       "inherits": "default",
       "binaryDir": "${sourceDir}/build-rust",
       "cacheVariables": {
-        "RY_LLVM_EMIT_IMPL_RUST": "ON",
         "LLVM_DIR": "/opt/homebrew/opt/llvm@21/lib/cmake/llvm"
       }
     }

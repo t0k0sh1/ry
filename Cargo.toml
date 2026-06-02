@@ -1,15 +1,13 @@
 # Cargo workspace root for the ry repository.
 #
-# The ry CLI / compiler itself is still C++ (built via cmake --preset
-# default). This workspace exists only to host Rust components that are
-# linked into the C++ build as cdylib shared libraries — currently just
-# `ry_llvm_emit` (issue #1950, the Rust reimplementation of the LLVM IR
-# emission ABI defined by #1949 in include/ry/llvm_emit/api.h).
+# The ry CLI / compiler itself is C++ (built via cmake --preset default).
+# This workspace exists only to host Rust components that are linked into
+# the C++ build as cdylib shared libraries — currently just `ry_llvm_emit`,
+# the Rust implementation of the LLVM IR emission ABI defined by #1949 in
+# include/ry/llvm_emit/api.h (ported from C++ to Rust by #1950 / #1993).
 #
-# CMake's `option(RY_LLVM_EMIT_IMPL_RUST ...)` selects the C++ vs Rust
-# implementation at configure time; corrosion-rs drives the actual
-# cargo build from CMake. See docs/architecture/codegen-layering-plan.md
-# for the milestone context.
+# corrosion-rs drives the cargo build from CMake. See
+# docs/architecture/codegen-layering-plan.md for the milestone context.
 
 [workspace]
 resolver = "2"

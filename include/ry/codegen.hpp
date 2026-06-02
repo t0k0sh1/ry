@@ -28,8 +28,8 @@
 #include <vector>
 
 
-// LLVM IR emission shared-library handle (#1949). Defined in the ABI
-// translation unit `src/llvm_emit/impl.cpp`; reached from CodeGen through the
+// LLVM IR emission shared-library handle (#1949). Defined in the Rust
+// ABI crate `crates/ry_llvm_emit/src/lib.rs`; reached from CodeGen through the
 // extern "C" surface in include/ry/llvm_emit/api.h. Forward-declared here so
 // codegen.hpp does not pull the C header into every translation unit that
 // includes it.

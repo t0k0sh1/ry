@@ -48,9 +48,9 @@ namespace ry::codegen::emission {
 // tryRetainArcSource on the inner, #999 ARC retain contract) are intentionally
 // NOT emitted here; they stay in the CodeGen-level shim (see
 // CodeGen::buildSomeValue / buildNoneValue in src/codegen_type.cpp). This
-// keeps the emission TU as a pure intern → ABI → resolve transit so the
-// eventual Rust rewrite (#1950) can swap it without touching the side-table
-// layer (value_metadata_ and the ARC source map).
+// keeps the emission layer a pure intern → ABI → resolve transit, so the Rust
+// implementation (crates/ry_llvm_emit/) lives behind the ABI without touching
+// the side-table layer (value_metadata_ and the ARC source map).
 llvm::Value *emitOptionWrap(CodeGen &cg, const lowered::OptionWrapOp &op);
 
 } // namespace ry::codegen::emission

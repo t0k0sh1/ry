@@ -118,14 +118,17 @@ The standard library is installed to `$RY_HOME/share/std/` (default: `~/.ry/shar
 ### Build from Source
 
 Requirements:
-- LLVM 21
+- LLVM 21, built as a **shared** library (`lib/libLLVM.{so,dylib}`; configure LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`)
 - CMake 3.20+
 - C++17 compatible compiler
+- Rust 1.83+ (`cargo` / `rustc` on `PATH`) — the LLVM IR emission layer is a Rust cdylib (`crates/ry_llvm_emit/`)
 
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
+
+> `ry` and the Rust cdylib must share one LLVM instance, so the `-DLLVM_DIR` prefix must ship a shared `libLLVM` (a static-only LLVM build will not link). Building inside the `ry-ci` Docker image (`ghcr.io/<owner>/ry-ci:llvm-21-rev<N>`) needs no separate Rust or shared-LLVM setup — both are baked in.
 
 ## Usage
 

@@ -1,8 +1,7 @@
 // On macOS, the cdylib resolves both LLVM (`LLVMBuild*`, `LLVMConst*`,
-// etc.) and `__ry_*` runtime symbols from the host process at runtime,
-// mirroring the legacy `add_library(ry_llvm_emit SHARED ...)` target's
-// `-undefined dynamic_lookup` linker flag (see CMakeLists.txt under
-// option(RY_LLVM_EMIT_IMPL_RUST OFF)).
+// etc.) and `__ry_*` runtime symbols from the host process at runtime.
+// The `-undefined dynamic_lookup` linker flag below defers those
+// unresolved symbols to runtime lookup from the host `ry` process.
 //
 // Linux is satisfied by the host binary's `-rdynamic` link option (set
 // on the `ry` and `ry_tests` executables); nothing extra is needed on

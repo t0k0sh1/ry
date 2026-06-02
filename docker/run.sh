@@ -21,6 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE="ry-linux-dev:latest"
 CCACHE_VOLUME="ry-ccache-docker"
+# Persists the Rust cargo registry/cache across runs (CARGO_HOME is set to
+# /home/ubuntu/.cargo by docker/Dockerfile; corrosion builds the ry_llvm_emit
+# cdylib on every preset since the #1993 cutover).
+CARGO_VOLUME="ry-cargo-docker"
 
 # Hard-fail when no Docker daemon is reachable. Issue #1865 documents
 # macOS-host breakage (fuzz_json hang under ASan, TSan allocator bug,
@@ -132,6 +136,12 @@ MOUNT_ARGS=(
   -v "$PROJECT_DIR/include:/workspace/include"
   -v "$PROJECT_DIR/tests:/workspace/tests"
   -v "$PROJECT_DIR/share:/workspace/share"
+  # crates/ + Cargo.{toml,lock}: the LLVM IR emission lib (ry_llvm_emit) is a
+  # Rust cdylib built via corrosion on every preset (#1993 cutover), so corrosion
+  # needs the workspace manifest, lockfile, and crate source on all builds.
+  -v "$PROJECT_DIR/crates:/workspace/crates"
+  -v "$PROJECT_DIR/Cargo.toml:/workspace/Cargo.toml"
+  -v "$PROJECT_DIR/Cargo.lock:/workspace/Cargo.lock"
   -v "$PROJECT_DIR/CMakeLists.txt:/workspace/CMakeLists.txt"
   -v "$PROJECT_DIR/CMakePresets.json:/workspace/CMakePresets.json"
   -v "$PROJECT_DIR/package.toml:/workspace/package.toml"
@@ -139,6 +149,7 @@ MOUNT_ARGS=(
   -v "$PROJECT_DIR/.cppcheck-suppressions:/workspace/.cppcheck-suppressions"
   -v "$PROJECT_DIR/$BUILD_DIR_HOST:/workspace/$BUILD_DIR_CONTAINER"
   -v "$CCACHE_VOLUME:/home/ubuntu/.cache/ccache"
+  -v "$CARGO_VOLUME:/home/ubuntu/.cargo"
 )
 if [[ -n "$SCAN_BUILD_DIR_HOST" ]]; then
   MOUNT_ARGS+=(-v "$PROJECT_DIR/$SCAN_BUILD_DIR_HOST:/workspace/$SCAN_BUILD_DIR_CONTAINER")

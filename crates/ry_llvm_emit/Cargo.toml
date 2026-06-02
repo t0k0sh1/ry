@@ -1,9 +1,8 @@
 # Rust implementation of the LLVM IR emission shared library.
 #
-# Issue #1950: reimplement src/llvm_emit/impl.cpp (1872 lines C++) in
-# Rust behind the C ABI defined by include/ry/llvm_emit/api.h. The
-# C ABI is locked by #1949 and lints in CMakeLists.txt enforce no
-# LLVM-owned types in any public signature.
+# This crate implements the C ABI defined by include/ry/llvm_emit/api.h
+# (locked by #1949; ported from C++ to Rust by #1950 / #1993). Lints in
+# CMakeLists.txt enforce no LLVM-owned types in any public signature.
 #
 # The cdylib links the SHARED libLLVM (llvm-sys `force-dynamic`; see the
 # dependency note below) so it shares ONE LLVM instance with the host `ry`
@@ -31,8 +30,8 @@ crate-type = ["cdylib"]
 #
 # `force-dynamic` makes llvm-sys link the SHARED libLLVM.dylib instead of
 # the static component archives. Combined with `ry` also linking shared
-# libLLVM (CMakeLists `set(LLVM_LIBS LLVM)` under RY_LLVM_EMIT_IMPL_RUST),
-# both sides share ONE LLVM instance. Static linking gave the cdylib its
+# libLLVM (CMakeLists `set(LLVM_LIBS LLVM)`), both sides share ONE LLVM
+# instance. Static linking gave the cdylib its
 # own LLVM copy whose APFloat `fltSemantics` singletons differ from the
 # host's, hanging `ConstantFP::get`'s DenseMap lookup on float constants
 # (#1997). Requires a shared libLLVM in the LLVM prefix (Homebrew llvm@21
