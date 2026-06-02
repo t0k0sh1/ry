@@ -173,6 +173,14 @@ Opaque handle typedefs — `sizeof` 8 / `alignof` 8 (pointers; per-field offset 
 
 **Consequence — every ON environment must ship a shared libLLVM.** CI satisfies this (`docker/ci.Dockerfile` builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`); Homebrew `llvm@21` ships `lib/libLLVM.dylib`. The documented dev prefix `/usr/local/llvm` is **static-only** and does NOT — `cmake --preset rust-emit` (LLVM_DIR → Homebrew) is the local ON build. The OFF (C++ default) path is unaffected: it links the C++ impl into `ry`'s single LLVM (no second copy) and continues to use `/usr/local/llvm` static via `--preset default`.
 
+## Sub-issue 4 landed (#1998 — CI validation of the flag-ON path before cutover)
+
+`ci.yml`'s `test` / `asan` / `tsan` jobs gained a `matrix.emit: [cpp, rust]` axis. The `rust` leg configures with `-DRY_LLVM_EMIT_IMPL_RUST=ON` on top of the same preset; the `cpp` leg is unchanged and stays until the Sub-issue 5 cutover removes the C++ impl. Both legs run on every PR / push (Linux container). The `tsan` required (C++ `ry_tests`, #630 race gate) / warn-only (Ry self-tests, upstream LargeMmapAllocator [google/sanitizers#1716]) split is preserved in both legs. A `workflow_dispatch`-gated `macos-smoke-rust` job builds flag-ON with Homebrew `llvm@21` and runs `ry_tests` + `ry test -p`, proving the Apple-linker `-Wl,-undefined,dynamic_lookup` path (`crates/ry_llvm_emit/build.rs`); it is off the per-PR path because macOS runners cost ~10x.
+
+**No `LLVM_DIR` override on CI.** The container's `/usr/local/llvm` is built with `LLVM_BUILD_LLVM_DYLIB=ON` (`docker/ci.Dockerfile`), so it already ships a shared `libLLVM.so` — unlike the static-only `/usr/local/llvm` on a typical dev box. The `rust` leg therefore reuses the `default` / `asan` / `tsan` preset prefix directly via `--preset <p> -DRY_LLVM_EMIT_IMPL_RUST=ON`; the macOS-only `rust-emit` preset (Homebrew `LLVM_DIR`) is not used on CI.
+
+**Sanitizer instrumentation boundary (data for the Sub-issue 5 `KNOWLEDGE.md` entry).** corrosion does **not** propagate the CMake `-fsanitize=*` flags into the cargo build: `CMakeLists.txt` calls only `corrosion_set_env_vars(ry_llvm_emit "LLVM_SYS_211_PREFIX=...")`, never `corrosion_add_target_rustflags` / `corrosion_add_target_local_rustflags`, and `crates/ry_llvm_emit/build.rs` emits only the macOS `dynamic_lookup` link arg (no sanitizer logic). The CI Rust toolchain is stable (`-Zsanitizer` is nightly-only). So in the `asan` / `tsan` `rust` legs only the C++ side (`ry_lib` / `ry` / `ry_tests`) is instrumented; the Rust cdylib and shared `libLLVM` are not — the same posture as the `cpp` leg, where LLVM itself is linked uninstrumented. This is an intentional, documented gap, not an oversight.
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

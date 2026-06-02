@@ -3,6 +3,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # workflow_dispatch enables the on-demand macos-smoke-rust job below
+  # (#1993 Sub-issue 4). All other jobs run on pull_request / push as before;
+  # macos-smoke-rust is guarded by `if: github.event_name == 'workflow_dispatch'`
+  # so a manual dispatch is the only thing that spends a macOS runner.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -101,21 +106,34 @@ jobs:
           cargo check -p ry_llvm_emit
 
   test:
+    name: test (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
+    strategy:
+      fail-fast: false
+      matrix:
+        # cpp = default C++ ry_llvm_emit (flag OFF). rust = Rust cdylib
+        # (RY_LLVM_EMIT_IMPL_RUST=ON, #1993 Sub-issue 4 — validate the Rust
+        # path before the Sub-issue 5 cutover). The cpp leg must stay until
+        # the cutover removes the C++ impl. The container's /usr/local/llvm
+        # is built with LLVM_BUILD_LLVM_DYLIB=ON, so the rust leg's
+        # shared-libLLVM requirement (#1997) is met without an LLVM_DIR
+        # override (see docker/ci.Dockerfile).
+        emit: [cpp, rust]
     steps:
       - uses: actions/checkout@v4
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-test-${{ github.ref }}-${{ github.sha }}
+          key: ci-test-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-test-${{ github.ref }}-
+            ci-test-${{ matrix.emit }}-${{ github.ref }}-
+            ci-test-${{ matrix.emit }}-
             ci-test-
       - name: Build
         run: |
-          cmake --preset default
+          cmake --preset default ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
@@ -237,21 +255,33 @@ jobs:
         run: ctest --test-dir build -L filecheck --output-on-failure
 
   asan:
+    name: asan (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
+    strategy:
+      fail-fast: false
+      matrix:
+        # See the `test` job for the cpp/rust leg rationale. In the rust leg
+        # only the C++ side (ry_lib / ry / ry_tests) is ASan+UBSan-instrumented;
+        # the Rust cdylib and shared libLLVM are uninstrumented because
+        # corrosion does not propagate -fsanitize=* into the cargo build
+        # (#1993 Sub-issue 4 PR notes). This mirrors the cpp leg, where LLVM
+        # itself is also linked uninstrumented.
+        emit: [cpp, rust]
     steps:
       - uses: actions/checkout@v4
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-asan-${{ github.ref }}-${{ github.sha }}
+          key: ci-asan-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-asan-${{ github.ref }}-
+            ci-asan-${{ matrix.emit }}-${{ github.ref }}-
+            ci-asan-${{ matrix.emit }}-
             ci-asan-
       - name: Build (ASan + UBSan)
         run: |
-          cmake --preset asan
+          cmake --preset asan ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
           cmake --build build-asan
       - name: Test (C++ / ASan + UBSan)
         env:
@@ -265,8 +295,21 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
+    name: tsan (${{ matrix.emit }})
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
+    strategy:
+      fail-fast: false
+      matrix:
+        # See the `test` job for the cpp/rust leg rationale. The required /
+        # warn-only split documented below applies to BOTH legs. In the rust
+        # leg TSan instruments only the C++ side; the Rust cdylib and shared
+        # libLLVM are uninstrumented (corrosion does not propagate -fsanitize
+        # — see #1993 Sub-issue 4 PR notes). The cdylib's 28 ABI functions
+        # are single-threaded IR-builder calls, so the rust leg does not
+        # weaken the #630 race gate, which lives in the (instrumented) C++
+        # runtime exercised by ry_tests.
+        emit: [cpp, rust]
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
     # - The C++ test step is REQUIRED. It runs ry_tests, which
@@ -303,13 +346,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /root/.cache/ccache
-          key: ci-tsan-${{ github.ref }}-${{ github.sha }}
+          key: ci-tsan-${{ matrix.emit }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-tsan-${{ github.ref }}-
+            ci-tsan-${{ matrix.emit }}-${{ github.ref }}-
+            ci-tsan-${{ matrix.emit }}-
             ci-tsan-
       - name: Build (TSan)
         run: |
-          cmake --preset tsan
+          cmake --preset tsan ${{ matrix.emit == 'rust' && '-DRY_LLVM_EMIT_IMPL_RUST=ON' || '' }}
           cmake --build build-tsan
       - name: Test (C++ / TSan)
         env:
@@ -324,6 +368,58 @@ jobs:
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ./build-tsan/ry test -p
+
+  macos-smoke-rust:
+    # macOS build/link smoke for the Rust ry_llvm_emit path (flag ON),
+    # #1993 Sub-issue 4. workflow_dispatch-only: macOS runners cost ~10x a
+    # Linux runner, and the purpose is to prove the Apple-linker path works
+    # on demand — specifically that the `-Wl,-undefined,dynamic_lookup`
+    # cdylib link arg in crates/ry_llvm_emit/build.rs resolves __ry_* and
+    # LLVM* symbols from the host process. The per-PR safety net is the
+    # Linux rust legs of test/asan/tsan above. Homebrew llvm@21 ships a
+    # shared libLLVM.dylib, satisfying the flag-ON shared-libLLVM
+    # requirement (#1997). Remove or fold into the cutover in Sub-issue 5.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21 (brew)
+        id: cache-llvm-brew
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/homebrew/opt/llvm@21
+            /opt/homebrew/Cellar/llvm@21
+          key: llvm-21-darwin-arm64
+      - name: Install LLVM 21 (brew)
+        if: steps.cache-llvm-brew.outputs.cache-hit != 'true'
+        run: brew install llvm@21
+      - name: Install dependencies (brew)
+        run: brew install openssl@3 ninja googletest
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-macos-smoke-rust
+          restore-keys: |
+            ci-macos-smoke-rust-
+      - name: Build (flag ON / Rust ry_llvm_emit)
+        # Homebrew llvm@21 provides the shared libLLVM.dylib that
+        # RY_LLVM_EMIT_IMPL_RUST=ON requires; cargo/rustc are pre-installed
+        # on GitHub macOS runners. LLVM_SYS_211_PREFIX is derived by CMake
+        # from LLVM_DIR via corrosion_set_env_vars (see CMakeLists.txt), so
+        # llvm-sys finds the same Homebrew LLVM. This is the CI form of the
+        # documented local `cmake --preset rust-emit` build.
+        run: |
+          cmake -B build -G Ninja \
+            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRY_LLVM_EMIT_IMPL_RUST=ON
+          cmake --build build
+      - name: Test (C++)
+        run: ./build/ry_tests
+      - name: Test (Ry self-tests)
+        run: ./build/ry test -p
 
 # ---------------------------------------------------------------------------
 # fuzz job: disabled in CI until the harnesses have proven stable locally.
@@ -350,7 +446,7 @@ jobs:
 #      - name: Build (libFuzzer + ASan + UBSan)
 #        run: |
 #          cmake --preset fuzz
-#          cmake --build build-fuzz --target fuzz_parser fuzz_json fuzz_utf8
+#          cmake --build build-fuzz --target fuzz_parser fuzz_json fuzz_utf8 fuzz_io_open
 #      - name: Fuzz parser (60s)
 #        continue-on-error: true
 #        env:

@@ -345,3 +345,28 @@ gh pr view <PR> --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeS
 **Why**: `mergeable` is the merge-conflict judgment only — it returns `MERGEABLE` / `CONFLICTING` / `UNKNOWN` based on whether the base/head can be three-way merged. `mergeStateStatus` is the comprehensive UI state and exposes `CLEAN`, `HAS_HOOKS` (both ready), `BLOCKED` (required checks not green / required reviews missing / signed-commit policy), `BEHIND` (head behind base), `DIRTY` (conflicts; mirrors `mergeable: CONFLICTING`), `DRAFT`, `UNKNOWN`, `UNSTABLE` (non-required failures). CI-pending and branch-protection states show up as `BLOCKED` while `mergeable` stays `MERGEABLE`, so skipping the second check lets the merge call proceed and fail noisily. The `gh pr merge` documentation says "the merge will not happen unless the pull request is in a mergeable state" without spelling out which API field that maps to — the answer is `mergeStateStatus`, not `mergeable`.
 
 **Note (where the strict gate applies)**: This `mergeStateStatus ∈ {CLEAN, HAS_HOOKS}` gate belongs at the actual merge call (e.g. `git-close-pr` Step 6 / `gh pr merge`). Pre-check steps should distinguish structural blockers (`DIRTY` / `mergeable: CONFLICTING`) from transient states (`BLOCKED` while CI runs, `BEHIND`, `UNSTABLE`, `UNKNOWN`, `DRAFT`) that subsequent steps will resolve. See `git-close-pr` Step 1 (structural-only pre-check, warn-and-proceed for transient states) vs Step 6 (strict gate before merge). Issue #1956 (2026-05-29) — applying the strict gate at Step 1 wrongly serialized CI completion with review handling.
+
+---
+
+### In-container `RY_LLVM_EMIT_IMPL_RUST=ON` verification: pull the `ry-ci` image, don't use `docker/run.sh`'s dev image
+
+**Source**: #1998 (2026-06-03, Sub-issue 4 self-verification)
+**Tags**: docker, ry-llvm-emit, rust, cdylib, flag-on, fuzz, in-container, cargo
+
+**Wrong**: verifying a `RY_LLVM_EMIT_IMPL_RUST=ON` build inside the local `docker/run.sh` dev image (`ry-linux-dev:latest`). Two failures: (a) the locally-built dev image can lag the published `ry-ci:llvm-21` base and predate the baked Rust toolchain — `cargo`/`rustc`/`/opt/cargo` don't exist and corrosion's configure fails with `rustc not found`; (b) even on a current image, `docker/run.sh`'s presets are all flag-OFF and `entrypoint.sh` pre-builds `cmake --preset <p>` (flag OFF) before dispatching any command, forcing a wasteful double build. macOS host can't substitute either: the `fuzz` preset rejects AppleClang (requires real Clang) and macOS-host fuzzing has libFuzzer/SDKROOT friction (#1865).
+
+**Correct**: pull the current CI image and run it directly as root (GitHub runs container jobs as root; `/opt/cargo` is root-writable there — note it may not exist until cargo's first build creates it), source bind-mounted read-only, build into a **named volume** (not under the repo mount — sidesteps the macOS Mach-O leak guard and persists across chunked builds when one `cmake --build` exceeds the foreground time budget):
+
+```bash
+docker pull ghcr.io/t0k0sh1/ry-ci:llvm-21
+docker run --rm -v "$PWD:/src:ro" -v ry-fuzz-rust-ci-build:/build \
+  --entrypoint bash ghcr.io/t0k0sh1/ry-ci:llvm-21 -c '
+    cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+      -DENABLE_FUZZER=ON -DENABLE_ASAN=ON -DENABLE_UBSAN=ON \
+      -DRY_LLVM_EMIT_IMPL_RUST=ON -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
+    cmake --build /build --target fuzz_parser fuzz_json fuzz_utf8 fuzz_io_open'
+```
+
+`LLVM_SYS_211_PREFIX=/usr/local/llvm` is baked as ENV (preserved under `--entrypoint bash`), so llvm-sys/corrosion find the shared libLLVM the flag requires (the image builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`). The cdylib lands at `/build/lib/libry_llvm_emit.so` (`file` → ELF shared object), proving the Rust side links on Linux.
+
+**Why it recurs**: the fuzz CI job stays disabled, so this in-container run is the *only* validation of the flag-ON fuzz build (it is NOT covered by the test/asan/tsan rust matrix legs, which exercise `ry`/`ry_tests`, not the fuzz harnesses). Sub-issue 5 (the cutover) and any future cdylib work need the same procedure. If Docker disk fills mid-pull (`no space left on device`), `docker builder prune -a -f` reclaims shared build cache without touching images/volumes.

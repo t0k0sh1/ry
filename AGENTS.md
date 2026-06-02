@@ -20,7 +20,9 @@ cmake --build build                                     # Ninja parallelizes aut
 >
 > **Shared libLLVM required**: `ry` and the Rust cdylib must share ONE LLVM instance, or `ConstantFP::get` hangs on float constants (two-LLVM `fltSemantics` split, #1997; see `docs/architecture/llvm-ir-emission-boundary.md` §"Sub-issue 3 landed"). The static-only `/usr/local/llvm` does NOT qualify.
 >
-> **`LLVM_DIR`**: the `rust-emit` preset hardcodes `LLVM_DIR` to Homebrew `llvm@21` (ships `libLLVM.dylib`) as a macOS-local convenience. On Linux or any non-Homebrew prefix, override it: `cmake --preset rust-emit -DLLVM_DIR=<shared-LLVM-prefix>/lib/cmake/llvm`. CI's container builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON` and drives ON via `--preset default` + the entrypoint's `-DLLVM_DIR` override, so the `rust-emit` preset itself is not exercised on CI.
+> **`LLVM_DIR`**: the `rust-emit` preset hardcodes `LLVM_DIR` to Homebrew `llvm@21` (ships `libLLVM.dylib`) as a macOS-local convenience. On Linux or any non-Homebrew prefix, override it: `cmake --preset rust-emit -DLLVM_DIR=<shared-LLVM-prefix>/lib/cmake/llvm`. CI's container builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`, so its `/usr/local/llvm` (the `default`/`asan`/`tsan` preset prefix) already qualifies as a shared libLLVM — CI drives flag ON via `--preset {default,asan,tsan} -DRY_LLVM_EMIT_IMPL_RUST=ON` with no `LLVM_DIR` override needed. The `rust-emit` preset (Homebrew path) is macOS-local only and is not used on CI.
+>
+> **CI coverage (#1998, #1993 Sub-issue 4)**: `ci.yml`'s `test` / `asan` / `tsan` jobs carry a `matrix.emit: [cpp, rust]` axis — the `rust` leg validates the flag-ON path on every PR/push (Linux). A `workflow_dispatch`-gated `macos-smoke-rust` job validates the macOS/Apple-linker path (`-Wl,-undefined,dynamic_lookup`) on demand. The Rust cdylib is **not** sanitizer-instrumented (corrosion does not propagate `-fsanitize=*` into the cargo build; only the C++ side is). Flag/option removal (cutover) is Sub-issue 5.
 >
 > **Default (OFF, C++ impl) path is unaffected**: `--preset default` (`/usr/local/llvm` static).
 
