@@ -333,12 +333,26 @@ target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Thre
 # the cdylib as an IMPORTED target named after the crate (`ry_llvm_emit`). LLVM
 # symbols resolve from the host process — see crates/ry_llvm_emit/build.rs for
 # the macOS `-undefined dynamic_lookup` glue.
-FetchContent_Declare(
-    Corrosion
-    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-    GIT_TAG v0.5.0
-    SYSTEM
-)
+# An offline build can point Corrosion at a vendored source tarball via
+# $RY_VENDORED_CORROSION_TARBALL (file://), avoiding the github.com clone at
+# configure time — mirroring the $RY_VENDORED_GTEST_TARBALL fallback above.
+# CMake's built-in FETCHCONTENT_SOURCE_DIR_CORROSION (a local source dir) is
+# also honored. Otherwise fall back to cloning the pinned tag from github.com.
+if(DEFINED ENV{RY_VENDORED_CORROSION_TARBALL} AND EXISTS "$ENV{RY_VENDORED_CORROSION_TARBALL}")
+    FetchContent_Declare(
+        Corrosion
+        URL "file://$ENV{RY_VENDORED_CORROSION_TARBALL}"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SYSTEM
+    )
+else()
+    FetchContent_Declare(
+        Corrosion
+        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+        GIT_TAG v0.5.0
+        SYSTEM
+    )
+endif()
 FetchContent_MakeAvailable(Corrosion)
 corrosion_import_crate(
     MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/ry_llvm_emit/Cargo.toml"

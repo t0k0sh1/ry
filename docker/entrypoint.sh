@@ -14,7 +14,8 @@ for _required_file in \
     /workspace/CMakeLists.txt \
     /workspace/CMakePresets.json \
     /workspace/package.toml \
-    /workspace/Cargo.toml; do
+    /workspace/Cargo.toml \
+    /workspace/Cargo.lock; do
   if [[ ! -f "$_required_file" ]]; then
     echo "fatal: required file mount $_required_file is missing or not a regular file — docker/run.sh MOUNT_ARGS drifted" >&2
     exit 70
