@@ -5,11 +5,12 @@
 # C ABI is locked by #1949 and lints in CMakeLists.txt enforce no
 # LLVM-owned types in any public signature.
 #
-# The cdylib resolves LLVM symbols and `__ry_*` runtime symbols from
-# the host process at runtime (-undefined dynamic_lookup on macOS,
-# -rdynamic on Linux). It is NOT linked against LLVM at build time;
-# llvm-sys is only used for the typed FFI definitions of LLVM C API
-# entry points.
+# The cdylib links the SHARED libLLVM (llvm-sys `force-dynamic`; see the
+# dependency note below) so it shares ONE LLVM instance with the host `ry`
+# (also linked against shared libLLVM via CMake). `__ry_*` runtime symbols
+# still resolve from the host process at runtime (-undefined dynamic_lookup
+# on macOS, -rdynamic on Linux). llvm-sys also provides the typed FFI
+# definitions of the LLVM C API entry points used by lib.rs.
 
 [package]
 name = "ry_llvm_emit"
@@ -27,7 +28,16 @@ crate-type = ["cdylib"]
 # 211.x = LLVM 21, 221.x = LLVM 22). The matching env var is
 # LLVM_SYS_211_PREFIX (set in docker/ci*.Dockerfile and CMakeLists.txt
 # `corrosion_set_env_vars`).
-llvm-sys = "211"
+#
+# `force-dynamic` makes llvm-sys link the SHARED libLLVM.dylib instead of
+# the static component archives. Combined with `ry` also linking shared
+# libLLVM (CMakeLists `set(LLVM_LIBS LLVM)` under RY_LLVM_EMIT_IMPL_RUST),
+# both sides share ONE LLVM instance. Static linking gave the cdylib its
+# own LLVM copy whose APFloat `fltSemantics` singletons differ from the
+# host's, hanging `ConstantFP::get`'s DenseMap lookup on float constants
+# (#1997). Requires a shared libLLVM in the LLVM prefix (Homebrew llvm@21
+# ships lib/libLLVM.dylib; a static-only prefix like /usr/local/llvm does not).
+llvm-sys = { version = "211", features = ["force-dynamic"] }
 
 # Profile settings live at the workspace root in /Cargo.toml — cargo
 # ignores `[profile.*]` blocks in workspace-member manifests.
