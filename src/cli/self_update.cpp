@@ -703,7 +703,13 @@ bool install_native_libs(const std::string &tmp_dir) {
     for (const auto &entry : fs::directory_iterator(src_lib)) {
         if (!entry.is_regular_file()) continue;
         auto filename = entry.path().filename().string();
-        if (filename.find("libry_") != 0) continue;
+        // Install the Rust cdylib + stdlib native libs (libry_*), and — post-#1999
+        // cutover — the bundled shared libLLVM (plus its macOS chain dep libzstd),
+        // so the relocated runtime stays self-contained (#2005). Ignore anything else.
+        bool is_bundled_lib = filename.find("libry_") == 0 ||
+                              filename.find("libLLVM") == 0 ||
+                              filename.find("libzstd") == 0;
+        if (!is_bundled_lib) continue;
         auto dest_path = dest_lib / filename;
         fs::copy_file(entry.path(), dest_path,
                       fs::copy_options::overwrite_existing, ec);

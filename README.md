@@ -115,6 +115,8 @@ By default, it installs to `~/.local/bin`. You can change this with the `RY_INST
 
 The standard library is installed to `$RY_HOME/share/std/` (default: `~/.ry/share/std/`).
 
+> The download bundles a self-contained `libLLVM` (~100 MB), so `ry` runs without a separate LLVM installation.
+
 ### Build from Source
 
 Requirements:

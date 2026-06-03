@@ -360,6 +360,13 @@ corrosion_import_crate(
 )
 set_target_properties(ry_llvm_emit PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+# No rpath is set on ry_llvm_emit (#2005): corrosion's IMPORTED cargo target
+# ignores CMake rpath properties — verified in the Linux container, where the .so
+# carries `NEEDED libLLVM.so.X` but no RUNPATH. It doesn't need one: `ry` NEEDs
+# libLLVM directly and loads it into the global symbol scope at startup via its
+# own $ORIGIN/lib rpath, which satisfies the cdylib's libLLVM dependency by soname.
+# On macOS scripts/bundle-dist.sh rewrites the cdylib's libLLVM install name to
+# @loader_path/libLLVM.dylib (Mach-O has no equivalent global-scope fallback).
 # LLVM_SYS_211_PREFIX gates how llvm-sys finds LLVM at build time. If
 # the env var is unset, derive the prefix from the LLVM CMake config
 # already discovered by find_package(LLVM) above, instead of a fixed
@@ -393,6 +400,27 @@ else()
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
+
+# Distribution rpath (#2005): bundle libLLVM/libry_llvm_emit next to ry so the
+# release binary is self-contained on systems without an installed LLVM. Two
+# entries cover both layouts:
+#   $ORIGIN/lib            -> tarball unpacked in place (./ry next to ./lib)
+#   $ORIGIN/../../.ry/lib  -> installed (~/.local/bin/ry resolving ~/.ry/lib;
+#                             both dirs sit directly under $HOME, fixed offset)
+# BUILD_WITH_INSTALL_RPATH makes the build-tree binary link with INSTALL_RPATH
+# *instead of* CMake's automatic link-path rpath, so the binary release.yml
+# packages straight from build/ carries only these two $ORIGIN entries — no
+# build-machine-absolute /usr/local/llvm or /opt/openssl paths leak in.
+# INSTALL_RPATH_USE_LINK_PATH defaults OFF, so nothing else is appended. At dev
+# time libLLVM/libcrypto resolve via the container's LD_LIBRARY_PATH (searched
+# before DT_RUNPATH); $ORIGIN/lib=build/lib still resolves libry_llvm_emit.
+# macOS uses install_name_tool in scripts/bundle-dist.sh (absolute Mach-O install
+# names can't be redirected by an rpath alone), so this block is Linux-only.
+if(NOT APPLE)
+    set_target_properties(ry PROPERTIES
+        BUILD_WITH_INSTALL_RPATH ON
+        INSTALL_RPATH "$ORIGIN/lib:$ORIGIN/../../.ry/lib")
+endif()
 
 # ===== テスト =====
 enable_testing()

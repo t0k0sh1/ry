@@ -15,7 +15,8 @@ for _required_file in \
     /workspace/CMakePresets.json \
     /workspace/package.toml \
     /workspace/Cargo.toml \
-    /workspace/Cargo.lock; do
+    /workspace/Cargo.lock \
+    /workspace/LICENSE-LLVM.txt; do
   if [[ ! -f "$_required_file" ]]; then
     echo "fatal: required file mount $_required_file is missing or not a regular file — docker/run.sh MOUNT_ARGS drifted" >&2
     exit 70
@@ -26,7 +27,8 @@ for _required_dir in \
     /workspace/include \
     /workspace/tests \
     /workspace/share \
-    /workspace/crates; do
+    /workspace/crates \
+    /workspace/scripts; do
   if [[ ! -d "$_required_dir" ]]; then
     echo "fatal: required directory mount $_required_dir is missing or not a directory — docker/run.sh MOUNT_ARGS drifted" >&2
     exit 70

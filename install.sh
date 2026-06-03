@@ -54,7 +54,13 @@ install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 if [ -d "$TMPDIR/lib" ]; then
     NATIVE_LIBS_INSTALLED=0
     mkdir -p "$RY_HOME/lib"
-    for f in "$TMPDIR"/lib/libry_*.*; do
+    # Install the Rust cdylib + stdlib native libs (libry_*), and — post-#1999
+    # cutover — the bundled shared libLLVM (plus its macOS chain dep libzstd), so
+    # the installed runtime is self-contained (#2005). $RY_HOME/lib is one of ry's
+    # rpath targets (@loader_path/../../.ry/lib on macOS, $ORIGIN/../../.ry/lib on
+    # Linux). Unmatched globs (e.g. libzstd.* on Linux) stay literal and are
+    # filtered out by the [ -f ] test below.
+    for f in "$TMPDIR"/lib/libry_*.* "$TMPDIR"/lib/libLLVM.* "$TMPDIR"/lib/libzstd.*; do
         if [ -f "$f" ]; then
             install -m 755 "$f" "$RY_HOME/lib/"
             NATIVE_LIBS_INSTALLED=1

@@ -194,6 +194,15 @@ Steady-state shape:
 - **Named ↔ anonymous struct sync.** The cdylib mirrors CodeGen's `listHeaderTy_` / `mapHeaderTy_` / `setHeaderTy_` named/anonymous struct decisions so the emitted aggregate types match what the rest of CodeGen expects; this constraint is part of the locked ABI behavior and is exercised by the IR golden tests.
 - **Toolchain.** A Rust 1.83+ toolchain is required for any local build outside the Docker image (the `ry-ci` image bakes Rust in). The cdylib's internal memory is outside the C++ sanitizer instrumentation scope — see `KNOWLEDGE.md` § サニタイザー既知問題.
 
+## Distribution packaging (#2005)
+
+The mandatory shared `libLLVM` (above) made the release binary non-self-contained: `release.yml` packages `build/ry` directly, so the shipped binary carried a build-machine-absolute reference to `libLLVM.dylib` / `libLLVM.so`. The first tag push after the #1993 cutover would therefore have published a binary that fails to start wherever that LLVM is absent (`dyld: Library not loaded` on macOS / `libLLVM.so: not found` on Linux). #2005 restores self-containment without changing the tarball-based distribution format:
+
+- **Bundling + rpath rewrite.** `scripts/bundle-dist.sh` copies `libLLVM` (and on macOS its only non-system chain dep, `libzstd`) into `lib/` next to `ry`, alongside the `libry_llvm_emit` cdylib and the `libry_*` stdlib native libs. It rewrites install names / rpaths so the references are relocatable: on macOS via `install_name_tool` (absolute Mach-O install names → `@rpath` / `@loader_path`, then an ad-hoc `codesign` re-sign because the rewrite invalidates the signature); on Linux via CMake `BUILD_RPATH`/`INSTALL_RPATH` (`$ORIGIN`-relative, since the `ry-ci-glibc-old` image has no `patchelf` and the no-apt rule forbids adding one). `scripts/verify-bundle.sh` asserts the result (no build-absolute LLVM path survives) before packaging, and CI clean-room jobs hide the system libLLVM to prove `ry` starts from the bundle alone.
+- **Two rpaths on `ry`.** `@loader_path/lib` / `$ORIGIN/lib` resolves the tarball-unpacked-in-place layout (`./ry` next to `./lib`); `@loader_path/../../.ry/lib` / `$ORIGIN/../../.ry/lib` resolves the installed layout (`~/.local/bin/ry` → `~/.ry/lib`, a fixed offset because both sit directly under `$HOME`). `install.sh` and `ry self-update` install the bundled libraries into `~/.ry/lib` alongside `libry_*`.
+- **openssl is out of scope.** `ry_lib` links `OpenSSL::SSL/Crypto`, so `ry` also depends on `libssl`/`libcrypto` — but it did so identically before the cutover (v0.0.25 parity), the issue's AC targets only libLLVM's chain, and bundling crypto would block OS security updates. Clean-room tests therefore hide only libLLVM, leaving openssl resolvable.
+- **License.** `LICENSE-LLVM.txt` (Apache-2.0 with LLVM exceptions) ships in every tarball per redistribution requirements; tarballs grow by roughly the size of libLLVM (~100 MB class).
+
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.

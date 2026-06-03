@@ -147,6 +147,12 @@ MOUNT_ARGS=(
   -v "$PROJECT_DIR/package.toml:/workspace/package.toml"
   -v "$PROJECT_DIR/.clang-tidy:/workspace/.clang-tidy"
   -v "$PROJECT_DIR/.cppcheck-suppressions:/workspace/.cppcheck-suppressions"
+  # scripts/ + LICENSE-LLVM.txt (#2005): scripts/bundle-dist.sh + verify-bundle.sh
+  # assemble and check the self-contained dist/ tree (bundling libLLVM), and the
+  # LLVM license text ships in the tarball — so a local `docker/run.sh default
+  # bash -c '... bundle-dist.sh linux build dist ...'` can validate the Linux path.
+  -v "$PROJECT_DIR/scripts:/workspace/scripts"
+  -v "$PROJECT_DIR/LICENSE-LLVM.txt:/workspace/LICENSE-LLVM.txt"
   -v "$PROJECT_DIR/$BUILD_DIR_HOST:/workspace/$BUILD_DIR_CONTAINER"
   -v "$CCACHE_VOLUME:/home/ubuntu/.cache/ccache"
   -v "$CARGO_VOLUME:/home/ubuntu/.cargo"

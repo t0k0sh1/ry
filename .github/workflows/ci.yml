@@ -129,6 +129,35 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test -p
+      - name: Bundle distribution (Linux)
+        # Exercise the #2005 packaging path on every PR/push: release.yml is
+        # tag-driven and cannot be dry-run, so the bundling + rpath rewrite is
+        # validated here against the same build/ tree the release job uses.
+        run: bash scripts/bundle-dist.sh linux build dist
+      - name: Verify bundle (Linux)
+        run: bash scripts/verify-bundle.sh dist linux
+      - name: Clean-room startup (Linux, system libLLVM removed)
+        run: |
+          # Hide the REAL libLLVM file (follow the symlink chain) so the only
+          # resolution path is the bundled lib/ ($ORIGIN/lib rpath). LD_LIBRARY_PATH
+          # is left intact on purpose — openssl lives there and is out of scope for
+          # #2005 (v0.0.25 parity); only the libLLVM.so file is removed.
+          sys_llvm="$(readlink -f "$(ldd build/ry | awk '/libLLVM/{print $3; exit}')")"
+          echo "hiding system libLLVM: $sys_llvm"
+          mv "$sys_llvm" "$sys_llvm.hidden"
+          trap 'mv -f "$sys_llvm.hidden" "$sys_llvm" 2>/dev/null || true' EXIT
+          # Guard against a false pass: a leftover symlink to the system libLLVM
+          # would let the bundle "work" for the wrong reason. Prove dist/ry now
+          # resolves libLLVM from the bundle, not from /usr/local/llvm.
+          if ldd dist/ry | grep -q '/usr/local/llvm'; then
+            echo "::error::dist/ry still resolves libLLVM from /usr/local/llvm — bundle rpath ineffective"
+            exit 1
+          fi
+          dist/ry --version
+          echo 'print("clean room ok")' | dist/ry -c
+          # Exercise the float/ConstantFP path (#1997) — the canonical libLLVM use
+          # on the Rust cdylib side, which the shared-instance requirement exists for.
+          echo 'print(3.14 + 2.71)' | dist/ry -c
 
   # Heavy analysis jobs (clang-tidy, scan-build, asan, tsan, filecheck):
   # All run on every pull_request and on push triggers configured at the
@@ -393,6 +422,21 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test -p
+      - name: Bundle distribution (macOS)
+        # Validate the #2005 packaging path on the Apple-linker side (the only
+        # place install_name_tool rewrites are exercised before a tag push).
+        run: bash scripts/bundle-dist.sh darwin build dist
+      - name: Verify bundle (macOS)
+        run: bash scripts/verify-bundle.sh dist darwin
+      - name: Clean-room startup (macOS, system libLLVM hidden)
+        run: |
+          # Hide the Homebrew libLLVM so dist/ry must resolve @rpath/libLLVM from
+          # the bundled lib/. openssl@3 stays installed (out of scope, #2005).
+          L="$(brew --prefix llvm@21)/lib/libLLVM.dylib"
+          mv "$L" "$L.hidden"
+          trap 'mv -f "$L.hidden" "$L" 2>/dev/null || true' EXIT
+          dist/ry --version
+          echo 'print("clean room ok")' | dist/ry -c
 
 # ---------------------------------------------------------------------------
 # fuzz job: disabled in CI until the harnesses have proven stable locally.
