@@ -1,0 +1,14 @@
+# Pin the Rust toolchain to the version baked into the CI image
+# (docker/ci.Dockerfile `ARG RUST_VERSION`). rustfmt / clippy output can drift
+# between toolchain versions, so local `cargo fmt` / `cargo clippy` must run the
+# same version the CI `lint` job gates on — otherwise the job would flag code
+# that is locally clean (or vice versa).
+#
+# This channel MUST equal docker/ci.Dockerfile's RUST_VERSION; bump both in the
+# same change. CI itself ignores this file: the image installs Rust from a
+# standalone tarball with no rustup, so /opt/rust/bin/cargo already *is* this
+# version. The file only steers rustup-managed local toolchains (and triggers
+# auto-install of the matching rustfmt/clippy components).
+[toolchain]
+channel = "1.83.0"
+components = ["rustfmt", "clippy"]

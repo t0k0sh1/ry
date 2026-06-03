@@ -628,3 +628,48 @@ GitHub services and add the same flag. Canonical example:
 should show paired analysis/upload steps in every warn-only job. If a
 job has one without the other, audit whether the imbalance is
 intentional.
+
+### Rust crate quality gate runs in the `lint` job; adding clippy/rustfmt needs an image rebuild first
+
+**Source**: #2015 (2026-06-03)
+**Tags**: ci, rust, clippy, rustfmt, ry_llvm_emit, container, ghcr, toolchain-pin
+
+**Rule**: `crates/ry_llvm_emit` is gated in the `ci.yml` `lint` job by
+`cargo fmt --manifest-path crates/ry_llvm_emit/Cargo.toml -- --check`
+and `cargo clippy -p ry_llvm_emit -- -D warnings`, alongside the
+existing `cargo check -p ry_llvm_emit` (#1995 ABI-layout assert). Keep
+all three — they are orthogonal; do not merge clippy into check.
+`clippy` compiles `llvm-sys`, so it relies on the image's baked
+`LLVM_SYS_211_PREFIX` + shared libLLVM exactly like `cargo check`;
+`cargo fmt --check` needs no LLVM.
+
+**Toolchain pin**: `rust-toolchain.toml` (repo root) pins the channel to
+`docker/ci.Dockerfile`'s `RUST_VERSION`. rustfmt/clippy output drifts
+between toolchain versions, so a mismatch would make `lint` flag
+locally-clean code. CI's non-rustup `/opt/rust/bin/cargo` ignores the
+file (it bakes that exact version); the file only steers rustup-managed
+local toolchains. **Bump the pin and `RUST_VERSION` together.**
+
+**Why an image rebuild is on the critical path**: the standalone Rust
+tarball baked into `ry-ci` must include `clippy-preview` /
+`rustfmt-preview` (the `-preview` suffix is confirmed via the
+rustup-extracted `components` file; the no-arch-suffix form follows the
+working `rustc` / `cargo` precedent in the same `--components` line). The
+Dockerfile line is
+`--components="rustc,cargo,rust-std-${RARCH},clippy-preview,rustfmt-preview"`.
+If `install.sh` ever rejects those names, the authoritative source is the
+`[pkg.*]` keys in `channel-rust-<RUST_VERSION>.toml`; if the image builds
+but `cargo fmt` / `cargo clippy` are not found at run time, confirm
+`/opt/rust/bin` is on `PATH`.
+Adding the clippy/fmt steps to `ci.yml` without rebuilding the image
+first makes `lint` fail on the old image. Push the Dockerfile change
+first — `build-ci-image.yml`'s push trigger + path filter auto-rebuilds
+and updates the mutable `:llvm-21` pointer (~60-90 min) — then re-run
+CI. This is the "new tool added to image" path in
+`.claude/skills/ci-image-workflow/SKILL.md`. Only `ry-ci` needs them;
+`ry-ci-glibc-old` does not lint, so it is left unchanged.
+
+**Local reproduction**: `./.claude/skills/pre-commit-checklist/run-rust-lint.sh`
+(`/pre-commit-checklist` §3.5.6). Lint policy is declared in
+`[workspace.lints]` (root `Cargo.toml`); FFI carve-outs stay as
+crate-level `#![allow(...)]` in `lib.rs`.

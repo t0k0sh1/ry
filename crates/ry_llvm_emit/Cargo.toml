@@ -40,3 +40,9 @@ llvm-sys = { version = "211", features = ["force-dynamic"] }
 
 # Profile settings live at the workspace root in /Cargo.toml — cargo
 # ignores `[profile.*]` blocks in workspace-member manifests.
+
+# Inherit the workspace lint policy (root /Cargo.toml [workspace.lints]). The
+# crate-level `#![allow(...)]` in src/lib.rs (FFI naming, unsafe-doc) stay there
+# because they are specific to this cdylib's C ABI, not workspace-wide policy.
+[lints]
+workspace = true

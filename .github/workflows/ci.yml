@@ -104,6 +104,24 @@ jobs:
           # the Rust cdylib — the full integration build is the `test` job.
           cargo check -p ry_llvm_emit
 
+      - name: Rust format check (rustfmt, #2015)
+        run: |
+          # Rust quality gate symmetric with the C++ clang-tidy / cppcheck gates.
+          # rustfmt needs no LLVM. The image's Rust is the version pinned locally
+          # by rust-toolchain.toml (kept equal to docker/ci.Dockerfile
+          # RUST_VERSION), so `--check` here matches local `cargo fmt` output —
+          # no formatting drift between local and CI.
+          cargo fmt --manifest-path crates/ry_llvm_emit/Cargo.toml -- --check
+
+      - name: Rust lint (clippy, #2015)
+        run: |
+          # clippy compiles llvm-sys exactly like the `cargo check` step above,
+          # so it relies on the same baked LLVM_SYS_211_PREFIX + shared libLLVM
+          # in the image ENV. `-D warnings` makes any lint a hard failure. Kept
+          # separate from `cargo check` (whose #1995 ABI-layout-assert purpose is
+          # orthogonal) rather than merged.
+          cargo clippy -p ry_llvm_emit -- -D warnings
+
   test:
     runs-on: ubuntu-24.04
     container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21

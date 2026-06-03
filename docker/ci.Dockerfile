@@ -178,6 +178,12 @@ RUN set -eux; \
 # LLVM_SYS_211_PREFIX is wired in the final image to the existing
 # /usr/local/llvm install so llvm-sys = "210" finds LLVM 21 at build.
 #
+# clippy-preview + rustfmt-preview are included so the CI `lint` job can run
+# `cargo clippy -- -D warnings` and `cargo fmt --check` as a Rust quality gate
+# (#2015), symmetric with the C++ clang-tidy / cppcheck gates. Only ry-ci needs
+# them (release's ry-ci-glibc-old does not lint), so they are not added to
+# docker/ci-glibc-old.Dockerfile.
+#
 FROM gcc:14-trixie AS rust-bootstrap
 
 ARG RUST_VERSION=1.83.0
@@ -203,7 +209,7 @@ RUN set -eux; \
     tar -xJf "${TARBALL}"; \
     "rust-${RUST_VERSION}-${RARCH}/install.sh" \
         --prefix=/opt/rust \
-        --components="rustc,cargo,rust-std-${RARCH}"; \
+        --components="rustc,cargo,rust-std-${RARCH},clippy-preview,rustfmt-preview"; \
     rm -rf "rust-${RUST_VERSION}-${RARCH}" "${TARBALL}" "${TARBALL}.sha256"
 
 #

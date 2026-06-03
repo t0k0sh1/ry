@@ -253,18 +253,35 @@ const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, err_msg_str_id) 
 
 // --- Opaque handle typedefs: sizeof + alignof only (no fields) ---
 // All are `*mut <Opaque>` -> 8 bytes / 8-byte aligned on the 64-bit ABI.
-const _: () = assert!(core::mem::size_of::<RyModuleHandle>() == 8 && core::mem::align_of::<RyModuleHandle>() == 8);
-const _: () = assert!(core::mem::size_of::<RyBuilderHandle>() == 8 && core::mem::align_of::<RyBuilderHandle>() == 8);
-const _: () = assert!(core::mem::size_of::<RyContextHandle>() == 8 && core::mem::align_of::<RyContextHandle>() == 8);
-const _: () = assert!(core::mem::size_of::<RyFunctionHandle>() == 8 && core::mem::align_of::<RyFunctionHandle>() == 8);
-const _: () = assert!(core::mem::size_of::<RyTypeRef>() == 8 && core::mem::align_of::<RyTypeRef>() == 8);
-const _: () = assert!(core::mem::size_of::<RyFuncTypeRef>() == 8 && core::mem::align_of::<RyFuncTypeRef>() == 8);
-const _: () = assert!(core::mem::size_of::<RyValueRef>() == 8 && core::mem::align_of::<RyValueRef>() == 8);
-const _: () = assert!(core::mem::size_of::<RyBasicBlockRef>() == 8 && core::mem::align_of::<RyBasicBlockRef>() == 8);
+const _: () = assert!(
+    core::mem::size_of::<RyModuleHandle>() == 8 && core::mem::align_of::<RyModuleHandle>() == 8
+);
+const _: () = assert!(
+    core::mem::size_of::<RyBuilderHandle>() == 8 && core::mem::align_of::<RyBuilderHandle>() == 8
+);
+const _: () = assert!(
+    core::mem::size_of::<RyContextHandle>() == 8 && core::mem::align_of::<RyContextHandle>() == 8
+);
+const _: () = assert!(
+    core::mem::size_of::<RyFunctionHandle>() == 8 && core::mem::align_of::<RyFunctionHandle>() == 8
+);
+const _: () =
+    assert!(core::mem::size_of::<RyTypeRef>() == 8 && core::mem::align_of::<RyTypeRef>() == 8);
+const _: () = assert!(
+    core::mem::size_of::<RyFuncTypeRef>() == 8 && core::mem::align_of::<RyFuncTypeRef>() == 8
+);
+const _: () =
+    assert!(core::mem::size_of::<RyValueRef>() == 8 && core::mem::align_of::<RyValueRef>() == 8);
+const _: () = assert!(
+    core::mem::size_of::<RyBasicBlockRef>() == 8 && core::mem::align_of::<RyBasicBlockRef>() == 8
+);
 
 // --- Scalar intern-handle typedefs (u32) ---
-const _: () = assert!(core::mem::size_of::<RyValueId>() == 4 && core::mem::align_of::<RyValueId>() == 4);
-const _: () = assert!(core::mem::size_of::<RyBasicBlockId>() == 4 && core::mem::align_of::<RyBasicBlockId>() == 4);
+const _: () =
+    assert!(core::mem::size_of::<RyValueId>() == 4 && core::mem::align_of::<RyValueId>() == 4);
+const _: () = assert!(
+    core::mem::size_of::<RyBasicBlockId>() == 4 && core::mem::align_of::<RyBasicBlockId>() == 4
+);
 
 // =============================================================
 // Internal helpers (issue #1997). The 28 ABI bodies below were ported
@@ -532,12 +549,27 @@ unsafe fn load_list_header(
     ptr_ty: LLVMTypeRef,
     prefix: &[u8],
 ) -> ListHeaderLoad {
-    let len_ptr =
-        LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 0, cname_pfx(prefix, b"_len_ptr").as_ptr());
-    let cap_ptr =
-        LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 1, cname_pfx(prefix, b"_cap_ptr").as_ptr());
-    let data_ptr =
-        LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 2, cname_pfx(prefix, b"_data_ptr").as_ptr());
+    let len_ptr = LLVMBuildStructGEP2(
+        b,
+        list_header_ty,
+        list_ptr,
+        0,
+        cname_pfx(prefix, b"_len_ptr").as_ptr(),
+    );
+    let cap_ptr = LLVMBuildStructGEP2(
+        b,
+        list_header_ty,
+        list_ptr,
+        1,
+        cname_pfx(prefix, b"_cap_ptr").as_ptr(),
+    );
+    let data_ptr = LLVMBuildStructGEP2(
+        b,
+        list_header_ty,
+        list_ptr,
+        2,
+        cname_pfx(prefix, b"_data_ptr").as_ptr(),
+    );
     let len = LLVMBuildLoad2(b, i64_ty, len_ptr, cname_pfx(prefix, b"_len").as_ptr());
     let cap = LLVMBuildLoad2(b, i64_ty, cap_ptr, cname_pfx(prefix, b"_cap").as_ptr());
     let data = LLVMBuildLoad2(b, ptr_ty, data_ptr, cname_pfx(prefix, b"_data").as_ptr());
@@ -586,7 +618,14 @@ unsafe fn emit_inline_runtime_error(c: &mut EmitCtxImpl, msg: &[u8], name_hint: 
     let fprintf_ty = LLVMFunctionType(i32_ty, fprintf_p.as_mut_ptr(), 2, 1);
     let fprintf_fn = get_or_insert_function(module, c"fprintf".as_ptr(), fprintf_ty);
     let mut fprintf_a = [stderr_val, err_msg];
-    LLVMBuildCall2(b, fprintf_ty, fprintf_fn, fprintf_a.as_mut_ptr(), 2, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        fprintf_ty,
+        fprintf_fn,
+        fprintf_a.as_mut_ptr(),
+        2,
+        c"".as_ptr(),
+    );
     let mut fflush_p = [ptr_ty];
     let fflush_ty = LLVMFunctionType(i32_ty, fflush_p.as_mut_ptr(), 1, 0);
     let fflush_fn = get_or_insert_function(module, c"fflush".as_ptr(), fflush_ty);
@@ -618,11 +657,30 @@ unsafe fn emit_inline_arc_alloc(c: &mut EmitCtxImpl, box_data_size: LLVMValueRef
     let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
     let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
     let mut malloc_a = [total_size];
-    let header_ptr = LLVMBuildCall2(b, malloc_ty, malloc_fn, malloc_a.as_mut_ptr(), 1, c"arc_box".as_ptr());
+    let header_ptr = LLVMBuildCall2(
+        b,
+        malloc_ty,
+        malloc_fn,
+        malloc_a.as_mut_ptr(),
+        1,
+        c"arc_box".as_ptr(),
+    );
     emit_arc_counter_delta(b, i64_ty, ptr_ty, 1);
-    let strong_ptr = LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 0, c"arc_box_strong_ptr".as_ptr());
+    let strong_ptr = LLVMBuildStructGEP2(
+        b,
+        arc_header_ty,
+        header_ptr,
+        0,
+        c"arc_box_strong_ptr".as_ptr(),
+    );
     LLVMBuildStore(b, LLVMConstInt(i64_ty, 1, 0), strong_ptr);
-    let weak_ptr = LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 1, c"arc_box_weak_ptr".as_ptr());
+    let weak_ptr = LLVMBuildStructGEP2(
+        b,
+        arc_header_ty,
+        header_ptr,
+        1,
+        c"arc_box_weak_ptr".as_ptr(),
+    );
     LLVMBuildStore(b, LLVMConstInt(i64_ty, 0, 0), weak_ptr);
     header_ptr
 }
@@ -631,6 +689,13 @@ unsafe fn emit_inline_arc_alloc(c: &mut EmitCtxImpl, box_data_size: LLVMValueRef
 // a phi-based for loop that retains each ARC element/key of the cloned buffer.
 // Takes the opaque ctx (not &mut EmitCtxImpl) so it can call the public
 // ry_emit_arc_retain without holding a borrow across the call.
+//
+// The cached LLVM types (i64/i8/ptr) and the per-call (field_idx, is_str, tag)
+// are passed individually, mirroring how lib.rs threads these types throughout
+// codegen. Bundling them into a struct only here would be asymmetric and would
+// touch a hot codegen path, so the lint is suppressed rather than refactored
+// (see .claude/rules/build-warning-flags.md "intentional patterns" policy).
+#[allow(clippy::too_many_arguments)]
 unsafe fn emit_cow_retain_loop(
     ctx: *mut RyEmitCtx,
     header_ty: LLVMTypeRef,
@@ -644,15 +709,40 @@ unsafe fn emit_cow_retain_loop(
 ) {
     let b = cx(ctx).builder;
     let context = cx(ctx).context;
-    let len_field_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, cname3(b"cow_", tag, b"_len_ptr").as_ptr());
-    let count = LLVMBuildLoad2(b, i64_ty, len_field_ptr, cname3(b"cow_", tag, b"_len").as_ptr());
-    let buf_field_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, field_idx, cname3(b"cow_", tag, b"_buf_field").as_ptr());
-    let buf = LLVMBuildLoad2(b, ptr_ty, buf_field_ptr, cname3(b"cow_", tag, b"_buf").as_ptr());
+    let len_field_ptr = LLVMBuildStructGEP2(
+        b,
+        header_ty,
+        new_data_ptr,
+        0,
+        cname3(b"cow_", tag, b"_len_ptr").as_ptr(),
+    );
+    let count = LLVMBuildLoad2(
+        b,
+        i64_ty,
+        len_field_ptr,
+        cname3(b"cow_", tag, b"_len").as_ptr(),
+    );
+    let buf_field_ptr = LLVMBuildStructGEP2(
+        b,
+        header_ty,
+        new_data_ptr,
+        field_idx,
+        cname3(b"cow_", tag, b"_buf_field").as_ptr(),
+    );
+    let buf = LLVMBuildLoad2(
+        b,
+        ptr_ty,
+        buf_field_ptr,
+        cname3(b"cow_", tag, b"_buf").as_ptr(),
+    );
 
     let loop_fn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
-    let loop_bb = LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_loop").as_ptr());
-    let body_bb = LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_body").as_ptr());
-    let loop_done_bb = LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_done").as_ptr());
+    let loop_bb =
+        LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_loop").as_ptr());
+    let body_bb =
+        LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_body").as_ptr());
+    let loop_done_bb =
+        LLVMAppendBasicBlockInContext(context, loop_fn, cname3(b"cow.", tag, b"_done").as_ptr());
 
     let pre_loop_bb = LLVMGetInsertBlock(b);
     LLVMBuildBr(b, loop_bb);
@@ -661,12 +751,25 @@ unsafe fn emit_cow_retain_loop(
     let mut init_vals = [LLVMConstInt(i64_ty, 0, 0)];
     let mut init_blocks = [pre_loop_bb];
     LLVMAddIncoming(idx, init_vals.as_mut_ptr(), init_blocks.as_mut_ptr(), 1);
-    let cond = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSLT, idx, count, cname3(b"cow_", tag, b"_cond").as_ptr());
+    let cond = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntSLT,
+        idx,
+        count,
+        cname3(b"cow_", tag, b"_cond").as_ptr(),
+    );
     LLVMBuildCondBr(b, cond, body_bb, loop_done_bb);
 
     LLVMPositionBuilderAtEnd(b, body_bb);
     let mut elem_gep = [idx];
-    let elem_ptr = LLVMBuildGEP2(b, ptr_ty, buf, elem_gep.as_mut_ptr(), 1, cname3(b"cow_", tag, b"_ptr").as_ptr());
+    let elem_ptr = LLVMBuildGEP2(
+        b,
+        ptr_ty,
+        buf,
+        elem_gep.as_mut_ptr(),
+        1,
+        cname3(b"cow_", tag, b"_ptr").as_ptr(),
+    );
     let elem = LLVMBuildLoad2(b, ptr_ty, elem_ptr, cname3(b"cow_", tag, b"_val").as_ptr());
     let hdr_offset = if is_str != 0 {
         -(STRING_HEADER_SIZE as i64)
@@ -674,10 +777,22 @@ unsafe fn emit_cow_retain_loop(
         -(ARC_HEADER_SIZE as i64)
     };
     let mut hdr_gep = [LLVMConstInt(i64_ty, hdr_offset as u64, 0)];
-    let elem_hdr = LLVMBuildGEP2(b, i8_ty, elem, hdr_gep.as_mut_ptr(), 1, cname3(b"cow_", tag, b"_hdr").as_ptr());
+    let elem_hdr = LLVMBuildGEP2(
+        b,
+        i8_ty,
+        elem,
+        hdr_gep.as_mut_ptr(),
+        1,
+        cname3(b"cow_", tag, b"_hdr").as_ptr(),
+    );
     let elem_hdr_id = intern(cx(ctx), to_ry_value(elem_hdr));
     ry_emit_arc_retain(ctx, elem_hdr_id, RY_ARC_NONATOMIC);
-    let next = LLVMBuildAdd(b, idx, LLVMConstInt(i64_ty, 1, 0), cname3(b"cow_", tag, b"_next").as_ptr());
+    let next = LLVMBuildAdd(
+        b,
+        idx,
+        LLVMConstInt(i64_ty, 1, 0),
+        cname3(b"cow_", tag, b"_next").as_ptr(),
+    );
     // Back-edge incoming uses the builder's current block (advanced past the
     // retain helper's BBs), not body_bb.
     let mut next_vals = [next];
@@ -963,7 +1078,14 @@ pub unsafe extern "C" fn ry_emit_bounds_error(
     let fprintf_ty = LLVMFunctionType(i32_ty, fprintf_params.as_mut_ptr(), 2, 1);
     let fprintf_fn = get_or_insert_function(c.module, c"fprintf".as_ptr(), fprintf_ty);
     let mut fprintf_args = [stderr_val, err_msg, orig_idx, len];
-    LLVMBuildCall2(b, fprintf_ty, fprintf_fn, fprintf_args.as_mut_ptr(), 4, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        fprintf_ty,
+        fprintf_fn,
+        fprintf_args.as_mut_ptr(),
+        4,
+        c"".as_ptr(),
+    );
 
     let mut fflush_params = [ptr_ty];
     let fflush_ty = LLVMFunctionType(i32_ty, fflush_params.as_mut_ptr(), 1, 0);
@@ -1024,7 +1146,8 @@ unsafe fn arc_retain_impl(c: &mut EmitCtxImpl, header_ptr_id: RyValueId, atomic:
     let header_ptr = as_value(resolve(c, header_ptr_id));
     let i64_ty = i64_type(context);
     let arc_header_ty = arc_header_type(context);
-    let strong_ptr = LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 0, c"arc_retain_ptr".as_ptr());
+    let strong_ptr =
+        LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 0, c"arc_retain_ptr".as_ptr());
     // Skip immortal objects; the load must still be atomic in atomic mode (#630).
     let cur = emit_atomic_i64_load(
         b,
@@ -1119,8 +1242,7 @@ unsafe fn arc_release_impl(
     LLVMBuildCondBr(b, is_immortal, done_bb, release_bb);
 
     LLVMPositionBuilderAtEnd(b, release_bb);
-    let is_zero;
-    if atomic == RY_ARC_ATOMIC {
+    let is_zero = if atomic == RY_ARC_ATOMIC {
         // atomicrmw returns the OLD value; object is dead when old == 1.
         let old = LLVMBuildAtomicRMW(
             b,
@@ -1130,13 +1252,25 @@ unsafe fn arc_release_impl(
             LLVMAtomicOrdering::LLVMAtomicOrderingSequentiallyConsistent,
             0,
         );
-        is_zero = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, old, LLVMConstInt(i64_ty, 1, 0), c"arc_dead".as_ptr());
+        LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            old,
+            LLVMConstInt(i64_ty, 1, 0),
+            c"arc_dead".as_ptr(),
+        )
     } else {
         let cur = LLVMBuildLoad2(b, i64_ty, strong_ptr, c"arc_strong".as_ptr());
         let dec = LLVMBuildSub(b, cur, LLVMConstInt(i64_ty, 1, 0), c"arc_dec".as_ptr());
         LLVMBuildStore(b, dec, strong_ptr);
-        is_zero = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, dec, LLVMConstInt(i64_ty, 0, 0), c"arc_dead".as_ptr());
-    }
+        LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            dec,
+            LLVMConstInt(i64_ty, 0, 0),
+            c"arc_dead".as_ptr(),
+        )
+    };
 
     let free_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"arc.release".as_ptr());
 
@@ -1154,7 +1288,14 @@ unsafe fn arc_release_impl(
         };
         let gc_visit_fn_val = as_value(gc_visit_fn);
         let mut gc_track_args = [header_ptr, gc_visit_fn_val, dtor_ptr];
-        LLVMBuildCall2(b, gc_track_ty, gc_track_fn, gc_track_args.as_mut_ptr(), 3, c"".as_ptr());
+        LLVMBuildCall2(
+            b,
+            gc_track_ty,
+            gc_track_fn,
+            gc_track_args.as_mut_ptr(),
+            3,
+            c"".as_ptr(),
+        );
         LLVMBuildBr(b, done_bb);
     } else {
         LLVMBuildCondBr(b, is_zero, free_bb, done_bb);
@@ -1165,14 +1306,35 @@ unsafe fn arc_release_impl(
     let gc_untrack_ty = LLVMFunctionType(void_ty, gc_untrack_params.as_mut_ptr(), 1, 0);
     let gc_untrack_fn = get_or_insert_function(module, c"__ry_gc_untrack".as_ptr(), gc_untrack_ty);
     let mut gc_untrack_args = [header_ptr];
-    LLVMBuildCall2(b, gc_untrack_ty, gc_untrack_fn, gc_untrack_args.as_mut_ptr(), 1, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        gc_untrack_ty,
+        gc_untrack_fn,
+        gc_untrack_args.as_mut_ptr(),
+        1,
+        c"".as_ptr(),
+    );
     if !destructor_callee.is_null() {
         let mut gep_idx = [LLVMConstInt(i64_ty, ARC_HEADER_SIZE, 0)];
-        let data_ptr = LLVMBuildGEP2(b, i8_ty, header_ptr, gep_idx.as_mut_ptr(), 1, c"arc_data".as_ptr());
+        let data_ptr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            header_ptr,
+            gep_idx.as_mut_ptr(),
+            1,
+            c"arc_data".as_ptr(),
+        );
         let mut dtor_params = [ptr_ty];
         let dtor_ty = LLVMFunctionType(void_ty, dtor_params.as_mut_ptr(), 1, 0);
         let mut dtor_args = [data_ptr];
-        LLVMBuildCall2(b, dtor_ty, as_value(destructor_callee), dtor_args.as_mut_ptr(), 1, c"".as_ptr());
+        LLVMBuildCall2(
+            b,
+            dtor_ty,
+            as_value(destructor_callee),
+            dtor_args.as_mut_ptr(),
+            1,
+            c"".as_ptr(),
+        );
     }
     // weak_count read: atomic load scaled to the caller's atomic mode (Acquire
     // when atomic) — weak_count atomic-load rule (#1968).
@@ -1188,7 +1350,13 @@ unsafe fn arc_release_impl(
         },
         c"arc_weak".as_ptr(),
     );
-    let no_weak = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, weak_count, LLVMConstInt(i64_ty, 0, 0), c"arc_no_weak".as_ptr());
+    let no_weak = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        weak_count,
+        LLVMConstInt(i64_ty, 0, 0),
+        c"arc_no_weak".as_ptr(),
+    );
     let real_free_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"arc.free".as_ptr());
     let skip_free_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"arc.skip_free".as_ptr());
     LLVMBuildCondBr(b, no_weak, real_free_bb, skip_free_bb);
@@ -1216,7 +1384,13 @@ pub unsafe extern "C" fn ry_emit_arc_release(
     destructor_callee: RyValueRef,
     gc_visit_fn: RyValueRef,
 ) {
-    arc_release_impl(cx(ctx), header_ptr_id, atomic, destructor_callee, gc_visit_fn);
+    arc_release_impl(
+        cx(ctx),
+        header_ptr_id,
+        atomic,
+        destructor_callee,
+        gc_visit_fn,
+    );
 }
 
 // ----- Stage 2-C RuntimeCall ---------------------------------
@@ -1267,13 +1441,20 @@ pub unsafe extern "C" fn ry_emit_runtime_call(
         args.push(a);
     }
     // LLVM forbids naming a void-returning call; pass an empty name in that case.
-    let call_name = if LLVMGetTypeKind(ret_ty_t) == LLVMTypeKind::LLVMVoidTypeKind || name_hint.is_null()
-    {
-        c"".as_ptr()
-    } else {
-        name_hint
-    };
-    let result = LLVMBuildCall2(c.builder, fn_ty, callee, args.as_mut_ptr(), arg_count, call_name);
+    let call_name =
+        if LLVMGetTypeKind(ret_ty_t) == LLVMTypeKind::LLVMVoidTypeKind || name_hint.is_null() {
+            c"".as_ptr()
+        } else {
+            name_hint
+        };
+    let result = LLVMBuildCall2(
+        c.builder,
+        fn_ty,
+        callee,
+        args.as_mut_ptr(),
+        arg_count,
+        call_name,
+    );
     intern(c, to_ry_value(result))
 }
 
@@ -1303,28 +1484,69 @@ pub unsafe extern "C" fn ry_emit_collection_append(
 
     let h = load_list_header(b, list_header_ty, list_ptr, i64_ty, ptr_ty, b"app");
 
-    let need_grow = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, h.len, h.cap, c"app_need_grow".as_ptr());
+    let need_grow = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        h.len,
+        h.cap,
+        c"app_need_grow".as_ptr(),
+    );
     let grow_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"app.grow".as_ptr());
     let store_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"app.store".as_ptr());
     LLVMBuildCondBr(b, need_grow, grow_bb, store_bb);
 
     LLVMPositionBuilderAtEnd(b, grow_bb);
     let four = LLVMConstInt(i64_ty, 4, 0);
-    let doubled = LLVMBuildMul(b, h.cap, LLVMConstInt(i64_ty, 2, 0), c"app_doubled".as_ptr());
-    let gt4 = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, doubled, four, c"cap_gt4".as_ptr());
+    let doubled = LLVMBuildMul(
+        b,
+        h.cap,
+        LLVMConstInt(i64_ty, 2, 0),
+        c"app_doubled".as_ptr(),
+    );
+    let gt4 = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntSGT,
+        doubled,
+        four,
+        c"cap_gt4".as_ptr(),
+    );
     let new_cap = LLVMBuildSelect(b, gt4, doubled, four, c"app_new_cap".as_ptr());
-    let new_size = LLVMBuildMul(b, new_cap, LLVMConstInt(i64_ty, elem_size, 0), c"app_new_size".as_ptr());
+    let new_size = LLVMBuildMul(
+        b,
+        new_cap,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"app_new_size".as_ptr(),
+    );
     let mut malloc_p = [i64_ty];
     let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
     let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
     let mut malloc_a = [new_size];
-    let new_data = LLVMBuildCall2(b, malloc_ty, malloc_fn, malloc_a.as_mut_ptr(), 1, c"app_new_data".as_ptr());
-    let old_size = LLVMBuildMul(b, h.len, LLVMConstInt(i64_ty, elem_size, 0), c"app_old_size".as_ptr());
+    let new_data = LLVMBuildCall2(
+        b,
+        malloc_ty,
+        malloc_fn,
+        malloc_a.as_mut_ptr(),
+        1,
+        c"app_new_data".as_ptr(),
+    );
+    let old_size = LLVMBuildMul(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"app_old_size".as_ptr(),
+    );
     let mut memcpy_p = [ptr_ty, ptr_ty, i64_ty];
     let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_p.as_mut_ptr(), 3, 0);
     let memcpy_fn = get_or_insert_function(module, c"memcpy".as_ptr(), memcpy_ty);
     let mut memcpy_a = [new_data, h.data, old_size];
-    LLVMBuildCall2(b, memcpy_ty, memcpy_fn, memcpy_a.as_mut_ptr(), 3, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        memcpy_ty,
+        memcpy_fn,
+        memcpy_a.as_mut_ptr(),
+        3,
+        c"".as_ptr(),
+    );
     let mut free_p = [ptr_ty];
     let free_ty = LLVMFunctionType(void_ty, free_p.as_mut_ptr(), 1, 0);
     let free_fn = get_or_insert_function(module, c"free".as_ptr(), free_ty);
@@ -1338,9 +1560,21 @@ pub unsafe extern "C" fn ry_emit_collection_append(
     let cur_data = LLVMBuildLoad2(b, ptr_ty, h.data_ptr, c"app_cur_data".as_ptr());
     let cur_len = LLVMBuildLoad2(b, i64_ty, h.len_ptr, c"app_cur_len".as_ptr());
     let mut elem_idx = [cur_len];
-    let elem_ptr = LLVMBuildGEP2(b, elem_ty, cur_data, elem_idx.as_mut_ptr(), 1, c"app_elem_ptr".as_ptr());
+    let elem_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        cur_data,
+        elem_idx.as_mut_ptr(),
+        1,
+        c"app_elem_ptr".as_ptr(),
+    );
     LLVMBuildStore(b, val, elem_ptr);
-    let new_len = LLVMBuildAdd(b, cur_len, LLVMConstInt(i64_ty, 1, 0), c"app_new_len".as_ptr());
+    let new_len = LLVMBuildAdd(
+        b,
+        cur_len,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"app_new_len".as_ptr(),
+    );
     LLVMBuildStore(b, new_len, h.len_ptr);
 }
 
@@ -1370,7 +1604,12 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     let h = load_list_header(b, list_header_ty, list_ptr, i64_ty, ptr_ty, b"ins");
 
     // insert() valid range is [0, len], so negative -k maps to len+1-k.
-    let wrap_base = LLVMBuildAdd(b, h.len, LLVMConstInt(i64_ty, 1, 0), c"ins_wrap_base".as_ptr());
+    let wrap_base = LLVMBuildAdd(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"ins_wrap_base".as_ptr(),
+    );
     let orig_in = intern(cx(ctx), to_ry_value(orig_idx));
     let wrap_in = intern(cx(ctx), to_ry_value(wrap_base));
     let wrapped_id = ry_emit_negative_index_wrap(ctx, orig_in, wrap_in, c"ins".as_ptr());
@@ -1395,28 +1634,63 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     );
 
     LLVMPositionBuilderAtEnd(b, ok_bb);
-    let need_grow = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, h.len, h.cap, c"ins_need_grow".as_ptr());
+    let need_grow = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        h.len,
+        h.cap,
+        c"ins_need_grow".as_ptr(),
+    );
     let grow_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"ins.grow".as_ptr());
     let move_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"ins.move".as_ptr());
     LLVMBuildCondBr(b, need_grow, grow_bb, move_bb);
 
     LLVMPositionBuilderAtEnd(b, grow_bb);
     let four = LLVMConstInt(i64_ty, 4, 0);
-    let doubled = LLVMBuildMul(b, h.cap, LLVMConstInt(i64_ty, 2, 0), c"ins_doubled".as_ptr());
+    let doubled = LLVMBuildMul(
+        b,
+        h.cap,
+        LLVMConstInt(i64_ty, 2, 0),
+        c"ins_doubled".as_ptr(),
+    );
     let gt4 = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, doubled, four, c"".as_ptr());
     let new_cap = LLVMBuildSelect(b, gt4, doubled, four, c"ins_new_cap".as_ptr());
-    let new_size = LLVMBuildMul(b, new_cap, LLVMConstInt(i64_ty, elem_size, 0), c"ins_new_size".as_ptr());
+    let new_size = LLVMBuildMul(
+        b,
+        new_cap,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"ins_new_size".as_ptr(),
+    );
     let mut malloc_p = [i64_ty];
     let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
     let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
     let mut malloc_a = [new_size];
-    let new_data = LLVMBuildCall2(b, malloc_ty, malloc_fn, malloc_a.as_mut_ptr(), 1, c"ins_new_data".as_ptr());
-    let old_size = LLVMBuildMul(b, h.len, LLVMConstInt(i64_ty, elem_size, 0), c"ins_old_size".as_ptr());
+    let new_data = LLVMBuildCall2(
+        b,
+        malloc_ty,
+        malloc_fn,
+        malloc_a.as_mut_ptr(),
+        1,
+        c"ins_new_data".as_ptr(),
+    );
+    let old_size = LLVMBuildMul(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"ins_old_size".as_ptr(),
+    );
     let mut memcpy_p = [ptr_ty, ptr_ty, i64_ty];
     let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_p.as_mut_ptr(), 3, 0);
     let memcpy_fn = get_or_insert_function(module, c"memcpy".as_ptr(), memcpy_ty);
     let mut memcpy_a = [new_data, h.data, old_size];
-    LLVMBuildCall2(b, memcpy_ty, memcpy_fn, memcpy_a.as_mut_ptr(), 3, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        memcpy_ty,
+        memcpy_fn,
+        memcpy_a.as_mut_ptr(),
+        3,
+        c"".as_ptr(),
+    );
     let mut free_p = [ptr_ty];
     let free_ty = LLVMFunctionType(void_ty, free_p.as_mut_ptr(), 1, 0);
     let free_fn = get_or_insert_function(module, c"free".as_ptr(), free_ty);
@@ -1429,21 +1703,59 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     LLVMPositionBuilderAtEnd(b, move_bb);
     let cur_data = LLVMBuildLoad2(b, ptr_ty, h.data_ptr, c"ins_cur_data".as_ptr());
     let mut src_idx = [idx];
-    let src_ptr = LLVMBuildGEP2(b, elem_ty, cur_data, src_idx.as_mut_ptr(), 1, c"ins_src".as_ptr());
+    let src_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        cur_data,
+        src_idx.as_mut_ptr(),
+        1,
+        c"ins_src".as_ptr(),
+    );
     let idx_plus_one = LLVMBuildAdd(b, idx, LLVMConstInt(i64_ty, 1, 0), c"".as_ptr());
     let mut dst_idx = [idx_plus_one];
-    let dst_ptr = LLVMBuildGEP2(b, elem_ty, cur_data, dst_idx.as_mut_ptr(), 1, c"ins_dst".as_ptr());
+    let dst_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        cur_data,
+        dst_idx.as_mut_ptr(),
+        1,
+        c"ins_dst".as_ptr(),
+    );
     let move_count = LLVMBuildSub(b, h.len, idx, c"ins_move_count".as_ptr());
-    let move_bytes = LLVMBuildMul(b, move_count, LLVMConstInt(i64_ty, elem_size, 0), c"ins_move_bytes".as_ptr());
+    let move_bytes = LLVMBuildMul(
+        b,
+        move_count,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"ins_move_bytes".as_ptr(),
+    );
     let mut memmove_p = [ptr_ty, ptr_ty, i64_ty];
     let memmove_ty = LLVMFunctionType(ptr_ty, memmove_p.as_mut_ptr(), 3, 0);
     let memmove_fn = get_or_insert_function(module, c"memmove".as_ptr(), memmove_ty);
     let mut memmove_a = [dst_ptr, src_ptr, move_bytes];
-    LLVMBuildCall2(b, memmove_ty, memmove_fn, memmove_a.as_mut_ptr(), 3, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        memmove_ty,
+        memmove_fn,
+        memmove_a.as_mut_ptr(),
+        3,
+        c"".as_ptr(),
+    );
     let mut ins_idx = [idx];
-    let insert_ptr = LLVMBuildGEP2(b, elem_ty, cur_data, ins_idx.as_mut_ptr(), 1, c"ins_ptr".as_ptr());
+    let insert_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        cur_data,
+        ins_idx.as_mut_ptr(),
+        1,
+        c"ins_ptr".as_ptr(),
+    );
     LLVMBuildStore(b, val, insert_ptr);
-    let new_len = LLVMBuildAdd(b, h.len, LLVMConstInt(i64_ty, 1, 0), c"ins_new_len".as_ptr());
+    let new_len = LLVMBuildAdd(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"ins_new_len".as_ptr(),
+    );
     LLVMBuildStore(b, new_len, h.len_ptr);
 }
 
@@ -1494,20 +1806,56 @@ pub unsafe extern "C" fn ry_emit_collection_remove_at(
 
     LLVMPositionBuilderAtEnd(b, ok_bb);
     let mut elem_idx = [idx];
-    let elem_ptr = LLVMBuildGEP2(b, elem_ty, h.data, elem_idx.as_mut_ptr(), 1, c"rmat_elem_ptr".as_ptr());
+    let elem_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        h.data,
+        elem_idx.as_mut_ptr(),
+        1,
+        c"rmat_elem_ptr".as_ptr(),
+    );
     let removed_val = LLVMBuildLoad2(b, elem_ty, elem_ptr, c"rmat_val".as_ptr());
     let idx_plus_one = LLVMBuildAdd(b, idx, LLVMConstInt(i64_ty, 1, 0), c"".as_ptr());
     let mut src_idx = [idx_plus_one];
-    let src_ptr = LLVMBuildGEP2(b, elem_ty, h.data, src_idx.as_mut_ptr(), 1, c"rmat_src".as_ptr());
+    let src_ptr = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        h.data,
+        src_idx.as_mut_ptr(),
+        1,
+        c"rmat_src".as_ptr(),
+    );
     let len_minus_idx = LLVMBuildSub(b, h.len, idx, c"".as_ptr());
-    let move_count = LLVMBuildSub(b, len_minus_idx, LLVMConstInt(i64_ty, 1, 0), c"rmat_move_count".as_ptr());
-    let move_bytes = LLVMBuildMul(b, move_count, LLVMConstInt(i64_ty, elem_size, 0), c"rmat_move_bytes".as_ptr());
+    let move_count = LLVMBuildSub(
+        b,
+        len_minus_idx,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"rmat_move_count".as_ptr(),
+    );
+    let move_bytes = LLVMBuildMul(
+        b,
+        move_count,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"rmat_move_bytes".as_ptr(),
+    );
     let mut memmove_p = [ptr_ty, ptr_ty, i64_ty];
     let memmove_ty = LLVMFunctionType(ptr_ty, memmove_p.as_mut_ptr(), 3, 0);
     let memmove_fn = get_or_insert_function(module, c"memmove".as_ptr(), memmove_ty);
     let mut memmove_a = [elem_ptr, src_ptr, move_bytes];
-    LLVMBuildCall2(b, memmove_ty, memmove_fn, memmove_a.as_mut_ptr(), 3, c"".as_ptr());
-    let new_len = LLVMBuildSub(b, h.len, LLVMConstInt(i64_ty, 1, 0), c"rmat_new_len".as_ptr());
+    LLVMBuildCall2(
+        b,
+        memmove_ty,
+        memmove_fn,
+        memmove_a.as_mut_ptr(),
+        3,
+        c"".as_ptr(),
+    );
+    let new_len = LLVMBuildSub(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"rmat_new_len".as_ptr(),
+    );
     LLVMBuildStore(b, new_len, h.len_ptr);
 
     intern(cx(ctx), to_ry_value(removed_val))
@@ -1541,11 +1889,29 @@ pub unsafe extern "C" fn ry_emit_list_slice(
     let sl_data = LLVMBuildLoad2(b, ptr_ty, sl_data_ptr, c"sl_data".as_ptr());
 
     let zero = LLVMConstInt(i64_ty, 0, 0);
-    let start_neg = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSLT, start_val, zero, c"".as_ptr());
+    let start_neg = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntSLT,
+        start_val,
+        zero,
+        c"".as_ptr(),
+    );
     let mut c_start = LLVMBuildSelect(b, start_neg, zero, start_val, c"sl_cstart".as_ptr());
-    let start_over = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, c_start, sl_len, c"".as_ptr());
+    let start_over = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntSGT,
+        c_start,
+        sl_len,
+        c"".as_ptr(),
+    );
     c_start = LLVMBuildSelect(b, start_over, sl_len, c_start, c"sl_cstart2".as_ptr());
-    let end_neg = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSLT, end_excl_val, zero, c"".as_ptr());
+    let end_neg = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntSLT,
+        end_excl_val,
+        zero,
+        c"".as_ptr(),
+    );
     let mut c_end = LLVMBuildSelect(b, end_neg, zero, end_excl_val, c"sl_cend".as_ptr());
     let end_over = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, c_end, sl_len, c"".as_ptr());
     c_end = LLVMBuildSelect(b, end_over, sl_len, c_end, c"sl_cend2".as_ptr());
@@ -1553,21 +1919,47 @@ pub unsafe extern "C" fn ry_emit_list_slice(
     let diff = LLVMBuildSub(b, c_end, c_start, c"sl_diff".as_ptr());
     let diff_gt0 = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, diff, zero, c"".as_ptr());
     let count = LLVMBuildSelect(b, diff_gt0, diff, zero, c"sl_count".as_ptr());
-    let data_size = LLVMBuildMul(b, count, LLVMConstInt(i64_ty, elem_size, 0), c"sl_dsize".as_ptr());
+    let data_size = LLVMBuildMul(
+        b,
+        count,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"sl_dsize".as_ptr(),
+    );
 
     let mut malloc_params = [i64_ty];
     let malloc_ty = LLVMFunctionType(ptr_ty, malloc_params.as_mut_ptr(), 1, 0);
     let malloc_fn = get_or_insert_function(c.module, c"malloc".as_ptr(), malloc_ty);
     let mut malloc_args = [data_size];
-    let new_data = LLVMBuildCall2(b, malloc_ty, malloc_fn, malloc_args.as_mut_ptr(), 1, c"sl_data".as_ptr());
+    let new_data = LLVMBuildCall2(
+        b,
+        malloc_ty,
+        malloc_fn,
+        malloc_args.as_mut_ptr(),
+        1,
+        c"sl_data".as_ptr(),
+    );
 
     let mut gep_idx = [c_start];
-    let src_offset = LLVMBuildGEP2(b, elem_ty, sl_data, gep_idx.as_mut_ptr(), 1, c"sl_src_off".as_ptr());
+    let src_offset = LLVMBuildGEP2(
+        b,
+        elem_ty,
+        sl_data,
+        gep_idx.as_mut_ptr(),
+        1,
+        c"sl_src_off".as_ptr(),
+    );
     let mut memcpy_params = [ptr_ty, ptr_ty, i64_ty];
     let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_params.as_mut_ptr(), 3, 0);
     let memcpy_fn = get_or_insert_function(c.module, c"memcpy".as_ptr(), memcpy_ty);
     let mut memcpy_args = [new_data, src_offset, data_size];
-    LLVMBuildCall2(b, memcpy_ty, memcpy_fn, memcpy_args.as_mut_ptr(), 3, c"".as_ptr());
+    LLVMBuildCall2(
+        b,
+        memcpy_ty,
+        memcpy_fn,
+        memcpy_args.as_mut_ptr(),
+        3,
+        c"".as_ptr(),
+    );
 
     *out_count = intern(c, to_ry_value(count));
     *out_new_data = intern(c, to_ry_value(new_data));
@@ -1621,10 +2013,18 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
     let header_size = LLVMABISizeOfType(dl, header_ty);
 
     let mut hdr_gep = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-    let header_ptr = LLVMBuildGEP2(b, i8_ty, data_ptr, hdr_gep.as_mut_ptr(), 1, c"cow_hdr".as_ptr());
+    let header_ptr = LLVMBuildGEP2(
+        b,
+        i8_ty,
+        data_ptr,
+        hdr_gep.as_mut_ptr(),
+        1,
+        c"cow_hdr".as_ptr(),
+    );
 
     let atomic_mode = (*desc).atomic;
-    let strong_ptr = LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 0, c"cow_strong_ptr".as_ptr());
+    let strong_ptr =
+        LLVMBuildStructGEP2(b, arc_header_ty, header_ptr, 0, c"cow_strong_ptr".as_ptr());
     let strong = emit_atomic_i64_load(
         b,
         i64_ty,
@@ -1636,8 +2036,20 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
         },
         c"cow_strong".as_ptr(),
     );
-    let is_unique = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, strong, LLVMConstInt(i64_ty, 1, 0), c"cow_unique".as_ptr());
-    let is_immortal = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, strong, LLVMConstInt(i64_ty, ARC_IMMORTAL as u64, 0), c"cow_immortal".as_ptr());
+    let is_unique = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        strong,
+        LLVMConstInt(i64_ty, 1, 0),
+        c"cow_unique".as_ptr(),
+    );
+    let is_immortal = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        strong,
+        LLVMConstInt(i64_ty, ARC_IMMORTAL as u64, 0),
+        c"cow_immortal".as_ptr(),
+    );
     let skip_cow = LLVMBuildOr(b, is_unique, is_immortal, c"cow_skip".as_ptr());
 
     // Builder-derived parent (builder-derived parent rule).
@@ -1658,101 +2070,160 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
             LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 1, name)
         }
     };
-    let memcpy_to = move |dst: LLVMValueRef, src: LLVMValueRef, byte_size: LLVMValueRef| {
-        unsafe {
-            let mut p = [ptr_ty, ptr_ty, i64_ty];
-            let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 3, 0);
-            let f = get_or_insert_function(module, c"memcpy".as_ptr(), ty);
-            let mut a = [dst, src, byte_size];
-            LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 3, c"".as_ptr());
-        }
+    let memcpy_to = move |dst: LLVMValueRef, src: LLVMValueRef, byte_size: LLVMValueRef| unsafe {
+        let mut p = [ptr_ty, ptr_ty, i64_ty];
+        let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 3, 0);
+        let f = get_or_insert_function(module, c"memcpy".as_ptr(), ty);
+        let mut a = [dst, src, byte_size];
+        LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 3, c"".as_ptr());
     };
 
     // Allocate the ARC-backed collection header (mirror emitArcAlloc inline).
     let box_size = LLVMConstInt(i64_ty, ARC_HEADER_SIZE + header_size, 0);
     let cow_box = alloc_buf(box_size, c"cow_box".as_ptr());
     emit_arc_counter_delta(b, i64_ty, ptr_ty, 1);
-    let new_strong_ptr = LLVMBuildStructGEP2(b, arc_header_ty, cow_box, 0, c"cow_new_strong_ptr".as_ptr());
+    let new_strong_ptr =
+        LLVMBuildStructGEP2(b, arc_header_ty, cow_box, 0, c"cow_new_strong_ptr".as_ptr());
     LLVMBuildStore(b, LLVMConstInt(i64_ty, 1, 0), new_strong_ptr);
-    let new_weak_ptr = LLVMBuildStructGEP2(b, arc_header_ty, cow_box, 1, c"cow_new_weak_ptr".as_ptr());
+    let new_weak_ptr =
+        LLVMBuildStructGEP2(b, arc_header_ty, cow_box, 1, c"cow_new_weak_ptr".as_ptr());
     LLVMBuildStore(b, LLVMConstInt(i64_ty, 0, 0), new_weak_ptr);
     let mut nd_gep = [LLVMConstInt(i64_ty, ARC_HEADER_SIZE, 0)];
-    let new_data_ptr = LLVMBuildGEP2(b, i8_ty, cow_box, nd_gep.as_mut_ptr(), 1, c"cow_new_data".as_ptr());
+    let new_data_ptr = LLVMBuildGEP2(
+        b,
+        i8_ty,
+        cow_box,
+        nd_gep.as_mut_ptr(),
+        1,
+        c"cow_new_data".as_ptr(),
+    );
 
     let old_len_ptr = LLVMBuildStructGEP2(b, header_ty, data_ptr, 0, c"cow_old_len_ptr".as_ptr());
     let old_len = LLVMBuildLoad2(b, i64_ty, old_len_ptr, c"cow_old_len".as_ptr());
 
     match (*desc).kind {
         RY_COW_LIST => {
-            let old_data_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_data_field".as_ptr());
+            let old_data_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_data_field".as_ptr());
             let old_data = LLVMBuildLoad2(b, ptr_ty, old_data_field, c"cow_old_data".as_ptr());
-            let buf_size = LLVMBuildMul(b, old_len, LLVMConstInt(i64_ty, (*desc).elem_size, 0), c"cow_buf_size".as_ptr());
+            let buf_size = LLVMBuildMul(
+                b,
+                old_len,
+                LLVMConstInt(i64_ty, (*desc).elem_size, 0),
+                c"cow_buf_size".as_ptr(),
+            );
             let new_buf = alloc_buf(buf_size, c"cow_new_buf".as_ptr());
             memcpy_to(new_buf, old_data, buf_size);
-            let new_len_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_new_len_ptr".as_ptr());
+            let new_len_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_new_len_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_len_ptr);
-            let new_cap_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_new_cap_ptr".as_ptr());
+            let new_cap_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_new_cap_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_cap_ptr);
-            let new_data_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_new_data_ptr".as_ptr());
+            let new_data_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_new_data_ptr".as_ptr());
             LLVMBuildStore(b, new_buf, new_data_field);
         }
         RY_COW_MAP => {
-            let old_keys_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_keys_field".as_ptr());
+            let old_keys_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_keys_field".as_ptr());
             let old_keys = LLVMBuildLoad2(b, ptr_ty, old_keys_field, c"cow_old_keys".as_ptr());
-            let old_vals_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_vals_field".as_ptr());
+            let old_vals_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_vals_field".as_ptr());
             let old_vals = LLVMBuildLoad2(b, ptr_ty, old_vals_field, c"cow_old_vals".as_ptr());
-            let old_bc_ptr = LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bc_ptr".as_ptr());
+            let old_bc_ptr =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bc_ptr".as_ptr());
             let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
-            let old_bk_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 5, c"cow_old_bk_ptr".as_ptr());
+            let old_bk_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 5, c"cow_old_bk_ptr".as_ptr());
             let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
 
-            let keys_size = LLVMBuildMul(b, old_len, LLVMConstInt(i64_ty, (*desc).key_size, 0), c"cow_keys_size".as_ptr());
+            let keys_size = LLVMBuildMul(
+                b,
+                old_len,
+                LLVMConstInt(i64_ty, (*desc).key_size, 0),
+                c"cow_keys_size".as_ptr(),
+            );
             let new_keys = alloc_buf(keys_size, c"cow_new_keys".as_ptr());
             memcpy_to(new_keys, old_keys, keys_size);
-            let vals_size = LLVMBuildMul(b, old_len, LLVMConstInt(i64_ty, (*desc).val_size, 0), c"cow_vals_size".as_ptr());
+            let vals_size = LLVMBuildMul(
+                b,
+                old_len,
+                LLVMConstInt(i64_ty, (*desc).val_size, 0),
+                c"cow_vals_size".as_ptr(),
+            );
             let new_vals = alloc_buf(vals_size, c"cow_new_vals".as_ptr());
             memcpy_to(new_vals, old_vals, vals_size);
-            let bk_size = LLVMBuildMul(b, old_bc, LLVMConstInt(i64_ty, 8, 0), c"cow_bk_size".as_ptr());
+            let bk_size = LLVMBuildMul(
+                b,
+                old_bc,
+                LLVMConstInt(i64_ty, 8, 0),
+                c"cow_bk_size".as_ptr(),
+            );
             let new_bk = alloc_buf(bk_size, c"cow_new_bk".as_ptr());
             memcpy_to(new_bk, old_bk, bk_size);
 
-            let new_len_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_m_len_ptr".as_ptr());
+            let new_len_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_m_len_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_len_ptr);
-            let new_cap_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_m_cap_ptr".as_ptr());
+            let new_cap_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_m_cap_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_cap_ptr);
-            let new_keys_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_m_keys_ptr".as_ptr());
+            let new_keys_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_m_keys_ptr".as_ptr());
             LLVMBuildStore(b, new_keys, new_keys_field);
-            let new_vals_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_m_vals_ptr".as_ptr());
+            let new_vals_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_m_vals_ptr".as_ptr());
             LLVMBuildStore(b, new_vals, new_vals_field);
-            let new_bc_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_m_bc_ptr".as_ptr());
+            let new_bc_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_m_bc_ptr".as_ptr());
             LLVMBuildStore(b, old_bc, new_bc_ptr);
-            let new_bk_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 5, c"cow_m_bk_ptr".as_ptr());
+            let new_bk_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 5, c"cow_m_bk_ptr".as_ptr());
             LLVMBuildStore(b, new_bk, new_bk_field);
         }
         RY_COW_SET => {
-            let old_elems_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_elems_field".as_ptr());
+            let old_elems_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_elems_field".as_ptr());
             let old_elems = LLVMBuildLoad2(b, ptr_ty, old_elems_field, c"cow_old_elems".as_ptr());
-            let old_bc_ptr = LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_bc_ptr".as_ptr());
+            let old_bc_ptr =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_bc_ptr".as_ptr());
             let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
-            let old_bk_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bk_ptr".as_ptr());
+            let old_bk_field =
+                LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bk_ptr".as_ptr());
             let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
 
-            let elems_size = LLVMBuildMul(b, old_len, LLVMConstInt(i64_ty, (*desc).elem_size, 0), c"cow_elems_size".as_ptr());
+            let elems_size = LLVMBuildMul(
+                b,
+                old_len,
+                LLVMConstInt(i64_ty, (*desc).elem_size, 0),
+                c"cow_elems_size".as_ptr(),
+            );
             let new_elems = alloc_buf(elems_size, c"cow_new_elems".as_ptr());
             memcpy_to(new_elems, old_elems, elems_size);
-            let bk_size = LLVMBuildMul(b, old_bc, LLVMConstInt(i64_ty, 8, 0), c"cow_bk_size".as_ptr());
+            let bk_size = LLVMBuildMul(
+                b,
+                old_bc,
+                LLVMConstInt(i64_ty, 8, 0),
+                c"cow_bk_size".as_ptr(),
+            );
             let new_bk = alloc_buf(bk_size, c"cow_new_bk".as_ptr());
             memcpy_to(new_bk, old_bk, bk_size);
 
-            let new_len_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_s_len_ptr".as_ptr());
+            let new_len_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_s_len_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_len_ptr);
-            let new_cap_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_s_cap_ptr".as_ptr());
+            let new_cap_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_s_cap_ptr".as_ptr());
             LLVMBuildStore(b, old_len, new_cap_ptr);
-            let new_elems_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_s_elems_ptr".as_ptr());
+            let new_elems_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_s_elems_ptr".as_ptr());
             LLVMBuildStore(b, new_elems, new_elems_field);
-            let new_bc_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_s_bc_ptr".as_ptr());
+            let new_bc_ptr =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_s_bc_ptr".as_ptr());
             LLVMBuildStore(b, old_bc, new_bc_ptr);
-            let new_bk_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_s_bk_ptr".as_ptr());
+            let new_bk_field =
+                LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_s_bk_ptr".as_ptr());
             LLVMBuildStore(b, new_bk, new_bk_field);
         }
         _ => return 0,
@@ -1760,15 +2231,41 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
 
     // Element / key retain loops (always RY_ARC_NONATOMIC — the clone is private).
     if (*desc).do_elem_retain != 0 {
-        emit_cow_retain_loop(ctx, header_ty, new_data_ptr, i64_ty, i8_ty, ptr_ty, data_field_idx, (*desc).elem_is_str, b"elem");
+        emit_cow_retain_loop(
+            ctx,
+            header_ty,
+            new_data_ptr,
+            i64_ty,
+            i8_ty,
+            ptr_ty,
+            data_field_idx,
+            (*desc).elem_is_str,
+            b"elem",
+        );
     }
     if (*desc).do_key_retain != 0 {
-        emit_cow_retain_loop(ctx, header_ty, new_data_ptr, i64_ty, i8_ty, ptr_ty, key_field_idx, (*desc).key_is_str, b"key");
+        emit_cow_retain_loop(
+            ctx,
+            header_ty,
+            new_data_ptr,
+            i64_ty,
+            i8_ty,
+            ptr_ty,
+            key_field_idx,
+            (*desc).key_is_str,
+            b"key",
+        );
     }
 
     // Release the old header (the helper leaves the builder on arc.done).
     let header_id = intern(cx(ctx), to_ry_value(header_ptr));
-    ry_emit_arc_release(ctx, header_id, atomic_mode, (*desc).destructor_callee, std::ptr::null_mut());
+    ry_emit_arc_release(
+        ctx,
+        header_id,
+        atomic_mode,
+        (*desc).destructor_callee,
+        std::ptr::null_mut(),
+    );
 
     LLVMBuildStore(b, new_data_ptr, slot_ptr);
 
@@ -1828,7 +2325,14 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
         let box_data_size_c = LLVMConstInt(i64_ty, (*desc).box_data_size, 0);
         let header_ptr = emit_inline_arc_alloc(c, box_data_size_c);
         let mut dp_gep = [LLVMConstInt(i64_ty, ARC_HEADER_SIZE, 0)];
-        let data_ptr = LLVMBuildGEP2(b, i8_ty, header_ptr, dp_gep.as_mut_ptr(), 1, c"arc_box_data".as_ptr());
+        let data_ptr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            header_ptr,
+            dp_gep.as_mut_ptr(),
+            1,
+            c"arc_box_data".as_ptr(),
+        );
 
         // Labels differ between RecordBox ("any.rec.*") and EnumBox ("any.enum.*").
         let (desc_slot_lbl, payload_slot_lbl, tmp_lbl, tag_lbl, data_lbl, val_lbl): (
@@ -1860,12 +2364,17 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
 
         let desc_ptr_slot = LLVMBuildStructGEP2(b, layout_ty, data_ptr, 0, desc_slot_lbl.as_ptr());
         LLVMBuildStore(b, descriptor, desc_ptr_slot);
-        let payload_slot = LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, payload_slot_lbl.as_ptr());
+        let payload_slot =
+            LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, payload_slot_lbl.as_ptr());
         LLVMBuildStore(b, val, payload_slot);
 
         let tmp = LLVMBuildAlloca(b, any_ty, tmp_lbl.as_ptr());
         let tag_slot = LLVMBuildStructGEP2(b, any_ty, tmp, 0, tag_lbl.as_ptr());
-        LLVMBuildStore(b, LLVMConstInt(i64_ty, (*desc).target_tag as u64, 0), tag_slot);
+        LLVMBuildStore(
+            b,
+            LLVMConstInt(i64_ty, (*desc).target_tag as u64, 0),
+            tag_slot,
+        );
         let any_data_slot = LLVMBuildStructGEP2(b, any_ty, tmp, 1, data_lbl.as_ptr());
         LLVMBuildStore(b, data_ptr, any_data_slot);
         let result = LLVMBuildLoad2(b, any_ty, tmp, val_lbl.as_ptr());
@@ -1875,12 +2384,30 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
     // NonBox=0 — retain BEFORE the alloca+store (the two flags are exclusive).
     if (*desc).do_collection_retain != 0 {
         let mut gep = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, val, gep.as_mut_ptr(), 1, c"arc_hdr_from_data".as_ptr());
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            val,
+            gep.as_mut_ptr(),
+            1,
+            c"arc_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     } else if (*desc).do_str_retain != 0 {
-        let mut gep = [LLVMConstInt(i64_ty, (-(STRING_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, val, gep.as_mut_ptr(), 1, c"str_hdr_from_data".as_ptr());
+        let mut gep = [LLVMConstInt(
+            i64_ty,
+            (-(STRING_HEADER_SIZE as i64)) as u64,
+            0,
+        )];
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            val,
+            gep.as_mut_ptr(),
+            1,
+            c"str_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     }
@@ -1891,7 +2418,11 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
     }
     let tmp = LLVMBuildAlloca(b, any_ty, c"any.tmp".as_ptr());
     let tag_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 0, c"any.tag".as_ptr());
-    LLVMBuildStore(b, LLVMConstInt(i64_ty, (*desc).target_tag as u64, 0), tag_ptr);
+    LLVMBuildStore(
+        b,
+        LLVMConstInt(i64_ty, (*desc).target_tag as u64, 0),
+        tag_ptr,
+    );
     let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.data".as_ptr());
     LLVMBuildStore(b, val_m, data_ptr);
     let result = LLVMBuildLoad2(b, any_ty, tmp, c"any.val".as_ptr());
@@ -1946,11 +2477,20 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
         let desc_mismatch_name = (*desc).desc_mismatch_global_name;
 
         let tag_match_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_ok".as_ptr());
-        let tag_mismatch_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_err".as_ptr());
-        let desc_check_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_check".as_ptr());
-        let desc_mismatch_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_err".as_ptr());
+        let tag_mismatch_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_err".as_ptr());
+        let desc_check_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_check".as_ptr());
+        let desc_mismatch_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_err".as_ptr());
 
-        let is_record = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0), c"any.is_record".as_ptr());
+        let is_record = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0),
+            c"any.is_record".as_ptr(),
+        );
         LLVMBuildCondBr(b, is_record, tag_match_bb, tag_mismatch_bb);
 
         LLVMPositionBuilderAtEnd(b, tag_mismatch_bb);
@@ -1961,23 +2501,47 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
         LLVMBuildStore(b, any_val, tmp);
         let any_data_slot = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.rec.data.ptr".as_ptr());
         let data_ptr = LLVMBuildLoad2(b, ptr_ty, any_data_slot, c"any.rec.data".as_ptr());
-        let desc_slot = LLVMBuildStructGEP2(b, layout_ty, data_ptr, 0, c"any.rec.desc.slot".as_ptr());
+        let desc_slot =
+            LLVMBuildStructGEP2(b, layout_ty, data_ptr, 0, c"any.rec.desc.slot".as_ptr());
         let actual_desc = LLVMBuildLoad2(b, ptr_ty, desc_slot, c"any.rec.desc".as_ptr());
 
         let mut is_subtype_p = [ptr_ty, ptr_ty];
         let is_subtype_ty = LLVMFunctionType(i64_ty, is_subtype_p.as_mut_ptr(), 2, 0);
-        let is_subtype_fn = get_or_insert_function(module, c"__ry_record_is_subtype_desc".as_ptr(), is_subtype_ty);
+        let is_subtype_fn = get_or_insert_function(
+            module,
+            c"__ry_record_is_subtype_desc".as_ptr(),
+            is_subtype_ty,
+        );
         let mut is_subtype_a = [actual_desc, expected_desc];
-        let chain_ok = LLVMBuildCall2(b, is_subtype_ty, is_subtype_fn, is_subtype_a.as_mut_ptr(), 2, c"any.rec.chain.ok".as_ptr());
-        let chain_bool = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntNE, chain_ok, LLVMConstInt(i64_ty, 0, 0), c"any.rec.chain.bool".as_ptr());
+        let chain_ok = LLVMBuildCall2(
+            b,
+            is_subtype_ty,
+            is_subtype_fn,
+            is_subtype_a.as_mut_ptr(),
+            2,
+            c"any.rec.chain.ok".as_ptr(),
+        );
+        let chain_bool = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntNE,
+            chain_ok,
+            LLVMConstInt(i64_ty, 0, 0),
+            c"any.rec.chain.bool".as_ptr(),
+        );
         LLVMBuildCondBr(b, chain_bool, desc_check_bb, desc_mismatch_bb);
 
         LLVMPositionBuilderAtEnd(b, desc_mismatch_bb);
         emit_inline_runtime_error(c, desc_mismatch_msg, desc_mismatch_name);
 
         LLVMPositionBuilderAtEnd(b, desc_check_bb);
-        let fields_slot = LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, c"any.rec.fields.slot".as_ptr());
-        let record_val = LLVMBuildLoad2(b, record_struct_ty, fields_slot, c"any.rec.unwrap.val".as_ptr());
+        let fields_slot =
+            LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, c"any.rec.fields.slot".as_ptr());
+        let record_val = LLVMBuildLoad2(
+            b,
+            record_struct_ty,
+            fields_slot,
+            c"any.rec.unwrap.val".as_ptr(),
+        );
         return intern(c, to_ry_value(record_val));
     }
 
@@ -1985,7 +2549,8 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
     if (*desc).kind == 1 {
         let float_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.float".as_ptr());
         let check_int_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.check_int".as_ptr());
-        let int_promote_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.int2float".as_ptr());
+        let int_promote_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.int2float".as_ptr());
         let mismatch_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.mismatch".as_ptr());
         let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.merge".as_ptr());
 
@@ -1993,11 +2558,23 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
         LLVMBuildStore(b, any_val, tmp);
         let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.data.fp".as_ptr());
 
-        let is_float = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0), c"is.float".as_ptr());
+        let is_float = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0),
+            c"is.float".as_ptr(),
+        );
         LLVMBuildCondBr(b, is_float, float_bb, check_int_bb);
 
         LLVMPositionBuilderAtEnd(b, check_int_bb);
-        let is_int = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0), c"is.int".as_ptr());
+        let is_int = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0),
+            c"is.int".as_ptr(),
+        );
         LLVMBuildCondBr(b, is_int, int_promote_bb, mismatch_bb);
 
         LLVMPositionBuilderAtEnd(b, mismatch_bb);
@@ -2025,7 +2602,13 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
     if target_ty.is_null() {
         return 0;
     }
-    let cmp = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0), c"any.tag.check".as_ptr());
+    let cmp = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        tag,
+        LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0),
+        c"any.tag.check".as_ptr(),
+    );
     let match_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.match".as_ptr());
     let mismatch_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.mismatch".as_ptr());
     LLVMBuildCondBr(b, cmp, match_bb, mismatch_bb);
@@ -2041,12 +2624,30 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
 
     if (*desc).do_collection_retain != 0 {
         let mut gep_i = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, unwrapped, gep_i.as_mut_ptr(), 1, c"arc_hdr_from_data".as_ptr());
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            unwrapped,
+            gep_i.as_mut_ptr(),
+            1,
+            c"arc_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     } else if (*desc).do_str_retain != 0 {
-        let mut gep_i = [LLVMConstInt(i64_ty, (-(STRING_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, unwrapped, gep_i.as_mut_ptr(), 1, c"str_hdr_from_data".as_ptr());
+        let mut gep_i = [LLVMConstInt(
+            i64_ty,
+            (-(STRING_HEADER_SIZE as i64)) as u64,
+            0,
+        )];
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            unwrapped,
+            gep_i.as_mut_ptr(),
+            1,
+            c"str_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     }
@@ -2100,7 +2701,13 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
             let mut v = LLVMConstNull(res_ty);
             v = LLVMBuildInsertValue(b, v, LLVMConstInt(i1_ty, 1, 0), 0, c"res.ok".as_ptr());
             v = LLVMBuildInsertValue(b, v, inner, 1, c"res.ok_val".as_ptr());
-            v = LLVMBuildInsertValue(b, v, LLVMConstNull(LLVMStructGetTypeAtIndex(res_ty, 2)), 2, c"".as_ptr());
+            v = LLVMBuildInsertValue(
+                b,
+                v,
+                LLVMConstNull(LLVMStructGetTypeAtIndex(res_ty, 2)),
+                2,
+                c"".as_ptr(),
+            );
             v
         }
     };
@@ -2111,7 +2718,13 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
             err_val = LLVMBuildInsertValue(b, err_val, LLVMConstInt(i64_ty, 0, 0), 1, c"".as_ptr());
             let mut v = LLVMConstNull(res_ty);
             v = LLVMBuildInsertValue(b, v, LLVMConstInt(i1_ty, 0, 0), 0, c"res.err".as_ptr());
-            v = LLVMBuildInsertValue(b, v, LLVMConstNull(LLVMStructGetTypeAtIndex(res_ty, 1)), 1, c"".as_ptr());
+            v = LLVMBuildInsertValue(
+                b,
+                v,
+                LLVMConstNull(LLVMStructGetTypeAtIndex(res_ty, 1)),
+                1,
+                c"".as_ptr(),
+            );
             v = LLVMBuildInsertValue(b, v, err_val, 2, c"res.err_val".as_ptr());
             v
         }
@@ -2125,8 +2738,20 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
         let f_val = LLVMBuildLoad2(b, f64_ty, data_ptr, c"tryany.fp.fval".as_ptr());
         let i_val = LLVMBuildLoad2(b, i64_ty, data_ptr, c"tryany.fp.ival".as_ptr());
         let promoted = LLVMBuildSIToFP(b, i_val, f64_ty, c"tryany.fp.i2f".as_ptr());
-        let is_float = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0), c"tryany.fp.is_float".as_ptr());
-        let is_int = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0), c"tryany.fp.is_int".as_ptr());
+        let is_float = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0),
+            c"tryany.fp.is_float".as_ptr(),
+        );
+        let is_int = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0),
+            c"tryany.fp.is_int".as_ptr(),
+        );
         let is_accept = LLVMBuildOr(b, is_float, is_int, c"tryany.fp.is_accept".as_ptr());
         let is_err = LLVMBuildNot(b, is_accept, c"tryany.fp.is_err".as_ptr());
 
@@ -2159,7 +2784,13 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
     if target_ty.is_null() {
         return 0;
     }
-    let cmp = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntEQ, tag, LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0), c"tryany.tag.eq".as_ptr());
+    let cmp = LLVMBuildICmp(
+        b,
+        LLVMIntPredicate::LLVMIntEQ,
+        tag,
+        LLVMConstInt(i64_ty, (*desc).expected_tag as u64, 0),
+        c"tryany.tag.eq".as_ptr(),
+    );
     let is_err = LLVMBuildNot(b, cmp, c"tryany.is_err".as_ptr());
 
     let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.ok".as_ptr());
@@ -2174,12 +2805,30 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
     let unwrapped = LLVMBuildLoad2(b, target_ty, data_ptr, c"tryany.val".as_ptr());
     if (*desc).do_collection_retain != 0 {
         let mut gep_i = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, unwrapped, gep_i.as_mut_ptr(), 1, c"arc_hdr_from_data".as_ptr());
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            unwrapped,
+            gep_i.as_mut_ptr(),
+            1,
+            c"arc_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     } else if (*desc).do_str_retain != 0 {
-        let mut gep_i = [LLVMConstInt(i64_ty, (-(STRING_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(b, i8_ty, unwrapped, gep_i.as_mut_ptr(), 1, c"str_hdr_from_data".as_ptr());
+        let mut gep_i = [LLVMConstInt(
+            i64_ty,
+            (-(STRING_HEADER_SIZE as i64)) as u64,
+            0,
+        )];
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            unwrapped,
+            gep_i.as_mut_ptr(),
+            1,
+            c"str_hdr_from_data".as_ptr(),
+        );
         let hdr_id = intern(c, to_ry_value(hdr));
         arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
     }
@@ -2242,7 +2891,11 @@ pub unsafe extern "C" fn ry_emit_create_phi(
     name_hint: *const c_char,
 ) -> RyValueId {
     let c = cx(ctx);
-    let nm = if name_hint.is_null() { c"".as_ptr() } else { name_hint };
+    let nm = if name_hint.is_null() {
+        c"".as_ptr()
+    } else {
+        name_hint
+    };
     let phi = LLVMBuildPhi(c.builder, as_type(ty), nm);
     for i in 0..count as usize {
         let mut v = [as_value(resolve(c, *incoming_values.add(i)))];
