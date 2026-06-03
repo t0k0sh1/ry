@@ -24,6 +24,7 @@ If the caller's request is ambiguous, assume `both` and run `./.claude/skills/pr
 - **Foreground only.** Never use `run_in_background=true` (#1947). Use `timeout: 600000` (10 minutes) for the script invocation.
 - `run-tests.sh` chains `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p`. The script auto-removes `build/` when `CMakeCache.txt` belongs to a sanitizer/fuzzer preset (use `--clean` to force removal). Trust the script's sequencing; do not pre-build manually unless the caller specifies a filter that bypasses the script.
 - Repo `./build/ry` reads project-local `share/std/` via `package.toml [paths]._dev_stdlib` — no `RY_ENV` override needed.
+- **macOS**: `run-tests.sh` (the `both` path) auto-detects the host and uses the `rust-emit` preset → `build-rust/`. For the direct-invocation layers (`cpp` / `filter:` / `file:`), substitute `build-rust/` for `build/` and `./build-rust/ry` for `./build/ry` (post-Rust-cutover preset split; see `AGENTS.md` § "Build & Test").
 
 ## Failure interpretation
 

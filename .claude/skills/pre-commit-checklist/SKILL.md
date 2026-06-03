@@ -108,7 +108,7 @@ If no entry is needed, state the reason (pure bug fix that won't recur, PR-local
 ./.claude/skills/pre-commit-checklist/run-tests.sh
 ```
 
-Runs `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p`. The script auto-removes `build/` when `CMakeCache.txt` belongs to a sanitizer/fuzzer preset; pass `--clean` to force removal. Fix any failure before declaring complete.
+Runs `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` (on macOS the script auto-detects the host and substitutes the `rust-emit` preset → `build-rust/`; see `AGENTS.md` § "Build & Test"). The script auto-removes the host build dir when its `CMakeCache.txt` belongs to a sanitizer/fuzzer preset; pass `--clean` to force removal. Fix any failure before declaring complete.
 
 ## 3.5. Sanitizer Verification
 

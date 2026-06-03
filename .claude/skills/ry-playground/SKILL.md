@@ -9,6 +9,8 @@ metadata:
 
 Execute Ry language snippets via heredoc to verify behavior. This is for ad-hoc verification only, not for self-tests (`ry test`).
 
+> **macOS**: substitute `./build-rust/ry` for `./build/ry` and `cmake --build build-rust` for `cmake --build build` throughout this skill (post-Rust-cutover preset split; see `AGENTS.md` § "Build & Test").
+
 ## Absolute Rules
 
 1. **No file creation** — never create `.ry` files or temp files anywhere (project or external). No `Write` tool, no `echo > file`, no `cat > file`, no `tee`, no redirection to disk
