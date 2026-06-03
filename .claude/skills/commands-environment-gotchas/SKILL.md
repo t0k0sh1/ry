@@ -112,6 +112,33 @@ arrays in shell scripts.
 
 ---
 
+### bash `set -e` + `var=$(cmd)`: a standalone assignment exits on cmd failure; put it in an `if`
+
+**Source**: #2011 run-tests.sh platform-aware preset selection (2026-06-03)
+**Tags**: commands, bash, shell, errexit
+
+**Wrong** (under `set -euo pipefail`) — captures, then guards:
+
+```bash
+rustc_path="$(rustup which rustc)"      # rustup present but no default toolchain → this LINE exits the script
+[[ -n "$rustc_path" ]] && use "$rustc_path"
+```
+
+A standalone assignment takes the exit status of its command substitution, so `set -e` aborts the whole script the moment `rustup which rustc` fails — *before* the `[[ -n ]]` guard ever runs. The guard is dead code on the failure path.
+
+**Correct** — make the assignment part of an `if` condition:
+
+```bash
+if command -v rustup >/dev/null 2>&1 \
+   && rustc_path="$(rustup which rustc 2>/dev/null)" && [[ -n "$rustc_path" ]]; then
+  use "$rustc_path"
+fi
+```
+
+**Why**: `set -e` suppresses failures of commands in an `if`/`while`/`until` condition, in `&&`/`||` lists (every element but the last), and after `!`. An assignment in plain *statement* position is none of those, so its command-substitution failure is fatal. Wrapping it in the `if` condition both captures the value and makes the failure non-fatal in one step. (Related: the empty-array `set -u` guard above — both are `set -euo pipefail` traps that only bite on the rarely-exercised branch.)
+
+---
+
 ### `ry -c` reads from stdin, not argv
 
 **Source**: #1269 manual repro (2026-04-21)
