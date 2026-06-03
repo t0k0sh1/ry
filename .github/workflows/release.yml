@@ -125,19 +125,19 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          mkdir -p dist/lib dist/share
-          cp build/ry dist/ry
-          shopt -s nullglob
-          native_libs=(build/lib/libry_*.*)
-          if [ ${#native_libs[@]} -eq 0 ]; then
-            echo "::warning::No native libraries found matching build/lib/libry_*.* — packaging without native libs"
-          else
-            cp "${native_libs[@]}" dist/lib/
-          fi
-          shopt -u nullglob
-          cp -r share/std dist/share/std
+          # Assemble a self-contained dist/ tree: bundle shared libLLVM (+ the
+          # macOS chain dep libzstd) and the Rust cdylib next to ry, rewriting
+          # absolute install names / rpaths so the release binary runs on a system
+          # without an installed LLVM (#2005). verify-bundle.sh asserts the rewrite
+          # (and that no build-machine-absolute LLVM path survives) before we tar.
+          platform=$([[ "${{ matrix.target }}" == darwin-* ]] && echo darwin || echo linux)
+          bash scripts/bundle-dist.sh "$platform" build dist
+          bash scripts/verify-bundle.sh dist "$platform"
+          tarball="ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz"
           cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz ry lib/ share/
+          tar czf "$tarball" ry lib/ share/ LICENSE-LLVM.txt
+          size=$(stat -f%z "$tarball" 2>/dev/null || stat -c%s "$tarball")
+          echo "::notice::Tarball $tarball size: $((size / 1024 / 1024)) MB ($size bytes)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

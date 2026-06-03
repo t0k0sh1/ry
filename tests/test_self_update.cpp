@@ -252,6 +252,34 @@ TEST_F(InstallNativeLibsTest, SkipsNonLibryFiles) {
     EXPECT_FALSE(fs::exists(dest_home / "lib" / "readme.txt"));
 }
 
+TEST_F(InstallNativeLibsTest, CopiesBundledLLVMAndZstd) {
+    // After the #1999 cutover `ry` needs a shared libLLVM at runtime; the
+    // release tarball bundles it (plus its macOS chain dep libzstd) in lib/,
+    // so self-update must install them next to libry_* (#2005).
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+    write_file(src_dir / "lib" / "libLLVM.dylib", "llvm macos");
+    write_file(src_dir / "lib" / "libLLVM.so.21", "llvm linux soname");
+    write_file(src_dir / "lib" / "libzstd.1.dylib", "zstd macos");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_parser.dylib"));
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libLLVM.dylib"));
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libLLVM.so.21"));
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libzstd.1.dylib"));
+}
+
+TEST_F(InstallNativeLibsTest, InstallsLLVMWithoutLibryFiles) {
+    // A bundle could in principle carry only libLLVM (no libry_*); it must
+    // still install and report success.
+    write_file(src_dir / "lib" / "libLLVM.so.21", "llvm");
+
+    bool ok = install_native_libs(src_dir.string());
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libLLVM.so.21"));
+}
+
 TEST_F(InstallNativeLibsTest, OverwritesExistingFiles) {
     write_file(dest_home / "lib" / "libry_parser.dylib", "old version");
     write_file(src_dir / "lib" / "libry_parser.dylib", "new version");
