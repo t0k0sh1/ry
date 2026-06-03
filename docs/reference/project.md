@@ -257,6 +257,8 @@ test = "./build/ry_tests"
 clean = "rm -rf build"
 ```
 
+> **macOS**: the `[scripts]` example uses the Linux/CI build form. On macOS, substitute `cmake --preset rust-emit` for `cmake --preset default` and `build-rust/` for `build/` (so `test = "./build-rust/ry_tests"`) — post-Rust-cutover preset split (`AGENTS.md` § "Build & Test").
+
 ### `[project]` Section
 
 | Key | Description |

@@ -131,6 +131,8 @@ cmake --build build
 ```
 
 > `ry` and the Rust cdylib must share one LLVM instance, so the `-DLLVM_DIR` prefix must ship a shared `libLLVM` (a static-only LLVM build will not link). Building inside the `ry-ci` Docker image (`ghcr.io/<owner>/ry-ci:llvm-21-rev<N>`) needs no separate Rust or shared-LLVM setup — both are baked in.
+>
+> **macOS**: `/usr/local/llvm` (shown above) is typically static-only and will not link — point `-DLLVM_DIR` at a shared-`libLLVM` prefix such as Homebrew `llvm@21` (`-DLLVM_DIR=/opt/homebrew/opt/llvm@21/lib/cmake/llvm`).
 
 ## Usage
 

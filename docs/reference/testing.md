@@ -1029,7 +1029,7 @@ The matcher table near the top of this file lists the full set of float-aware ma
 
 ## Recipes
 
-Worked patterns for situations that compose multiple `testing` features. Each example is taken from `tests/spec/*.test.ry` so you can run it with `./build/ry test <path>` to see it pass.
+Worked patterns for situations that compose multiple `testing` features. Each example is taken from `tests/spec/*.test.ry` so you can run it with `./build/ry test <path>` (macOS: `./build-rust/ry test <path>`) to see it pass.
 
 ### Queueing return values with `mockReturnValueOnce`
 
@@ -1338,6 +1338,8 @@ sudo apt-get install llvm-21-tools   # → /usr/lib/llvm-21/bin/FileCheck
 ```
 
 CMake auto-detects FileCheck at configure time. If not found, `cmake --preset default` prints a status message and skips the `filecheck` CTest label — other tests are unaffected.
+
+> **macOS**: the commands above are the Linux/CI form. On macOS substitute `build-rust/` for `build/` (so `ctest --test-dir build-rust`, `./build-rust/ry`) and `cmake --preset rust-emit` for `cmake --preset default` — post-Rust-cutover preset split (`AGENTS.md` § "Build & Test").
 
 ### CI gate
 

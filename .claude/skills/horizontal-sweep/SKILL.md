@@ -130,4 +130,6 @@ If source files (`*.cpp`, `*.hpp`, `*.ry`) were modified, build + test before de
 cmake --build build && ./build/ry_tests && ./build/ry test -p
 ```
 
+> **macOS**: substitute `cmake --build build-rust` for `cmake --build build` and `./build-rust/ry` for `./build/ry` (post-Rust-cutover preset split; see `AGENTS.md` § "Build & Test").
+
 For docs / `.claude/` only changes, hand off to `/pre-commit-checklist`.

@@ -322,6 +322,8 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
+> **macOS**: the `./build/ry` invocations above are the Linux/CI form. On macOS substitute `./build-rust/ry` — the binary built by `cmake --preset rust-emit` (→ `build-rust/`) per the post-Rust-cutover preset split (`AGENTS.md` § "Build & Test").
+
 When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override declared in the project manifest (`package.toml`). This keeps repo builds aligned with the checked-out `share/std` even if `~/.ry/share/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/share/std`.
 
 ---

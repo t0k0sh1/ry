@@ -130,7 +130,7 @@ for any maintainer.
 ## Verification
 
 - `git diff CHANGELOG.md` shows new `[<X.Y.Z>]` + empty `[Unreleased]` + updated comparison links; `changelog.d/` no longer contains the assembled fragments
-- `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (sanitizer/fuzzer runs not required for a docs-only change; see `/pre-commit-checklist`)
+- `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (macOS: substitute `cmake --preset rust-emit` → `build-rust/`, i.e. `./build-rust/ry_tests` / `./build-rust/ry`; sanitizer/fuzzer runs not required for a docs-only change; see `/pre-commit-checklist`)
 
 ## Note
 
