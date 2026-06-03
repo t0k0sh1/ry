@@ -33,7 +33,7 @@ git diff --name-only origin/main
 
 ※ "parser/lexer/json/utf8/string/io family" = changes to `src/parser*`, `src/lexer*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), `src/runtime/native/io.cpp`, or `include/ry/parser*.hpp`, `include/ry/lexer*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`, `include/ry/runtime/native/io.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
 
-**Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
+**Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.5.6 (Rust Lint, when `crates/` changed), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
 
 > **Logging duty**: whenever a section is skipped, record `Skipped §X — <reason>` in the PR description (or in the CHANGELOG fragment if one exists). Skip logs are required for future audit.
 
@@ -167,6 +167,31 @@ All three at once:
 > `scan-build` and `all` use a dedicated `build-scan-docker/` (host) ↔ `build-scan/` (container) so `build-docker/` stays clean. No cleanup needed before the next `./docker/run.sh default ...`. HTML reports land in `build-scan-docker/scan-build-report/<timestamp>/index.html`.
 
 Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e.g. `performance-inefficient-string-concatenation`) and canonical workarounds are in `.claude/rules/build-warning-flags.md`.
+
+## 3.5.6. Rust Lint (clippy + rustfmt)
+
+> **Skip if** — no `crates/` files changed:
+>
+> ```bash
+> git diff --name-only origin/main | grep -E '^crates/' | head -1
+> ```
+>
+> Empty output ⇒ skip. Record `Skipped §3.5.6 — no Rust crate change`.
+
+Reproduce the CI `lint` job's Rust quality gate (`cargo fmt --check` +
+`cargo clippy -- -D warnings` over `crates/ry_llvm_emit`):
+
+```bash
+./.claude/skills/pre-commit-checklist/run-rust-lint.sh
+```
+
+The toolchain is pinned by `rust-toolchain.toml` to the version baked into the
+CI image (`docker/ci.Dockerfile` `RUST_VERSION`), so local rustfmt / clippy
+output matches what CI gates on — bump both together. `clippy` compiles
+`llvm-sys`, so it needs `LLVM_SYS_211_PREFIX` + a shared libLLVM; the script
+defaults it to Homebrew `llvm@21` on macOS (CI bakes it into the image ENV). Fix
+any diff / warning before declaring complete; do not commit while
+`cargo clippy -- -D warnings` fails. (#2015)
 
 ## 3.6. libFuzzer Fuzzing
 
