@@ -15,7 +15,7 @@ cmake --build build                                     # Ninja parallelizes aut
 ```
 
 > **macOS local builds**: the commands above are the Linux/CI form. On macOS, substitute `cmake --preset rust-emit` for `cmake --preset default`, `build-rust/` for `build/`, and `./build-rust/ry` for `./build/ry` throughout this document. The post-cutover shared-libLLVM requirement forces this split — see the **Shared libLLVM required** note below for why (and the `-DRust_COMPILER` note below if `rustc` discovery fails during configure).
-
+>
 > The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
 
 > **`ry_llvm_emit` is a Rust cdylib (`crates/ry_llvm_emit/`, #1949/#1950/#1993)** — the LLVM IR emission shared library is implemented in Rust and built automatically as part of every `cmake` build (via corrosion-rs). This adds two local-build prerequisites outside the Docker CI image:
