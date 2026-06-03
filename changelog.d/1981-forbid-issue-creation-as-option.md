@@ -1,3 +1,0 @@
-### Changed
-
-- AGENTS.md に「起票判断における選択肢提示の禁止」サブセクションを追加し、Claude Code がユーザーに提示する選択肢 (`AskUserQuestion` の options、テキストの選択肢列挙等) に「別 issue に起票する」を含めることを MUST 禁止した (#1981)。これに合わせて `/triage-side-finding` の Q4 を「3 択 (即時修正 / 別 issue 起票 / ユーザー確認)」から **Claude Code 自律判断 2 分岐 (即時修正 / 起票許可を求める)** に書き換え、Issue Creation Steps Step 1 の escalate 節も 3 択列挙 (「file an independent issue, expand the PR's scope, branch off, etc.」) を「1 つの推奨案を提示」に置換した。`/git-create-issue` Step 1 (preview 6 項目 → 明示許可待ち) は変更なし — 本ルールと既に整合している。意図: #1851 の自律誘導失敗の再発防止 / `/git-create-issue` permission gate との二重化排除 / ユーザーが判断材料なしで即決を求められる問題の排除。(#1981)

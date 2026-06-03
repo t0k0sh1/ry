@@ -1,3 +1,0 @@
-### Changed
-
-- Pure type-name utility helpers (`splitGenericTypeName`, `trimTypeNameSpaces`, `isListTypeName`, `isMapTypeName`, `isSetTypeName`, `isWeakTypeName`, `isFunctionTypeName`, `isLowLevelTypeName`, `deriveRuntimeFnName`, `nativeSigKey`) moved from `CodeGen` static members to a new layer-independent `ry::util` namespace under `include/ry/util/type_name.hpp`. Internal refactor with no behavior change. Added `docs/architecture/{compiler-layers,llvm-ir-emission-boundary,runtime-abi-boundary}.md` to document the compiler layer dependency direction, the candidate LLVM IR emission shared-library boundary, and the runtime ABI surface as preparation for incremental Rust migration. (#1820)

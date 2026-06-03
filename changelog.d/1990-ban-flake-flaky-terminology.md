@@ -1,3 +1,0 @@
-### Changed
-
-- AGENTS.md に新規セクション `## 禁止用語: flake / flaky` を追加し、Claude Code の説明・出力で `flake` / `flaky` の語をあらゆる言語 (日本語訳・カタカナ・他言語同義語 `unstable` / `intermittent` の言い換え用法を含む) で使用すること、および CI 失敗・テスト失敗の理由・結論として用いることを MUST 禁止した。代替表現として (a) 発生条件の明示、(b) `KNOWLEDGE.md` 既存 entry への明示リンク (issue 番号 + 行番号)、(c) root cause 未特定の場合「発生条件未特定。再現条件の調査が未完了」と明記し安易な再実行提案を禁止する、のいずれかを必須化した。歴史的記述 (`KNOWLEDGE.md` L261 #1895 / `CHANGELOG.md` L598 等) は検索性維持のため変更しないが、これらを引用・参照して `flake` を結論に再導入する行為も禁止した。新ルール導入時点で違反していた active prompt material 2 箇所 (`.claude/skills/triage-side-finding/SKILL.md` Q1 説明、`.claude/agents/fuzzer-runner.md` REPRO: FAILED 分岐) も同時に新ルール準拠表現に書き換えた。意図: CI #2578 で Claude Code が安易に「flake (re-run)」と結論した事故の再発防止 / root cause analysis 放棄の構造的排除。(#1990)

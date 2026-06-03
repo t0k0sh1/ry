@@ -6,6 +6,168 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.26] - 2026-06-03
+
+### Added
+
+- Mixed-type literals for `Map<K, any>`, `List<any>`, and `Set<any>`
+  variable declarations and reassignments. Previously
+  `m: Map<str, any> = {"a": 1, "b": "two", "c": true}` failed at
+  codegen with `map values must all have the same type` because the
+  `MapExpr` / `ListExpr` / `SetExpr` emitters strictly required
+  identical LLVM types across elements and the annotation-driven
+  `wrapInAny` auto-wrap (which works for `x: any = 1`) was never
+  reached. A `LiteralAnyHintGuard` RAII helper, installed at the
+  three assignment-system call sites (var-decl, function-local
+  reassignment, module-global reassignment in `src/codegen_stmt.cpp`),
+  signals to the literal emitters that each element should be
+  individually wrapped via `wrapInAny` and that the strict
+  same-type gate should be skipped. Element-type metadata
+  (`list_elem_type_name` / `set_elem_type_name` /
+  `map_value_type_name`) is stamped as `"any"` on the literal header
+  so downstream destructor dispatch picks the right release path.
+  `Map<any, V>` (any-typed keys) is intentionally out of scope because
+  the rehash dispatch (`__ry_ht_rehash_i64` / `_f64` / `_str`) has no
+  16-byte struct variant; mixed-key annotations continue to be
+  rejected at the strict same-type check. `Map<str, int> = {...}` and
+  other concrete-element annotations continue to enforce strict type
+  equality. (#1884)
+- Tree-sitter grammar (`editor/tree-sitter/grammar.js`) now parses the
+  `[T]` generic call syntax: `load[int]("42")`,
+  `mapHas[str, int](m, "a")`, `load[Map<str, any>]("{}")`, and
+  arbitrarily nested type arguments such as
+  `load[Map<str, List<Foo>>](text)`. The `call_expression` rule gains
+  an optional `type_arguments` field that consumes the existing `_type`
+  rule, so the `function` / `arguments` field names and the highlights
+  query bindings are preserved. Corpus regressions covering the four
+  shape categories are added to
+  `editor/tree-sitter/test/corpus/expressions.txt`, and
+  `tests/spec/json.test.ry` and
+  `tests/spec/collection_element_metadata.test.ry` are dropped from
+  `editor/tree-sitter/expected-fail.txt` now that they parse cleanly.
+  This closes the editor-tooling parity gap introduced when the C++
+  parser added the syntax in #1887; runtime and typecheck behavior is
+  unchanged. (#1906)
+
+### Changed
+
+- Pure type-name utility helpers (`splitGenericTypeName`, `trimTypeNameSpaces`, `isListTypeName`, `isMapTypeName`, `isSetTypeName`, `isWeakTypeName`, `isFunctionTypeName`, `isLowLevelTypeName`, `deriveRuntimeFnName`, `nativeSigKey`) moved from `CodeGen` static members to a new layer-independent `ry::util` namespace under `include/ry/util/type_name.hpp`. Internal refactor with no behavior change. Added `docs/architecture/{compiler-layers,llvm-ir-emission-boundary,runtime-abi-boundary}.md` to document the compiler layer dependency direction, the candidate LLVM IR emission shared-library boundary, and the runtime ABI surface as preparation for incremental Rust migration. (#1820)
+- Added `docs/architecture/layer-graduation-workflow.md` and `docs/architecture/codegen-layering-plan.md` to define when a compiler/runtime layer is graduate-ready (criteria + per-layer document template) and to record the codegen 2-layer split working hypothesis (Ry semantic lowering vs LLVM IR emission, lowered IR vocabulary, bounds-check pilot). `docs/architecture/compiler-layers.md` is updated to forward-reference the planned split. Documentation-only; no behavior change. Preparation for #1949 (LLVM IR emission shared library) and #1950 (Rust reimplementation). (#1824)
+- Reorganized lexer, parser, AST, diagnostic, and source-manager source files
+  into role-specific subdirectories (`src/lexer/`, `src/parser/`, `src/ast/`,
+  `src/diagnostic/`, `src/source_manager/`) and the matching `include/ry/`
+  layout. No behavior change — file rename plus `#include` path updates only.
+  Stage 1 of the v0.0.26 C++ tree reorganization tracked under the #1819
+  umbrella.
+- Reorganized module/import resolution, semantic analysis, project/environment,
+  CLI, application entry, JIT, trace, and coverage source files into
+  role-specific subdirectories (`src/module/`, `src/sema/`, `src/project/`,
+  `src/cli/`, `src/app/`, `src/jit/`, `src/trace/`, `src/coverage/`) and the
+  matching `include/ry/` layout. `main.cpp` was placed under `src/app/` to keep
+  the production binary entry separate from the CLI library layer. No behavior
+  change — file rename plus `#include` and CMake path updates only. Stage 2 of
+  the v0.0.26 C++ tree reorganization tracked under the #1819 umbrella.
+- Added `ry_llvm_emit` as a `SHARED` CMake target — the scaffolding for the LLVM IR emission shared-library boundary (#1820 / #1824 design, #1950 Rust target). The `extern "C"` ABI lives in `include/ry/llvm_emit/api.h` (opaque `RyValueId` handles, `RyEmitCtx`, `RyEmitCallbacks` slot). Three category-3 helpers cross the ABI in this PR: `CodeGen::getRuntimeFn`, `CodeGen::buildErrorFromRuntime`, and the `BoundsCheck` pilot emission (#1961). The remaining two helpers (`wrapPtrAsResult`, `wrapStatusAsResult`) and the `emitResultBranch` core stay as `CodeGen` methods — they pull in pointer-identity-sensitive caches (`result_types_`) and metadata helpers (`propagateMeta`, `tryRetainArcSource`) and will migrate together with the `ResultWrap` lowered op in a successor PR. Internal refactor with no behavior change; all C++ and Ry tests pass against the ABI-routed implementations. (#1949)
+- Codegen-layering Stage 2-B (#1964) completes the category-3 helper migration begun in #1949 / #1963. `wrapPtrAsResult`, `wrapStatusAsResult`, and `emitResultBranch` now cross the `libry_llvm_emit` ABI via a new `ry_emit_result_branch` entry point and a `ResultBranch` lowered op (`include/ry/codegen/lowered_result_branch.hpp`); `CodeGen::emitResultBranch` survives only as a thin shim that bridges `llvm::function_ref<>` callers to the C-fnptr ABI via a trampoline. The `RyEmitCallbacks` slot is removed entirely — `emit_negative_index_wrap` / `emit_bounds_error` are promoted to proper ABI functions (`ry_emit_negative_index_wrap` / `ry_emit_bounds_error`) that are self-contained inside the shared library. `getResultType`'s `StructType` cache stays on the CodeGen side because its reverse map is consumed by ARC release and Any wrapping; `resTy` crosses the ABI as `void*`, mirroring the existing `errorTy_` shape from Stage 2-A. (#1964)
+- Codegen-layering Stage 2-C (#1967) starts the post-`RyEmitCallbacks` op migration begun in #1949 / #1963 / #1964. `CodeGen::buildSomeValue` and `CodeGen::buildNoneValue` now cross the `libry_llvm_emit` ABI via two new entry points (`ry_emit_option_wrap_some` / `ry_emit_option_wrap_none`) and an `OptionWrap` lowered op (`include/ry/codegen/lowered_option_wrap.hpp`); they survive only as thin shims that forward to `codegen::lowering::lowerOptionWrap` + `codegen::emission::emitOptionWrap`. Unlike BoundsCheck (#1961) and ResultBranch (#1964), the OptionWrap emission helper creates no basic blocks and therefore does not call `ry_emit_ctx_set_function`. The Ry-semantic side effects of the `Some` arm (`propagateMeta` + `tryRetainArcSource`, #999 ARC retain contract) stay on the CodeGen-side shim, keeping the emission TU as a pure `intern → ABI → resolve` transit. `getOptionType`'s `StructType` cache stays in CodeGen for the same reason as `getResultType` in #1964 (its reverse map `reverse_option_types_` is consumed by ARC release / Any wrapping); `optTy` crosses the ABI as `void*`, mirroring `resTy` / `errorTy_`. (#1967)
+- Codegen-layering Stage 2-C begins with the ARC retain/release op migration (#1968). `CodeGen::emitArcRetain` / `emitArcRelease` now cross the `libry_llvm_emit` ABI via new `ry_emit_arc_retain` / `ry_emit_arc_release` entry points and a paired `lowered::ArcRetainOp` / `lowered::ArcReleaseOp` (`include/ry/codegen/lowered_arc.hpp`); both `CodeGen` methods survive only as thin shims. The `@parallel for` SeqCst contract is preserved across the ABI via the new `RyArcAtomic` enum (`RY_ARC_NONATOMIC` / `RY_ARC_ATOMIC`). The destructor crosses as a `void *` C function pointer rather than an `llvm::FunctionCallee`, and the GC visit function is similarly opaque. ARC ops are the highest-fanout lowered op surface (55+ call sites across record field retain, tuple element CoW, lambda capture release, `@parallel for` thunk teardown, weak upgrade, and tagged-union release), so migrating them first establishes the ABI shape that the remaining Stage 2-C ops (`RuntimeCall`, `AnyWrap`, `CollectionMutate`, `CowEnsureUnique`, etc.) will reuse. `used_native_libraries_.insert("gc")` migrates from inline in `emitArcRelease` to the emission shim because the runtime dependency on `libry_gc` is driven entirely by the emitted `__ry_gc_track` / `__ry_gc_untrack` calls. The `%ArcHeader = type { i64, i64 }` named struct declaration moves to an anonymous struct created locally inside the ABI implementation; under opaque pointers the emitted IR is otherwise bit-exact, preserving every `arc.retain` / `arc.retain.done` / `arc.release.body` / `arc.release` / `arc.free` / `arc.skip_free` / `arc.gc_track` / `arc.done` basic-block label that existing FileCheck goldens depend on. (#1968)
+- Codegen-layering Stage 2-C continues with RuntimeCall (#1969). All `__ry_*` runtime symbol resolutions now cross the `libry_llvm_emit` ABI via a new `ry_emit_runtime_call` entry point and a paired `lowered::RuntimeCallOp` (`include/ry/codegen/lowered_runtime_call.hpp`). The bulk migration consolidates ~130 scattered `mod_->getOrInsertFunction("__ry_…", fnTy) + builder_.CreateCall(...)` pairs across 17 codegen translation units (largest: `codegen_test.cpp` at 46 sites, `codegen_call_io.cpp` at 39 sites, `codegen_call_string.cpp` at 12 sites) into uniform `getRuntimeFn("__ry_…", retTy, {argTys})` calls. `CodeGen::getRuntimeFn` itself is unchanged from #1949 (it was already an ABI-aware thin wrapper over `ry_emit_get_runtime_fn`); the consolidation is purely a call-site uniformization that completes the "no direct `getOrInsertFunction("__ry_…")`" objective of issue #1969. The new `codegen::lowering::lowerRuntimeCall` and `codegen::emission::emitRuntimeCall` helpers are provided for future call-site migrations that want to route a full call (callee resolution + `CreateCall`) through the ABI in a single shot — current call sites continue to construct the call locally via `getRuntimeFn` + `builder_.CreateCall` for a minimal-churn migration. Two variadic call sites in `codegen_call_user.cpp` (`__ry_print_printf`, `__ry_sprint_printf`, both `isVarArg=true`) are intentionally left out of scope because `getRuntimeFn` fixes `isVarArg=false`; a variadic-aware ABI variant or extension is deferred. (#1969)
+- Codegen-layering Stage 2-C continues with the CoW (Copy-on-Write) uniqueness-check op migration (#1970). `CodeGen::emitCowCheckSlot` now crosses the `libry_llvm_emit` ABI via the new `ry_emit_cow_ensure_unique` entry point and a paired `lowered::CowEnsureUniqueOp` (`include/ry/codegen/lowered_cow.hpp`); the CodeGen method survives only as a ~60-line shim. The shim collects per-kind element / key / value sizes from `DataLayout`, walks `arc_str_managed_vars_` and `arc_field_record_vars_` to set the retain flags, and runs `propagateMeta` / `propagateMetaWide` on the result. `CodeGen::emitCowCheck` (the `arc_backed_vars_` guard wrapper) is untouched.
+  The op takes a single `RyCowEnsureUniqueDesc *` descriptor pointer carrying 12 primitive / opaque fields: `data_ptr_id`, `slot_ptr_id`, `kind`, `atomic`, `elem_size`, `key_size`, `val_size`, `do_elem_retain`, `elem_is_str`, `do_key_retain`, `key_is_str`, and `destructor_callee`. The single-descriptor shape keeps the C ABI extension surface narrow even for ops with many kind-dependent parameters.
+  CoW is the most structurally complex op migrated so far. A single ABI call expands into atomic strong-count load, ICmp, CondBr, per-kind (List / Map / Set) deep copy with malloc + memcpy of the data buffer, optional per-element retain loop, optional per-key retain loop (Map), `arc_release` of the old data pointer, slot store, and a PHI joining the no-clone and clone branches. The List / Map / Set header struct shapes are reproduced as anonymous `StructType::get(*ctx, {...})` calls inside the ABI implementation, mirroring the named struct shapes still created in `src/codegen.cpp` (a sync comment in `src/llvm_emit/impl.cpp` flags the dependency).
+  `ry_emit_cow_ensure_unique` is the first ABI helper that composes other ABI helpers. It invokes `ry_emit_arc_retain` (per element / per key in the retain loops) and `ry_emit_arc_release` (for the old data pointer before the slot store) directly inside the shared library. This validates that the ABI surface is composable, not leaf-only.
+  The three CodeGen-private helpers `emitCowDeepCopyList` / `emitCowDeepCopyMap` / `emitCowDeepCopySet` had no callers outside `emitCowCheckSlot` and are removed entirely. `emitCowRetainArcElements` stays on the CodeGen side because it has 8 non-CoW external call sites (`append!`, `insert!`, `concat`, `merge`, `slice`, …).
+  The atomic strong-count load uses `AtomicOrdering::Acquire` when `desc->atomic == RY_ARC_ATOMIC`, preserving the pairing with `atomicrmw SeqCst` updates in `ry_emit_arc_retain` / `ry_emit_arc_release` so TSan stays clean on the `@parallel for` ARC path. The pre-migration `arc_owned_values_.insert(newDataPtr)` side effect after the clone branch is dropped — the set is rebuilt on every subsequent `emitArcGetDataPtr` call so the insert was redundant. The existing destructor-touching spec tests (List / Map / Set with str / nested-collection elements, `Result<List<int>, str>` Err binding, `@parallel for` worker ARC retain/release loops) confirm equivalence. (#1970)
+- Codegen-layering Stage 2-C continues with the list-mutation op migration (#1971). `CodeGen::emitCollOp_append` / `emitCollOp_insert` / `emitCollOp_remove_at` / `emitListSlice` now cross the `libry_llvm_emit` ABI via four new entry points (`ry_emit_collection_append` / `_insert` / `_remove_at` / `_list_slice`) paired with `lowered::CollectionAppendOp` / `CollectionInsertOp` / `CollectionRemoveAtOp` / `ListSliceOp` (`include/ry/codegen/lowered_collection_mutate.hpp`); the four `CodeGen` methods survive only as thin shims that retain `emitCowCheck` / value coercion / ARC retain decision / `emitArcAllocCollectionHeader` / `setTypeMeta` / `propagateMeta` side effects. Four separate ABI entries (rather than a single dispatched op) are used because the op shapes are non-uniform — append/insert/removeAt are in-place mutations while slice produces a fresh header — and the per-variant split mirrors the `ArcRetain` / `ArcRelease` precedent (#1968). The slice ABI uses `RyValueId *out_count, RyValueId *out_new_data` out-parameters to avoid struct-by-value across the ABI boundary. Header struct pointer and element struct pointer cross as `void *` (typed only on the codegen side as `llvm::StructType *` / `llvm::Type *`), `RyValueId` handles cross as `uint32_t`, and `elem_size` crosses as `uint64_t` so element-type metadata stays on the codegen side; the ARC retain loop for owned slice elements is hoisted into the emission shim because it depends on `list_elem_type_name` which the ABI cannot see. The reused ABI helpers (`ry_emit_bounds_error`, `ry_emit_negative_index_wrap`) keep insert's negative-index wrap + bounds-error behavior byte-for-byte identical to the pre-migration emission. Basic-block labels (`app.grow` / `app.store`; `ins.err` / `ins.ok` / `ins.grow` / `ins.move`; `rmat.err` / `rmat.ok`) are preserved bit-exact across the migration; slice remains branchless and adds no new BBs. FileCheck goldens that exercise these ops keep passing without modification. (#1971)
+- Codegen-layering Stage 2-C continues with the `Any` wrap/unwrap op migration (#1972). `CodeGen::wrapInAny` / `unwrapFromAny` / `tryUnwrapFromAny` now cross the `libry_llvm_emit` ABI via three new entry points (`ry_emit_any_wrap` / `ry_emit_any_unwrap` / `ry_emit_any_try_unwrap`) paired with `lowered::AnyWrapOp` / `AnyUnwrapOp` / `AnyTryUnwrapOp` (`include/ry/codegen/lowered_any.hpp`); the three top-level `CodeGen` methods survive only as thin shims that retain Ry-semantic side effects on the CodeGen side: type-name resolution (`findEnumLikeTypeNameForBoxing` / `findRecordInfoForType` / `findRecordTypeName` / `buildTypeNameFromMeta`), descriptor lookup (`getOrCreateRecordDescriptor` / `getOrCreateEnumDescriptor`), layout-type construction (`recordBoxLayoutType` / `enumBoxLayoutType`), tag computation (`getAnyTypeTagForValue` / `getAnyTypeTag`), typed-collection registration via `__ry_any_register_typed_coll`, field-wise ARC retain via `emitRecordArcFieldsRetain` / `emitEnumBoxArcFieldsRetain` gated by the `!isa<CallInst> && !isa<InvokeInst>` reassignment guard, generic-substitution rejection, sub-helper dispatch (`unwrapEnumFromAny` / `tryUnwrapRecordFromAny` / `tryUnwrapListFromAny` / `tryUnwrapMapFromAny` / `tryUnwrapOptionFromAny`), and the post-unwrap `emitRecordArcFieldsRetain` on the returned record value. Three top-level entries (rather than a single dispatched op) match the public CodeGen surface and let each ABI helper keep its own `RyAnyWrapKind` / `RyAnyUnwrapKind` / `RyAnyTryUnwrapKind` enum (NonBox/RecordBox/EnumBox; Standard/F64Promote/Record; Standard/F64Promote). Sub-emission helpers stay CodeGen-private and do not cross the ABI surface (Path 1 narrower design): the typed `Record` / `List<T>` / `Map<str, V>` / `Option` / simple-enum arms of `tryUnwrapFromAny` depend on per-record reconstruction / `reverse_option_types_` / per-Map<str, V> rebuilding that the ABI cannot see. Per the codegen-llvm-ir-conventions rule the ABI helpers derive the parent function via `ctx->builder->GetInsertBlock()->getParent()` (not `ctx->function`), so the helpers stay safe under ARC / lambda / thunk / destructor / iterator-next retargeting. Basic-block labels (`any.bool.zext` / `any.rec.tag_ok` / `any.rec.tag_err` / `any.rec.desc_check` / `any.rec.desc_err` / `any.float` / `any.check_int` / `any.int2float` / `any.mismatch` / `any.merge` / `any.match` / `tryany.fp.tmp` / `tryany.fp.data` / `tryany.fp.fval` / `tryany.fp.ival` / `tryany.fp.i2f` / `tryany.fp.is_float` / `tryany.fp.is_int` / `tryany.fp.is_accept` / `tryany.fp.is_err` / `tryany.fp.val` / `res.ok` / `res.err` / `res.merge` / `tryany.tag` / `tryany.tag.eq` / `tryany.is_err` / `tryany.tmp` / `tryany.data` / `tryany.val`) are preserved bit-exact across the migration, as are all `load[<TargetType>]: …` error-message prefixes used by the typed sub-helper arms. (#1972)
+- Completed Stage 2-C of the codegen layering plan: the LLVM IR emission
+  ABI (`include/ry/llvm_emit/api.h`) no longer exposes any LLVM-owned
+  types or transitional `void *` parameters in its public signatures.
+  Category 1 (LLVM context handles: `RyModuleHandle` / `RyBuilderHandle`
+  / `RyContextHandle` / `RyFunctionHandle`) and category 2 (primitive
+  type accessors: `RyTypeRef` / `RyFuncTypeRef`) cross the ABI as
+  opaque pointer typedefs. The 22 existing ABI entries (Stage 2-A / 2-B
+  helpers + OptionWrap / ARC / RuntimeCall / CollectionMutate /
+  CowEnsureUnique / AnyWrap / AnyUnwrap / AnyTryUnwrap) had their
+  `void *` type parameters swept to typed handles. ControlFlow
+  primitive ops (`ry_emit_create_basic_block` / `ry_emit_branch_cond` /
+  `ry_emit_branch_uncond` / `ry_emit_create_phi`) cross the ABI; every
+  `IRBuilder<>::Create{CondBr,Br,PHI}` / `BasicBlock::Create` call in
+  `src/codegen_*.cpp` now goes through the `CodeGen::createBB` /
+  `emitBranchCond` / `emitBranchUncond` / `createPhi` wrappers. A
+  header-level lint script (`scripts/check-llvm-emit-abi-header.sh`,
+  wired into the `lint` CI job) enforces the AC by failing on any
+  `llvm::*` or non-carve-out `void *` token in the ABI surface.
+  Primitive arithmetic / lexical scope / module-level symbol
+  declarations remain outside the ABI per
+  `docs/architecture/codegen-layering-plan.md` §"Explicit non-inclusion"
+  — those are not part of #1973's AC. (#1973)
+- `/pre-commit-checklist` §3.6 を 4 harness 対応に拡張。skip-detection grep が `src/runtime/native/io.cpp` / `include/ry/runtime/native/io.hpp` を含むようになり、`io.cpp` を変更する PR は §3.6 を自動的に検証対象に含む。`run-fuzz.sh` は 4 target (`fuzz_parser` / `fuzz_json` / `fuzz_utf8` / `fuzz_io_open`) を 60 s ずつ実行する (合計 ~4 分、従来は ~3 分)。Change-type matrix の row label と Fuzzer mapping、`.claude/agents/fuzzer-runner.md` の TARGETS list / REPORT FORMAT 例も併せて更新した。(#1976)
+- `run-fuzz.sh` および §3.6 の wording で libFuzzer の `-rss_limit_mb` を 512 MB から 2048 MB に引き上げ。実測ピーク RSS は `fuzz_parser` 514 MB / `fuzz_json` 597 MB / `fuzz_utf8` 429 MB / `fuzz_io_open` 536 MB と、いずれの harness も libFuzzer の coverage tracking overhead (~275k inline 8-bit counters + PC table) で 400-600 MB に達する。512 MB cap では `fuzz_parser` で startup OOM を引き起こし、`fuzz_json` / `fuzz_io_open` も borderline だった (parser 固有のバグではなく、全 harness 共通の corpus + coverage 構造的 overhead)。2048 MB に引き上げて 4 harness 全てが安定して完走する。(#1976)
+- AGENTS.md に「起票判断における選択肢提示の禁止」サブセクションを追加し、Claude Code がユーザーに提示する選択肢 (`AskUserQuestion` の options、テキストの選択肢列挙等) に「別 issue に起票する」を含めることを MUST 禁止した (#1981)。これに合わせて `/triage-side-finding` の Q4 を「3 択 (即時修正 / 別 issue 起票 / ユーザー確認)」から **Claude Code 自律判断 2 分岐 (即時修正 / 起票許可を求める)** に書き換え、Issue Creation Steps Step 1 の escalate 節も 3 択列挙 (「file an independent issue, expand the PR's scope, branch off, etc.」) を「1 つの推奨案を提示」に置換した。`/git-create-issue` Step 1 (preview 6 項目 → 明示許可待ち) は変更なし — 本ルールと既に整合している。意図: #1851 の自律誘導失敗の再発防止 / `/git-create-issue` permission gate との二重化排除 / ユーザーが判断材料なしで即決を求められる問題の排除。(#1981)
+- AGENTS.md に新規セクション `## 禁止用語: flake / flaky` を追加し、Claude Code の説明・出力で `flake` / `flaky` の語をあらゆる言語 (日本語訳・カタカナ・他言語同義語 `unstable` / `intermittent` の言い換え用法を含む) で使用すること、および CI 失敗・テスト失敗の理由・結論として用いることを MUST 禁止した。代替表現として (a) 発生条件の明示、(b) `KNOWLEDGE.md` 既存 entry への明示リンク (issue 番号 + 行番号)、(c) root cause 未特定の場合「発生条件未特定。再現条件の調査が未完了」と明記し安易な再実行提案を禁止する、のいずれかを必須化した。歴史的記述 (`KNOWLEDGE.md` L261 #1895 / `CHANGELOG.md` L598 等) は検索性維持のため変更しないが、これらを引用・参照して `flake` を結論に再導入する行為も禁止した。新ルール導入時点で違反していた active prompt material 2 箇所 (`.claude/skills/triage-side-finding/SKILL.md` Q1 説明、`.claude/agents/fuzzer-runner.md` REPRO: FAILED 分岐) も同時に新ルール準拠表現に書き換えた。意図: CI #2578 で Claude Code が安易に「flake (re-run)」と結論した事故の再発防止 / root cause analysis 放棄の構造的排除。(#1990)
+- codegen: the LLVM IR emission shared library (`ry_llvm_emit`) is now built unconditionally from the Rust crate (`crates/ry_llvm_emit/`). Because `ry` now always links the shared `libLLVM`, building from source outside the Docker CI image requires a shared `libLLVM` in the LLVM prefix and a Rust 1.83+ toolchain on `PATH`. On macOS use `cmake --preset rust-emit` (Homebrew `llvm@21` ships `libLLVM.dylib`); the static-only `/usr/local/llvm` no longer satisfies `--preset default`. The `ry-ci` Docker image bakes in both the shared libLLVM and Rust, so container builds need no extra setup. (#1993)
+- Internal: added a compile-time ABI struct-layout verification mechanism between the C++ and Rust sides of the LLVM IR emission shared-library boundary. `tests/test_abi_layout.cpp` (C++ `static_assert`) and `crates/ry_llvm_emit/src/lib.rs` (`const _: () = assert!(...)`) pin the `sizeof` / `alignof` / per-field offset of the four `Ry*Desc` descriptor structs and the `sizeof` / `alignof` of the opaque handle typedefs declared in `include/ry/llvm_emit/api.h`. Both sides assert against the same constants, so incidental layout drift (field reorder, padding, type-width change) on either side breaks the build. CI's `lint` job runs `cargo check -p ry_llvm_emit` so the Rust assertions are exercised on every PR. This is a safety net for the in-progress Rust reimplementation of `ry_llvm_emit` (#1950 / #1993); the chosen method and the canonical layout table are documented in `docs/architecture/llvm-ir-emission-boundary.md`. (#1995)
+- codegen: ported all 28 LLVM IR emission ABI function bodies from the C++ implementation (`src/llvm_emit/impl.cpp`) to Rust (`crates/ry_llvm_emit/`) via the LLVM C API, producing byte-for-byte equivalent IR under `RY_LLVM_EMIT_IMPL_RUST=ON` (verified against the FileCheck goldens and the full Ry/C++ test suites). The C++ implementation and the `RY_LLVM_EMIT_IMPL_RUST` flag remain for now (removed in a follow-up sub-issue). ON builds require a shared libLLVM in the LLVM prefix so the host and the Rust cdylib share one LLVM instance — use `cmake --preset rust-emit` (Homebrew `llvm@21`); the default OFF (C++) build via `--preset default` is unchanged. (#1997)
+- release: distribution tarballs now bundle the shared `libLLVM` (plus its macOS chain dependency `libzstd`) and the Rust cdylib `libry_llvm_emit` next to `ry`, with install names / rpaths rewritten to `@loader_path` / `$ORIGIN`, so the release binary is self-contained after the #1999 Rust-emit cutover made a shared `libLLVM` mandatory at runtime. Without this, the first tag push after cutover would publish a binary that fails to start on systems without an installed LLVM (`dyld: Library not loaded` on macOS / `libLLVM.so: not found` on Linux). `install.sh` and `ry self-update` install the bundled libraries alongside `libry_*`. Tarballs grow by roughly the size of libLLVM (~100 MB class), and each now ships `LICENSE-LLVM.txt` (Apache-2.0 with LLVM exceptions) per redistribution requirements. (#2005)
+- release: bumped the `release.yml` Linux container pin from `ry-ci-glibc-old:llvm-21-rev5` to the latest published immutable revision `llvm-21-rev7`, so the v0.0.26 release builds on the current pre-baked image. (#2017)
+
+### Removed
+
+- codegen: removed the C++ LLVM IR emission implementation (`src/llvm_emit/impl.cpp`) and the `RY_LLVM_EMIT_IMPL_RUST` CMake option — the Rust cdylib is now the only implementation. The locked `extern "C"` ABI surface (`include/ry/llvm_emit/api.h`, `cast_helpers.hpp`) is unchanged. (#1993)
+
+### Fixed
+
+- `from <mod> import <Type>` for C++-registered resource types
+  (`File` / `TcpListener` / `TcpStream` / `TlsStream` / `HttpRequest` /
+  `HttpResponse` / `HttpClientResponse` / `Thread` / `Lock` / `RWLock` /
+  `Semaphore` / `Barrier` / `AtomicInt` / `AtomicBool`) and the
+  builtin `regex.Match` record now succeeds, restoring symmetry with
+  `@native fn` imports. Previously `extractDefinitions` only scanned
+  `.ry` AST top-level declarations and rejected names registered via
+  `ResourceKindRegistry` or `CodeGen`'s constructor, surfacing a
+  misleading "typo? deprecated?" diagnostic. `module_loader.cpp` now
+  bypasses the rejection for those names when the import path matches
+  the registered `library` (gated by `from_stdlib=true` so local
+  `<mod>.ry` shadows continue to enforce the .ry-source name set).
+  Alias support (`from io import File as MyFile`) is also wired:
+  `TypeAlias` validation in `emitImportAliasStmt` accepts an `orig`
+  resolved via `ResourceKindRegistry`, and `registerResourceByTypeName`
+  prefixes `resolveTypeAlias` so an aliased type name still receives
+  resource-kind metadata for ARC cleanup. Concurrently fixed a
+  pre-existing hardcoded `if (resolved == "File")` compare in
+  `emitPatternBindingArc` (`src/codegen_match.cpp:795`) by normalising
+  through `resolveTypeAlias` first, preventing handle leaks when a
+  `Result<MyFile, Error>` is destructured via `Ok(f)`. (#1888)
+- Top-level user `fn` declarations that collide with stdlib built-in function names (e.g. `sum`, `min`, `max`, `len`, `range`, `print`, `enumerate`, `zip`, `map`, `filter`, `Ok`, `Err`, `Some`, `None`) are now rejected at compile time with a clear diagnostic instead of silently being shadowed by the built-in. Generic-fn templates and `from <module> import <name> as <reserved>` aliases are checked the same way. Nested `fn`s, `@native` declarations, qualified-import module members, and type-aware overrides like `fn toStr(p: MyRecord)` remain accepted. (#1889)
+- Nested tuple/record field access with chained numeric indices
+  (`nested.0.0`, `pair.1.0`, `((1,2),(3,4)).0.1`) failed to parse with
+  `expected field name or index after '.'`. The lexer greedily absorbed
+  `.0` after an integer literal as a fraction part, so `t.0.0` lexed as
+  `[Ident, Dot, Float("0.0")]` instead of `[Ident, Dot, Number("0"),
+  Dot, Number("0")]`. Suppress fraction absorption when the integer
+  literal directly follows a `Dot` token (`src/lexer.cpp` —
+  `prev_kind_ != TokenKind::Dot` check, symmetric to the existing
+  leading-dot float disambiguation). Update `docs/grammar.ebnf` to
+  reflect that `INTEGER` is accepted in field-access position alongside
+  `IDENT`. Non-regression for `1.5`, `(1.5)`, `a + 1.5`, `.5`, and
+  `5.double()` is verified by lexer unit tests
+  (`DotAfterDotSuppressesFractionAbsorption`). (#1892)
+- `json.load[T]()` now correctly rejects `List`, `Map`, `Set`, closure, and other non-`str` pointer-typed arguments at compile time with `load[T]() requires a str or File argument`. Previously the non-`File` branch only checked for LLVM opaque pointer type, which let any reference value through and reached `__ry_json_parse_to_any` as if it were JSON text (invalid read under ASan/UBSan). The new guard uses `isStringValue` so the non-`File` branch is symmetric with the `isFile` branch. (#1941)
+- The release-path `weak_count == 0` decision in `ry_emit_arc_release` now uses an atomic load (`AtomicOrdering::Acquire` in `@parallel for` atomic mode, `NotAtomic` otherwise) instead of a plain `load`. The previous non-atomic read raced with `atomicrmw Monotonic` updates emitted by `weak_retain` / `weak_rel` in `src/codegen_arc.cpp`, which would be flagged as a data race under TSan when an atomic-mode object's last strong reference is dropped concurrently with another thread's weak retain / release. This was pre-existing behavior inherited verbatim from `CodeGen::emitArcRelease`; the migration to `libry_llvm_emit` was the natural opportunity to harden it. (#1968)
+- `ry_emit_result_branch` now derives the parent function for newly-created basic blocks from `ctx->builder->GetInsertBlock()->getParent()` instead of the cached `ctx->function`. This preemptive fix mirrors the `ry_emit_arc_retain` / `ry_emit_arc_release` correction in #1968 and forestalls the same cross-function reference hazard: result-branch helpers may be invoked inside destructor / lambda / thunk bodies where `cg.fn_` (the source of `ctx->function`) tracks the outer function while the IRBuilder has been retargeted to the nested function. Using `ctx->function` would have placed new BBs in the wrong function and produced verifier-rejected cross-function references. Pre-existing call sites had not triggered the hazard because they happened to update `cg.fn_` before invoking the helper, but the RuntimeCall migration (#1969) opens up more callers and the safer pattern is applied uniformly. (#1969)
+- `fuzz_io_open` libFuzzer harness は `docker/entrypoint.sh` の case dispatch に登録されておらず、`./docker/run.sh fuzz fuzz_io_open ...` が `error: unknown command 'fuzz_io_open'` で exit 1 していた。CMake target (`add_ry_fuzz_target(fuzz_io_open ...)`) と corpus (`tests/fuzz/corpus/fuzz_io_open/`) は既存だったため Docker 経由の実行手段だけが欠落していた状態。entrypoint.sh の case パターンと error message、`docker/run.sh` の usage コメント、`docker/README.md` / `.claude/skills/linux-docker-dev/SKILL.md` の libFuzzer quickstart 例コマンドを 4 harness 対応に揃えた。(#1976)
+- Tree-sitter highlight query (`editor/tree-sitter/queries/highlights.scm`)
+  now applies `(#set! "priority" 105)` to the `decorator` pattern so that
+  the decorator's identifier (e.g. `my_dec` in `@my_dec`) is highlighted
+  as `@attribute` instead of being overridden by the generic
+  `(identifier) @variable` fallback. Both patterns previously matched at
+  default priority 100, and tree-sitter's last-match-wins tie-breaker
+  promoted `@variable` — which was semantically wrong (a decorator name
+  is not a variable) and produced no color in colorschemes that leave
+  `@variable` unstyled. The fix is `highlights.scm`-only; `ry.so` does
+  not need to be rebuilt. (#1988)
+
 ## [0.0.25] - 2026-05-26
 
 ### Added
@@ -2977,7 +3139,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.25...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.26...HEAD
+[0.0.26]: https://github.com/t0k0sh1/ry/compare/v0.0.25...v0.0.26
 [0.0.25]: https://github.com/t0k0sh1/ry/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/t0k0sh1/ry/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/t0k0sh1/ry/compare/v0.0.22...v0.0.23
