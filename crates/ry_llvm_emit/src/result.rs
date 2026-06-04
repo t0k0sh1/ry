@@ -14,7 +14,15 @@ pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
     err_fn_name: *const c_char,
     error_ty: RyTypeRef,
 ) -> RyValueId {
+    // ABI input validation: malformed callers get sentinel 0 instead of
+    // crashing the emitter (mirrors ry_emit_runtime_call's guards).
+    if ctx.is_null() || err_fn_name.is_null() || error_ty.is_null() {
+        return 0;
+    }
     let c = cx(ctx);
+    if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
+        return 0;
+    }
     let error_ty = as_type(error_ty);
     let ptr_ty = ptr_type(c.context);
     let i64_ty = i64_type(c.context);
@@ -49,19 +57,36 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     build_err: RyBuildValueFn,
     user_ctx: *mut c_void,
 ) -> RyValueId {
+    // ABI input validation: malformed callers get sentinel 0 instead of
+    // crashing the emitter. build_ok / build_err are nullable at the FFI
+    // boundary (RyBuildValueFn = Option<fn>); reject NULL here rather than
+    // panicking on `unwrap` across the extern "C" boundary.
+    if ctx.is_null() || res_ty.is_null() {
+        return 0;
+    }
+    let (Some(build_ok), Some(build_err)) = (build_ok, build_err) else {
+        return 0;
+    };
     let context = cx(ctx).context;
     let b = cx(ctx).builder;
+    if context.is_null() || b.is_null() {
+        return 0;
+    }
     let is_err = as_value(resolve(cx(ctx), is_err_id));
     let res_ty = as_type(res_ty);
     // Builder-derived parent function (builder-derived parent rule).
-    let fn_v = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
+    let insert_bb = LLVMGetInsertBlock(b);
+    if insert_bb.is_null() {
+        return 0;
+    }
+    let fn_v = LLVMGetBasicBlockParent(insert_bb);
     let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.ok".as_ptr());
     let err_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.err".as_ptr());
     let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.merge".as_ptr());
     LLVMBuildCondBr(b, is_err, err_bb, ok_bb);
 
     LLVMPositionBuilderAtEnd(b, ok_bb);
-    let ok_id = (build_ok.unwrap())(user_ctx);
+    let ok_id = build_ok(user_ctx);
     let ok_val = as_value(resolve(cx(ctx), ok_id));
     LLVMBuildBr(b, merge_bb);
     // Re-capture the incoming block: the callback may have advanced the builder
@@ -69,7 +94,7 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     let ok_in = LLVMGetInsertBlock(b);
 
     LLVMPositionBuilderAtEnd(b, err_bb);
-    let err_id = (build_err.unwrap())(user_ctx);
+    let err_id = build_err(user_ctx);
     let err_val = as_value(resolve(cx(ctx), err_id));
     LLVMBuildBr(b, merge_bb);
     let err_in = LLVMGetInsertBlock(b);

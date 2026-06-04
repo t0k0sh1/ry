@@ -78,7 +78,15 @@ pub unsafe extern "C" fn ry_emit_get_runtime_fn(
     name: *const c_char,
     fn_ty: RyFuncTypeRef,
 ) -> RyValueRef {
+    // ABI input validation: malformed callers get a NULL handle instead of
+    // crashing the emitter (mirrors ry_emit_runtime_call's guards).
+    if ctx.is_null() || name.is_null() || fn_ty.is_null() {
+        return std::ptr::null_mut();
+    }
     let c = cx(ctx);
+    if c.module.is_null() {
+        return std::ptr::null_mut();
+    }
     let fn_ty = as_functype(fn_ty);
     to_ry_value(get_or_insert_function(c.module, name, fn_ty))
 }
