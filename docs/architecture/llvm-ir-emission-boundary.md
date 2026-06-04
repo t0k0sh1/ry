@@ -136,7 +136,7 @@ After this PR, the lowering / emission graduation documents (`codegen-{semantic-
 The check is implemented as two halves that assert against the **same** constants:
 
 - **C++ side** — `tests/test_abi_layout.cpp`: `static_assert(sizeof(...) == N)`, `static_assert(alignof(...) == N)`, and `static_assert(offsetof(..., field) == N)`. The TU includes only `api.h` + `<cstddef>` (no LLVM headers) and is compiled into `ry_tests` on every normal build.
-- **Rust side** — `crates/ry_llvm_emit/src/lib.rs`: `const _: () = assert!(core::mem::size_of::<T>() == N)` / `align_of` / `offset_of!`. These `const _` items are const-evaluated even under `cargo check`, so CI's `lint` job exercises them via `cargo check -p ry_llvm_emit` without building the full cdylib.
+- **Rust side** — `crates/ry_llvm_emit/src/ffi.rs` (the layout assertions moved here from `lib.rs` in the #2025 module split): `const _: () = assert!(core::mem::size_of::<T>() == N)` / `align_of` / `offset_of!`. These `const _` items are const-evaluated even under `cargo check`, so CI's `lint` job exercises them via `cargo check -p ry_llvm_emit` without building the full cdylib.
 
 Method A was chosen over a runtime layout-probe ABI helper (e.g. `size_t ry_layout_probe(uint32_t)`) deliberately: a probe would add a new `extern "C"` symbol to the emission ABI, which collides with the parent issue's "do not extend the production emission `extern "C"` ABI surface" constraint, and it would require linking the Rust cdylib (`RY_LLVM_EMIT_IMPL_RUST=ON`) before the C++ side could call it — making "always run in CI" harder. Method A adds no ABI surface and fails fast at build / check time.
 
@@ -183,7 +183,7 @@ Opaque handle typedefs — `sizeof` 8 / `alignof` 8 (pointers; per-field offset 
 
 ## Stage 2-C complete (#1993 — cutover to Rust)
 
-The migration is complete. The Rust crate `crates/ry_llvm_emit/` is the **sole** implementation of the LLVM IR emission shared library; the C++ translation unit `src/llvm_emit/impl.cpp` and the `RY_LLVM_EMIT_IMPL_RUST` CMake option are removed. **All post-cutover references to the emission implementation should point to `crates/ry_llvm_emit/src/lib.rs`.** This section supersedes the in-progress narrative in the Stage 2-A / 2-B / 2-C and Sub-issue 3 / 4 sections above — those are kept as a frozen historical record of the migration and still cite `src/llvm_emit/impl.cpp` as the then-current TU.
+The migration is complete. The Rust crate `crates/ry_llvm_emit/` is the **sole** implementation of the LLVM IR emission shared library; the C++ translation unit `src/llvm_emit/impl.cpp` and the `RY_LLVM_EMIT_IMPL_RUST` CMake option are removed. **All post-cutover references to the emission implementation should point to the `crates/ry_llvm_emit/src/` modules** (originally a single `lib.rs`; split per responsibility by #2025 — see "Module layout" below). This section supersedes the in-progress narrative in the Stage 2-A / 2-B / 2-C and Sub-issue 3 / 4 sections above — those are kept as a frozen historical record of the migration and still cite `src/llvm_emit/impl.cpp` as the then-current TU (and `lib.rs` as the single-file Rust home, pre-#2025 split).
 
 Steady-state shape:
 
@@ -193,6 +193,18 @@ Steady-state shape:
 - **`LLVM_SYS_211_PREFIX` auto-derivation.** When the env var is unset, `CMakeLists.txt` derives the prefix from the LLVM CMake config already discovered by `find_package(LLVM)` (via `corrosion_set_env_vars`), so the build works on Homebrew, distro-packaged, and custom LLVM prefixes without an env tweak.
 - **Named ↔ anonymous struct sync.** The cdylib mirrors CodeGen's `listHeaderTy_` / `mapHeaderTy_` / `setHeaderTy_` named/anonymous struct decisions so the emitted aggregate types match what the rest of CodeGen expects; this constraint is part of the locked ABI behavior and is exercised by the IR golden tests.
 - **Toolchain.** A Rust 1.83+ toolchain is required for any local build outside the Docker image (the `ry-ci` image bakes Rust in). The cdylib's internal memory is outside the C++ sanitizer instrumentation scope — see `KNOWLEDGE.md` § サニタイザー既知問題.
+
+### Module layout (#2025)
+
+`crates/ry_llvm_emit/src/lib.rs` was a single 2906-line file after the cutover; #2025 split it into per-responsibility modules. This is a **pure code move** — the emitted IR is byte-for-byte identical (verified by the filecheck goldens and an `--emit-llvm-ir` diff; the only per-run variation is the ASLR-randomized `__ry_arc_counter_address` constant, which the goldens already mask). `lib.rs` is now the crate root: the `#![allow(...)]` FFI carve-outs, the `mod` declarations, and a `pub use abi::*` re-export (which keeps ABI-only items such as `RyBasicBlockId` / `RY_BOUNDS_ARRAY` reachable instead of dead code now that they live in a private module). The implementation lives in:
+
+- `ffi.rs` — the locked C ABI surface: opaque handle types, scalar / enum typedefs, the four `Ry*Desc` descriptor structs, and the `#[repr(C)]` layout assertions.
+- `support.rs` — shared internal helpers (`EmitCtxImpl`, intern / resolve, opaque-handle casts, LLVM type constructors, name builders, module-global lookup, layout constants, the inline runtime-error / ARC-alloc helpers).
+- one module per lowered-op category, each owning its `ry_emit_*` bodies: `lifecycle`, `bounds` (bounds-check / negative-index-wrap / bounds-error), `result` (build-error-from-runtime / result-branch), `option`, `arc`, `runtime_call` (generic runtime-call + runtime-fn lookup), `collection`, `cow`, `any`, `control_flow`.
+
+The `#[no_mangle] extern "C"` ABI functions are exported from the cdylib regardless of which (private) module they live in. The three correctness rules (named ↔ anonymous struct sync, ARC `weak_count` Acquire-load, builder-derived parent function) and the internal call graph are preserved verbatim by the move. Follow-up #2026 covers the non-structural cleanup (helper dedup, Rust idiom, internal constant renames).
+
+The same PR (#2028) also added defensive input-validation guards to `ry_emit_build_error_from_runtime`, `ry_emit_result_branch`, and `ry_emit_get_runtime_fn` — NULL handles and NULL `RyBuildValueFn` callbacks now return the sentinel (`0` / `null`) instead of dereferencing a bad handle or `unwrap`-panicking across the extern "C" boundary, mirroring the pre-existing guards in `ry_emit_runtime_call`. The CodeGen caller never passes NULL (it always supplies live handles and the `trampolineOk` / `trampolineErr` function pointers), so this is additive hardening: happy-path IR is unchanged and the filecheck goldens are byte-identical. The guard branches reachable through a supported ABI call are covered by `tests/test_emit_abi_guards.cpp`; see `.claude/rules/tests-rejection-tdd.md` for the test-vs-document split.
 
 ## Distribution packaging (#2005)
 
