@@ -110,35 +110,15 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
     }
 
     // NonBox=0 — retain BEFORE the alloca+store (the two flags are exclusive).
-    if (*desc).do_collection_retain != 0 {
-        let mut gep = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            val,
-            gep.as_mut_ptr(),
-            1,
-            c"arc_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    } else if (*desc).do_str_retain != 0 {
-        let mut gep = [LLVMConstInt(
-            i64_ty,
-            (-(STRING_HEADER_SIZE as i64)) as u64,
-            0,
-        )];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            val,
-            gep.as_mut_ptr(),
-            1,
-            c"str_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    }
+    emit_any_retain_guard(
+        c,
+        b,
+        i8_ty,
+        i64_ty,
+        val,
+        (*desc).do_collection_retain != 0,
+        (*desc).do_str_retain != 0,
+    );
 
     let mut val_m = val;
     if LLVMTypeOf(val_m) == i1_ty {
@@ -290,7 +270,7 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
             b,
             LLVMIntPredicate::LLVMIntEQ,
             tag,
-            LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0),
+            LLVMConstInt(i64_ty, ANY_TAG_FLOAT as u64, 0),
             c"is.float".as_ptr(),
         );
         LLVMBuildCondBr(b, is_float, float_bb, check_int_bb);
@@ -300,7 +280,7 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
             b,
             LLVMIntPredicate::LLVMIntEQ,
             tag,
-            LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0),
+            LLVMConstInt(i64_ty, ANY_TAG_INT as u64, 0),
             c"is.int".as_ptr(),
         );
         LLVMBuildCondBr(b, is_int, int_promote_bb, mismatch_bb);
@@ -350,35 +330,15 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
     let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.data.ptr".as_ptr());
     let unwrapped = LLVMBuildLoad2(b, target_ty, data_ptr, c"any.unwrap.val".as_ptr());
 
-    if (*desc).do_collection_retain != 0 {
-        let mut gep_i = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            unwrapped,
-            gep_i.as_mut_ptr(),
-            1,
-            c"arc_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    } else if (*desc).do_str_retain != 0 {
-        let mut gep_i = [LLVMConstInt(
-            i64_ty,
-            (-(STRING_HEADER_SIZE as i64)) as u64,
-            0,
-        )];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            unwrapped,
-            gep_i.as_mut_ptr(),
-            1,
-            c"str_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    }
+    emit_any_retain_guard(
+        c,
+        b,
+        i8_ty,
+        i64_ty,
+        unwrapped,
+        (*desc).do_collection_retain != 0,
+        (*desc).do_str_retain != 0,
+    );
     intern(c, to_ry_value(unwrapped))
 }
 
@@ -470,14 +430,14 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
             b,
             LLVMIntPredicate::LLVMIntEQ,
             tag,
-            LLVMConstInt(i64_ty, RY_ANY_TAG_FLOAT as u64, 0),
+            LLVMConstInt(i64_ty, ANY_TAG_FLOAT as u64, 0),
             c"tryany.fp.is_float".as_ptr(),
         );
         let is_int = LLVMBuildICmp(
             b,
             LLVMIntPredicate::LLVMIntEQ,
             tag,
-            LLVMConstInt(i64_ty, RY_ANY_TAG_INT as u64, 0),
+            LLVMConstInt(i64_ty, ANY_TAG_INT as u64, 0),
             c"tryany.fp.is_int".as_ptr(),
         );
         let is_accept = LLVMBuildOr(b, is_float, is_int, c"tryany.fp.is_accept".as_ptr());
@@ -531,35 +491,15 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
     LLVMBuildStore(b, any_val, tmp);
     let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"tryany.data".as_ptr());
     let unwrapped = LLVMBuildLoad2(b, target_ty, data_ptr, c"tryany.val".as_ptr());
-    if (*desc).do_collection_retain != 0 {
-        let mut gep_i = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            unwrapped,
-            gep_i.as_mut_ptr(),
-            1,
-            c"arc_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    } else if (*desc).do_str_retain != 0 {
-        let mut gep_i = [LLVMConstInt(
-            i64_ty,
-            (-(STRING_HEADER_SIZE as i64)) as u64,
-            0,
-        )];
-        let hdr = LLVMBuildGEP2(
-            b,
-            i8_ty,
-            unwrapped,
-            gep_i.as_mut_ptr(),
-            1,
-            c"str_hdr_from_data".as_ptr(),
-        );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
-    }
+    emit_any_retain_guard(
+        c,
+        b,
+        i8_ty,
+        i64_ty,
+        unwrapped,
+        (*desc).do_collection_retain != 0,
+        (*desc).do_str_retain != 0,
+    );
     let ok_val = build_ok(unwrapped);
     LLVMBuildBr(b, merge_bb);
     let ok_incoming = LLVMGetInsertBlock(b);
@@ -575,4 +515,49 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
     let mut blocks = [ok_incoming, err_incoming];
     LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
     intern(c, to_ry_value(phi))
+}
+
+// Emit the any retain guard: when the boxed value is a heap collection or a str,
+// GEP back from the data pointer to its ARC/String header and ARC-retain it
+// (non-atomic). The two flags are mutually exclusive. SSA names
+// (arc_hdr_from_data / str_hdr_from_data) are identical across wrap / unwrap /
+// try_unwrap, so the only call-site variation is `val_ptr`.
+unsafe fn emit_any_retain_guard(
+    c: &mut EmitCtxImpl,
+    b: LLVMBuilderRef,
+    i8_ty: LLVMTypeRef,
+    i64_ty: LLVMTypeRef,
+    val_ptr: LLVMValueRef,
+    do_collection_retain: bool,
+    do_str_retain: bool,
+) {
+    if do_collection_retain {
+        let mut gep = [LLVMConstInt(i64_ty, (-(ARC_HEADER_SIZE as i64)) as u64, 0)];
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            val_ptr,
+            gep.as_mut_ptr(),
+            1,
+            c"arc_hdr_from_data".as_ptr(),
+        );
+        let hdr_id = intern(c, to_ry_value(hdr));
+        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
+    } else if do_str_retain {
+        let mut gep = [LLVMConstInt(
+            i64_ty,
+            (-(STRING_HEADER_SIZE as i64)) as u64,
+            0,
+        )];
+        let hdr = LLVMBuildGEP2(
+            b,
+            i8_ty,
+            val_ptr,
+            gep.as_mut_ptr(),
+            1,
+            c"str_hdr_from_data".as_ptr(),
+        );
+        let hdr_id = intern(c, to_ry_value(hdr));
+        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
+    }
 }
