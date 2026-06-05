@@ -1,14 +1,11 @@
 ---
 paths:
   - "src/codegen_arc*.cpp"
-  - "src/codegen_arc.cpp"
-  - "src/codegen_arc_cow.cpp"
   - "src/codegen_any.cpp"
   - "src/codegen_stmt_misc.cpp"
   - "src/codegen_stmt_loop.cpp"
   - "src/codegen_match.cpp"
   - "src/codegen_expr_literal.cpp"
-  - "include/ry/codegen.hpp"
 ---
 
 # Codegen ARC and Copy-on-Write
@@ -38,7 +35,7 @@ Each new LoadInst case must gate on container-element metadata (`list_elem || ma
 
 ### `str` is fully ARC-managed via `StringHeader`; offset by side-table membership, not by `isStringValue`
 
-`str` is a pointer to the `data` region of a `StringHeader`: offsets `−24 strong_count`, `−16 weak_count`, `−8 byte_len`, `+0 data`. `STRING_HEADER_SIZE=24` vs `ARC_HEADER_SIZE=16`. Use `makeString` / `makeStringUninit` / `freeStringSlot`; never `malloc` / `strdup`. Literal globals are `isConstant=true` — wrong offset writes the read-only page → SIGSEGV (not SIGABRT), pointing into JIT addresses. Side-tables select offsets: `arc_str_managed_vars_` (str allocas), `arc_str_owned_values_` (fresh str temps from `emitStrGetDataPtr`, `__ry_string_make_uninit`, …). Use the helpers `emitArcHeaderForAlloca(handle, alloca)` and `CapturedArcKind::Str` at sites that may handle str. Never use `isStringValue` to dispatch the offset (captured `List<int>` / `Map` / `Set` inside closure bodies lose collection metadata after capture and get misclassified) — use the declaration-time inner-type name. `@parallel for` snapshots `capIsArcStr[i]` before `FnScope` clears side-tables. `markArcManaged(tmp)` pre-mark in TuplePattern / RecordPattern / EnumConstructorPattern must be guarded by `fieldTypeIsArcManaged`; for `Str`-kind fields also insert into `arc_str_managed_vars_`. `emitPatternBindingArc` path 2b must check the source set hierarchy `closure → str → arc_backed` in order. CoW copy of `List<str>` forces `doElemRetain=true` (else post-destructor double-free). str+str concat in `emitArithmeticOp` releases input owned temps from `arc_str_owned_values_` at the concat site (not deferred to ExprStmt) so chained `(a + b) + c` doesn't leak inner bufs.
+`str` is a pointer to the `data` region of a `StringHeader`: offsets `−24 strong_count`, `−16 weak_count`, `−8 byte_len`, `+0 data`. `STRING_HEADER_SIZE=24` vs `ARC_HEADER_SIZE=16`. Use `makeString` / `makeStringUninit` / `freeStringSlot`; never `malloc` / `strdup`. Literal globals are `isConstant=true` — wrong offset writes the read-only page → SIGSEGV (not SIGABRT), pointing into JIT addresses. Side-tables select offsets: `arc_str_managed_vars_` (str allocas), `arc_str_owned_values_` (fresh str temps from `emitStrGetDataPtr`, `__ry_string_make_uninit`, …). Use the helpers `emitArcHeaderForAlloca(handle, alloca)` and `CapturedArcKind::Str` at sites that may handle str. Never use `isStringValue` to dispatch the offset (captured `List<int>` / `Map` / `Set` inside closure bodies lose collection metadata after capture and get misclassified) — use the declaration-time inner-type name. `@parallel for` snapshots `capIsArcStr[i]` before `FnScope` clears side-tables. `markArcManaged(tmp)` pre-mark for pattern fields must be guarded by `fieldTypeIsArcManaged` (see the dedicated entry below). `emitPatternBindingArc` path 2b must check the source set hierarchy `closure → str → arc_backed` in order. CoW copy of `List<str>` forces `doElemRetain=true` (else post-destructor double-free). str+str concat in `emitArithmeticOp` releases input owned temps from `arc_str_owned_values_` at the concat site (not deferred to ExprStmt) so chained `(a + b) + c` doesn't leak inner bufs.
 
 ### Map/List/Set literal `{k:v}` / `[s]` / `{s}` with str: side-table retain + `*_type_name = "str"` stamp
 
@@ -47,6 +44,17 @@ Each new LoadInst case must gate on container-element metadata (`list_elem || ma
 ### Pattern binding ARC: every extracted sub-value goes through `emitPatternBindingArc`
 
 Every arm that extracts a sub-value via `ExtractValue` or `Load` must call `emitPatternBindingArc(val, bindAlloca, typeSig)` after the store; without it, scoped release calls `free(ptr - 16)` on a non-retained pointer. `typeSig` per pattern: SomePattern / OkPattern = `extractGenericTypeArg(subjectEnumType, "Option<" / "Result<", 0)`; ErrPattern = `extractGenericTypeArg("Result<", 1)`; EnumConstructorPattern = `fieldTypeNames[bi]`; VariablePattern / TuplePattern / RecordPattern = `""` (heuristic). In `emitExprVariant(CaseExpr)`, capture `armEndBB = builder_.GetInsertBlock()` AFTER `popScope()` — `emitPatternBindingArc` + `popScope()` advance the insert block via inserted ARC BBs; capturing before breaks PHI predecessor matching.
+
+### `markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`; str fields also into `arc_str_managed_vars_`
+
+**Source**: #1016, updated #1046
+**Tags**: codegen, arc, pattern-binding, markArcManaged, str, fieldTypeIsArcManaged
+
+TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
+(`tmp`) as ARC-managed so the recursive leaf `VariablePattern` binding can emit a
+single retain via `tryRetainArcSource` Case 1. Without the guard, _any_ `ptrTy_`
+field (including bare fn-ptr and resource ptrs) is incorrectly marked.
+Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk)) { markArcManaged(tmp); if (fk == CollectionKind::Str) arc_str_managed_vars_.insert(tmp); }` at all three sites (`src/codegen_match.cpp`). `fieldTypeIsArcManaged` returns true for List/Map/Set/str and false for fn-ptr/resource/etc. The `arc_str_managed_vars_` insertion is required so `tryRetainArcSource` Case 1 dispatches to `emitStrGetHeaderFromData` (offset −24) instead of `emitArcGetHeaderFromData` (offset −16) for str fields. Capturing closure in tuple/record/enum fields is intentionally excluded: `fn_type_info` metadata is not propagated by `propagateTypeMeta` onto `ExtractValue` intermediates, so closure detection is impossible here; this was also the pre-#1008 behaviour.
 
 ### Record ARC reassignment guard: `!isa<CallInst> && !isa<InvokeInst>`
 
@@ -258,3 +266,98 @@ itself; only on whether the source is a tracked variable.
 ### `threadSpawn` thunks emit no ARC ops; `parallel_for_depth_` is the atomic-ARC scope marker
 
 `threadSpawn` thunks do NOT retain/release captures — env stores raw pointer copies and the thunk's `FnScope` is destroyed at codegen without `popScope()`. Caller MUST call `threadJoin` before the captured value's owning scope exits. `parallel_for_depth_` counter (`isArcAtomic() → atomicrmw seqcst`) covers ARC ops emitted directly inside `@parallel for` thunk bodies; it does NOT propagate to helper-function calls. Decision: keep the scope-counter design; whole-program "may cross threads" analysis was rejected as too expensive.
+
+### `for` loop over a collection: snapshot via `emitArcRetain` to prevent buffer-pointer UAF
+
+**Source**: #1021 (2026-04-16), #1041 (2026-04-17), #1091 (2026-04-17)
+**Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
+
+**Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
+`vals`) in an SSA value that is read inside the loop body **when the iterable
+carries an external alias** (`VariableExpr`, `FieldAccessExpr`, or `IndexExpr`). `append!`/`add`/map-insert grow the
+collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
+**`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
+
+**External-alias gate**: Apply retain+snapshot when
+`iterableHasExternalAlias(*s->iterable)` returns true — i.e., the iterable is
+`VariableExpr`, `FieldAccessExpr` (e.g. `obj.items`, `self.xs`), **or** `IndexExpr`
+(e.g. `xs[i]`, `m["key"]`). For true temporaries (`range(100)`, result of a call
+expression, `emitStringToCharList` output, list/set/map literals, etc.) there is no
+external alias that can mutate the collection through CoW — pre-loop SSA values are safe.
+
+**FieldAccessExpr / IndexExpr semantic difference**: `tryGetReceiverAlloca` returns `nullptr`
+for `FieldAccessExpr` (only handles `VariableExpr`), so no CoW fork occurs on
+mutation — `append!` mutates in-place. The retain still protects the snapshot:
+the header's `strong_count` is bumped to ≥ 2, so the buffer is not freed. The
+loop iterates the original length read from the snapshot before mutation.
+
+
+**Fix**:
+
+1. Before emitting the loop header, call `emitArcGetHeaderFromData(iterable)` →
+   `emitArcRetain(arcHdr)` to bump `strong_count`.
+2. Store the collection data pointer in a new scope-owned alloca (e.g.,
+   `__for_iter_snap_N`). Register it with `setTypeMeta` (correct
+   `ListElem`/`SetElem`/`MapKey`) and `markArcManaged` so `popScope()` releases
+   it on normal exit, `return`, and `break`.
+3. Load `len` once from the snapshot alloca right before `emitIndexedForLoop`.
+   Inside the body lambda, load `data`/`keys`/`vals` from the snapshot alloca per
+   iteration (the retain freezes the header; CoW on the source alias forks a new
+   header without touching ours).
+4. **Do NOT emit an explicit release.** `popScope()` / `emitScopeCleanupToDepth`
+   walk `arc_managed_vars_` and call `emitArcReleaseVar` on every exit path.
+
+**For non-alias iterables**: load `data`/`keys`/`vals`/`len` once before
+`emitIndexedForLoop` as SSA values, capture them in the body lambda.
+
+**Why retain works**: any mutation through the source alias inside the loop body
+triggers `emitCowCheckSlot`, which sees `strong_count ≥ 2` and forks a new
+header into the source alloca. Our snapshot alloca still points to the original
+frozen header; the loop iterates the original content.
+
+**Sequential-loop safety**: use a per-ForStmt counter for unique snapshot names
+(`__for_iter_snap_0`, `__for_iter_snap_1`, …). `getOrCreateVar` looks up only
+the **current scope**, so sequential loops in the same function scope cannot
+accidentally share a snapshot alloca if the names differ.
+
+**How to verify**: in `codegen_stmt_loop.cpp`, per-iteration buffer loads for
+`iterableHasExternalAlias` paths should read from a `for_snap` alloca; for
+non-alias paths, the captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used
+directly.
+
+### Thread / parallel-for thunk epilogue: `popScope()` before `CreateRetVoid()`
+
+**Source**: #1090 (2026-04-17)
+**Tags**: codegen, thread, parallel-for, arc, thunk, ir-verification
+
+**Rule**: In any internally-generated thunk function (`__ry_thread.N`,
+`__ry_parallel_for.N`), call `popScope()` **before** `builder_.CreateRetVoid()`.
+`popScope()` → `emitScopeCleanupToDepth()` → `emitArcReleaseVar()` emits
+`CreateLoad` + `CreateCondBr` diamond blocks. If `CreateRetVoid()` has already
+terminated the current BB, those instructions land after the terminator, producing
+malformed IR (multiple terminators / post-terminator instructions). The JIT
+optimizer (`LowerExpectIntrinsicPass` for O2) crashes on such IR.
+
+**Correct epilogue pattern** (from `emitParallelForRange`, `codegen_stmt_loop.cpp:765-766`):
+
+```cpp
+// body terminated by explicit return?  ReturnStmt already drained
+// arc_managed_vars_; iterator_malloc_stack_ items also emitted; skip.
+if (!builder_.GetInsertBlock()->getTerminator()) {
+    popScope();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateRetVoid();
+}
+```
+
+Note: if `iterator_malloc_stack_` at the current scope has items,
+`emitScopeCleanupToDepth` emits `free` calls but does **not** clear the vector
+(`codegen.cpp:384-390`). If `ReturnStmt` already fired `emitScopeCleanupToDepth(0)`,
+those free calls were already emitted; an unconditional subsequent `popScope()` would
+re-emit them into the (terminated) block. The `if (!terminated)` outer guard prevents
+this double-free / post-terminator insertion.
+
+**IR verification gap**: `threadSpawn` thunks now have `llvm::verifyFunction`
+(`codegen_call_thread.cpp:284-288`). `emitParallelForRange` does not yet have it
+(follow-up opportunity). Root cause of #1090 was the missing verify — the malformed
+IR survived codegen and crashed only during JIT optimization.

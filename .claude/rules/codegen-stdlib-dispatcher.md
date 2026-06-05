@@ -1,11 +1,6 @@
 ---
 paths:
   - "src/codegen_call*.cpp"
-  - "src/codegen_call_dispatch.cpp"
-  - "src/codegen_call_native.cpp"
-  - "src/codegen_call_string.cpp"
-  - "src/codegen_call_collection.cpp"
-  - "include/ry/codegen.hpp"
 ---
 
 # Codegen Stdlib Dispatcher
