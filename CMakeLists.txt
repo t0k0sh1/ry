@@ -73,7 +73,7 @@ set(RY_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 find_package(LLVM REQUIRED CONFIG)
 add_definitions(${LLVM_DEFINITIONS})
 
-# `ry` and the Rust ry_llvm_emit cdylib (built with llvm-sys `force-dynamic`)
+# `ry` and the Rust ry_codegen cdylib (built with llvm-sys `force-dynamic`)
 # MUST share ONE LLVM instance. Linking `ry` against the per-component static
 # archives would embed its own LLVM copy while the cdylib links shared libLLVM
 # — two copies whose APFloat `fltSemantics` singletons differ, hanging
@@ -268,17 +268,17 @@ endfunction()
 function(add_ry_fuzz_target TARGET_NAME)
     set(SOURCES ${ARGN})
     add_executable(${TARGET_NAME} ${SOURCES})
-    # ry_llvm_emit (#1949) is linked because ry_lib's shim layer references
+    # ry_codegen (#1949) is linked because ry_lib's shim layer references
     # its symbols even from translation units the fuzzers compile directly.
     if(APPLE)
         target_link_libraries(${TARGET_NAME} PRIVATE
             -Wl,-force_load,$<TARGET_FILE:ry_lib>
             ry_lib
-            ry_llvm_emit)
+            ry_codegen)
     else()
         target_link_libraries(${TARGET_NAME} PRIVATE
             -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
-            ry_llvm_emit
+            ry_codegen
             -Wl,--no-as-needed atomic -Wl,--as-needed)
         target_link_options(${TARGET_NAME} PRIVATE -rdynamic)
     endif()
@@ -318,20 +318,20 @@ add_ry_native_lib(http       src/runtime/native/http/http.cpp src/runtime/native
                              src/runtime/native/http/tls.cpp src/runtime/core/hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
-# ===== LLVM IR emission shared library (ry_llvm_emit) =====
+# ===== LLVM IR emission shared library (ry_codegen) =====
 # Built as a SHARED target so the LLVM-touching subset of CodeGen lives behind
 # a stable extern "C" ABI (include/ry/llvm_emit/api.h, locked by #1949) and is
-# implemented in Rust (crates/ry_llvm_emit/). LLVM is NOT linked into this lib
+# implemented in Rust (crates/ry_codegen/). LLVM is NOT linked into this lib
 # — its symbols resolve from the main process at runtime (-undefined
 # dynamic_lookup on macOS, -rdynamic on Linux), mirroring the add_ry_native_lib()
 # pattern above. Unlike the stdlib native libs (which are dlopen'd on demand
-# from the JIT), ry_llvm_emit is referenced at compile time by ry_lib (via the
+# from the JIT), ry_codegen is referenced at compile time by ry_lib (via the
 # CodeGen shim layer), so it must be linked explicitly into every executable
 # that uses ry_lib — kept out of RY_NATIVE_LIBS for that reason.
 #
 # Built via corrosion-rs: Corrosion pulls cargo in as a build step and exposes
-# the cdylib as an IMPORTED target named after the crate (`ry_llvm_emit`). LLVM
-# symbols resolve from the host process — see crates/ry_llvm_emit/build.rs for
+# the cdylib as an IMPORTED target named after the crate (`ry_codegen`). LLVM
+# symbols resolve from the host process — see crates/ry_codegen/build.rs for
 # the macOS `-undefined dynamic_lookup` glue.
 # An offline build can point Corrosion at a vendored source tarball via
 # $RY_VENDORED_CORROSION_TARBALL (file://), avoiding the github.com clone at
@@ -355,12 +355,12 @@ else()
 endif()
 FetchContent_MakeAvailable(Corrosion)
 corrosion_import_crate(
-    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/ry_llvm_emit/Cargo.toml"
-    CRATES ry_llvm_emit
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/ry_codegen/Cargo.toml"
+    CRATES ry_codegen
 )
-set_target_properties(ry_llvm_emit PROPERTIES
+set_target_properties(ry_codegen PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-# No rpath is set on ry_llvm_emit (#2005): corrosion's IMPORTED cargo target
+# No rpath is set on ry_codegen (#2005): corrosion's IMPORTED cargo target
 # ignores CMake rpath properties — verified in the Linux container, where the .so
 # carries `NEEDED libLLVM.so.X` but no RUNPATH. It doesn't need one: `ry` NEEDs
 # libLLVM directly and loads it into the global symbol scope at startup via its
@@ -373,9 +373,9 @@ set_target_properties(ry_llvm_emit PROPERTIES
 # /usr/local/llvm — that keeps the build usable on Homebrew,
 # distro-packaged LLVM, and custom prefixes without env tweaks.
 if(NOT DEFINED ENV{LLVM_SYS_211_PREFIX})
-    get_filename_component(_ry_llvm_emit_llvm_prefix "${LLVM_TOOLS_BINARY_DIR}" DIRECTORY)
-    corrosion_set_env_vars(ry_llvm_emit "LLVM_SYS_211_PREFIX=${_ry_llvm_emit_llvm_prefix}")
-    unset(_ry_llvm_emit_llvm_prefix)
+    get_filename_component(_ry_codegen_llvm_prefix "${LLVM_TOOLS_BINARY_DIR}" DIRECTORY)
+    corrosion_set_env_vars(ry_codegen "LLVM_SYS_211_PREFIX=${_ry_codegen_llvm_prefix}")
+    unset(_ry_codegen_llvm_prefix)
 endif()
 
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
@@ -385,23 +385,23 @@ set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing r
 # via find_native_library() + DynamicLibrarySearchGenerator::Load() (see main.cpp).
 add_executable(ry src/app/main.cpp)
 add_dependencies(ry ${RY_NATIVE_LIBS})
-# ry_llvm_emit is referenced at compile time by ry_lib's shim layer (#1949),
+# ry_codegen is referenced at compile time by ry_lib's shim layer (#1949),
 # so it must be linked explicitly into the executable (unlike RY_NATIVE_LIBS
 # which the JIT loads on demand).
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib ry_llvm_emit)
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib ry_codegen)
 else()
     # --no-as-needed for atomic: JIT-generated code may reference __atomic_load
     # (from LLVM atomicrmw lowering), so libatomic must stay linked even though
     # ry_lib has no direct references to it.
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive ry_llvm_emit -Wl,--no-as-needed atomic -Wl,--as-needed)
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive ry_codegen -Wl,--no-as-needed atomic -Wl,--as-needed)
     # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
 
-# Distribution rpath (#2005): bundle libLLVM/libry_llvm_emit next to ry so the
+# Distribution rpath (#2005): bundle libLLVM/libry_codegen next to ry so the
 # release binary is self-contained on systems without an installed LLVM. Two
 # entries cover both layouts:
 #   $ORIGIN/lib            -> tarball unpacked in place (./ry next to ./lib)
@@ -413,7 +413,7 @@ target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
 # build-machine-absolute /usr/local/llvm or /opt/openssl paths leak in.
 # INSTALL_RPATH_USE_LINK_PATH defaults OFF, so nothing else is appended. At dev
 # time libLLVM/libcrypto resolve via the container's LD_LIBRARY_PATH (searched
-# before DT_RUNPATH); $ORIGIN/lib=build/lib still resolves libry_llvm_emit.
+# before DT_RUNPATH); $ORIGIN/lib=build/lib still resolves libry_codegen.
 # macOS uses install_name_tool in scripts/bundle-dist.sh (absolute Mach-O install
 # names can't be redirected by an rpath alone), so this block is Linux-only.
 if(NOT APPLE)
@@ -486,7 +486,7 @@ if(APPLE)
     target_link_libraries(ry_tests PRIVATE
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
-        ry_llvm_emit
+        ry_codegen
         ${RY_NATIVE_LIBS}
         GTest::gtest_main
         GTest::gmock
@@ -494,7 +494,7 @@ if(APPLE)
 else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
-        ry_llvm_emit
+        ry_codegen
         -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed
         GTest::gtest_main
         GTest::gmock

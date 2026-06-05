@@ -10,7 +10,7 @@ Procedure for adding a new standard library module (e.g. `crypto`) to ry, plus r
 
 > Relocated from `AGENTS.md` by #1384.
 >
-> **Terminology** (`docs/reference/glossary.md`, v0.0.17 / #1480): the unit imported via `from xxx import ...` is a **module** (one `.ry` file or directory). "Package" is reserved for the future `ry add` external-library feature. Legacy C++ identifiers (`effectivePackage`, `RY_REGISTER_STDLIB_PACKAGE`, `__ry_<symbol>` ABI) retain "package" for ABI/source stability — use them verbatim in code, "module" in prose.
+> **Terminology** (`docs/reference/glossary.md`, v0.0.17 / #1480): the unit imported via `from xxx import ...` is a **module** (one `.ry` file or directory). "Package" is reserved for the future `ry add` external-library feature. Legacy C++ identifiers (`effectivePackage`, `RY_REGISTER_STDLIB_PACKAGE`, `__ry_<symbol>` boundary) retain "package" for binary/source stability — use them verbatim in code, "module" in prose.
 
 ## Steps
 

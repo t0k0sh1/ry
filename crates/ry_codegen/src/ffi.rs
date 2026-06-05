@@ -1,7 +1,7 @@
-//! FFI surface — the locked C ABI type contract: opaque handle types,
+//! FFI surface — the locked C boundary type contract: opaque handle types,
 //! scalar/enum typedefs, descriptor structs, and the compile-time layout
 //! assertions (#1995). Every item here mirrors `include/ry/llvm_emit/api.h`
-//! byte-for-byte — the C ABI is locked (#1949); do NOT alter without updating
+//! byte-for-byte — the C boundary is locked (#1949); do NOT alter without updating
 //! api.h and cast_helpers.hpp.
 
 use std::ffi::{c_char, c_int, c_void};
@@ -19,25 +19,25 @@ pub struct RyEmitCtx {
 pub struct RyModuleOpaque {
     _private: [u8; 0],
 }
-pub type RyModuleHandle = *mut RyModuleOpaque;
+pub type RyModuleRef = *mut RyModuleOpaque;
 
 #[repr(C)]
 pub struct RyBuilderOpaque {
     _private: [u8; 0],
 }
-pub type RyBuilderHandle = *mut RyBuilderOpaque;
+pub type RyBuilderRef = *mut RyBuilderOpaque;
 
 #[repr(C)]
 pub struct RyContextOpaque {
     _private: [u8; 0],
 }
-pub type RyContextHandle = *mut RyContextOpaque;
+pub type RyContextRef = *mut RyContextOpaque;
 
 #[repr(C)]
 pub struct RyFunctionOpaque {
     _private: [u8; 0],
 }
-pub type RyFunctionHandle = *mut RyFunctionOpaque;
+pub type RyFunctionRef = *mut RyFunctionOpaque;
 
 #[repr(C)]
 pub struct RyTypeOpaque {
@@ -68,7 +68,6 @@ pub type RyBasicBlockRef = *mut RyBasicBlockOpaque;
 // =============================================================
 
 pub type RyValueId = u32;
-pub type RyBasicBlockId = u32;
 
 pub const RY_BOUNDS_LIST: c_int = 0;
 pub const RY_BOUNDS_ARRAY: c_int = 1;
@@ -152,9 +151,9 @@ pub struct RyAnyTryUnwrapDesc {
 }
 
 // =============================================================
-// ABI struct-layout assertions (#1995).
+// boundary struct-layout assertions (#1995).
 //
-// Compile-time checks that lock the Rust side of the ABI to the same
+// Compile-time checks that lock the Rust side of the boundary to the same
 // sizeof / alignof / field-offset constants asserted on the C++ side in
 // tests/test_abi_layout.cpp. Both sides assert against the SAME numbers,
 // so any incidental drift (field reorder, padding, type-width change) on
@@ -229,18 +228,17 @@ const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, do_str_retain) =
 const _: () = assert!(core::mem::offset_of!(RyAnyTryUnwrapDesc, err_msg_str_id) == 56);
 
 // --- Opaque handle typedefs: sizeof + alignof only (no fields) ---
-// All are `*mut <Opaque>` -> 8 bytes / 8-byte aligned on the 64-bit ABI.
+// All are `*mut <Opaque>` -> 8 bytes / 8-byte aligned on 64-bit platforms.
+const _: () =
+    assert!(core::mem::size_of::<RyModuleRef>() == 8 && core::mem::align_of::<RyModuleRef>() == 8);
 const _: () = assert!(
-    core::mem::size_of::<RyModuleHandle>() == 8 && core::mem::align_of::<RyModuleHandle>() == 8
+    core::mem::size_of::<RyBuilderRef>() == 8 && core::mem::align_of::<RyBuilderRef>() == 8
 );
 const _: () = assert!(
-    core::mem::size_of::<RyBuilderHandle>() == 8 && core::mem::align_of::<RyBuilderHandle>() == 8
+    core::mem::size_of::<RyContextRef>() == 8 && core::mem::align_of::<RyContextRef>() == 8
 );
 const _: () = assert!(
-    core::mem::size_of::<RyContextHandle>() == 8 && core::mem::align_of::<RyContextHandle>() == 8
-);
-const _: () = assert!(
-    core::mem::size_of::<RyFunctionHandle>() == 8 && core::mem::align_of::<RyFunctionHandle>() == 8
+    core::mem::size_of::<RyFunctionRef>() == 8 && core::mem::align_of::<RyFunctionRef>() == 8
 );
 const _: () =
     assert!(core::mem::size_of::<RyTypeRef>() == 8 && core::mem::align_of::<RyTypeRef>() == 8);
@@ -256,6 +254,3 @@ const _: () = assert!(
 // --- Scalar intern-handle typedefs (u32) ---
 const _: () =
     assert!(core::mem::size_of::<RyValueId>() == 4 && core::mem::align_of::<RyValueId>() == 4);
-const _: () = assert!(
-    core::mem::size_of::<RyBasicBlockId>() == 4 && core::mem::align_of::<RyBasicBlockId>() == 4
-);

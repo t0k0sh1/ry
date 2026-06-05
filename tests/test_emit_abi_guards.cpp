@@ -1,9 +1,9 @@
-// Direct-call regression tests for the ry_llvm_emit ABI input-validation
+// Direct-call regression tests for the ry_codegen ABI input-validation
 // guards (#2028 review hardening). These exercise the NULL / None reject
 // branches that are unreachable from the normal CodeGen caller (which always
 // passes valid handles and non-null trampolines), so a Ry self-test cannot
 // trigger them — the only way to lock them in is to call the extern "C" ABI
-// directly. ry_tests links the ry_llvm_emit cdylib, so the symbols resolve.
+// directly. ry_tests links the ry_codegen cdylib, so the symbols resolve.
 //
 // Covered guards:
 //   - ctx == NULL  → sentinel (0 / NULL) for build_error_from_runtime,

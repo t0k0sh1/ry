@@ -702,7 +702,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
     // Result<bool, Error> via the generic dispatch path with a real
     // runtime symbol (__ry_testlib_check). Exercises the full ResultOutParam
-    // ABI: i64 status, i64 out-param, and the final i64→i1 truncation.
+    // Signature: i64 status, i64 out-param, and the final i64→i1 truncation.
     std::string output = runSource(
         "@native(\"testlib\")\nfn check(s: str) -> Result<bool, Error>\ncase check(\"yes\"):\n    Ok(b):\n        print(b)\n    Err(e):\n        print(e.message)\n"
     );
@@ -2047,7 +2047,7 @@ TEST_F(DirectiveTest, TimeoutNegativeIsRejected) {
 }
 
 // Suffixed integer literals (e.g. `100i32`, `100i64`) are rejected by codegen
-// because @timeout's runtime ABI uses plain int64_t — accepting a literal with
+// because @timeout's runtime boundary uses plain int64_t — accepting a literal with
 // a different low-level type annotation would silently coerce. Same shape as
 // the `toBeCloseTo` 'decimals' argument check in src/codegen_test.cpp (#1688
 // review feedback).

@@ -19,8 +19,8 @@ namespace ry::codegen::lowered {
 // AnyWrapKind selects the IR shape behind ry_emit_any_wrap.
 //   NonBox    — primitive (int/float/bool) / str / collection pointer stored
 //               directly in `any.data[8]`. Bool (i1) is ZExt'd to i64 by the
-//               ABI ("any.bool.zext") when needed. The do_collection_retain /
-//               do_str_retain flags decide whether the ABI emits
+//               boundary ("any.bool.zext") when needed. The do_collection_retain /
+//               do_str_retain flags decide whether the boundary emits
 //               emitArcGetHeaderFromData / emitStrGetHeaderFromData + ARC
 //               retain BEFORE the alloca+store sequence.
 //   RecordBox — heap-box layout `[ ArcHeader (16B) | desc ptr (8B) | record
@@ -30,7 +30,7 @@ namespace ry::codegen::lowered {
 //               Enum=9. Carries the per-enum descriptor instead of the
 //               per-record descriptor.
 //
-// CodeGen-side responsibilities (NOT crossed via the ABI):
+// CodeGen-side responsibilities (NOT crossed via the boundary):
 //   - Type-name resolution (findEnumLikeTypeNameForBoxing /
 //     findRecordInfoForType / findRecordTypeName / buildTypeNameFromMeta)
 //   - Descriptor lookup (getOrCreateRecordDescriptor /
@@ -73,12 +73,12 @@ struct AnyWrapOp {
 //   Record     — tag check + descriptor chain walk via
 //                `__ry_record_is_subtype_desc(actualDesc, expectedDesc)`,
 //                then payload GEP/load from box_layout_ty slot 1. The
-//                Parent-prefix-of-Child ABI invariant
+//                Parent-prefix-of-Child layout invariant
 //                (`roundUp(8, alignof(ParentStructTy)) == 8`) lets the
 //                target's struct type GEP into the box even when the
 //                actual box was constructed for a Child.
 //
-// CodeGen-side responsibilities (NOT crossed via the ABI):
+// CodeGen-side responsibilities (NOT crossed via the boundary):
 //   - substituteTypeParamsInName at entry
 //   - Generic-substitution guard rejecting non-`any` element types
 //   - Enum-target dispatch to unwrapEnumFromAny (stays CodeGen-private)
@@ -88,7 +88,7 @@ struct AnyWrapOp {
 //     isListTypeName / isMapTypeName / isSetTypeName to decide
 //     expected_tag and do_{collection,str}_retain
 //   - Field-wise retain on the returned record struct
-//     (emitRecordArcFieldsRetain) — applied AFTER the ABI returns
+//     (emitRecordArcFieldsRetain) — applied AFTER the boundary returns
 enum class AnyUnwrapKind : int {
     Standard = 0,
     F64Promote = 1,
@@ -180,13 +180,13 @@ lowered::AnyTryUnwrapOp lowerAnyTryUnwrap(
 
 namespace ry::codegen::emission {
 
-// Emit AnyWrap via the libry_llvm_emit ABI (ry_emit_any_wrap). Returns the
+// Emit AnyWrap via the libry_codegen boundary (ry_emit_any_wrap). Returns the
 // final RyAny aggregate value (loaded from the internal alloca).
 //
 // Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have
 // been called before invoking this helper.
 //
-// Caller responsibilities BEFORE invoking (none of these cross the ABI
+// Caller responsibilities BEFORE invoking (none of these cross the boundary
 // because they depend on ValueMetadata / CodeGen-private state):
 //   - typed_coll registration via __ry_any_register_typed_coll for NonBox
 //     wraps whose ValueMetadata says the element type is non-any
@@ -195,7 +195,7 @@ namespace ry::codegen::emission {
 //     `!isa<CallInst> && !isa<InvokeInst>` holds
 llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op);
 
-// Emit AnyUnwrap via the libry_llvm_emit ABI (ry_emit_any_unwrap). Returns
+// Emit AnyUnwrap via the libry_codegen boundary (ry_emit_any_unwrap). Returns
 // the unwrapped value (targetTy for Standard / Record arms; f64 for the
 // F64Promote arm).
 //
@@ -208,7 +208,7 @@ llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op);
 //     from the box's destructor at scope exit
 llvm::Value *emitAnyUnwrap(CodeGen &cg, const lowered::AnyUnwrapOp &op);
 
-// Emit AnyTryUnwrap via the libry_llvm_emit ABI (ry_emit_any_try_unwrap).
+// Emit AnyTryUnwrap via the libry_codegen boundary (ry_emit_any_try_unwrap).
 // Returns the Result<targetTy, Error> aggregate value (the PHI joined by
 // emitResultBranch).
 //

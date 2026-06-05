@@ -1,4 +1,4 @@
-//! Shared internal emission helpers used across the ABI op modules:
+//! Shared internal emission helpers used across the boundary op modules:
 //! the concrete `EmitCtxImpl` behind the opaque ctx handle, intern/resolve,
 //! opaque-handle casts, LLVM type constructors, name builders, module-global
 //! lookup, layout constants, and the inline runtime-error / ARC-alloc helpers.
@@ -32,7 +32,7 @@ pub(crate) unsafe fn cx<'a>(p: *mut RyEmitCtx) -> &'a mut EmitCtxImpl {
     &mut *(p as *mut EmitCtxImpl)
 }
 
-// Opaque ABI handle → llvm-sys C API ref (pointer cast, this crate only).
+// Opaque boundary handle → llvm-sys C API ref (pointer cast, this crate only).
 #[inline]
 pub(crate) fn as_type(p: RyTypeRef) -> LLVMTypeRef {
     p as LLVMTypeRef
@@ -46,7 +46,7 @@ pub(crate) fn as_value(p: RyValueRef) -> LLVMValueRef {
     p as LLVMValueRef
 }
 #[inline]
-pub(crate) fn as_function(p: RyFunctionHandle) -> LLVMValueRef {
+pub(crate) fn as_function(p: RyFunctionRef) -> LLVMValueRef {
     p as LLVMValueRef
 }
 #[inline]
@@ -86,7 +86,7 @@ pub(crate) unsafe fn void_type(c: LLVMContextRef) -> LLVMTypeRef {
 
 // Bridge llvm::Value* ↔ RyValueId handle space. The internal forms take
 // &mut/&EmitCtxImpl so callers already holding the borrow do not re-alias
-// through the public ABI entry points.
+// through the public boundary entry points.
 #[inline]
 pub(crate) unsafe fn intern(c: &mut EmitCtxImpl, value: RyValueRef) -> RyValueId {
     if value.is_null() {
@@ -234,7 +234,7 @@ pub(crate) unsafe fn emit_arc_counter_delta(
     );
 }
 
-// NotAtomic ordering uses a plain load (ABI-default alignment) to match the
+// NotAtomic ordering uses a plain load (data-layout default alignment) to match the
 // non-atomic codepath byte-for-byte; otherwise an 8-byte-aligned atomic load
 // with the given ordering.
 pub(crate) unsafe fn emit_atomic_i64_load(

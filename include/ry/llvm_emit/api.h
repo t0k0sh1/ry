@@ -1,13 +1,13 @@
-// ABI surface for the LLVM IR emission shared library (libry_llvm_emit).
+// boundary surface for the LLVM IR emission shared library (libry_codegen).
 //
 // This header is the candidate boundary between Ry semantic lowering and
 // LLVM IR emission (designed in #1820/#1824, implemented incrementally
 // starting from #1949). It is C-only so the layer is implemented in Rust
-// (crates/ry_llvm_emit/) behind the same C ABI — the Rust implementation is
+// (crates/ry_codegen/) behind the same C boundary — the Rust implementation is
 // now the only one.
 //
 // Stage 2-C (#1968) begins per-op migration of category-1 ARC primitives:
-//   - ry_emit_arc_retain / ry_emit_arc_release cross the ABI. The destructor
+//   - ry_emit_arc_retain / ry_emit_arc_release cross the boundary. The destructor
 //     parameter is reduced to a single `void *destructor_callee` (the C
 //     function pointer); the FunctionType `void(*)(void*)` is reconstructed
 //     inside the emission layer. gc_visit_fn is nullable; when NULL the
@@ -20,17 +20,17 @@
 //
 // Stage 2-B (#1964) completes the category-3 migration:
 //   - All five category-3 helpers from llvm-ir-emission-boundary.md cross
-//     the ABI: ry_emit_get_runtime_fn, ry_emit_build_error_from_runtime,
+//     the boundary: ry_emit_get_runtime_fn, ry_emit_build_error_from_runtime,
 //     ry_emit_bounds_check, ry_emit_result_branch, ry_emit_negative_index_wrap,
 //     and ry_emit_bounds_error. wrapPtrAsResult / wrapStatusAsResult are
 //     thin wrappers over ry_emit_result_branch on the CodeGen side and do
-//     not need their own ABI entry.
+//     not need their own boundary entry.
 //   - getResultType's StructType cache stays in CodeGen (its reverse map
 //     `reverse_result_types_` is consumed in codegen_any.cpp/codegen_arc.cpp
 //     for ARC release and Any wrapping); resTy crosses as `void*`, mirroring
 //     errorTy_ in ry_emit_build_error_from_runtime.
 //   - The previous `RyEmitCallbacks` slot is removed — negative-index wrap
-//     and bounds error are now proper ABI functions rather than callbacks
+//     and bounds error are now proper boundary functions rather than callbacks
 //     into CodeGen.
 //
 // Stage 2-C (in progress, #1965) begins migrating the remaining lowered IR
@@ -40,7 +40,7 @@
 // called first (they emit no basic blocks). getOptionType's StructType
 // cache stays in CodeGen for the same reason as getResultType (the
 // reverse_option_types_ map is consumed by ARC release / Any wrap on the
-// CodeGen side); opt_ty crosses the ABI as `void*`, mirroring resTy_.
+// CodeGen side); opt_ty crosses the boundary as `void*`, mirroring resTy_.
 //
 // Stage 2-C (#1970) adds ry_emit_cow_ensure_unique for the Copy-on-Write
 // uniqueness check used by 1-hop List / Map / Set slot writes (path CoW
@@ -61,8 +61,8 @@
 // the emission layer as anonymous `{i64, i64, ptr}` / `{i64, i64, ptr,
 // ptr, i64, ptr}` / `{i64, i64, ptr, i64, ptr}` — CodeGen's named
 // "ListHeader" / "MapHeader" / "SetHeader" types stay on the CodeGen side
-// and are not consulted at the ABI boundary. emitCowDeepCopy{List,Map,Set}
-// in src/codegen_arc_cow.cpp are dissolved into the ABI implementation;
+// and are not consulted at the boundary. emitCowDeepCopy{List,Map,Set}
+// in src/codegen_arc_cow.cpp are dissolved into the boundary implementation;
 // emitCowRetainArcElements stays in CodeGen because of its 8 non-CoW
 // callers.
 //
@@ -70,7 +70,7 @@
 //   - Opaque handles for LLVM values are defined as `uint32_t` (RyValueId).
 //   - Module / IRBuilder / LLVMContext / Function pointers are still passed
 //     as `void*` because categories 1 (LLVM context handles) and 2 (primitive
-//     type accessors) have not crossed the ABI yet. Successor PRs (Stage 2-C
+//     type accessors) have not crossed the boundary yet. Successor PRs (Stage 2-C
 //     and beyond) will replace these with opaque handles.
 //
 // Constraint enforced for every signature in this header (per #1824 AC):
@@ -80,7 +80,7 @@
 //   transitional `void*` parameters tagged in comments.
 //
 // Symbol naming:
-//   `ry_emit_*` for emission-layer ABI functions. This is distinct from the
+//   `ry_emit_*` are the emission entry points. This is distinct from the
 //   `__ry_*` runtime prefix used by JIT-resolved runtime symbols
 //   (see `runtime-abi-boundary.md`); the two boundaries are orthogonal.
 
@@ -107,7 +107,7 @@ typedef struct RyEmitCtx RyEmitCtx;
 //
 // Each typedef is a pointer to an incomplete struct, so the C/C++ type system
 // treats it as a distinct named pointer type. At runtime the pointer value is
-// reinterpret_cast'd between the LLVM-owning side (`crates/ry_llvm_emit/src/lib.rs`)
+// reinterpret_cast'd between the LLVM-owning side (`crates/ry_codegen/src/lib.rs`)
 // and the CodeGen-owning side. No LLVM types and no `void *` appear in any
 // public signature — opaque pointer typedefs satisfy the constraint enforced
 // by the header-level lint introduced in #1973.
@@ -119,28 +119,27 @@ typedef struct RyEmitCtx RyEmitCtx;
 // ===========================================================================
 
 // === Category 1: LLVM context handles ===
-typedef struct RyModuleOpaque   *RyModuleHandle;   // llvm::Module *
-typedef struct RyBuilderOpaque  *RyBuilderHandle;  // llvm::IRBuilder<> *
-typedef struct RyContextOpaque  *RyContextHandle;  // llvm::LLVMContext *
-typedef struct RyFunctionOpaque *RyFunctionHandle; // llvm::Function *
+typedef struct RyModuleOpaque   *RyModuleRef;   // llvm::Module *
+typedef struct RyBuilderOpaque  *RyBuilderRef;  // llvm::IRBuilder<> *
+typedef struct RyContextOpaque  *RyContextRef;  // llvm::LLVMContext *
+typedef struct RyFunctionOpaque *RyFunctionRef; // llvm::Function *
 
 // === Category 2: primitive type accessors ===
 // `RyTypeRef` covers both `llvm::Type *` (primitives, pointers) and
 // `llvm::StructType *` (named aggregates) — LLVM's StructType IS a Type, so
 // no separate typedef is needed. Narrowing to a specific subtype happens inside
-// the Rust implementation (`crates/ry_llvm_emit/src/lib.rs`) when required.
+// the Rust implementation (`crates/ry_codegen/src/lib.rs`) when required.
 typedef struct RyTypeOpaque     *RyTypeRef;
 typedef struct RyFuncTypeOpaque *RyFuncTypeRef;    // llvm::FunctionType *
 
-// === ABI ingress/egress pointer types ===
+// === boundary ingress/egress pointer types ===
 // `RyValueRef` is the source-side pointer for `ry_emit_intern` /
 // `ry_emit_resolve`. It crosses the boundary as an opaque pointer; inside the
 // emission layer it is held in the intern table behind `RyValueId`.
 typedef struct RyValueOpaque    *RyValueRef;       // llvm::Value *
 
-// === BasicBlock handle (used by ControlFlow ABI added in #1973) ===
+// === BasicBlock handle (used by ControlFlow boundary added in #1973) ===
 typedef struct RyBasicBlockOpaque *RyBasicBlockRef; // llvm::BasicBlock *
-typedef uint32_t RyBasicBlockId;                    // intern handle
 
 // Bounds-check kind selector. Numbers chosen to match the order in
 // `lowered::BoundsKind`; do not reorder without updating both sides.
@@ -170,24 +169,24 @@ typedef enum {
 } RyCowKind;
 
 // Callback type for ok/err value builders consumed by ry_emit_result_branch.
-// Stage 2-B keeps callbacks at the C ABI boundary (function pointer +
+// Stage 2-B keeps callbacks at the C boundary (function pointer +
 // user_ctx) — the C++ side translates `llvm::function_ref<>` closures into
 // this shape via a trampoline. user_ctx is opaque to the emission layer.
 typedef RyValueId (*RyBuildValueFn)(void *user_ctx);
 
 // Lifecycle. Create at the top of CodeGen::compile() and destroy on exit.
-// Categories 1 (LLVM context handles) crossed the ABI as typed opaque handles
-// in Stage 2-C / #1973: RyModuleHandle / RyBuilderHandle / RyContextHandle /
-// RyFunctionHandle replace the transitional `void *` shape from Stage 2-A.
-RyEmitCtx *ry_emit_ctx_create(RyModuleHandle module, RyBuilderHandle builder,
-                              RyContextHandle context,
-                              RyFunctionHandle function);
+// Categories 1 (LLVM context handles) crossed the boundary as typed opaque handles
+// in Stage 2-C / #1973: RyModuleRef / RyBuilderRef / RyContextRef /
+// RyFunctionRef replace the transitional `void *` shape from Stage 2-A.
+RyEmitCtx *ry_emit_ctx_create(RyModuleRef module, RyBuilderRef builder,
+                              RyContextRef context,
+                              RyFunctionRef function);
 void ry_emit_ctx_destroy(RyEmitCtx *ctx);
 
 // Update the current LLVM function handle mid-compile (it changes when
 // CodeGen emits a new function body — lambdas, @parallel for thunks,
 // destructors, iterator-next bodies, etc.).
-void ry_emit_ctx_set_function(RyEmitCtx *ctx, RyFunctionHandle function);
+void ry_emit_ctx_set_function(RyEmitCtx *ctx, RyFunctionRef function);
 
 // Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; every
 // other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
@@ -196,7 +195,7 @@ RyValueId ry_emit_intern(RyEmitCtx *ctx, RyValueRef value);
 RyValueRef ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
 
 // Category-3 helpers (from llvm-ir-emission-boundary.md). Each one wraps a
-// canonical emission pattern as an atomic ABI call so the LLVM-side BB / PHI
+// canonical emission pattern as an atomic boundary call so the LLVM-side BB / PHI
 // plumbing stays inside the shared library.
 
 // Build an Error struct by calling err_fn_name (a `const char *(*)()` runtime
@@ -221,7 +220,7 @@ RyValueRef ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name,
 // container length; the return value is the wrapped index suitable for the
 // caller's subsequent GEP. Internally invokes ry_emit_negative_index_wrap
 // for the wrap step and ry_emit_bounds_error for the OOB exit (both proper
-// ABI functions since Stage 2-B).
+// boundary functions since Stage 2-B).
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it).
 RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id,
@@ -309,7 +308,7 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 // operand from `FunctionCallee::getCallee()`; the GC-visit slot is an
 // `llvm::Function *` cast to RyValueRef). The emission layer reconstructs
 // the `void (*)(void *)` LLVM FunctionType locally so no LLVM type identity
-// crosses the ABI.
+// crosses the boundary.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it). The
 // caller must additionally register "gc" in CodeGen.used_native_libraries_
@@ -351,7 +350,7 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
 //   append.store: *(data + len * elem_size) = val; list.len = len + 1;
 // `list_header_ty` is the `{i64 len, i64 cap, ptr data}` StructType handle.
 // ARC retain on `val` (if the element type warrants it) MUST be emitted by
-// the caller BEFORE invoking this ABI — append does not retain internally.
+// the caller BEFORE invoking this boundary — append does not retain internally.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it).
 void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
@@ -370,7 +369,7 @@ void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
 //   list.len = len + 1;
 // Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
 // ARC retain on `val` (if the element type warrants it) MUST be emitted by
-// the caller BEFORE invoking this ABI.
+// the caller BEFORE invoking this boundary.
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (BBs are created inside it).
 void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
@@ -413,8 +412,8 @@ RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
 //   *out_count = count; *out_new_data = new_data;
 // Branchless (no new BBs): uses CreateSelect for clamping plus a single
 // malloc+memcpy call. The new ARC header allocation, type-metadata copy,
-// and per-element ARC retain loop stay on the codegen side (after the ABI
-// returns) because they need ValueMetadata that does not cross the ABI.
+// and per-element ARC retain loop stay on the codegen side (after the boundary
+// returns) because they need ValueMetadata that does not cross the boundary.
 // Precondition: NONE — ry_emit_ctx_set_function need not have been called.
 void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         RyValueId start_id, RyValueId end_excl_id,
@@ -424,7 +423,7 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
 
 // Descriptor for ry_emit_cow_ensure_unique. CodeGen collects all metadata
 // (kind, element sizes, retain flags, destructor) and flattens it to this
-// plain-int / handle struct so the ABI stays C-only and LLVM types do not
+// plain-int / handle struct so the boundary stays C-only and LLVM types do not
 // cross the boundary. `lowered::CowEnsureUniqueOp` (`include/ry/codegen/
 // lowered_cow.hpp`) is the C++-side mirror.
 typedef struct {
@@ -447,7 +446,7 @@ typedef struct {
     // Map: value bytes. 0 for List / Set.
     uint64_t val_size;
     // 1 = retain each cloned element after memcpy (List element / Map value
-    // / Set element). Always done with RY_ARC_NONATOMIC inside the ABI.
+    // / Set element). Always done with RY_ARC_NONATOMIC inside the boundary.
     int do_elem_retain;
     // 1 = element retain uses StringHeader (offset -24); 0 = ArcHeader
     // (offset -16). Only consulted when do_elem_retain == 1.
@@ -508,14 +507,14 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
 // `include/ry/ry_layout.hpp`:
 //   Int=0, Float=1, Bool=2, Str=3, Unit=4, List=5, Map=6, Set=7,
 //   Record=8, Enum=9. The descriptor passes `target_tag` as a raw int64_t
-//   so the ABI side does not need to share the enum class identifier.
+//   so the boundary side does not need to share the enum class identifier.
 //
 // kind selector:
 //   0 = NonBox    — primitive (int/float/bool) / str / collection pointer
 //                   stored directly in any.data[8]. Bool (i1) is ZExt'd to
-//                   i64 by the ABI ("any.bool.zext") when val's LLVM type
+//                   i64 by the boundary ("any.bool.zext") when val's LLVM type
 //                   is i1. The do_collection_retain / do_str_retain ints
-//                   select whether the ABI emits emitArcGetHeaderFromData
+//                   select whether the boundary emits emitArcGetHeaderFromData
 //                   (offset -16, "arc_hdr_from_data") or
 //                   emitStrGetHeaderFromData (offset -24,
 //                   "str_hdr_from_data") + an internal
@@ -536,7 +535,7 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
 //     !isa<InvokeInst>`)
 //
 // Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call. The ABI invokes emitArcAlloc
+// current LLVM function before this call. The boundary invokes emitArcAlloc
 // (which calls malloc + emits an inline atomic counter delta on the
 // process-global ARC live-count balance counter) and ry_emit_arc_retain
 // internally for Box arms and NonBox-with-retain arms; both helpers
@@ -563,7 +562,7 @@ typedef struct {
     // Box arms only: `{ ptr desc, payload }` StructType handle.
     RyTypeRef box_layout_ty;
     // Box arms only: DataLayout-derived allocation size of box_layout_ty,
-    // in bytes. Passed as a plain integer so the ABI does not need to
+    // in bytes. Passed as a plain integer so the boundary does not need to
     // consult DataLayout itself.
     uint64_t box_data_size;
     // Common: the `any` StructType handle (anyTy_ on the CodeGen side).
@@ -588,7 +587,7 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc);
 //                    `any.rec.tag_err`, `any.rec.desc_check`,
 //                    `any.rec.desc_err`. Payload GEP/load uses
 //                    `record_struct_ty_ptr` (Parent struct is a prefix of
-//                    Child by Ry's record-inheritance ABI).
+//                    Child by Ry's record-inheritance layout).
 //
 // Precondition: ry_emit_ctx_set_function must have been called with the
 // current LLVM function before this call (multiple BBs are created
@@ -680,7 +679,7 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
 // ===========================================================================
 // Stage 2-C / #1973 — ControlFlow primitives.
 //
-// These thin ABI entries wrap the IRBuilder<>::Create* calls that previously
+// These thin boundary entries wrap the IRBuilder<>::Create* calls that previously
 // appeared in src/codegen_*.cpp for control-flow construction (basic blocks,
 // conditional / unconditional branches, PHI assembly). They are intentionally
 // minimal — the lowering layer has no semantic decision to make for primitive
@@ -703,7 +702,7 @@ RyValueId ry_emit_any_try_unwrap(RyEmitCtx *ctx,
 // wrapper `createBB` derives it from `builder_.GetInsertBlock()->getParent()`
 // per the rule in `.claude/rules/codegen-llvm-ir-conventions.md`.
 RyBasicBlockRef ry_emit_create_basic_block(RyEmitCtx *ctx, const char *name,
-                                           RyFunctionHandle fn);
+                                           RyFunctionRef fn);
 
 // Emit a conditional branch at the builder's current insert point. `cond` is
 // an interned i1 value; `true_bb` / `false_bb` are the destination blocks.

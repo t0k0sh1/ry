@@ -7,7 +7,7 @@ namespace ry {
 
 // ── ARC header layout ──────────────────────────────────
 // { int64_t strong_count, int64_t weak_count }
-// Computed from the field types to avoid ABI drift if layout changes.
+// Computed from the field types to avoid layout drift if layout changes.
 inline constexpr size_t  ARC_HEADER_SIZE = sizeof(int64_t) * 2;
 inline constexpr int64_t ARC_IMMORTAL    = INT64_MAX;
 

@@ -11,7 +11,7 @@ namespace {
 
 // Trampoline glue between the C++-side `llvm::function_ref<>` shape used by
 // callers (e.g. wrapPtrAsResult) and the C-side function-pointer + user_ctx
-// shape consumed by ry_emit_result_branch. The ABI keeps both ok and err
+// shape consumed by ry_emit_result_branch. The boundary keeps both ok and err
 // builders self-contained; this struct simply lets one trampoline invocation
 // look up which closure to call.
 struct ResultBranchTrampolineCtx {

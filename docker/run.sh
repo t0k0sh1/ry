@@ -22,7 +22,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE="ry-linux-dev:latest"
 CCACHE_VOLUME="ry-ccache-docker"
 # Persists the Rust cargo registry/cache across runs (CARGO_HOME is set to
-# /home/ubuntu/.cargo by docker/Dockerfile; corrosion builds the ry_llvm_emit
+# /home/ubuntu/.cargo by docker/Dockerfile; corrosion builds the ry_codegen
 # cdylib on every preset since the #1993 cutover).
 CARGO_VOLUME="ry-cargo-docker"
 
@@ -136,7 +136,7 @@ MOUNT_ARGS=(
   -v "$PROJECT_DIR/include:/workspace/include"
   -v "$PROJECT_DIR/tests:/workspace/tests"
   -v "$PROJECT_DIR/share:/workspace/share"
-  # crates/ + Cargo.{toml,lock}: the LLVM IR emission lib (ry_llvm_emit) is a
+  # crates/ + Cargo.{toml,lock}: the LLVM IR emission lib (ry_codegen) is a
   # Rust cdylib built via corrosion on every preset (#1993 cutover), so corrosion
   # needs the workspace manifest, lockfile, and crate source on all builds.
   -v "$PROJECT_DIR/crates:/workspace/crates"

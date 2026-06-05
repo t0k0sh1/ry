@@ -46,9 +46,9 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
 }
 
 // Note: the per-kind deep-copy helpers (emitCowDeepCopyList/Map/Set) were
-// dissolved into the llvm_emit ABI (`ry_emit_cow_ensure_unique`) in #1970
+// dissolved into the llvm_emit boundary (`ry_emit_cow_ensure_unique`) in #1970
 // — they were only ever called from `emitCowCheckSlot`, so the IR
-// construction now lives entirely inside the ABI layer alongside the
+// construction now lives entirely inside the boundary layer alongside the
 // strong_count check, element-retain loops, slot overwrite, and PHI.
 
 llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
@@ -87,7 +87,7 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         return dataPtr;
 
     // Element-retention decision uses metadata stamped on the *old*
-    // container — the cloned buffer the ABI returns does not carry
+    // container — the cloned buffer the boundary returns does not carry
     // metadata. str elements always need retention because their
     // destructors release them (#1046).
     CollectionKind elemArcKind = CollectionKind::List;
@@ -106,7 +106,7 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         }
     }
 
-    // Per-kind element / key / value byte sizes — the ABI uses these to
+    // Per-kind element / key / value byte sizes — the boundary uses these to
     // size the malloc + memcpy for the cloned buffers. The kind enum
     // values must match RyCowKind (List=0, Map=1, Set=2).
     int kindCode = 0;

@@ -5,7 +5,7 @@
 // alignof, and every field offset of the descriptor structs, plus the
 // sizeof/alignof of the opaque handle typedefs declared in
 // include/ry/llvm_emit/api.h. The Rust half lives in
-// crates/ry_llvm_emit/src/lib.rs (the `const _: () = assert!(...)` block);
+// crates/ry_codegen/src/lib.rs (the `const _: () = assert!(...)` block);
 // both sides assert against the SAME constants, so any incidental drift
 // (field reorder, padding, type-width change) on either side breaks the
 // build.
@@ -26,7 +26,7 @@
 
 // RyCowEnsureUniqueDesc (12 fields) — api.h L429-465.
 static_assert(sizeof(RyCowEnsureUniqueDesc) == 64,
-              "RyCowEnsureUniqueDesc must be 64 bytes (mirror crates/ry_llvm_emit/src/lib.rs)");
+              "RyCowEnsureUniqueDesc must be 64 bytes (mirror crates/ry_codegen/src/lib.rs)");
 static_assert(alignof(RyCowEnsureUniqueDesc) == 8, "RyCowEnsureUniqueDesc must be 8-byte aligned");
 static_assert(offsetof(RyCowEnsureUniqueDesc, data_ptr_id) == 0, "RyCowEnsureUniqueDesc.data_ptr_id @ 0");
 static_assert(offsetof(RyCowEnsureUniqueDesc, slot_ptr_id) == 4, "RyCowEnsureUniqueDesc.slot_ptr_id @ 4");
@@ -91,10 +91,10 @@ static_assert(offsetof(RyAnyTryUnwrapDesc, err_msg_str_id) == 56, "RyAnyTryUnwra
 // === Opaque handle typedefs: sizeof + alignof only (no fields) ===
 // All are pointers to incomplete structs -> 8 bytes / 8-byte aligned on
 // the 64-bit ABI. Per-field offset is N/A — handles carry no fields.
-static_assert(sizeof(RyModuleHandle) == 8 && alignof(RyModuleHandle) == 8, "RyModuleHandle is an 8-byte pointer");
-static_assert(sizeof(RyBuilderHandle) == 8 && alignof(RyBuilderHandle) == 8, "RyBuilderHandle is an 8-byte pointer");
-static_assert(sizeof(RyContextHandle) == 8 && alignof(RyContextHandle) == 8, "RyContextHandle is an 8-byte pointer");
-static_assert(sizeof(RyFunctionHandle) == 8 && alignof(RyFunctionHandle) == 8, "RyFunctionHandle is an 8-byte pointer");
+static_assert(sizeof(RyModuleRef) == 8 && alignof(RyModuleRef) == 8, "RyModuleRef is an 8-byte pointer");
+static_assert(sizeof(RyBuilderRef) == 8 && alignof(RyBuilderRef) == 8, "RyBuilderRef is an 8-byte pointer");
+static_assert(sizeof(RyContextRef) == 8 && alignof(RyContextRef) == 8, "RyContextRef is an 8-byte pointer");
+static_assert(sizeof(RyFunctionRef) == 8 && alignof(RyFunctionRef) == 8, "RyFunctionRef is an 8-byte pointer");
 static_assert(sizeof(RyTypeRef) == 8 && alignof(RyTypeRef) == 8, "RyTypeRef is an 8-byte pointer");
 static_assert(sizeof(RyFuncTypeRef) == 8 && alignof(RyFuncTypeRef) == 8, "RyFuncTypeRef is an 8-byte pointer");
 static_assert(sizeof(RyValueRef) == 8 && alignof(RyValueRef) == 8, "RyValueRef is an 8-byte pointer");
@@ -102,7 +102,6 @@ static_assert(sizeof(RyBasicBlockRef) == 8 && alignof(RyBasicBlockRef) == 8, "Ry
 
 // === Scalar intern-handle typedefs (uint32_t) ===
 static_assert(sizeof(RyValueId) == 4 && alignof(RyValueId) == 4, "RyValueId is a 4-byte uint32_t");
-static_assert(sizeof(RyBasicBlockId) == 4 && alignof(RyBasicBlockId) == 4, "RyBasicBlockId is a 4-byte uint32_t");
 
 // === Enum selectors: underlying type is `int` (4 bytes) ===
 // The descriptor structs store these as plain `int` fields; locking the

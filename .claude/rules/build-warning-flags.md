@@ -43,7 +43,7 @@ produce false positives in this project. Key decisions:
 
 - `bugprone-reserved-identifier` / `cert-dcl37-c` / `cert-dcl51-cpp`:
   All runtime functions use `__ry_*` prefix (double underscore = reserved
-  in C++). This naming is intentional for ABI and FFI reasons — do not
+  in C++). This naming is intentional for binary and FFI reasons — do not
   rename them, disable the check instead.
 - `cert-err58-cpp`: `RY_REGISTER_STDLIB_PACKAGE` macro creates static
   initializers. This is the standard pattern for self-registering
@@ -53,7 +53,7 @@ produce false positives in this project. Key decisions:
 - `cert-dcl50-cpp`: C-style variadic functions are used intentionally
   in runtime error formatting helpers.
 - `performance-enum-size`: Internal enum base types are often
-  intentional (ABI stability, JIT layout constraints).
+  intentional (binary stability, JIT layout constraints).
 - `performance-no-int-to-ptr`: Incompatible with LLVM IR builder
   patterns.
 - `bugprone-multi-level-implicit-pointer-conversion`: C-style

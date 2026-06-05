@@ -48,7 +48,7 @@ static void freeMatchList(ListHeader *list) {
 }
 
 // Convenience wrappers: adapt NUL-terminated C-string calls to the new
-// length-aware ABI.  Existing tests that don't embed NUL bytes use these.
+// length-aware interface.  Existing tests that don't embed NUL bytes use these.
 static int64_t rm(const char *p, const char *t) {
     return __ry_regex_match(p, (int64_t)strlen(p), t, (int64_t)strlen(t));
 }

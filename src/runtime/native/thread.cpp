@@ -188,7 +188,7 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
         return -1;
     }
     // Defensive bound: result_size is normally set by __ry_thread_spawn's
-    // checked path, but re-validate here so any ABI mismatch or corrupted
+    // checked path, but re-validate here so any boundary mismatch or corrupted
     // handle cannot drive a wild memcpy against an 8-byte inline slot.
     if (out_buf &&
         handle->result_size > 0 &&

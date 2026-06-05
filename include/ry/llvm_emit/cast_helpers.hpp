@@ -1,16 +1,16 @@
-// C++-side cast helpers for crossing the ry_llvm_emit ABI boundary.
+// C++-side cast helpers for crossing the ry_codegen boundary.
 //
-// The ABI in `include/ry/llvm_emit/api.h` exposes only opaque pointer typedefs
-// (RyValueRef, RyTypeRef, RyModuleHandle, etc.) so no LLVM types appear in the
+// The boundary in `include/ry/llvm_emit/api.h` exposes only opaque pointer typedefs
+// (RyValueRef, RyTypeRef, RyModuleRef, etc.) so no LLVM types appear in the
 // public surface (#1973 AC). CodeGen-side callers obtain the underlying
 // llvm::* pointers from CodeGen's existing state and need a small set of
-// reinterpret_cast wrappers to bridge to the opaque ABI types without
+// reinterpret_cast wrappers to bridge to the opaque boundary types without
 // sprinkling reinterpret_cast across every call site.
 //
 // This header is C++-only and re-includes both `api.h` and the LLVM headers.
 // It is for the CodeGen (caller) side only. The emission side lives in the Rust
-// crate `crates/ry_llvm_emit/src/lib.rs`, which does its own conversions in the
-// reverse direction (opaque ABI handle → llvm::* via llvm-sys) and shares none
+// crate `crates/ry_codegen/src/lib.rs`, which does its own conversions in the
+// reverse direction (opaque boundary handle → llvm::* via llvm-sys) and shares none
 // of this C++ bridging code.
 
 #ifndef RY_LLVM_EMIT_CAST_HELPERS_HPP
@@ -29,7 +29,7 @@
 
 namespace ry::llvm_emit {
 
-// === CodeGen → ABI (LLVM pointer to opaque handle) ===
+// === CodeGen → boundary (LLVM pointer to opaque handle) ===
 
 inline RyValueRef asRyValue(llvm::Value *v) {
     return reinterpret_cast<RyValueRef>(v);
@@ -47,27 +47,27 @@ inline RyFuncTypeRef asRyFuncType(llvm::FunctionType *t) {
     return reinterpret_cast<RyFuncTypeRef>(t);
 }
 
-inline RyModuleHandle asRyModule(llvm::Module *m) {
-    return reinterpret_cast<RyModuleHandle>(m);
+inline RyModuleRef asRyModule(llvm::Module *m) {
+    return reinterpret_cast<RyModuleRef>(m);
 }
 
-inline RyBuilderHandle asRyBuilder(llvm::IRBuilder<> *b) {
-    return reinterpret_cast<RyBuilderHandle>(b);
+inline RyBuilderRef asRyBuilder(llvm::IRBuilder<> *b) {
+    return reinterpret_cast<RyBuilderRef>(b);
 }
 
-inline RyContextHandle asRyContext(llvm::LLVMContext *c) {
-    return reinterpret_cast<RyContextHandle>(c);
+inline RyContextRef asRyContext(llvm::LLVMContext *c) {
+    return reinterpret_cast<RyContextRef>(c);
 }
 
-inline RyFunctionHandle asRyFunction(llvm::Function *f) {
-    return reinterpret_cast<RyFunctionHandle>(f);
+inline RyFunctionRef asRyFunction(llvm::Function *f) {
+    return reinterpret_cast<RyFunctionRef>(f);
 }
 
 inline RyBasicBlockRef asRyBasicBlock(llvm::BasicBlock *bb) {
     return reinterpret_cast<RyBasicBlockRef>(bb);
 }
 
-// === ABI → CodeGen (opaque handle to LLVM pointer) ===
+// === boundary → CodeGen (opaque handle to LLVM pointer) ===
 
 inline llvm::Value *asLlvmValue(RyValueRef p) {
     return reinterpret_cast<llvm::Value *>(p);

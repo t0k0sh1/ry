@@ -10,7 +10,7 @@ namespace ry::codegen::emission {
 llvm::Value *emitOptionWrap(CodeGen &cg, const lowered::OptionWrapOp &op) {
     // No ry_emit_ctx_set_function call: this op creates no basic blocks
     // (pure UndefValue + InsertValue sequence), so the currently-active LLVM
-    // function pointer is not consulted by the ABI side. Difference from
+    // function pointer is not consulted by the boundary side. Difference from
     // emitBoundsCheck / emitResultBranch, which split BBs and therefore must
     // sync cg.fn_ first.
     RyValueId resultId;

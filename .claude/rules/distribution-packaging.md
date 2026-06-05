@@ -62,10 +62,10 @@ resolvable.
 **Source**: #2005 (2026-06-03, implementation — verified in Linux container)
 **Tags**: corrosion, rust, cdylib, rpath, libLLVM, global-scope
 
-**Context**: `ry_llvm_emit` is a corrosion-built IMPORTED cargo target.
-`set_target_properties(ry_llvm_emit PROPERTIES INSTALL_RPATH ...)` is
+**Context**: `ry_codegen` is a corrosion-built IMPORTED cargo target.
+`set_target_properties(ry_codegen PROPERTIES INSTALL_RPATH ...)` is
 **silently ignored** — corrosion does not run CMake's link step. In the
-Linux container, `readelf -d build/lib/libry_llvm_emit.so` shows `NEEDED
+Linux container, `readelf -d build/lib/libry_codegen.so` shows `NEEDED
 libLLVM.so.X` but **no RUNPATH**.
 
 **Rule**: Do NOT add build.rs / RUSTFLAGS `-rpath` machinery for the cdylib's

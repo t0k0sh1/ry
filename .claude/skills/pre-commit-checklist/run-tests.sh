@@ -19,7 +19,7 @@ done
 
 # Select the cmake preset + build dir for the host. Linux/CI links the static
 # /usr/local/llvm via the `default` preset (build/). macOS's /usr/local/llvm is
-# static-only (no libLLVM.dylib), so the Rust ry_llvm_emit cdylib's shared-libLLVM
+# static-only (no libLLVM.dylib), so the Rust ry_codegen cdylib's shared-libLLVM
 # requirement (#1997) forces the `rust-emit` preset (build-rust/, Homebrew llvm@21).
 # Override with RY_TEST_PRESET / RY_BUILD_DIR. (#2011)
 PRESET="${RY_TEST_PRESET:-}"

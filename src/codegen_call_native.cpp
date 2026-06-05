@@ -600,7 +600,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             args[i] = emitWideningConversion(args[i], paramTypes[i]);
     }
 
-    // Adjust bool params to match C ABI: native functions pass bools as i64.
+    // Adjust bool params to match the C calling convention: native functions pass bools as i64.
     // Widen i1→i64 in both the prototype and the arg values.
     for (size_t i = 0; i < paramTypes.size(); i++) {
         if (paramTypes[i] == i1Ty_) {
@@ -831,7 +831,7 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     emitBranchCond(mockActive, mockBB, origBB);
 
     // Mock path: emit args fresh, increment, dispatch via plain or capture
-    // ABI based on env pointer.
+    // calling convention based on env pointer.
     builder_.SetInsertPoint(mockBB);
     builder_.CreateCall(mockIncFn, {nameStr});
 

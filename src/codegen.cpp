@@ -92,9 +92,9 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 
-    // Initialize the LLVM IR emission ABI context. Stage 2-C / #1973 migrated
+    // Initialize the LLVM IR emission boundary context. Stage 2-C / #1973 migrated
     // module / builder / context / function pointers to typed opaque handles
-    // (RyModuleHandle / RyBuilderHandle / RyContextHandle / RyFunctionHandle);
+    // (RyModuleRef / RyBuilderRef / RyContextRef / RyFunctionRef);
     // the cast helpers in include/ry/llvm_emit/cast_helpers.hpp keep the call
     // sites readable. The fn_ slot is set as bodies are emitted via
     // ry_emit_ctx_set_function.

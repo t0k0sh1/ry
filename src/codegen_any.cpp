@@ -60,7 +60,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
         // Invoke) are sole owners and need no retain — mirror the record
         // ARC reassignment guard. Done on the CodeGen side because the helper
         // depends on enum-name + payload-type metadata that does not cross the
-        // ABI surface.
+        // boundary surface.
         if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
             emitEnumBoxArcFieldsRetain(val, enumName, payloadTy);
         }
@@ -130,7 +130,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     int64_t tag = isCollection ? getAnyTypeTagForValue(val)
                                : getAnyTypeTag(val->getType());
 
-    // typed_coll registration must happen BEFORE the ABI emits its internal
+    // typed_coll registration must happen BEFORE the boundary emits its internal
     // ARC retain — `__ry_any_register_typed_coll` is keyed by the header
     // pointer and must be associated before the retain bumps the strong
     // count. Element-type metadata that drives this lookup is CodeGen-private
@@ -298,7 +298,7 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
         // The unwrapped record becomes a new alias to the boxed value. Field
         // -wise retain so it can release independently from the box dtor at
         // scope exit. Caller-side per [[lowered_any]] AnyUnwrapKind::Record
-        // contract — depends on `recordStructTy` which does not cross the ABI.
+        // contract — depends on `recordStructTy` which does not cross the boundary.
         emitRecordArcFieldsRetain(recordVal, recordStructTy);
         return recordVal;
     }
@@ -392,7 +392,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     // Sub-helper dispatch stays CodeGen-private per [[lowered_any]] Path 1
     // design: each helper uses `record_types_` / `reverse_option_types_` /
     // per-record / per-Map<str, V> reconstruction that depends on CodeGen
-    // state not exposed across the ABI surface.
+    // state not exposed across the boundary surface.
     if (auto *st = llvm::dyn_cast<llvm::StructType>(targetTy)) {
         bool isEnumOrResult = !findAdtEnumName(st).empty() || isResultType(st);
         if (isEnumOrResult) {

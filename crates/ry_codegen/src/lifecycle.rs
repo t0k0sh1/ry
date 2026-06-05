@@ -1,4 +1,4 @@
-//! Emission-context lifecycle ABI: create / destroy / set_function and the
+//! Emission-context lifecycle boundary: create / destroy / set_function and the
 //! intern / resolve value-handle entry points.
 
 use std::collections::HashMap;
@@ -10,10 +10,10 @@ use crate::support::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_ctx_create(
-    module: RyModuleHandle,
-    builder: RyBuilderHandle,
-    context: RyContextHandle,
-    function: RyFunctionHandle,
+    module: RyModuleRef,
+    builder: RyBuilderRef,
+    context: RyContextRef,
+    function: RyFunctionRef,
 ) -> *mut RyEmitCtx {
     let boxed = Box::new(EmitCtxImpl {
         module: module as LLVMModuleRef,
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn ry_emit_ctx_destroy(ctx: *mut RyEmitCtx) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ry_emit_ctx_set_function(ctx: *mut RyEmitCtx, function: RyFunctionHandle) {
+pub unsafe extern "C" fn ry_emit_ctx_set_function(ctx: *mut RyEmitCtx, function: RyFunctionRef) {
     cx(ctx).function = function as LLVMValueRef;
 }
 

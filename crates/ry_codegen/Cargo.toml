@@ -1,6 +1,6 @@
 # Rust implementation of the LLVM IR emission shared library.
 #
-# This crate implements the C ABI defined by include/ry/llvm_emit/api.h
+# This crate implements the C boundary defined by include/ry/llvm_emit/api.h
 # (locked by #1949; ported from C++ to Rust by #1950 / #1993). Lints in
 # CMakeLists.txt enforce no LLVM-owned types in any public signature.
 #
@@ -12,7 +12,7 @@
 # definitions of the LLVM C API entry points used by lib.rs.
 
 [package]
-name = "ry_llvm_emit"
+name = "ry_codegen"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -43,6 +43,6 @@ llvm-sys = { version = "211", features = ["force-dynamic"] }
 
 # Inherit the workspace lint policy (root /Cargo.toml [workspace.lints]). The
 # crate-level `#![allow(...)]` in src/lib.rs (FFI naming, unsafe-doc) stay there
-# because they are specific to this cdylib's C ABI, not workspace-wide policy.
+# because they are specific to this cdylib's C boundary, not workspace-wide policy.
 [lints]
 workspace = true

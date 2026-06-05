@@ -11,7 +11,7 @@ use crate::support::*;
 pub unsafe extern "C" fn ry_emit_create_basic_block(
     ctx: *mut RyEmitCtx,
     name: *const c_char,
-    fn_handle: RyFunctionHandle,
+    fn_handle: RyFunctionRef,
 ) -> RyBasicBlockRef {
     let c = cx(ctx);
     let nm = if name.is_null() { c"".as_ptr() } else { name };

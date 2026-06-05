@@ -632,12 +632,12 @@ intentional.
 ### Rust crate quality gate runs in the `lint` job; adding clippy/rustfmt needs an image rebuild first
 
 **Source**: #2015 (2026-06-03)
-**Tags**: ci, rust, clippy, rustfmt, ry_llvm_emit, container, ghcr, toolchain-pin
+**Tags**: ci, rust, clippy, rustfmt, ry_codegen, container, ghcr, toolchain-pin
 
-**Rule**: `crates/ry_llvm_emit` is gated in the `ci.yml` `lint` job by
-`cargo fmt --manifest-path crates/ry_llvm_emit/Cargo.toml -- --check`
-and `cargo clippy -p ry_llvm_emit -- -D warnings`, alongside the
-existing `cargo check -p ry_llvm_emit` (#1995 ABI-layout assert). Keep
+**Rule**: `crates/ry_codegen` is gated in the `ci.yml` `lint` job by
+`cargo fmt --manifest-path crates/ry_codegen/Cargo.toml -- --check`
+and `cargo clippy -p ry_codegen -- -D warnings`, alongside the
+existing `cargo check -p ry_codegen` (#1995 layout assert). Keep
 all three — they are orthogonal; do not merge clippy into check.
 `clippy` compiles `llvm-sys`, so it relies on the image's baked
 `LLVM_SYS_211_PREFIX` + shared libLLVM exactly like `cargo check`;

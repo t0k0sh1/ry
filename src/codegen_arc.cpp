@@ -104,7 +104,7 @@ llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
                                            llvm::AtomicOrdering ordering,
                                            const llvm::Twine &name) {
     // Non-atomic path must match the old plain CreateLoad behaviour
-    // (alignment=1, ABI-default). Forcing Align(8) here would assert a
+    // (alignment=1, data-layout default). Forcing Align(8) here would assert a
     // stronger alignment than the surrounding code actually guarantees
     // and crashes on Linux glibc when the underlying pointer happens not
     // to be 8-byte aligned (#630 CI regression).
@@ -119,7 +119,7 @@ llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
 }
 
 void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
-    // Stage 2-C (#1968): IR construction moved to llvm_emit ABI
+    // Stage 2-C (#1968): IR construction moved to llvm_emit boundary
     // (ry_emit_arc_retain). This shim is the codegen-side bridge —
     // lower → emit (passthrough lowering).
     auto op = codegen::lowering::lowerArcRetain(*this, headerPtr, atomic);
@@ -129,10 +129,10 @@ void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
 void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
                               llvm::FunctionCallee destructor,
                               llvm::Function *gcVisitFn) {
-    // Stage 2-C (#1968): IR construction moved to llvm_emit ABI
+    // Stage 2-C (#1968): IR construction moved to llvm_emit boundary
     // (ry_emit_arc_release). The lowering layer extracts the C-fnptr
     // Value* from FunctionCallee so the LLVM-typed pair does not need
-    // to cross the ABI. used_native_libraries_.insert("gc") is now
+    // to cross the boundary. used_native_libraries_.insert("gc") is now
     // emitted by codegen_emission_arc.cpp.
     llvm::Value *dtorCallee = destructor
         ? llvm::cast<llvm::Value>(destructor.getCallee())
