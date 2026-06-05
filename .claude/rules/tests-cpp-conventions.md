@@ -175,7 +175,7 @@ makeString("k\x00" "a", 3);                 // "k\x00" ends the hex sequence; "a
 
 **Why it matters here**: NUL-key disambiguation tests build keys like `k\0a` vs `k\0b`. Using `"k\x00a"` / `"k\x00b"` produces identical keys (`k\n`) and the test silently passes for the wrong reason. Always use the char-array or adjacent-literal form when the byte after `\xNN` is a hex character.
 
-The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime/core/string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime/core/regex.hpp`, `src/runtime/core/regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
+The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime/core/string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex interface was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime/core/regex.hpp`, `src/runtime/core/regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
 ### Thread-local HTTP error buffer is shared across tests in the same process
 

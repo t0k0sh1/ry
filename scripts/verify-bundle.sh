@@ -4,7 +4,7 @@
 # After the #1999 C++->Rust cutover, `ry` requires a SHARED libLLVM at runtime
 # (static link hangs ConstantFP::get via the APFloat fltSemantics singleton
 # split, #1997). The release tarball must therefore bundle libLLVM and the Rust
-# cdylib (libry_llvm_emit), with every build-machine-absolute reference rewritten
+# cdylib (libry_codegen), with every build-machine-absolute reference rewritten
 # to a relocatable rpath, so the binary starts on an end-user system that has no
 # Homebrew/-installed LLVM. This script asserts the result of scripts/bundle-dist.sh.
 #
@@ -72,14 +72,14 @@ darwin)
     RY="$DIST_DIR/ry"
     LIB="$DIST_DIR/lib"
 
-    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libzstd.1.dylib" "$LIB/libry_llvm_emit.dylib"; do
+    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libzstd.1.dylib" "$LIB/libry_codegen.dylib"; do
         [[ -f "$f" ]] && echo "  ok: present $(basename "$f")" || { echo "  FAIL: missing $f" >&2; fail=1; }
     done
 
     ry_deps="$(otool -L "$RY" 2>/dev/null || true)"
     ry_load="$(otool -l "$RY" 2>/dev/null || true)"
     want       "ry -> @rpath/libLLVM.dylib"         '@rpath/libLLVM\.dylib'          "$ry_deps"
-    want       "ry -> @rpath/libry_llvm_emit.dylib"  '@rpath/libry_llvm_emit\.dylib'  "$ry_deps"
+    want       "ry -> @rpath/libry_codegen.dylib"  '@rpath/libry_codegen\.dylib'  "$ry_deps"
     # tarball-direct (./ry) rpath and installed (~/.local/bin -> ~/.ry/lib) rpath
     want_fixed "ry rpath @loader_path/lib"           '@loader_path/lib'               "$ry_load"
     want_fixed "ry rpath @loader_path/../../.ry/lib"  '@loader_path/../../.ry/lib'     "$ry_load"
@@ -92,16 +92,16 @@ darwin)
     want   "libLLVM -> @loader_path/libzstd"        '@loader_path/libzstd\.1\.dylib' "$llvm_deps"
     absent "libLLVM has no absolute zstd ref"       '/opt/homebrew.*zstd|/zstd/lib' "$llvm_deps"
 
-    emit_id="$(otool -D "$LIB/libry_llvm_emit.dylib" 2>/dev/null || true)"
-    emit_deps="$(otool -L "$LIB/libry_llvm_emit.dylib" 2>/dev/null || true)"
-    want   "libry_llvm_emit id = @rpath/..."        '@rpath/libry_llvm_emit\.dylib'  "$emit_id"
-    want   "libry_llvm_emit -> @loader_path/libLLVM" '@loader_path/libLLVM\.dylib'    "$emit_deps"
-    absent "libry_llvm_emit no absolute LLVM/build-tree ref" 'llvm@21|build-rust|cargo/build' "$emit_deps"
+    emit_id="$(otool -D "$LIB/libry_codegen.dylib" 2>/dev/null || true)"
+    emit_deps="$(otool -L "$LIB/libry_codegen.dylib" 2>/dev/null || true)"
+    want   "libry_codegen id = @rpath/..."        '@rpath/libry_codegen\.dylib'  "$emit_id"
+    want   "libry_codegen -> @loader_path/libLLVM" '@loader_path/libLLVM\.dylib'    "$emit_deps"
+    absent "libry_codegen no absolute LLVM/build-tree ref" 'llvm@21|build-rust|cargo/build' "$emit_deps"
 
     want "libzstd id = @rpath/libzstd.1.dylib" '@rpath/libzstd\.1\.dylib' "$(otool -D "$LIB/libzstd.1.dylib" 2>/dev/null || true)"
 
     # ad-hoc signatures must be valid after install_name_tool rewrites
-    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libry_llvm_emit.dylib" "$LIB/libzstd.1.dylib"; do
+    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libry_codegen.dylib" "$LIB/libzstd.1.dylib"; do
         if codesign --verify "$f" 2>/dev/null; then
             echo "  ok: codesign $(basename "$f")"
         else
@@ -123,7 +123,7 @@ linux)
         echo "  FAIL: ry NEEDED libLLVM soname='$soname' not bundled at $LIB/" >&2
         fail=1
     fi
-    ls "$LIB"/libry_llvm_emit.so >/dev/null 2>&1 && echo "  ok: present libry_llvm_emit.so" || { echo "  FAIL: missing libry_llvm_emit.so" >&2; fail=1; }
+    ls "$LIB"/libry_codegen.so >/dev/null 2>&1 && echo "  ok: present libry_codegen.so" || { echo "  FAIL: missing libry_codegen.so" >&2; fail=1; }
 
     ry_dyn="$(readelf -d "$RY" 2>/dev/null || true)"
     # CMake emits DT_RUNPATH (new dtags); accept either RUNPATH or RPATH.

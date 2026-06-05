@@ -28,7 +28,7 @@ pub unsafe extern "C" fn ry_emit_bounds_check(
     }
     let orig_index = idx;
 
-    // Negative-index wrap is a separate ABI function; call it through the
+    // Negative-index wrap is a separate boundary function; call it through the
     // public entry so we never hold a &mut borrow across the call.
     let idx_in = intern(cx(ctx), to_ry_value(idx));
     let len_in = intern(cx(ctx), to_ry_value(len));

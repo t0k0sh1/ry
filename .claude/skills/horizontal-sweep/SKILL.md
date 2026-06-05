@@ -32,9 +32,9 @@ These legacy identifiers are intentionally preserved (see `AGENTS.md:5`). Add th
 
 | Identifier | Why preserved |
 |---|---|
-| `effectivePackage` | legacy field name — ABI-adjacent |
-| `RY_REGISTER_STDLIB_PACKAGE` | C macro, ABI-stable |
-| `__ry_<symbol>` (e.g., `__ry_filesystem_listDir`) | C runtime symbols, ABI-stable |
+| `effectivePackage` | legacy field name — binary-adjacent |
+| `RY_REGISTER_STDLIB_PACKAGE` | C macro, binary-stable |
+| `__ry_<symbol>` (e.g., `__ry_filesystem_listDir`) | C runtime symbols, binary-stable |
 
 ## Steps
 
@@ -111,6 +111,7 @@ git diff | grep -E '^[-+]' | head -50
 | Grep `*.ry` only | #1414 — `runSource("...")` embedded Ry in C++ tests is missed |
 | `^\s+` anchor (one-or-more spaces) | Misses module-global declarations at column 0 (#1468) |
 | Body regex `[a-zA-Z0-9]+` (no underscore) | Truncates names like `cow_global_box` mid-identifier |
+| Blind `s/<term>/<one-sub>/` on a **polysemous** term | #2027 — `ABI` meant the boundary-label **and** struct-layout **and** binary-stability **and** function-signature; a single `→ boundary` mangled the latter three. Classify each hit's meaning first and reword per sense (boundary / layout / binary / interface), or carve it out. The authoritative complete set is `git diff \| grep -nE '^-.*\bTERM\b'`. |
 
 ### Step 4: Re-verify until zero hits
 

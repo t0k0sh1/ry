@@ -1085,7 +1085,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Capturing closure (#1678): register {thunk, env, env_dtor}.
     // The thunk takes (env_ptr, ...origArgs) and forwards via the captured
     // closure body. The runtime dispatch site reads env via __ry_mock_get_env
-    // and routes to the matching ABI.
+    // and routes to the matching calling convention.
     llvm::Function *realFn = fnInfo->sourceFn;
     if (!realFn)
         codegenError("mock(): cannot wrap capturing closure (missing sourceFn)");

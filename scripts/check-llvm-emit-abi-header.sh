@@ -2,7 +2,7 @@
 # Header-level lint for include/ry/llvm_emit/api.h
 #
 # Enforces #1973 Stage 2-C acceptance criterion: the public ABI of the
-# emission shared library (libry_llvm_emit) must not expose any LLVM-owned
+# emission shared library (libry_codegen) must not expose any LLVM-owned
 # types or transitional `void *` parameters in its function signatures.
 # Opaque pointer typedefs (RyValueRef / RyTypeRef / RyModuleHandle / ...) are
 # the contract; `RyEmitCtx` is the per-compile() context struct.

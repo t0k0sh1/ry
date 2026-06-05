@@ -398,7 +398,7 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
                 codegenError("append() element type mismatch");
         }
 
-        // ARC retain decision uses ValueMetadata which does not cross the ABI,
+        // ARC retain decision uses ValueMetadata which does not cross the boundary,
         // so it must happen on the codegen side BEFORE delegating to emission.
         // Reordering relative to the original (which retained inside storeBB)
         // is semantically equivalent because `val` is not mutated by grow.
@@ -577,10 +577,10 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-    // Delegate the clamp + malloc + memcpy chain to the llvm_emit ABI. The
-    // ABI returns (count, new_data); header allocation, metadata propagation
+    // Delegate the clamp + malloc + memcpy chain to the llvm_emit boundary. The
+    // boundary returns (count, new_data); header allocation, metadata propagation
     // and per-element ARC retain stay on the codegen side because they need
-    // ValueMetadata that does not cross the ABI boundary.
+    // ValueMetadata that does not cross the boundary.
     auto op = codegen::lowering::lowerListSlice(*this, listPtr, startVal,
                                                 endExclVal, listHeaderTy_,
                                                 elemTy, elemSize);
@@ -721,7 +721,7 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
                 codegenError("insert() element type mismatch");
         }
 
-        // ARC retain decision uses ValueMetadata which does not cross the ABI,
+        // ARC retain decision uses ValueMetadata which does not cross the boundary,
         // so it must happen on the codegen side BEFORE delegating to emission.
         // The retain is safe to hoist out of the previous post-bounds-check
         // position because `val` is independent of len/cap/idx and a bounds

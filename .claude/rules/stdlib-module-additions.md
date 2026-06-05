@@ -9,7 +9,7 @@ paths:
 
 # Stdlib Module Additions
 
-> **Terminology**: per `docs/reference/glossary.md` (introduced in v0.0.17 by #1480), the unit imported via `from xxx import ...` is called a **module**. The word "package" is reserved for the future `ry add` external-library feature. Older internal C++ identifiers (`effectivePackage`, `deriveNativePackage`, `RY_REGISTER_STDLIB_PACKAGE`, etc.) keep the legacy "package" naming for ABI/source-stability reasons; refer to those identifiers verbatim, but use "module" in prose.
+> **Terminology**: per `docs/reference/glossary.md` (introduced in v0.0.17 by #1480), the unit imported via `from xxx import ...` is called a **module**. The word "package" is reserved for the future `ry add` external-library feature. Older internal C++ identifiers (`effectivePackage`, `deriveNativePackage`, `RY_REGISTER_STDLIB_PACKAGE`, etc.) keep the legacy "package" naming for binary/source-stability reasons; refer to those identifiers verbatim, but use "module" in prose.
 
 ### Bare `@native` vs `@native("mod")` — NOT cosmetically equivalent
 

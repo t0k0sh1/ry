@@ -13,10 +13,10 @@ class CodeGen;
 namespace ry::codegen::lowered {
 
 // Pre-lowered Copy-on-Write uniqueness check (`emitCowCheckSlot`). Carries
-// every input the ABI side needs after CodeGen has resolved kind-specific
+// every input the boundary side needs after CodeGen has resolved kind-specific
 // metadata. The struct lives on the CodeGen side; the emission layer
 // flattens it to the C-only `RyCowEnsureUniqueDesc` before calling
-// `ry_emit_cow_ensure_unique` so no LLVM-typed pointers cross the ABI
+// `ry_emit_cow_ensure_unique` so no LLVM-typed pointers cross the boundary
 // boundary other than the opaque `Value *` operands that are interned to
 // `RyValueId` handles.
 struct CowEnsureUniqueOp {
@@ -52,7 +52,7 @@ lowered::CowEnsureUniqueOp lowerCowEnsureUnique(
 
 namespace ry::codegen::emission {
 
-// Emit the CoW uniqueness check via the libry_llvm_emit ABI
+// Emit the CoW uniqueness check via the libry_codegen boundary
 // (`ry_emit_cow_ensure_unique`). Returns the PHI joining the original
 // dataPtr (skip-CoW path) with the freshly-cloned dataPtr (copy path);
 // downstream callers feed this into `propagateMeta` / `propagateMetaWide`.
@@ -63,7 +63,7 @@ namespace ry::codegen::emission {
 //   - The caller has inserted `"gc"` into `cg.used_native_libraries_`
 //     because the internal `ry_emit_arc_release` emits __ry_gc_track /
 //     __ry_gc_untrack calls (CodeGen-side bookkeeping not visible to the
-//     ABI).
+//     boundary).
 llvm::Value *emitCowEnsureUnique(CodeGen &cg,
                                  const lowered::CowEnsureUniqueOp &op);
 

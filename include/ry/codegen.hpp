@@ -29,7 +29,7 @@
 
 
 // LLVM IR emission shared-library handle (#1949). Defined in the Rust
-// ABI crate `crates/ry_llvm_emit/src/lib.rs`; reached from CodeGen through the
+// boundary crate `crates/ry_codegen/src/lib.rs`; reached from CodeGen through the
 // extern "C" surface in include/ry/llvm_emit/api.h. Forward-declared here so
 // codegen.hpp does not pull the C header into every translation unit that
 // includes it.
@@ -111,7 +111,7 @@ public:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
-    // Owns the LLVM IR emission ABI context (#1949). Initialized in the
+    // Owns the LLVM IR emission boundary context (#1949). Initialized in the
     // constructor, destroyed by ~CodeGen. Reached by shim implementations of
     // getRuntimeFn / buildErrorFromRuntime / emitBoundsCheck.
     ::RyEmitCtx *emit_ctx_ = nullptr;
@@ -123,7 +123,7 @@ public:
     llvm::FunctionType *fnTy_ptr_ptr_to_i64_;
     llvm::FunctionType *fnTy_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_ptr_ptr_ptr_to_ptr_;
-    // Length-aware variants used by NUL-safe regex ABI (#1052)
+    // Length-aware variants used by NUL-safe regex interface (#1052)
     llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_i64_;
     llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_;
@@ -549,10 +549,10 @@ public:
     // implement deep (path) copy-on-write for nested collection writes
     // through aliases (#854).
     llvm::Value *emitPathCowForChain(ExprNode &chain);
-    // emitCowDeepCopy{List,Map,Set} were dissolved into the llvm_emit ABI
+    // emitCowDeepCopy{List,Map,Set} were dissolved into the llvm_emit boundary
     // (`ry_emit_cow_ensure_unique`) in #1970 — only `emitCowCheckSlot`
     // ever called them, so the IR construction now lives entirely inside
-    // the ABI alongside the strong_count check, retain loops, slot
+    // the boundary alongside the strong_count check, retain loops, slot
     // overwrite, and PHI.
     void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag,
                                    CollectionKind elemArcKind = CollectionKind::List);
@@ -1009,7 +1009,7 @@ public:
 
     // Uniform closure support: {thunk_ptr, env_ptr, env_dtor_ptr} for
     // function-type boundaries. `thunk_ptr` is a forwarding or capturing thunk
-    // that adapts the callee to the uniform ABI; `env_ptr` is the ARC-managed
+    // that adapts the callee to the uniform calling convention; `env_ptr` is the ARC-managed
     // captured environment (null for non-capturing functions); `env_dtor_ptr`
     // is the destructor used to release `env_ptr` when the closure is dropped
     // (null for non-capturing functions). Layout mirrored in
@@ -1993,7 +1993,7 @@ public:
                                        llvm::ArrayRef<llvm::Type*> argTys);
 
     // ControlFlow primitives — Stage 2-C / #1973.
-    // Thin CodeGen-side wrappers around the `ry_emit_*` ABI entries in
+    // Thin CodeGen-side wrappers around the `ry_emit_*` boundary entries in
     // `include/ry/llvm_emit/api.h`. Call sites use these methods so no
     // `IRBuilder<>::Create{CondBr,Br,PHI}` / `BasicBlock::Create` survives in
     // `src/codegen_*.cpp` per the #1973 acceptance criterion. The methods do

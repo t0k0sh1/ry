@@ -332,7 +332,7 @@ Pattern 3 needs aggressive filtering for false positives (file paths like `hello
 **Source**: #1463 review (CodeRabbit)
 **Tags**: documentation, migration, naming, c-runtime, placeholder
 
-**Context**: During the #1444 snake_case → camelCase doc migration, the C-symbol convention placeholders `__ry_<libname>_<fn_name>` (in `directives.md`) and `__ry_<package>_<function_name>` (in `packages.md`) were migrated to `<functionName>` together with the rest of the sweep. CodeRabbit flagged the change because the actual C runtime symbols are inconsistent: `filesystem`/`path`/`gc`/`json` are camelCase (`__ry_filesystem_listDir`, `__ry_path_isAbsolute`, `__ry_gc_setThreshold`), but `base64` and `string` keep snake_case in the C ABI regardless of the camelCase Ry name (`base64::encodeUrlSafe` → `__ry_base64_encode_url_safe`, `string::makeUninit` → `__ry_string_make_uninit`). Migrating the placeholder to `<functionName>` made it look like a uniform rule when reality was mixed.
+**Context**: During the #1444 snake_case → camelCase doc migration, the C-symbol convention placeholders `__ry_<libname>_<fn_name>` (in `directives.md`) and `__ry_<package>_<function_name>` (in `packages.md`) were migrated to `<functionName>` together with the rest of the sweep. CodeRabbit flagged the change because the actual C runtime symbols are inconsistent: `filesystem`/`path`/`gc`/`json` are camelCase (`__ry_filesystem_listDir`, `__ry_path_isAbsolute`, `__ry_gc_setThreshold`), but `base64` and `string` keep snake_case in the C boundary regardless of the camelCase Ry name (`base64::encodeUrlSafe` → `__ry_base64_encode_url_safe`, `string::makeUninit` → `__ry_string_make_uninit`). Migrating the placeholder to `<functionName>` made it look like a uniform rule when reality was mixed.
 
 **Rule**: When a doc-wide rename touches a **placeholder describing a contract with code outside the Ry source** (C symbol names, manifest keys, JSON field names, env var names, generated artefact names, etc.), do not assume the rename applies. Spot-check the implementation:
 
@@ -347,7 +347,7 @@ grep -nE '__ry_[a-z]+_[a-z]+_[a-z]' src/runtime/**/*.cpp
 If reality is mixed, replace the single-form placeholder (`<functionName>` or `<fn_name>`) with a neutral term like `<symbol>` and add prose enumerating which packages follow which convention, plus an example mapping table.
 
 **How to apply**:
-- Before migrating any placeholder in `__ry_*`, `manifest.json` keys, or other ABI-adjacent strings, grep the implementation to see whether the rename actually holds.
+- Before migrating any placeholder in `__ry_*`, `manifest.json` keys, or other binary-adjacent strings, grep the implementation to see whether the rename actually holds.
 - If the implementation is consistent with the rename, migrate normally.
 - If the implementation is inconsistent, keep a neutral placeholder (e.g. `<symbol>`) and document the carve-outs with concrete examples.
 - This applies in both directions: snake_case → camelCase migrations *and* camelCase → snake_case (or any rename). Inline-code placeholders mirror an external contract and should reflect what the code actually does.

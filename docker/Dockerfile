@@ -39,7 +39,7 @@ ENV HOME=/home/${DEV_USER}
 ENV CCACHE_DIR=/home/${DEV_USER}/.cache/ccache
 # Override the base image's CARGO_HOME=/opt/cargo (root-owned, and absent in this
 # dev image) with a ${DEV_USER}-writable path. Since the #1993 cutover, every
-# preset builds the ry_llvm_emit Rust cdylib via corrosion, so the non-root dev
+# preset builds the ry_codegen Rust cdylib via corrosion, so the non-root dev
 # user needs a writable cargo registry/cache. run.sh mounts a named volume here
 # for cross-run persistence.
 ENV CARGO_HOME=/home/${DEV_USER}/.cargo

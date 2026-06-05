@@ -43,7 +43,7 @@ llvm::Value *emitCollectionRemoveAt(CodeGen &cg,
 lowered::ListSliceResult emitListSlice(CodeGen &cg,
                                        const lowered::ListSliceOp &op) {
     // No precondition on ry_emit_ctx_set_function — ry_emit_list_slice creates
-    // no new BBs. We still call set_function defensively in case future ABI
+    // no new BBs. We still call set_function defensively in case future boundary
     // evolution adds BB creation (e.g. an OOM guard around the malloc).
     ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
     RyValueId listId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));

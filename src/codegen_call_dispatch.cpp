@@ -431,7 +431,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 // ===== Shared Result-wrapping helpers =====
 
 // Thin shim over emission::emitResultBranch. The actual three-BB + PHI IR
-// construction lives in the llvm_emit ABI layer (ry_emit_result_branch);
+// construction lives in the llvm_emit boundary layer (ry_emit_result_branch);
 // this method exists only to bridge the function_ref-style call sites
 // (wrapPtrAsResult, emitResultBranchWithMeta, http nest paths, etc.)
 // without churning every caller.

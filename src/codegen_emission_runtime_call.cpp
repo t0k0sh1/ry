@@ -12,8 +12,8 @@ namespace ry::codegen::emission {
 
 llvm::Value *emitRuntimeCall(CodeGen &cg, const lowered::RuntimeCallOp &op,
                              const char *name_hint) {
-    // Marshal arg type pointers and arg value handles into ABI-friendly
-    // parallel arrays. Type pointers cross the ABI as `RyTypeRef` (#1973);
+    // Marshal arg type pointers and arg value handles into boundary-friendly
+    // parallel arrays. Type pointers cross the boundary as `RyTypeRef` (#1973);
     // value pointers cross as opaque `RyValueId` handles via intern/resolve.
     std::vector<RyTypeRef> arg_ty_refs;
     arg_ty_refs.reserve(op.arg_tys.size());

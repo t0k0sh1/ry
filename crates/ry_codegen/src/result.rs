@@ -14,7 +14,7 @@ pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
     err_fn_name: *const c_char,
     error_ty: RyTypeRef,
 ) -> RyValueId {
-    // ABI input validation: malformed callers get sentinel 0 instead of
+    // boundary input validation: malformed callers get sentinel 0 instead of
     // crashing the emitter (mirrors ry_emit_runtime_call's guards).
     if ctx.is_null() || err_fn_name.is_null() || error_ty.is_null() {
         return 0;
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     build_err: RyBuildValueFn,
     user_ctx: *mut c_void,
 ) -> RyValueId {
-    // ABI input validation: malformed callers get sentinel 0 instead of
+    // boundary input validation: malformed callers get sentinel 0 instead of
     // crashing the emitter. build_ok / build_err are nullable at the FFI
     // boundary (RyBuildValueFn = Option<fn>); reject NULL here rather than
     // panicking on `unwrap` across the extern "C" boundary.

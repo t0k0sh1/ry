@@ -18,7 +18,7 @@ namespace ry::codegen::lowered {
 // (`{i64 len, i64 cap, ptr data}`); `elem_ty` is the per-element LLVM type and
 // `elem_size` its DataLayout-derived allocation size. The op carries no ARC /
 // metadata propagation hints — those decisions are caller-side because they
-// depend on ValueMetadata that does not cross the llvm_emit ABI.
+// depend on ValueMetadata that does not cross the llvm_emit boundary.
 struct CollectionAppendOp {
     llvm::Value *list_ptr;
     llvm::Value *val;
@@ -28,9 +28,9 @@ struct CollectionAppendOp {
 };
 
 // Pre-lowered List insert op. Same shape as append + an `idx` operand. ARC
-// retain on `val` is the caller's responsibility (emitted before the ABI
+// retain on `val` is the caller's responsibility (emitted before the boundary
 // call) because the type metadata that decides whether a retain is needed
-// does not cross the ABI.
+// does not cross the boundary.
 struct CollectionInsertOp {
     llvm::Value *list_ptr;
     llvm::Value *idx;
@@ -54,7 +54,7 @@ struct CollectionRemoveAtOp {
 // `list_ptr.data + start * elem_size` of length `end_excl - start` (both
 // endpoints clamped to [0, list.len]). The new ARC header allocation,
 // per-element ARC retain loop, and type-metadata propagation are caller-side
-// because they need ValueMetadata that does not cross the ABI.
+// because they need ValueMetadata that does not cross the boundary.
 struct ListSliceOp {
     llvm::Value *list_ptr;
     llvm::Value *start;
@@ -108,14 +108,14 @@ lowered::ListSliceOp lowerListSlice(CodeGen &cg, llvm::Value *list_ptr,
 
 namespace ry::codegen::emission {
 
-// Emit a List append via the libry_llvm_emit ABI (ry_emit_collection_append).
+// Emit a List append via the libry_codegen boundary (ry_emit_collection_append).
 // Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have been
 // called before invoking this helper because two BBs (`app.grow`, `app.store`)
 // are created inside the current function. ARC retain on op.val (if needed by
 // the element type) must be emitted BEFORE calling this helper.
 void emitCollectionAppend(CodeGen &cg, const lowered::CollectionAppendOp &op);
 
-// Emit a List insert via the libry_llvm_emit ABI (ry_emit_collection_insert).
+// Emit a List insert via the libry_codegen boundary (ry_emit_collection_insert).
 // Precondition: same as emitCollectionAppend (four BBs created: `ins.err`,
 // `ins.ok`, `ins.grow`, `ins.move`). ARC retain on op.val (if needed) must
 // be emitted BEFORE invoking.

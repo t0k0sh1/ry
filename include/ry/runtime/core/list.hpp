@@ -14,7 +14,7 @@
 namespace ry {
 
 // ListHeader layout: {i64 len, i64 cap, ptr data}
-// Matches the generic list ABI used by codegen.
+// Matches the generic list layout used by codegen.
 // Shared across runtime modules that return string lists.
 struct ListHeader {
     int64_t len;
@@ -52,7 +52,7 @@ inline ListHeader *makeStringList(const std::vector<std::string> &items) {
 
 // MatchData layout: {char* full, ListHeader* groups}
 // Matches the LLVM StructType for the Ry `Match` record: {ptr, ptr}.
-// data is cast to char** per the generic list ABI; actual element stride is
+// data is cast to char** per the generic list layout; actual element stride is
 // sizeof(MatchData) and is resolved at codegen time via TypeMeta::ListElem.
 struct MatchData {
     char *full;

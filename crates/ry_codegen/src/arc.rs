@@ -1,5 +1,5 @@
 //! ARC retain / release: the `arc_retain_impl` / `arc_release_impl` cores
-//! (shared with Any / CoW) and the `ry_emit_arc_retain` / `ry_emit_arc_release` ABI.
+//! (shared with Any / CoW) and the `ry_emit_arc_retain` / `ry_emit_arc_release` boundary.
 
 use llvm_sys::core::*;
 use llvm_sys::{LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate};

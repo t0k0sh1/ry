@@ -412,7 +412,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         emitBranchCond(mockActive, mockBB, origBB);
 
-        // Mock path: branch on env ptr to choose plain vs capture-closure ABI.
+        // Mock path: branch on env ptr to choose plain vs capture-closure calling convention.
         builder_.SetInsertPoint(mockBB);
         emitMockRequireChecks();
         builder_.CreateCall(mockIncFn, {nameStr});
@@ -426,7 +426,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         emitBranchCond(isCapture, captureBB, plainBB);
 
         llvm::FunctionType *fnTy = fn->getFunctionType();
-        // Capture-thunk ABI matches getOrCreateCapturingThunk: (user_params..., env).
+        // Capture-thunk calling convention matches getOrCreateCapturingThunk: (user_params..., env).
         std::vector<llvm::Type *> captureParamTys;
         for (llvm::Type *t : fnTy->params()) captureParamTys.push_back(t);
         captureParamTys.push_back(ptrTy_);

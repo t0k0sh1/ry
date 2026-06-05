@@ -11,7 +11,7 @@
 namespace ry {
 
 // ListHeader layout: {i64 len, i64 cap, ptr data}
-// Matches the generic list ABI used by codegen.
+// Matches the generic list layout used by codegen.
 // Shared between runtime_io.cpp and runtime_net.cpp.
 struct IOListHeader {
     int64_t len;

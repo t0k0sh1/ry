@@ -20,7 +20,7 @@ pub unsafe extern "C" fn ry_emit_runtime_call(
     arg_count: u32,
     name_hint: *const c_char,
 ) -> RyValueId {
-    // ABI input validation: malformed callers get sentinel 0
+    // boundary input validation: malformed callers get sentinel 0
     // instead of crashing the emitter. `name_hint` is optional and may be NULL.
     if ctx.is_null() || name.is_null() || ret_ty.is_null() {
         return 0;
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn ry_emit_get_runtime_fn(
     name: *const c_char,
     fn_ty: RyFuncTypeRef,
 ) -> RyValueRef {
-    // ABI input validation: malformed callers get a NULL handle instead of
+    // boundary input validation: malformed callers get a NULL handle instead of
     // crashing the emitter (mirrors ry_emit_runtime_call's guards).
     if ctx.is_null() || name.is_null() || fn_ty.is_null() {
         return std::ptr::null_mut();

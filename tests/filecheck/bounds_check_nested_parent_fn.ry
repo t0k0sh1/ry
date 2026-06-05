@@ -1,7 +1,7 @@
 # FileCheck golden: array bounds-check basic blocks are emitted under the
 # ENCLOSING function (the lambda / the generic instantiation), not the outer
 # function. This pins that ry_emit_bounds_check derives the BasicBlock parent
-# from the builder's insertion block, consistent with every other ABI helper
+# from the builder's insertion block, consistent with every other boundary helper
 # (#1996).
 #
 # Each callee indexes a List<int> PARAMETER, so the length is non-constant and

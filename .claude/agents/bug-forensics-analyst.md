@@ -22,7 +22,7 @@ You perform exactly four analytical tasks for each bug investigation:
 
 **In scope (do these)**:
 - Recommending fix directions (どのアプローチが原因にフィットするか、どこに修正を入れるのが広範に効くか) as part of the report — useful as input to the caller's Q4 decision
-- Pointing out fix-relevant constraints (例: "同じ pattern が ABI layer にも存在するため修正は dispatch-level で行う方が広範に効く" / "この regression は revert より forward-fix の方が安全")
+- Pointing out fix-relevant constraints (例: "同じ pattern が boundary layer にも存在するため修正は dispatch-level で行う方が広範に効く" / "この regression は revert より forward-fix の方が安全")
 
 **Out of scope (do NOT do these)**:
 - Writing or applying code changes (修正コードを書くこと自体は scope 外)
@@ -148,7 +148,7 @@ Produce a structured report with these sections (use Japanese if the user wrote 
 
 ### 6. 修正方針の Recommendation (任意)
 - 推奨アプローチ: ... (どこに修正を入れるのが原因にフィットするか / 広範に効くか)
-- 制約: ... (例: ABI 互換性 / 既存テストの前提 / 依存する OPEN PR)
+- 制約: ... (例: boundary 互換性 / 既存テストの前提 / 依存する OPEN PR)
 - 修正コード本体は本レポートに含めない。実装は呼び出し元の責務。
 ```
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # §3.5.6 Rust lint — reproduce the CI `lint` job's Rust quality gate locally:
-# `cargo fmt --check` + `cargo clippy -- -D warnings` over crates/ry_llvm_emit.
+# `cargo fmt --check` + `cargo clippy -- -D warnings` over crates/ry_codegen.
 # Run before pushing any change under crates/. (#2015)
 #
 # Toolchain: rust-toolchain.toml pins the channel to the version baked into the
@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
-MANIFEST=crates/ry_llvm_emit/Cargo.toml
+MANIFEST=crates/ry_codegen/Cargo.toml
 
 # `cargo fmt --check` needs no LLVM. `cargo clippy` compiles llvm-sys
 # (force-dynamic), so it needs LLVM_SYS_211_PREFIX pointing at a prefix that
@@ -26,7 +26,7 @@ echo "==> LLVM_SYS_211_PREFIX=$LLVM_SYS_211_PREFIX" >&2
 echo "==> cargo fmt --check ($MANIFEST)" >&2
 cargo fmt --manifest-path "$MANIFEST" -- --check
 
-echo "==> cargo clippy -p ry_llvm_emit -- -D warnings" >&2
-cargo clippy -p ry_llvm_emit -- -D warnings
+echo "==> cargo clippy -p ry_codegen -- -D warnings" >&2
+cargo clippy -p ry_codegen -- -D warnings
 
 echo "==> Rust lint OK" >&2
