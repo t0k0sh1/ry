@@ -6,14 +6,14 @@ This page is the canonical vocabulary for the **codegen** stack of the Ry compil
 
 ## Layers
 
-The codegen stack is the `ry::codegen::*` namespace in C++ plus the Rust `codegen` crate (renamed from `ry_llvm_emit` by #2027①). It is organized into layers:
+The codegen stack is the `ry::codegen::*` namespace in C++ plus the Rust crate that implements the emission boundary — `ry_llvm_emit` today, renamed to `codegen` by #2027①. It is organized into layers:
 
 | Term | Definition | Where it lives |
 | --- | --- | --- |
-| **codegen** | The whole code-generation stack: AST + sema → LLVM IR. | C++ `ry::codegen::*`, Rust crate `codegen` |
+| **codegen** | The whole code-generation stack: AST + sema → LLVM IR. | C++ `ry::codegen::*`, Rust crate `ry_llvm_emit` |
 | **lowering** | Translates Ry semantics into **lowered IR** ops. Owns the per-op semantic decisions (ARC retain/release, metadata, element sizes). | `src/codegen_lowering_*.cpp`, `ry::codegen::lowering` |
 | **lowered IR** | The op vocabulary — plain-data structs naming *what* should happen, not *how* to express it in LLVM. | `include/ry/codegen/lowered_*.hpp`, `ry::codegen::lowered::XxxOp` |
-| **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | `src/codegen_emission_*.cpp`, `ry::codegen::emission`, Rust crate `codegen` |
+| **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | `src/codegen_emission_*.cpp`, `ry::codegen::emission`, Rust crate `ry_llvm_emit` |
 
 The full op list lives in [Codegen Layering Plan](codegen-layering-plan.md) §"Lowered IR vocabulary". Use the noun **lowered IR** (the data) and **lowered op** (one struct); retire the floating phrase "N-op vocabulary" — the op count changes over time.
 
@@ -24,7 +24,7 @@ Ry has two C-only `extern "C"` boundaries. They are **named after their layer**,
 | Boundary | Symbols | Crossed | Implemented by |
 | --- | --- | --- | --- |
 | **runtime boundary** | `__ry_*` ("runtime calls") | at **program run time**, by JIT-executed code | the runtime — see [Runtime Boundary](runtime-abi-boundary.md) |
-| **emission boundary** | `ry_emit_*` ("emission entry points") | at **compile time**, to construct LLVM IR | the emission layer / `codegen` crate — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) |
+| **emission boundary** | `ry_emit_*` ("emission entry points") | at **compile time**, to construct LLVM IR | the emission layer (the `ry_llvm_emit` crate) — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) |
 
 The two are orthogonal: lowering drives IR construction through the *emission entry points*; the IR it builds resolves, at run time, to *runtime calls*.
 
