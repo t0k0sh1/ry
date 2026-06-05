@@ -42,66 +42,19 @@ pub unsafe extern "C" fn ry_emit_collection_append(
     let store_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"app.store".as_ptr());
     LLVMBuildCondBr(b, need_grow, grow_bb, store_bb);
 
-    LLVMPositionBuilderAtEnd(b, grow_bb);
-    let four = LLVMConstInt(i64_ty, 4, 0);
-    let doubled = LLVMBuildMul(
+    emit_list_grow(
         b,
-        h.cap,
-        LLVMConstInt(i64_ty, 2, 0),
-        c"app_doubled".as_ptr(),
-    );
-    let gt4 = LLVMBuildICmp(
-        b,
-        LLVMIntPredicate::LLVMIntSGT,
-        doubled,
-        four,
+        module,
+        &h,
+        elem_size,
+        i64_ty,
+        ptr_ty,
+        void_ty,
+        b"app",
         c"cap_gt4".as_ptr(),
+        grow_bb,
+        store_bb,
     );
-    let new_cap = LLVMBuildSelect(b, gt4, doubled, four, c"app_new_cap".as_ptr());
-    let new_size = LLVMBuildMul(
-        b,
-        new_cap,
-        LLVMConstInt(i64_ty, elem_size, 0),
-        c"app_new_size".as_ptr(),
-    );
-    let mut malloc_p = [i64_ty];
-    let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
-    let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
-    let mut malloc_a = [new_size];
-    let new_data = LLVMBuildCall2(
-        b,
-        malloc_ty,
-        malloc_fn,
-        malloc_a.as_mut_ptr(),
-        1,
-        c"app_new_data".as_ptr(),
-    );
-    let old_size = LLVMBuildMul(
-        b,
-        h.len,
-        LLVMConstInt(i64_ty, elem_size, 0),
-        c"app_old_size".as_ptr(),
-    );
-    let mut memcpy_p = [ptr_ty, ptr_ty, i64_ty];
-    let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_p.as_mut_ptr(), 3, 0);
-    let memcpy_fn = get_or_insert_function(module, c"memcpy".as_ptr(), memcpy_ty);
-    let mut memcpy_a = [new_data, h.data, old_size];
-    LLVMBuildCall2(
-        b,
-        memcpy_ty,
-        memcpy_fn,
-        memcpy_a.as_mut_ptr(),
-        3,
-        c"".as_ptr(),
-    );
-    let mut free_p = [ptr_ty];
-    let free_ty = LLVMFunctionType(void_ty, free_p.as_mut_ptr(), 1, 0);
-    let free_fn = get_or_insert_function(module, c"free".as_ptr(), free_ty);
-    let mut free_a = [h.data];
-    LLVMBuildCall2(b, free_ty, free_fn, free_a.as_mut_ptr(), 1, c"".as_ptr());
-    LLVMBuildStore(b, new_data, h.data_ptr);
-    LLVMBuildStore(b, new_cap, h.cap_ptr);
-    LLVMBuildBr(b, store_bb);
 
     LLVMPositionBuilderAtEnd(b, store_bb);
     let cur_data = LLVMBuildLoad2(b, ptr_ty, h.data_ptr, c"app_cur_data".as_ptr());
@@ -192,60 +145,19 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     let move_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"ins.move".as_ptr());
     LLVMBuildCondBr(b, need_grow, grow_bb, move_bb);
 
-    LLVMPositionBuilderAtEnd(b, grow_bb);
-    let four = LLVMConstInt(i64_ty, 4, 0);
-    let doubled = LLVMBuildMul(
+    emit_list_grow(
         b,
-        h.cap,
-        LLVMConstInt(i64_ty, 2, 0),
-        c"ins_doubled".as_ptr(),
-    );
-    let gt4 = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, doubled, four, c"".as_ptr());
-    let new_cap = LLVMBuildSelect(b, gt4, doubled, four, c"ins_new_cap".as_ptr());
-    let new_size = LLVMBuildMul(
-        b,
-        new_cap,
-        LLVMConstInt(i64_ty, elem_size, 0),
-        c"ins_new_size".as_ptr(),
-    );
-    let mut malloc_p = [i64_ty];
-    let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
-    let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
-    let mut malloc_a = [new_size];
-    let new_data = LLVMBuildCall2(
-        b,
-        malloc_ty,
-        malloc_fn,
-        malloc_a.as_mut_ptr(),
-        1,
-        c"ins_new_data".as_ptr(),
-    );
-    let old_size = LLVMBuildMul(
-        b,
-        h.len,
-        LLVMConstInt(i64_ty, elem_size, 0),
-        c"ins_old_size".as_ptr(),
-    );
-    let mut memcpy_p = [ptr_ty, ptr_ty, i64_ty];
-    let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_p.as_mut_ptr(), 3, 0);
-    let memcpy_fn = get_or_insert_function(module, c"memcpy".as_ptr(), memcpy_ty);
-    let mut memcpy_a = [new_data, h.data, old_size];
-    LLVMBuildCall2(
-        b,
-        memcpy_ty,
-        memcpy_fn,
-        memcpy_a.as_mut_ptr(),
-        3,
+        module,
+        &h,
+        elem_size,
+        i64_ty,
+        ptr_ty,
+        void_ty,
+        b"ins",
         c"".as_ptr(),
+        grow_bb,
+        move_bb,
     );
-    let mut free_p = [ptr_ty];
-    let free_ty = LLVMFunctionType(void_ty, free_p.as_mut_ptr(), 1, 0);
-    let free_fn = get_or_insert_function(module, c"free".as_ptr(), free_ty);
-    let mut free_a = [h.data];
-    LLVMBuildCall2(b, free_ty, free_fn, free_a.as_mut_ptr(), 1, c"".as_ptr());
-    LLVMBuildStore(b, new_data, h.data_ptr);
-    LLVMBuildStore(b, new_cap, h.cap_ptr);
-    LLVMBuildBr(b, move_bb);
 
     LLVMPositionBuilderAtEnd(b, move_bb);
     let cur_data = LLVMBuildLoad2(b, ptr_ty, h.data_ptr, c"ins_cur_data".as_ptr());
@@ -275,18 +187,7 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
         LLVMConstInt(i64_ty, elem_size, 0),
         c"ins_move_bytes".as_ptr(),
     );
-    let mut memmove_p = [ptr_ty, ptr_ty, i64_ty];
-    let memmove_ty = LLVMFunctionType(ptr_ty, memmove_p.as_mut_ptr(), 3, 0);
-    let memmove_fn = get_or_insert_function(module, c"memmove".as_ptr(), memmove_ty);
-    let mut memmove_a = [dst_ptr, src_ptr, move_bytes];
-    LLVMBuildCall2(
-        b,
-        memmove_ty,
-        memmove_fn,
-        memmove_a.as_mut_ptr(),
-        3,
-        c"".as_ptr(),
-    );
+    emit_memmove(b, module, ptr_ty, i64_ty, dst_ptr, src_ptr, move_bytes);
     let mut ins_idx = [idx];
     let insert_ptr = LLVMBuildGEP2(
         b,
@@ -385,18 +286,7 @@ pub unsafe extern "C" fn ry_emit_collection_remove_at(
         LLVMConstInt(i64_ty, elem_size, 0),
         c"rmat_move_bytes".as_ptr(),
     );
-    let mut memmove_p = [ptr_ty, ptr_ty, i64_ty];
-    let memmove_ty = LLVMFunctionType(ptr_ty, memmove_p.as_mut_ptr(), 3, 0);
-    let memmove_fn = get_or_insert_function(module, c"memmove".as_ptr(), memmove_ty);
-    let mut memmove_a = [elem_ptr, src_ptr, move_bytes];
-    LLVMBuildCall2(
-        b,
-        memmove_ty,
-        memmove_fn,
-        memmove_a.as_mut_ptr(),
-        3,
-        c"".as_ptr(),
-    );
+    emit_memmove(b, module, ptr_ty, i64_ty, elem_ptr, src_ptr, move_bytes);
     let new_len = LLVMBuildSub(
         b,
         h.len,
@@ -473,18 +363,7 @@ pub unsafe extern "C" fn ry_emit_list_slice(
         c"sl_dsize".as_ptr(),
     );
 
-    let mut malloc_params = [i64_ty];
-    let malloc_ty = LLVMFunctionType(ptr_ty, malloc_params.as_mut_ptr(), 1, 0);
-    let malloc_fn = get_or_insert_function(c.module, c"malloc".as_ptr(), malloc_ty);
-    let mut malloc_args = [data_size];
-    let new_data = LLVMBuildCall2(
-        b,
-        malloc_ty,
-        malloc_fn,
-        malloc_args.as_mut_ptr(),
-        1,
-        c"sl_data".as_ptr(),
-    );
+    let new_data = emit_malloc(b, c.module, i64_ty, ptr_ty, data_size, c"sl_data".as_ptr());
 
     let mut gep_idx = [c_start];
     let src_offset = LLVMBuildGEP2(
@@ -495,18 +374,7 @@ pub unsafe extern "C" fn ry_emit_list_slice(
         1,
         c"sl_src_off".as_ptr(),
     );
-    let mut memcpy_params = [ptr_ty, ptr_ty, i64_ty];
-    let memcpy_ty = LLVMFunctionType(ptr_ty, memcpy_params.as_mut_ptr(), 3, 0);
-    let memcpy_fn = get_or_insert_function(c.module, c"memcpy".as_ptr(), memcpy_ty);
-    let mut memcpy_args = [new_data, src_offset, data_size];
-    LLVMBuildCall2(
-        b,
-        memcpy_ty,
-        memcpy_fn,
-        memcpy_args.as_mut_ptr(),
-        3,
-        c"".as_ptr(),
-    );
+    emit_memcpy(b, c.module, ptr_ty, i64_ty, new_data, src_offset, data_size);
 
     *out_count = intern(c, to_ry_value(count));
     *out_new_data = intern(c, to_ry_value(new_data));

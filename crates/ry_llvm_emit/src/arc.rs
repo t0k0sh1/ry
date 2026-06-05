@@ -233,11 +233,7 @@ pub(crate) unsafe fn arc_release_impl(
 
     LLVMPositionBuilderAtEnd(b, real_free_bb);
     emit_arc_counter_delta(b, i64_ty, ptr_ty, -1);
-    let mut free_params = [ptr_ty];
-    let free_ty = LLVMFunctionType(void_ty, free_params.as_mut_ptr(), 1, 0);
-    let free_fn = get_or_insert_function(module, c"free".as_ptr(), free_ty);
-    let mut free_args = [header_ptr];
-    LLVMBuildCall2(b, free_ty, free_fn, free_args.as_mut_ptr(), 1, c"".as_ptr());
+    emit_free(b, module, ptr_ty, void_ty, header_ptr);
     LLVMBuildBr(b, done_bb);
 
     LLVMPositionBuilderAtEnd(b, skip_free_bb);

@@ -8,7 +8,9 @@ use std::ffi::{c_char, CStr, CString};
 
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use llvm_sys::{LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMLinkage, LLVMUnnamedAddr};
+use llvm_sys::{
+    LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate, LLVMLinkage, LLVMUnnamedAddr,
+};
 
 use crate::ffi::*;
 
@@ -306,8 +308,8 @@ pub(crate) unsafe fn load_list_header(
 // String header size (mirror include/ry/ry_layout.hpp STRING_HEADER_SIZE).
 pub(crate) const STRING_HEADER_SIZE: u64 = 24;
 // RyAnyTag discriminants (mirror include/ry/ry_layout.hpp RyAnyTag).
-pub(crate) const RY_ANY_TAG_INT: i64 = 0;
-pub(crate) const RY_ANY_TAG_FLOAT: i64 = 1;
+pub(crate) const ANY_TAG_INT: i64 = 0;
+pub(crate) const ANY_TAG_FLOAT: i64 = 1;
 
 // Emit the inline runtime-error sequence: fprintf(stderr, msg) + fflush +
 // _Exit(1) + unreachable, which terminates the block. The caller must pre-split
@@ -365,6 +367,71 @@ pub(crate) unsafe fn emit_inline_runtime_error(
     LLVMBuildUnreachable(b);
 }
 
+// libc call helpers. Each builds the `(declare|reuse) + call` boilerplate for a
+// single C runtime function. malloc takes a result `name` (call sites vary:
+// app_new_data / ins_new_data / sl_data / arc_box / cow_*); memcpy / memmove /
+// free are unnamed at every site, so the empty name is fixed here.
+pub(crate) unsafe fn emit_malloc(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    size: LLVMValueRef,
+    name: *const c_char,
+) -> LLVMValueRef {
+    let mut p = [i64_ty];
+    let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 1, 0);
+    let f = get_or_insert_function(module, c"malloc".as_ptr(), ty);
+    let mut a = [size];
+    LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 1, name)
+}
+
+pub(crate) unsafe fn emit_memcpy(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    ptr_ty: LLVMTypeRef,
+    i64_ty: LLVMTypeRef,
+    dst: LLVMValueRef,
+    src: LLVMValueRef,
+    n: LLVMValueRef,
+) {
+    let mut p = [ptr_ty, ptr_ty, i64_ty];
+    let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 3, 0);
+    let f = get_or_insert_function(module, c"memcpy".as_ptr(), ty);
+    let mut a = [dst, src, n];
+    LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 3, c"".as_ptr());
+}
+
+pub(crate) unsafe fn emit_memmove(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    ptr_ty: LLVMTypeRef,
+    i64_ty: LLVMTypeRef,
+    dst: LLVMValueRef,
+    src: LLVMValueRef,
+    n: LLVMValueRef,
+) {
+    let mut p = [ptr_ty, ptr_ty, i64_ty];
+    let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 3, 0);
+    let f = get_or_insert_function(module, c"memmove".as_ptr(), ty);
+    let mut a = [dst, src, n];
+    LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 3, c"".as_ptr());
+}
+
+pub(crate) unsafe fn emit_free(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    ptr_ty: LLVMTypeRef,
+    void_ty: LLVMTypeRef,
+    ptr: LLVMValueRef,
+) {
+    let mut p = [ptr_ty];
+    let ty = LLVMFunctionType(void_ty, p.as_mut_ptr(), 1, 0);
+    let f = get_or_insert_function(module, c"free".as_ptr(), ty);
+    let mut a = [ptr];
+    LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 1, c"".as_ptr());
+}
+
 // malloc ARC_HEADER_SIZE + boxDataSize, bump the live-count (+1), init
 // strong=1/weak=0, return the headerPtr (caller GEPs +ARC_HEADER_SIZE for the
 // data pointer).
@@ -380,18 +447,7 @@ pub(crate) unsafe fn emit_inline_arc_alloc(
     let arc_header_ty = arc_header_type(context);
     let header_size_c = LLVMConstInt(i64_ty, ARC_HEADER_SIZE, 0);
     let total_size = LLVMBuildAdd(b, header_size_c, box_data_size, c"arc_alloc_size".as_ptr());
-    let mut malloc_p = [i64_ty];
-    let malloc_ty = LLVMFunctionType(ptr_ty, malloc_p.as_mut_ptr(), 1, 0);
-    let malloc_fn = get_or_insert_function(module, c"malloc".as_ptr(), malloc_ty);
-    let mut malloc_a = [total_size];
-    let header_ptr = LLVMBuildCall2(
-        b,
-        malloc_ty,
-        malloc_fn,
-        malloc_a.as_mut_ptr(),
-        1,
-        c"arc_box".as_ptr(),
-    );
+    let header_ptr = emit_malloc(b, module, i64_ty, ptr_ty, total_size, c"arc_box".as_ptr());
     emit_arc_counter_delta(b, i64_ty, ptr_ty, 1);
     let strong_ptr = LLVMBuildStructGEP2(
         b,
@@ -410,4 +466,67 @@ pub(crate) unsafe fn emit_inline_arc_alloc(
     );
     LLVMBuildStore(b, LLVMConstInt(i64_ty, 0, 0), weak_ptr);
     header_ptr
+}
+
+// Emit the list capacity-grow block: new_cap = max(cap*2, 4), malloc the new
+// buffer, memcpy the old elements, free the old buffer, store new data/cap, then
+// branch to next_bb. The builder is positioned at grow_bb here. SSA names are
+// `prefix`-derived (app_* / ins_*), except the cap>4 compare whose name is
+// passed explicitly (append uses `cap_gt4`, insert leaves it unnamed) to keep
+// the emitted IR byte-identical to the pre-extraction inline blocks.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn emit_list_grow(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    h: &ListHeaderLoad,
+    elem_size: u64,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    void_ty: LLVMTypeRef,
+    prefix: &[u8],
+    gt4_name: *const c_char,
+    grow_bb: LLVMBasicBlockRef,
+    next_bb: LLVMBasicBlockRef,
+) {
+    LLVMPositionBuilderAtEnd(b, grow_bb);
+    let four = LLVMConstInt(i64_ty, 4, 0);
+    let doubled = LLVMBuildMul(
+        b,
+        h.cap,
+        LLVMConstInt(i64_ty, 2, 0),
+        cname_pfx(prefix, b"_doubled").as_ptr(),
+    );
+    let gt4 = LLVMBuildICmp(b, LLVMIntPredicate::LLVMIntSGT, doubled, four, gt4_name);
+    let new_cap = LLVMBuildSelect(
+        b,
+        gt4,
+        doubled,
+        four,
+        cname_pfx(prefix, b"_new_cap").as_ptr(),
+    );
+    let new_size = LLVMBuildMul(
+        b,
+        new_cap,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        cname_pfx(prefix, b"_new_size").as_ptr(),
+    );
+    let new_data = emit_malloc(
+        b,
+        module,
+        i64_ty,
+        ptr_ty,
+        new_size,
+        cname_pfx(prefix, b"_new_data").as_ptr(),
+    );
+    let old_size = LLVMBuildMul(
+        b,
+        h.len,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        cname_pfx(prefix, b"_old_size").as_ptr(),
+    );
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_data, h.data, old_size);
+    emit_free(b, module, ptr_ty, void_ty, h.data);
+    LLVMBuildStore(b, new_data, h.data_ptr);
+    LLVMBuildStore(b, new_cap, h.cap_ptr);
+    LLVMBuildBr(b, next_bb);
 }

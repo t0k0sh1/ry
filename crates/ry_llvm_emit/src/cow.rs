@@ -224,20 +224,10 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
     LLVMPositionBuilderAtEnd(b, copy_bb);
 
     let alloc_buf = move |byte_size: LLVMValueRef, name: *const c_char| -> LLVMValueRef {
-        unsafe {
-            let mut p = [i64_ty];
-            let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 1, 0);
-            let f = get_or_insert_function(module, c"malloc".as_ptr(), ty);
-            let mut a = [byte_size];
-            LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 1, name)
-        }
+        unsafe { emit_malloc(b, module, i64_ty, ptr_ty, byte_size, name) }
     };
     let memcpy_to = move |dst: LLVMValueRef, src: LLVMValueRef, byte_size: LLVMValueRef| unsafe {
-        let mut p = [ptr_ty, ptr_ty, i64_ty];
-        let ty = LLVMFunctionType(ptr_ty, p.as_mut_ptr(), 3, 0);
-        let f = get_or_insert_function(module, c"memcpy".as_ptr(), ty);
-        let mut a = [dst, src, byte_size];
-        LLVMBuildCall2(b, ty, f, a.as_mut_ptr(), 3, c"".as_ptr());
+        emit_memcpy(b, module, ptr_ty, i64_ty, dst, src, byte_size);
     };
 
     // Allocate the ARC-backed collection header (mirror emitArcAlloc inline).
