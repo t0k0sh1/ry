@@ -2,10 +2,8 @@
 paths:
   - "src/codegen_fn*.cpp"
   - "src/codegen_lambda*.cpp"
-  - "src/codegen_fn_generic.cpp"
   - "src/codegen_call_higher_order.cpp"
   - "src/codegen_stmt.cpp"
-  - "include/ry/codegen.hpp"
 ---
 
 # Codegen Functions, Generics, and Higher-Order

@@ -1,6 +1,5 @@
 ---
 paths:
-  - "docs/reference/**/*.md"
   - "docs/**/*.md"
   - "README.md"
 ---

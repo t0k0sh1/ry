@@ -10,7 +10,6 @@ paths:
   - "src/codegen_emission_*.cpp"
   - "src/jit/jit_runner.cpp"
   - "src/app/main.cpp"
-  - "include/ry/codegen.hpp"
   - "include/ry/codegen/**/*.hpp"
   - "crates/ry_llvm_emit/src/*.rs"
   - "tests/filecheck/**/*.ry"

@@ -2,7 +2,6 @@
 paths:
   - "src/codegen_match.cpp"
   - "src/sema/sema_return.cpp"
-  - "include/ry/codegen.hpp"
 ---
 
 # Codegen Pattern Matching
