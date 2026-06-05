@@ -1,10 +1,10 @@
-# Runtime ABI Boundary
+# Runtime Boundary
 
-This document categorizes the runtime ABI surface so that selected native runtime modules can later be rewritten in Rust behind stable `extern "C"` symbols. It is a deliverable of issue #1820 (v0.0.26 stage 2) and the planning reference for incremental Rust migration. The orthogonal LLVM IR emission boundary is documented in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md).
+This document categorizes the runtime boundary so that selected native runtime modules can later be rewritten in Rust behind stable `extern "C"` symbols. It is a deliverable of issue #1820 (v0.0.26 stage 2) and the planning reference for incremental Rust migration. The orthogonal LLVM IR emission boundary is documented in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md).
 
 ## Contract
 
-- **All runtime entry points are `extern "C"` symbols prefixed `__ry_`.** This is the stable ABI: codegen lowers user-level operations into calls to these symbols, and the runtime owns their implementation.
+- **All runtime entry points are `extern "C"` symbols prefixed `__ry_`.** This is the stable contract: codegen lowers user-level operations into calls to these symbols, and the runtime owns their implementation.
 - **The boundary is C-only.** Parameters and return types are limited to scalar types (`int64_t`, `double`, `bool` as `int8_t`), opaque pointers, and POD structs whose layout is fixed by `include/ry/runtime/{core,native}/*.hpp`. LLVM types must not appear on either side.
 - **Memory ownership crosses the boundary via the ARC contract.** Allocations made by the runtime carry an `ArcHeader` (or `StringHeader` for `str`) at a fixed negative offset; codegen emits the matching retain/release calls. See `.claude/rules/codegen-arc-cow.md` for the full contract.
 
@@ -53,17 +53,17 @@ A native runtime module is a direct Rust-migration candidate when **all** of the
 
 1. **Parameters and return types are scalar or opaque-pointer only.** Modules that touch fixed-layout POD structs (e.g. `IoFileHandle`) require the Rust side to mirror the layout via `#[repr(C)]`; this is feasible but adds layout-coupling.
 2. **No internal LLVM dependency.** The runtime headers in `include/ry/runtime/{core,native}/` are LLVM-free; modules that quietly reach into codegen state are not migration-ready.
-3. **No transitive C++ template dependency.** STL containers (`std::vector`, `std::unordered_map`) inside the implementation are acceptable because they do not cross the ABI; they can be replaced module-locally during the rewrite.
+3. **No transitive C++ template dependency.** STL containers (`std::vector`, `std::unordered_map`) inside the implementation are acceptable because they do not cross the boundary; they can be replaced module-locally during the rewrite.
 4. **The module's failure path uses the `__ry_set_last_error` channel uniformly.** Codegen wraps `Result<T, Error>` at the boundary by reading `__ry_get_last_error` (see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) category 3); modules that bypass this channel (e.g. embedding panic in the runtime) break the contract.
 
 ### First migration candidates
 
 By the criteria above, the highest-readiness native modules are:
 
-- **Base64** (`base64.cpp`) — pure data transformation, no platform coupling, scalar/pointer ABI.
+- **Base64** (`base64.cpp`) — pure data transformation, no platform coupling, scalar/pointer-only boundary.
 - **Convert** (`convert.cpp`) — string-to-number parsing, well-isolated, uses `__ry_set_last_error`.
 - **Path** (`path.cpp`) — string manipulation, no I/O.
-- **JSON** (`json.cpp`) — parsing/serialization, scalar/pointer ABI.
+- **JSON** (`json.cpp`) — parsing/serialization, scalar/pointer-only boundary.
 
 Higher-friction migration targets:
 
@@ -76,5 +76,6 @@ Core modules are higher migration value (memory-safety dividend) but higher impl
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.
+- [Codegen Terminology](codegen-terminology.md) — canonical vocabulary (this page defines the runtime boundary).
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the orthogonal LLVM IR emission boundary on the codegen side.
 - `.claude/rules/runtime-memory-safety.md` — runtime memory-safety rules (forbidden functions, OOM handling, NULL checks).

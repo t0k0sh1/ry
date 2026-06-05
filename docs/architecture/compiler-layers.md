@@ -7,7 +7,7 @@ This document records the intended dependency direction between the compiler/run
 Source code is organized into the following layers, ordered from input (left) to output (right):
 
 ```text
-lexer → parser → AST → module loader → sema → codegen → runtime ABI
+lexer → parser → AST → module loader → sema → codegen → runtime boundary
 ```
 
 | Layer | Primary header | Responsibility |
@@ -18,9 +18,9 @@ lexer → parser → AST → module loader → sema → codegen → runtime ABI
 | module loader | `include/ry/module/module_loader.hpp` | Resolve `import` graphs, load `.ry` source files lazily, and provide AST roots for each module. |
 | sema | `include/ry/sema/*.hpp` | Static analysis that runs alongside codegen — return-path coverage (`sema_return.hpp`), pattern-match exhaustiveness, etc. |
 | codegen | `include/ry/codegen.hpp` | Lower AST + sema results into LLVM IR. Owns the `CodeGen` monolith (LLVM context, ARC bookkeeping, type/metadata registries, stdlib dispatch). A 2-layer split into Ry semantic lowering vs LLVM IR emission is the v0.0.26 working hypothesis ([Codegen Layering Plan](codegen-layering-plan.md)) and was the critical path to the shared-library extraction in #1949 and the Rust reimplementation in #1950 / #1993 (both landed). |
-| runtime ABI | `include/ry/runtime/{core,native}/*.hpp` | C++ runtime entry points exposed via `extern "C"` symbols (`__ry_*`). See [Runtime ABI Boundary](runtime-abi-boundary.md) for the categorization. |
+| runtime boundary | `include/ry/runtime/{core,native}/*.hpp` | C++ runtime entry points exposed via `extern "C"` symbols (`__ry_*`). See [Runtime Boundary](runtime-abi-boundary.md) for the categorization. |
 
-`codegen_native_dispatch.hpp` / `directive_meta.hpp` / `ry_layout.hpp` / `codegen_guards.hpp` are shared declarations co-owned by codegen and the runtime ABI; they sit at the codegen/runtime interface and intentionally span the two layers.
+`codegen_native_dispatch.hpp` / `directive_meta.hpp` / `ry_layout.hpp` / `codegen_guards.hpp` are shared declarations co-owned by codegen and the runtime boundary; they sit at the codegen/runtime interface and intentionally span the two layers.
 
 ## Dependency direction rule
 
@@ -42,12 +42,13 @@ The observed adjacency list as of v0.0.26 is:
 ## Invariants
 
 - **`codegen` does not depend on `parser` or `module_loader`.** Codegen receives an already-parsed AST plus a `SourceManager` reference; it does not re-enter the parser. Maintain this invariant when adding new codegen entry points.
-- **`runtime ABI` does not depend on `codegen`.** Runtime `.cpp` files in `src/runtime/{core,native}/` link against LLVM-free headers (`include/ry/runtime/{core,native}/*.hpp`) only. Codegen calls into the runtime ABI by emitting LLVM IR that resolves to `extern "C"` symbols; the runtime side never sees `llvm::Value*` or `IRBuilder<>`. This separation is what made the #1949 shared-library extraction and the Rust reimplementation in #1950 / #1993 feasible.
+- **`runtime boundary` does not depend on `codegen`.** Runtime `.cpp` files in `src/runtime/{core,native}/` link against LLVM-free headers (`include/ry/runtime/{core,native}/*.hpp`) only. Codegen calls into the runtime boundary by emitting LLVM IR that resolves to `extern "C"` symbols; the runtime side never sees `llvm::Value*` or `IRBuilder<>`. This separation is what made the #1949 shared-library extraction and the Rust reimplementation in #1950 / #1993 feasible.
 - **Layer-independent helpers live under `include/ry/util/`.** Pure utilities that operate on strings, type names, or other plain data (no LLVM, no parser, no codegen state) belong under `util/`. Issue #1820 establishes this directory with `include/ry/util/type_name.hpp` for type-name parsing helpers extracted from `CodeGen`.
 
 ## Related documents
 
 - [Layer Graduation Workflow](layer-graduation-workflow.md) — graduation criteria, the per-layer graduation document template, and the "write the contract after the refactor" rule that governs how this layer hypothesis evolves into per-layer contracts.
+- [Codegen Terminology](codegen-terminology.md) — canonical vocabulary for the codegen stack (layers, the runtime / emission boundaries, handle naming).
 - [Codegen Layering Plan](codegen-layering-plan.md) — codegen-specific working hypothesis for the Ry semantic lowering vs LLVM IR emission split, the lowered IR vocabulary, and the pilot extraction target.
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — identifies the candidate shared-library boundary inside the codegen layer.
-- [Runtime ABI Boundary](runtime-abi-boundary.md) — categorizes the `__ry_*` `extern "C"` surface for Rust migration planning.
+- [Runtime Boundary](runtime-abi-boundary.md) — categorizes the `__ry_*` `extern "C"` surface for Rust migration planning.
