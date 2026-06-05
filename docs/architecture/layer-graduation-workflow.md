@@ -23,12 +23,12 @@ A layer (or component) is graduate-ready when **all** of the following hold:
 2. **Inputs and outputs are typed concretely**. "Takes an AST" / "uses CodeGen context" is not concrete. The contract names the actual types (or opaque handles) crossing the boundary.
 3. **Invariants are enumerated and tested**. Each invariant has at least one test that breaks if it is violated. Untested invariants are aspirational.
 4. **Allowed and forbidden dependencies are header-observable**. The `#include` graph reflects the dependency direction — adding a forbidden include must fail (compile error, lint, or CI grep). The rule in `compiler-layers.md` is the project-wide default; per-layer graduation can narrow it further.
-5. **The boundary is observable in code**. A separate header, namespace, or `extern "C"` ABI surface — not just a comment block. A graduated layer can be located by `grep` for its boundary token (header name, namespace, or symbol prefix).
+5. **The boundary is observable in code**. A separate header, namespace, or `extern "C"` boundary — not just a comment block. A graduated layer can be located by `grep` for its boundary token (header name, namespace, or symbol prefix).
 6. **Errors owned by the layer are listed with their channel**. Codegen errors surface through `codegenError`; runtime errors surface through `__ry_set_last_error`; lexer errors surface through `Diagnostic`. A graduated layer specifies which channel it uses and which error kinds it owns end-to-end.
-7. **Rust migration readiness is assessed against the runtime-side criteria**. The four conditions in [Runtime ABI Boundary](runtime-abi-boundary.md) "Rust migration readiness criteria" are the project-wide baseline:
-   - Scalar / opaque-pointer / `#[repr(C)]` POD ABI only.
-   - No internal LLVM dependency at the ABI surface.
-   - No transitive C++ template in the ABI.
+7. **Rust migration readiness is assessed against the runtime-side criteria**. The four conditions in [Runtime Boundary](runtime-abi-boundary.md) "Rust migration readiness criteria" are the project-wide baseline:
+   - Scalar / opaque-pointer / `#[repr(C)]` POD types only at the boundary.
+   - No internal LLVM dependency at the boundary.
+   - No transitive C++ template crossing the boundary.
    - Uniform error channel (e.g. `__ry_set_last_error` for runtime, structured `Result<T, Error>` wrapping for codegen-emitted calls).
 
    A layer that fails one of the four criteria is still allowed to graduate, but the graduation document records the blocker so it is visible during Rust-migration planning.
@@ -116,6 +116,6 @@ If any of these fail, the graduation document is premature; finish the refactor 
 ## Related documents
 
 - [Compiler Layers](compiler-layers.md) — layer ordering, dependency direction, and the lightweight hypothesis the workflow starts from.
-- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the `extern "C"` ABI surface design for the codegen-internal split.
-- [Runtime ABI Boundary](runtime-abi-boundary.md) — the existing `__ry_*` boundary classification; its "Rust migration readiness criteria" are the format precedent for graduation criteria.
+- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the `extern "C"` boundary design for the codegen-internal split.
+- [Runtime Boundary](runtime-abi-boundary.md) — the existing `__ry_*` boundary classification; its "Rust migration readiness criteria" are the format precedent for graduation criteria.
 - [Codegen Layering Plan](codegen-layering-plan.md) — the codegen-specific working hypothesis (Ry semantic lowering vs LLVM IR emission) and pilot extraction target.

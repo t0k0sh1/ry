@@ -52,10 +52,11 @@ For detailed language specifications, see the reference pages below.
 
 ## Architecture (for contributors)
 
-Internal architecture references for working on the Ry compiler and runtime. These describe layer boundaries, the LLVM IR emission interface, and the runtime ABI surface — they are not needed to write Ry programs.
+Internal architecture references for working on the Ry compiler and runtime. These describe layer boundaries, the LLVM IR emission boundary, and the runtime boundary — they are not needed to write Ry programs.
 
 | Page | Contents |
 |------|----------|
-| [Compiler Layers](architecture/compiler-layers.md) | lexer → parser → AST → module → sema → codegen → runtime ABI dependency direction |
+| [Compiler Layers](architecture/compiler-layers.md) | lexer → parser → AST → module → sema → codegen → runtime boundary dependency direction |
+| [Codegen Terminology](architecture/codegen-terminology.md) | Canonical vocabulary for the codegen stack: layers, the runtime / emission boundaries, and handle naming |
 | [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | The shared-library boundary for the LLVM IR emission layer, now implemented in Rust (#1949 / #1950 / #1993) |
-| [Runtime ABI Boundary](architecture/runtime-abi-boundary.md) | `__ry_*` `extern "C"` surface categorized by core/native for Rust migration planning |
+| [Runtime Boundary](architecture/runtime-abi-boundary.md) | `__ry_*` `extern "C"` surface categorized by core/native for Rust migration planning |
