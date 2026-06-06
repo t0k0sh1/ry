@@ -363,7 +363,7 @@ make the whole indent strategy brittle.
 `/pre-commit-checklist` §3.6.5
 **Tags**: tree-sitter, verification, build, parse, query, recipes
 
-**Rule**: After editing any of `grammar.js`, `src/scanner.c`, or
+**Rule**: After editing any of `grammar.js`, `editor/tree-sitter/src/scanner.c`, or
 `queries/*.scm`, run the relevant subset of these checks before opening
 a PR. All commands assume `cwd = editor/tree-sitter/`.
 
@@ -398,7 +398,7 @@ The trace must show `_indent` / `_dedent` / `_newline` events at the
 expected positions, plus `_fstring_start` / `_fstring_end` for the
 f-string and `_regex_literal` for `/pattern/`. ERROR nodes against
 `tests/spec/*.test.ry` are expected today — the in-tree grammar does
-not yet cover the full Ry surface (tracked in #1633). What this recipe
+not yet cover the full Ry surface. What this recipe
 checks is the scanner-level token stream, not full-corpus coverage.
 
 **How to apply**: Don't commit a grammar/scanner/highlights change

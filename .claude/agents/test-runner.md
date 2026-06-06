@@ -33,7 +33,7 @@ For each failing test, extract:
 2. **Expected vs actual**: literal values from the assertion line — e.g. `EXPECT_EQ(actual=42, expected=43)` / `Ry assert: lhs=[1,2] rhs=[1,3]`
 3. **Source location**: the line in the test file where the assertion fired (not the line in production code being tested) — `tests/<file>:<line>`
 4. **Probable production source**: if the failure points clearly at a production-code path (from stack trace or message), include `src/<file>:<line>`; otherwise omit
-5. **One-sentence summary**: e.g. "`ParserSpec.ChainedCalls` expects 3 nodes, parser emitted 2 — likely missing recursion in `src/parser/expr.cpp:312`."
+5. **One-sentence summary**: e.g. "`ParserSpec.ChainedCalls` expects 3 nodes, parser emitted 2 — likely missing recursion in `src/parser/parser_expr.cpp:312`."
 
 Do NOT propose code changes. Provide the diagnosis only.
 

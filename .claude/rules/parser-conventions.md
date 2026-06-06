@@ -44,14 +44,14 @@ support `u64` max literals (`18446744073709551615` = bit pattern
 the field is documented to store the non-negative magnitude as a bit
 pattern. The invariant breaks only if a parser site tries to be
 clever and stores a pre-negated value (e.g., the old pattern-literal
-path in `parser_decl.cpp` built `NumberExpr{-val, ""}` for `case -1:`).
+path in `src/parser/parser_decl.cpp` built `NumberExpr{-val, ""}` for `case -1:`).
 Codegen's empty-suffix emit path then cannot distinguish "legitimate
 negative from unary minus" from "overflow bit pattern >= 2^63".
 
 **Rule**: `NumberExpr.value` is always the unsigned bit pattern of a
 non-negative magnitude. Negation is expressed as
 `UnaryExpr("-", NumberExpr{magnitude, suffix})`, the same as
-`parser_expr.cpp`. Any new parser site that creates a NumberExpr
+`src/parser/parser_expr.cpp`. Any new parser site that creates a NumberExpr
 from a literal that may be negative MUST wrap the node in a UnaryExpr
 instead of storing a pre-negated `int64_t`. In codegen, interpret
 `static_cast<uint64_t>(value)` when the target type is unsigned, and
@@ -106,7 +106,7 @@ surface as `+Inf`, matching the runtime `toFloat` converter.
 **Rule**: Use `std::strtod` + `errno` for parsing float literals in
 the frontend. Accept `HUGE_VAL` / `-HUGE_VAL` as valid `Inf` results
 and only treat non-zero trailing characters as errors. See
-`include/ry/parser.hpp::parseFloatLiteral`.
+`include/ry/parser/parser.hpp::parseFloatLiteral`.
 
 ---
 
@@ -138,16 +138,16 @@ Use `std::strtoull` (or `std::strtoul` for narrower targets) with:
 3. Explicit base (`10` for decimal-only, `0` for prefix-sensitive)
 4. Reject if `errno == ERANGE || end != c_str() + size()`
 
-Reference site: `src/parser_decl.cpp` array-size branch in
+Reference site: `src/parser/parser_decl.cpp` array-size branch in
 `parseTypeNameSingle` (post-#1259) and `NumberExpr.value strtoull`
 entry above for integer literal parsing.
 
 **Known hit sites** (all should be audited with this rule):
-- `src/parser_decl.cpp:787` — fixed in #1259 (array size `T[N]`)
+- `src/parser/parser_decl.cpp:787` — fixed in #1259 (array size `T[N]`)
 - `src/codegen_type.cpp:133` — inline-array type resolution from
-  string name; tracked in #1281
+  string name; still unfixed (#1281 proposed a fix, closed not-planned)
 - `src/codegen_expr_literal.cpp:109` — tuple numeric field access
-  (`.0`, `.1`, ...); tracked in #1281
+  (`.0`, `.1`, ...); still unfixed (#1281 proposed a fix, closed not-planned)
 
 **How to apply**: When you see a new `std::sto*` call anywhere in
 `src/parser*.cpp`, `src/codegen*.cpp`, or any frontend path that
@@ -163,7 +163,7 @@ harness as of #1259 — reviewer diligence is the only gate there.
 **Source**: #798/#799/#800 implementation (case/if expression unification)
 **Tags**: parser, statement-grammar, expression-statement, if-block-expr
 
-**Context**: Ry's `parseStatement` (`src/parser.cpp:499-664`) handles
+**Context**: Ry's `parseStatement` (`src/parser/parser.cpp:499-664`) handles
 non-identifier tokens as expression statements (`[1,2].map(f)`, `42`,
 `"str"`, etc.) via the generic `parseConditional` fallback at line
 499-501. But when a statement **starts with an identifier**, the parser
@@ -199,7 +199,7 @@ is `!=`. (#1211 originally added `!!` to the exclusion as well; #1568
 removed the `!!` operator entirely, so the exclusion is now `!=`-only.)
 
 **Rule**: The trailing-bang absorption in the identifier branch
-(`src/lexer.cpp` identifier tokenization) must exclude **every**
+(`src/lexer/lexer.cpp` identifier tokenization) must exclude **every**
 multi-character operator token that begins with `!`, not just whatever
 operators happen to be present today. Any future operator starting with
 `!` (hypothetical `!~`, `!?`, etc.) must be added to the exclusion set
@@ -219,7 +219,7 @@ catch it because the bug is specific to the identifier-adjacent case.
 **Source**: #834 (2026-04-16, implementation)
 **Tags**: parser, pattern, tuple, grouping, ambiguity
 
-**Rule**: The `parsePattern` `LParen` branch uses the same grouping-vs-tuple disambiguation as the expression parser (`src/parser_expr.cpp`):
+**Rule**: The `parsePattern` `LParen` branch uses the same grouping-vs-tuple disambiguation as the expression parser (`src/parser/parser_expr.cpp`):
 - `()` → rejected ("zero-tuple pattern not supported")
 - `(p)` (no comma) → grouping, returns the inner pattern unwrapped
 - `(p,)` → 1-tuple `TuplePattern` with one element
@@ -245,12 +245,12 @@ catch it because the bug is specific to the identifier-adjacent case.
 **Source**: #1450 (2026-04-30, implementation)
 **Tags**: parser, tuple, destructure, casing, camelCase, identifier, isCamelCase
 
-**Rule**: Both forms of tuple destructure assignment in `src/parser.cpp` enforce camelCase on every LHS name via `isCamelCase`, with `_` accepted as a placeholder at any position:
+**Rule**: Both forms of tuple destructure assignment in `src/parser/parser.cpp` enforce camelCase on every LHS name via `isCamelCase`, with `_` accepted as a placeholder at any position:
 
 - Parenthesized form (`(a, b) = expr`): both the first name and every name read inside the comma loop are validated immediately after consuming the `Ident` token.
 - Bare form (`a, b = expr`): the first name is `first.value` (already consumed by the outer `Ident` dispatch in `parseStatement`) and must be checked there too — a position the rest-only sweep would miss. Each rest name is checked inside the comma loop.
 
-The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matching the established pattern used by `parser_decl.cpp` (`fn name '...' must be camelCase`, `parameter name '...' must be camelCase`, `field name '...' must be camelCase`, etc.).
+The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matching the established pattern used by `src/parser/parser_decl.cpp` (`fn name '...' must be camelCase`, `parameter name '...' must be camelCase`, `field name '...' must be camelCase`, etc.).
 
 **Why**: Pre-#1450 the two tuple-destructure sites were the last LHS-binding parser sites that accepted snake_case identifiers, even though every other binding site (`fn` decl, `let`/assign LHS via `parseAssignTarget`, lambda params, record fields, enum variant fields, loop variables) had been migrated to camelCase by #1409 / #1443 and follow-ups. The casing rule applies to all identifiers introduced into the local scope, and tuple destructure introduces them — so consistency demanded the same enforcement here.
 
@@ -264,12 +264,12 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 **Source**: #1470 (2026-04-30, implementation)
 **Tags**: parser, typed-decl, module-global, camelCase, screaming-snake-case, native, const, isCamelCase
 
-**Rule**: The keywordless implicit-binding form `name: Type = value` (parsed in `parseStatement` at the `Ident :` branch in `src/parser.cpp`) enforces `isCamelCase(name)` on the LHS identifier. SCREAMING_SNAKE_CASE is accepted only when the declaration carries a `@native` or `@const` directive, matching the established stdlib convention for built-in / module-level constants (`PI`, `E`, `INF`, `NAN`). The error wording is `"variable name '<n>' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)"`.
+**Rule**: The keywordless implicit-binding form `name: Type = value` (parsed in `parseStatement` at the `Ident :` branch in `src/parser/parser.cpp`) enforces `isCamelCase(name)` on the LHS identifier. SCREAMING_SNAKE_CASE is accepted only when the declaration carries a `@native` or `@const` directive, matching the established stdlib convention for built-in / module-level constants (`PI`, `E`, `INF`, `NAN`). The error wording is `"variable name '<n>' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)"`.
 
 **Why**: Pre-#1470 this site was the last LHS-binding parser site that silently accepted `snake_case` identifiers, even though every other binding site (`fn` decl, lambda params, record fields, tuple-destructure LHS) had been migrated to camelCase by #1443 / #1449 / #1450. The site is shared between top-level and block contexts (`parseStatement` is called from both), so the fix propagates uniformly to function bodies as well, completing the v0.0.16 naming convention rollout.
 
 **How to apply**:
-- The carve-out gate is `hasDirective(directives, "native") || hasDirective(directives, "const")`. Do **not** broaden it to allow PascalCase: PascalCase is reserved for type names (records / enums / type aliases) and would create asymmetry with the `fn`-name carve-out at `parser_decl.cpp:130` which only allows camelCase or SCREAMING_SNAKE_CASE.
+- The carve-out gate is `hasDirective(directives, "native") || hasDirective(directives, "const")`. Do **not** broaden it to allow PascalCase: PascalCase is reserved for type names (records / enums / type aliases) and would create asymmetry with the `fn`-name carve-out at `src/parser/parser_decl.cpp:130` which only allows camelCase or SCREAMING_SNAKE_CASE.
 - Stdlib `share/std/math/math.ry` constants must be SCREAMING_SNAKE_CASE — `Inf` and `NaN` were renamed to `INF` and `NAN` in the same PR for this reason. Future stdlib constants follow the same convention.
 - Mathematical concept names (`NaN`, `±Inf`) in prose / docstrings remain unchanged — only the Ry identifier exports were renamed.
 
@@ -307,9 +307,9 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 **How to apply**:
 - Every call site of `validateDirectives()` must pass an explicit `DirectiveTarget`. Today the call sites are: `FnStmt` (Function), `RecordStmt` and field directives in `emitStmt(RecordStmt)` (Record, Field), `AssignStmt` and `TupleDestructStmt` (Statement), `CallStmt` (Statement, reachable from user source after #1427), and `ForStmt` (ForLoop).
 - Built-in directives go through the `validateDirectiveArgs()` registry path inside `validateDirectives()` and are unaffected by the target check — that mismatch detection is intentionally out of scope (#1425 "Out of scope").
-- The `sig.allowed_targets != 0` guard is defensive: parser already requires `target=[...]` to be non-empty (`src/parser_decl.cpp` rejects the empty list), but if a future change ever permits "any target", `allowed_targets == 0` will fall back to validate-everything rather than silently skip.
+- The `sig.allowed_targets != 0` guard is defensive: parser already requires `target=[...]` to be non-empty (`src/parser/parser_decl.cpp` rejects the empty list), but if a future change ever permits "any target", `allowed_targets == 0` will fall back to validate-everything rather than silently skip.
 
-**Parser-side asymmetry — resolved by #1427**: Until #1427, `src/parser.cpp:460-462` and `:718-720` rejected every user-defined directive on `for` statements (only `@parallel` allowed) and on function-call statements (only the special `@each` / `@property` on `it(...)` form allowed) at parse time, making the silent-no-op behavior unobservable at those sites. #1427 replaced both gates with a `builtinDirectiveRegistry()` membership check: only registry-tracked directives (today: `@native` only) are rejected, and user-defined directives pass through to codegen `validateDirectives()` where the silent-no-op rule applies. The `ForLoop` and `Statement` codegen wiring added defensively in #1425 is now reachable from user source. Tests `ForLoopAcceptsUserDirectiveAsSilentNoOp` / `CallStmtAcceptsUserDirectiveAsSilentNoOp` (formerly `…RejectsUserDirectiveAtParseTime`, flipped per the "Relaxing a rejection branch …" rule in `.claude/rules/tests-rejection-tdd.md`) lock in the new permissive behavior; `ForLoopRejectsBuiltinNativeDirective` / `CallStmtRejectsBuiltinNativeDirective` / `ForLoopRejectsMultipleParallel` lock in the restrictions that remain.
+**Parser-side asymmetry — resolved by #1427**: Until #1427, `src/parser/parser.cpp:460-462` and `:718-720` rejected every user-defined directive on `for` statements (only `@parallel` allowed) and on function-call statements (only the special `@each` / `@property` on `it(...)` form allowed) at parse time, making the silent-no-op behavior unobservable at those sites. #1427 replaced both gates with a `builtinDirectiveRegistry()` membership check: only registry-tracked directives (today: `@native` only) are rejected, and user-defined directives pass through to codegen `validateDirectives()` where the silent-no-op rule applies. The `ForLoop` and `Statement` codegen wiring added defensively in #1425 is now reachable from user source. Tests `ForLoopAcceptsUserDirectiveAsSilentNoOp` / `CallStmtAcceptsUserDirectiveAsSilentNoOp` (formerly `…RejectsUserDirectiveAtParseTime`, flipped per the "Relaxing a rejection branch …" rule in `.claude/rules/tests-rejection-tdd.md`) lock in the new permissive behavior; `ForLoopRejectsBuiltinNativeDirective` / `CallStmtRejectsBuiltinNativeDirective` / `ForLoopRejectsMultipleParallel` lock in the restrictions that remain.
 
 ### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
 
@@ -338,7 +338,7 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 **Why a member flag, not an exception subclass**: Using `throw RealParseError` vs `throw SpeculativeFailure` would also work, but every existing `parseError(...)` site in the parser throws the same type, so introducing a hierarchy would require tagging every call site — the flag is a 5-line change confined to the speculative branch.
 
 **How to apply**:
-- Reference site: `src/parser_expr.cpp::parseParenLambdaExpr` (commit flag set just past `)` and the `'->' / '=>' / ':'` lookahead) + `src/parser_expr.cpp::parsePrimary` (save/restore + conditional re-throw in the lambda dispatch). The flag itself lives on `include/ry/parser.hpp`.
+- Reference site: `src/parser/parser_expr.cpp::parseParenLambdaExpr` (commit flag set just past `)` and the `'->' / '=>' / ':'` lookahead) + `src/parser/parser_expr.cpp::parsePrimary` (save/restore + conditional re-throw in the lambda dispatch). The flag itself lives on `include/ry/parser/parser.hpp`.
 - The disambiguator-then-flag ordering matters: if you set the flag before the lookahead check, valid tuples with snake_case names like `(my_a, my_b)` would be rejected even though they have no lambda body marker. Tests `LambdaParamRejectsSnakeCase` (negative) and `LambdaParamAcceptsCamelCase` (positive) lock both halves.
 
 ### `in_if_cond_` flag suppresses bare-ident `Ident FatArrow` dispatch inside if-expression conditions
@@ -371,11 +371,11 @@ ExprPtr Parser::parseIfExpression() {
 
 **How to apply**: Any future `Ident <suffix>` dispatch added in `parsePrimary` (hypothetical `s @ pattern`, typed-binding shortcuts, postfix builder shorthands, etc.) that conflicts with an outer-context production must replicate this pattern:
 
-1. Add a `bool in_<context>_ = false;` member to `Parser` in `include/ry/parser.hpp`.
+1. Add a `bool in_<context>_ = false;` member to `Parser` in `include/ry/parser/parser.hpp`.
 2. Set/restore the flag at the call site that owns the conflicting production (`parseIfExpression` for if-cond, `parseCaseExpression` for case-scrutinee, etc.).
 3. Guard the new `parsePrimary` dispatch with `&& !in_<context>_`.
 
-Reference site: `src/parser_expr.cpp::parsePrimary` Ident branch (bare-lambda dispatch with the `!in_if_cond_` guard) + `src/parser_expr.cpp::parseIfExpression` (save/restore around `parseConditional` for the cond). The flag itself lives on `include/ry/parser.hpp` next to `lambda_committed_`. Tests `BareLambdaPreservesIfExpressionWithBareIdentCond` and `BareLambdaInIfThenElse` in `tests/test_parser.cpp` lock both halves of the invariant.
+Reference site: `src/parser/parser_expr.cpp::parsePrimary` Ident branch (bare-lambda dispatch with the `!in_if_cond_` guard) + `src/parser/parser_expr.cpp::parseIfExpression` (save/restore around `parseConditional` for the cond). The flag itself lives on `include/ry/parser/parser.hpp` next to `lambda_committed_`. Tests `BareLambdaPreservesIfExpressionWithBareIdentCond` and `BareLambdaInIfThenElse` in `tests/test_parser.cpp` lock both halves of the invariant.
 
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 

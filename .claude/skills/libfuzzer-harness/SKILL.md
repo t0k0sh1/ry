@@ -34,7 +34,7 @@ Reference for libFuzzer toolchain requirements and harness conventions in the ry
 **Source**: #1854 (2026-05-23, link failure during pre-commit fuzz run)
 **Tags**: libfuzzer, fuzzer, harness, cmake, native-lib, cross-runtime-symbols, shared-lib
 
-**Rule**: When `add_ry_fuzz_target(fuzz_X tests/fuzz/fuzz_X.cpp src/runtime/native/X.cpp ...)` lists a runtime source that calls symbols from **another** runtime file living in a separate `libry_<other>.dylib` (`add_ry_native_lib(<other>, src/runtime/native/<other>.cpp)`), the other runtime source must also appear in the fuzz target's source list. The shared libraries are NOT linked into fuzz binaries — they only `dlopen` at runtime in the main `ry` binary — so any symbol they normally provide must be supplied via direct source-level inclusion.
+**Rule**: When `add_ry_fuzz_target(fuzz_<name> tests/fuzz/fuzz_<name>.cpp src/runtime/native/<name>.cpp ...)` lists a runtime source that calls symbols from **another** runtime file living in a separate `libry_<other>.dylib` (`add_ry_native_lib(<other>, src/runtime/native/<other>.cpp)`), the other runtime source must also appear in the fuzz target's source list. The shared libraries are NOT linked into fuzz binaries — they only `dlopen` at runtime in the main `ry` binary — so any symbol they normally provide must be supplied via direct source-level inclusion.
 
 **Why**: Native libs (`libry_io.so`, `libry_json.so`, etc.) are SHARED libraries loaded by the JIT via `dlopen` based on `@native("mod")` declarations in `share/std/<mod>/<mod>.ry`. Fuzz harnesses don't run the JIT loader path — they call C functions directly from the harness TU. Their CMake target only whole-archive-links `ry_lib` plus the explicit source files passed to `add_ry_fuzz_target`. If runtime/native/json.cpp calls `__ry_io_file_read_all` (defined in runtime/native/io.cpp, which lives in `libry_io.so`), the fuzz_json link fails with `undefined reference to __ry_io_file_read_all` because `libry_io.so` is not part of the fuzz_json link line. The `__ry_set_last_error` / `__ry_get_last_error` exceptions live in `ry_lib` (whole-archive-linked) and resolve normally.
 
@@ -72,8 +72,8 @@ deadly signal and terminates the run.
 **Context**: `tests/fuzz/fuzz_parser.cpp` originally caught
 `ry::DiagnosticError` and `std::runtime_error` (the first is redundant —
 `DiagnosticError` derives from `std::runtime_error` per
-`include/ry/diagnostic.hpp:22`). This missed `std::out_of_range` thrown by
-`parseFloatLiteral` / `parseIntLiteral` in `include/ry/parser.hpp:196,210`
+`include/ry/diagnostic/diagnostic.hpp:22`). This missed `std::out_of_range` thrown by
+`parseFloatLiteral` / `parseIntLiteral` in `include/ry/parser/parser.hpp:196,210`
 for malformed literals like `0B1f32`, causing a libFuzzer crash despite
 the CLI (`src/app/main.cpp:297-310`) handling the same input cleanly via its
 top-level `catch (const std::exception &)`.

@@ -69,6 +69,17 @@ jobs:
             echo "::error::Direct exit() call in src/runtime/**/*.cpp detected. Use ry_runtime_trap_exit() (from include/ry/runtime/core/alloc.hpp) instead."
             exit 1
           fi
+      - name: Check prompt/instruction reference integrity (#2029)
+        run: |
+          # Reference-integrity lint for prompt definition files (.claude/ +
+          # AGENTS.md + CLAUDE.md): fails on stale inline-code paths
+          # (#1827-class drift), dead /skill links, and KNOWLEDGE.md
+          # section-name English/Japanese drift. Pure bash/grep/awk/find —
+          # no toolchain or build artifacts needed. Escape hatch for
+          # non-existent example paths: fenced blocks / plain prose (the lint
+          # only inspects inline-code backtick spans). See the script header
+          # and .claude/rules/docs-reference-conventions.md.
+          bash scripts/check-prompt-refs.sh
       - name: Run Cppcheck
         run: |
           # `--suppress=normalCheckLevelMaxBranches` is required from
