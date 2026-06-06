@@ -114,7 +114,7 @@ Conditional rules for side findings:
 **Pass**: for each path a task touches, the matching `.claude/rules/` or `.claude/skills/` entry is explicitly cited in the plan body.
 **Fail**: editing `src/parser*.cpp` without citing `parser-conventions.md`, or adding a stdlib module without citing `/stdlib-module-add`.
 
-> **Vs. AGENTS.md L86**: AGENTS.md states the *obligation* (did you consult rules/skills?). Axis 4 is a *mechanical check-presence* — does the citation string actually appear? Path-scoped rules auto-load during implementation, but citing them at plan time records the design rationale.
+> **Vs. AGENTS.md §"Plan mode rules"**: AGENTS.md states the *obligation* (did you consult rules/skills?). Axis 4 is a *mechanical check-presence* — does the citation string actually appear? Path-scoped rules auto-load during implementation, but citing them at plan time records the design rationale.
 
 ---
 
