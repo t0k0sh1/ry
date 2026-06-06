@@ -62,10 +62,10 @@ resolvable.
 **Source**: #2005 (2026-06-03, implementation — verified in Linux container)
 **Tags**: corrosion, rust, cdylib, rpath, libLLVM, global-scope
 
-**Context**: `ry_codegen` is a corrosion-built IMPORTED cargo target.
-`set_target_properties(ry_codegen PROPERTIES INSTALL_RPATH ...)` is
+**Context**: `emit` is a corrosion-built IMPORTED cargo target.
+`set_target_properties(emit PROPERTIES INSTALL_RPATH ...)` is
 **silently ignored** — corrosion does not run CMake's link step. In the
-Linux container, `readelf -d build/lib/libry_codegen.so` shows `NEEDED
+Linux container, `readelf -d build/lib/libemit.so` shows `NEEDED
 libLLVM.so.X` but **no RUNPATH**.
 
 **Rule**: Do NOT add build.rs / RUSTFLAGS `-rpath` machinery for the cdylib's
@@ -107,3 +107,39 @@ to any `|`-fed function that sets a variable the caller reads later.
 **How to verify**: a verifier that can FAIL must be exercised against a
 known-bad input and observed to `exit 1`. A green run on all-good input does
 not prove the FAIL path propagates.
+
+### The emit cdylib is NOT a `libry_*` file — every lib-selection glob must list it explicitly
+
+**Source**: #2040 (2026-06-06, crate rename `ry_codegen` → `emit`)
+**Tags**: packaging, install, self-update, cdylib, glob, libemit, rename, blind-spot
+
+**Context**: The bundle / install / self-update paths select native libraries
+to ship with a `libry_*` pattern: `bundle-dist.sh`'s
+`native_libs=(.../libry_*.*)` copy glob, `install.sh`'s
+`for f in .../libry_*.* ...` loop, and `self_update.cpp`'s
+`filename.find("libry_") == 0` predicate. While the emission cdylib was named
+`libry_codegen` it **incidentally** matched all three (it starts with
+`libry_`). Renaming it to `libemit` (#2040) dropped it out of every selector:
+the cdylib silently vanished from the bundle/install — and `bundle-dist.sh`
+then `set -e`-aborted at the explicit `otool -D "$LIB/libemit.dylib"` (file
+never copied). The `ry_codegen` string-sweep could not catch this because the
+selectors contain `libry_`, not `ry_codegen` — the regression hides in a
+*semantic* coupling (old name happened to start with `libry_`), not a textual
+one.
+
+**Rule**: The emit cdylib (`libemit.*`) is the ONE bundled native lib whose
+name does not start with `libry_`. Any lib-selection mechanism that ships
+native libs must enumerate it **separately** from the `libry_*` selector.
+Three call sites, keep them in sync: `scripts/bundle-dist.sh` (copy glob),
+`install.sh` (install loop), `src/cli/self_update.cpp`
+(`is_bundled_lib` predicate). When renaming the cdylib again, or adding any
+new bundled lib whose name is not `libry_<x>`, update all three. Note this is
+distinct from `src/project/paths.cpp`'s `"libry_" + mod` construction, which
+is for JIT `@native` **stdlib module** loading and correctly never references
+the cdylib (the cdylib is link-time, not dlopen'd by module name).
+
+**How to verify**: `bundle-dist.sh <plat> <build> <dist>` then
+`verify-bundle.sh <dist> <plat>` — the latter asserts `libemit` presence,
+`@rpath` id, and `@loader_path/libLLVM` linkage, so a dropped cdylib FAILs the
+bundle gate. For self-update, `tests/test_self_update.cpp`
+`CopiesRustCdylibLibemit` writes a fake `libemit.*` and asserts it installs.

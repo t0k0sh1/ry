@@ -49,7 +49,7 @@ namespace ry::codegen::emission {
 // NOT emitted here; they stay in the CodeGen-level shim (see
 // CodeGen::buildSomeValue / buildNoneValue in src/codegen_type.cpp). This
 // keeps the emission layer a pure intern → boundary → resolve transit, so the Rust
-// implementation (crates/ry_codegen/) lives behind the boundary without touching
+// implementation (crates/emit/) lives behind the boundary without touching
 // the side-table layer (value_metadata_ and the ARC source map).
 llvm::Value *emitOptionWrap(CodeGen &cg, const lowered::OptionWrapOp &op);
 

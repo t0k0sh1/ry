@@ -5,7 +5,7 @@
 // alignof, and every field offset of the descriptor structs, plus the
 // sizeof/alignof of the opaque handle typedefs declared in
 // include/ry/llvm_emit/api.h. The Rust half lives in
-// crates/ry_codegen/src/lib.rs (the `const _: () = assert!(...)` block);
+// crates/emit/src/lib.rs (the `const _: () = assert!(...)` block);
 // both sides assert against the SAME constants, so any incidental drift
 // (field reorder, padding, type-width change) on either side breaks the
 // build.
@@ -26,7 +26,7 @@
 
 // RyCowEnsureUniqueDesc (12 fields) — api.h L429-465.
 static_assert(sizeof(RyCowEnsureUniqueDesc) == 64,
-              "RyCowEnsureUniqueDesc must be 64 bytes (mirror crates/ry_codegen/src/lib.rs)");
+              "RyCowEnsureUniqueDesc must be 64 bytes (mirror crates/emit/src/lib.rs)");
 static_assert(alignof(RyCowEnsureUniqueDesc) == 8, "RyCowEnsureUniqueDesc must be 8-byte aligned");
 static_assert(offsetof(RyCowEnsureUniqueDesc, data_ptr_id) == 0, "RyCowEnsureUniqueDesc.data_ptr_id @ 0");
 static_assert(offsetof(RyCowEnsureUniqueDesc, slot_ptr_id) == 4, "RyCowEnsureUniqueDesc.slot_ptr_id @ 4");

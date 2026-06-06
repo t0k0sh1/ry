@@ -29,7 +29,7 @@
 
 
 // LLVM IR emission shared-library handle (#1949). Defined in the Rust
-// boundary crate `crates/ry_codegen/src/lib.rs`; reached from CodeGen through the
+// boundary crate `crates/emit/src/lib.rs`; reached from CodeGen through the
 // extern "C" surface in include/ry/llvm_emit/api.h. Forward-declared here so
 // codegen.hpp does not pull the C header into every translation unit that
 // includes it.

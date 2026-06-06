@@ -12,7 +12,7 @@
 # definitions of the LLVM C API entry points used by lib.rs.
 
 [package]
-name = "ry_codegen"
+name = "emit"
 version = "0.0.0"
 edition = "2021"
 publish = false

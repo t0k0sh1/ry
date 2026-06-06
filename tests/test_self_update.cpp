@@ -270,6 +270,23 @@ TEST_F(InstallNativeLibsTest, CopiesBundledLLVMAndZstd) {
     EXPECT_TRUE(fs::exists(dest_home / "lib" / "libzstd.1.dylib"));
 }
 
+TEST_F(InstallNativeLibsTest, CopiesRustCdylibLibemit) {
+    // The Rust LLVM-IR-emission cdylib `libemit.*` (renamed from `libry_codegen`
+    // in #2040) no longer starts with `libry_`, so it is NOT caught by the
+    // `libry_*` selector and must be matched explicitly — otherwise the installed
+    // runtime cannot load the cdylib `ry` links at startup (#2040). The libry_
+    // sibling is present so this isolates "libemit is also installed".
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+    write_file(src_dir / "lib" / "libemit.dylib", "emit cdylib macos");
+    write_file(src_dir / "lib" / "libemit.so", "emit cdylib linux");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libemit.dylib"));
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libemit.so"));
+}
+
 TEST_F(InstallNativeLibsTest, InstallsLLVMWithoutLibryFiles) {
     // A bundle could in principle carry only libLLVM (no libry_*); it must
     // still install and report success.

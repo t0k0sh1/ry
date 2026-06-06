@@ -18,7 +18,7 @@ namespace ry::codegen::lowered {
 // argument values. Mirrors the BoundsCheck / ResultBranch / OptionWrap /
 // ARC family in shape — emission resolves it to a single
 // `mod_->getOrInsertFunction(name, fnTy) + builder_.CreateCall(callee, args)`
-// pair via the libry_codegen boundary.
+// pair via the libemit boundary.
 //
 // The op intentionally keeps `ret_ty` / `arg_tys` as bare `llvm::Type *`
 // transitional handles (category 2 of the llvm-ir-emission-boundary roadmap
@@ -49,7 +49,7 @@ lowered::RuntimeCallOp lowerRuntimeCall(CodeGen &cg, const char *name,
 
 namespace ry::codegen::emission {
 
-// Emit a runtime call via the libry_codegen boundary (ry_emit_runtime_call).
+// Emit a runtime call via the libemit boundary (ry_emit_runtime_call).
 // The boundary resolves the symbol through `mod_->getOrInsertFunction(name, fnTy)`
 // and emits a `CreateCall` against it; the returned llvm::Value is the call
 // instruction (suitable as a value handle even for void-returning calls —

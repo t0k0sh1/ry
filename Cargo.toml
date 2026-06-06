@@ -2,7 +2,7 @@
 #
 # The ry CLI / compiler itself is C++ (built via cmake --preset default).
 # This workspace exists only to host Rust components that are linked into
-# the C++ build as cdylib shared libraries — currently just `ry_codegen`,
+# the C++ build as cdylib shared libraries — currently just `emit`,
 # the Rust implementation of the LLVM IR emission ABI defined by #1949 in
 # include/ry/llvm_emit/api.h (ported from C++ to Rust by #1950 / #1993).
 #
@@ -11,7 +11,7 @@
 
 [workspace]
 resolver = "2"
-members = ["crates/ry_codegen"]
+members = ["crates/emit"]
 
 # Profiles live at the workspace root (cargo ignores package-level
 # profiles in workspace members). See:
@@ -24,7 +24,7 @@ debug = false
 # comparable to the C++ release build during FileCheck diffs (#1950).
 opt-level = 1
 
-# Lint policy for the workspace's Rust crates (currently just ry_codegen).
+# Lint policy for the workspace's Rust crates (currently just emit).
 # clippy's default-on lints are warnings here; the CI `lint` job escalates them
 # to hard errors via `cargo clippy -- -D warnings` (.github/workflows/ci.yml),
 # mirroring how the C++ side is gated by clang-tidy / cppcheck. `priority = -1`

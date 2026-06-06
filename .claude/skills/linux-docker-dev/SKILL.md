@@ -73,7 +73,7 @@ See [`docker/README.md`](../../../docker/README.md) for a quick-start reference.
 
 What gets mounted, per invocation:
 
-- Directories: `src/`, `include/`, `tests/`, `share/`, `crates/` (the `ry_codegen` Rust cdylib source, built via corrosion on every preset since the #1993 cutover)
+- Directories: `src/`, `include/`, `tests/`, `share/`, `crates/` (the `emit` Rust cdylib source, built via corrosion on every preset since the #1993 cutover)
 - Config files (individual file mounts): `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, `Cargo.toml`, `Cargo.lock`, `.clang-tidy`, `.cppcheck-suppressions`
 - Per-preset build output: `$BUILD_DIR_HOST` (host) → `$BUILD_DIR_CONTAINER` (container) — unchanged from before
 - ccache: named volume `ry-ccache-docker` → `/home/ubuntu/.cache/ccache`

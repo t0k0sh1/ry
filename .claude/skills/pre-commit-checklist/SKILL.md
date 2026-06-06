@@ -102,7 +102,7 @@ If no entry is needed, state the reason (pure bug fix that won't recur, PR-local
 >
 > Empty output ⇒ skip. Record `Skipped §3 — no source code change` in the PR description.
 
-> **Precondition**: a Rust 1.83+ toolchain (`cargo` / `rustc`) must be on `PATH` — `cmake --preset {default,asan,tsan,fuzz}` all build the `ry_codegen` Rust cdylib via corrosion, and the prefix must ship a shared `libLLVM`. See `AGENTS.md` § "Build & Test" (the `ry-ci` Docker image bakes both in).
+> **Precondition**: a Rust 1.83+ toolchain (`cargo` / `rustc`) must be on `PATH` — `cmake --preset {default,asan,tsan,fuzz}` all build the `emit` Rust cdylib via corrosion, and the prefix must ship a shared `libLLVM`. See `AGENTS.md` § "Build & Test" (the `ry-ci` Docker image bakes both in).
 
 ```bash
 ./.claude/skills/pre-commit-checklist/run-tests.sh
@@ -179,7 +179,7 @@ Fix clang-tidy / cppcheck failures before declaring complete. Common patterns (e
 > Empty output ⇒ skip. Record `Skipped §3.5.6 — no Rust crate change`.
 
 Reproduce the CI `lint` job's Rust quality gate (`cargo fmt --check` +
-`cargo clippy -- -D warnings` over `crates/ry_codegen`):
+`cargo clippy -- -D warnings` over `crates/emit`):
 
 ```bash
 ./.claude/skills/pre-commit-checklist/run-rust-lint.sh
