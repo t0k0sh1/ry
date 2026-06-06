@@ -18,15 +18,13 @@ cmake --build build                                     # Ninja parallelizes aut
 >
 > The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
 
-> **`emit` is a Rust cdylib (`crates/emit/`, #1949/#1950/#1993)** — the LLVM IR emission shared library is implemented in Rust and built automatically as part of every `cmake` build (via corrosion-rs). This adds two local-build prerequisites outside the Docker CI image:
+> **`emit` is a Rust cdylib** (`crates/emit/`, #1949/#1950/#1993): the LLVM IR emission shared library, built automatically by every `cmake` build via corrosion. Two local prerequisites outside the Docker CI image (which bakes both in):
 >
-> **Rust 1.83+ toolchain on `PATH`**: `cmake --preset {default,asan,tsan,fuzz}` all build the cdylib via cargo, so `cargo` / `rustc` must be available. CMake auto-derives `LLVM_SYS_211_PREFIX` from the discovered LLVM prefix (no env tweak needed). The `ry-ci` Docker image bakes Rust in, so container builds need nothing extra. If you have multiple `rustup` toolchains and configure fails with `rustc was not found` (corrosion's FindRust can choke on a broken cross-compile toolchain such as a Windows target), pass `-DRust_COMPILER=$(rustup which rustc)`.
+> **Rust 1.83+ toolchain on `PATH`** — all presets (`default`/`asan`/`tsan`/`fuzz`) build the cdylib via cargo; CMake auto-derives `LLVM_SYS_211_PREFIX` (no env tweak). If configure fails with `rustc was not found` (corrosion's FindRust choking on a broken cross-compile toolchain, e.g. a Windows target), pass `-DRust_COMPILER=$(rustup which rustc)`.
 >
-> **Shared libLLVM required**: `ry` and the Rust cdylib must share ONE LLVM instance, or `ConstantFP::get` hangs on float constants (two-LLVM `fltSemantics` split, #1997; see `docs/architecture/llvm-ir-emission-boundary.md` §"Stage 2-C complete"). The CI container and Docker dev image build LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`, so their `/usr/local/llvm` qualifies and `--preset default` links there. On macOS the static-only `/usr/local/llvm` does NOT qualify, so `--preset default` will not link — use **`cmake --preset rust-emit`** (→ `build-rust/`) instead, which points `LLVM_DIR` at Homebrew `llvm@21` (ships `libLLVM.dylib`). On any other non-shared prefix, override: `cmake --preset rust-emit -DLLVM_DIR=<shared-LLVM-prefix>/lib/cmake/llvm`.
+> **Shared libLLVM required** — `ry` and the cdylib must share ONE LLVM instance or `ConstantFP::get` hangs on float constants (#1997). Linux/CI `/usr/local/llvm` (built `LLVM_BUILD_LLVM_DYLIB=ON`) qualifies and `--preset default` links there; macOS static-only `/usr/local/llvm` does NOT, so use `--preset rust-emit` (→ `build-rust/`, Homebrew `llvm@21`; other prefixes: `-DLLVM_DIR=<shared-prefix>/lib/cmake/llvm`). Full rationale (two-LLVM `fltSemantics` split), CI coverage (`test`/`asan`/`tsan` Rust path + `workflow_dispatch` `macos-smoke-rust`), and the non-instrumented-cdylib caveat: `docs/architecture/llvm-ir-emission-boundary.md` §"Stage 2-C complete" (+ its Sub-issue 3/4 sections).
 >
-> **CI coverage**: `ci.yml`'s `test` / `asan` / `tsan` jobs build the single Rust path on every PR/push (Linux container). A `workflow_dispatch`-gated `macos-smoke-rust` job validates the macOS/Apple-linker path (`-Wl,-undefined,dynamic_lookup`) on demand. The Rust cdylib is **not** sanitizer-instrumented (corrosion does not propagate `-fsanitize=*` into the cargo build; only the C++ side is — see `KNOWLEDGE.md` § サニタイザー既知問題).
->
-> **Rust lint gate (#2015)**: `crates/emit` is gated by `cargo fmt --check` + `cargo clippy -- -D warnings` in the CI `lint` job, symmetric with the C++ clang-tidy / cppcheck gates. Run it locally via `./.claude/skills/pre-commit-checklist/run-rust-lint.sh` (auto-sets `LLVM_SYS_211_PREFIX` to Homebrew `llvm@21` on macOS; `cargo fmt` needs no LLVM, `cargo clippy` compiles `llvm-sys`). `rust-toolchain.toml` pins the toolchain to the CI image's `RUST_VERSION` so local rustfmt / clippy output matches CI — bump both together. Lint policy lives in `[workspace.lints]` (root `Cargo.toml`); crate-specific FFI carve-outs stay as `#![allow(...)]` in `lib.rs`.
+> **Rust lint gate (#2015)** — the CI `lint` job gates `crates/emit` with `cargo fmt --check` + `cargo clippy -- -D warnings`; reproduce locally via `/pre-commit-checklist` §3.5.6.
 
 ## tree-sitter grammar build & install
 
@@ -128,7 +126,7 @@ Any background execution initiated by Claude (the main agent) is **totally banne
 **When parallelization is needed:**
 Put multiple `Agent` tool calls in a single message and **launch subagents concurrently in foreground**. Each subagent runs foreground in an independent context, and the main agent synchronizes on all return values. Dedicated subagents for the verification steps in `/pre-commit-checklist` (sanitizer / test / fuzzer / PR review response, etc.) are pre-provisioned in `.claude/agents/` — choose between them using the catalog (see AGENTS.md §"Knowledge base").
 
-**Why:** background execution carries a structural risk of `task_id` recording loss (Bash-launched processes land in the OS process table and force reliance on OS-level scans, which misdetect separate Claude Code sessions — #1944). Subagent background can be `TaskStop`-ed inside the task framework, but the "misuse-of-mechanism" risk remains. Eliminating the concept of background execution outright removes the cognitive cost and risk at the root. Parallelization is fully achievable via foreground subagents.
+**Why:** background execution structurally risks `task_id` recording loss — Bash-launched processes land in the OS process table, forcing OS-level scans that misdetect separate Claude Code sessions (#1944). A flat ban removes the risk at the root; parallelization is fully achievable via foreground subagents.
 
 > **Side note (heredoc input has an independent rule)**: heredoc input such as `./build/ry -c <<'EOF' ... EOF` MUST be run foreground, or replaced with file input (`./build/ry script.ry`). This is an independent rule that predates the background ban and is not the subject of this section (the heredoc + background hang risk is a historical matter).
 
@@ -174,7 +172,7 @@ To start a build / verification from a clean state, use the script's own clean c
 **When deletion is truly unavoidable (user handoff):**
 If none of the above applies and a deletion is genuinely required, Claude MUST NOT execute it. Present the exact command to the user, return control, and wait until the user runs it themselves (e.g. via `! <command>`) and tells you to continue. Claude never types the deletion.
 
-**Why:** the user has repeatedly objected to "creating and deleting files in a loop" and to Claude reaching for `rm` to "make things clean". The `/tmp` "do not delete" rule above did not, on its own, stop the behavior — so, following the #1947 / #1990 precedent that a flat exception-free ban is what actually changes behavior, the act of ad-hoc deletion is banned outright and re-routed through reviewable mechanisms (`git rm` / committed scripts / `--clean`) or an explicit user handoff.
+**Why:** the `/tmp` "do not delete" rule alone did not stop the behavior, so — per the #1947 / #1990 precedent that a flat exception-free ban is what actually changes behavior — ad-hoc deletion is banned outright and re-routed through reviewable mechanisms (`git rm` / committed scripts / `--clean`) or a user handoff.
 
 ## Prohibited terminology: flake / flaky
 
@@ -223,32 +221,32 @@ When explaining a CI failure or test failure, Claude Code MUST use one of the fo
 
 #### Handling side findings
 
-The early short-circuit flow when detecting a side finding (Q1 hard-to-reproduce CI issue → Q2 explicit user instruction → Q3 `bug-forensics-analyst` → Q4 Claude Code autonomous decision; **phase-aware**) and the Issue Creation Steps are in `.claude/skills/triage-side-finding/SKILL.md` (or `/triage-side-finding`). Q4 branches by the phase in which triage occurred — **Phase A** (during filing / splitting / Plan mode) has two branches (a) immediate fix and (b) request permission to file; **Phase B** (during implementation / review response) defaults to same-PR absorption, with crash-class findings (ASan/UBSan/TSan/libFuzzer + abort/SEGV/UAF/memory leak/corruption) escalating unconditionally, and non-crash findings escalating via the **1000-line threshold** (added + removed raw line count) re-routing to Q2. The autonomous-decision requirements of Q4 are in §"Prohibition on presenting choices in filing decisions".
+The phase-aware short-circuit flow (Q1 hard-to-reproduce CI → Q2 explicit user instruction → Q3 `bug-forensics-analyst` → Q4 autonomous decision; Phase A/B branches, crash-class unconditional escalation, the 1000-line threshold) and the Issue Creation Steps are in `/triage-side-finding`. Q4's autonomous-decision requirements are governed by §"Prohibition on presenting choices in filing decisions" below.
 
 #### Priority order for side-finding decisions
 
-The following priority order applies to side-finding triage (Q1–Q4). **The rules in this subsection apply only to "decisions about how to handle a side finding"** — quality-gate rules (sanitizer-error ban / TDD-cycle split ban / direct-commit-to-`main` ban / committing `.serena/` diffs together / etc.) are NOT overridden by this subsection.
+These priority rules govern **only "how to handle a side finding"** — they do NOT override quality gates (sanitizer-error ban / TDD-cycle split ban / direct-commit-to-`main` ban / committing `.serena/` diffs together).
 
-1. **User wish takes priority**: when the user has explicitly directed how to handle the side finding (`/triage-side-finding` Q2 = Yes), the user's instruction takes priority over the decision flow. Skill / agent / advisor judgments MUST NOT be used as a reason to override a user instruction. **However, this applies only to side-finding decisions** — quality gates such as sanitizer-error ban / TDD-cycle split ban are NOT overridden.
-2. **Immediate fix for hard-to-reproduce issues**: hard-to-reproduce CI-detected memory corruption / concurrency races / fuzz crashes etc. (matching `/triage-side-finding` Q1 = Yes) prioritize the timing of the fix over origin determination (regression vs. pre-existing). The principle is not missing the reproduction window. **However, this applies only to side-finding decisions.**
-3. **Fixing takes priority over analysis**: when Q1 / Q2 applies, do not invoke `bug-forensics-analyst` / advisor. The meaning is "after choosing the immediate fix, do not burn time on unnecessary analysis"; it does not conflict with the root-cause analysis investment principle (`/plan-rubric` etc.) and does not impede starting the fix after the analysis via Q3 completes.
+1. **User wish takes priority** — an explicit user instruction (`/triage-side-finding` Q2 = Yes) beats the decision flow; skill / agent / advisor judgments MUST NOT override it.
+2. **Immediate fix for hard-to-reproduce issues** — CI-detected memory corruption / races / fuzz crashes (`/triage-side-finding` Q1 = Yes) prioritize fix timing over origin determination, to not miss the reproduction window.
+3. **Fixing takes priority over analysis** — when Q1 / Q2 applies, skip `bug-forensics-analyst` / advisor: don't burn time on analysis after choosing the immediate fix (this does not weaken the root-cause-investment principle; the fix still starts after Q3 completes).
 
-> **Terminology note**: `bug-forensics-analyst` is a subagent under `.claude/agents/` (see the catalog in §"Knowledge base"; written in backticks). `advisor` refers to either the advisor tool built into Claude Code or to an external reviewer in a generic role; it has no dedicated file in `.claude/agents/`, so it is written without backticks.
+> **Notation**: `bug-forensics-analyst` is a `.claude/agents/` subagent (backticks); advisor is the built-in tool or a generic reviewer role (no agent file, hence no backticks).
 
 #### Prohibition on presenting choices in filing decisions
 
 - **MUST (no exceptions)**: the choices Claude Code presents to the user MUST NOT include "open as a separate issue". This applies to `AskUserQuestion` options, textual enumerations of choices ("(a)... (b)... (c)..." / "either of: ..." etc.), spoken three-way prompts, and any other form. Filing decisions are Claude Code's autonomous responsibility, and MUST NOT be substituted by presenting choices to the user.
-- When Claude Code autonomously decides a filing is needed, follow `/git-create-issue` Step 1 (preview of 6 items [filing reason / overview / granularity / resolution confidence / proposed labels / milestone candidate] → wait for explicit permission). The preview is "presentation of the issue contents", not "presentation of choices" (the user judges only permit/decline against a single issue proposal).
-- **Applicable scope**: "When the user spontaneously asks 'should this be a separate issue?'" is treated as a user instruction via Q2 (informed-consent gate), and the flow of `/triage-side-finding` Q2 (present What / Where / estimated size / Dependency risk before soliciting the instruction) is followed. This rule prohibits "Claude Code initiating a three-or-more-way choice"; it does not affect user-initiated questions.
-- **Why**: regression prevention for the autonomous-induction failure of #1851 (where Claude Code presented "file as a separate issue" as a choice and steered the user); removing duplication with the `/git-create-issue` permission gate; eliminating the problem of users being asked to decide on the spot without basis.
-- Related: `/triage-side-finding` Q4 (two-branch autonomous decision); `/triage-side-finding` Issue Creation Steps Step 1 "escalate" subsection (single-choice recommendation); `/git-create-issue` Step 1 (preview gate).
+- When a filing is needed, follow `/git-create-issue` Step 1 (6-item preview → explicit permission). The preview presents the issue *contents*, not a *choice* — the user only permits/declines a single proposal.
+- **Scope**: a user spontaneously asking "should this be a separate issue?" is a Q2 user instruction (follow `/triage-side-finding` Q2's informed-consent flow). The rule bans Claude *initiating* a 3-way choice; it does not affect user-initiated questions.
+- **Why**: #1851 regression prevention (Claude presented "file as a separate issue" as a choice and steered the user); removes duplication with the `/git-create-issue` permission gate.
+- Related: `/triage-side-finding` Q4 + Issue Creation Steps Step 1; `/git-create-issue` Step 1 (preview gate).
 
 ### What the user explicitly directs
 
 - External review (GitHub PR review, etc.)
 - git add / commit / push
 - PR creation
-- **Filing a new issue (`gh issue create`)** — Claude Code only presents the proposed issue contents (reason / overview / granularity / resolution confidence / proposed labels / milestone candidate) and waits for explicit user permission ("file it" / "OK" etc.). Repo-wide incidents such as CI failures, sanitizer detections, fuzz crashes etc. are reported in text only; do not file autonomously. The detailed procedure is in `/git-create-issue`. **When deciding whether to file, MUST NOT present "open as a separate issue" as a choice to the user** → see also §"Prohibition on presenting choices in filing decisions".
+- **Filing a new issue (`gh issue create`)** — Claude only presents the proposed contents (6-item preview, see `/git-create-issue`) and waits for explicit permission ("file it" / "OK"). Repo-wide incidents (CI failures, sanitizer detections, fuzz crashes) are reported in text only, never filed autonomously. **MUST NOT present "open as a separate issue" as a choice** → §"Prohibition on presenting choices in filing decisions".
   - **Exception**: via the `preparing-for-release` skill (Release prep / Release / Cleanup issue), the user invocation of `/preparing-for-release <X.Y.Z>` doubles as filing permission, so this is outside the permission-required rule.
 
 ### PR review response

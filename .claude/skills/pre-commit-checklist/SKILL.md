@@ -193,6 +193,9 @@ defaults it to Homebrew `llvm@21` on macOS (CI bakes it into the image ENV). Fix
 any diff / warning before declaring complete; do not commit while
 `cargo clippy -- -D warnings` fails. (#2015)
 
+Lint policy lives in `[workspace.lints]` (root `Cargo.toml`); crate-specific FFI
+carve-outs stay as `#![allow(...)]` in `crates/emit/src/lib.rs`.
+
 ## 3.6. libFuzzer Fuzzing
 
 > **Skip if** — changed files do **not** include the parser/lexer/json/utf8/string family:
