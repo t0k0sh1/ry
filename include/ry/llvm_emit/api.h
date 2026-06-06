@@ -1,9 +1,9 @@
-// boundary surface for the LLVM IR emission shared library (libry_codegen).
+// boundary surface for the LLVM IR emission shared library (libemit).
 //
 // This header is the candidate boundary between Ry semantic lowering and
 // LLVM IR emission (designed in #1820/#1824, implemented incrementally
 // starting from #1949). It is C-only so the layer is implemented in Rust
-// (crates/ry_codegen/) behind the same C boundary — the Rust implementation is
+// (crates/emit/) behind the same C boundary — the Rust implementation is
 // now the only one.
 //
 // Stage 2-C (#1968) begins per-op migration of category-1 ARC primitives:
@@ -107,7 +107,7 @@ typedef struct RyEmitCtx RyEmitCtx;
 //
 // Each typedef is a pointer to an incomplete struct, so the C/C++ type system
 // treats it as a distinct named pointer type. At runtime the pointer value is
-// reinterpret_cast'd between the LLVM-owning side (`crates/ry_codegen/src/lib.rs`)
+// reinterpret_cast'd between the LLVM-owning side (`crates/emit/src/lib.rs`)
 // and the CodeGen-owning side. No LLVM types and no `void *` appear in any
 // public signature — opaque pointer typedefs satisfy the constraint enforced
 // by the header-level lint introduced in #1973.
@@ -128,7 +128,7 @@ typedef struct RyFunctionOpaque *RyFunctionRef; // llvm::Function *
 // `RyTypeRef` covers both `llvm::Type *` (primitives, pointers) and
 // `llvm::StructType *` (named aggregates) — LLVM's StructType IS a Type, so
 // no separate typedef is needed. Narrowing to a specific subtype happens inside
-// the Rust implementation (`crates/ry_codegen/src/lib.rs`) when required.
+// the Rust implementation (`crates/emit/src/lib.rs`) when required.
 typedef struct RyTypeOpaque     *RyTypeRef;
 typedef struct RyFuncTypeOpaque *RyFuncTypeRef;    // llvm::FunctionType *
 

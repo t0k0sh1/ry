@@ -52,7 +52,7 @@ lowered::CowEnsureUniqueOp lowerCowEnsureUnique(
 
 namespace ry::codegen::emission {
 
-// Emit the CoW uniqueness check via the libry_codegen boundary
+// Emit the CoW uniqueness check via the libemit boundary
 // (`ry_emit_cow_ensure_unique`). Returns the PHI joining the original
 // dataPtr (skip-CoW path) with the freshly-cloned dataPtr (copy path);
 // downstream callers feed this into `propagateMeta` / `propagateMetaWide`.

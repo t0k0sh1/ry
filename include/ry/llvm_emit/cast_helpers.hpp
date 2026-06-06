@@ -1,4 +1,4 @@
-// C++-side cast helpers for crossing the ry_codegen boundary.
+// C++-side cast helpers for crossing the emit boundary.
 //
 // The boundary in `include/ry/llvm_emit/api.h` exposes only opaque pointer typedefs
 // (RyValueRef, RyTypeRef, RyModuleRef, etc.) so no LLVM types appear in the
@@ -9,7 +9,7 @@
 //
 // This header is C++-only and re-includes both `api.h` and the LLVM headers.
 // It is for the CodeGen (caller) side only. The emission side lives in the Rust
-// crate `crates/ry_codegen/src/lib.rs`, which does its own conversions in the
+// crate `crates/emit/src/lib.rs`, which does its own conversions in the
 // reverse direction (opaque boundary handle → llvm::* via llvm-sys) and shares none
 // of this C++ bridging code.
 

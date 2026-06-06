@@ -180,7 +180,7 @@ lowered::AnyTryUnwrapOp lowerAnyTryUnwrap(
 
 namespace ry::codegen::emission {
 
-// Emit AnyWrap via the libry_codegen boundary (ry_emit_any_wrap). Returns the
+// Emit AnyWrap via the libemit boundary (ry_emit_any_wrap). Returns the
 // final RyAny aggregate value (loaded from the internal alloca).
 //
 // Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have
@@ -195,7 +195,7 @@ namespace ry::codegen::emission {
 //     `!isa<CallInst> && !isa<InvokeInst>` holds
 llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op);
 
-// Emit AnyUnwrap via the libry_codegen boundary (ry_emit_any_unwrap). Returns
+// Emit AnyUnwrap via the libemit boundary (ry_emit_any_unwrap). Returns
 // the unwrapped value (targetTy for Standard / Record arms; f64 for the
 // F64Promote arm).
 //
@@ -208,7 +208,7 @@ llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op);
 //     from the box's destructor at scope exit
 llvm::Value *emitAnyUnwrap(CodeGen &cg, const lowered::AnyUnwrapOp &op);
 
-// Emit AnyTryUnwrap via the libry_codegen boundary (ry_emit_any_try_unwrap).
+// Emit AnyTryUnwrap via the libemit boundary (ry_emit_any_try_unwrap).
 // Returns the Result<targetTy, Error> aggregate value (the PHI joined by
 // emitResultBranch).
 //

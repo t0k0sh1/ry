@@ -18,7 +18,7 @@ cmake --build build                                     # Ninja parallelizes aut
 >
 > The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
 
-> **`ry_codegen` is a Rust cdylib (`crates/ry_codegen/`, #1949/#1950/#1993)** — the LLVM IR emission shared library is implemented in Rust and built automatically as part of every `cmake` build (via corrosion-rs). This adds two local-build prerequisites outside the Docker CI image:
+> **`emit` is a Rust cdylib (`crates/emit/`, #1949/#1950/#1993)** — the LLVM IR emission shared library is implemented in Rust and built automatically as part of every `cmake` build (via corrosion-rs). This adds two local-build prerequisites outside the Docker CI image:
 >
 > **Rust 1.83+ toolchain on `PATH`**: `cmake --preset {default,asan,tsan,fuzz}` all build the cdylib via cargo, so `cargo` / `rustc` must be available. CMake auto-derives `LLVM_SYS_211_PREFIX` from the discovered LLVM prefix (no env tweak needed). The `ry-ci` Docker image bakes Rust in, so container builds need nothing extra. If you have multiple `rustup` toolchains and configure fails with `rustc was not found` (corrosion's FindRust can choke on a broken cross-compile toolchain such as a Windows target), pass `-DRust_COMPILER=$(rustup which rustc)`.
 >
@@ -26,7 +26,7 @@ cmake --build build                                     # Ninja parallelizes aut
 >
 > **CI coverage**: `ci.yml`'s `test` / `asan` / `tsan` jobs build the single Rust path on every PR/push (Linux container). A `workflow_dispatch`-gated `macos-smoke-rust` job validates the macOS/Apple-linker path (`-Wl,-undefined,dynamic_lookup`) on demand. The Rust cdylib is **not** sanitizer-instrumented (corrosion does not propagate `-fsanitize=*` into the cargo build; only the C++ side is — see `KNOWLEDGE.md` § サニタイザー既知問題).
 >
-> **Rust lint gate (#2015)**: `crates/ry_codegen` is gated by `cargo fmt --check` + `cargo clippy -- -D warnings` in the CI `lint` job, symmetric with the C++ clang-tidy / cppcheck gates. Run it locally via `./.claude/skills/pre-commit-checklist/run-rust-lint.sh` (auto-sets `LLVM_SYS_211_PREFIX` to Homebrew `llvm@21` on macOS; `cargo fmt` needs no LLVM, `cargo clippy` compiles `llvm-sys`). `rust-toolchain.toml` pins the toolchain to the CI image's `RUST_VERSION` so local rustfmt / clippy output matches CI — bump both together. Lint policy lives in `[workspace.lints]` (root `Cargo.toml`); crate-specific FFI carve-outs stay as `#![allow(...)]` in `lib.rs`.
+> **Rust lint gate (#2015)**: `crates/emit` is gated by `cargo fmt --check` + `cargo clippy -- -D warnings` in the CI `lint` job, symmetric with the C++ clang-tidy / cppcheck gates. Run it locally via `./.claude/skills/pre-commit-checklist/run-rust-lint.sh` (auto-sets `LLVM_SYS_211_PREFIX` to Homebrew `llvm@21` on macOS; `cargo fmt` needs no LLVM, `cargo clippy` compiles `llvm-sys`). `rust-toolchain.toml` pins the toolchain to the CI image's `RUST_VERSION` so local rustfmt / clippy output matches CI — bump both together. Lint policy lives in `[workspace.lints]` (root `Cargo.toml`); crate-specific FFI carve-outs stay as `#![allow(...)]` in `lib.rs`.
 
 ## tree-sitter grammar build & install
 

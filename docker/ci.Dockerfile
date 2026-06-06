@@ -173,7 +173,7 @@ RUN set -eux; \
 # We do NOT use rustup (toolchain manager) — only the standalone Rust
 # tarball — to keep the image immutable and offline-friendly.
 #
-# Required for crates/ry_codegen (issue #1950, Rust reimplementation
+# Required for crates/emit (issue #1950, Rust reimplementation
 # of the LLVM IR emission shared library behind the same C ABI).
 # LLVM_SYS_211_PREFIX is wired in the final image to the existing
 # /usr/local/llvm install so llvm-sys = "210" finds LLVM 21 at build.

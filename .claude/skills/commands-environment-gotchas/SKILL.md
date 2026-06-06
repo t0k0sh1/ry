@@ -395,7 +395,7 @@ docker run --rm -v "$PWD:/src:ro" -v ry-fuzz-rust-ci-build:/build \
     cmake --build /build --target fuzz_parser fuzz_json fuzz_utf8 fuzz_io_open'
 ```
 
-`LLVM_SYS_211_PREFIX=/usr/local/llvm` is baked as ENV (preserved under `--entrypoint bash`), so llvm-sys/corrosion find the shared libLLVM the cdylib requires (the image builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`). The cdylib lands at `/build/lib/libry_codegen.so` (`file` → ELF shared object), proving the Rust side links on Linux.
+`LLVM_SYS_211_PREFIX=/usr/local/llvm` is baked as ENV (preserved under `--entrypoint bash`), so llvm-sys/corrosion find the shared libLLVM the cdylib requires (the image builds LLVM with `LLVM_BUILD_LLVM_DYLIB=ON`). The cdylib lands at `/build/lib/libemit.so` (`file` → ELF shared object), proving the Rust side links on Linux.
 
 **Why it recurs**: the fuzz CI job stays disabled, so this in-container run is the *only* validation of the cdylib fuzz build (it is NOT covered by the test/asan/tsan jobs, which exercise `ry`/`ry_tests`, not the fuzz harnesses). Any future cdylib work needs the same procedure. If Docker disk fills mid-pull (`no space left on device`), `docker builder prune -a -f` reclaims shared build cache without touching images/volumes.
 
@@ -403,11 +403,11 @@ docker run --rm -v "$PWD:/src:ro" -v ry-fuzz-rust-ci-build:/build \
 
 ### Naming a corrosion crate after a CMake-reserved target name (`codegen`) trips CMP0171
 
-**Source**: #2027 (2026-06-05, crate rename `ry_llvm_emit` → `ry_codegen`)
+**Source**: #2027 (2026-06-05, crate rename `ry_llvm_emit` → `ry_codegen`); #2040 (2026-06-06, crate rename `ry_codegen` → `emit`)
 **Tags**: cmake, corrosion, cmp0171, crate-name, reserved-target, rust
 
 **Wrong**: naming the Rust cdylib crate `codegen`. corrosion names its IMPORTED CMake target after the crate's `[package].name`, and CMake 3.31+ reserves `codegen` as a built-in target name (CMP0171). `cmake --preset …` then configures with a dev warning (`'codegen' is a reserved target name`) and the corrosion target shadows CMake's built-in `codegen` target. It builds today (policy unset → OLD behavior) but is fragile — a future CMake defaulting CMP0171 to NEW would error — and `cmake --build --target codegen` becomes ambiguous.
 
-**Correct**: prefix the crate name so it can't collide with a CMake-reserved word — `ry_codegen` (matches the project's `__ry_*` / `ry_emit_*` prefix convention). No CMP0171 warning; the dylib is `libry_codegen`.
+**Correct**: pick a crate name that is not a CMake-reserved word. Two ways: (a) prefix the desired name — #2027 chose `ry_codegen` when the bare `codegen` was reserved, matching the project's `__ry_*` / `ry_emit_*` prefix convention; or (b) pick a non-reserved synonym — #2040 renamed the crate to bare `emit`, which is **not** in CMake's reserved set, so it needs no prefix and still trips no CMP0171 warning. The current crate is `emit` and the dylib is `libemit`; verify any rename by configuring and confirming no `'<name>' is a reserved target name` warning appears.
 
-**Why it recurs**: any future corrosion crate (or `add_library` / `add_executable` target) named after a CMake-reserved word (`codegen`, `test`, `all`, `clean`, `install`, `package`, …) hits the same collision class. Check `cmake --help-policy CMP0171` / the reserved-target list before adopting a bare common-noun target name; prefer a project-prefixed name. (Pre-flight grep for an existing `add_library(<name>` catches user-defined collisions but NOT CMake-reserved names — only `cmake` configure surfaces those.)
+**Why it recurs**: any future corrosion crate (or `add_library` / `add_executable` target) named after a CMake-reserved word (`codegen`, `test`, `all`, `clean`, `install`, `package`, …) hits the same collision class. Check `cmake --help-policy CMP0171` / the reserved-target list before adopting a bare common-noun target name; prefer a non-reserved or project-prefixed name. (Pre-flight grep for an existing `add_library(<name>` catches user-defined collisions but NOT CMake-reserved names — only `cmake` configure surfaces those.)

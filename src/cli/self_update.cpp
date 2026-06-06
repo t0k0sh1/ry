@@ -703,10 +703,13 @@ bool install_native_libs(const std::string &tmp_dir) {
     for (const auto &entry : fs::directory_iterator(src_lib)) {
         if (!entry.is_regular_file()) continue;
         auto filename = entry.path().filename().string();
-        // Install the Rust cdylib + stdlib native libs (libry_*), and — post-#1999
-        // cutover — the bundled shared libLLVM (plus its macOS chain dep libzstd),
-        // so the relocated runtime stays self-contained (#2005). Ignore anything else.
-        bool is_bundled_lib = filename.find("libry_") == 0 ||
+        // Install the Rust cdylib (libemit) + stdlib native libs (libry_*), and —
+        // post-#1999 cutover — the bundled shared libLLVM (plus its macOS chain dep
+        // libzstd), so the relocated runtime stays self-contained (#2005). The cdylib
+        // was renamed libry_codegen -> libemit (#2040), so it no longer matches the
+        // libry_ prefix and needs its own check. Ignore anything else.
+        bool is_bundled_lib = filename.find("libemit") == 0 ||
+                              filename.find("libry_") == 0 ||
                               filename.find("libLLVM") == 0 ||
                               filename.find("libzstd") == 0;
         if (!is_bundled_lib) continue;

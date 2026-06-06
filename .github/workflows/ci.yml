@@ -91,18 +91,18 @@ jobs:
             --quiet \
             src/ include/
 
-      - name: Verify ry_codegen ABI struct layout (Rust side, #1995)
+      - name: Verify emit ABI struct layout (Rust side, #1995)
         run: |
           # The Rust half of the C++ <-> Rust ABI struct-layout contract:
           # the `const _: () = assert!(size_of / align_of / offset_of! ...)`
-          # items in crates/ry_codegen/src/lib.rs are const-evaluated
+          # items in crates/emit/src/lib.rs are const-evaluated
           # during `cargo check`, so this step fails on any layout drift.
           # (The C++ half is the static_assert TU compiled into ry_tests by
           # the `test` job.) cargo / CARGO_HOME / LLVM_SYS_211_PREFIX are
           # baked into the CI image (docker/ci.Dockerfile). This is a narrow
           # type-check + layout-assert pass; it does NOT build `ry` against
           # the Rust cdylib — the full integration build is the `test` job.
-          cargo check -p ry_codegen
+          cargo check -p emit
 
       - name: Rust format check (rustfmt, #2015)
         run: |
@@ -111,7 +111,7 @@ jobs:
           # by rust-toolchain.toml (kept equal to docker/ci.Dockerfile
           # RUST_VERSION), so `--check` here matches local `cargo fmt` output —
           # no formatting drift between local and CI.
-          cargo fmt --manifest-path crates/ry_codegen/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/emit/Cargo.toml -- --check
 
       - name: Rust lint (clippy, #2015)
         run: |
@@ -120,7 +120,7 @@ jobs:
           # in the image ENV. `-D warnings` makes any lint a hard failure. Kept
           # separate from `cargo check` (whose #1995 ABI-layout-assert purpose is
           # orthogonal) rather than merged.
-          cargo clippy -p ry_codegen -- -D warnings
+          cargo clippy -p emit -- -D warnings
 
   test:
     runs-on: ubuntu-24.04
@@ -136,7 +136,7 @@ jobs:
             ci-test-${{ github.ref }}-
             ci-test-
       - name: Build
-        # ry_codegen is the Rust cdylib (the only implementation). The
+        # emit is the Rust cdylib (the only implementation). The
         # container's /usr/local/llvm is built with LLVM_BUILD_LLVM_DYLIB=ON,
         # so the shared-libLLVM requirement (#1997) is met without an LLVM_DIR
         # override (see docker/ci.Dockerfile).
@@ -390,11 +390,11 @@ jobs:
         run: ./build-tsan/ry test -p
 
   macos-smoke-rust:
-    # macOS build/link smoke for the ry_codegen Rust cdylib.
+    # macOS build/link smoke for the emit Rust cdylib.
     # workflow_dispatch-only: macOS runners cost ~10x a Linux runner, and the
     # purpose is to prove the Apple-linker path works on demand — specifically
     # that the `-Wl,-undefined,dynamic_lookup` cdylib link arg in
-    # crates/ry_codegen/build.rs resolves __ry_* and LLVM* symbols from the
+    # crates/emit/build.rs resolves __ry_* and LLVM* symbols from the
     # host process. The per-PR safety net is the Linux test/asan/tsan jobs
     # above. Homebrew llvm@21 ships a shared libLLVM.dylib, satisfying the
     # shared-libLLVM requirement (#1997). Retained past the #1993 cutover to
@@ -423,7 +423,7 @@ jobs:
           key: ci-macos-smoke-rust
           restore-keys: |
             ci-macos-smoke-rust-
-      - name: Build (Rust ry_codegen)
+      - name: Build (Rust emit)
         # Homebrew llvm@21 provides the shared libLLVM.dylib that the Rust
         # cdylib requires; cargo/rustc are pre-installed on GitHub macOS
         # runners. LLVM_SYS_211_PREFIX is derived by CMake from LLVM_DIR via

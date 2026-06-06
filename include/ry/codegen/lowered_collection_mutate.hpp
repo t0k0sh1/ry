@@ -108,14 +108,14 @@ lowered::ListSliceOp lowerListSlice(CodeGen &cg, llvm::Value *list_ptr,
 
 namespace ry::codegen::emission {
 
-// Emit a List append via the libry_codegen boundary (ry_emit_collection_append).
+// Emit a List append via the libemit boundary (ry_emit_collection_append).
 // Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have been
 // called before invoking this helper because two BBs (`app.grow`, `app.store`)
 // are created inside the current function. ARC retain on op.val (if needed by
 // the element type) must be emitted BEFORE calling this helper.
 void emitCollectionAppend(CodeGen &cg, const lowered::CollectionAppendOp &op);
 
-// Emit a List insert via the libry_codegen boundary (ry_emit_collection_insert).
+// Emit a List insert via the libemit boundary (ry_emit_collection_insert).
 // Precondition: same as emitCollectionAppend (four BBs created: `ins.err`,
 // `ins.ok`, `ins.grow`, `ins.move`). ARC retain on op.val (if needed) must
 // be emitted BEFORE invoking.
