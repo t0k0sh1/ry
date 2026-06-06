@@ -10,6 +10,7 @@ for arg in "$@"; do
     -h|--help)
       sed -n '2p;3,8p' "$0"
       echo "Usage: run-tests.sh [--clean]"
+      echo "  --clean: remove the host build dir before building"
       echo "Env: RY_TEST_PRESET (default|rust-emit), RY_BUILD_DIR, RY_RUST_COMPILER"
       exit 0
       ;;

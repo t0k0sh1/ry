@@ -87,6 +87,6 @@ Both events run with `continue-on-error: true` (warn-only).
   ```
   The HTML report is bind-mounted to `build-scan-docker/scan-build-report/<timestamp>/index.html` on the host (container path `/workspace/build-scan/scan-build-report/`); it persists after container exit — open in a browser.
 - Run all three tools at once: `./docker/run.sh static-analysis all`.
-- `scan-build` and `all` build under `build-scan-docker/` (host) ↔ `build-scan/` (container) with an analyzer wrapper, leaving `build-docker/` untouched. No `rm -rf` needed before a follow-up `./docker/run.sh default ...`; delete `build-scan-docker/` to discard reports.
+- `scan-build` and `all` build under `build-scan-docker/` (host) ↔ `build-scan/` (container) with an analyzer wrapper, leaving `build-docker/` untouched. No `rm -rf` is needed before a follow-up `./docker/run.sh default ...`. To discard accumulated reports, re-run with `--clean` (`run-scan-build.sh --clean`, or `./docker/run.sh --clean static-analysis scan-build`) — it wipes `build-scan-docker/` before regenerating — rather than a manual `rm -rf` (AGENTS.md §"Total ban on Claude-initiated ad-hoc deletion").
 - Suppress false positives inline with `#ifndef __clang_analyzer__` (same granularity as clang-tidy `// NOLINT`).
 - Warn-only (`continue-on-error: true`); address new null-dereference / use-after-free / division-by-zero findings in the same PR whenever possible.

@@ -65,7 +65,7 @@ for _bin in "$BUILD_DIR/ry" "$BUILD_DIR/ry_tests"; do
     _magic=$(od -An -N 4 -tx1 "$_bin" 2>/dev/null | tr -d ' \n')
     if [[ "$_magic" != "7f454c46" ]]; then
       echo "fatal: $_bin is not an ELF binary (magic=$_magic) — macOS host build artifact leaked into container" >&2
-      echo "  recovery: rm -rf $_host_build_dir/ (on host) and rerun" >&2
+      echo "  recovery: re-run the same docker/run.sh command on the host with --clean (wipes $_host_build_dir/ and rebuilds)" >&2
       exit 71
     fi
   fi
@@ -74,7 +74,7 @@ unset _bin _magic
 if [[ -f "$BUILD_DIR/compile_commands.json" ]] \
     && grep -Eq '"directory"[[:space:]]*:[[:space:]]*"/Users/' "$BUILD_DIR/compile_commands.json"; then
   echo "fatal: $BUILD_DIR/compile_commands.json references macOS host paths" >&2
-  echo "  recovery: rm -rf $_host_build_dir/ (on host) and rerun" >&2
+  echo "  recovery: re-run the same docker/run.sh command on the host with --clean (wipes $_host_build_dir/ and rebuilds)" >&2
   exit 72
 fi
 unset _host_build_dir

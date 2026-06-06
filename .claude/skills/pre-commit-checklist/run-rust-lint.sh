@@ -5,6 +5,9 @@
 #
 # Toolchain: rust-toolchain.toml pins the channel to the version baked into the
 # CI image, so rustup runs the same rustfmt/clippy CI gates on (no drift).
+#
+# No --clean flag: there is no CMake build dir to wipe — cargo manages its own
+# incremental cache (target/ + the CARGO_HOME volume). (#2042)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
