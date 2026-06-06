@@ -90,7 +90,7 @@ The `asan` preset itself already builds with `-fno-sanitize=vptr,function`.
 
 **Why**: `--label` in `gh issue edit` is a *set* operation, not an *append*. The flag name is misleading because `gh issue create --label` is safe (empty initial state). The asymmetry bites every time you remember the create syntax and apply it to edit.
 
-**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-close-pr` Step 7 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
+**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-finalize-pr` Step 7 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
 
 ---
 
@@ -329,7 +329,7 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 
 ### GraphQL `viewer` is a root Query field, not a `Repository` field
 
-**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Source**: PR #1937 (2026-05-28, `/git-finalize-pr` dogfood)
 **Tags**: gh, graphql, viewer, query-type
 
 **Wrong**: `gh api graphql -f query='{ repository(owner: "...", name: "...") { pullRequest(number: N) { ... } } viewer { login } } }'`
@@ -343,7 +343,7 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 
 ### `gh pr checks --json` uses `bucket`/`state`/`link`, not `status`/`conclusion`/`detailsUrl`
 
-**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Source**: PR #1937 (2026-05-28, `/git-finalize-pr` dogfood)
 **Tags**: gh, pr-checks, json-fields
 
 **Wrong**: `gh pr checks <PR> --json name,status,conclusion,detailsUrl`
@@ -357,7 +357,7 @@ The bug only triggers when `$output` exceeds the pipe buffer (≈64 KiB on Linux
 
 ### `gh pr view --json mergeable` is conflict-only; `mergeStateStatus` carries CI / branch-protection state
 
-**Source**: PR #1937 (2026-05-28, `/git-close-pr` dogfood)
+**Source**: PR #1937 (2026-05-28, `/git-finalize-pr` dogfood)
 **Tags**: gh, pr-view, mergeable, merge-state-status, branch-protection
 
 **Wrong**: gating merge on `mergeable` alone — e.g. `gh pr view <PR> --json mergeable --jq .mergeable` returns `MERGEABLE` so the script proceeds, then `gh pr merge` rejects with "Pull request is not mergeable" because branch protection still requires green CI / reviews.
@@ -371,7 +371,7 @@ gh pr view <PR> --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeS
 
 **Why**: `mergeable` is the merge-conflict judgment only — it returns `MERGEABLE` / `CONFLICTING` / `UNKNOWN` based on whether the base/head can be three-way merged. `mergeStateStatus` is the comprehensive UI state and exposes `CLEAN`, `HAS_HOOKS` (both ready), `BLOCKED` (required checks not green / required reviews missing / signed-commit policy), `BEHIND` (head behind base), `DIRTY` (conflicts; mirrors `mergeable: CONFLICTING`), `DRAFT`, `UNKNOWN`, `UNSTABLE` (non-required failures). CI-pending and branch-protection states show up as `BLOCKED` while `mergeable` stays `MERGEABLE`, so skipping the second check lets the merge call proceed and fail noisily. The `gh pr merge` documentation says "the merge will not happen unless the pull request is in a mergeable state" without spelling out which API field that maps to — the answer is `mergeStateStatus`, not `mergeable`.
 
-**Note (where the strict gate applies)**: This `mergeStateStatus ∈ {CLEAN, HAS_HOOKS}` gate belongs at the actual merge call (e.g. `git-close-pr` Step 6 / `gh pr merge`). Pre-check steps should distinguish structural blockers (`DIRTY` / `mergeable: CONFLICTING`) from transient states (`BLOCKED` while CI runs, `BEHIND`, `UNSTABLE`, `UNKNOWN`, `DRAFT`) that subsequent steps will resolve. See `git-close-pr` Step 1 (structural-only pre-check, warn-and-proceed for transient states) vs Step 6 (strict gate before merge). Issue #1956 (2026-05-29) — applying the strict gate at Step 1 wrongly serialized CI completion with review handling.
+**Note (where the strict gate applies)**: This `mergeStateStatus ∈ {CLEAN, HAS_HOOKS}` gate belongs at the actual merge call (e.g. `git-finalize-pr` Step 6 / `gh pr merge`). Pre-check steps should distinguish structural blockers (`DIRTY` / `mergeable: CONFLICTING`) from transient states (`BLOCKED` while CI runs, `BEHIND`, `UNSTABLE`, `UNKNOWN`, `DRAFT`) that subsequent steps will resolve. See `git-finalize-pr` Step 1 (structural-only pre-check, warn-and-proceed for transient states) vs Step 6 (strict gate before merge). Issue #1956 (2026-05-29) — applying the strict gate at Step 1 wrongly serialized CI completion with review handling.
 
 ---
 

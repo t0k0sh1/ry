@@ -8,7 +8,7 @@ metadata:
 
 # Git Claim Issue
 
-Mark a GitHub issue as in-progress by adding the `wip` label. This is the counterpart of `git-close-pr` Step 7, which removes `wip` after merge.
+Mark a GitHub issue as in-progress by adding the `wip` label. This is the counterpart of `git-finalize-pr` Step 7, which removes `wip` after merge.
 
 ## Scope (what this skill does NOT do)
 
@@ -38,7 +38,7 @@ Always use `--add-label`. **Never** use `--label` with `gh issue edit`:
 |---|---|
 | `gh issue edit <n> --label wip` | **Replaces all labels** (destructive — do NOT use) |
 | `gh issue edit <n> --add-label wip` | Appends, preserves existing labels (correct) |
-| `gh issue edit <n> --remove-label wip` | Removes only the named label (used by `git-close-pr` Step 7) |
+| `gh issue edit <n> --remove-label wip` | Removes only the named label (used by `git-finalize-pr` Step 7) |
 
 Note: `gh issue create --label foo` is safe because there are no pre-existing labels to overwrite. The destructive case applies only to `gh issue edit --label`.
 

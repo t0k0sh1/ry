@@ -1,12 +1,12 @@
 ---
-name: git-close-pr
-description: PR finalization in one pass — addresses review comments, follows up unresolved threads, verifies CI, runs pre-commit checklist, pushes, and merges. Stops at the first blocker; never auto-loops fix→push→CI-wait. Use when the user wants to finalize a PR, "PR を仕上げる", "マージまで一気に", "指摘対応してマージ", "レビュー対応からマージまで", "close PR <number>".
+name: git-finalize-pr
+description: PR finalization in one pass — addresses review comments, follows up unresolved threads, verifies CI, runs pre-commit checklist, pushes, and merges. Stops at the first blocker; never auto-loops fix→push→CI-wait. Use when the user wants to finalize a PR, "PR を仕上げる", "マージまで一気に", "指摘対応してマージ", "レビュー対応からマージまで", "finalize PR <number>".
 allowed-tools: Bash(gh:*), Bash(git:*), Read, Edit
 metadata:
   short-description: Review → CI → push → merge in one pass
 ---
 
-# Git Close PR
+# Git Finalize PR
 
 Take a pull request end-to-end: address review comments, follow up unresolved threads, verify CI, run the pre-commit checklist, push, and merge.
 
