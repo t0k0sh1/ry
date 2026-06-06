@@ -153,7 +153,7 @@ Put multiple `Agent` tool calls in a single message and **launch subagents concu
 Any ad-hoc deletion typed by Claude (the main agent) for scratch / cleanup purposes — `rm` / `unlink` / cleanup traps — is **totally banned** (#2042). No exceptions. This generalizes the `/tmp`-specific "do not delete" rule above into a blanket prohibition on the *act of deletion itself*, in the same "repeated objection → total ban" lineage as #1947 (background execution) and #1990 (the word `flake`).
 
 **Prohibited targets (Claude's ad-hoc operations):**
-- `rm` / `unlink` typed directly into the Bash tool for scratch or cleanup (deleting a verification scratch file, tidying up afterwards)
+- `rm` / `unlink` typed directly into the Bash tool for scratch or cleanup (deleting a verification scratch file, tidying up afterward)
 - Deletions embedded in a one-off one-liner or heredoc script (`... && rm ...`, a cleanup `trap '... rm ...' EXIT`, etc.)
 - Manual build-tree cleanup such as `rm -rf build-*` / `rm -rf build-asan-docker/` before running a verification script — use `--clean` instead (see below)
 - Deleting a file you wrote under `/tmp/` (already covered by the Limited `/tmp` exception above; restated here as part of the blanket ban)
