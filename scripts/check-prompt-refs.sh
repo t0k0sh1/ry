@@ -33,7 +33,10 @@
 # not by errexit.
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || {
+  echo "::error::check-prompt-refs: failed to change to repository root" >&2
+  exit 1
+}
 
 KB="KNOWLEDGE.md"
 TAB="$(printf '\t')"
