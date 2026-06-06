@@ -107,11 +107,12 @@ Generic mentions ("knowledge accumulates in KNOWLEDGE.md") are fine; pointing at
 Before publishing new knowledge-base docs, verify:
 
 ```bash
-grep -nE 'KNOWLEDGE(\.md)?\s*(L[0-9]+|line\s+|entry\s+(above|below|here))' \
-  AGENTS.md .claude/rules/*.md .claude/skills/*/SKILL.md .claude/agents/*.md
+grep -nE 'KNOWLEDGE(\.md)?`?\s*(L[0-9]+|line\s+|entry\s+(above|below|here))' \
+  AGENTS.md .claude/rules/*.md .claude/skills/*/SKILL.md .claude/agents/*.md \
+  | grep -vE 'L261.*#1895'   # drop the two sanctioned citations (see note below)
 ```
 
-Every hit is a violation to fix.
+Every remaining hit is a violation to fix. The `grep -vE 'L261.*#1895'` filter drops the two intentional references in AGENTS.md's terminology-prohibition section — its rule (b) and the "Handling of existing text" bullet, which deliberately cite a fixed `KNOWLEDGE.md L<n>, #<issue>` label that rule REQUIRES for searchability. They are a sanctioned exception to this external-reference policy; do not "fix" them. The `` `? `` added to the pattern catches the back-tick-wrapped `` `KNOWLEDGE.md` L<n> `` form that the bare `\s*` previously missed.
 
 ## 4. Promotion to rules / skills (REQ-4)
 

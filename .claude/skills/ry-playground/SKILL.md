@@ -1,6 +1,7 @@
 ---
 name: ry-playground
 description: Try Ry language code snippets for ad-hoc behavior verification. Uses heredoc with ./build/ry -c. No file creation allowed. Not for self-tests.
+allowed-tools: Bash
 metadata:
   short-description: Try Ry code snippets in a sandbox
 ---

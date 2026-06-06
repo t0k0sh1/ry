@@ -84,7 +84,7 @@ Issue review → consult the knowledge base (path-scoped rules also auto-load du
 ## Issue-driven development
 
 - **Repository**: `t0k0sh1/ry`
-- **Start**: the user specifies an issue number / URL → understand the content → enter Plan mode. When instructed to "find the next issue", fetch open issues (excluding `wip`), present candidates with bugs prioritized → after selection, enter Plan mode.
+- **Start**: the user specifies an issue number / URL → understand the content → enter Plan mode. When instructed to "find the next issue" (`/git-search-issues`), fetch open issues (excluding `wip`), present candidates with bugs prioritized → after selection, enter Plan mode.
 - **Label handling**: labels MUST be attached/removed via skills (`git-claim-issue` / `git-finalize-pr` Step 7 use `--add-label` / `--remove-label`, preserving existing labels).
 - **Scope verification when splitting an issue**: a decision to file or separate a derivative issue is checked via `/scope-decomposition` against symmetry (4 axes, REQ-1), split rationale (3 categories, REQ-2), derivative-chain caution (3rd-degree and beyond, REQ-3), and the single-preview-for-n-split rule when filing an oversized issue (REQ-5). Target-shrinking splits during Plan mode are prohibited by REQ-4.
 

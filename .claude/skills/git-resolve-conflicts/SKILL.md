@@ -1,6 +1,6 @@
 ---
 name: git-resolve-conflicts
-description: Resolve PR merge conflicts locally by rebasing onto main, fixing conflicts, and pushing.
+description: Resolve PR merge conflicts locally by rebasing onto main, fixing conflicts, and pushing. Also fires on Japanese triggers コンフリクト解消, 衝突解決, マージ競合を直す, リベースで解決.
 allowed-tools: Bash(git:*), Bash(gh pr view:*), Read, Edit
 metadata:
   short-description: Resolve PR conflicts locally and push
