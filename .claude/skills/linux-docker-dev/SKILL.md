@@ -21,7 +21,7 @@ See [`docker/README.md`](../../../docker/README.md) for a quick-start reference.
 
 ./docker/run.sh asan ry_tests                                     # ASan + UBSan, C++ tests
 ./docker/run.sh asan ry test -p                                   # ASan + UBSan, Ry self-tests
-./docker/run.sh asan ry test tests/spec/some.test.ry              # single file
+./docker/run.sh asan ry test tests/spec/<file>.test.ry           # single file
 
 ./docker/run.sh tsan ry_tests                                     # TSan, C++ tests
 

@@ -21,7 +21,7 @@ If the caller's request is ambiguous, assume `asan` (the more common request).
 
 - **Foreground only.** Never use `run_in_background=true` (#1947). Use `timeout: 600000` (10 minutes) for the script invocation.
 - Wrapper scripts (`run-asan.sh` / `run-tsan.sh`) handle preset selection, ASAN_OPTIONS / UBSAN_OPTIONS / TSAN_OPTIONS env vars, and the C++ + Ry self-test invocation chain. Do not bypass them by calling `cmake` directly unless the user explicitly asks.
-- TSan note: the Ry self-test (`ry test -p`) is warn-only due to the upstream `LargeMmapAllocator` bug (`/tsan-known-issues`). A clean C++ TSan run is sufficient; do NOT escalate Ry-self-test TSan warnings as failures. ORC teardown crashes (`~LLJIT()`, `removeResourceTracker`, `~CodeGen()`, `~OverloadEntry()`) are suppressed by `src/jit/jit_runner.cpp` — if they recur, flag them but do not block.
+- TSan note: the Ry self-test (`ry test -p`) is warn-only due to the upstream `LargeMmapAllocator` bug (see the `## サニタイザー既知問題` section of `KNOWLEDGE.md`). A clean C++ TSan run is sufficient; do NOT escalate Ry-self-test TSan warnings as failures. ORC teardown crashes (`~LLJIT()`, `removeResourceTracker`, `~CodeGen()`, `~OverloadEntry()`) are suppressed by `src/jit/jit_runner.cpp` — if they recur, flag them but do not block.
 
 ## Failure interpretation
 

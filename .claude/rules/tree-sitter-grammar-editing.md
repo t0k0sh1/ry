@@ -77,7 +77,7 @@ is handled by `/pre-commit-checklist` §3.6.5.
 **Tags**: tree-sitter, scanner, valid-symbols, brace-internal, newline,
 bracket-depth, blind-spot
 
-**Rule**: `src/scanner.c` cannot suppress NEWLINE / INDENT / DEDENT
+**Rule**: `editor/tree-sitter/src/scanner.c` cannot suppress NEWLINE / INDENT / DEDENT
 inside `{` / `[` / `(` by tracking bracket depth locally. tree-sitter
 only calls the external scanner when `valid_symbols[]` requests an
 external token, so for `from std.io import {` the scanner is *not*
@@ -91,7 +91,7 @@ newlines between elements, use the `bracedSep1(rule, separator,
 newline)` helper in `grammar.js` and pass **only** `$._newline`. Do
 not pass `$._indent` / `$._dedent` — the scanner's indent stack must
 stay clean. This mirrors the C++ parser's `skipStructuralTokens`
-(`src/parser.cpp:352`). Out-of-scope rules (`tuple_literal`,
+(`src/parser/parser.cpp:352`). Out-of-scope rules (`tuple_literal`,
 `_parenthesized`, `argument_list`, `parameter_list`, `case_*` arm
 bodies) still ERROR for multi-line forms — extend the pattern when
 warranted, tracked as separate issues.

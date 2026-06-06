@@ -31,9 +31,9 @@ git diff --name-only origin/main
 
 **Legend**: `✓` = required / `skip` = may omit (record in PR description) / `review` = judgment call.
 
-※ "parser/lexer/json/utf8/string/io family" = changes to `src/parser*`, `src/lexer*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), `src/runtime/native/io.cpp`, or `include/ry/parser*.hpp`, `include/ry/lexer*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`, `include/ry/runtime/native/io.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
+※ "parser/lexer/json/utf8/string/io family" = changes to `src/parser/*`, `src/lexer/*`, `src/runtime/native/json.cpp`, `src/runtime/core/utf8.cpp`, `src/runtime/core/string.cpp` (also `src/runtime/core/regex_parser.cpp`), `src/runtime/native/io.cpp`, or `include/ry/parser/*.hpp`, `include/ry/lexer/*.hpp`, `include/ry/runtime/native/json.hpp`, `include/ry/runtime/core/string.hpp`, `include/ry/runtime/native/io.hpp`. **`runtime/core/string.cpp` is a dependency of both `fuzz_json` and `fuzz_utf8`**, so it always falls in this row.
 
-**Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.5.6 (Rust Lint, when `crates/` changed), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
+**Notes**: multiple matching rows ⇒ take the strictest per column (`✓` > `review` > `skip`). Always required regardless of matrix: §2.5 (rules/skills, when applicable), §3.5.5 (Static Analysis), §3.5.6 (Rust Lint, when `crates/` changed), §3.5.7 (Prompt/Instruction Reference Lint, when `.claude/` / `AGENTS.md` / `CLAUDE.md` changed), §3.6.5 (tree-sitter Grammar Regression Check, when applicable), §3.7 (background hygiene), §4 (Label Cleanup, no-op). For `.md` / `docs/`-only and `changelog.d/`-only PRs, §4 is effectively the only required action: the edited area satisfies its own `✓` (self-edit = done), and the Skip-if bash returns `skip` for everything else.
 
 > **Logging duty**: whenever a section is skipped, record `Skipped §X — <reason>` in the PR description (or in the CHANGELOG fragment if one exists). Skip logs are required for future audit.
 
@@ -195,6 +195,32 @@ any diff / warning before declaring complete; do not commit while
 
 Lint policy lives in `[workspace.lints]` (root `Cargo.toml`); crate-specific FFI
 carve-outs stay as `#![allow(...)]` in `crates/emit/src/lib.rs`.
+
+## 3.5.7. Prompt/Instruction Reference Lint (#2029)
+
+> **Skip if** — no `.claude/`, `AGENTS.md`, or `CLAUDE.md` files changed:
+>
+> ```bash
+> git diff --name-only origin/main | grep -E '^\.claude/|^AGENTS\.md$|^CLAUDE\.md$' | head -1
+> ```
+>
+> Empty output ⇒ skip. Record `Skipped §3.5.7 — no prompt-definition change`.
+
+Reproduce the CI `lint` job's reference-integrity gate — fails on stale
+inline-code paths (#1827-class drift), dead slash-command (`/<name>`) links, and `KNOWLEDGE.md`
+section-name English/Japanese drift:
+
+```bash
+./.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh
+```
+
+The lint inspects **inline-code backtick spans only** across `.claude/**/*.md`
++ `AGENTS.md` + `CLAUDE.md`. Fenced blocks and plain prose are the escape hatch
+for intentionally non-existent example paths; `<...>` placeholders, globs, and
+`:line` / `::symbol` suffixes are skipped. `KNOWLEDGE.md` is the section-heading
+source of truth, not a path-scan target. The `::error::` output names each
+`file:line` and its fix — correct it before declaring complete. Convention
+details (incl. the `<...>` placeholder rule): `.claude/rules/docs-reference-conventions.md`.
 
 ## 3.6. libFuzzer Fuzzing
 

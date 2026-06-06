@@ -20,7 +20,7 @@ when both definitions sit under `namespace ry` — the linker still merges
 implicit / inline destructor symbols across translation units via COMDAT.
 
 **Why** (concrete incident): `src/runtime/native/json.cpp` had `struct Parser` in
-`namespace ry` for a TU-local JSON parser. `include/ry/parser.hpp` has
+`namespace ry` for a TU-local JSON parser. `include/ry/parser/parser.hpp` has
 `class ry::Parser` for the Ry source parser. Both auto-generated
 destructors (`_ZN2ry6ParserD1Ev`) share the same mangled symbol. On Linux
 libstdc++ the linker COMDAT-picked `parser.hpp`'s destructor and applied it
@@ -193,7 +193,7 @@ user panics. The existing catch in `__ry_thread_spawn`
 active error-propagation path. Fixing this requires refactoring
 both `emitRuntimeError` and `ry_runtime_trap_exit` to a throw-based
 path + installing a top-level catch in `ry run` / `ry test` —
-tracked in #880. Before writing tests that trigger a panic and
+proposed in #880 (closed not-planned). Before writing tests that trigger a panic and
 expect `Err(error_msg)`, verify that the panic *actually* throws a
 C++ exception; the only current throw path from runtime code is
 `__ry_task_join` double-join (`src/runtime/core/parallel.cpp:292`) and a

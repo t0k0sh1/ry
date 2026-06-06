@@ -125,7 +125,7 @@ drives actual runtime type dispatch through `TypeMeta` metadata — `any` in
 the declaration is never consulted at codegen time.
 
 **Precedent for `any` at generic argument position**: `tests/spec/any.test.ry`
-uses `Map<str, any>` and `List<any>` in 30+ places; `src/parser_decl.cpp:159`
+uses `Map<str, any>` and `List<any>` in 30+ places; `src/parser/parser_decl.cpp:159`
 uses `any` as the default element type for inferred collections. `Result<any, Error>`
 was introduced by #1135 as a new pattern, but the surrounding type machinery
 already handled `any` as a generic argument.
@@ -145,8 +145,8 @@ This prevents future readers from "fixing" `any` back to `Unit`.
 **Tags**: documentation, syntax, lexer
 
 **Context**: Auditing `docs/reference/types.md` found `weak` described as "a keyword".
-`src/lexer.cpp` keyword_map contains only hard keywords. `weak` is handled in
-`parser_expr.cpp:463` and `parser_decl.cpp:726` as a contextual identifier
+`src/lexer/lexer.cpp` keyword_map contains only hard keywords. `weak` is handled in
+`src/parser/parser_expr.cpp:463` and `src/parser/parser_decl.cpp:726` as a contextual identifier
 (`t.kind == TokenKind::Ident && t.value == "weak"`). Other examples:
 `None`, `Some`, `Ok`, `Err` (variant constructors), and `_` (wildcard) are
 similarly soft — they are legal variable names and only gain special meaning
@@ -156,7 +156,7 @@ in specific syntactic positions.
 Use "contextual identifier" instead, or describe the syntax without labeling the
 token class.
 
-**How to verify**: Check `src/lexer.cpp`'s `keyword_map` (lines 35–66). If the
+**How to verify**: Check `src/lexer/lexer.cpp`'s `keyword_map` (lines 35–66). If the
 token is not there, it is not a reserved keyword — the parser must be checking
 `t.value == "..."` explicitly to give it special meaning.
 

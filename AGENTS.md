@@ -28,7 +28,7 @@ cmake --build build                                     # Ninja parallelizes aut
 
 ## tree-sitter grammar build & install
 
-A PR that modifies any of `docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` requires rebuilding `ry.so`. Build/install commands, prerequisites, pitfalls (externals enum order / `mark_end` / `valid_symbols` semantics / highlights.scm), and the verification recipe are in `.claude/skills/tree-sitter-grammar-editing/SKILL.md` (or `/tree-sitter-grammar-editing`) and `editor/tree-sitter/README.md`; the self-verification procedure is in `/pre-commit-checklist` §3.6.5. When editing `editor/tree-sitter/grammar.js` / `src/scanner.c` / `queries/*.scm`, that skill is auto-loaded via a path-scoped rule.
+A PR that modifies any of `docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` requires rebuilding `ry.so`. Build/install commands, prerequisites, pitfalls (externals enum order / `mark_end` / `valid_symbols` semantics / highlights.scm), and the verification recipe are in `.claude/skills/tree-sitter-grammar-editing/SKILL.md` (or `/tree-sitter-grammar-editing`) and `editor/tree-sitter/README.md`; the self-verification procedure is in `/pre-commit-checklist` §3.6.5. When editing `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` / `queries/*.scm`, that skill is auto-loaded via a path-scoped rule.
 
 ## Compiler warning flags
 
@@ -61,17 +61,17 @@ For local development, use `cmake --preset asan` to enable ASan + UBSan together
 
 Any issue detected by ASan or UBSan (memory leak, buffer overflow, use-after-free, undefined behavior, etc.) MUST be resolved. Do not commit with a sanitizer error left unresolved.
 
-Incident knowledge and known issues for ASan / UBSan (masking mechanisms, allocator differences, platform-specific manifestation paths) are in the `## Known sanitizer issues` section of `KNOWLEDGE.md`.
+Incident knowledge and known issues for ASan / UBSan (masking mechanisms, allocator differences, platform-specific manifestation paths) are in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`.
 
 ## TSan (ThreadSanitizer)
 
-For verifying thread safety, use the TSan preset. The build command (`cmake --preset tsan`), exclusivity with ASan-UBSan (`build-tsan/` isolation), the required vs. warn-only job split, and known upstream bugs (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) are in the `## Known sanitizer issues` section of `KNOWLEDGE.md`; the self-verification procedure is in `/pre-commit-checklist` §3.5.
+For verifying thread safety, use the TSan preset. The build command (`cmake --preset tsan`), exclusivity with ASan-UBSan (`build-tsan/` isolation), the required vs. warn-only job split, and known upstream bugs (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) are in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`; the self-verification procedure is in `/pre-commit-checklist` §3.5.
 
 > If you introduce a new race, you MUST fix it within the same PR. Warn-only is only a workaround for the TSan allocator bug; it does not license the introduction of an actual race.
 
 ## libFuzzer (coverage-guided fuzzing)
 
-**The CI job is currently disabled** — you MUST run it manually during feature-branch self-verification (see `/pre-commit-checklist` §3.6). Save crash inputs in both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/`. Harness requirements, build commands, and known limitations are in `.claude/skills/libfuzzer-harness/SKILL.md` (or `/libfuzzer-harness`). Incident knowledge and known issues are also in the `## Known sanitizer issues` section of `KNOWLEDGE.md`.
+**The CI job is currently disabled** — you MUST run it manually during feature-branch self-verification (see `/pre-commit-checklist` §3.6). Save crash inputs in both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/`. Harness requirements, build commands, and known limitations are in `.claude/skills/libfuzzer-harness/SKILL.md` (or `/libfuzzer-harness`). Incident knowledge and known issues are also in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`.
 
 ## Memory-safety rules (C++ runtime)
 
@@ -195,7 +195,7 @@ When explaining a CI failure or test failure, Claude Code MUST use one of the fo
 
 ### Handling of existing text
 
-- Historical text in `KNOWLEDGE.md` / `CHANGELOG.md` (e.g., `KNOWLEDGE.md` L261 #1895's `~5-10 % Linux CI flake`, `CHANGELOG.md` L598's `Linux CI flake (~5-10 %)`, etc.) MUST NOT be modified. Reason: searchability. Cross-references with upstream LLVM issues, CI analysis logs, and GitHub Issues would break.
+- Historical text in `KNOWLEDGE.md` / `CHANGELOG.md` (e.g., `KNOWLEDGE.md` L261 #1895's `~5-10 % Linux CI flake`, `CHANGELOG.md` L760's `Linux CI flake (~5-10 %)`, etc.) MUST NOT be modified. Reason: searchability. Cross-references with upstream LLVM issues, CI analysis logs, and GitHub Issues would break.
 - This rule applies only to **new writing (future additions to `KNOWLEDGE.md` / commit messages / PR descriptions / Claude Code responses / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.)**.
 - **MUST**: **reintroducing `flake` as a conclusion by quoting or referencing historical flake text** is also prohibited (it is the same accident path as CI #2578). When describing a symptom that hits historical text, convert it into one of (a)/(b)/(c) before writing.
 
