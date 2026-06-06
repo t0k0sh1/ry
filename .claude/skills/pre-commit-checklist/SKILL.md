@@ -248,4 +248,4 @@ Claude (メインエージェント) から起動する background 実行は #19
 
 ## 4. Label Cleanup
 
-**Do not change labels at the self-verification stage.** Label transitions happen post-merge: `git-close-pr` Step 7 removes `wip` autonomously. Do not run individual commands directly.
+**Do not change labels at the self-verification stage.** Label transitions happen post-merge: `git-finalize-pr` Step 7 removes `wip` autonomously. Do not run individual commands directly.

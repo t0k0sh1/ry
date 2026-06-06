@@ -81,13 +81,13 @@ The runtime memory-safety rules (forbidden-function table / `oom_abort(n)` / NUL
 
 ## Workflow overview
 
-Issue review → consult the knowledge base (path-scoped rules also auto-load during implementation) → Plan mode (Task 1 = `/git-claim-issue` to attach `wip`) → TDD implementation → self-verification via `/pre-commit-checklist` → subsequent git operations (commit / push / PR / merge) follow "Separation of Concerns". If you want to chain PR review response → CI check → push → merge in a single command, use `/git-close-pr` (it stops on blockers).
+Issue review → consult the knowledge base (path-scoped rules also auto-load during implementation) → Plan mode (Task 1 = `/git-claim-issue` to attach `wip`) → TDD implementation → self-verification via `/pre-commit-checklist` → subsequent git operations (commit / push / PR / merge) follow "Separation of Concerns". If you want to chain PR review response → CI check → push → merge in a single command, use `/git-finalize-pr` (it stops on blockers).
 
 ## Issue-driven development
 
 - **Repository**: `t0k0sh1/ry`
 - **Start**: the user specifies an issue number / URL → understand the content → enter Plan mode. When instructed to "find the next issue", fetch open issues (excluding `wip`), present candidates with bugs prioritized → after selection, enter Plan mode.
-- **Label handling**: labels MUST be attached/removed via skills (`git-claim-issue` / `git-close-pr` Step 7 use `--add-label` / `--remove-label`, preserving existing labels).
+- **Label handling**: labels MUST be attached/removed via skills (`git-claim-issue` / `git-finalize-pr` Step 7 use `--add-label` / `--remove-label`, preserving existing labels).
 - **Scope verification when splitting an issue**: a decision to file or separate a derivative issue is checked via `/scope-decomposition` against symmetry (4 axes, REQ-1), split rationale (3 categories, REQ-2), derivative-chain caution (3rd-degree and beyond, REQ-3), and the single-preview-for-n-split rule when filing an oversized issue (REQ-5). Target-shrinking splits during Plan mode are prohibited by REQ-4.
 
 ## Plan mode rules
@@ -190,7 +190,7 @@ When explaining a CI failure or test failure, Claude Code MUST use one of the fo
 - Test execution
 - Self-verification
 - Documentation updates
-- Removing the `wip` label after PR merge (consolidated into `git-close-pr` Step 7. Executed autonomously immediately after merge completion, without waiting for user instruction. Issue closure is performed automatically by GitHub via the `Closes #xx` keyword. Note that this is a record of the feature landing on `main`, not a release completion — see "Release Workflow").
+- Removing the `wip` label after PR merge (consolidated into `git-finalize-pr` Step 7. Executed autonomously immediately after merge completion, without waiting for user instruction. Issue closure is performed automatically by GitHub via the `Closes #xx` keyword. Note that this is a record of the feature landing on `main`, not a release completion — see "Release Workflow").
 
 #### Handling side findings
 
@@ -226,7 +226,7 @@ The following priority order applies to side-finding triage (Q1–Q4). **The rul
 
 - **Committing/pushing is mandatory**: a fix that is not committed and pushed is not reflected in the PR. When review response is complete, if there are uncommitted changes, report them to the user without fail and encourage commit and push.
 - **Resolve decisions are delegated to the reviewer**: CodeRabbit auto-verifies reply content and resolves the conversation itself, so if Claude Code resolves preemptively, the verification flow does not work. Human reviewer comments are the same — reply only and delegate the resolve decision.
-- **Pre-merge unresolved check**: `git-close-pr` Step 6 automatically detects unresolved conversations and aborts the merge if any remain.
+- **Pre-merge unresolved check**: `git-finalize-pr` Step 6 automatically detects unresolved conversations and aborts the merge if any remain.
 
 ### Accumulating lessons from PR reviews
 
