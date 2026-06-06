@@ -1,6 +1,6 @@
 ---
 name: git-search-issues
-description: Search GitHub issues by number, label, keyword, or find next issue candidates to work on.
+description: Search GitHub issues by number, label, keyword, or find next issue candidates to work on. Also fires on Japanese triggers 次の issue 探して, issue 検索, ラベルで絞り込み, 次やる issue 探す.
 allowed-tools: mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__issue_read
 metadata:
   short-description: Search GitHub issues
