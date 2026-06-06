@@ -29,6 +29,10 @@ paths:
 
 The str branch must come AFTER Set/Map/List because `isStringValue(container)` returns true for any `ptrTy_` value without collection/resource metadata. Set/Map/List headers all have `hasAnyMeta() == true` so `isStringValue` correctly excludes them; placing str earlier would fire on plain `str` RHS before collection branches even run. When RHS is `str` and LHS is `any`, unwrap with `unwrapFromAny(elem, ptrTy_)` (no `wrapInAny` direction needed — str has no element type to promote into). Other LHS types vs str RHS: emit a clear compile error.
 
+### Opaque-pointer codegen: `getUnqual` for pointer types, element-typed `CreateLoad`
+
+Under opaque pointers every codegen-emitted pointer is the untyped `ptr` (the C++ counterpart of the FileCheck-golden rule just below). Build pointer types with `PointerType::getUnqual(*ctx_)` — the cached `ptrTy_` initialized in `src/codegen.cpp` — never a typed `PointerType::get(elem, ...)`. Because a `ptr` carries no pointee type, every `CreateLoad` must pass the element type explicitly (`CreateLoad(type, ptr, name)`); the single-argument form cannot recover it. The codebase follows this uniformly — pointer construction goes through `getUnqual` and all loads are element-typed — so a stray typed pointer or single-arg load is a regression to reject, not a style choice.
+
 ### FileCheck goldens (`tests/filecheck/*.ry`)
 
 Each file is both Ry source and a FileCheck script. Use `# CHECK:` (Ry comment is `#`, never `//`). Goldens run on unoptimized IR (`alloca`/`store`/`load` for every arg are present, `mem2reg` has not run). All pointer types are `ptr` under opaque pointers — never `i64*` / `i8*`. ARC retain/release only appears in CoW clone, lambda capture, and `@parallel for` paths — pick simple goldens accordingly. Result layout: `%Result = type { i1, i64, ptr }`. Goldens are LLVM-version-sensitive — re-verify after LLVM bumps. CI job is `continue-on-error` (advisory) but fix failures before merge anyway.
