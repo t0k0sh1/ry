@@ -3,7 +3,23 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
-./docker/run.sh fuzz fuzz_parser -max_total_time=60 -rss_limit_mb=2048 \
+CLEAN_FLAG=""
+for arg in "$@"; do
+  case "$arg" in
+    --clean) CLEAN_FLAG="--clean" ;;
+    -h|--help)
+      sed -n '2p' "$0"
+      echo "Usage: run-fuzz.sh [--clean]"
+      echo "  --clean: remove host build-fuzz-docker/ before building (forwarded to docker/run.sh)"
+      exit 0
+      ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+# --clean goes to the FIRST docker/run.sh call only; passing it to the later
+# targets would wipe the freshly-built build-fuzz-docker/ and force a rebuild each.
+./docker/run.sh $CLEAN_FLAG fuzz fuzz_parser -max_total_time=60 -rss_limit_mb=2048 \
     -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
 
 ./docker/run.sh fuzz fuzz_json -max_total_time=60 -rss_limit_mb=2048 \

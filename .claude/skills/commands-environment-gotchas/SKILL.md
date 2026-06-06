@@ -151,7 +151,7 @@ fi
 
 **Why**: `ry -c` follows a different convention from `python -c` / `sh -c`. It takes the source code on **stdin**, not as the next argv element. The `--help` output shows `echo '<code>' | ry -c` but this is easy to miss if you habitually reach for `-c 'snippet'` from shell/Python muscle memory. Particularly dangerous because the wrong form exits 0 with no output instead of erroring, so a failed manual repro looks like "compiler accepted the invalid program" when in fact no program was fed in at all.
 
-**How to apply**: For one-off Ry snippets use a heredoc-to-pipe or write a scratch file under the project root (not `/tmp/` — see the `_dev_stdlib` gotcha above).
+**How to apply**: For one-off Ry snippets feed the source on **stdin** — a heredoc-to-pipe (`./build/ry -c <<'EOF' … EOF`, the `/ry-playground` form) or `printf '…\n' | ./build/ry -c`. Do **not** write a scratch `.ry` file: project-tree temp files are banned (AGENTS.md §"Prohibition on temporary file creation"), and a `/tmp/` copy resolves the dev stdlib differently (the `_dev_stdlib` gotcha above). Running the heredoc from the project dir keeps `share/std/` resolution correct **without creating any file**.
 
 ---
 
@@ -203,10 +203,11 @@ Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` o
 
 **Wrong**: macOS で `cmake --preset default` (Apple clang で configure) の後そのまま `clang-tidy -p build --quiet` を実行する → `error: PCH file built from a different branch ((clang-apple) vs (clang))` で失敗
 
-**Correct**: `build/` を削除して LLVM clang を CC/CXX に明示し、`SDKROOT` を渡してから再 configure する:
+**Correct**: 推奨は Docker パス `./.claude/skills/pre-commit-checklist/run-clang-tidy.sh --clean` — Linux コンテナで実行するため Apple clang PCH 非互換を構造的に回避し、`--clean` が host build dir のリセットも兼ねるので手動の `rm -rf` が要らない（即席削除は AGENTS.md §"Total ban on Claude-initiated ad-hoc deletion" で禁止）。
+
+Docker 不可時のフォールバックでは `build/` を LLVM clang で再 configure する。`build/` の事前リセットには専用 wrapper が無いため、削除が必要なら AGENTS.md の user handoff（ユーザーに `rm -rf build` を提示し実行を待つ）に従う。リセット後の configure 例:
 
 ```bash
-rm -rf build
 SDKROOT=$(xcrun --show-sdk-path) \
 CC=/opt/homebrew/opt/llvm@21/bin/clang \
 CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \

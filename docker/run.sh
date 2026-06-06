@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Run ry tests inside a Linux (Debian trixie + glibc 2.40, via the ry-ci GHCR image) container from macOS.
-# Usage: docker/run.sh [--rebuild] <preset> [cmd [args...]]
-#        docker/run.sh [--rebuild] static-analysis <tool>
+# Usage: docker/run.sh [--rebuild] [--clean] <preset> [cmd [args...]]
+#        docker/run.sh [--rebuild] [--clean] static-analysis <tool>
+#   --rebuild: rebuild the Docker image before running
+#   --clean:   remove the host build-*-docker/ dir(s) for this preset before building
+#              (the sanctioned replacement for an ad-hoc `rm -rf build-*-docker/` —
+#               AGENTS.md §"Total ban on Claude-initiated ad-hoc deletion")
 #   preset: default | asan | tsan | fuzz
 #   cmd:    ry_tests | ry | bash | fuzz_parser | fuzz_json | fuzz_utf8 | fuzz_io_open  (omit for build-only)
 #   tool:   clang-tidy | cppcheck | scan-build | all
@@ -36,12 +40,16 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# Parse --rebuild flag
+# Parse leading flags (--rebuild / --clean) in any order, before the subcommand.
 REBUILD=0
-if [[ "${1:-}" == "--rebuild" ]]; then
-  REBUILD=1
-  shift
-fi
+CLEAN=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --rebuild) REBUILD=1; shift ;;
+    --clean)   CLEAN=1;   shift ;;
+    *) echo "error: unknown flag '$1' (supported: --rebuild, --clean)" >&2; exit 1 ;;
+  esac
+done
 
 SUBCOMMAND="${1:-default}"
 SCAN_BUILD_DIR_HOST=""
@@ -83,6 +91,21 @@ fi
 if [[ "$REBUILD" -eq 1 ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "Building Docker image $IMAGE..."
   docker build -t "$IMAGE" "$SCRIPT_DIR"
+fi
+
+# When --clean is requested, remove the host build dir(s) for this preset before
+# recreating them. This is the sanctioned replacement for an ad-hoc
+# `rm -rf build-*-docker/` typed by hand (AGENTS.md §"Total ban on
+# Claude-initiated ad-hoc deletion"): the only layer that knows the
+# preset→host-dir mapping owns the removal. The ${PROJECT_DIR:?} guard refuses to
+# run when PROJECT_DIR is somehow empty (defense against rm -rf /<dir>).
+if [[ "$CLEAN" -eq 1 ]]; then
+  echo "==> --clean: removing host build dir $BUILD_DIR_HOST" >&2
+  rm -rf "${PROJECT_DIR:?}/$BUILD_DIR_HOST"
+  if [[ -n "$SCAN_BUILD_DIR_HOST" ]]; then
+    echo "==> --clean: removing host build dir $SCAN_BUILD_DIR_HOST" >&2
+    rm -rf "${PROJECT_DIR:?}/$SCAN_BUILD_DIR_HOST"
+  fi
 fi
 
 # Ensure host build dir exists so Docker doesn't create it as root

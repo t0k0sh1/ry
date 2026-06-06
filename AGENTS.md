@@ -146,6 +146,35 @@ Put multiple `Agent` tool calls in a single message and **launch subagents concu
 - For C++-side verification, append to `tests/test_runtime_*.cpp` and run with `./build/ry_tests --gtest_filter=...`.
 - **Limited `/tmp` exception**: when the GitHub CLI or another external tool's interface requires a file path that cannot be expressed via command-line arguments or heredocs alone, you MAY use a file under `/tmp/`. **However, do not delete the created file and do not attempt to delete it** (do not write `rm /tmp/...` / `unlink` / cleanup traps). Defer to OS tmp cleanup.
 - Intentionally creating a "file to be deleted in the end" as a workaround is prohibited (inside the project completely; even in `/tmp` do not write delete commands). For verification, choose one of `/ry-playground` (heredoc) / appending into an existing test file / `/tmp` (no deletion).
+- **The act of deletion itself is separately governed** — see "Total ban on Claude-initiated ad-hoc deletion" immediately below. `/tmp` files are usable but MUST NOT be deleted by Claude.
+
+### Total ban on Claude-initiated ad-hoc deletion (rm / unlink / cleanup)
+
+Any ad-hoc deletion typed by Claude (the main agent) for scratch / cleanup purposes — `rm` / `unlink` / cleanup traps — is **totally banned** (#2042). No exceptions. This generalizes the `/tmp`-specific "do not delete" rule above into a blanket prohibition on the *act of deletion itself*, in the same "repeated objection → total ban" lineage as #1947 (background execution) and #1990 (the word `flake`).
+
+**Prohibited targets (Claude's ad-hoc operations):**
+- `rm` / `unlink` typed directly into the Bash tool for scratch or cleanup (deleting a verification scratch file, tidying up afterwards)
+- Deletions embedded in a one-off one-liner or heredoc script (`... && rm ...`, a cleanup `trap '... rm ...' EXIT`, etc.)
+- Manual build-tree cleanup such as `rm -rf build-*` / `rm -rf build-asan-docker/` before running a verification script — use `--clean` instead (see below)
+- Deleting a file you wrote under `/tmp/` (already covered by the Limited `/tmp` exception above; restated here as part of the blanket ban)
+
+**Non-target — legitimate `rm` that MUST be preserved (do NOT over-literally ban every `rm`):**
+The ban targets *Claude's ad-hoc typed deletion*, NOT deletion as a concept. An `rm` inside a **committed, persistent, reviewable script** is legitimate and MUST NOT be removed, weakened, or refused — and adding a new legitimate `rm` to such a script (e.g. extending a `--clean` target) is equally fine. "Using `rm` *inside a (persistent) shell script* is fine." This explicitly includes:
+- `install.sh`, `scripts/bundle-dist.sh`, `scripts/assemble-changelog.sh`
+- `.github/actions/sign-checksums/action.yml` — the `rm -f "$KEY_FILE"` wipes the signing private key from the CI runner; **removing it is a security regression**
+- `docker/*.Dockerfile`, `src/cli/self_update.cpp`
+- the `--clean` / CMakeCache auto-heal `rm` inside `.claude/skills/pre-commit-checklist/run-*.sh`
+
+**Routing for legitimate, task-driven deletion:**
+When a task genuinely requires deleting a file (e.g. a source file obsoleted by a refactor), do NOT type an ad-hoc `rm`. Route it through a reviewable mechanism: `git rm` (tracked files), a committed script, or a `run-*.sh --clean` target.
+
+**Build-tree cleanup uses `--clean`, never ad-hoc `rm`:**
+To start a build / verification from a clean state, use the script's own clean capability — `run-*.sh --clean` (or `docker/run.sh --clean <preset>`) — instead of manually deleting `build-*` directories. Every `run-*.sh` that owns a build directory accepts `--clean`.
+
+**When deletion is truly unavoidable (user handoff):**
+If none of the above applies and a deletion is genuinely required, Claude MUST NOT execute it. Present the exact command to the user, return control, and wait until the user runs it themselves (e.g. via `! <command>`) and tells you to continue. Claude never types the deletion.
+
+**Why:** the user has repeatedly objected to "creating and deleting files in a loop" and to Claude reaching for `rm` to "make things clean". The `/tmp` "do not delete" rule above did not, on its own, stop the behavior — so, following the #1947 / #1990 precedent that a flat exception-free ban is what actually changes behavior, the act of ad-hoc deletion is banned outright and re-routed through reviewable mechanisms (`git rm` / committed scripts / `--clean`) or an explicit user handoff.
 
 ## Prohibited terminology: flake / flaky
 
