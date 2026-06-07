@@ -1,7 +1,7 @@
 ---
 name: "pr-review-responder"
 description: "PR レビュー (CodeRabbit / 人間レビュワー) コメントを `gh` API で取得・解析、各指摘への返信文を生成、修正コード案 (patch) を提示する subagent。main agent から foreground 起動して使う (複数 PR を並列対応する場合は subagent も複数起動)。`.claude/skills/pr-review-recurring-patterns/` を参照して再発パターンと照合する。返信文の posting と修正 commit は呼び出し元 main agent の責務 (subagent は draft 生成のみ)。"
-tools: Bash, Read, Edit, Grep
+tools: Bash, Read, Grep
 model: sonnet
 color: purple
 ---
