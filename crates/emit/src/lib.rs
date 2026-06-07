@@ -14,25 +14,33 @@
 //   - llvm-sys = "211" finds LLVM 21 via LLVM_SYS_211_PREFIX.
 //
 // Module layout (#2057 — abi/ffi/core layering with arc as the pilot; builds on
-// the #2025 single-file split):
+// the #2025 single-file split. #2059 extended the migration to control_flow /
+// option / lifecycle and moved each migrated op's externs into the `abi/`
+// directory):
 //   - `abi`   : the C/C++ emission boundary — opaque handle types, scalar / enum
 //               typedefs, descriptor structs, layout assertions, and the
 //               plumbing that exists because C++ calls in (`cx`, `intern` /
-//               `resolve`, handle casts, `cstr_bytes`).
-//   - `core`  : the abi-independent IR generation engine — `EmitCtx`, the
-//               Rust-native `ValueRef` / `Atomicity` handles, basic-IR type
-//               constructors, name builders, module-global lookup, layout
+//               `resolve`, handle casts, `cstr_bytes`). Each migrated op's
+//               `#[no_mangle]` externs live in a child module `abi::<op>`
+//               (`abi/arc.rs`, `abi/control_flow.rs`, `abi/option.rs`,
+//               `abi/lifecycle.rs`) that resolves / translates and calls the
+//               matching core method.
+//   - `core`  : the abi-independent IR generation engine — `EmitCtx` (+ its
+//               `new` constructor), the Rust-native `ValueRef` / `Atomicity` /
+//               `BasicBlockRef` / `FunctionRef` / `TypeRef` handles, basic-IR
+//               type constructors, name builders, module-global lookup, layout
 //               constants, libc / runtime-error / ARC-alloc emitters. Must NOT
 //               reference `abi` (the `core⇏abi` invariant).
 //   - `ffi`   : the Rust-native public surface — re-exports `EmitCtx` /
 //               `ValueRef` / `Atomicity` from `core`. The convergence point
 //               where the C++ path (via `abi`) and the Rust-direct path meet.
 //               Provisional name (a holistic rename is deferred to #2022).
-//   - one module per lowered-op category, each owning its `ry_emit_*` boundary
-//     bodies: `lifecycle`, `bounds`, `result`, `option`, `arc`,
-//     `runtime_call`, `collection`, `cow`, `any`, `control_flow`. `arc` is the
-//     pilot migrated onto the layering (core method + abi extern); the rest are
-//     import-re-pointed only.
+//   - migrated core-role op modules, each an `impl EmitCtx` over the core engine
+//     only (no `use crate::abi`): `arc`, `control_flow`, `option`. `lifecycle`
+//     emits no IR, so its only core part (`EmitCtx::new`) lives in `core` and it
+//     has no core-role module. The not-yet-migrated ops — `bounds`, `result`,
+//     `runtime_call`, `collection`, `cow`, `any` — remain legacy modules owning
+//     their own externs and still `use crate::abi`.
 //
 // Dependency direction is one-way `abi → core`, with `ffi` re-exporting the
 // `core` surface. The `#[no_mangle] extern "C"` boundary functions are exported
@@ -51,7 +59,6 @@ mod control_flow;
 mod core;
 mod cow;
 mod ffi;
-mod lifecycle;
 mod option;
 mod result;
 mod runtime_call;

@@ -1,12 +1,14 @@
-//! Emission-context lifecycle boundary: create / destroy / set_function and the
-//! intern / resolve value-handle entry points.
-
-use std::collections::HashMap;
+//! abi::lifecycle — C boundary entry points for the emission-context lifecycle:
+//! create / destroy / set_function and the intern / resolve value-handle entry
+//! points. `ctx_create` boxes a `core::EmitCtx::new` and hands back the opaque
+//! handle; the rest are boundary plumbing over that handle (intern / resolve are
+//! abi-side; `set_function` is retained pending the deprecation noted in #1968).
 
 use llvm_sys::prelude::*;
 
-use crate::abi::*;
-use crate::core::*;
+use crate::core::EmitCtx;
+
+use super::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_ctx_create(
@@ -15,15 +17,12 @@ pub unsafe extern "C" fn ry_emit_ctx_create(
     context: RyContextRef,
     function: RyFunctionRef,
 ) -> *mut RyEmitCtx {
-    let boxed = Box::new(EmitCtx {
-        module: module as LLVMModuleRef,
-        builder: builder as LLVMBuilderRef,
-        context: context as LLVMContextRef,
-        function: function as LLVMValueRef,
-        // Reserve handle 0 as the "invalid" sentinel; resolve(_, 0) -> NULL.
-        values: vec![std::ptr::null_mut()],
-        bounds_msg_cache: HashMap::new(),
-    });
+    let boxed = Box::new(EmitCtx::new(
+        module as LLVMModuleRef,
+        builder as LLVMBuilderRef,
+        context as LLVMContextRef,
+        function as LLVMValueRef,
+    ));
     Box::into_raw(boxed) as *mut RyEmitCtx
 }
 

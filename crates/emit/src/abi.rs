@@ -13,7 +13,19 @@ use std::ffi::{c_char, c_int, c_void, CStr};
 
 use llvm_sys::prelude::*;
 
-use crate::core::{Atomicity, EmitCtx, ValueRef};
+use crate::core::EmitCtx;
+
+// Per-op C boundary entry points live in child modules (one per migrated op),
+// each calling the matching `core` engine method on `EmitCtx`. The cdylib
+// exports the `#[no_mangle]` symbols regardless of module path; the extra
+// `pub use arc::*` keeps the one in-crate name-caller (`cow.rs` →
+// `ry_emit_arc_retain`, pending its own migration in #2062) resolving through
+// `crate::abi::*`.
+mod arc;
+pub use arc::*;
+mod control_flow;
+mod lifecycle;
+mod option;
 
 // =============================================================
 // Opaque handle types (mirror api.h).
@@ -334,68 +346,4 @@ pub(crate) unsafe fn cstr_bytes<'a>(p: *const c_char) -> &'a [u8] {
     } else {
         CStr::from_ptr(p).to_bytes()
     }
-}
-
-// =============================================================
-// arc op — migrated #2057 pilot. The C boundary entry points resolve the u32
-// header id, translate the C `c_int` atomic flag / nullable callees into the
-// Rust-native `Atomicity` / `Option<ValueRef>`, then call the `core` engine
-// method (the convergence point shared with the Rust-direct path in `any.rs`).
-// =============================================================
-
-// c_int → Atomicity, preserving the legacy `== RY_ARC_ATOMIC` (else =
-// non-atomic) semantics exactly, so the emitted IR is bit-identical for every
-// value the C++ side passes.
-#[inline]
-fn atomicity_from(atomic: c_int) -> Atomicity {
-    if atomic == RY_ARC_ATOMIC {
-        Atomicity::Atomic
-    } else {
-        Atomicity::NonAtomic
-    }
-}
-
-// Nullable boundary handle → Option<ValueRef> (None on NULL).
-#[inline]
-fn opt_value_ref(p: RyValueRef) -> Option<ValueRef> {
-    if p.is_null() {
-        None
-    } else {
-        Some(ValueRef(as_value(p)))
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn ry_emit_arc_retain(
-    ctx: *mut RyEmitCtx,
-    header_ptr_id: RyValueId,
-    atomic: c_int,
-) {
-    if ctx.is_null() {
-        return;
-    }
-    let c = cx(ctx);
-    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
-    c.arc_retain(header, atomicity_from(atomic));
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn ry_emit_arc_release(
-    ctx: *mut RyEmitCtx,
-    header_ptr_id: RyValueId,
-    atomic: c_int,
-    destructor_callee: RyValueRef,
-    gc_visit_fn: RyValueRef,
-) {
-    if ctx.is_null() {
-        return;
-    }
-    let c = cx(ctx);
-    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
-    c.arc_release(
-        header,
-        atomicity_from(atomic),
-        opt_value_ref(destructor_callee),
-        opt_value_ref(gc_visit_fn),
-    );
 }
