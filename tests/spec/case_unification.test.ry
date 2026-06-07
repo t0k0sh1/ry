@@ -207,3 +207,236 @@ fn ifExpressionColonInlineFormTests():
     b = if a > 0: a
     else: 0 - a
     expect(b).toEq(3)
+
+@describe("case expression block-form arms (#1891)")
+fn caseExprBlockArmTests():
+  @it("should use the block tail expression as the arm value")
+  fn shouldUseBlockTailAsArmValue():
+    x = 1
+    res = case x:
+      1:
+        tmp = x + 10
+        tmp * 2
+      _:
+        0
+    expect(res).toEq(22)
+
+  @it("should allow an identifier-starting tail without parens")
+  fn shouldAllowIdentifierStartingTail():
+    x = 1
+    res = case x:
+      1:
+        msg = "hello"
+        msg
+      _:
+        "other"
+    expect(res).toEq("hello")
+
+  @it("should select and evaluate the wildcard block arm")
+  fn shouldSelectWildcardBlockArm():
+    x = 99
+    res = case x:
+      1:
+        a = 1
+        a
+      _:
+        b = x - 90
+        b * 2
+    expect(res).toEq(18)
+
+  @it("should allow mixing inline and block arms")
+  fn shouldAllowMixingInlineAndBlockArms():
+    x = 3
+    res = case x:
+      1 : "one"
+      3:
+        y = x + x
+        "three-ish"
+      _ : "other"
+    expect(res).toEq("three-ish")
+
+  @it("should unify block and inline arm value types")
+  fn shouldUnifyBlockAndInlineArmTypes():
+    x = 2
+    res = case x:
+      1:
+        p = 10
+        p + 1
+      _ : 0
+    expect(res).toEq(0)
+
+  @it("should support guards on block arms")
+  fn shouldSupportGuardsOnBlockArms():
+    x = 7
+    res = case x:
+      n if n > 5:
+        doubled = n * 2
+        doubled
+      _:
+        0
+    expect(res).toEq(14)
+
+  @it("should support OR patterns on block arms")
+  fn shouldSupportOrPatternsOnBlockArms():
+    x = 2
+    res = case x:
+      1 | 2 | 3:
+        tag = "small"
+        tag
+      _:
+        "big"
+    expect(res).toEq("small")
+
+  @it("should allow a nested case expression as the tail")
+  fn shouldAllowNestedCaseExpressionAsTail():
+    x = 1
+    y = 2
+    res = case x:
+      1:
+        inner = case y:
+          2 : "two"
+          _ : "?"
+        inner
+      _:
+        "other"
+    expect(res).toEq("two")
+
+@describe("case condition-expression block-form arms (#1891)")
+fn caseCondExprBlockArmTests():
+  @it("should use block tails in condition arms")
+  fn shouldUseBlockTailsInConditionArms():
+    x = 15
+    res = case:
+      x > 10:
+        big = x + 1
+        big * 2
+      _:
+        0
+    expect(res).toEq(32)
+
+  @it("should use a block tail in the wildcard else arm")
+  fn shouldUseBlockTailInElseArm():
+    x = 3
+    res = case:
+      x > 10:
+        100
+      _:
+        z = x - 1
+        z
+    expect(res).toEq(2)
+
+# Helper for the return-path ARC-ownership test below.
+fn blockArmReturnsList(n: int) -> List<int>:
+  r = case n:
+    5:
+      items = [n, n + 1]
+      items
+    _:
+      [0]
+  return r
+
+@describe("case expression block-arm ARC ownership (#1891)")
+fn caseExprBlockArmArcOwnershipTests():
+  # These exercise an ARC-managed value (List / str / Option payload) bound in a
+  # block arm and returned as the tail. Under-retain corrupts the value (caught by
+  # the assertions); over-retain leaks (caught by ASan in the self-test run).
+  @it("retains a block-local List tail past scope release")
+  fn retainsBlockLocalListTail():
+    x = 5
+    r = case x:
+      5:
+        items = [x, x + 1]
+        items
+      _:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(5)
+    expect(r[1]).toEq(6)
+
+  @it("retains a computed-str tail past scope release")
+  fn retainsComputedStrTail():
+    x = 5
+    s = case x:
+      5:
+        msg = f"v:{x}"
+        msg
+      _:
+        "none"
+    expect(s).toEq("v:5")
+
+  @it("retains a pattern-bound ARC tail in a block arm")
+  fn retainsPatternBoundArcTail():
+    opt: Option<List<int>> = Some([7, 8])
+    r = case opt:
+      Some(v):
+        marker = 1
+        v
+      None:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(7)
+    expect(r[1]).toEq(8)
+
+  @it("does not corrupt a fresh-temp tail built from a local")
+  fn freshTempTailFromLocal():
+    x = 3
+    r = case x:
+      3:
+        base = [x, x, x]
+        [base[0], base[1]]
+      _:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(3)
+
+  @it("does not over-retain an outer-var tail (outer stays valid)")
+  fn outerVarTailStaysValid():
+    outer = [9, 9]
+    x = 1
+    r = case x:
+      1:
+        tmp = 1
+        outer
+      _:
+        [0]
+    expect(r[0]).toEq(9)
+    expect(outer[0]).toEq(9)
+    expect(outer[1]).toEq(9)
+
+  @it("retains a block-local tail returned from a function")
+  fn blockLocalTailReturnedFromFn():
+    got = blockArmReturnsList(5)
+    expect(len(got)).toEq(2)
+    expect(got[0]).toEq(5)
+    expect(got[1]).toEq(6)
+
+  @it("retains a block-local tail used as a nested case tail")
+  fn blockLocalTailNested():
+    x = 5
+    y = 1
+    r = case y:
+      1:
+        inner = case x:
+          5:
+            items = [x, x + 1]
+            items
+          _:
+            [0]
+        inner
+      _:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(5)
+    expect(r[1]).toEq(6)
+
+  @it("retains an if-block-expr bound-var tail (shared UAF regression)")
+  fn ifBlockBoundVarTail():
+    x = 5
+    r = if x > 0:
+      items = [x, x + 1]
+      (items)
+    else:
+      [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(5)
+    expect(r[1]).toEq(6)

@@ -54,7 +54,7 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
             if (seenWildcard)
                 parseError(saved.line, "duplicate '_' arm in case expression");
             lex_.next(); // consume ':'
-            caseExpr->else_expr = parseConditional();
+            parseCaseExprArmBody(caseExpr->else_stmts, caseExpr->else_expr);
             seenWildcard = true;
         } else {
             if (seenWildcard)
@@ -64,7 +64,7 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
             if (lex_.peek().kind != TokenKind::Colon)
                 parseError("expected ':' after case condition");
             lex_.next();
-            arm.value = parseConditional();
+            parseCaseExprArmBody(arm.stmts, arm.value);
             caseExpr->arms.push_back(std::move(arm));
         }
 
@@ -120,7 +120,7 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
             parseError("expected ':' after case pattern in case expression");
         lex_.next(); // consume ':'
 
-        arm.value = parseConditional();
+        parseCaseExprArmBody(arm.stmts, arm.value);
         caseExpr->arms.push_back(std::move(arm));
 
         if (lex_.peek().kind == TokenKind::Newline)
@@ -150,6 +150,93 @@ std::vector<StmtNode> Parser::parseIfExpressionBranchBody() {
     stmt.expr = parseConditional();
     body.push_back(std::move(stmt));
     return body;
+}
+
+// Parses a case-EXPRESSION arm body after its ':' has been consumed (#1891).
+//
+//   inline:  `... : expr`           -> stmts empty, value = expr
+//   block :  `... :` NEWLINE INDENT
+//                statement*          -> stmts (intermediate statements)
+//                tail_expr           -> value (the arm's value)
+//            DEDENT
+//
+// The block's final line is parsed as an expression (via parseConditional), so
+// an identifier-starting tail like `tmp * 2` — or a UFCS/module call such as
+// `obj.method()` (which parseStatement would yield as a non-value CallStmt) — is
+// accepted as the value. Each line is parsed expression-first: a line is the
+// tail iff it parses as a complete expression AND nothing but DEDENT follows;
+// otherwise it is re-parsed as a statement (which both surfaces genuine
+// diagnostics and rejects a bare identifier-binary in a non-tail position, per
+// Ry's statement grammar). A block that ends in a non-value statement is a parse
+// error. Consumes exactly the inner block's DEDENT; the enclosing arm loop
+// consumes the outer one.
+void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) {
+    if (lex_.peek().kind != TokenKind::Newline) {
+        // Inline arm: a single same-line expression.
+        value = parseConditional();
+        return;
+    }
+
+    // Block arm.
+    lex_.next(); // consume Newline
+    skipNewlines();
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block after ':' in case expression arm");
+    lex_.next(); // consume Indent
+
+    while (true) {
+        if (lex_.peek().kind == TokenKind::Dedent ||
+            lex_.peek().kind == TokenKind::Eof)
+            parseError("case arm block must end with an expression");
+
+        auto saved = lex_.saveState();
+
+        // Try this line as the tail expression. It is the tail only if it parses
+        // as a whole-line expression and the block ends right after it; anything
+        // else is rewound and re-parsed as a statement below.
+        ExprPtr expr;
+        bool exprParsed = false;
+        try {
+            expr = parseConditional();
+            exprParsed = true;
+        } catch (const DiagnosticError &) {
+            // Not an expression line (statement-only construct such as
+            // while/for/return, or a genuine syntax error). Rewind; the statement
+            // re-parse below reproduces any real diagnostic.
+            lex_.restoreState(saved);
+        }
+
+        if (exprParsed) {
+            TokenKind after = lex_.peek().kind;
+            if (after == TokenKind::Newline || after == TokenKind::Dedent ||
+                after == TokenKind::Eof) {
+                if (after == TokenKind::Newline)
+                    lex_.next();
+                skipNewlines();
+                if (lex_.peek().kind == TokenKind::Dedent ||
+                    lex_.peek().kind == TokenKind::Eof) {
+                    value = std::move(expr); // tail expression = arm value
+                    break;
+                }
+            }
+            // A complete expression but not the final line: rewind and treat it
+            // as a (non-tail) statement (so a bare `tmp * 2` here is rejected).
+            lex_.restoreState(saved);
+        }
+
+        // Non-tail line: parse it as a statement.
+        StmtNode stmt = parseStatement();
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+        if (lex_.peek().kind == TokenKind::Dedent ||
+            lex_.peek().kind == TokenKind::Eof)
+            parseError("case arm block must end with an expression");
+        stmts.push_back(std::move(stmt));
+    }
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume the inner block's DEDENT
 }
 
 // Parses the expression form of `if` (issue #798):

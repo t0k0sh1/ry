@@ -491,6 +491,60 @@ TEST(ParserTest, CaseCondExprWildcardMustBeLast) {
                  std::runtime_error);
 }
 
+TEST(ParserTest, CaseExprBlockArmParsesStmtsAndTail) {
+    // Block-form case-expression arm (#1891): intermediate statements plus a
+    // tail expression; the sibling inline arm carries no statements. This is the
+    // positive preserved-sibling test for the rejection branches below.
+    Program prog =
+        parseStr("r = case x:\n    1:\n        t = 5\n        t * 2\n    _ : 0");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &caseExpr = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
+    ASSERT_EQ(caseExpr.arms.size(), 2u);
+    EXPECT_EQ(caseExpr.arms[0].stmts.size(), 1u); // block arm: one intermediate stmt
+    EXPECT_NE(caseExpr.arms[0].value, nullptr);   // ... and a tail value
+    EXPECT_EQ(caseExpr.arms[1].stmts.size(), 0u); // inline arm: no statements
+    EXPECT_NE(caseExpr.arms[1].value, nullptr);
+}
+
+TEST(ParserTest, CaseExprBlockArmMustEndWithExpression) {
+    // A block arm whose last line is a non-value statement (assignment) is
+    // rejected at parse time.
+    try {
+        parseStr("r = case x:\n    1:\n        total = 0\n    _ : 9");
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        EXPECT_NE(std::string(e.what()).find(
+                      "case arm block must end with an expression"),
+                  std::string::npos);
+    }
+}
+
+TEST(ParserTest, CaseCondExprBlockArmMustEndWithExpression) {
+    // Same rule for the no-subject condition form.
+    try {
+        parseStr("r = case:\n    true:\n        a = 5\n    _ : 0");
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        EXPECT_NE(std::string(e.what()).find(
+                      "case arm block must end with an expression"),
+                  std::string::npos);
+    }
+}
+
+TEST(ParserTest, CaseExprArmRequiresIndentedBlockOrInline) {
+    // `1:` followed by a dedented next arm (neither an indented block nor an
+    // inline expression) is rejected.
+    try {
+        parseStr("r = case x:\n    1:\n    _ : 0");
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        EXPECT_NE(std::string(e.what()).find("expected indented block"),
+                  std::string::npos);
+    }
+}
+
 TEST(ParserTest, IfBlockMultipleStatements) {
     Program prog = parseStr("if true:\n    x = 1\n    print(x)");
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);

@@ -829,6 +829,36 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     return false;
 }
 
+void CodeGen::retainBlockTailIfScopeOwned(llvm::Value *tailVal) {
+    // A block-valued expression (case-expr arm / if-expr branch, #1891) ends in a
+    // tail expression whose value escapes the arm/branch scope through the merge
+    // PHI. If that tail loads a variable owned by the scope frame popScope() is
+    // about to release (a block-local binding or a pattern binding), the release
+    // would drop the value's strong_count and leave the PHI input dangling. Retain
+    // it here so it survives — mirrors the ReturnStmt escape-retain, but scoped to
+    // the single frame being popped (not all frames to depth 0).
+    auto *ld = llvm::dyn_cast<llvm::LoadInst>(tailVal);
+    if (!ld)
+        return; // fresh temps (arc_owned) and computed values already own their +1
+    auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+    if (!src || scope_stack_.empty())
+        return;
+    // Only retain when the source variable lives in the innermost frame. Outer-scope
+    // vars are NOT released by this popScope(), so retaining them would leak.
+    const auto &frame = scope_stack_.back();
+    bool inCurrentFrame = false;
+    for (const auto &[name, alloca] : frame) {
+        if (alloca == src) {
+            inCurrentFrame = true;
+            break;
+        }
+    }
+    // tryRetainArcSource self-gates on isArcManaged, so a non-ARC frame var (int,
+    // bool, ...) is a no-op; only ARC-managed loads actually retain.
+    if (inCurrentFrame)
+        tryRetainArcSource(tailVal);
+}
+
 // Return-only retain for fn-typed param values. Fn-typed param allocas are
 // not registered in arc_managed_vars_ (callers own the uniform-closure wrap
 // temp via releaseUniformClosureTemps). When `return f` propagates such a

@@ -812,7 +812,7 @@ case seg:
 
 ### Expression Forms
 
-Both `case:` and `case <expr>:` can be used as expressions by writing each arm as `patternOrCondition: valueExpression` on the same line. Each arm provides a single expression whose value becomes the result.
+Both `case:` and `case <expr>:` can be used as expressions. Each arm is written either as `patternOrCondition : valueExpression` on the same line, or as an indented block whose final line is an expression (see [Block-form arms](#block-form-arms) below). The value of the matched arm becomes the result.
 
 ```ry
 # case: expression (no subject)
@@ -876,6 +876,38 @@ sum = case t:
     (a, b) : a + b
     _ : 0
 ```
+
+#### Block-form arms
+
+An arm of a `case` expression may also be written as an indented block. The block's final line is an expression whose value becomes the arm's value; any preceding lines are ordinary statements (for example, local bindings used to compute that value):
+
+```ry
+result = case x:
+    1:
+        tmp = x + 10
+        tmp * 2          # tail expression — the arm's value
+    _:
+        0
+```
+
+The same applies to the no-subject `case:` form, including its `_:` arm:
+
+```ry
+label = case:
+    score > 100:
+        bonus = score - 100
+        bonus * 2
+    _:
+        0
+```
+
+Rules:
+
+- The block's **last line must be an expression** (the tail expression). A block whose last line produces no value — e.g. an assignment — is a parse error: `case arm block must end with an expression`.
+- Inline arms (`pattern : value`) and block arms may be mixed freely within the same `case`.
+- All arms must still produce the same type, and exhaustiveness rules are unchanged.
+
+Unlike `if`-expression block branches — whose tail must be parenthesized when it starts with an identifier (e.g. `(tmp * 2)`) — a `case`-expression block tail accepts an identifier-starting expression directly (`tmp * 2`).
 
 ### Scope Rules
 

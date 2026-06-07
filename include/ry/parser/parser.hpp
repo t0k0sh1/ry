@@ -110,6 +110,11 @@ private:
     ExprPtr parseCaseExprWithSubject(const Token &caseTok);
     ExprPtr parseIfExpression();
     std::vector<StmtNode> parseIfExpressionBranchBody();
+    // Parses a case-EXPRESSION arm body after its ':' is consumed. Inline form
+    // leaves `stmts` empty and sets `value` to the same-line expression; block
+    // form fills `stmts` with intermediate statements and `value` with the tail
+    // expression (the arm's value). See definition for the tail-detection rules.
+    void parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value);
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);

@@ -468,14 +468,17 @@ struct CastExpr {
 
 struct CaseCondExprArm {
     ExprPtr condition;
-    ExprPtr value;
+    std::vector<StmtNode> stmts;  // block-form intermediate statements (#1891); empty for inline arms
+    ExprPtr value;                // tail expression = arm value (always present)
 };
 
 // `case:` expression (no subject) — multi-branch conditional expression.
-// The wildcard `_ : value` arm (required) is stored in `else_expr`.
+// The wildcard `_ : value` arm (required) is stored in `else_expr`; any
+// block-form intermediate statements before it live in `else_stmts` (#1891).
 struct CaseCondExpr {
     std::vector<CaseCondExprArm> arms;
-    ExprPtr else_expr;
+    std::vector<StmtNode> else_stmts;  // block-form intermediate statements before the else tail; empty for inline
+    ExprPtr else_expr;                 // else tail expression (always present)
 };
 
 // `if cond => then_value else else_value` — fat-arrow single-expression form (#798).
@@ -574,10 +577,14 @@ struct CaseStmt {
     SourceLocation loc;
 };
 
+// `case subject:` expression arm. Block-form arms (#1891) carry their
+// intermediate statements in `stmts` (empty for inline `pattern : value`
+// arms); `value` is always the tail expression that becomes the arm's value.
 struct CaseExprArm {
     Pattern pattern;
     ExprPtr guard;
-    ExprPtr value;
+    std::vector<StmtNode> stmts;  // block-form intermediate statements; empty for inline arms
+    ExprPtr value;                // tail expression = arm value (always present)
 };
 
 // `case subject:` expression — pattern matching with a subject, returns a value.

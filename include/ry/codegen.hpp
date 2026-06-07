@@ -263,6 +263,12 @@ public:
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
+    // If `tailVal` loads an ARC value from a variable in the current (innermost)
+    // scope frame — one the imminent popScope() is about to release — retain it
+    // so the value survives the scope as a block expression's escaping result
+    // (#1891 case-expr block arms; if-expr block branches). No-op for fresh temps
+    // (arc_owned), outer-scope vars (not in this frame), and non-ARC values.
+    void retainBlockTailIfScopeOwned(llvm::Value *tailVal);
     // Return-only retain for fn-typed param values. Param allocas for
     // fn-typed params are NOT registered in arc_managed_vars_; callers
     // own the uniform-closure wrap temp via releaseUniformClosureTemps.

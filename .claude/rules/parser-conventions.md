@@ -185,6 +185,53 @@ in user documentation, (b) use non-identifier expressions (literals,
 calls), or (c) write a custom block parser that calls `parseConditional`
 directly for the tail line.
 
+### Block-valued case-EXPRESSION arms parse the tail expression-first (option (c)); case-vs-if tail asymmetry is intentional
+
+**Source**: #1891 (2026-06-07, implementation)
+**Tags**: parser, case-expr, block-arm, tail-expression, speculative-parse, if-block-expr, asymmetry
+
+**Context**: #1891 added indented-block arms to `case` *expressions*
+(`parseCaseExprArmBody` in `src/parser/parser_expr.cpp`). The issue's
+motivating example ends a block arm with `tmp * 2` — an
+identifier-starting binary expression that the entry above shows Ry's
+statement grammar rejects. The `if`-expression block form (#798,
+`parseIfExpressionBranchBody` → `parseBlock` → `parseStatement`) takes
+option (a): it requires `(tmp * 2)`. To keep the case-expr feature
+ergonomic, its block arms instead take **option (c)** and do NOT reuse
+`parseBlock`.
+
+**Rule**: `parseCaseExprArmBody` parses each block line
+**expression-first**: `lex_.saveState()`, try `parseConditional()`, and
+treat the line as the arm's tail value only when the expression consumes
+the whole line AND nothing but `DEDENT`/`EOF` follows. Otherwise
+`restoreState()` and re-parse the line via `parseStatement()` — which
+accepts ordinary statements (assignments, calls) and re-surfaces the
+canonical diagnostic for a non-tail bare identifier-binary. A
+`parseConditional()` that throws `DiagnosticError` (statement-only
+construct such as `while`/`for`/`return`, or a real syntax error) is
+caught and likewise routed to `parseStatement()`, so the double-rewind
+never masks a genuine error. A block reaching `DEDENT` with no tail
+expression is rejected: `case arm block must end with an expression`.
+
+Two consequences worth remembering:
+- A UFCS / module-qualified call as the tail (`obj.method()`) parses as a
+  `CallExpr` here (expression context), not the `CallStmt` that
+  `parseStatement` would yield — so it is usable as a value, sidestepping
+  the CallStmt-vs-ExprStmt trap.
+- **case-vs-if tail asymmetry is intentional (an #1891 scope boundary)**:
+  case-expr block tails accept identifier-starting expressions; `if`-expr
+  block tails still require parentheses. Bringing `if` to parity means
+  giving `parseIfExpressionBranchBody` the same expression-first tail
+  loop — deliberately out of scope for #1891, and documented in
+  `docs/reference/control-flow.md`.
+
+**How to apply**: any future block-valued expression form that wants an
+identifier-starting tail should adopt this expression-first/restore
+pattern rather than `parseBlock`. Keep the double-rewind (catch →
+`restoreState`; expr-but-not-tail → `restoreState` → `parseStatement`) so
+genuine statement diagnostics are never swallowed by the speculative
+`parseConditional`.
+
 ### Identifier-trailing `!` tokenization must exclude every multi-char operator starting with `!`
 
 **Source**: #1211 (2026-04-20, bug fix); updated #1568 (`!!` operator removed)
