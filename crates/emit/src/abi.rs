@@ -371,6 +371,9 @@ pub unsafe extern "C" fn ry_emit_arc_retain(
     header_ptr_id: RyValueId,
     atomic: c_int,
 ) {
+    if ctx.is_null() {
+        return;
+    }
     let c = cx(ctx);
     let header = ValueRef(as_value(resolve(c, header_ptr_id)));
     c.arc_retain(header, atomicity_from(atomic));
@@ -384,6 +387,9 @@ pub unsafe extern "C" fn ry_emit_arc_release(
     destructor_callee: RyValueRef,
     gc_visit_fn: RyValueRef,
 ) {
+    if ctx.is_null() {
+        return;
+    }
     let c = cx(ctx);
     let header = ValueRef(as_value(resolve(c, header_ptr_id)));
     c.arc_release(
