@@ -4,8 +4,7 @@
 use llvm_sys::core::*;
 use std::ffi::c_char;
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_create_basic_block(

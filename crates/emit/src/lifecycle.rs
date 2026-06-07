@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use llvm_sys::prelude::*;
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_ctx_create(
@@ -15,7 +15,7 @@ pub unsafe extern "C" fn ry_emit_ctx_create(
     context: RyContextRef,
     function: RyFunctionRef,
 ) -> *mut RyEmitCtx {
-    let boxed = Box::new(EmitCtxImpl {
+    let boxed = Box::new(EmitCtx {
         module: module as LLVMModuleRef,
         builder: builder as LLVMBuilderRef,
         context: context as LLVMContextRef,
@@ -30,7 +30,7 @@ pub unsafe extern "C" fn ry_emit_ctx_create(
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_ctx_destroy(ctx: *mut RyEmitCtx) {
     if !ctx.is_null() {
-        drop(Box::from_raw(ctx as *mut EmitCtxImpl));
+        drop(Box::from_raw(ctx as *mut EmitCtx));
     }
 }
 

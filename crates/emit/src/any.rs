@@ -6,9 +6,9 @@ use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::LLVMIntPredicate;
 use std::ffi::CStr;
 
-use crate::arc::*;
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
+use crate::ffi::{Atomicity, EmitCtx, ValueRef};
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_any_wrap(
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn ry_emit_any_try_unwrap(
 // (arc_hdr_from_data / str_hdr_from_data) are identical across wrap / unwrap /
 // try_unwrap, so the only call-site variation is `val_ptr`.
 unsafe fn emit_any_retain_guard(
-    c: &mut EmitCtxImpl,
+    c: &mut EmitCtx,
     b: LLVMBuilderRef,
     i8_ty: LLVMTypeRef,
     i64_ty: LLVMTypeRef,
@@ -541,8 +541,7 @@ unsafe fn emit_any_retain_guard(
             1,
             c"arc_hdr_from_data".as_ptr(),
         );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
+        c.arc_retain(ValueRef(hdr), Atomicity::NonAtomic);
     } else if do_str_retain {
         let mut gep = [LLVMConstInt(
             i64_ty,
@@ -557,7 +556,6 @@ unsafe fn emit_any_retain_guard(
             1,
             c"str_hdr_from_data".as_ptr(),
         );
-        let hdr_id = intern(c, to_ry_value(hdr));
-        arc_retain_impl(c, hdr_id, RY_ARC_NONATOMIC);
+        c.arc_retain(ValueRef(hdr), Atomicity::NonAtomic);
     }
 }

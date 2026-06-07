@@ -7,7 +7,8 @@
 //
 // Covered guards:
 //   - ctx == NULL  → sentinel (0 / NULL) for build_error_from_runtime,
-//     get_runtime_fn, result_branch.
+//     get_runtime_fn, result_branch; early-return for the void-returning
+//     arc_retain / arc_release (#2057).
 //   - result_branch build_ok / build_err == NULL → sentinel 0 (replaces the
 //     former `build_ok.unwrap()` panic across the extern "C" boundary).
 //
@@ -89,6 +90,22 @@ TEST_F(EmitAbiGuardTest, ResultBranchNullCallbacksReturnsZero) {
                                     /*user_ctx=*/nullptr),
               0u);
     ry_emit_ctx_destroy(ctx);
+}
+
+// --- arc_retain / arc_release return void; a NULL ctx must early-return rather
+//     than dereference (UB). These match the prevailing ctx-NULL guard across
+//     the other emit entry points (#2057 arc migration). The test passes by the
+//     call returning without a crash. ---
+
+TEST_F(EmitAbiGuardTest, ArcRetainNullCtxDoesNotCrash) {
+    ry_emit_arc_retain(nullptr, /*header_ptr_id=*/0, RY_ARC_NONATOMIC);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ArcReleaseNullCtxDoesNotCrash) {
+    ry_emit_arc_release(nullptr, /*header_ptr_id=*/0, RY_ARC_NONATOMIC,
+                        /*destructor_callee=*/nullptr, /*gc_visit_fn=*/nullptr);
+    SUCCEED();
 }
 
 } // namespace

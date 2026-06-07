@@ -1,10 +1,13 @@
-//! Shared internal emission helpers used across the boundary op modules:
-//! the concrete `EmitCtxImpl` behind the opaque ctx handle, intern/resolve,
-//! opaque-handle casts, LLVM type constructors, name builders, module-global
-//! lookup, layout constants, and the inline runtime-error / ARC-alloc helpers.
+//! core — the LLVM IR generation engine (abi-independent). Owns the concrete
+//! `EmitCtx` (LLVM emission state + intern table), the Rust-native `ValueRef` /
+//! `Atomicity` handle types, the basic-IR layer (LLVM 1:1 type constructors),
+//! and the combination layer (name builders, module-global lookup, layout
+//! constants, the libc / runtime-error / ARC-alloc emitters). Must NOT reference
+//! `crate::abi` — this is the `core⇏abi` invariant (#2057); the only dependency
+//! is on `llvm_sys` + `std`.
 
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CString};
 
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
@@ -12,11 +15,9 @@ use llvm_sys::{
     LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate, LLVMLinkage, LLVMUnnamedAddr,
 };
 
-use crate::ffi::*;
-
 // Concrete object behind the opaque `*mut RyEmitCtx` handle. values[0] is the
 // null sentinel.
-pub(crate) struct EmitCtxImpl {
+pub(crate) struct EmitCtx {
     pub(crate) module: LLVMModuleRef,
     pub(crate) builder: LLVMBuilderRef,
     pub(crate) context: LLVMContextRef,
@@ -27,39 +28,18 @@ pub(crate) struct EmitCtxImpl {
     pub(crate) bounds_msg_cache: HashMap<Vec<u8>, LLVMValueRef>,
 }
 
-#[inline]
-pub(crate) unsafe fn cx<'a>(p: *mut RyEmitCtx) -> &'a mut EmitCtxImpl {
-    &mut *(p as *mut EmitCtxImpl)
-}
+/// Rust-native typed handle to an LLVM value. Non-null by convention; nullable
+/// boundary inputs (destructor / gc-visit callees) are modelled as
+/// `Option<ValueRef>`. Wraps the raw `LLVMValueRef` so the engine API does not
+/// traffic in untyped pointers.
+#[derive(Clone, Copy)]
+pub(crate) struct ValueRef(pub(crate) LLVMValueRef);
 
-// Opaque boundary handle → llvm-sys C API ref (pointer cast, this crate only).
-#[inline]
-pub(crate) fn as_type(p: RyTypeRef) -> LLVMTypeRef {
-    p as LLVMTypeRef
-}
-#[inline]
-pub(crate) fn as_functype(p: RyFuncTypeRef) -> LLVMTypeRef {
-    p as LLVMTypeRef
-}
-#[inline]
-pub(crate) fn as_value(p: RyValueRef) -> LLVMValueRef {
-    p as LLVMValueRef
-}
-#[inline]
-pub(crate) fn as_function(p: RyFunctionRef) -> LLVMValueRef {
-    p as LLVMValueRef
-}
-#[inline]
-pub(crate) fn as_bb(p: RyBasicBlockRef) -> LLVMBasicBlockRef {
-    p as LLVMBasicBlockRef
-}
-#[inline]
-pub(crate) fn to_ry_value(v: LLVMValueRef) -> RyValueRef {
-    v as RyValueRef
-}
-#[inline]
-pub(crate) fn to_ry_bb(b: LLVMBasicBlockRef) -> RyBasicBlockRef {
-    b as RyBasicBlockRef
+/// ARC atomic mode for retain / release.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Atomicity {
+    NonAtomic,
+    Atomic,
 }
 
 // LLVM type accessors.
@@ -82,37 +62,6 @@ pub(crate) unsafe fn ptr_type(c: LLVMContextRef) -> LLVMTypeRef {
 #[inline]
 pub(crate) unsafe fn void_type(c: LLVMContextRef) -> LLVMTypeRef {
     LLVMVoidTypeInContext(c)
-}
-
-// Bridge llvm::Value* ↔ RyValueId handle space. The internal forms take
-// &mut/&EmitCtxImpl so callers already holding the borrow do not re-alias
-// through the public boundary entry points.
-#[inline]
-pub(crate) unsafe fn intern(c: &mut EmitCtxImpl, value: RyValueRef) -> RyValueId {
-    if value.is_null() {
-        return 0;
-    }
-    let id = c.values.len() as RyValueId;
-    c.values.push(as_value(value));
-    id
-}
-
-#[inline]
-pub(crate) unsafe fn resolve(c: &EmitCtxImpl, id: RyValueId) -> RyValueRef {
-    if id == 0 || id as usize >= c.values.len() {
-        return std::ptr::null_mut();
-    }
-    to_ry_value(c.values[id as usize])
-}
-
-// Borrow C-string bytes without the NUL (empty slice on NULL).
-#[inline]
-pub(crate) unsafe fn cstr_bytes<'a>(p: *const c_char) -> &'a [u8] {
-    if p.is_null() {
-        b""
-    } else {
-        CStr::from_ptr(p).to_bytes()
-    }
 }
 
 // Build a NUL-terminated CString name from a prefix + suffix (for SSA names
@@ -172,7 +121,7 @@ pub(crate) unsafe fn get_or_insert_global(
 // A private, unnamed_addr, align-1 constant string global, deduped by message
 // bytes within this ctx. `name` is the already-defaulted global name.
 pub(crate) unsafe fn get_or_create_msg_global(
-    c: &mut EmitCtxImpl,
+    c: &mut EmitCtx,
     msg: &[u8],
     name: *const c_char,
 ) -> LLVMValueRef {
@@ -315,7 +264,7 @@ pub(crate) const ANY_TAG_FLOAT: i64 = 1;
 // _Exit(1) + unreachable, which terminates the block. The caller must pre-split
 // into err / ok BBs first (the emitRuntimeError-terminates rule).
 pub(crate) unsafe fn emit_inline_runtime_error(
-    c: &mut EmitCtxImpl,
+    c: &mut EmitCtx,
     msg: &[u8],
     name_hint: *const c_char,
 ) {
@@ -436,7 +385,7 @@ pub(crate) unsafe fn emit_free(
 // strong=1/weak=0, return the headerPtr (caller GEPs +ARC_HEADER_SIZE for the
 // data pointer).
 pub(crate) unsafe fn emit_inline_arc_alloc(
-    c: &mut EmitCtxImpl,
+    c: &mut EmitCtx,
     box_data_size: LLVMValueRef,
 ) -> LLVMValueRef {
     let b = c.builder;
