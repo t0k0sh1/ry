@@ -221,6 +221,38 @@ std::string Formatter::formatExpr(const ExprNode &expr) {
     return formatExprInner(expr);
 }
 
+std::string Formatter::formatCaseArmBody(const std::vector<StmtNode> &stmts,
+                                         const ExprNode &tail) {
+    // Inline arm (no intermediate statements): canonical ` : <expr>`.
+    if (stmts.empty())
+        return " : " + formatExpr(tail);
+
+    // Block arm (#1891): `:` then each intermediate statement and the tail
+    // expression, indented two levels below the `case` (one below the arm).
+    std::string bodyIndent(static_cast<size_t>(indent_level_ + 2) *
+                               static_cast<size_t>(indent_width_),
+                           ' ');
+    std::string out = ":\n";
+    for (const auto &st : stmts) {
+        // formatStmt writes to out_; save/clear/restore so it does not clobber
+        // the local string being built (mirrors the IfBlockExpr block path).
+        std::string saved_out = std::move(out_);
+        out_.clear();
+        int saved_indent = indent_level_;
+        indent_level_ += 2;
+        emitIndent();
+        formatStmt(st);
+        indent_level_ = saved_indent;
+        std::string stmt_text = std::move(out_);
+        out_ = std::move(saved_out);
+        if (!stmt_text.empty() && stmt_text.back() == '\n')
+            stmt_text.pop_back();
+        out += stmt_text + "\n";
+    }
+    out += bodyIndent + formatExpr(tail);
+    return out;
+}
+
 std::string Formatter::formatExprInner(const ExprNode &expr) {
     return std::visit([this](const auto &v) -> std::string {
         using T = std::decay_t<decltype(v)>;
@@ -332,9 +364,10 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "case:\n";
             for (const auto &arm : v->arms) {
-                out += indent + formatExpr(*arm.condition) + " : " + formatExpr(*arm.value) + "\n";
+                out += indent + formatExpr(*arm.condition) +
+                       formatCaseArmBody(arm.stmts, *arm.value) + "\n";
             }
-            out += indent + "_ : " + formatExpr(*v->else_expr);
+            out += indent + "_" + formatCaseArmBody(v->else_stmts, *v->else_expr);
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
@@ -344,7 +377,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 out += indent + formatPattern(arm.pattern);
                 if (arm.guard)
                     out += " if " + formatExpr(*arm.guard);
-                out += " : " + formatExpr(*arm.value);
+                out += formatCaseArmBody(arm.stmts, *arm.value);
                 if (i + 1 < v->arms.size())
                     out += "\n";
             }

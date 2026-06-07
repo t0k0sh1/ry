@@ -361,3 +361,56 @@ this double-free / post-terminator insertion.
 (`codegen_call_thread.cpp:284-288`). `emitParallelForRange` does not yet have it
 (follow-up opportunity). Root cause of #1090 was the missing verify — the malformed
 IR survived codegen and crashed only during JIT optimization.
+
+### Block-valued expression tails must retain a scope-owned ARC value before `popScope` (current-frame-gated)
+
+**Source**: #1891 (2026-06-07, implementation — advisor-caught)
+**Tags**: codegen, arc, case-expr, if-block-expr, block-tail, scope-cleanup, use-after-free, escape-retain
+
+**Context**: A block-valued expression — a `case`-expression block arm (#1891) or
+an `if`-expression block branch (`IfBlockExpr`, #798) — evaluates intermediate
+statements then a **tail expression** whose value escapes the arm/branch scope
+through the merge PHI. When that tail is a bare load of an ARC-managed variable
+bound *inside* the scope (a block-local `items = [..]` then tail `items`, or a
+pattern binding `Some(v):` … `v`), the imminent `popScope()` releases the binding
+and drops the value's `strong_count` to zero — the PHI input then dangles
+(use-after-free; the result comes back freed/empty, e.g. `[]`). `IfBlockExpr`
+shipped with this latent UAF; #1891 fixed both it and the new case-expr arms.
+
+**Rule**: Before the arm/branch `popScope()`, call
+`retainBlockTailIfScopeOwned(tailVal)` (`src/codegen_arc.cpp`). It **traces the
+tail back** through the linear `load` / `getelementptr` / `extractvalue` /
+`bitcast` chain to the alloca it ultimately reads from, and retains (via
+`tryRetainArcSource`) **iff** that owning alloca is in the innermost frame
+(`scope_stack_.back()`). The current-frame check is just the "will this
+`popScope()` release the owner?" gate; the retain decision stays with
+`tryRetainArcSource`, whose per-shape cases gate on the same
+`list_elem`/`map_key`/`set_elem` metadata the owner's destructor uses — so
+retain-site and release-site mirror each other by construction:
+
+- block-local / pattern-bound var, direct `load %local` (in frame) → `tryRetainArcSource`
+  Case 1, retain +1, balanced by the frame's own release — the `ReturnStmt`
+  escape-retain, scoped to one frame instead of all;
+- **borrowed sub-value of an in-frame owner** — `box.items` (`ExtractValue`, Case 3),
+  `xss[i]` (GEP-backed element load, Case 4) → traced back to the owner alloca and
+  retained; **this is the trap**: gating on the tail being a *direct* alloca load
+  misses these and they come back freed (`[]`);
+- outer-scope owner (NOT in frame) → skipped, because this `popScope()` does not
+  release it, so retaining would **leak** (the current-frame check excludes it for free);
+- fresh temp (`arc_owned`, traces to no alloca) → skipped; it already owns its +1 and
+  transfers through the PHI;
+- non-ARC owner → `tryRetainArcSource` self-gates on metadata, no-op.
+
+**Known limitation (documented, not chased)**: a tail derived through a `PHI` /
+`select` (e.g. `if c => localA else localB` as a block tail) does not trace to a
+single alloca, so a *borrowed* PHI/select tail is not retained — the same coverage
+gap `tryRetainArcSource` itself has. PHI-of-locals tails are exotic; expand only if
+one is found in the wild.
+
+**How to apply**: any new block-valued expression form that emits `stmts* tail`
+then `popScope()` must call `retainBlockTailIfScopeOwned(tailVal)` between the
+tail emit and `popScope()`. Verify with a value-asserting ASan matrix
+(block-local / pattern-bound / fresh-temp / outer-var / returned-from-fn / nested
+tails): under-retain corrupts the value (an `expect` assertion catches it),
+over-retain leaks (only ASan catches it). Canonical tests: the "case expression
+block-arm ARC ownership" describe block in `tests/spec/case_unification.test.ry`.

@@ -83,6 +83,11 @@ private:
     // Helpers
     void formatDirectives(const std::vector<Directive> &directives);
     void formatBlock(const std::vector<StmtNode> &body);
+    // Formats a case-EXPRESSION arm body: inline ` : <expr>` when `stmts` is
+    // empty, else a `:`-block with the intermediate statements and the tail
+    // expression indented one level deeper (#1891).
+    std::string formatCaseArmBody(const std::vector<StmtNode> &stmts,
+                                  const ExprNode &tail);
     std::string formatParams(const std::vector<FnParam> &params);
     std::string formatLambdaSig(const LambdaExpr &lambda);
     void emitTypeParams(const std::vector<TypeParam> &params);

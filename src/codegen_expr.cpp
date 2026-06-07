@@ -1749,6 +1749,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         emitBranchCond(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
+        pushScope();
+        // Block-form arm (#1891): emit intermediate statements before the tail
+        // value, within a scope so locals are visible to the tail and cleaned up
+        // on popScope. Empty for inline arms.
+        for (auto &stmt : arm.stmts)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
         llvm::Value *armVal;
         {
             OptionNoneHintGuard g(*this, caseCondFallback);
@@ -1756,6 +1762,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         }
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "case expression");
+        retainBlockTailIfScopeOwned(armVal); // #1891: escape-retain before scope release
+        popScope();
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         emitBranchUncond(mergeBB);
         incoming.push_back({armVal, armEndBB});
@@ -1763,6 +1771,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.SetInsertPoint(nextBB);
     }
 
+    pushScope();
+    // Block-form else (#1891): intermediate statements before the tail value.
+    for (auto &stmt : e->else_stmts)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
     llvm::Value *elseVal;
     {
         OptionNoneHintGuard g(*this, caseCondFallback);
@@ -1770,6 +1782,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
     }
     if (!firstVal) firstVal = elseVal;
     else validateBranchTypes(firstVal, elseVal, "case expression");
+    retainBlockTailIfScopeOwned(elseVal); // #1891: escape-retain before scope release
+    popScope();
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
     emitBranchUncond(mergeBB);
     incoming.push_back({elseVal, elseEndBB});
@@ -1863,6 +1877,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
             std::visit([this](auto &s) { emitStmt(s); }, mutBody[i]);
         OptionNoneHintGuard g(*this, tailHint);
         llvm::Value *val = emitExpr(*tail);
+        // #1891: same escape-retain as case-expr block arms — a tail that loads a
+        // scope-local ARC binding must survive popScope() (pre-existing UAF: a bound
+        // ARC var returned from an if-block branch came back freed).
+        retainBlockTailIfScopeOwned(val);
         popScope();
         return {val, builder_.GetInsertBlock()};
     };

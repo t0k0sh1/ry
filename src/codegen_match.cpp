@@ -1003,10 +1003,25 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
         emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
                             subjectEnumName, subjectSourceTypeName);
 
+        // Block-form arm (#1891): emit the intermediate statements before the
+        // tail value, within the same scope so they see the pattern bindings and
+        // are cleaned up on popScope. Empty for inline arms. Suspend the scrutinee
+        // None()-hint over the statements (tail-only scoping, matching CaseCondExpr
+        // and IfBlockExpr) so a `None()` nested in a non-tail statement does not
+        // inherit the match arm's inner-type hint; the tail value below re-enters
+        // the enclosing scrutineeHintGuard.
+        {
+            OptionNoneHintGuard noArmHint(*this, nullptr);
+            for (auto &stmt : arm.stmts)
+                std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        }
         llvm::Value *armVal = emitExpr(*arm.value);
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "match expression");
 
+        // #1891: a block-form arm whose tail loads a scope-local ARC binding must
+        // retain it before popScope() releases that binding, else the PHI dangles.
+        retainBlockTailIfScopeOwned(armVal);
         popScope();
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         emitBranchUncond(mergeBB);

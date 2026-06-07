@@ -323,7 +323,11 @@ lambda_body      ::= expression
 /* if-expression: `if cond => then else else_expr` (single-line block sugar) */
 if_expr          ::= 'if' expression '=>' expression 'else' expression
 
-/* case-expression form (block-bodied case used as an expression) */
+/* case-expression form (block-bodied case used as an expression).
+ * Arm bodies reuse case_arm / case_cond_arm below, so an arm is either a
+ * same-line expression or an indented block. In the expression context the
+ * block's final statement must be an expression, and its value becomes the
+ * arm's value (tail-expression semantics, #1891). */
 case_expr        ::= case_match_expr
                    | case_cond_expr
 

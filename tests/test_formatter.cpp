@@ -655,3 +655,29 @@ TEST(FormatterTest, ExpectToBeCloseToWithDecimalsRoundTrip) {
     EXPECT_EQ(fmt(src), src);
     EXPECT_EQ(fmt(fmt(src)), fmt(src));
 }
+
+TEST(FormatterTest, CaseExprBlockArmRoundTrip) {
+    // Block-form subject case arm (#1891): intermediate statement + tail
+    // expression, with the inline `_` arm preserved.
+    auto src = "r = case x:\n    1:\n        tmp = x + 10\n        tmp * 2\n    _ : 0\n";
+    auto expected = "r = case x:\n  1:\n    tmp = x + 10\n    tmp * 2\n  _ : 0\n";
+    EXPECT_EQ(fmt(src), expected);
+    EXPECT_EQ(fmt(fmt(src)), fmt(src)); // idempotent
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(fmt(src), reason)); // re-parses
+}
+
+TEST(FormatterTest, CaseExprTailOnlyBlockCanonicalizesToInline) {
+    // A block arm with no intermediate statements canonicalizes to inline form.
+    auto src = "b = case x:\n    1:\n        100\n    _ : 0\n";
+    EXPECT_EQ(fmt(src), "b = case x:\n  1 : 100\n  _ : 0\n");
+    EXPECT_EQ(fmt(fmt(src)), fmt(src));
+}
+
+TEST(FormatterTest, CaseCondExprBlockArmRoundTrip) {
+    // Block-form condition arm + inline else (#1891).
+    auto src = "s = case:\n    x > 10:\n        big = x + 1\n        big * 2\n    _ : 0\n";
+    auto expected = "s = case:\n  x > 10:\n    big = x + 1\n    big * 2\n  _ : 0\n";
+    EXPECT_EQ(fmt(src), expected);
+    EXPECT_EQ(fmt(fmt(src)), fmt(src));
+}
