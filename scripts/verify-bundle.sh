@@ -98,6 +98,29 @@ darwin)
     want   "libemit -> @loader_path/libLLVM" '@loader_path/libLLVM\.dylib'    "$emit_deps"
     absent "libemit no absolute LLVM/build-tree ref" 'llvm@21|build-rust|cargo/build' "$emit_deps"
 
+    # Orphan cdylib guard (#2041): a corrosion crate rename (libry_codegen -> libemit,
+    # #2040) leaves the old cdylib in a non-clean build tree, and bundle-dist's libry_*
+    # glob would ship it. The cdylib is the ONLY bundled native lib that links libLLVM
+    # — stdlib libry_* libs do not — so any non-libemit lib in lib/ that links libLLVM
+    # is an orphan. Case-sensitive 'libLLVM' matches the dependency line, never a
+    # self-name containing lowercase 'llvm' (e.g. a future libry_llvm_*).
+    orphan_cdylibs=""
+    for f in "$LIB"/lib*.dylib; do
+        [[ -e "$f" ]] || continue
+        base="$(basename "$f")"
+        case "$base" in libLLVM.dylib|libzstd.*|libemit.*) continue ;; esac
+        if otool -L "$f" 2>/dev/null | grep -q 'libLLVM'; then
+            orphan_cdylibs+="$base"$'\n'
+        fi
+    done
+    if [[ -n "$orphan_cdylibs" ]]; then
+        echo "  FAIL: orphan cdylib(s) in lib/ link libLLVM but are not libemit (#2041):" >&2
+        printf '%s' "$orphan_cdylibs" | sed 's/^/      /' >&2
+        fail=1
+    else
+        echo "  ok: lib/ has no orphan cdylib (only libemit links libLLVM)"
+    fi
+
     want "libzstd id = @rpath/libzstd.1.dylib" '@rpath/libzstd\.1\.dylib' "$(otool -D "$LIB/libzstd.1.dylib" 2>/dev/null || true)"
 
     # ad-hoc signatures must be valid after install_name_tool rewrites
@@ -124,6 +147,27 @@ linux)
         fail=1
     fi
     ls "$LIB"/libemit.so >/dev/null 2>&1 && echo "  ok: present libemit.so" || { echo "  FAIL: missing libemit.so" >&2; fail=1; }
+
+    # Orphan cdylib guard (#2041): see the darwin branch. On Linux the cdylib NEEDs
+    # libLLVM.so.X (stdlib libry_* do not); libzstd is a system lib (not bundled), so
+    # only libLLVM* and libemit* are excluded. A leftover libry_codegen.so from a
+    # pre-rename build tree would be caught here before tar.
+    orphan_cdylibs=""
+    for f in "$LIB"/lib*.so*; do
+        [[ -e "$f" ]] || continue
+        base="$(basename "$f")"
+        case "$base" in libLLVM.so*|libemit.so*) continue ;; esac
+        if readelf -d "$f" 2>/dev/null | grep -q 'NEEDED.*libLLVM'; then
+            orphan_cdylibs+="$base"$'\n'
+        fi
+    done
+    if [[ -n "$orphan_cdylibs" ]]; then
+        echo "  FAIL: orphan cdylib(s) in lib/ NEED libLLVM but are not libemit (#2041):" >&2
+        printf '%s' "$orphan_cdylibs" | sed 's/^/      /' >&2
+        fail=1
+    else
+        echo "  ok: lib/ has no orphan cdylib (only libemit needs libLLVM)"
+    fi
 
     ry_dyn="$(readelf -d "$RY" 2>/dev/null || true)"
     # CMake emits DT_RUNPATH (new dtags); accept either RUNPATH or RPATH.
