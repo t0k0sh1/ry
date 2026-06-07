@@ -51,8 +51,31 @@ cp "$BUILD_DIR/ry" "$DIST_DIR/ry"
 # build tree. libemit is matched separately from the libry_* glob: it was renamed
 # from libry_codegen to libemit (#2040), so it no longer starts with libry_.
 shopt -s nullglob
-native_libs=("$BUILD_DIR"/lib/libemit.* "$BUILD_DIR"/lib/libry_*.*)
+candidate_libs=("$BUILD_DIR"/lib/libemit.* "$BUILD_DIR"/lib/libry_*.*)
 shopt -u nullglob
+
+# Drop orphan cdylibs (#2041): a corrosion crate rename (libry_codegen -> libemit,
+# #2040) can leave the old cdylib in a non-clean build tree, and the libry_* glob
+# would ship it. The cdylib is the ONLY native lib that links libLLVM — stdlib
+# libry_* libs do not — so skip any non-libemit lib that links libLLVM (warn so the
+# stale build tree is surfaced). verify-bundle.sh asserts this same invariant.
+links_libllvm() {
+    case "$PLATFORM" in
+        darwin) otool -L "$1" 2>/dev/null | grep -q 'libLLVM' ;;
+        linux)  readelf -d "$1" 2>/dev/null | grep -q 'NEEDED.*libLLVM' ;;
+        *) return 1 ;;
+    esac
+}
+native_libs=()
+for f in "${candidate_libs[@]}"; do
+    base="$(basename "$f")"
+    if [[ "$base" != libemit.* ]] && links_libllvm "$f"; then
+        log "skipping orphan cdylib $base (links libLLVM but is not libemit; #2041)"
+        continue
+    fi
+    native_libs+=("$f")
+done
+
 if [[ ${#native_libs[@]} -eq 0 ]]; then
     echo "::warning::bundle-dist: no native libs at $BUILD_DIR/lib/{libemit,libry_*}.*" >&2
 else

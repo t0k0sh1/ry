@@ -67,5 +67,28 @@ fi
 
 cmake --preset "$PRESET" "${CONFIGURE_ARGS[@]+"${CONFIGURE_ARGS[@]}"}"
 cmake --build "$BUILD_DIR"
+
+# Sweep orphan cdylibs (#2041): a corrosion crate rename (libry_codegen -> libemit,
+# #2040) leaves the old cdylib in $BUILD_DIR/lib. A non-destructive reconfigure
+# self-heals build.ninja to libemit but does NOT GC the stale output, so without
+# --clean the orphan lingers (confusing, and bundle-dist would ship it). The cdylib
+# is the ONLY native lib that links libLLVM — stdlib libry_* libs do not — and
+# libemit is outside the libry_* glob, so any libry_* that links libLLVM is an
+# orphan former-cdylib. rm here is a persistent, reviewed script deletion (same
+# class as the --clean rm above), not an ad-hoc cleanup.
+_links_libllvm() {
+  case "$(uname -s)" in
+    Darwin) otool -L "$1" 2>/dev/null | grep -q 'libLLVM' ;;
+    *)      readelf -d "$1" 2>/dev/null | grep -q 'NEEDED.*libLLVM' ;;
+  esac
+}
+for f in "$BUILD_DIR"/lib/libry_*.dylib "$BUILD_DIR"/lib/libry_*.so; do
+  [[ -e "$f" ]] || continue
+  if _links_libllvm "$f"; then
+    echo "==> removing orphan cdylib $(basename "$f") (links libLLVM but is not libemit; #2041)" >&2
+    rm -f "$f"
+  fi
+done
+
 "./$BUILD_DIR/ry_tests"
 "./$BUILD_DIR/ry" test -p

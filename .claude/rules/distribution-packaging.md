@@ -143,3 +143,59 @@ the cdylib (the cdylib is link-time, not dlopen'd by module name).
 `@rpath` id, and `@loader_path/libLLVM` linkage, so a dropped cdylib FAILs the
 bundle gate. For self-update, `tests/test_self_update.cpp`
 `CopiesRustCdylibLibemit` writes a fake `libemit.*` and asserts it installs.
+
+### Orphan cdylib after a crate rename: exclude via the libLLVM-linkage discriminator, not `ADDITIONAL_CLEAN_FILES`
+
+**Source**: #2041 (2026-06-07; orphan left by the #2040 `ry_codegen` → `emit` rename)
+**Tags**: packaging, cdylib, corrosion, rename, orphan, libLLVM, discriminator, glob, dist
+
+**Context**: A corrosion crate rename (`ry_codegen` → `emit`, #2040; earlier
+`ry_llvm_emit` → `ry_codegen`, #2027) leaves the old cdylib
+(`libry_codegen.{so,dylib}`) as an **orphan** in a non-clean build tree. A
+non-destructive `cmake --preset` reconfigure self-heals `build.ninja` to
+`libemit` but does **not** GC the stale output (corrosion's IMPORTED cargo
+target output rides on no CMake clean tracking). The orphan then (a) confuses
+devs / invites a reflexive `rm -rf`, and (b) is shipped by `bundle-dist.sh`'s
+`libry_*` glob into the release tarball. The orphan shares the `libry_` prefix
+with the legitimate stdlib native libs (`libry_base64`, …), so it **cannot** be
+excluded by name pattern — only by an explicit discriminator.
+
+**Rule**: The emission cdylib is the **only** bundled native lib that links
+`libLLVM`; stdlib `libry_*` libs do not. Use this as a zero-drift discriminator
+(no `RY_NATIVE_LIBS` enumeration needed, catches any future cdylib-rename
+orphan):
+
+- `scripts/verify-bundle.sh` (the pre-`tar` release gate) FAILs if any bundled
+  native lib **other than `libemit`** links `libLLVM` (`otool -L` on darwin /
+  `readelf -d` NEEDED on linux). This is the structural guarantee.
+- `scripts/bundle-dist.sh` skips such orphans when copying (warns, so the stale
+  tree is surfaced) — belt-and-braces so a local dirty bundle is clean by
+  construction.
+- `.claude/skills/pre-commit-checklist/run-tests.sh` removes orphan
+  `libry_*` cdylibs from the host `$BUILD_DIR/lib` after each build (a legit
+  persistent-script `rm`, same class as its `--clean` path), so a manual
+  `--clean` is no longer needed to clear the orphan.
+
+Grep `libLLVM` **case-sensitively** against the dependency listing: it matches
+the libLLVM dependency line, never a self-name that contains lowercase `llvm`
+(e.g. a hypothetical future `libry_llvm_*`). This is the **exclusion** axis and
+is orthogonal to the #2040 entry above, which is the **inclusion** axis (list
+`libemit` separately in every selector). Scope note: pre-cutover artifacts that
+do not link `libLLVM` are out of scope (not the orphan-cdylib class, and absent
+from the CI `build` / local `build-rust` dist sources).
+
+**Rejected — `ADDITIONAL_CLEAN_FILES`**: it is regenerated from the current
+config on every configure and is therefore keyed to `libemit`; an orphan is by
+definition a name the post-rename config no longer knows, so no forward-keyed
+clean mechanism can GC it. (Corrosion IMPORTED targets also ignore CMake
+properties — see the rpath entry above — so the property likely never even
+registers.) An orphan is "a file from a *previous* configuration": only
+enumerate-and-prune, a full wipe, or a catch-at-the-boundary gate can touch it.
+
+**How to verify**: assemble a dist, plant a fake orphan that links `libLLVM`
+(`cp dist/lib/libemit.dylib dist/lib/libry_codegen.dylib`), and confirm
+`verify-bundle.sh` now exits **1** (a green run on a clean dist does not prove
+the FAIL path propagates — exercise the known-bad input, per the verify-helper
+entry above). For the sweep, plant the orphan in `$BUILD_DIR/lib` and confirm
+`run-tests.sh` removes it while leaving `libemit` and the stdlib `libry_*`
+libs intact.
