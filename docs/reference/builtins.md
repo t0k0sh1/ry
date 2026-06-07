@@ -101,9 +101,9 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `sequence(list)` | Folds `List<Result<T, E>>` to `Result<List<T>, E>` or `List<Option<T>>` to `Option<List<T>>`, short-circuiting on first `Err` / `None` |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
 | `all(list, pred)` | Returns `true` if all elements match the predicate |
-| `sum(list)` | Returns the sum of all elements |
-| `min(list)` | Returns the minimum element. Empty list is a runtime error |
-| `max(list)` | Returns the maximum element. Empty list is a runtime error |
+| `sum(list)` / `sum(a, b, ...)` | Returns the sum of all elements, or of 2+ scalars passed directly (`int`/`float`/`u8`) |
+| `min(list)` / `min(a, b, ...)` | Returns the minimum element, or of 2+ scalars passed directly (`int`/`float`). Empty list is a runtime error |
+| `max(list)` / `max(a, b, ...)` | Returns the maximum element, or of 2+ scalars passed directly (`int`/`float`). Empty list is a runtime error |
 | `enumerate(list)` | Returns a list of `(index, value)` tuples. Also accepts a `str`, yielding `(int, str)` per UTF-8 code point |
 | `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists. Either (or both) arguments may be a `str` |
 | `keys(map)` | Returns all keys as a `List<K>` |

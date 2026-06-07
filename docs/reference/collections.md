@@ -466,29 +466,38 @@ print(all(xs, (x: int) => x > 3))   # false
 
 ### sum
 
-Returns the sum of all elements.
+Returns the sum of all elements. Accepts either a single numeric list, or two or more scalars passed directly (`sum(a, b, ...)`, unbounded). The element type may be `int`, `float`, or `u8`; in the variadic form all arguments must share one type, and the result has that type.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
-print(sum(xs))   # 15
+print(sum(xs))             # 15
+print(sum(3, 5))           # 8    (variadic)
+print(sum(1, 2, 3, 4))     # 10
+print(sum(1.0, 2.0, 3.0))  # 6.0
 ```
 
 ### min
 
-Returns the minimum element. Calling `min` on an empty list is a runtime error: `runtime error: min() on empty list`.
+Returns the minimum element. Accepts either a single numeric list, or two or more scalars passed directly (`min(a, b, ...)`, unbounded). The element type may be `int` or `float`; in the variadic form all arguments must share one type. Calling `min` on an empty list is a runtime error: `runtime error: min() on empty list` (the variadic form always has at least two arguments, so it is never empty).
 
 ```ry
 xs = [3, 1, 4, 1, 5]
-print(min(xs))   # 1
+print(min(xs))        # 1
+print(min(3, 5))      # 3    (variadic)
+print(min(3, 5, 1))   # 1
+print(min(1.5, 2.5))  # 1.5
 ```
 
 ### max
 
-Returns the maximum element. Calling `max` on an empty list is a runtime error: `runtime error: max() on empty list`.
+Returns the maximum element. Accepts either a single numeric list, or two or more scalars passed directly (`max(a, b, ...)`, unbounded). The element type may be `int` or `float`; in the variadic form all arguments must share one type. Calling `max` on an empty list is a runtime error: `runtime error: max() on empty list` (the variadic form always has at least two arguments, so it is never empty).
 
 ```ry
 xs = [3, 1, 4, 1, 5]
-print(max(xs))   # 5
+print(max(xs))        # 5
+print(max(3, 5))      # 5    (variadic)
+print(max(3, 1, 5))   # 5
+print(max(1.5, 2.5))  # 2.5
 ```
 
 ### first
