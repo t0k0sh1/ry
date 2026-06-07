@@ -411,3 +411,22 @@ docker run --rm -v "$PWD:/src:ro" -v ry-fuzz-rust-ci-build:/build \
 **Correct**: pick a crate name that is not a CMake-reserved word. Two ways: (a) prefix the desired name — #2027 chose `ry_codegen` when the bare `codegen` was reserved, matching the project's `__ry_*` / `ry_emit_*` prefix convention; or (b) pick a non-reserved synonym — #2040 renamed the crate to bare `emit`, which is **not** in CMake's reserved set, so it needs no prefix and still trips no CMP0171 warning. The current crate is `emit` and the dylib is `libemit`; verify any rename by configuring and confirming no `'<name>' is a reserved target name` warning appears.
 
 **Why it recurs**: any future corrosion crate (or `add_library` / `add_executable` target) named after a CMake-reserved word (`codegen`, `test`, `all`, `clean`, `install`, `package`, …) hits the same collision class. Check `cmake --help-policy CMP0171` / the reserved-target list before adopting a bare common-noun target name; prefer a non-reserved or project-prefixed name. (Pre-flight grep for an existing `add_library(<name>` catches user-defined collisions but NOT CMake-reserved names — only `cmake` configure surfaces those.)
+
+---
+
+### Editing `.claude/agents/*.md` frontmatter: `description` is an escaped YAML scalar; validate with ruby, not python
+
+**Source**: #2031 (2026-06-07, agent-definition cleanup)
+**Tags**: yaml, frontmatter, agents, escaping, quoting, validation, ruby
+
+**Wrong**: hand-editing an agent definition's `description:` field by retyping the `<example>` delimiters, then validating with python's yaml module. Two traps: (1) the inter-example delimiter is stored as a literal **two-backslash** `\n` (confirm via `repr()`; a single-backslash assumption is off by one and silently breaks the double-quoted scalar); (2) this repo's `python3` has no PyYAML — `import yaml` raises `ModuleNotFoundError`.
+
+**Correct**: trim examples by **slicing at the existing `</example>` boundary and re-appending only the closing quote** — never retype the `\n` / `\"` escapes, so the kept bytes stay verbatim and a previously-valid scalar remains valid. Validate the frontmatter as YAML with ruby (ships on macOS):
+
+```bash
+ruby -ryaml -e 'YAML.safe_load(File.read(ARGV[0]).split("---\n",3)[1]); puts "ok"' .claude/agents/devils-advocate.md
+```
+
+`scripts/check-prompt-refs.sh` lints inline-code references but does NOT catch a malformed YAML scalar, so the two checks are complementary.
+
+**Why it recurs**: the `description` is always-loaded context, so #2021-class prompt-trimming sub-issues repeatedly edit these scalars. A broken scalar drops the agent from the registry with no error (silent failure), so YAML validation after every frontmatter edit is the guard.
