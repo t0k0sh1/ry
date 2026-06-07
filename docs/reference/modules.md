@@ -253,7 +253,7 @@ Importing a non-`@public` symbol from another package is a compile error. Wildca
 The standard library (`std`) is a collection of built-in modules automatically imported into every program. It provides:
 - Built-in functions (`print`, `len`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
-- Type conversion functions (`toInt`, `toFloat`, `toStr`)
+- Type conversion functions (`toInt`, `toFloat`, `parseInt`, `parseFloat`, `toStr`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
 The entire standard library forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore share package-internal helpers across files; user code only sees the symbols marked `@public`. An import such as `from math import sqrt` resolves to a `@public` symbol exposed by the stdlib package.

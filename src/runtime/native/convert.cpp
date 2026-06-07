@@ -9,9 +9,12 @@ namespace ry {
 
 DEFINE_LAST_ERROR(convert)
 
-extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
+// Shared parsing core for the integer converters. `label` selects the
+// diagnostic prefix so each public entry point (toInt / parseInt) owns its
+// own error messages while sharing one parsing implementation.
+static int64_t parse_int_impl(const char *str, int64_t *out, const char *label) {
     if (!str || *str == '\0') {
-        setLastError("toInt: empty string");
+        setLastError("%s: empty string", label);
         return 1;
     }
 
@@ -20,11 +23,11 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     long long val = strtoll(str, &end, 10);
 
     if (errno == ERANGE) {
-        setLastError("toInt: overflow in '%s'", str);
+        setLastError("%s: overflow in '%s'", label, str);
         return 1;
     }
     if (end == str || *end != '\0') {
-        setLastError("toInt: invalid character in '%s'", str);
+        setLastError("%s: invalid character in '%s'", label, str);
         return 1;
     }
 
@@ -32,9 +35,10 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     return 0;
 }
 
-extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
+// Shared parsing core for the float converters; see parse_int_impl.
+static int64_t parse_float_impl(const char *str, double *out, const char *label) {
     if (!str || *str == '\0') {
-        setLastError("toFloat: empty string");
+        setLastError("%s: empty string", label);
         return 1;
     }
 
@@ -43,16 +47,32 @@ extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
     double val = strtod(str, &end);
 
     if (errno == ERANGE) {
-        setLastError("toFloat: out of range in '%s'", str);
+        setLastError("%s: out of range in '%s'", label, str);
         return 1;
     }
     if (end == str || *end != '\0') {
-        setLastError("toFloat: invalid character in '%s'", str);
+        setLastError("%s: invalid character in '%s'", label, str);
         return 1;
     }
 
     *out = val;
     return 0;
+}
+
+extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
+    return parse_int_impl(str, out, "toInt");
+}
+
+extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
+    return parse_float_impl(str, out, "toFloat");
+}
+
+extern "C" int64_t __ry_str_parse_int(const char *str, int64_t *out) {
+    return parse_int_impl(str, out, "parseInt");
+}
+
+extern "C" int64_t __ry_str_parse_float(const char *str, double *out) {
+    return parse_float_impl(str, out, "parseFloat");
 }
 
 } // namespace ry
