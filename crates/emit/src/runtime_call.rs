@@ -6,8 +6,8 @@ use llvm_sys::prelude::*;
 use llvm_sys::LLVMTypeKind;
 use std::ffi::c_char;
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_runtime_call(

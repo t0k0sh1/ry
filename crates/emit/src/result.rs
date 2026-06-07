@@ -5,8 +5,8 @@
 use llvm_sys::core::*;
 use std::ffi::{c_char, c_void};
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_build_error_from_runtime(

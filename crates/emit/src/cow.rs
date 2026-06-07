@@ -7,13 +7,12 @@ use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::{LLVMAtomicOrdering, LLVMIntPredicate};
 use std::ffi::{c_char, c_int};
 
-use crate::arc::*;
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 // A phi-based for loop (used by ry_emit_cow_ensure_unique) that retains each
 // ARC element/key of the cloned buffer.
-// Takes the opaque ctx (not &mut EmitCtxImpl) so it can call the public
+// Takes the opaque ctx (not &mut EmitCtx) so it can call the public
 // ry_emit_arc_retain without holding a borrow across the call.
 //
 // The cached LLVM types (i64/i8/ptr) and the per-call (field_idx, is_str, tag)

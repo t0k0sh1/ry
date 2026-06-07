@@ -3,9 +3,9 @@
 use llvm_sys::core::*;
 use llvm_sys::LLVMIntPredicate;
 
+use crate::abi::*;
 use crate::bounds::*;
-use crate::ffi::*;
-use crate::support::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_collection_append(

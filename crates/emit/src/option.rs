@@ -2,8 +2,8 @@
 
 use llvm_sys::core::*;
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_option_wrap_some(

@@ -5,8 +5,8 @@ use llvm_sys::core::*;
 use llvm_sys::LLVMIntPredicate;
 use std::ffi::{c_char, c_int, CStr};
 
-use crate::ffi::*;
-use crate::support::*;
+use crate::abi::*;
+use crate::core::*;
 
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_bounds_check(

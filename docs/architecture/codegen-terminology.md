@@ -19,7 +19,7 @@ The full op list lives in [Codegen Layering Plan](codegen-layering-plan.md) §"L
 
 ## The two boundaries
 
-Ry has two C-only `extern "C"` boundaries. They are **named after their layer**, not by the (formerly overloaded) word "ABI":
+Ry has two C-only `extern "C"` boundaries, **named after their layer**:
 
 | Boundary | Symbols | Crossed | Implemented by |
 | --- | --- | --- | --- |
@@ -27,16 +27,6 @@ Ry has two C-only `extern "C"` boundaries. They are **named after their layer**,
 | **emission boundary** | `ry_emit_*` ("emission entry points") | at **compile time**, to construct LLVM IR | the emission layer (the `emit` crate) — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) |
 
 The two are orthogonal: lowering drives IR construction through the *emission entry points*; the IR it builds resolves, at run time, to *runtime calls*.
-
-### Naming policy: do not label a boundary "ABI"
-
-"ABI" previously labelled **both** boundaries, so the bare phrase "the ABI" was ambiguous. Use the layer-based names above instead. For the *binary-layout* concept (e.g. `#[repr(C)]` matching `include/ry/llvm_emit/api.h` byte-for-byte) write **"C layout-compatible"** / **"the C type contract"** / **`extern "C"` boundary** — not "C-ABI-compatible" / "the C ABI".
-
-External published standards keep their proper names (e.g. the platform's x86-64 / arm64 calling convention). Frozen historical text (`CHANGELOG.md`) is not retro-edited, for searchability.
-
-### FFI is retained
-
-**FFI** (Foreign Function Interface) is kept. It is the Rust-idiomatic term for *the Rust side's C-interop surface* and operates at a different level than the boundary names above — it is **not** a synonym for a boundary, so do not replace it. `ffi.rs` (the `#[repr(C)]` mirror of `api.h`) and `std::ffi` stay as-is.
 
 ## Handle naming (emission boundary types)
 
@@ -58,8 +48,8 @@ This page is the naming **decision** (#2022, docs-only). The physical rename is 
 - **Keep** the 28 `ry_emit_*` functions and the `Ry*` type prefix unchanged.
 - **`Handle` → `Ref`** (4 typedefs): `RyModuleHandle`→`RyModuleRef`, `RyBuilderHandle`→`RyBuilderRef`, `RyContextHandle`→`RyContextRef`, `RyFunctionHandle`→`RyFunctionRef`, plus the matching `cast_helpers.hpp` accessors.
 - **Remove** `RyBasicBlockId` — declared and layout-asserted but used in no public signature (the ControlFlow entries use `RyBasicBlockRef`).
-- **Purge the "ABI" label** from code comments, `.claude/`, and the `api.h` header comment — using the vocabulary above.
-- **Keep** FFI / `ffi.rs` / `std::ffi`.
+- **Purge the "ABI" label** from code comments, `.claude/`, and the `api.h` header comment — using the vocabulary above. (Superseded for the emission crate by the #2057 `abi` / `ffi` / `core` module split — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) §"Layer structure (#2057)".)
+- **Keep** `std::ffi`.
 - **Do not touch**: `CHANGELOG.md` (frozen), and artifact names that contain "abi" — `runtime-abi-boundary.md`, `scripts/check-llvm-emit-abi-header.sh`, `tests/test_abi_layout.cpp`, `tests/test_emit_abi_guards.cpp`.
 
 ## Related documents
