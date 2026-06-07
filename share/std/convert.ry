@@ -7,6 +7,17 @@ fn toInt(value: str) -> Result<int, Error>
 @native
 fn toFloat(value: str) -> Result<float, Error>
 
+# Fallible string-parsing functions. These provide the same parsing behavior
+# as toInt / toFloat under explicit "parse" names (see #1772); the runtime
+# emits parseInt: / parseFloat: prefixed diagnostics.
+@public
+@native
+fn parseInt(value: str) -> Result<int, Error>
+
+@public
+@native
+fn parseFloat(value: str) -> Result<float, Error>
+
 @public
 @native
 fn toStr(value: int) -> str

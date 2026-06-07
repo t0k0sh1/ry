@@ -64,6 +64,8 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 |------|-----------|------|
 | `toInt` | `str -> Result<int, Error>` | Convert string to integer |
 | `toFloat` | `str -> Result<float, Error>` | Convert string to floating-point number |
+| `parseInt` | `str -> Result<int, Error>` | Parse string to integer (fallible) |
+| `parseFloat` | `str -> Result<float, Error>` | Parse string to floating-point number (fallible) |
 | `toStr` | `any -> str` | Convert value to string |
 
 ---
@@ -429,6 +431,59 @@ case "2.5".toFloat():
 print(toFloat("abc"))         # Err(Error("toFloat: invalid character in 'abc'"))
 print(toFloat(""))            # Err(Error("toFloat: empty string"))
 print(toFloat("1e400"))       # Err(Error("toFloat: out of range in '1e400'"))
+```
+
+---
+
+## parseInt
+
+**Signature:** `parseInt(string: str) -> Result<int, Error>`
+
+Parses a string to an integer, returning `Result`. Same parsing behavior as `toInt` under an explicit "parse" name: leading whitespace is allowed, and it returns `Err` if the string is empty, contains invalid characters, or overflows. Error messages are prefixed with `parseInt:`.
+
+```ry
+case parseInt("42"):
+    Ok(v):
+        print(v)              # 42
+    Err(e):
+        print(e.message)
+
+case "123".parseInt():
+    Ok(v):
+        print(v)              # 123
+    Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(parseInt("abc"))          # Err(Error("parseInt: invalid character in 'abc'"))
+print(parseInt(""))             # Err(Error("parseInt: empty string"))
+```
+
+---
+
+## parseFloat
+
+**Signature:** `parseFloat(string: str) -> Result<float, Error>`
+
+Parses a string to a floating-point number, returning `Result`. Same parsing behavior as `toFloat` under an explicit "parse" name: returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`. Error messages are prefixed with `parseFloat:`.
+
+```ry
+case parseFloat("3.14"):
+    Ok(v):
+        print(v)              # 3.14
+    Err(e):
+        print(e.message)
+
+case "2.5".parseFloat():
+    Ok(v):
+        print(v)              # 2.5
+    Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(parseFloat("abc"))         # Err(Error("parseFloat: invalid character in 'abc'"))
+print(parseFloat(""))            # Err(Error("parseFloat: empty string"))
+print(parseFloat("1e400"))       # Err(Error("parseFloat: out of range in '1e400'"))
 ```
 
 ---

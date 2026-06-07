@@ -139,7 +139,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter = " ")` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `toInt(s)` / `toFloat(s)` / `toStr(v)` | Type conversion (`toInt` and `toFloat` return `Result<T, Error>`) |
+| `toInt(s)` / `toFloat(s)` / `parseInt(s)` / `parseFloat(s)` / `toStr(v)` | Type conversion (`toInt` / `toFloat` / `parseInt` / `parseFloat` return `Result<T, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 

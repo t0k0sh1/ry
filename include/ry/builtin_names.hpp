@@ -48,6 +48,8 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "map",
     "max",
     "min",
+    "parseFloat",
+    "parseInt",
     "pop",
     "print",
     "range",

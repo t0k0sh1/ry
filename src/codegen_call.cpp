@@ -50,6 +50,48 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
+    // parseInt(s) → Result<int, Error>  (#1772: explicit fallible-parse name)
+    if (e.callee == "parseInt") {
+        requireArgs(e, 1);
+        llvm::Value *s = emitExpr(*e.args[0]);
+        if (s->getType() != ptrTy_)
+            codegenError("parseInt() requires str argument");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "parse_int_out");
+        auto fn = getRuntimeFn("__ry_str_parse_int", i64Ty_, {ptrTy_, ptrTy_});
+        used_native_libraries_.insert("convert");
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "parse_int_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "parse_int_err");
+        llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "parse_int_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
+    }
+
+    // parseFloat(s) → Result<float, Error>  (#1772: explicit fallible-parse name)
+    if (e.callee == "parseFloat") {
+        requireArgs(e, 1);
+        llvm::Value *s = emitExpr(*e.args[0]);
+        if (s->getType() != ptrTy_)
+            codegenError("parseFloat() requires str argument");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "parse_float_out");
+        auto fn = getRuntimeFn("__ry_str_parse_float", i64Ty_, {ptrTy_, ptrTy_});
+        used_native_libraries_.insert("convert");
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "parse_float_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "parse_float_err");
+        llvm::StructType *resTy = getResultType(f64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "parse_float_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
+    }
+
     // toStr(v) → str
     if (e.callee == "toStr") {
         requireArgs(e, 1);

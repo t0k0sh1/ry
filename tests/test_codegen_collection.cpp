@@ -431,6 +431,71 @@ case s.toFloat():
 )"), "2.5\n");
 }
 
+TEST_F(CodeGenTest, StringParseInt) {
+    auto checkParseInt = [&](const char *input, const char *expected) {
+        std::string src = "case parseInt(\"";
+        src += input;
+        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
+        EXPECT_EQ(runSource(src), expected);
+    };
+    // Valid input returns Ok
+    checkParseInt("42", "42\n");
+    checkParseInt("-7", "-7\n");
+    checkParseInt("0", "0\n");
+    // Invalid input returns Err
+    checkParseInt("abc", "err\n");
+    checkParseInt("", "err\n");
+    checkParseInt("12abc", "err\n");
+    // Overflow returns Err
+    checkParseInt("9223372036854775808", "err\n");
+    checkParseInt("-9223372036854775809", "err\n");
+    // UFCS
+    EXPECT_EQ(runSource(R"(
+s = "123"
+case s.parseInt():
+    Ok(v):
+        print(v)
+    Err(e):
+        print("err")
+)"), "123\n");
+}
+
+TEST_F(CodeGenTest, StringParseFloat) {
+    auto checkParseFloat = [&](const char *input, const char *expected) {
+        std::string src = "case parseFloat(\"";
+        src += input;
+        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
+        EXPECT_EQ(runSource(src), expected);
+    };
+    // Valid input returns Ok
+    checkParseFloat("3.14", "3.14\n");
+    checkParseFloat("42", "42.0\n");
+    checkParseFloat("-0.5", "-0.5\n");
+    checkParseFloat("0", "0.0\n");
+    // Invalid input returns Err
+    checkParseFloat("abc", "err\n");
+    checkParseFloat("", "err\n");
+    checkParseFloat("1.2abc", "err\n");
+    // Overflow returns Err
+    checkParseFloat("1e400", "err\n");
+    // UFCS
+    EXPECT_EQ(runSource(R"(
+s = "2.5"
+case s.parseFloat():
+    Ok(v):
+        print(v)
+    Err(e):
+        print("err")
+)"), "2.5\n");
+}
+
+// #1772: parseInt / parseFloat reject a non-str argument at compile time,
+// mirroring toInt / toFloat. Locks in the dedicated rejection branch.
+TEST_F(CodeGenTest, ParseConvertRejectsNonStringArg) {
+    EXPECT_THROW(runSource("print(parseInt(42))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(parseFloat(42))"), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, ToStrVariants) {
     // ToStrInt
     EXPECT_EQ(runSource("print(toStr(42))"), "42\n");

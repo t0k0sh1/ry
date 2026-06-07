@@ -6,7 +6,7 @@
 
 from testing import it, describe, expect, fail
 
-from convert import toInt
+from convert import toInt, parseInt, parseFloat
 
 @describe("@native first-class — direct assignment (single-overload)")
 fn nativeFirstClassDirectAssignmentSingleOverloadTests():
@@ -72,3 +72,43 @@ fn nativeFirstClassExplicitImportPathTests():
     case f("99"):
       Ok(v): expect(v).toEq(99)
       Err(e): fail("toInt failed: " + e.message)
+
+@describe("@native first-class — parseInt / parseFloat (#1772)")
+fn nativeFirstClassParseTests():
+  @it("binds parseInt to a variable and invokes it")
+  fn bindsParseintToAVariableAndInvokesIt():
+    f = parseInt
+    case f("42"):
+      Ok(v): expect(v).toEq(42)
+      Err(e): fail("parseInt failed: " + e.message)
+
+  @it("returns Err with the parseInt prefix through the bound variable")
+  fn returnsErrWithTheParseintPrefixThroughTheBoundVariable():
+    f = parseInt
+    case f("not-a-number"):
+      Ok(v): fail("expected Err, got Ok(" + toStr(v) + ")")
+      Err(e): expect(e.message).toContain("parseInt")
+
+  @it("xs.map(parseInt) routes the @native through stdlib map")
+  fn xsMapParseintRoutesTheNativeThroughStdlibMap():
+    xs: List<str> = ["1", "2", "3"]
+    results = xs.map(parseInt)
+    expect(len(results)).toEq(3)
+    case results[0]:
+      Ok(v): expect(v).toEq(1)
+      Err(e): fail("parseInt[0] failed: " + e.message)
+    case results[2]:
+      Ok(v): expect(v).toEq(3)
+      Err(e): fail("parseInt[2] failed: " + e.message)
+
+  @it("xs.map(parseFloat) infers Result<float, Error> through stdlib map")
+  fn xsMapParsefloatInfersResultFloatThroughStdlibMap():
+    xs: List<str> = ["1.5", "2.5"]
+    results = xs.map(parseFloat)
+    expect(len(results)).toEq(2)
+    case results[0]:
+      Ok(v): expect(v).toEq(1.5)
+      Err(e): fail("parseFloat[0] failed: " + e.message)
+    case results[1]:
+      Ok(v): expect(v).toEq(2.5)
+      Err(e): fail("parseFloat[1] failed: " + e.message)
