@@ -28,12 +28,46 @@ pub(crate) struct EmitCtx {
     pub(crate) bounds_msg_cache: HashMap<Vec<u8>, LLVMValueRef>,
 }
 
+impl EmitCtx {
+    // Construct a fresh emission context over the raw LLVM handles received
+    // across the abi boundary (stored without being dereferenced). Reserves
+    // handle 0 as the "invalid" sentinel so resolve(_, 0) -> NULL.
+    pub(crate) fn new(
+        module: LLVMModuleRef,
+        builder: LLVMBuilderRef,
+        context: LLVMContextRef,
+        function: LLVMValueRef,
+    ) -> EmitCtx {
+        EmitCtx {
+            module,
+            builder,
+            context,
+            function,
+            values: vec![std::ptr::null_mut()],
+            bounds_msg_cache: HashMap::new(),
+        }
+    }
+}
+
 /// Rust-native typed handle to an LLVM value. Non-null by convention; nullable
 /// boundary inputs (destructor / gc-visit callees) are modelled as
 /// `Option<ValueRef>`. Wraps the raw `LLVMValueRef` so the engine API does not
 /// traffic in untyped pointers.
 #[derive(Clone, Copy)]
 pub(crate) struct ValueRef(pub(crate) LLVMValueRef);
+
+/// Rust-native typed handle to an LLVM basic block. Wraps the raw
+/// `LLVMBasicBlockRef` so the engine API does not traffic in untyped pointers.
+#[derive(Clone, Copy)]
+pub(crate) struct BasicBlockRef(pub(crate) LLVMBasicBlockRef);
+
+/// Rust-native typed handle to an LLVM function value.
+#[derive(Clone, Copy)]
+pub(crate) struct FunctionRef(pub(crate) LLVMValueRef);
+
+/// Rust-native typed handle to an LLVM type.
+#[derive(Clone, Copy)]
+pub(crate) struct TypeRef(pub(crate) LLVMTypeRef);
 
 /// ARC atomic mode for retain / release.
 #[derive(Clone, Copy, PartialEq, Eq)]

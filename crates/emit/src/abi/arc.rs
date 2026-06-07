@@ -1,0 +1,68 @@
+//! abi::arc — the C boundary entry points for ARC retain / release (migrated
+//! #2057 pilot). Each resolves the u32 header id and translates the C `c_int`
+//! atomic flag / nullable callees into the Rust-native `Atomicity` /
+//! `Option<ValueRef>`, then calls the `core` engine method on `EmitCtx` (the
+//! convergence point shared with the Rust-direct path in `any.rs`).
+
+use std::ffi::c_int;
+
+use crate::core::{Atomicity, ValueRef};
+
+use super::*;
+
+// c_int → Atomicity, preserving the legacy `== RY_ARC_ATOMIC` (else =
+// non-atomic) semantics exactly, so the emitted IR is bit-identical for every
+// value the C++ side passes.
+#[inline]
+fn atomicity_from(atomic: c_int) -> Atomicity {
+    if atomic == RY_ARC_ATOMIC {
+        Atomicity::Atomic
+    } else {
+        Atomicity::NonAtomic
+    }
+}
+
+// Nullable boundary handle → Option<ValueRef> (None on NULL).
+#[inline]
+fn opt_value_ref(p: RyValueRef) -> Option<ValueRef> {
+    if p.is_null() {
+        None
+    } else {
+        Some(ValueRef(as_value(p)))
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_arc_retain(
+    ctx: *mut RyEmitCtx,
+    header_ptr_id: RyValueId,
+    atomic: c_int,
+) {
+    if ctx.is_null() {
+        return;
+    }
+    let c = cx(ctx);
+    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
+    c.arc_retain(header, atomicity_from(atomic));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_arc_release(
+    ctx: *mut RyEmitCtx,
+    header_ptr_id: RyValueId,
+    atomic: c_int,
+    destructor_callee: RyValueRef,
+    gc_visit_fn: RyValueRef,
+) {
+    if ctx.is_null() {
+        return;
+    }
+    let c = cx(ctx);
+    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
+    c.arc_release(
+        header,
+        atomicity_from(atomic),
+        opt_value_ref(destructor_callee),
+        opt_value_ref(gc_visit_fn),
+    );
+}

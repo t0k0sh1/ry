@@ -1,37 +1,43 @@
-//! Option emission: `ry_emit_option_wrap_some` / `ry_emit_option_wrap_none`.
+//! Option IR generation (core-role: an `impl EmitCtx` over the core engine
+//! only, so it is abi-independent and the `core⇏abi` invariant covers this
+//! module). Builds the `{ i1 tag, payload }` Option aggregate for Some / None.
+//! The C++ path enters through the `abi::option` externs.
 
 use llvm_sys::core::*;
 
-use crate::abi::*;
 use crate::core::*;
 
-#[no_mangle]
-pub unsafe extern "C" fn ry_emit_option_wrap_some(
-    ctx: *mut RyEmitCtx,
-    inner_id: RyValueId,
-    opt_ty: RyTypeRef,
-) -> RyValueId {
-    let c = cx(ctx);
-    let opt_ty = as_type(opt_ty);
-    let inner = as_value(resolve(c, inner_id));
-    let i1_ty = i1_type(c.context);
-    let mut val = LLVMGetUndef(opt_ty);
-    val = LLVMBuildInsertValue(c.builder, val, LLVMConstInt(i1_ty, 1, 0), 0, c"".as_ptr());
-    val = LLVMBuildInsertValue(c.builder, val, inner, 1, c"".as_ptr());
-    intern(c, to_ry_value(val))
-}
+impl EmitCtx {
+    // Build `Some(inner)`: insert tag = 1 then the payload into an undef Option
+    // aggregate. Returns the raw value; the abi boundary interns it.
+    pub(crate) unsafe fn option_wrap_some(&mut self, inner: ValueRef, opt_ty: TypeRef) -> ValueRef {
+        let i1_ty = i1_type(self.context);
+        let mut val = LLVMGetUndef(opt_ty.0);
+        val = LLVMBuildInsertValue(
+            self.builder,
+            val,
+            LLVMConstInt(i1_ty, 1, 0),
+            0,
+            c"".as_ptr(),
+        );
+        val = LLVMBuildInsertValue(self.builder, val, inner.0, 1, c"".as_ptr());
+        ValueRef(val)
+    }
 
-#[no_mangle]
-pub unsafe extern "C" fn ry_emit_option_wrap_none(
-    ctx: *mut RyEmitCtx,
-    opt_ty: RyTypeRef,
-) -> RyValueId {
-    let c = cx(ctx);
-    let opt_ty = as_type(opt_ty);
-    let i1_ty = i1_type(c.context);
-    let mut val = LLVMGetUndef(opt_ty);
-    val = LLVMBuildInsertValue(c.builder, val, LLVMConstInt(i1_ty, 0, 0), 0, c"".as_ptr());
-    let payload_ty = LLVMStructGetTypeAtIndex(opt_ty, 1);
-    val = LLVMBuildInsertValue(c.builder, val, LLVMGetUndef(payload_ty), 1, c"".as_ptr());
-    intern(c, to_ry_value(val))
+    // Build `None`: insert tag = 0 then an undef payload into an undef Option
+    // aggregate. Returns the raw value; the abi boundary interns it.
+    pub(crate) unsafe fn option_wrap_none(&mut self, opt_ty: TypeRef) -> ValueRef {
+        let i1_ty = i1_type(self.context);
+        let mut val = LLVMGetUndef(opt_ty.0);
+        val = LLVMBuildInsertValue(
+            self.builder,
+            val,
+            LLVMConstInt(i1_ty, 0, 0),
+            0,
+            c"".as_ptr(),
+        );
+        let payload_ty = LLVMStructGetTypeAtIndex(opt_ty.0, 1);
+        val = LLVMBuildInsertValue(self.builder, val, LLVMGetUndef(payload_ty), 1, c"".as_ptr());
+        ValueRef(val)
+    }
 }
