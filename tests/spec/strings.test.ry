@@ -346,138 +346,66 @@ fn utf8SupportTests():
 
 @describe("type conversion")
 fn typeConversionTests():
-  @it("should return Ok for valid toInt input")
+  @it("should return Ok for valid int input")
   fn shouldReturnOkForValidTointInput():
-    case toInt("42"):
+    case int("42"):
       Ok(v):
         expect(v).toEq(42)
       Err(_):
         expect(false).toEq(true)
-    case toInt("-7"):
+    case int("-7"):
       Ok(v):
         expect(v).toEq(-7)
       Err(_):
         expect(false).toEq(true)
-    expect(toInt("123")).toBeOk()
-    expect(toInt("0")).toBeOk()
-  @it("should return Err for invalid toInt input")
+    expect(int("123")).toBeOk()
+    expect(int("0")).toBeOk()
+  @it("should return Err for invalid int input")
   fn shouldReturnErrForInvalidTointInput():
-    expect(toInt("abc")).toBeErr()
-    expect(toInt("")).toBeErr()
-    expect(toInt("12abc")).toBeErr()
-    expect(toInt("9223372036854775808")).toBeErr()
-    expect(toInt("-9223372036854775809")).toBeErr()
-  @it("should return Result from toInt via UFCS")
+    expect(int("abc")).toBeErr()
+    expect(int("")).toBeErr()
+    expect(int("12abc")).toBeErr()
+    expect(int("9223372036854775808")).toBeErr()
+    expect(int("-9223372036854775809")).toBeErr()
+  @it("should return Result from int via UFCS")
   fn shouldReturnResultFromTointViaUfcs():
-    case "99".toInt():
+    case "99".int():
       Ok(v):
         expect(v).toEq(99)
       Err(_):
         expect(false).toEq(true)
-  @it("should return Ok for valid toFloat input")
+  @it("should return Ok for valid float input")
   fn shouldReturnOkForValidTofloatInput():
-    case toFloat("3.14"):
+    case float("3.14"):
       Ok(v):
         expect(v).toEq(3.14)
       Err(_):
         expect(false).toEq(true)
-    case toFloat("-0.5"):
+    case float("-0.5"):
       Ok(v):
         expect(v).toEq(-0.5)
       Err(_):
         expect(false).toEq(true)
-    expect(toFloat("2.5")).toBeOk()
-    expect(toFloat("0")).toBeOk()
-  @it("should return Err for invalid toFloat input")
+    expect(float("2.5")).toBeOk()
+    expect(float("0")).toBeOk()
+  @it("should return Err for invalid float input")
   fn shouldReturnErrForInvalidTofloatInput():
-    expect(toFloat("xyz")).toBeErr()
-    expect(toFloat("")).toBeErr()
-    expect(toFloat("1.2abc")).toBeErr()
-    expect(toFloat("1e400")).toBeErr()
-  @it("should return Result from toFloat via UFCS")
+    expect(float("xyz")).toBeErr()
+    expect(float("")).toBeErr()
+    expect(float("1.2abc")).toBeErr()
+    expect(float("1e400")).toBeErr()
+  @it("should return Result from float via UFCS")
   fn shouldReturnResultFromTofloatViaUfcs():
-    case "3.14".toFloat():
+    case "3.14".float():
       Ok(v):
         expect(v).toEq(3.14)
       Err(_):
         expect(false).toEq(true)
-  @it("should convert value to string with toStr")
+  @it("should convert value to string with str")
   fn shouldConvertValueToStringWithTostr():
-    expect(toStr(42)).toEq("42")
-    expect(toStr(true)).toEq("true")
-    expect(toStr(99)).toEq("99")
-
-@describe("parse conversion")
-fn parseConversionTests():
-  @it("should return Ok for valid parseInt input")
-  fn shouldReturnOkForValidParseintInput():
-    case parseInt("42"):
-      Ok(v):
-        expect(v).toEq(42)
-      Err(_):
-        expect(false).toEq(true)
-    case parseInt("-7"):
-      Ok(v):
-        expect(v).toEq(-7)
-      Err(_):
-        expect(false).toEq(true)
-    expect(parseInt("123")).toBeOk()
-    expect(parseInt("0")).toBeOk()
-  @it("should return Err for invalid parseInt input")
-  fn shouldReturnErrForInvalidParseintInput():
-    expect(parseInt("abc")).toBeErr()
-    expect(parseInt("")).toBeErr()
-    expect(parseInt("12abc")).toBeErr()
-    expect(parseInt("9223372036854775808")).toBeErr()
-    expect(parseInt("-9223372036854775809")).toBeErr()
-  @it("should return Result from parseInt via UFCS")
-  fn shouldReturnResultFromParseintViaUfcs():
-    case "99".parseInt():
-      Ok(v):
-        expect(v).toEq(99)
-      Err(_):
-        expect(false).toEq(true)
-  @it("should carry the parseInt prefix in the error message")
-  fn shouldCarryTheParseintPrefixInTheErrorMessage():
-    case parseInt("abc"):
-      Ok(_):
-        expect(false).toEq(true)
-      Err(e):
-        expect(e.message).toContain("parseInt")
-  @it("should return Ok for valid parseFloat input")
-  fn shouldReturnOkForValidParsefloatInput():
-    case parseFloat("3.14"):
-      Ok(v):
-        expect(v).toEq(3.14)
-      Err(_):
-        expect(false).toEq(true)
-    case parseFloat("-0.5"):
-      Ok(v):
-        expect(v).toEq(-0.5)
-      Err(_):
-        expect(false).toEq(true)
-    expect(parseFloat("2.5")).toBeOk()
-    expect(parseFloat("0")).toBeOk()
-  @it("should return Err for invalid parseFloat input")
-  fn shouldReturnErrForInvalidParsefloatInput():
-    expect(parseFloat("xyz")).toBeErr()
-    expect(parseFloat("")).toBeErr()
-    expect(parseFloat("1.2abc")).toBeErr()
-    expect(parseFloat("1e400")).toBeErr()
-  @it("should return Result from parseFloat via UFCS")
-  fn shouldReturnResultFromParsefloatViaUfcs():
-    case "3.14".parseFloat():
-      Ok(v):
-        expect(v).toEq(3.14)
-      Err(_):
-        expect(false).toEq(true)
-  @it("should carry the parseFloat prefix in the error message")
-  fn shouldCarryTheParsefloatPrefixInTheErrorMessage():
-    case parseFloat("xyz"):
-      Ok(_):
-        expect(false).toEq(true)
-      Err(e):
-        expect(e.message).toContain("parseFloat")
+    expect(str(42)).toEq("42")
+    expect(str(true)).toEq("true")
+    expect(str(99)).toEq("99")
 
 @describe("NUL byte handling")
 fn nulByteHandlingTests():

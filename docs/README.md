@@ -33,7 +33,7 @@ For detailed language specifications, see the reference pages below.
 | [Regular Expressions](reference/regex.md) | regexMatch, regexSearch, regexReplace, regexSplit, regexFindAll |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |
 | [I/O Functions](reference/io.md) | readText, writeText, exists, readBytes, toBytes, etc. |
-| [JSON](reference/json.md) | parse, stringify, get, at, toStr, toInt, etc. |
+| [JSON](reference/json.md) | parse, stringify, get, at, str, int, etc. |
 | [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/receive/close for TCP sockets |
 | [HTTP Server](reference/http.md) | listen, method, path, header, body, response |
 | [Base64](reference/base64.md) | encode, decode, encodeUrlSafe, decodeUrlSafe |

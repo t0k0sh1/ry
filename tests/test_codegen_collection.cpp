@@ -375,7 +375,7 @@ TEST_F(CodeGenTest, RemovedSnakeCaseConvertNamesRejected) {
 
 TEST_F(CodeGenTest, StringToInt) {
     auto checkToInt = [&](const char *input, const char *expected) {
-        std::string src = "case toInt(\"";
+        std::string src = "case int(\"";
         src += input;
         src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
@@ -394,7 +394,7 @@ TEST_F(CodeGenTest, StringToInt) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "123"
-case s.toInt():
+case s.int():
     Ok(v):
         print(v)
     Err(e):
@@ -404,7 +404,7 @@ case s.toInt():
 
 TEST_F(CodeGenTest, StringToFloat) {
     auto checkToFloat = [&](const char *input, const char *expected) {
-        std::string src = "case toFloat(\"";
+        std::string src = "case float(\"";
         src += input;
         src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
@@ -423,7 +423,7 @@ TEST_F(CodeGenTest, StringToFloat) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "2.5"
-case s.toFloat():
+case s.float():
     Ok(v):
         print(v)
     Err(e):
@@ -431,86 +431,28 @@ case s.toFloat():
 )"), "2.5\n");
 }
 
-TEST_F(CodeGenTest, StringParseInt) {
-    auto checkParseInt = [&](const char *input, const char *expected) {
-        std::string src = "case parseInt(\"";
-        src += input;
-        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
-        EXPECT_EQ(runSource(src), expected);
-    };
-    // Valid input returns Ok
-    checkParseInt("42", "42\n");
-    checkParseInt("-7", "-7\n");
-    checkParseInt("0", "0\n");
-    // Invalid input returns Err
-    checkParseInt("abc", "err\n");
-    checkParseInt("", "err\n");
-    checkParseInt("12abc", "err\n");
-    // Overflow returns Err
-    checkParseInt("9223372036854775808", "err\n");
-    checkParseInt("-9223372036854775809", "err\n");
-    // UFCS
-    EXPECT_EQ(runSource(R"(
-s = "123"
-case s.parseInt():
-    Ok(v):
-        print(v)
-    Err(e):
-        print("err")
-)"), "123\n");
-}
-
-TEST_F(CodeGenTest, StringParseFloat) {
-    auto checkParseFloat = [&](const char *input, const char *expected) {
-        std::string src = "case parseFloat(\"";
-        src += input;
-        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
-        EXPECT_EQ(runSource(src), expected);
-    };
-    // Valid input returns Ok
-    checkParseFloat("3.14", "3.14\n");
-    checkParseFloat("42", "42.0\n");
-    checkParseFloat("-0.5", "-0.5\n");
-    checkParseFloat("0", "0.0\n");
-    // Invalid input returns Err
-    checkParseFloat("abc", "err\n");
-    checkParseFloat("", "err\n");
-    checkParseFloat("1.2abc", "err\n");
-    // Overflow returns Err
-    checkParseFloat("1e400", "err\n");
-    // UFCS
-    EXPECT_EQ(runSource(R"(
-s = "2.5"
-case s.parseFloat():
-    Ok(v):
-        print(v)
-    Err(e):
-        print("err")
-)"), "2.5\n");
-}
-
-// #1772: parseInt / parseFloat reject a non-str argument at compile time,
-// mirroring toInt / toFloat. Locks in the dedicated rejection branch.
-TEST_F(CodeGenTest, ParseConvertRejectsNonStringArg) {
-    EXPECT_THROW(runSource("print(parseInt(42))"), std::runtime_error);
-    EXPECT_THROW(runSource("print(parseFloat(42))"), std::runtime_error);
+// #1773: int / float reject a non-str argument at compile time and point the
+// user at the `as` cast. Locks in the dedicated rejection branch + hint.
+TEST_F(CodeGenTest, ConvertRejectsNonStringArg) {
+    expectCompileError("print(int(42))", "use 'value as int'");
+    expectCompileError("print(float(42))", "use 'value as float'");
 }
 
 TEST_F(CodeGenTest, ToStrVariants) {
     // ToStrInt
-    EXPECT_EQ(runSource("print(toStr(42))"), "42\n");
+    EXPECT_EQ(runSource("print(str(42))"), "42\n");
     // ToStrNegativeInt
-    EXPECT_EQ(runSource("print(toStr(-7))"), "-7\n");
+    EXPECT_EQ(runSource("print(str(-7))"), "-7\n");
     // ToStrFloat
-    EXPECT_EQ(runSource("print(toStr(3.14))"), "3.14\n");
+    EXPECT_EQ(runSource("print(str(3.14))"), "3.14\n");
     // ToStrBoolTrue
-    EXPECT_EQ(runSource("print(toStr(true))"), "true\n");
+    EXPECT_EQ(runSource("print(str(true))"), "true\n");
     // ToStrBoolFalse
-    EXPECT_EQ(runSource("print(toStr(false))"), "false\n");
+    EXPECT_EQ(runSource("print(str(false))"), "false\n");
     // ToStrStr
-    EXPECT_EQ(runSource("print(toStr(\"hello\"))"), "hello\n");
+    EXPECT_EQ(runSource("print(str(\"hello\"))"), "hello\n");
     // ToStrUFCS
-    EXPECT_EQ(runSource("x = 99\nprint(x.toStr())"), "99\n");
+    EXPECT_EQ(runSource("x = 99\nprint(x.str())"), "99\n");
 }
 
 TEST_F(CodeGenTest, StringFind) {
@@ -2518,7 +2460,7 @@ TEST_F(CodeGenTest, ForNestedTupleDestructuring) {
     std::string src =
         "items = [(\"a\", 1), (\"b\", 2), (\"c\", 3)]\n"
         "for i, (k, v) in enumerate(items):\n"
-        "    print(toStr(i) + \": \" + k + \"=\" + toStr(v))";
+        "    print(str(i) + \": \" + k + \"=\" + str(v))";
     EXPECT_EQ(runSource(src), "0: a=1\n1: b=2\n2: c=3\n");
 }
 

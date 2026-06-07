@@ -343,7 +343,7 @@ TEST_F(CodeGenTest, ExitInFunctionBodyFollowedByStmtCompiles) {
 TEST_F(CodeGenTest, GenericResultToStrStillWorks) {
     EXPECT_EQ(runSource(
         "r: Result<int, Error> = Ok(42)\n"
-        "print(toStr(r))\n"
+        "print(str(r))\n"
     ), "Ok(42)\n");
 }
 

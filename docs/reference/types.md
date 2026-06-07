@@ -134,7 +134,7 @@ y: Simple = "hello"
 z: Simple = true
 
 fn describe(v: Simple) -> str:
-  return toStr(v)
+  return str(v)
 ```
 
 Nested aliases whose union components are themselves aliases are flattened transparently, and duplicate members are deduplicated. The following three forms are equivalent:
@@ -192,7 +192,7 @@ lightSpd  = 2.998E8
 big       = 1e10f32
 ```
 
-Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `toFloat()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
+Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `float()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
 
 ---
 
@@ -427,7 +427,7 @@ x = value as Option<int>
 y = data as Map<str, int>
 ```
 
-Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `toInt()` / `toFloat()` for string-to-number conversions.
+Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `int()` / `float()` for string-to-number conversions.
 
 ### Float → Integer Runtime Checks
 
@@ -656,8 +656,8 @@ makeOk(1)  != Err(Error("e"))  # true
 `Type` is the value returned by the built-in [`typeOf`](builtins.md#typeOf) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
 
 ```ry
-print(toStr(typeOf(42)))          # int
-print(toStr(typeOf([1, 2, 3])))   # List
+print(str(typeOf(42)))          # int
+print(str(typeOf([1, 2, 3])))   # List
 
 print(typeOf(42) == typeOf(100))  # true
 print(typeOf(42) == typeOf(3.14)) # false
@@ -667,7 +667,7 @@ Key properties:
 
 - Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `fn` (function type), `Type` itself, etc.) receives a unique identity at compile time.
 - `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
-- `print` and `toStr` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
+- `print` and `str` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
 - Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
 - Collection generics collapse to their base name: `typeOf([1, 2])` returns `"List"`, not `"List<int>"`.
 - `Type` is reflective: `typeOf(typeOf(x))` returns the `Type` value that represents `Type` itself.
@@ -800,7 +800,7 @@ r: Point = a                # the descriptor in the box ensures correct release
 
 - **Wrap cost**: ~24 bytes overhead per record value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the record struct itself, heap-allocated and reference-counted.
 - **Equality (`==`)** compares the two boxes' descriptor pointers first; if they match, the descriptor-resident equality function dispatches to a field-wise deep comparison, identical to the typed `Point == Point` path. Two `any` holding records of different types are always unequal — `Dog == Animal` is `false` even when the `Dog` carries the same `name` / `legs` as the `Animal`, because identity is keyed on the dynamic descriptor.
-- **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Point>`) using the descriptor's type name — more informative than the opaque collection markers.
+- **`str` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Point>`) using the descriptor's type name — more informative than the opaque collection markers.
 - **Subtype unwrap**: a child record stored in `any` can be unwrapped as any of its ancestor types. The descriptor carries a `parent_desc` chain that the runtime walks at unwrap time; if the expected type appears anywhere in the chain the unwrap succeeds and projects the ancestor's fields out of the box, otherwise the unwrap traps with a clear `any record type mismatch` error.
 
 ```ry
@@ -870,7 +870,7 @@ sh: Shape = makeAnyShape()
 
 - **Wrap cost**: ~24 bytes overhead per enum value (`ArcHeader` 16B + `descriptor ptr` 8B) plus the enum payload, heap-allocated and reference-counted. Simple enums (no payload) are also boxed for consistency, so the source-level enum identity survives the round trip.
 - **Equality (`==`)** compares the two boxes' descriptor pointers first; only matching descriptors proceed to the descriptor-resident equality function, which switches on the discriminant and compares per-variant payloads. Two `any` holding enums of different types are always unequal — `Color::Red == Mode::On` is `false` even when their underlying discriminant value would coincide, because identity is keyed on the dynamic descriptor.
-- **`toStr` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Color>`, `<Option<int>>`, `<Result<int, str>>`) using the descriptor's type name — parallel to the record markers.
+- **`str` / f-string interpolation** emits a `<TypeName>` marker (e.g. `<Color>`, `<Option<int>>`, `<Result<int, str>>`) using the descriptor's type name — parallel to the record markers.
 - **Type-mismatch unwrap** traps with `runtime error: any enum type mismatch (expected <Expected>, got a different enum type)`. Enums do not participate in record-style subtype unwrap chains — there is no `parent_desc` walk, only descriptor identity.
 
 ### Wrapping and Unwrapping

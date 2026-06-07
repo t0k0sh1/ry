@@ -9,9 +9,8 @@ namespace ry {
 
 DEFINE_LAST_ERROR(convert)
 
-// Shared parsing core for the integer converters. `label` selects the
-// diagnostic prefix so each public entry point (toInt / parseInt) owns its
-// own error messages while sharing one parsing implementation.
+// Shared parsing core for the integer converter. `label` selects the
+// diagnostic prefix (e.g. "int") that the public entry point reports.
 static int64_t parse_int_impl(const char *str, int64_t *out, const char *label) {
     if (!str || *str == '\0') {
         setLastError("%s: empty string", label);
@@ -35,7 +34,7 @@ static int64_t parse_int_impl(const char *str, int64_t *out, const char *label) 
     return 0;
 }
 
-// Shared parsing core for the float converters; see parse_int_impl.
+// Shared parsing core for the float converter; see parse_int_impl.
 static int64_t parse_float_impl(const char *str, double *out, const char *label) {
     if (!str || *str == '\0') {
         setLastError("%s: empty string", label);
@@ -60,19 +59,11 @@ static int64_t parse_float_impl(const char *str, double *out, const char *label)
 }
 
 extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
-    return parse_int_impl(str, out, "toInt");
+    return parse_int_impl(str, out, "int");
 }
 
 extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
-    return parse_float_impl(str, out, "toFloat");
-}
-
-extern "C" int64_t __ry_str_parse_int(const char *str, int64_t *out) {
-    return parse_int_impl(str, out, "parseInt");
-}
-
-extern "C" int64_t __ry_str_parse_float(const char *str, double *out) {
-    return parse_float_impl(str, out, "parseFloat");
+    return parse_float_impl(str, out, "float");
 }
 
 } // namespace ry

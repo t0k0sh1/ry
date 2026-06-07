@@ -62,11 +62,9 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `toInt` | `str -> Result<int, Error>` | Convert string to integer |
-| `toFloat` | `str -> Result<float, Error>` | Convert string to floating-point number |
-| `parseInt` | `str -> Result<int, Error>` | Parse string to integer (fallible) |
-| `parseFloat` | `str -> Result<float, Error>` | Parse string to floating-point number (fallible) |
-| `toStr` | `any -> str` | Convert value to string |
+| `int` | `str -> Result<int, Error>` | Convert string to integer |
+| `float` | `str -> Result<float, Error>` | Convert string to floating-point number |
+| `str` | `any -> str` | Convert value to string |
 
 ---
 
@@ -382,115 +380,62 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 
 ---
 
-## toInt
+## int
 
-**Signature:** `toInt(string: str) -> Result<int, Error>`
+**Signature:** `int(string: str) -> Result<int, Error>`
 
 Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```ry
-case toInt("42"):
+case int("42"):
     Ok(v):
         print(v)              # 42
     Err(e):
         print(e.message)
 
-case "123".toInt():                
+case "123".int():                
     Ok(v):
         print(v)              # 123
     Err(e):
         print(e.message)
 
 # Invalid input returns Err
-print(toInt("abc"))          # Err(Error("toInt: invalid character in 'abc'"))
-print(toInt(""))             # Err(Error("toInt: empty string"))
+print(int("abc"))          # Err(Error("int: invalid character in 'abc'"))
+print(int(""))             # Err(Error("int: empty string"))
 ```
 
 ---
 
-## toFloat
+## float
 
-**Signature:** `toFloat(string: str) -> Result<float, Error>`
+**Signature:** `float(string: str) -> Result<float, Error>`
 
 Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
 ```ry
-case toFloat("3.14"):
+case float("3.14"):
     Ok(v):
         print(v)              # 3.14
     Err(e):
         print(e.message)
 
-case "2.5".toFloat():              
+case "2.5".float():              
     Ok(v):
         print(v)              # 2.5
     Err(e):
         print(e.message)
 
 # Invalid input returns Err
-print(toFloat("abc"))         # Err(Error("toFloat: invalid character in 'abc'"))
-print(toFloat(""))            # Err(Error("toFloat: empty string"))
-print(toFloat("1e400"))       # Err(Error("toFloat: out of range in '1e400'"))
+print(float("abc"))         # Err(Error("float: invalid character in 'abc'"))
+print(float(""))            # Err(Error("float: empty string"))
+print(float("1e400"))       # Err(Error("float: out of range in '1e400'"))
 ```
 
 ---
 
-## parseInt
+## str
 
-**Signature:** `parseInt(string: str) -> Result<int, Error>`
-
-Parses a string to an integer, returning `Result`. Same parsing behavior as `toInt` under an explicit "parse" name: leading whitespace is allowed, and it returns `Err` if the string is empty, contains invalid characters, or overflows. Error messages are prefixed with `parseInt:`.
-
-```ry
-case parseInt("42"):
-    Ok(v):
-        print(v)              # 42
-    Err(e):
-        print(e.message)
-
-case "123".parseInt():
-    Ok(v):
-        print(v)              # 123
-    Err(e):
-        print(e.message)
-
-# Invalid input returns Err
-print(parseInt("abc"))          # Err(Error("parseInt: invalid character in 'abc'"))
-print(parseInt(""))             # Err(Error("parseInt: empty string"))
-```
-
----
-
-## parseFloat
-
-**Signature:** `parseFloat(string: str) -> Result<float, Error>`
-
-Parses a string to a floating-point number, returning `Result`. Same parsing behavior as `toFloat` under an explicit "parse" name: returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`. Error messages are prefixed with `parseFloat:`.
-
-```ry
-case parseFloat("3.14"):
-    Ok(v):
-        print(v)              # 3.14
-    Err(e):
-        print(e.message)
-
-case "2.5".parseFloat():
-    Ok(v):
-        print(v)              # 2.5
-    Err(e):
-        print(e.message)
-
-# Invalid input returns Err
-print(parseFloat("abc"))         # Err(Error("parseFloat: invalid character in 'abc'"))
-print(parseFloat(""))            # Err(Error("parseFloat: empty string"))
-print(parseFloat("1e400"))       # Err(Error("parseFloat: out of range in '1e400'"))
-```
-
----
-
-## toStr
-
-**Signature:** `toStr(v: any) -> str`
+**Signature:** `str(v: any) -> str`
 
 Accepts any Ry value. Supported input types are listed in the table below.
 
@@ -508,27 +453,27 @@ Converts a value to a string.
 | union | Formatted as the active variant; `List`, `Map`, `Set`, and function variants are all supported |
 | function value (closure / lambda) | `"<closure>"` |
 
-Whole-number `float` values are formatted with a trailing `.0` (e.g. `toStr(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `toStr` representation. If a user-defined `fn toStr(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Whole-number `float` values are formatted with a trailing `.0` (e.g. `str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `str` representation. If a user-defined `fn str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```ry
-print(toStr(42))         # 42
-print(toStr(3.14))       # 3.14
-print(toStr(3.0))        # 3.0          (whole-number float keeps .0)
-print(toStr(true))       # true
-print(99.toStr())        # 99 (UFCS)
+print(str(42))         # 42
+print(str(3.14))       # 3.14
+print(str(3.0))        # 3.0          (whole-number float keeps .0)
+print(str(true))       # true
+print(99.str())        # 99 (UFCS)
 
 enum Color:
     Red
     Green
 
-print(toStr(Color::Red))   # Red
+print(str(Color::Red))   # Red
 
 record Point:
     x: int
     y: int
 
 p = Point(10, 20)
-print(toStr(p))          # Point(x: 10, y: 20)
+print(str(p))          # Point(x: 10, y: 20)
 print(p)                  # Point(x: 10, y: 20)
 print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

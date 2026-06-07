@@ -12,9 +12,9 @@ fn printResultTests():
     print(Ok("hello"))
     # expect-output: Ok(hello)
 
-  @it("should print Result from toInt()")
+  @it("should print Result from int()")
   fn shouldPrintResultFromToint():
-    r = "42".toInt()
+    r = "42".int()
     print(r)
     # expect-output: Ok(42)
 
@@ -56,19 +56,19 @@ fn printOptionTests():
     print(Some([1, 2, 3]))
     # expect-output: Some([1, 2, 3])
 
-@describe("toStr Result")
+@describe("str Result")
 fn tostrResultTests():
   @it("should convert Ok(int) to string")
   fn shouldConvertOkIntToString():
-    expect(toStr(Ok(42))).toEq("Ok(42)")
+    expect(str(Ok(42))).toEq("Ok(42)")
 
   @it("should convert Ok(str) to string")
   fn shouldConvertOkStrToString():
-    expect(toStr(Ok("hello"))).toEq("Ok(hello)")
+    expect(str(Ok("hello"))).toEq("Ok(hello)")
 
   @it("should convert Err to string")
   fn shouldConvertErrToString():
-    expect(toStr(Err(Error("fail")))).toEq("Err(Error: fail (code: 0))")
+    expect(str(Err(Error("fail")))).toEq("Err(Error: fail (code: 0))")
 
   @it("should work in f-string")
   fn shouldWorkInFString():
@@ -77,18 +77,18 @@ fn tostrResultTests():
 
   @it("should convert Ok(list) to string")
   fn shouldConvertOkListToString():
-    expect(toStr(Ok([1, 2, 3]))).toEq("Ok([1, 2, 3])")
+    expect(str(Ok([1, 2, 3]))).toEq("Ok([1, 2, 3])")
 
-@describe("toStr Option")
+@describe("str Option")
 fn tostrOptionTests():
   @it("should convert Some(int) to string")
   fn shouldConvertSomeIntToString():
-    expect(toStr(Some(1))).toEq("Some(1)")
+    expect(str(Some(1))).toEq("Some(1)")
 
   @it("should convert none to string")
   fn shouldConvertNoneToString():
     x: int? = none
-    expect(toStr(x)).toEq("None")
+    expect(str(x)).toEq("None")
 
   @it("should work in f-string")
   fn shouldWorkInFString2():

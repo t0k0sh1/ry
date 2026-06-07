@@ -430,3 +430,18 @@ ruby -ryaml -e 'YAML.safe_load(File.read(ARGV[0]).split("---\n",3)[1]); puts "ok
 `scripts/check-prompt-refs.sh` lints inline-code references but does NOT catch a malformed YAML scalar, so the two checks are complementary.
 
 **Why it recurs**: the `description` is always-loaded context, so #2021-class prompt-trimming sub-issues repeatedly edit these scalars. A broken scalar drops the agent from the registry with no error (silent failure), so YAML validation after every frontmatter edit is the guard.
+
+---
+
+### macOS horizontal-sweep: BSD `sed` has no `\b`, zsh won't word-split a bare `$var`, and Bash-tool in-place edits may not persist
+
+**Source**: #1773 (2026-06-07, `toInt` / `toFloat` / `toStr` → `int` / `float` / `str` rename sweep)
+**Tags**: macos, sed, perl, zsh, word-boundary, horizontal-sweep, in-place-edit, sandbox
+
+Three independent traps hit when running the `/horizontal-sweep` Step-3 bulk rename on a macOS host through the Bash tool:
+
+1. **BSD `sed` (the macOS default) does not understand `\b`.** `sed -i '' -E 's/\bOLD\b/NEW/g' f` exits 0 but matches nothing — the skill's documented example (`sed ... 's/\b<old>\b/<new>/g'`) silently no-ops on macOS. Use `perl -i -pe 's/\bOLD\b/NEW/g' f` (Perl honors `\b`), or BSD sed's own word boundaries `[[:<:]]` / `[[:>:]]`. The Linux/CI GNU-`sed` form is correct there; only the macOS host needs the swap.
+2. **zsh does not word-split an unquoted scalar.** `for f in $FILES; do ... "$f"; done` (where `$FILES` holds newline-joined paths) runs the body ONCE with the whole blob as one argument (`sed: ...: File name too long`). Drive the loop with `grep -rl ... | while read -r f; do ...; done` (POSIX, one path per line) or `${(f)FILES}` for a zsh newline split.
+3. **In-place edits via the Bash tool may not reach the working tree under sandboxed execution** (the build dir and network are writable, the tracked source tree is not), so `sed` / `perl -i` appear to run (exit 0) yet the file is unchanged. The `Edit` / `Write` tools always persist; for a `perl -i` / `git rm` bulk operation, pass the Bash un-sandbox escape.
+
+**Why it recurs**: every future identifier / terminology sweep on a macOS host hits #1 and #2, and the skill's sed snippet is written for GNU sed. Prefer `perl -i -pe` for `\b` renames and `while read -r` to drive the file loop. See `.claude/skills/horizontal-sweep/SKILL.md` Step 3.

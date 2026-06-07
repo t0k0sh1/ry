@@ -14,7 +14,7 @@ paths:
 **Source**: #1343 (2026-04-23, implementation)
 **Tags**: lexer, keyword, function-type, canonical-type-id, migration
 
-**Rule**: The lexer maps only `fn` to `TokenKind::Fn`. The string `function` tokenizes as `Ident`, so it can be used as a variable or parameter name. Function types are spelled `fn(T) -> R` in source; `isFunctionTypeName` and `splitFunctionTypeName` accept only the `fn(` prefix. The compile-time / `toStr` category name for function-typed values is the canonical type id string `"fn"` (not `"function"`). When updating examples or C++-embedded Ry in tests, avoid leaving `function` as a reserved spelling.
+**Rule**: The lexer maps only `fn` to `TokenKind::Fn`. The string `function` tokenizes as `Ident`, so it can be used as a variable or parameter name. Function types are spelled `fn(T) -> R` in source; `isFunctionTypeName` and `splitFunctionTypeName` accept only the `fn(` prefix. The compile-time / `str` category name for function-typed values is the canonical type id string `"fn"` (not `"function"`). When updating examples or C++-embedded Ry in tests, avoid leaving `function` as a reserved spelling.
 
 ### Use depth-tracking for nested delimiters, never naive find()
 
@@ -101,7 +101,7 @@ produce a `CallStmt` rather than an `ExprStmt<CallExpr>`.
 **Context**: `std::stod` throws `std::out_of_range` on overflow
 (e.g., `1e400`), which crashes the frontend before diagnostics can
 be produced. #819's scope check explicitly allows overflow to
-surface as `+Inf`, matching the runtime `toFloat` converter.
+surface as `+Inf`, matching the runtime `float` converter.
 
 **Rule**: Use `std::strtod` + `errno` for parsing float literals in
 the frontend. Accept `HUGE_VAL` / `-HUGE_VAL` as valid `Inf` results

@@ -1,0 +1,3 @@
+### Changed
+
+- **Breaking:** Type conversions are now spelled `int`, `float`, and `str` — the same as the type names. `int(s)` / `float(s)` parse a string and return `Result<_, Error>`; `str(v)` renders any value to a string and stays overridable for records via `fn str(v: MyRecord) -> str`. The type-vs-call ambiguity is resolved by parse position, so `x: int = int("1") ?? 0` is legal; `int` and `float` are reserved built-in names. Passing a non-`str` to `int` / `float` is a compile error that points at the `as` cast (`3.14 as int`, `n as str`). The previous `toInt` / `toFloat` / `toStr` helpers — and the `parseInt` / `parseFloat` aliases added in #1772 — are removed with no deprecation period. (#1773)

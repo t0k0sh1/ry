@@ -20,7 +20,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `blockOn(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `toStr(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `str(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
 | `typeOf(expr)` | Returns the type of `expr` as a `Type` value. See [typeOf](#typeof) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
@@ -139,7 +139,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter = " ")` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `toInt(s)` / `toFloat(s)` / `parseInt(s)` / `parseFloat(s)` / `toStr(v)` | Type conversion (`toInt` / `toFloat` / `parseInt` / `parseFloat` return `Result<T, Error>`) |
+| `int(s)` / `float(s)` / `str(v)` | Type conversion (`int` / `float` return `Result<T, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 
@@ -707,7 +707,7 @@ print(ys)   # [3, 4, 5]
 Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `typeOf` values can be compared by `==` to check whether two expressions share the same type.
 
 - The argument is evaluated for side effects but only its static type is used.
-- Printing a `Type` value via `print` or `toStr` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
+- Printing a `Type` value via `print` or `str` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
 - Two expressions with the same canonical type return equal `Type` values; different records (or a record and an enum that happen to share a name) are always distinguishable.
 - The bare `none` literal reports as `"None"`. A typed `Option<T>` value (whether constructed via `Some(...)` or assigned from `none`) reports as `"Option"`.
 
@@ -721,18 +721,18 @@ enum Color:
   Green
   Blue
 
-print(toStr(typeOf(42)))          # int
-print(toStr(typeOf(3.14)))        # float
-print(toStr(typeOf("hello")))     # str
-print(toStr(typeOf([1, 2, 3])))   # List
-print(toStr(typeOf({"a": 1})))    # Map
-print(toStr(typeOf({1, 2})))      # Set
+print(str(typeOf(42)))          # int
+print(str(typeOf(3.14)))        # float
+print(str(typeOf("hello")))     # str
+print(str(typeOf([1, 2, 3])))   # List
+print(str(typeOf({"a": 1})))    # Map
+print(str(typeOf({1, 2})))      # Set
 
 p = Point(1, 2)
-print(toStr(typeOf(p)))           # Point
+print(str(typeOf(p)))           # Point
 
 c = Color::Red
-print(toStr(typeOf(c)))           # Color
+print(str(typeOf(c)))           # Color
 
 # identity comparison
 print(typeOf(42) == typeOf(100))  # true
@@ -741,16 +741,16 @@ print(typeOf(p) != typeOf(c))     # true
 
 # low-level numeric types are distinguished from `int`
 x: i32 = 1
-print(toStr(typeOf(x)))           # i32
+print(str(typeOf(x)))           # i32
 print(typeOf(x) == typeOf(42))    # false
 
 # typeOf is reflective: the type of a Type value is Type
-print(toStr(typeOf(typeOf(42)))) # Type
+print(str(typeOf(typeOf(42)))) # Type
 ```
 
 ### Type categories returned by `typeOf`
 
-| Input | `toStr(typeOf(...))` |
+| Input | `str(typeOf(...))` |
 |---|---|
 | `42` | `int` |
 | `3.14` | `float` |

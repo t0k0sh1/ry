@@ -1,0 +1,96 @@
+# Tests for #1773: int / float / str are the conversion function calls.
+#
+# `int(str)` / `float(str)` parse a string and return Result<_, Error>;
+# `str(any)` renders a value to its string form. The same spellings remain
+# usable as type names in annotations — the parser disambiguates by position.
+# `toInt` / `toFloat` / `toStr` / `parseInt` / `parseFloat` were removed.
+
+from testing import it, describe, expect, fail
+
+@describe("int() / float() parse a str into a Result")
+fn intFloatParseTests():
+  @it("int parses a valid integer string")
+  fn intParsesValidString():
+    case int("42"):
+      Ok(v): expect(v).toEq(42)
+      Err(e): fail("int failed: " + e.message)
+
+  @it("int returns Err with an int: prefix on invalid input")
+  fn intReturnsErrOnInvalid():
+    case int("abc"):
+      Ok(v): fail("expected Err, got Ok")
+      Err(e): expect(e.message).toContain("int:")
+
+  @it("float parses a valid float string")
+  fn floatParsesValidString():
+    case float("3.14"):
+      Ok(v): expect(v).toEq(3.14)
+      Err(e): fail("float failed: " + e.message)
+
+  @it("float returns Err with a float: prefix on invalid input")
+  fn floatReturnsErrOnInvalid():
+    case float("xyz"):
+      Ok(v): fail("expected Err, got Ok")
+      Err(e): expect(e.message).toContain("float:")
+
+@describe("str() renders values to their string form")
+fn strRendersTests():
+  @it("renders int / float / bool")
+  fn rendersScalars():
+    expect(str(42)).toEq("42")
+    expect(str(3.0)).toEq("3.0")
+    expect(str(true)).toEq("true")
+
+@describe("the same name is a type in annotation position and a call in expression position")
+fn typeVsCallPositionTests():
+  @it("int is both a type annotation and a conversion call on one line")
+  fn intTypeAndCall():
+    x: int = int("5") ?? 0
+    expect(x).toEq(5)
+
+  @it("str is both a type annotation and a conversion call")
+  fn strTypeAndCall():
+    name: str = str(7)
+    expect(name).toEq("7")
+
+@describe("conversion calls work through UFCS")
+fn ufcsTests():
+  @it("string.int() parses via UFCS")
+  fn stringDotInt():
+    expect("123".int() ?? -1).toEq(123)
+
+  @it("value.str() renders via UFCS")
+  fn valueDotStr():
+    expect((2.5).str()).toEq("2.5")
+
+@describe("int / float are usable as first-class function values")
+fn firstClassTests():
+  @it("xs.map(int) routes int through stdlib map")
+  fn mapInt():
+    xs: List<str> = ["1", "2", "3"]
+    results = xs.map(int)
+    expect(len(results)).toEq(3)
+    case results[0]:
+      Ok(v): expect(v).toEq(1)
+      Err(e): fail("int[0] failed: " + e.message)
+
+  @it("binds float to a variable and invokes it")
+  fn bindFloat():
+    f = float
+    case f("1.5"):
+      Ok(v): expect(v).toEq(1.5)
+      Err(e): fail("float failed: " + e.message)
+
+@describe("records may override str()")
+fn recordStrOverrideTests():
+  @it("user fn str(Record) overrides the auto-generated rendering")
+  fn userStrOverride():
+    record Point:
+      x: int
+      y: int
+
+    fn str(p: Point) -> str:
+      return "Point(" + str(p.x) + ", " + str(p.y) + ")"
+
+    p: Point = Point(1, 2)
+    expect(str(p)).toEq("Point(1, 2)")

@@ -60,11 +60,13 @@ The following abbreviations are accepted across the language and standard librar
 
 `length` is removed entirely in v0.0.16. Use `len` everywhere — there is no `length` alias and no deprecation period.
 
-## Verbose-by-intent: `toInt`, `toStr`, ...
+## Conversion functions: `int`, `float`, `str`
 
-The conversion helpers `toInt`, `toStr`, `toFloat`, and `toBool` keep their `to`-prefix instead of becoming `int`, `str`, `float`, `bool`. The short forms collide with the type names of the same spelling, so `int(x)` could mean either "convert `x` to an int" or "the type `int` itself", and disambiguating would force the parser into context-sensitive lookup. Keeping the `to`-prefix removes the collision at the source.
+The conversion helpers are spelled `int`, `float`, and `str` — the same as the type names. `int("1")` / `float("3.14")` parse a string and return `Result`; `str(v)` renders any value to its string form. (Earlier versions spelled these `toInt` / `toFloat` / `toStr`; those names were removed.)
 
-The verbosity is intentional, not an oversight; do not propose `int` / `str` aliases.
+Sharing the spelling with the type names is unambiguous in practice: a type annotation (`x: int = ...`) and a call expression (`int(x)`) are parsed by separate grammar productions, and a bare `int` in expression position has no value meaning of its own (it resolves to the conversion function), so the parser never has to guess. The one accepted trade-off is forward-looking: if Ry ever makes a bare type name a first-class value (so that `typeOf(x) == int` becomes legal), `int(x)` would stay the special-cased conversion call rather than "construct from the type value `int`", and an indirect `f = int; f(x)` could diverge from the direct `int(x)`. That minor cost is judged acceptable in exchange for the shorter, more familiar spelling.
+
+For number-to-number and number-to-string conversions, use the `as` cast (`3.14 as int`, `n as str`) — `int` and `float` only parse strings.
 
 ## No ad-hoc abbreviations
 

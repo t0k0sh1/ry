@@ -351,7 +351,7 @@ The check does **not** apply to:
 - `@native` declarations (the stdlib's own implementations).
 - Nested `fn`s inside another function body — these are scope-local and cannot be observed by the built-in dispatcher.
 - Functions defined in a user module accessed via qualified import (`<mod>.<name>` dispatch consults the module's namespace directly).
-- Type-aware extension points such as `fn toStr(p: MyRecord)` — for record types, the codegen consults the user definition first, so `toStr` is not part of the reserved set. See [Records](records.md) for the record `toStr` override pattern.
+- Type-aware extension points such as `fn str(p: MyRecord)` — for record types, the codegen consults the user definition first, so `str` is not part of the reserved set. See [Records](records.md) for the record `str` override pattern.
 
 ---
 
@@ -539,12 +539,12 @@ result = apply(f, 5)   # 10
 
 ### String Representation
 
-`print()`, `toStr()`, and f-string interpolation all produce `"<closure>"` for function values:
+`print()`, `str()`, and f-string interpolation all produce `"<closure>"` for function values:
 
 ```ry
 f = (x: int) => x + 1
 print(f)              # <closure>
-s = toStr(f)         # "<closure>"
+s = str(f)         # "<closure>"
 msg = f"fn={f}"       # "fn=<closure>"
 ```
 
@@ -784,7 +784,7 @@ Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are
 
 ```ry
 p = Point(3, 4)
-length = p.x.toFloat()   # Field access + UFCS
+text = p.x.str()       # Field access + UFCS
 ```
 
 ---

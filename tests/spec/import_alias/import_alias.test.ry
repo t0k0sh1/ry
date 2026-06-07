@@ -31,7 +31,7 @@ fn importAliasTests():
     @it("should construct a unit-enum variant through an alias")
     fn shouldConstructEnumThroughAlias():
         c: C = C::Red
-        expect(toStr(c)).toEq("Red")
+        expect(str(c)).toEq("Red")
 
     @it("should pattern-match an ADT enum through an alias")
     fn shouldPatternMatchAdtThroughAlias():

@@ -24,7 +24,7 @@ print(f"default = {v}")
 
 # Result<V, E>
 fn parse(s: str) -> Result<int, Error>:
-    n = toInt(s)
+    n = int(s)
     case n:
         Ok(v):
             return Ok(v)

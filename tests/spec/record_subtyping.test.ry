@@ -24,11 +24,11 @@ fn recordSubtypingTests():
   fn shouldIncludeInheritedFieldsInAuto():
     expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).toBeTrue()
     expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).toBeFalse()
-  @it("should include inherited fields in auto toStr")
+  @it("should include inherited fields in auto str")
   fn shouldIncludeInheritedFieldsInAutoTostr():
     err = HttpError("err", 1, 404, "/api")
     expected = "HttpError(message: " + "\"err\"" + ", code: 1, status: 404, url: " + "\"/api\"" + ")"
-    expect(toStr(err)).toEq(expected)
+    expect(str(err)).toEq(expected)
 
 record DetailedHttpError < HttpError:
   detail: str

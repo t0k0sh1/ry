@@ -846,9 +846,9 @@ public:
     // `from ... import ... as <name>` aliases. Nested fns, `@native`, and
     // qualified-import (`fn`s under `NamespaceEmitScope`) are intentionally
     // exempt — callers gate accordingly. Nested-fn exemption is empirically
-    // justified: type-aware dispatch (record `toStr`, directive lifecycle
+    // justified: type-aware dispatch (record `str`, directive lifecycle
     // hooks, `@parameterized` `iter` hook) consults user fns BEFORE the
-    // hardcoded `emitBuiltin*` chain, so a nested `fn toStr(p: Point)` /
+    // hardcoded `emitBuiltin*` chain, so a nested `fn str(p: Point)` /
     // `fn first(self)` / `fn iter(self)` legitimately overrides the
     // auto-generated builtin. For hardcoded-dispatch names like `sum`, the
     // nested shadow silently dispatches to stdlib instead — a pre-existing
@@ -1026,7 +1026,7 @@ public:
     llvm::Function *uniform_closure_dtor_ = nullptr;
     llvm::Function *getOrCreateForwardingThunk(llvm::Function *realFn, const FnTypeInfo &info);
     // Materialize a single-overload `@native` stdlib function as an internal LLVM Function
-    // so it can be referenced as a first-class value (`xs.map(toInt)`, `let f = toInt`).
+    // so it can be referenced as a first-class value (`xs.map(int)`, `let f = int`).
     // Returns nullptr if the name does not resolve to a registered `@native` signature.
     // Multi-overload references throw a codegen error ("ambiguous"), matching user-fn
     // behavior for overloaded function references.
