@@ -1,36 +1,36 @@
 # Tests for #1569: @native stdlib functions can be referenced as
 # first-class function values (assigned to vars / passed as args), not
-# only used in direct CallExpr position. Before #1569, `let f = toInt`
-# raised "undefined variable: toInt" because emitExprVariant(VariableExpr)
+# only used in direct CallExpr position. Before #1569, `let f = int`
+# raised "undefined variable: int" because emitExprVariant(VariableExpr)
 # never consulted native_fn_sigs_.
 
 from testing import it, describe, expect, fail
 
-from convert import toInt, parseInt, parseFloat
+from convert import int
 
 @describe("@native first-class — direct assignment (single-overload)")
 fn nativeFirstClassDirectAssignmentSingleOverloadTests():
-  @it("binds toInt to a variable and invokes it")
-  fn bindsTointToAVariableAndInvokesIt():
-    f = toInt
+  @it("binds int to a variable and invokes it")
+  fn bindsIntToAVariableAndInvokesIt():
+    f = int
     case f("42"):
       Ok(v): expect(v).toEq(42)
-      Err(e): fail("toInt failed: " + e.message)
+      Err(e): fail("int failed: " + e.message)
 
   @it("returns Err through the bound variable")
   fn returnsErrThroughTheBoundVariable():
-    f = toInt
+    f = int
     case f("not-a-number"):
-      Ok(v): fail("expected Err, got Ok(" + toStr(v) + ")")
-      Err(e): expect(e.message).toContain("toInt")
+      Ok(v): fail("expected Err, got Ok(" + str(v) + ")")
+      Err(e): expect(e.message).toContain("int")
 
   @it("propagates the binding through a chain of let-bindings")
   fn propagatesTheBindingThroughAChainOfLetBindings():
-    f = toInt
+    f = int
     g = f
     case g("100"):
       Ok(v): expect(v).toEq(100)
-      Err(e): fail("toInt failed: " + e.message)
+      Err(e): fail("int failed: " + e.message)
 
 @describe("@native first-class — passed as fn parameter")
 fn nativeFirstClassPassedAsFnParameterTests():
@@ -39,21 +39,21 @@ fn nativeFirstClassPassedAsFnParameterTests():
     fn invoke(f: fn(str) -> Result<int, Error>, s: str) -> Result<int, Error>:
       return f(s)
 
-    case invoke(toInt, "7"):
+    case invoke(int, "7"):
       Ok(v): expect(v).toEq(7)
-      Err(e): fail("toInt failed: " + e.message)
+      Err(e): fail("int failed: " + e.message)
 
-  @it("xs.map(toInt) routes the @native through stdlib map")
-  fn xsMapTointRoutesTheNativeThroughStdlibMap():
+  @it("xs.map(int) routes the @native through stdlib map")
+  fn xsMapIntRoutesTheNativeThroughStdlibMap():
     xs: List<str> = ["1", "2", "3"]
-    results = xs.map(toInt)
+    results = xs.map(int)
     expect(len(results)).toEq(3)
     case results[0]:
       Ok(v): expect(v).toEq(1)
-      Err(e): fail("toInt[0] failed: " + e.message)
+      Err(e): fail("int[0] failed: " + e.message)
     case results[2]:
       Ok(v): expect(v).toEq(3)
-      Err(e): fail("toInt[2] failed: " + e.message)
+      Err(e): fail("int[2] failed: " + e.message)
 
 @describe("@native first-class — default args materialize as full arity")
 fn nativeFirstClassDefaultArgsMaterializeAsFullArityTests():
@@ -66,49 +66,9 @@ fn nativeFirstClassDefaultArgsMaterializeAsFullArityTests():
 
 @describe("@native first-class — explicit import path")
 fn nativeFirstClassExplicitImportPathTests():
-  @it("explicit `from convert import toInt` round-trips through a binding")
-  fn explicitFromConvertImportTointRoundTripsThroughABinding():
-    f = toInt
+  @it("explicit `from convert import int` round-trips through a binding")
+  fn explicitFromConvertImportIntRoundTripsThroughABinding():
+    f = int
     case f("99"):
       Ok(v): expect(v).toEq(99)
-      Err(e): fail("toInt failed: " + e.message)
-
-@describe("@native first-class — parseInt / parseFloat (#1772)")
-fn nativeFirstClassParseTests():
-  @it("binds parseInt to a variable and invokes it")
-  fn bindsParseintToAVariableAndInvokesIt():
-    f = parseInt
-    case f("42"):
-      Ok(v): expect(v).toEq(42)
-      Err(e): fail("parseInt failed: " + e.message)
-
-  @it("returns Err with the parseInt prefix through the bound variable")
-  fn returnsErrWithTheParseintPrefixThroughTheBoundVariable():
-    f = parseInt
-    case f("not-a-number"):
-      Ok(v): fail("expected Err, got Ok(" + toStr(v) + ")")
-      Err(e): expect(e.message).toContain("parseInt")
-
-  @it("xs.map(parseInt) routes the @native through stdlib map")
-  fn xsMapParseintRoutesTheNativeThroughStdlibMap():
-    xs: List<str> = ["1", "2", "3"]
-    results = xs.map(parseInt)
-    expect(len(results)).toEq(3)
-    case results[0]:
-      Ok(v): expect(v).toEq(1)
-      Err(e): fail("parseInt[0] failed: " + e.message)
-    case results[2]:
-      Ok(v): expect(v).toEq(3)
-      Err(e): fail("parseInt[2] failed: " + e.message)
-
-  @it("xs.map(parseFloat) infers Result<float, Error> through stdlib map")
-  fn xsMapParsefloatInfersResultFloatThroughStdlibMap():
-    xs: List<str> = ["1.5", "2.5"]
-    results = xs.map(parseFloat)
-    expect(len(results)).toEq(2)
-    case results[0]:
-      Ok(v): expect(v).toEq(1.5)
-      Err(e): fail("parseFloat[0] failed: " + e.message)
-    case results[1]:
-      Ok(v): expect(v).toEq(2.5)
-      Err(e): fail("parseFloat[1] failed: " + e.message)
+      Err(e): fail("int failed: " + e.message)

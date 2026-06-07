@@ -47,7 +47,7 @@ See [Module Reference — Visibility](modules.md#visibility) for the practical v
 
 ## stdlib (`std`)
 
-The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. The stdlib provides core types, conversion helpers (`toInt`, `toStr`, `toFloat`, `toBool`, `parseInt`, `parseFloat`), built-in functions (`print`, `len`, `range`), and common utilities.
+The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. The stdlib provides core types, conversion helpers (`int`, `float`, `str`), built-in functions (`print`, `len`, `range`), and common utilities.
 
 The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 

@@ -694,7 +694,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // -import fns emitted under `NamespaceEmitScope` are reachable only
     // through `<mod>.<name>` dispatch (consults `fn_overloads` directly,
     // never the hardcoded chain) and are likewise exempt. Type-aware
-    // extension points such as `fn toStr(p: MyRecord)` are accommodated
+    // extension points such as `fn str(p: MyRecord)` are accommodated
     // by excluding those specific names from `kReservedBuiltinFunctionNames`
     // (see include/ry/builtin_names.hpp), not by the nesting exemption.
     if (fn_nesting_depth_ == 0 && current_namespace_target_ == nullptr)

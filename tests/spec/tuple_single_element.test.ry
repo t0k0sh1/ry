@@ -18,7 +18,7 @@ fn singleElementTupleTests():
   @it("should print single-element tuple")
   fn shouldPrintSingleElementTuple():
     t = (42,)
-    expect(toStr(t)).toEq("(42,)")
+    expect(str(t)).toEq("(42,)")
   @it("should still support grouping with parentheses")
   fn shouldStillSupportGroupingWithParentheses():
     x = (1 + 2) * 3

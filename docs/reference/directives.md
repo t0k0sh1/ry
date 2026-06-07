@@ -233,22 +233,22 @@ print(len(range()))           # Error: range() takes 1, 2, or 3 arguments
 A `@native` function imported with `from <module> import <name>` can be used as a first-class function value — bound to a variable, passed as an argument, or returned from a function — provided it has **exactly one overload**:
 
 ```ry
-from convert import toInt
+from convert import int
 from str import startsWith
 
 xs: List<str> = ["1", "2", "3"]
-results = xs.map(toInt)              # ok: toInt has a single (str) overload
-f = toInt
+results = xs.map(int)              # ok: int has a single (str) overload
+f = int
 print(f("42"))                       # Ok(42)
 
 g = startsWith                       # ok: full-arity 3-param binding
 print(g("hello", "he", false))       # default arg must be supplied here
 ```
 
-Names with multiple overloads (e.g. `toStr` over `int`/`float`/`bool`, and most `math`-module custom-emitter natives such as `abs`/`pow`/`round`/`log`) are rejected at compile time with `ambiguous reference to @native function 'X': multiple overloads exist; wrap in a lambda to select one`. Wrap them in a lambda to pin the desired overload:
+Names with multiple overloads (e.g. `str` over `int`/`float`/`bool`, and most `math`-module custom-emitter natives such as `abs`/`pow`/`round`/`log`) are rejected at compile time with `ambiguous reference to @native function 'X': multiple overloads exist; wrap in a lambda to select one`. Wrap them in a lambda to pin the desired overload:
 
 ```ry
-fmt = (n: int) => toStr(n)           # picks the (int) overload explicitly
+fmt = (n: int) => str(n)           # picks the (int) overload explicitly
 [1, 2, 3].map(fmt)                   # ["1", "2", "3"]
 ```
 

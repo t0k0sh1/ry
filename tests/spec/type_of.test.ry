@@ -65,7 +65,7 @@ fn typeofLowLevelNumericTypesTests():
 
   @it("should identify literal suffix u16 directly")
   fn shouldIdentifyLiteralSuffixU16Directly():
-    expect(toStr(typeOf(1u16))).toEq("u16")
+    expect(str(typeOf(1u16))).toEq("u16")
 
   @it("should distinguish literal suffixes u16 and i16")
   fn shouldDistinguishLiteralSuffixesU16AndI16():
@@ -77,7 +77,7 @@ fn typeofLowLevelNumericTypesTests():
 
   @it("should identify literal suffix f32")
   fn shouldIdentifyLiteralSuffixF32():
-    expect(toStr(typeOf(1.0f32))).toEq("f32")
+    expect(str(typeOf(1.0f32))).toEq("f32")
 
 @describe("typeOf collections")
 fn typeofCollectionsTests():
@@ -141,7 +141,7 @@ fn typeofEnumsTests():
     # equal an enum variant tag previously inherited the enum metadata.
     c = TypeOfColor::Red
     n = 0
-    expect(toStr(typeOf(n))).toEq("int")
+    expect(str(typeOf(n))).toEq("int")
     expect(typeOf(n) != typeOf(c)).toBeTrue()
 
 @describe("typeOf Option")
@@ -159,7 +159,7 @@ fn typeofOptionTests():
 
   @it("should report bare none literal as None")
   fn shouldReportBareNoneLiteralAsNone():
-    expect(toStr(typeOf(none))).toEq("None")
+    expect(str(typeOf(none))).toEq("None")
 
   @it("should distinguish none literal from Some")
   fn shouldDistinguishNoneLiteralFromSome():
@@ -168,7 +168,7 @@ fn typeofOptionTests():
   @it("should report a typed Option<int> binding as Option")
   fn shouldReportATypedOptionIntBindingAsOption():
     x: Option<int> = none
-    expect(toStr(typeOf(x))).toEq("Option")
+    expect(str(typeOf(x))).toEq("Option")
 
 @describe("typeOf Result")
 fn typeofResultTests():
@@ -177,14 +177,14 @@ fn typeofResultTests():
     fn makeOk() -> Result<int, Error>:
       return Ok(1)
     r = makeOk()
-    expect(toStr(typeOf(r))).toEq("Result")
+    expect(str(typeOf(r))).toEq("Result")
 
   @it("should identify Err")
   fn shouldIdentifyErr():
     fn makeErr() -> Result<int, Error>:
       return Err(Error("oops"))
     r = makeErr()
-    expect(toStr(typeOf(r))).toEq("Result")
+    expect(str(typeOf(r))).toEq("Result")
 
   @it("should identify Ok and Err as the same Result type")
   fn shouldIdentifyOkAndErrAsTheSameResultType():
@@ -199,7 +199,7 @@ fn typeofFunctionLambdaTests():
   @it("should identify a lambda as function")
   fn shouldIdentifyALambdaAsFunction():
     f = (x: int) => x + 1
-    expect(toStr(typeOf(f))).toEq("fn")
+    expect(str(typeOf(f))).toEq("fn")
 
   @it("should identify two different lambdas as the same function type")
   fn shouldIdentifyTwoDifferentLambdasAsTheSameFunctionType():
@@ -210,7 +210,7 @@ fn typeofFunctionLambdaTests():
   @it("should infer Type as the return type of an unannotated lambda body")
   fn shouldInferTypeAsTheReturnTypeOfAnUnannotatedLambdaBody():
     getType = (x: int) => typeOf(x)
-    expect(toStr(getType(42))).toEq("int")
+    expect(str(getType(42))).toEq("int")
 
 @describe("typeOf is reflective")
 fn typeofIsReflectiveTests():
@@ -225,43 +225,43 @@ fn typeofIsReflectiveTests():
     fn identity<T>(x: T) -> T:
       return x
     t = identity(typeOf(1))
-    expect(toStr(t)).toEq("int")
+    expect(str(t)).toEq("int")
     expect(typeOf(t) == typeOf(typeOf(1))).toBeTrue()
 
-@describe("typeOf toStr")
+@describe("typeOf str")
 fn typeofTostrTests():
   @it("should stringify primitives")
   fn shouldStringifyPrimitives():
-    expect(toStr(typeOf(42))).toEq("int")
-    expect(toStr(typeOf(3.14))).toEq("float")
-    expect(toStr(typeOf(true))).toEq("bool")
-    expect(toStr(typeOf("hi"))).toEq("str")
+    expect(str(typeOf(42))).toEq("int")
+    expect(str(typeOf(3.14))).toEq("float")
+    expect(str(typeOf(true))).toEq("bool")
+    expect(str(typeOf("hi"))).toEq("str")
 
   @it("should stringify low-level numeric")
   fn shouldStringifyLowLevelNumeric():
     x: i32 = 1
-    expect(toStr(typeOf(x))).toEq("i32")
+    expect(str(typeOf(x))).toEq("i32")
 
   @it("should stringify collections")
   fn shouldStringifyCollections():
-    expect(toStr(typeOf([1, 2]))).toEq("List")
-    expect(toStr(typeOf({"a": 1}))).toEq("Map")
-    expect(toStr(typeOf({1, 2}))).toEq("Set")
+    expect(str(typeOf([1, 2]))).toEq("List")
+    expect(str(typeOf({"a": 1}))).toEq("Map")
+    expect(str(typeOf({1, 2}))).toEq("Set")
 
   @it("should stringify records")
   fn shouldStringifyRecords():
     p = TypeOfPoint(1, 2)
-    expect(toStr(typeOf(p))).toEq("TypeOfPoint")
+    expect(str(typeOf(p))).toEq("TypeOfPoint")
 
   @it("should stringify enums")
   fn shouldStringifyEnums():
     c = TypeOfColor::Red
-    expect(toStr(typeOf(c))).toEq("TypeOfColor")
+    expect(str(typeOf(c))).toEq("TypeOfColor")
 
   @it("should stringify Type itself")
   fn shouldStringifyTypeItself():
     t = typeOf(42)
-    expect(toStr(typeOf(t))).toEq("Type")
+    expect(str(typeOf(t))).toEq("Type")
 
 @describe("f-string interpolation of typeOf / enum")
 fn fStringInterpolationOfTypeofEnumTests():

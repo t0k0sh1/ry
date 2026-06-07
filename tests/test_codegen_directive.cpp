@@ -648,7 +648,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
         "@native(\"mylib\")\n"
         "fn greet(name: str) -> str\n"
         "fn greet(x: int) -> str:\n"
-        "    return \"int:\" + toStr(x)\n"
+        "    return \"int:\" + str(x)\n"
         "print(greet(42))\n"
     );
     EXPECT_EQ(output, "int:42\n");

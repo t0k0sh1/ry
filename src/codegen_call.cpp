@@ -8,12 +8,12 @@ namespace ry {
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // toInt(s) → Result<int, Error>
-    if (e.callee == "toInt") {
+    // int(s) → Result<int, Error>.  Parses a str; for number→int use `x as int`.
+    if (e.callee == "int") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            codegenError("toInt() requires str argument");
+            codegenError("int() requires a str argument; use 'value as int' to convert a number to int");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fn = getRuntimeFn("__ry_str_to_int", i64Ty_, {ptrTy_, ptrTy_});
         used_native_libraries_.insert("convert");
@@ -29,12 +29,12 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // toFloat(s) → Result<float, Error>
-    if (e.callee == "toFloat") {
+    // float(s) → Result<float, Error>.  Parses a str; for number→float use `x as float`.
+    if (e.callee == "float") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            codegenError("toFloat() requires str argument");
+            codegenError("float() requires a str argument; use 'value as float' to convert a number to float");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
         auto fn = getRuntimeFn("__ry_str_to_float", i64Ty_, {ptrTy_, ptrTy_});
         used_native_libraries_.insert("convert");
@@ -50,50 +50,8 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // parseInt(s) → Result<int, Error>  (#1772: explicit fallible-parse name)
-    if (e.callee == "parseInt") {
-        requireArgs(e, 1);
-        llvm::Value *s = emitExpr(*e.args[0]);
-        if (s->getType() != ptrTy_)
-            codegenError("parseInt() requires str argument");
-        llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "parse_int_out");
-        auto fn = getRuntimeFn("__ry_str_parse_int", i64Ty_, {ptrTy_, ptrTy_});
-        used_native_libraries_.insert("convert");
-        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "parse_int_status");
-        llvm::Value *isErr = builder_.CreateICmpNE(status,
-            llvm::ConstantInt::get(i64Ty_, 0), "parse_int_err");
-        llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
-        return emitResultBranch(isErr, resTy,
-            [&]() {
-                llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "parse_int_val");
-                return buildOkValue(loaded, resTy);
-            },
-            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
-    }
-
-    // parseFloat(s) → Result<float, Error>  (#1772: explicit fallible-parse name)
-    if (e.callee == "parseFloat") {
-        requireArgs(e, 1);
-        llvm::Value *s = emitExpr(*e.args[0]);
-        if (s->getType() != ptrTy_)
-            codegenError("parseFloat() requires str argument");
-        llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "parse_float_out");
-        auto fn = getRuntimeFn("__ry_str_parse_float", i64Ty_, {ptrTy_, ptrTy_});
-        used_native_libraries_.insert("convert");
-        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "parse_float_status");
-        llvm::Value *isErr = builder_.CreateICmpNE(status,
-            llvm::ConstantInt::get(i64Ty_, 0), "parse_float_err");
-        llvm::StructType *resTy = getResultType(f64Ty_, errorTy_);
-        return emitResultBranch(isErr, resTy,
-            [&]() {
-                llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "parse_float_val");
-                return buildOkValue(loaded, resTy);
-            },
-            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
-    }
-
-    // toStr(v) → str
-    if (e.callee == "toStr") {
+    // str(v) → str
+    if (e.callee == "str") {
         requireArgs(e, 1);
         llvm::Value *v = emitExpr(*e.args[0]);
         return valueToString(v);

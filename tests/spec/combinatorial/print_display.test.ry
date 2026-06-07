@@ -1,4 +1,4 @@
-# BUG #728: print()/toStr() coverage for union values and closure stringification
+# BUG #728: print()/str() coverage for union values and closure stringification
 
 
 from testing import it, describe, expect
@@ -15,10 +15,10 @@ fn printUnionTests():
     y: int | str = "hello"
     print(y)
     # expect-output: hello
-  @it("should use toStr on union value")
+  @it("should use str on union value")
   fn shouldUseTostrOnUnionValue():
     x: int | str = 99
-    expect(toStr(x)).toEq("99")
+    expect(str(x)).toEq("99")
   @it("should use f-string interpolation with union value")
   fn shouldUseFStringInterpolationWithUnionValue():
     x: int | str = "world"
@@ -31,10 +31,10 @@ fn printClosureTests():
     f = (x: int) => x + 1
     print(f)
     # expect-output: <closure>
-  @it("should convert closure to string with toStr")
+  @it("should convert closure to string with str")
   fn shouldConvertClosureToStringWithTostr():
     f = (x: int) => x * 2
-    expect(toStr(f)).toEq("<closure>")
+    expect(str(f)).toEq("<closure>")
   @it("should interpolate closure in f-string")
   fn shouldInterpolateClosureInFString():
     f = (x: int) => x

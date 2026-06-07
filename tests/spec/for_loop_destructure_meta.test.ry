@@ -62,7 +62,7 @@ fn forLoopDestructurePreservesCollectionElementMetadata813Tests():
     cs: List<Color> = [Color::Red, Color::Green, Color::Blue]
     concat: str = ""
     for i, c in enumerate(cs):
-      concat = concat + toStr(c)
+      concat = concat + str(c)
     expect(concat).toEq("RedGreenBlue")
 
   @it("should preserve metadata through nested enumerate over nested list")

@@ -305,9 +305,9 @@ b: int? = none
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
 
-# parseInt is a stdlib builtin returning Result<int, Error>
-i = parseInt("42") ?? -1      # 42 on success, -1 on Err
-j = parseInt("nope") ?? -1    # -1 — the Err value is discarded
+# int is a stdlib builtin returning Result<int, Error>
+i = int("42") ?? -1      # 42 on success, -1 on Err
+j = int("nope") ?? -1    # -1 — the Err value is discarded
 ```
 
 ---

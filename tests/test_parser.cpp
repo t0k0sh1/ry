@@ -1436,21 +1436,21 @@ TEST(ParserTest, QualifiedImportShadowingByParenTupleDestructRestRejected) {
 }
 
 TEST(ParserTest, QualifiedImportChainedQualifiedFieldAccessAtStmt) {
-    // AC1 / CR-review (#1729): `math.PI.toStr()` at statement position must
+    // AC1 / CR-review (#1729): `math.PI.str()` at statement position must
     // set qualified_module on the FIRST FieldAccessExpr so codegen routes
     // PI through the namespace lookup before the trailing UFCS hop. Without
     // the fix the multi-hop chain in parser.cpp built the FieldAccessExpr
     // without qualified_module and codegen errored with "undefined
     // variable: math".
-    Program prog = parseStr("import math\nmath.PI.toStr()");
+    Program prog = parseStr("import math\nmath.PI.str()");
     // [QualifiedImportStmt, ExprStmt] — the qualified import counts as a
     // statement and lives at prog[0].
     ASSERT_EQ(prog.size(), 2u);
     const auto &es = std::get<ExprStmt>(prog.back());
-    // Chain shape: CallExpr{toStr, args=[FieldAccessExpr{math, PI, qm=math}]}
+    // Chain shape: CallExpr{str, args=[FieldAccessExpr{math, PI, qm=math}]}
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
     const auto &call = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
-    EXPECT_EQ(call.callee, "toStr");
+    EXPECT_EQ(call.callee, "str");
     ASSERT_EQ(call.args.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data));
     const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data);
@@ -1462,17 +1462,17 @@ TEST(ParserTest, QualifiedImportChainedQualifiedFieldAccessAtStmt) {
 TEST(ParserTest, QualifiedImportChainedQualifiedCallAtStmt) {
     // CR-review (#1729): statement-side dot fast path used to short-circuit
     // back to ExprStmt right after the qualified 1-hop call, dropping any
-    // postfix tail. `math.sqrt(2.0).toStr()` at statement position must now
-    // chain through parsePostfixContinuation so the trailing `.toStr()`
+    // postfix tail. `math.sqrt(2.0).str()` at statement position must now
+    // chain through parsePostfixContinuation so the trailing `.str()`
     // wraps the qualified CallExpr as a UFCS first-arg.
-    Program prog = parseStr("import math\nmath.sqrt(2.0).toStr()");
+    Program prog = parseStr("import math\nmath.sqrt(2.0).str()");
     ASSERT_EQ(prog.size(), 2u);
     const auto &es = std::get<ExprStmt>(prog.back());
-    // Outer call is the UFCS hop `.toStr()`, inner first-arg is the
+    // Outer call is the UFCS hop `.str()`, inner first-arg is the
     // qualified call `math.sqrt(2.0)`.
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
     const auto &outer = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
-    EXPECT_EQ(outer.callee, "toStr");
+    EXPECT_EQ(outer.callee, "str");
     EXPECT_FALSE(outer.qualified_module.has_value());
     ASSERT_FALSE(outer.args.empty());
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));

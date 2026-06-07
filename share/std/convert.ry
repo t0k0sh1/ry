@@ -1,31 +1,29 @@
 # Type conversion functions
+#
+# `int` / `float` parse a `str` and return a `Result`, so invalid input is a
+# value rather than a panic. `str` renders any value to its string form
+# (records may override it with a user-defined `fn str(v: MyRecord) -> str`).
+#
+# These share the spelling of the type names `int` / `float` / `str`; the
+# parser disambiguates by position (a type annotation vs. a call expression),
+# so `x: int = int("1").unwrap()` is unambiguous. For number-to-number and
+# number-to-str conversions use the `as` cast (e.g. `3.14 as int`, `n as str`).
 @public
 @native
-fn toInt(value: str) -> Result<int, Error>
+fn int(value: str) -> Result<int, Error>
 
 @public
 @native
-fn toFloat(value: str) -> Result<float, Error>
-
-# Fallible string-parsing functions. These provide the same parsing behavior
-# as toInt / toFloat under explicit "parse" names (see #1772); the runtime
-# emits parseInt: / parseFloat: prefixed diagnostics.
-@public
-@native
-fn parseInt(value: str) -> Result<int, Error>
+fn float(value: str) -> Result<float, Error>
 
 @public
 @native
-fn parseFloat(value: str) -> Result<float, Error>
+fn str(value: int) -> str
 
 @public
 @native
-fn toStr(value: int) -> str
+fn str(value: float) -> str
 
 @public
 @native
-fn toStr(value: float) -> str
-
-@public
-@native
-fn toStr(value: bool) -> str
+fn str(value: bool) -> str

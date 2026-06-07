@@ -312,7 +312,7 @@ TEST_F(CodeGenTest, RecordErrors) {
     EXPECT_THROW(runSource(
         "x = 42\n"
         "print(x.field)"), std::runtime_error);
-    // PrintStruct — now works via auto-generated toStr
+    // PrintStruct — now works via auto-generated str
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -321,7 +321,7 @@ TEST_F(CodeGenTest, RecordErrors) {
         "print(p)"), "Point(x: 1, y: 2)\n");
 }
 
-// ===== Record toStr =====
+// ===== Record str =====
 
 TEST_F(CodeGenTest, RecordToStr) {
     EXPECT_EQ(runSource(
@@ -329,7 +329,7 @@ TEST_F(CodeGenTest, RecordToStr) {
         "    x: int\n"
         "    y: int\n"
         "p = Point(1, 2)\n"
-        "print(toStr(p))"), "Point(x: 1, y: 2)\n");
+        "print(str(p))"), "Point(x: 1, y: 2)\n");
 }
 
 TEST_F(CodeGenTest, RecordFString) {
@@ -358,10 +358,10 @@ TEST_F(CodeGenTest, RecordUserDefinedToStr) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn toStr(p: Point) -> str:\n"
+        "fn str(p: Point) -> str:\n"
         "    return f\"({p.x}, {p.y})\"\n"
         "p = Point(5, 6)\n"
-        "print(toStr(p))"), "(5, 6)\n");
+        "print(str(p))"), "(5, 6)\n");
 }
 
 TEST_F(CodeGenTest, RecordUserDefinedToStrWithPrint) {
@@ -369,7 +369,7 @@ TEST_F(CodeGenTest, RecordUserDefinedToStrWithPrint) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn toStr(p: Point) -> str:\n"
+        "fn str(p: Point) -> str:\n"
         "    return f\"({p.x}, {p.y})\"\n"
         "p = Point(5, 6)\n"
         "print(p)"), "(5, 6)\n");
@@ -910,7 +910,7 @@ TEST_F(ImportTest, ImportAliasEnumWorks) {
     EXPECT_EQ(runWithImports(
         "from enummod import Color as C\n"
         "c: C = C::Red\n"
-        "print(toStr(c))"),
+        "print(str(c))"),
         "Red\n");
 }
 
@@ -965,7 +965,7 @@ TEST_F(ImportTest, ImportAliasEnumWorksCacheHit) {
         "from enummod2\n"
         "from enummod2 import Mode as M\n"
         "m: M = M::On\n"
-        "print(toStr(m))"),
+        "print(str(m))"),
         "On\n");
 }
 

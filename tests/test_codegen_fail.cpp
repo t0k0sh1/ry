@@ -944,19 +944,19 @@ TEST_F(CodeGenTest, NestedGenericEnumFieldCompiles) {
 //
 // Inline @native declarations match what convert.ry exposes.
 // CodeGenTest::runSource bypasses ModuleLoader so we cannot
-// `from convert import toStr`.
+// `from convert import str`.
 // ============================================================
 
 TEST_F(CodeGenTest, MultiOverloadNativeReferenceRejected) {
     expectCompileError(
         "@native\n"
-        "fn toStr(value: int) -> str\n"
+        "fn str(value: int) -> str\n"
         "@native\n"
-        "fn toStr(value: float) -> str\n"
+        "fn str(value: float) -> str\n"
         "@native\n"
-        "fn toStr(value: bool) -> str\n"
-        "f = toStr\n",
-        {"toStr", "ambiguous"});
+        "fn str(value: bool) -> str\n"
+        "f = str\n",
+        {"str", "ambiguous"});
 }
 
 // math.pow has multi-arity overloads ((float, float) and (int, int))
@@ -1293,12 +1293,12 @@ TEST_F(CodeGenTest, ReservedBuiltinMax) {
 // That sibling rule renders the reserved-builtin guard unreachable for
 // these specific names today, so no direct rejection test is added.
 
-// `toStr` is intentionally excluded from kReservedBuiltinFunctionNames:
-// type-aware dispatch for records consults user `fn toStr(p: RecordType)`
+// `str` is intentionally excluded from kReservedBuiltinFunctionNames:
+// type-aware dispatch for records consults user `fn str(p: RecordType)`
 // BEFORE the auto-generated builtin (see tests/spec/records.test.ry's
-// "should override auto-generated toStr with user-defined" case and the
+// "should override auto-generated str with user-defined" case and the
 // CodeGenTest.RecordUserDefinedToStr family). A top-level
-// `fn toStr(p: Point)` is therefore legitimate Ry, not a silent shadow.
+// `fn str(p: Point)` is therefore legitimate Ry, not a silent shadow.
 
 TEST_F(CodeGenTest, ReservedBuiltinTypeOf) {
     expectCompileError(
@@ -1385,9 +1385,9 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsNestedShadow) {
     ));
 }
 
-// `toStr` is excluded from the reserved set (see
+// `str` is excluded from the reserved set (see
 // `kReservedBuiltinFunctionNames` in include/ry/builtin_names.hpp),
-// so a `fn toStr(p: Point)` override is legal at any scope. This test
+// so a `fn str(p: Point)` override is legal at any scope. This test
 // pins the nested form; the top-level form is exercised by the
 // `RecordUserDefinedToStr` family in tests/test_codegen_record.cpp.
 TEST_F(CodeGenTest, NestedToStrOverrideWorks) {
@@ -1396,10 +1396,10 @@ TEST_F(CodeGenTest, NestedToStrOverrideWorks) {
         "    x: int\n"
         "    y: int\n"
         "fn outer() -> str:\n"
-        "    fn toStr(p: Point) -> str:\n"
+        "    fn str(p: Point) -> str:\n"
         "        return f\"({p.x}, {p.y})\"\n"
         "    p = Point(1, 2)\n"
-        "    return toStr(p)\n"
+        "    return str(p)\n"
         "print(outer())\n"
     ));
 }

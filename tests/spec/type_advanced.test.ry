@@ -89,27 +89,27 @@ fn typeAliasTests():
   fn shouldSupportPrimitiveUnionViaAlias2Members():
     type Pair = int | str
     x: Pair = 42
-    expect(toStr(x)).toEq("42")
+    expect(str(x)).toEq("42")
     y: Pair = "hello"
-    expect(toStr(y)).toEq("hello")
+    expect(str(y)).toEq("hello")
 
   @it("should support primitive union via alias (3 members)")
   fn shouldSupportPrimitiveUnionViaAlias3Members():
     type Simple = int | str | bool
     x: Simple = 42
-    expect(toStr(x)).toEq("42")
+    expect(str(x)).toEq("42")
     y: Simple = "hi"
-    expect(toStr(y)).toEq("hi")
+    expect(str(y)).toEq("hi")
     z: Simple = true
-    expect(toStr(z)).toEq("true")
+    expect(str(z)).toEq("true")
 
   @it("should support int | float union via alias")
   fn shouldSupportIntFloatUnionViaAlias():
     type Num = int | float
     x: Num = 10
-    expect(toStr(x)).toEq("10")
+    expect(str(x)).toEq("10")
     y: Num = 2.5
-    expect(toStr(y)).toEq("2.5")
+    expect(str(y)).toEq("2.5")
 
 @describe("nested type alias unions")
 fn nestedTypeAliasUnionsTests():
@@ -118,11 +118,11 @@ fn nestedTypeAliasUnionsTests():
     type NA1 = int | str
     type NB1 = NA1 | bool
     x: NB1 = 42
-    expect(toStr(x)).toEq("42")
+    expect(str(x)).toEq("42")
     y: NB1 = "hello"
-    expect(toStr(y)).toEq("hello")
+    expect(str(y)).toEq("hello")
     z: NB1 = true
-    expect(toStr(z)).toEq("true")
+    expect(str(z)).toEq("true")
 
   @it("should flatten a two-level nested alias (C = B | float where B = A | bool)")
   fn shouldFlattenATwoLevelNestedAliasCBFloatWhereBABool():
@@ -130,22 +130,22 @@ fn nestedTypeAliasUnionsTests():
     type NB2 = NA2 | bool
     type NC2 = NB2 | float
     a: NC2 = 1
-    expect(toStr(a)).toEq("1")
+    expect(str(a)).toEq("1")
     b: NC2 = "x"
-    expect(toStr(b)).toEq("x")
+    expect(str(b)).toEq("x")
     c: NC2 = false
-    expect(toStr(c)).toEq("false")
+    expect(str(c)).toEq("false")
     d: NC2 = 3.5
-    expect(toStr(d)).toEq("3.5")
+    expect(str(d)).toEq("3.5")
 
   @it("should dedupe overlapping members when nesting")
   fn shouldDedupeOverlappingMembersWhenNesting():
     type NA3 = int | str
     type NB3 = NA3 | int
     x: NB3 = 7
-    expect(toStr(x)).toEq("7")
+    expect(str(x)).toEq("7")
     y: NB3 = "dup"
-    expect(toStr(y)).toEq("dup")
+    expect(str(y)).toEq("dup")
 
   @it("should dedupe a member reached via multiple alias paths")
   fn shouldDedupeAMemberReachedViaMultipleAliasPaths():
@@ -153,25 +153,25 @@ fn nestedTypeAliasUnionsTests():
     type NB4 = NA4 | bool
     type NC4 = NB4 | NA4
     x: NC4 = 42
-    expect(toStr(x)).toEq("42")
+    expect(str(x)).toEq("42")
     y: NC4 = "hi"
-    expect(toStr(y)).toEq("hi")
+    expect(str(y)).toEq("hi")
     z: NC4 = true
-    expect(toStr(z)).toEq("true")
+    expect(str(z)).toEq("true")
 
   @it("should terminate on mutually-cyclic union aliases and flatten reachable leaves")
   fn shouldTerminateOnMutuallyCyclicUnionAliasesAndFlattenReachableLeaves():
     type NcycA = NcycB | int
     type NcycB = NcycA | str
     x: NcycA = 1
-    expect(toStr(x)).toEq("1")
+    expect(str(x)).toEq("1")
     y: NcycA = "ok"
-    expect(toStr(y)).toEq("ok")
+    expect(str(y)).toEq("ok")
 
 type TaVal = int | str
 
 fn taShow(v: TaVal) -> str:
-  return toStr(v)
+  return str(v)
 
 fn taChoose(b: bool) -> TaVal:
   if b:
@@ -187,8 +187,8 @@ fn typeAliasUnionInFunctionsTests():
 
   @it("should support union alias in function return")
   fn shouldSupportUnionAliasInFunctionReturn():
-    expect(toStr(taChoose(true))).toEq("42")
-    expect(toStr(taChoose(false))).toEq("zero")
+    expect(str(taChoose(true))).toEq("42")
+    expect(str(taChoose(false))).toEq("zero")
 
 record TaPoint:
   x: int
@@ -204,15 +204,15 @@ fn typeAliasUnionOfRecordsTests():
   @it("should support record union via alias")
   fn shouldSupportRecordUnionViaAlias():
     a: TaShape = TaPoint(1, 2)
-    expect(toStr(a)).toEq("TaPoint(x: 1, y: 2)")
+    expect(str(a)).toEq("TaPoint(x: 1, y: 2)")
     b: TaShape = TaName("hello")
-    expect(toStr(b)).toEq("TaName(value: \"hello\")")
+    expect(str(b)).toEq("TaName(value: \"hello\")")
 
 type NtaInner = int | str
 type NtaOuter = NtaInner | bool
 
 fn ntaShow(v: NtaOuter) -> str:
-  return toStr(v)
+  return str(v)
 
 fn ntaChoose(k: int) -> NtaOuter:
   if k == 0:
@@ -231,9 +231,9 @@ fn nestedTypeAliasUnionInFunctionsTests():
 
   @it("should support nested union alias in function return")
   fn shouldSupportNestedUnionAliasInFunctionReturn():
-    expect(toStr(ntaChoose(0))).toEq("42")
-    expect(toStr(ntaChoose(1))).toEq("hi")
-    expect(toStr(ntaChoose(2))).toEq("true")
+    expect(str(ntaChoose(0))).toEq("42")
+    expect(str(ntaChoose(1))).toEq("hi")
+    expect(str(ntaChoose(2))).toEq("true")
 
 record NtRecA:
   x: int
@@ -252,11 +252,11 @@ fn nestedTypeAliasUnionOfRecordsTests():
   @it("should flatten nested record union alias")
   fn shouldFlattenNestedRecordUnionAlias():
     a: NtrOuter = NtRecA(1)
-    expect(toStr(a)).toEq("NtRecA(x: 1)")
+    expect(str(a)).toEq("NtRecA(x: 1)")
     b: NtrOuter = NtRecB("yo")
-    expect(toStr(b)).toEq("NtRecB(y: \"yo\")")
+    expect(str(b)).toEq("NtRecB(y: \"yo\")")
     c: NtrOuter = NtRecC(2.5)
-    expect(toStr(c)).toEq("NtRecC(z: 2.5)")
+    expect(str(c)).toEq("NtRecC(z: 2.5)")
 
 @describe("Error type")
 fn errorTypeTests():

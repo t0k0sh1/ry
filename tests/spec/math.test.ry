@@ -387,15 +387,15 @@ fn mathOverloadPrecedence1193Tests():
   fn powIntIntReturnsIntExactMatchWinsOverWidening():
     expect(pow(2, 3)).toEq(8)            # int 8, not 8.0
     expect(pow(3, 4)).toEq(81)
-    # toStr discriminates the return type: int -> "8", float -> "8.0".
+    # str discriminates the return type: int -> "8", float -> "8.0".
     # toEq alone is lenient (8 == 8.0), so a regression that silently
     # promoted (int, int) to the float overload would pass the numeric
     # checks above. The string check pins the precedence invariant.
-    expect(toStr(pow(2, 3))).toEq("8")
+    expect(str(pow(2, 3))).toEq("8")
   @it("pow(float, float) still returns float")
   fn powFloatFloatStillReturnsFloat():
     expect(pow(2.0, 3.0)).toEq(8.0)
-    expect(toStr(pow(2.0, 3.0))).toEq("8.0")
+    expect(str(pow(2.0, 3.0))).toEq("8.0")
 
 @describe("math custom emitter int->float widening (#1230)")
 fn mathCustomEmitterIntFloatWidening1230Tests():
@@ -440,9 +440,9 @@ fn mathCustomEmitterIntFloatWidening1230Tests():
     # Guard against a regression where mixed-type widening overreaches and
     # hijacks pure (int, int) calls.
     expect(pow(2, 3)).toEq(8)
-    expect(toStr(pow(2, 3))).toEq("8")
-    expect(toStr(pow(2.0, 3))).toEq("8.0")
-    expect(toStr(pow(2, 3.0))).toEq("8.0")
+    expect(str(pow(2, 3))).toEq("8")
+    expect(str(pow(2.0, 3))).toEq("8.0")
+    expect(str(pow(2, 3.0))).toEq("8.0")
 
 @describe("math digits")
 fn mathDigitsTests():

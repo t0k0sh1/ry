@@ -89,7 +89,7 @@ Records emit as `{T1, T2, …}` value types in an alloca — there is no stable 
 +---------------------------------+
 ```
 
-Each record type has a singleton `__ry_record_desc_<typename>` LLVM global carrying `{ dtor_fn_ptr, eq_fn_ptr, type_name_cstr, parent_desc }` (32B = 4 pointers, post-#1802). The descriptor is what makes cross-function-boundary safe: even after the static type erases to `any` and `arc_any_managed_vars_::sourceTypeName` becomes stale (e.g. `"any"` or empty for a value returned out of a fn), release / equality / `toStr` / **subtype unwrap** all dispatch through the descriptor word stored inside the box. Trampoline `__ry_arc_dtor_record_dispatch` reads the descriptor's `dtor_fn_ptr` and tail-calls it; `__ry_record_is_subtype_desc` reads `parent_desc` to walk the inheritance chain at unwrap time.
+Each record type has a singleton `__ry_record_desc_<typename>` LLVM global carrying `{ dtor_fn_ptr, eq_fn_ptr, type_name_cstr, parent_desc }` (32B = 4 pointers, post-#1802). The descriptor is what makes cross-function-boundary safe: even after the static type erases to `any` and `arc_any_managed_vars_::sourceTypeName` becomes stale (e.g. `"any"` or empty for a value returned out of a fn), release / equality / `str` / **subtype unwrap** all dispatch through the descriptor word stored inside the box. Trampoline `__ry_arc_dtor_record_dispatch` reads the descriptor's `dtor_fn_ptr` and tail-calls it; `__ry_record_is_subtype_desc` reads `parent_desc` to walk the inheritance chain at unwrap time.
 
 **Enum box layout** (per-enum-type, descriptor-driven; structurally identical to record box):
 

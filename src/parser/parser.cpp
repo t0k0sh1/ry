@@ -935,7 +935,7 @@ StmtNode Parser::parseStatement() {
         // Build `ident.field` as the chain base and continue parsing any
         // further postfix hops (`.a`, `[i]`, etc.) to support chained LHS
         // forms like `rec.field[i] = v`, `rec.a.b = v`, `rec.a[i].x = v`.
-        // For qualified module access (e.g. `math.PI.toStr()`), the FIRST
+        // For qualified module access (e.g. `math.PI.str()`), the FIRST
         // FieldAccessExpr carries qualified_module so codegen routes through
         // the namespace lookup before the trailing UFCS hop sees it as a
         // value. parsePostfixContinuation only inspects the chain root for

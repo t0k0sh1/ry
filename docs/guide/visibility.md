@@ -37,7 +37,7 @@ fn add(a: int, b: int) -> int:
 ```ry
 # mylib/helpers.ry
 fn fmt(n: int) -> str:
-    return "value: " + toStr(n)
+    return "value: " + str(n)
 ```
 
 Any importer **outside** `mylib/` cannot see `add` or `fmt` until they are marked `@public`.

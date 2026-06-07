@@ -66,11 +66,11 @@ fn fnReturnUnionTests():
   @it("should return int variant from union function")
   fn shouldReturnIntVariantFromUnionFunction():
     v = flexible(true)
-    expect(toStr(v)).toEq("42")
+    expect(str(v)).toEq("42")
   @it("should return str variant from union function")
   fn shouldReturnStrVariantFromUnionFunction():
     v = flexible(false)
-    expect(toStr(v)).toEq("hello")
+    expect(str(v)).toEq("hello")
 
 @describe("fn return — record")
 fn fnReturnRecordTests():

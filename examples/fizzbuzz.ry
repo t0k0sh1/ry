@@ -5,5 +5,5 @@ for n in range(1, 21):
         n % 15 == 0 : "FizzBuzz"
         n % 3 == 0 : "Fizz"
         n % 5 == 0 : "Buzz"
-        _ : toStr(n)
+        _ : str(n)
     print(msg)

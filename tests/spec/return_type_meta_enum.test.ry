@@ -16,14 +16,14 @@ fn enumReturnValuePreservesTypeMetadata820Tests():
   fn shouldPrintSimpleEnumVariantNameWhenReturnedInline():
     fn getColor() -> Color:
       return Color::Red
-    expect(toStr(getColor())).toEq("Red")
+    expect(str(getColor())).toEq("Red")
 
   @it("should print simple enum variant name when returned via local variable")
   fn shouldPrintSimpleEnumVariantNameWhenReturnedViaLocalVariable():
     fn getColor() -> Color:
       return Color::Green
     c = getColor()
-    expect(toStr(c)).toEq("Green")
+    expect(str(c)).toEq("Green")
 
   @it("should print simple enum in f-string interpolation")
   fn shouldPrintSimpleEnumInFStringInterpolation():
@@ -35,20 +35,20 @@ fn enumReturnValuePreservesTypeMetadata820Tests():
   fn shouldPrintAdtEnumVariantWithPayloadWhenReturnedInline():
     fn makeCircle() -> Shape:
       return Shape::Circle(3.14)
-    expect(toStr(makeCircle())).toEq("Circle(3.14)")
+    expect(str(makeCircle())).toEq("Circle(3.14)")
 
   @it("should print ADT enum variant with payload when returned via local variable")
   fn shouldPrintAdtEnumVariantWithPayloadWhenReturnedViaLocalVariable():
     fn makeRect() -> Shape:
       return Shape::Rect(3.0, 4.0)
     s = makeRect()
-    expect(toStr(s)).toEq("Rect(3.0, 4.0)")
+    expect(str(s)).toEq("Rect(3.0, 4.0)")
 
   @it("should print ADT enum variant without payload when returned from function")
   fn shouldPrintAdtEnumVariantWithoutPayloadWhenReturnedFromFunction():
     fn makePoint() -> Shape:
       return Shape::Point
-    expect(toStr(makePoint())).toEq("Point")
+    expect(str(makePoint())).toEq("Point")
 
   @it("should match ADT enum returned from user function (regression guard)")
   fn shouldMatchAdtEnumReturnedFromUserFunctionRegressionGuard():
@@ -66,14 +66,14 @@ fn enumReturnValuePreservesTypeMetadata820Tests():
       return Color::Red
     fn outer() -> Color:
       return inner()
-    expect(toStr(outer())).toEq("Red")
+    expect(str(outer())).toEq("Red")
 
   @it("should print simple enum stored in list after function return")
   fn shouldPrintSimpleEnumStoredInListAfterFunctionReturn():
     fn getColor() -> Color:
       return Color::Green
     xs: List<Color> = [getColor(), Color::Red]
-    expect(toStr(xs)).toEq("[Green, Red]")
+    expect(str(xs)).toEq("[Green, Red]")
 
   @it("should propagate enum metadata through a type alias in return position")
   fn shouldPropagateEnumMetadataThroughATypeAliasInReturnPosition():
@@ -81,16 +81,16 @@ fn enumReturnValuePreservesTypeMetadata820Tests():
     type ColorAlias = Color
     fn getAlias() -> ColorAlias:
       return Color::Red
-    expect(toStr(getAlias())).toEq("Red")
+    expect(str(getAlias())).toEq("Red")
 
   @it("should still print Option<int> from function (regression guard)")
   fn shouldStillPrintOptionIntFromFunctionRegressionGuard():
     fn makeSome() -> Option<int>:
       return Some(42)
-    expect(toStr(makeSome())).toEq("Some(42)")
+    expect(str(makeSome())).toEq("Some(42)")
 
   @it("should still print Result<int, Error> from function (regression guard)")
   fn shouldStillPrintResultIntErrorFromFunctionRegressionGuard():
     fn makeOk() -> Result<int, Error>:
       return Ok(7)
-    expect(toStr(makeOk())).toEq("Ok(7)")
+    expect(str(makeOk())).toEq("Ok(7)")

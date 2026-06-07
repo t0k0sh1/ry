@@ -264,7 +264,7 @@ fn anyPrintTests():
     print(x)
     expect(true).toEq(true)
 
-@describe("any toStr / f-string")
+@describe("any str / f-string")
 fn anyTostrFStringTests():
   @it("should convert int to str")
   fn shouldConvertIntToStr():

@@ -49,10 +49,10 @@ print(f"int pair: {pair(42)}")
 print(f"str pair: {pair("ab")}")
 
 # typeOf
-print(f"typeOf 42: {toStr(typeOf(42))}")
-print(f"typeOf 3.14: {toStr(typeOf(3.14))}")
-print(f"typeOf 'abc': {toStr(typeOf("abc"))}")
-print(f"typeOf [1,2]: {toStr(typeOf([1,2]))}")
+print(f"typeOf 42: {str(typeOf(42))}")
+print(f"typeOf 3.14: {str(typeOf(3.14))}")
+print(f"typeOf 'abc': {str(typeOf("abc"))}")
+print(f"typeOf [1,2]: {str(typeOf([1,2]))}")
 
 # 同じ型同士の比較
 print(f"typeOf(1) == typeOf(2): {typeOf(1) == typeOf(2)}")

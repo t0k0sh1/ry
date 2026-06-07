@@ -55,15 +55,15 @@ for c in ja:
 
 # 数値変換
 n: int = 0
-case toInt("42"):
+case int("42"):
     Ok(v):
         n = v
     Err(e):
         print(f"err: {e.message}")
 print(f"parsed = {n}")
 
-# toStr で型変換
-print(f"toStr(int): {toStr(42)}")
-print(f"toStr(float): {toStr(3.14)}")
-print(f"toStr(bool): {toStr(true)}")
-print(f"toStr(list): {toStr([1,2,3])}")
+# str で型変換
+print(f"str(int): {str(42)}")
+print(f"str(float): {str(3.14)}")
+print(f"str(bool): {str(true)}")
+print(f"str(list): {str([1,2,3])}")

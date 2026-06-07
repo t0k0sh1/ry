@@ -6,7 +6,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
   return Ok(a // b)
 
 fn tryParse(s: str) -> Result<int, Error>:
-  v = s.toInt()
+  v = s.int()
   return case v:
     Ok(n) : Ok(n)
     Err(e) : Err(e)

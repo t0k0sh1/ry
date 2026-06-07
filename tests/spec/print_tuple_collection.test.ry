@@ -5,22 +5,22 @@ fn tupleDisplayTests():
   @it("should convert simple tuple to string")
   fn shouldConvertSimpleTupleToString():
     t = (1, 2)
-    expect(toStr(t)).toEq("(1, 2)")
+    expect(str(t)).toEq("(1, 2)")
   @it("should convert mixed-type tuple to string")
   fn shouldConvertMixedTypeTupleToString():
     t = (1, "hello", 3.14)
-    expect(toStr(t)).toEq("(1, " + "\"hello\"" + ", 3.14)")
+    expect(str(t)).toEq("(1, " + "\"hello\"" + ", 3.14)")
   @it("should convert nested tuple to string")
   fn shouldConvertNestedTupleToString():
     t = ((1, 2), (3, 4))
-    expect(toStr(t)).toEq("((1, 2), (3, 4))")
+    expect(str(t)).toEq("((1, 2), (3, 4))")
 
 @describe("list of tuples display")
 fn listOfTuplesDisplayTests():
   @it("should convert zip result to string")
   fn shouldConvertZipResultToString():
     result = zip([1, 2, 3], ["a", "b", "c"])
-    expect(toStr(result)).toEq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
+    expect(str(result)).toEq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
 
 @describe("f-string with collections")
 fn fStringWithCollectionsTests():

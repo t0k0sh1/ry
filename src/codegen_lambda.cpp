@@ -596,7 +596,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return typeTy_;
             if (c == "len")
                 return i64Ty_;
-            if (c == "toInt" || c == "parseInt")
+            if (c == "int")
                 return getResultType(i64Ty_, errorTy_);
             if (c == "find")
                 return getOptionType(i64Ty_);
@@ -610,12 +610,12 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 }
                 return i64Ty_; // conservative default; codegen uses actual element type
             }
-            if (c == "toFloat" || c == "parseFloat")
+            if (c == "float")
                 return getResultType(f64Ty_, errorTy_);
             if (c == "contains" || c == "startsWith" || c == "endsWith" ||
                 c == "hasKey" || c == "any" || c == "all" || c == "isEmpty")
                 return i1Ty_;
-            if (c == "toStr" || c == "toUpper" || c == "toLower" ||
+            if (c == "str" || c == "toUpper" || c == "toLower" ||
                 c == "trim" || c == "trimStart" || c == "trimEnd" ||
                 c == "substr" || c == "charAt" || c == "replace" ||
                 c == "repeat" || c == "reverse" || c == "join" ||
