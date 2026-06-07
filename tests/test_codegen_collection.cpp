@@ -1977,6 +1977,67 @@ TEST_F(CodeGenTest, MaxEmptyListError) {
                 "runtime error: max\\(\\) on empty list");
 }
 
+// ----- #1886: variadic scalar form (in addition to the list form above) -----
+
+TEST_F(CodeGenTest, SumVariadicInts) {
+    EXPECT_EQ(runSource("print(sum(3, 5))"), "8\n");
+    EXPECT_EQ(runSource("print(sum(1, 2, 3))"), "6\n");
+    // Unbounded arity (no path.join-style cap).
+    EXPECT_EQ(runSource("print(sum(1, 2, 3, 4, 5, 6))"), "21\n");
+}
+
+TEST_F(CodeGenTest, SumVariadicFloats) {
+    EXPECT_EQ(runSource("print(sum(1.0, 2.0, 3.0))"), "6.0\n");
+}
+
+TEST_F(CodeGenTest, SumVariadicU8) {
+    // sum accepts u8 in the variadic form, mirroring the list form.
+    EXPECT_EQ(runSource("x: u8 = sum(1u8, 2u8, 3u8)\nprint(x)"), "6\n");
+}
+
+TEST_F(CodeGenTest, MinMaxVariadicInts) {
+    EXPECT_EQ(runSource("print(min(3, 5))"), "3\n");
+    EXPECT_EQ(runSource("print(min(3, 5, 1))"), "1\n");
+    EXPECT_EQ(runSource("print(max(3, 5))"), "5\n");
+    EXPECT_EQ(runSource("print(max(3, 1, 5))"), "5\n");
+}
+
+TEST_F(CodeGenTest, MinMaxVariadicFloats) {
+    EXPECT_EQ(runSource("print(min(1.5, 2.5))"), "1.5\n");
+    EXPECT_EQ(runSource("print(max(1.5, 2.5))"), "2.5\n");
+}
+
+// Rejection branches (#1886). Each fragment is specific to the NEW message so
+// the test cannot pass against the pre-change "takes exactly 1 argument".
+
+TEST_F(CodeGenTest, AggregateRejectsZeroArgs) {
+    expectCompileError("print(sum())", "at least 1 argument");
+    expectCompileError("print(min())", "at least 1 argument");
+    expectCompileError("print(max())", "at least 1 argument");
+}
+
+TEST_F(CodeGenTest, AggregateRejectsSingleScalarArg) {
+    expectCompileError("print(sum(5))", "with a single argument requires a list");
+    expectCompileError("print(min(5))", "with a single argument requires a list");
+    expectCompileError("print(max(5))", "with a single argument requires a list");
+}
+
+TEST_F(CodeGenTest, AggregateRejectsMixedTypes) {
+    expectCompileError("print(sum(1, 2.0))", "same type");
+    expectCompileError("print(min(1, 2.0))", "same type");
+    expectCompileError("print(max(1, 2.0))", "same type");
+}
+
+TEST_F(CodeGenTest, SumRejectsNonNumericVariadic) {
+    expectCompileError("print(sum(true, false))", "numeric arguments");
+}
+
+TEST_F(CodeGenTest, MinMaxRejectU8Variadic) {
+    // u8 is accepted by sum but not by min/max (mirrors the list-form guard).
+    expectCompileError("print(min(1u8, 2u8))", "int or float");
+    expectCompileError("print(max(1u8, 2u8))", "int or float");
+}
+
 // ===== enumerate / zip =====
 
 TEST_F(CodeGenTest, EnumerateBasic) {

@@ -525,10 +525,37 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
     // ===== sum(list) =====
     if (e.callee == "sum") {
-        requireArgs(e, 1);
+        if (e.args.empty())
+            codegenError("sum() requires at least 1 argument");
+
+        // Variadic scalar form: sum(a, b, ...) with 2+ args. The result type is
+        // taken from the first argument; all args must share that type. Accepts
+        // the same numeric types as the list form (int, float, u8). No
+        // alloca/loop: the arg count is a compile-time constant, so the
+        // accumulation is unrolled as straight-line SSA seeded by arg[0]. The
+        // result is a bare scalar (no list metadata), so it cannot be mistaken
+        // for a collection downstream.
+        if (e.args.size() >= 2) {
+            llvm::Value *acc = emitExpr(*e.args[0]);
+            llvm::Type *ty = acc->getType();
+            if (ty != i64Ty_ && ty != f64Ty_ && ty != i8Ty_)
+                codegenError("sum() requires numeric arguments (int, float, or u8)");
+            for (size_t i = 1; i < e.args.size(); i++) {
+                llvm::Value *v = emitExpr(*e.args[i]);
+                if (v->getType() != ty)
+                    codegenError("sum() requires all arguments to have the same type");
+                acc = (ty == f64Ty_) ? builder_.CreateFAdd(acc, v, "sum_v")
+                                     : builder_.CreateAdd(acc, v, "sum_v");
+            }
+            return acc;
+        }
+
+        // Single argument: must be a list.
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) codegenError("sum() requires a list");
+        if (!elemTy)
+            codegenError("sum() with a single argument requires a list; "
+                         "for multiple values use sum(a, b, ...)");
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
             codegenError("sum() requires a numeric list (int, float, or u8)");
 
@@ -569,11 +596,43 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
     // ===== min(list) / max(list) =====
     if (e.callee == "min" || e.callee == "max") {
-        requireArgs(e, 1);
+        if (e.args.empty())
+            codegenError(e.callee + "() requires at least 1 argument");
         bool isMax = (e.callee == "max");
+
+        // Variadic scalar form: min(a, b, ...) / max(a, b, ...) with 2+ args.
+        // Result type is taken from the first argument; all args must share it.
+        // Accepts the same numeric types as the list form (int, float); u8 is
+        // not supported, mirroring the list-form guard below. Unrolled as
+        // straight-line SSA via select, seeded by arg[0]. With 2+ args the input
+        // is statically non-empty, so no empty-input runtime check is needed.
+        // The result is a bare scalar (no list metadata).
+        if (e.args.size() >= 2) {
+            llvm::Value *best = emitExpr(*e.args[0]);
+            llvm::Type *ty = best->getType();
+            if (ty != i64Ty_ && ty != f64Ty_)
+                codegenError(e.callee + "() requires numeric arguments (int or float)");
+            for (size_t i = 1; i < e.args.size(); i++) {
+                llvm::Value *v = emitExpr(*e.args[i]);
+                if (v->getType() != ty)
+                    codegenError(e.callee + "() requires all arguments to have the same type");
+                llvm::Value *cmp;
+                if (ty == f64Ty_)
+                    cmp = isMax ? builder_.CreateFCmpOGT(v, best, "mm_cmp")
+                                : builder_.CreateFCmpOLT(v, best, "mm_cmp");
+                else
+                    cmp = isMax ? builder_.CreateICmpSGT(v, best, "mm_cmp")
+                                : builder_.CreateICmpSLT(v, best, "mm_cmp");
+                best = builder_.CreateSelect(cmp, v, best, "mm_best");
+            }
+            return best;
+        }
+
+        // Single argument: must be a list.
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) codegenError(e.callee + "() requires a list");
+        if (!elemTy) codegenError(e.callee + "() with a single argument requires a list; "
+                                  "for multiple values use " + e.callee + "(a, b, ...)");
         if (elemTy != i64Ty_ && elemTy != f64Ty_)
             codegenError(e.callee + "() requires a numeric list (int or float)");
 

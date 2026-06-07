@@ -23,6 +23,12 @@ fn any(values: List<int>, predicate: fn(int) -> bool) -> bool
 @native
 fn all(values: List<int>, predicate: fn(int) -> bool) -> bool
 
+# sum / min / max: the declarations below register the single-list signature,
+# but dispatch is handled inline by `emitBuiltinHigherOrder`
+# (src/codegen_call_higher_order.cpp), which also accepts the variadic scalar
+# form `sum(a, b, ...)` / `min(a, b, ...)` / `max(a, b, ...)` and float (plus u8
+# for sum) — see docs/reference/collections.md (#1886). These declarations are
+# dormant documentation; they do not gate codegen.
 @public
 @native
 fn sum(values: List<int>) -> int
