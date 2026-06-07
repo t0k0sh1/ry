@@ -834,29 +834,56 @@ void CodeGen::retainBlockTailIfScopeOwned(llvm::Value *tailVal) {
     // tail expression whose value escapes the arm/branch scope through the merge
     // PHI. If that tail loads a variable owned by the scope frame popScope() is
     // about to release (a block-local binding or a pattern binding), the release
-    // would drop the value's strong_count and leave the PHI input dangling. Retain
-    // it here so it survives — mirrors the ReturnStmt escape-retain, but scoped to
-    // the single frame being popped (not all frames to depth 0).
-    auto *ld = llvm::dyn_cast<llvm::LoadInst>(tailVal);
-    if (!ld)
-        return; // fresh temps (arc_owned) and computed values already own their +1
-    auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
-    if (!src || scope_stack_.empty())
+    // drops the value's strong_count and leaves the PHI input dangling. Retain it
+    // here so it survives — mirrors the ReturnStmt escape-retain, but scoped to the
+    // single frame being popped (not all frames to depth 0).
+    if (!tailVal || scope_stack_.empty())
         return;
-    // Only retain when the source variable lives in the innermost frame. Outer-scope
-    // vars are NOT released by this popScope(), so retaining them would leak.
+    // Trace the tail back to the alloca it ultimately reads from, through the
+    // linear load / GEP / extractvalue / bitcast chain. The borrow is not only a
+    // direct `load %local`: `box.items` is an ExtractValue of a record load, and
+    // `xss[i]` is a GEP-backed element load — both are freed by the owner's
+    // popScope(), so both need the escape-retain. (A tail derived through a PHI /
+    // select is not traced — the same coverage gap tryRetainArcSource itself has —
+    // and is exotic enough to leave to existing handling.)
+    llvm::Value *cur = tailVal;
+    llvm::AllocaInst *owner = nullptr;
+    for (int hops = 0; hops < 16 && cur; ++hops) {
+        if (auto *a = llvm::dyn_cast<llvm::AllocaInst>(cur)) {
+            owner = a;
+            break;
+        }
+        if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(cur)) {
+            cur = ld->getPointerOperand();
+        } else if (auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(cur)) {
+            cur = gep->getPointerOperand();
+        } else if (auto *ev = llvm::dyn_cast<llvm::ExtractValueInst>(cur)) {
+            cur = ev->getAggregateOperand();
+        } else if (auto *bc = llvm::dyn_cast<llvm::BitCastInst>(cur)) {
+            cur = bc->getOperand(0);
+        } else {
+            break; // call result / PHI / fresh temp — not traceable to an alloca
+        }
+    }
+    if (!owner)
+        return;
+    // Only retain when the owner lives in the innermost frame — the one this
+    // popScope() releases. An outer-scope owner is NOT released here, so retaining
+    // it would leak.
     const auto &frame = scope_stack_.back();
     bool inCurrentFrame = false;
-    for (const auto &[name, alloca] : frame) {
-        if (alloca == src) {
+    for (const auto &kv : frame) {
+        if (kv.second == owner) {
             inCurrentFrame = true;
             break;
         }
     }
-    // tryRetainArcSource self-gates on isArcManaged, so a non-ARC frame var (int,
-    // bool, ...) is a no-op; only ARC-managed loads actually retain.
-    if (inCurrentFrame)
-        tryRetainArcSource(tailVal);
+    if (!inCurrentFrame)
+        return;
+    // tryRetainArcSource dispatches on the tail's shape (Case 1 load-from-alloca,
+    // Case 3 ExtractValue, Case 4 GEP-loaded element) and self-gates on ARC
+    // metadata, so a non-ARC tail (int / bool / ...) is a no-op.
+    tryRetainArcSource(tailVal);
 }
 
 // Return-only retain for fn-typed param values. Fn-typed param allocas are

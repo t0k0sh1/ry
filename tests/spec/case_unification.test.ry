@@ -335,6 +335,10 @@ fn blockArmReturnsList(n: int) -> List<int>:
       [0]
   return r
 
+# Record with an ARC field, for the borrowed-tail (ExtractValue) tests below.
+record BlockTailBox:
+  items: List<int>
+
 @describe("case expression block-arm ARC ownership (#1891)")
 fn caseExprBlockArmArcOwnershipTests():
   # These exercise an ARC-managed value (List / str / Option payload) bound in a
@@ -440,3 +444,45 @@ fn caseExprBlockArmArcOwnershipTests():
     expect(len(r)).toEq(2)
     expect(r[0]).toEq(5)
     expect(r[1]).toEq(6)
+
+  # Borrowed tails (not a direct `load %local`): the tail reads a sub-value of a
+  # scope-local owner via ExtractValue (record field) or a GEP-backed element
+  # load. Both were freed by popScope before the trace-back fix (CodeRabbit).
+  @it("retains a record-field (ExtractValue) borrowed tail")
+  fn retainsRecordFieldBorrowedTail():
+    x = 5
+    r = case x:
+      5:
+        box = BlockTailBox([x, x + 1])
+        box.items
+      _:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(5)
+    expect(r[1]).toEq(6)
+
+  @it("retains a nested-list element (GEP) borrowed tail")
+  fn retainsNestedListElementBorrowedTail():
+    x = 5
+    r = case x:
+      5:
+        xss = [[x, x + 1]]
+        xss[0]
+      _:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(5)
+    expect(r[1]).toEq(6)
+
+  @it("retains a pattern-bound record-field borrowed tail")
+  fn retainsPatternBoundFieldBorrowedTail():
+    w: Option<BlockTailBox> = Some(BlockTailBox([7, 8]))
+    r = case w:
+      Some(v):
+        marker = 1
+        v.items
+      None:
+        [0]
+    expect(len(r)).toEq(2)
+    expect(r[0]).toEq(7)
+    expect(r[1]).toEq(8)

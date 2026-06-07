@@ -378,18 +378,34 @@ and drops the value's `strong_count` to zero — the PHI input then dangles
 shipped with this latent UAF; #1891 fixed both it and the new case-expr arms.
 
 **Rule**: Before the arm/branch `popScope()`, call
-`retainBlockTailIfScopeOwned(tailVal)` (`src/codegen_arc.cpp`). It retains (via
-`tryRetainArcSource`) **iff** `tailVal` is a `LoadInst` whose source alloca is in
-the innermost frame (`scope_stack_.back()`). That single gate is exactly right:
+`retainBlockTailIfScopeOwned(tailVal)` (`src/codegen_arc.cpp`). It **traces the
+tail back** through the linear `load` / `getelementptr` / `extractvalue` /
+`bitcast` chain to the alloca it ultimately reads from, and retains (via
+`tryRetainArcSource`) **iff** that owning alloca is in the innermost frame
+(`scope_stack_.back()`). The current-frame check is just the "will this
+`popScope()` release the owner?" gate; the retain decision stays with
+`tryRetainArcSource`, whose per-shape cases gate on the same
+`list_elem`/`map_key`/`set_elem` metadata the owner's destructor uses — so
+retain-site and release-site mirror each other by construction:
 
-- block-local / pattern-bound var (in frame) → retain +1, balanced by the frame's
-  own release — the `ReturnStmt` escape-retain, scoped to one frame instead of all;
-- outer-scope var (NOT in frame) → skipped, because this `popScope()` does not
-  release it, so retaining would **leak** (this is the case to get right — the
-  current-frame check excludes it for free);
-- fresh temp (`arc_owned`, not a `LoadInst`) → skipped; it already owns its +1 and
+- block-local / pattern-bound var, direct `load %local` (in frame) → `tryRetainArcSource`
+  Case 1, retain +1, balanced by the frame's own release — the `ReturnStmt`
+  escape-retain, scoped to one frame instead of all;
+- **borrowed sub-value of an in-frame owner** — `box.items` (`ExtractValue`, Case 3),
+  `xss[i]` (GEP-backed element load, Case 4) → traced back to the owner alloca and
+  retained; **this is the trap**: gating on the tail being a *direct* alloca load
+  misses these and they come back freed (`[]`);
+- outer-scope owner (NOT in frame) → skipped, because this `popScope()` does not
+  release it, so retaining would **leak** (the current-frame check excludes it for free);
+- fresh temp (`arc_owned`, traces to no alloca) → skipped; it already owns its +1 and
   transfers through the PHI;
-- non-ARC frame var → `tryRetainArcSource` self-gates on `isArcManaged`, no-op.
+- non-ARC owner → `tryRetainArcSource` self-gates on metadata, no-op.
+
+**Known limitation (documented, not chased)**: a tail derived through a `PHI` /
+`select` (e.g. `if c => localA else localB` as a block tail) does not trace to a
+single alloca, so a *borrowed* PHI/select tail is not retained — the same coverage
+gap `tryRetainArcSource` itself has. PHI-of-locals tails are exotic; expand only if
+one is found in the wild.
 
 **How to apply**: any new block-valued expression form that emits `stmts* tail`
 then `popScope()` must call `retainBlockTailIfScopeOwned(tailVal)` between the
