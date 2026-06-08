@@ -56,6 +56,16 @@ impl EmitCtx {
 #[derive(Clone, Copy)]
 pub(crate) struct ValueRef(pub(crate) LLVMValueRef);
 
+/// The two values produced by `list_slice`: the clamped element `count` and the
+/// freshly `malloc`'d sub-list `new_data` buffer. Named fields — rather than a
+/// bare `(ValueRef, ValueRef)` — so the two same-typed handles cannot be
+/// silently transposed where the abi shell interns each into its `*mut
+/// RyValueId` out-param. The crate's first multi-value engine return.
+pub(crate) struct SliceParts {
+    pub(crate) count: ValueRef,
+    pub(crate) new_data: ValueRef,
+}
+
 /// Rust-native typed handle to an LLVM basic block. Wraps the raw
 /// `LLVMBasicBlockRef` so the engine API does not traffic in untyped pointers.
 #[derive(Clone, Copy)]

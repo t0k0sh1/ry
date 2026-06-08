@@ -24,7 +24,7 @@ use crate::core::EmitCtx;
 mod arc;
 pub use arc::*;
 mod bounds;
-pub use bounds::*;
+mod collection;
 mod control_flow;
 mod lifecycle;
 mod option;
