@@ -22,6 +22,7 @@ use crate::core::EmitCtx;
 // engine methods directly, no in-crate module calls another op's externs by
 // name. The last such re-export — `pub use arc::*` kept solely for `cow` — was
 // dropped here, the same cleanup #2061 did for `pub use bounds::*`.
+mod any;
 mod arc;
 mod bounds;
 mod collection;
@@ -343,8 +344,9 @@ pub(crate) unsafe fn resolve(c: &EmitCtx, id: RyValueId) -> RyValueRef {
     to_ry_value(c.values[id as usize])
 }
 
-// `cstr_bytes` moved to `core` (#2060) — a pure `CStr` primitive used by the
-// bounds engine, which now lives in core-role `bounds.rs`. Re-exported here so
-// legacy in-crate modules still reaching it through `crate::abi::*` (e.g.
-// `any.rs`) keep resolving.
-pub(crate) use crate::core::cstr_bytes;
+// `cstr_bytes` lives in `core` (#2060) — a pure `CStr` primitive used by the
+// bounds and any engines, both of which are now core-role modules reaching it
+// via `crate::core` directly. The transitional `pub(crate) use crate::core::
+// cstr_bytes` re-export here (kept for the legacy `any.rs` while it still did
+// `use crate::abi::*`) was dropped once #2063 migrated `any` — its last consumer
+// — mirroring #2062 dropping `pub use arc::*`.

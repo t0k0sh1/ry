@@ -445,3 +445,19 @@ Three independent traps hit when running the `/horizontal-sweep` Step-3 bulk ren
 3. **In-place edits via the Bash tool may not reach the working tree under sandboxed execution** (the build dir and network are writable, the tracked source tree is not), so `sed` / `perl -i` appear to run (exit 0) yet the file is unchanged. The `Edit` / `Write` tools always persist; for a `perl -i` / `git rm` bulk operation, pass the Bash un-sandbox escape.
 
 **Why it recurs**: every future identifier / terminology sweep on a macOS host hits #1 and #2, and the skill's sed snippet is written for GNU sed. Prefer `perl -i -pe` for `\b` renames and `while read -r` to drive the file loop. See `.claude/skills/horizontal-sweep/SKILL.md` Step 3.
+
+---
+
+### `--emit-llvm-ir` cannot probe a `.test.ry` file — use a plain `.ry` (stdin heredoc or `/tmp` + `RY_ENV=internal`)
+
+**Source**: #2063 (2026-06-09, the `any` abi/ffi/core migration's IR-bit-exact verification)
+**Tags**: commands, environment, emit-llvm-ir, test-mode, ir-bit-exact, refactor, dev-stdlib
+
+**Context**: The #2057–#2063 emit-layer refactors verify byte-identical IR with an `--emit-llvm-ir` before/after diff over a coverage-gated probe. The natural instinct — point it at the spec test that already exercises the op (e.g. `ry --emit-llvm-ir tests/spec/any.test.ry`) — fails: `error: @describe is only allowed in test mode (use 'ry test')`. Test files use the `@describe` / `@it` harness, which only the `test` subcommand accepts, and `ry test` has **no** `--emit-llvm-ir` flag. So a `.test.ry` can never be the IR-diff probe.
+
+**Correct**: feed a plain `.ry` (no `@describe`). Two compliant shapes:
+
+- **stdin heredoc** (no file): `./build-rust/ry --emit-llvm-ir -c <<'EOF' … EOF` — note `-c` reads **stdin**, not argv (see the "`ry -c` reads from stdin" entry above; `--emit-llvm-ir -c 'code'` silently emits an empty module). Stdlib imports resolve because the CWD is the repo (`package.toml` ancestor).
+- **`/tmp` file** (when a stable path is needed for repeated before/after runs): `RY_ENV=internal ./build-rust/ry --emit-llvm-ir /tmp/probe.ry`. The `RY_ENV=internal` is **required** here — a `/tmp` file has no `package.toml` ancestor, so without it `from json import load` etc. fall back to the global `~/.ry/share/std` and fail (the same root cause as the "Testing stdlib changes: run from the project root" entry above; `RY_ENV=internal` is the documented override for the no-ancestor case).
+
+**Coverage trap**: top-level statements whose result is unused get DCE'd before emission (`x: any = true` alone emits nothing), and a constant bool wrapped into `any` is const-folded so `any.bool.zext` never appears — drive emission with `print(...)` and use a *variable* (`b: bool = …; x: any = b`) to force the runtime path. Always grep the baseline IR for each block's marker before trusting an empty diff (the coverage gate in `.claude/rules/codegen-llvm-ir-conventions.md`).
