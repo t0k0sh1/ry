@@ -111,6 +111,45 @@ pub(crate) enum CowKind {
     Set,
 }
 
+/// IR-shape selector for `any_wrap` (mirrors the C++ `lowered::AnyWrapKind`; the
+/// abi layer maps the `c_int` kind — `0`/`1`/`2` — to this before calling the
+/// engine, rejecting any other value as the legacy `kind > 2` guard did).
+// The shared `Box` postfix mirrors the C++ `lowered::AnyWrapKind` variant names
+// 1:1 (NonBox / RecordBox / EnumBox); keep the parallel naming over clippy's
+// suffix-stripping suggestion.
+#[allow(clippy::enum_variant_names)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnyWrapKind {
+    /// Primitive / str / collection pointer stored directly in `any.data[8]`.
+    NonBox,
+    /// Heap-box `[ ArcHeader | desc ptr | record struct ]`.
+    RecordBox,
+    /// Structurally identical heap box carrying the per-enum descriptor.
+    EnumBox,
+}
+
+/// IR-shape selector for `any_unwrap` (mirrors the C++ `lowered::AnyUnwrapKind`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnyUnwrapKind {
+    /// 2-way tag-check → match (alloca/store/GEP/load) or trap.
+    Standard,
+    /// 5-BB float / int-promote merge PHI(f64).
+    F64Promote,
+    /// Tag check + descriptor chain walk, then payload GEP/load.
+    Record,
+}
+
+/// IR-shape selector for `any_try_unwrap` (mirrors the C++
+/// `lowered::AnyTryUnwrapKind`; only two shapes reach this op — the typed-arm
+/// dispatch stays CodeGen-private — so the abi mapping rejects `kind > 1`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AnyTryUnwrapKind {
+    /// Tag-check primitive arm wrapped in an ok/err branch + PHI.
+    Standard,
+    /// f64 target with int auto-promote (both loads share one alloca).
+    F64Promote,
+}
+
 // LLVM type accessors.
 #[inline]
 pub(crate) unsafe fn i1_type(c: LLVMContextRef) -> LLVMTypeRef {

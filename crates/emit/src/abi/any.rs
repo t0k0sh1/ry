@@ -1,0 +1,208 @@
+//! abi::any — C boundary entry points for dynamic `any` boxing. Each shell
+//! resolves the u32 ids to `ValueRef`, maps the `c_int` kind → the matching
+//! `AnyWrapKind` / `AnyUnwrapKind` / `AnyTryUnwrapKind` (folding the legacy
+//! `kind > N` reject into the `None → 0` arm), converts the flag fields and the
+//! nullable branch handles into the Rust-native `AnyWrap` / `AnyUnwrap` /
+//! `AnyTryUnwrap`, calls the `core` `EmitCtx` method, and interns the produced
+//! value. The kind-independent guards (ctx/desc/context/module/builder null, the
+//! always-present val / type handles) live here; the branch-specific guards stay
+//! in the engine method, which returns `None` on failure → the shell interns 0
+//! (the descriptor-passing pattern #2062, thin-shell + fallible-core split). The
+//! retain guard calls `arc_retain` as an engine method directly, so — like #2062
+//! — `any` no longer reaches the `ry_emit_arc_*` externs by name; `any` was the
+//! last in-crate `use crate::abi` consumer, so `abi.rs` also dropped its dead
+//! `pub(crate) use crate::core::cstr_bytes;` re-export (whose sole remaining
+//! caller was the legacy `any.rs`).
+
+use std::ffi::c_int;
+
+use crate::any::{AnyTryUnwrap, AnyUnwrap, AnyWrap};
+use crate::core::{AnyTryUnwrapKind, AnyUnwrapKind, AnyWrapKind, EmitCtx, TypeRef, ValueRef};
+
+use super::*;
+
+// c_int → AnyWrapKind, mirroring the legacy dispatch exactly: `kind > 2` was
+// rejected (→ None → 0); `1`/`2` select RecordBox/EnumBox; every other accepted
+// value (0, and — as the legacy `else` did — any negative) is NonBox.
+#[inline]
+fn any_wrap_kind_from(kind: c_int) -> Option<AnyWrapKind> {
+    match kind {
+        _ if kind > 2 => None,
+        1 => Some(AnyWrapKind::RecordBox),
+        2 => Some(AnyWrapKind::EnumBox),
+        _ => Some(AnyWrapKind::NonBox),
+    }
+}
+
+// c_int → AnyUnwrapKind (legacy `kind > 2` reject; `2` → Record, `1` →
+// F64Promote, else Standard).
+#[inline]
+fn any_unwrap_kind_from(kind: c_int) -> Option<AnyUnwrapKind> {
+    match kind {
+        _ if kind > 2 => None,
+        2 => Some(AnyUnwrapKind::Record),
+        1 => Some(AnyUnwrapKind::F64Promote),
+        _ => Some(AnyUnwrapKind::Standard),
+    }
+}
+
+// c_int → AnyTryUnwrapKind (legacy `kind > 1` reject; `1` → F64Promote, else
+// Standard).
+#[inline]
+fn any_try_unwrap_kind_from(kind: c_int) -> Option<AnyTryUnwrapKind> {
+    match kind {
+        _ if kind > 1 => None,
+        1 => Some(AnyTryUnwrapKind::F64Promote),
+        _ => Some(AnyTryUnwrapKind::Standard),
+    }
+}
+
+// Nullable boundary type handle → Option<TypeRef> (None on NULL). Branch-specific
+// type handles (target / box_layout / record_struct) are null for the kinds that
+// do not use them; the engine arm that needs one rejects None.
+#[inline]
+fn opt_type(p: RyTypeRef) -> Option<TypeRef> {
+    if p.is_null() {
+        None
+    } else {
+        Some(TypeRef(as_type(p)))
+    }
+}
+
+// Resolve a nullable handle id → Option<ValueRef> (None when the id resolves to
+// NULL, i.e. the absent descriptor / expected-desc for the kinds that omit it).
+#[inline]
+unsafe fn opt_value_id(c: &EmitCtx, id: RyValueId) -> Option<ValueRef> {
+    let v = as_value(resolve(c, id));
+    if v.is_null() {
+        None
+    } else {
+        Some(ValueRef(v))
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_any_wrap(
+    ctx: *mut RyEmitCtx,
+    desc: *const RyAnyWrapDesc,
+) -> RyValueId {
+    if ctx.is_null() || desc.is_null() {
+        return 0;
+    }
+    let c = cx(ctx);
+    if c.context.is_null() || c.module.is_null() || c.builder.is_null() || (*desc).any_ty.is_null()
+    {
+        return 0;
+    }
+    let kind = match any_wrap_kind_from((*desc).kind) {
+        Some(k) => k,
+        None => return 0,
+    };
+    let val = as_value(resolve(c, (*desc).val_id));
+    if val.is_null() {
+        return 0;
+    }
+    let d = AnyWrap {
+        kind,
+        target_tag: (*desc).target_tag,
+        val: ValueRef(val),
+        do_collection_retain: (*desc).do_collection_retain != 0,
+        do_str_retain: (*desc).do_str_retain != 0,
+        descriptor: opt_value_id(c, (*desc).descriptor_id),
+        box_layout_ty: opt_type((*desc).box_layout_ty),
+        box_data_size: (*desc).box_data_size,
+        any_ty: TypeRef(as_type((*desc).any_ty)),
+    };
+    match c.any_wrap(&d) {
+        Some(v) => intern(c, to_ry_value(v.0)),
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_any_unwrap(
+    ctx: *mut RyEmitCtx,
+    desc: *const RyAnyUnwrapDesc,
+) -> RyValueId {
+    if ctx.is_null() || desc.is_null() {
+        return 0;
+    }
+    let c = cx(ctx);
+    if c.context.is_null() || c.module.is_null() || c.builder.is_null() || (*desc).any_ty.is_null()
+    {
+        return 0;
+    }
+    let kind = match any_unwrap_kind_from((*desc).kind) {
+        Some(k) => k,
+        None => return 0,
+    };
+    let any_val = as_value(resolve(c, (*desc).any_val_id));
+    if any_val.is_null() {
+        return 0;
+    }
+    let d = AnyUnwrap {
+        kind,
+        any_val: ValueRef(any_val),
+        any_ty: TypeRef(as_type((*desc).any_ty)),
+        target_ty: opt_type((*desc).target_ty),
+        expected_tag: (*desc).expected_tag,
+        do_collection_retain: (*desc).do_collection_retain != 0,
+        do_str_retain: (*desc).do_str_retain != 0,
+        mismatch_msg: (*desc).mismatch_msg,
+        mismatch_global_name: (*desc).mismatch_global_name,
+        expected_desc: opt_value_id(c, (*desc).expected_desc_id),
+        box_layout_ty: opt_type((*desc).box_layout_ty),
+        record_struct_ty: opt_type((*desc).record_struct_ty),
+        desc_mismatch_msg: (*desc).desc_mismatch_msg,
+        desc_mismatch_global_name: (*desc).desc_mismatch_global_name,
+    };
+    match c.any_unwrap(&d) {
+        Some(v) => intern(c, to_ry_value(v.0)),
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_any_try_unwrap(
+    ctx: *mut RyEmitCtx,
+    desc: *const RyAnyTryUnwrapDesc,
+) -> RyValueId {
+    if ctx.is_null() || desc.is_null() {
+        return 0;
+    }
+    let c = cx(ctx);
+    if c.context.is_null()
+        || c.module.is_null()
+        || c.builder.is_null()
+        || (*desc).any_ty.is_null()
+        || (*desc).res_ty.is_null()
+        || (*desc).error_ty.is_null()
+    {
+        return 0;
+    }
+    let kind = match any_try_unwrap_kind_from((*desc).kind) {
+        Some(k) => k,
+        None => return 0,
+    };
+    let any_val = as_value(resolve(c, (*desc).any_val_id));
+    let err_msg_str = as_value(resolve(c, (*desc).err_msg_str_id));
+    if any_val.is_null() || err_msg_str.is_null() {
+        return 0;
+    }
+    let d = AnyTryUnwrap {
+        kind,
+        any_val: ValueRef(any_val),
+        any_ty: TypeRef(as_type((*desc).any_ty)),
+        res_ty: TypeRef(as_type((*desc).res_ty)),
+        error_ty: TypeRef(as_type((*desc).error_ty)),
+        target_ty: opt_type((*desc).target_ty),
+        expected_tag: (*desc).expected_tag,
+        do_collection_retain: (*desc).do_collection_retain != 0,
+        do_str_retain: (*desc).do_str_retain != 0,
+        err_msg_str: ValueRef(err_msg_str),
+    };
+    match c.any_try_unwrap(&d) {
+        Some(v) => intern(c, to_ry_value(v.0)),
+        None => 0,
+    }
+}
