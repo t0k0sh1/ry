@@ -9,7 +9,7 @@
 //! (#1949); do NOT alter without updating api.h and cast_helpers.hpp. May depend
 //! on `core` (abi → core); the reverse (`core → abi`) is forbidden (#2057).
 
-use std::ffi::{c_char, c_int, c_void, CStr};
+use std::ffi::{c_char, c_int, c_void};
 
 use llvm_sys::prelude::*;
 
@@ -23,9 +23,13 @@ use crate::core::EmitCtx;
 // `crate::abi::*`.
 mod arc;
 pub use arc::*;
+mod bounds;
+pub use bounds::*;
 mod control_flow;
 mod lifecycle;
 mod option;
+mod result;
+mod runtime_call;
 
 // =============================================================
 // Opaque handle types (mirror api.h).
@@ -338,12 +342,8 @@ pub(crate) unsafe fn resolve(c: &EmitCtx, id: RyValueId) -> RyValueRef {
     to_ry_value(c.values[id as usize])
 }
 
-// Borrow C-string bytes without the NUL (empty slice on NULL).
-#[inline]
-pub(crate) unsafe fn cstr_bytes<'a>(p: *const c_char) -> &'a [u8] {
-    if p.is_null() {
-        b""
-    } else {
-        CStr::from_ptr(p).to_bytes()
-    }
-}
+// `cstr_bytes` moved to `core` (#2060) — a pure `CStr` primitive used by the
+// bounds engine, which now lives in core-role `bounds.rs`. Re-exported here so
+// legacy in-crate modules still reaching it through `crate::abi::*` (e.g.
+// `any.rs`) keep resolving.
+pub(crate) use crate::core::cstr_bytes;

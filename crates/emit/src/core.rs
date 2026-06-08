@@ -7,7 +7,7 @@
 //! is on `llvm_sys` + `std`.
 
 use std::collections::HashMap;
-use std::ffi::{c_char, CString};
+use std::ffi::{c_char, CStr, CString};
 
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
@@ -69,11 +69,26 @@ pub(crate) struct FunctionRef(pub(crate) LLVMValueRef);
 #[derive(Clone, Copy)]
 pub(crate) struct TypeRef(pub(crate) LLVMTypeRef);
 
+/// Rust-native typed handle to an LLVM function type (mirrors the boundary
+/// `RyFuncTypeRef`; distinct from `TypeRef` at the engine API, though both wrap
+/// an `LLVMTypeRef`).
+#[derive(Clone, Copy)]
+pub(crate) struct FuncTypeRef(pub(crate) LLVMTypeRef);
+
 /// ARC atomic mode for retain / release.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Atomicity {
     NonAtomic,
     Atomic,
+}
+
+/// List vs array selector for the bounds-error message (mirrors the boundary
+/// `RY_BOUNDS_LIST` / `RY_BOUNDS_ARRAY` constants; the abi layer maps the
+/// `c_int` kind to this before calling the engine).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BoundsKind {
+    List,
+    Array,
 }
 
 // LLVM type accessors.
@@ -117,6 +132,19 @@ pub(crate) fn cname3(a: &[u8], b: &[u8], c: &[u8]) -> CString {
     v.extend_from_slice(b);
     v.extend_from_slice(c);
     CString::new(v).unwrap()
+}
+
+// Borrow C-string bytes without the NUL (empty slice on NULL). A pure `CStr`
+// primitive (no `EmitCtx` / intern), used by the prefix-derived name builders
+// in the bounds engine. The abi layer re-exports it for legacy in-crate callers
+// that still reach it via `crate::abi::*`.
+#[inline]
+pub(crate) unsafe fn cstr_bytes<'a>(p: *const c_char) -> &'a [u8] {
+    if p.is_null() {
+        b""
+    } else {
+        CStr::from_ptr(p).to_bytes()
+    }
 }
 
 // Module::getOrInsertFunction equivalent: reuse the existing same-named

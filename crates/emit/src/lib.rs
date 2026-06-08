@@ -16,31 +16,38 @@
 // Module layout (#2057 — abi/ffi/core layering with arc as the pilot; builds on
 // the #2025 single-file split. #2059 extended the migration to control_flow /
 // option / lifecycle and moved each migrated op's externs into the `abi/`
-// directory):
+// directory; #2060 migrated bounds / result / runtime_call):
 //   - `abi`   : the C/C++ emission boundary — opaque handle types, scalar / enum
 //               typedefs, descriptor structs, layout assertions, and the
 //               plumbing that exists because C++ calls in (`cx`, `intern` /
-//               `resolve`, handle casts, `cstr_bytes`). Each migrated op's
-//               `#[no_mangle]` externs live in a child module `abi::<op>`
-//               (`abi/arc.rs`, `abi/control_flow.rs`, `abi/option.rs`,
-//               `abi/lifecycle.rs`) that resolves / translates and calls the
-//               matching core method.
+//               `resolve`, handle casts). `cstr_bytes` lives in `core` (a pure
+//               `CStr` primitive used by the bounds engine) and is re-exported
+//               here for legacy callers. Each migrated op's `#[no_mangle]`
+//               externs live in a child module `abi::<op>` (`abi/arc.rs`,
+//               `abi/bounds.rs`, `abi/control_flow.rs`, `abi/lifecycle.rs`,
+//               `abi/option.rs`, `abi/result.rs`, `abi/runtime_call.rs`) that
+//               resolves / translates and calls the matching core method.
 //   - `core`  : the abi-independent IR generation engine — `EmitCtx` (+ its
 //               `new` constructor), the Rust-native `ValueRef` / `Atomicity` /
-//               `BasicBlockRef` / `FunctionRef` / `TypeRef` handles, basic-IR
-//               type constructors, name builders, module-global lookup, layout
-//               constants, libc / runtime-error / ARC-alloc emitters. Must NOT
-//               reference `abi` (the `core⇏abi` invariant).
+//               `BasicBlockRef` / `FunctionRef` / `TypeRef` / `FuncTypeRef`
+//               handles + the `BoundsKind` enum, basic-IR type constructors,
+//               name builders (`cstr_bytes` / `cname_pfx`), module-global
+//               lookup, layout constants, libc / runtime-error / ARC-alloc
+//               emitters. Must NOT reference `abi` (the `core⇏abi` invariant).
 //   - `ffi`   : the Rust-native public surface — re-exports `EmitCtx` /
 //               `ValueRef` / `Atomicity` from `core`. The convergence point
 //               where the C++ path (via `abi`) and the Rust-direct path meet.
 //               Provisional name (a holistic rename is deferred to #2022).
 //   - migrated core-role op modules, each an `impl EmitCtx` over the core engine
-//     only (no `use crate::abi`): `arc`, `control_flow`, `option`. `lifecycle`
+//     only (no `use crate::abi`): `arc`, `bounds`, `control_flow`, `option`,
+//     `runtime_call`, and `result`. `result` splits asymmetrically — only
+//     `build_error_from_runtime` is a core method here; `result_branch` keeps its
+//     orchestration in `abi/result.rs` because its ok/err builders are re-entrant
+//     C callbacks that cannot cross into a `&mut self` method (#2060). `lifecycle`
 //     emits no IR, so its only core part (`EmitCtx::new`) lives in `core` and it
-//     has no core-role module. The not-yet-migrated ops — `bounds`, `result`,
-//     `runtime_call`, `collection`, `cow`, `any` — remain legacy modules owning
-//     their own externs and still `use crate::abi`.
+//     has no core-role module. The not-yet-migrated ops — `collection`, `cow`,
+//     `any` — remain legacy modules owning their own externs and still
+//     `use crate::abi`.
 //
 // Dependency direction is one-way `abi → core`, with `ffi` re-exporting the
 // `core` surface. The `#[no_mangle] extern "C"` boundary functions are exported

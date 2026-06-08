@@ -4,7 +4,6 @@ use llvm_sys::core::*;
 use llvm_sys::LLVMIntPredicate;
 
 use crate::abi::*;
-use crate::bounds::*;
 use crate::core::*;
 
 #[no_mangle]
