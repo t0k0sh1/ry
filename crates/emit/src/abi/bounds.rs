@@ -1,10 +1,11 @@
 //! abi::bounds — C boundary entry points for index bounds-checking. Each
 //! resolves the u32 ids / maps the `c_int` kind to the Rust-native `BoundsKind`,
 //! calls the `core` `EmitCtx` method, and interns any produced value (intern /
-//! resolve are abi-side; the engine methods never touch them). The
-//! negative-index-wrap and bounds-error externs stay reachable in-crate: legacy
-//! `collection.rs` still calls them through `crate::abi::*` (the `pub use
-//! bounds::*` in `abi.rs`), pending its own migration in #2061.
+//! resolve are abi-side; the engine methods never touch them). Since #2061
+//! migrated `collection` to call `negative_index_wrap` / `bounds_error` as engine
+//! methods directly, these externs have no in-crate caller and the `pub use
+//! bounds::*` re-export in `abi.rs` was dropped; the C++ path is now their only
+//! consumer (the `#[no_mangle]` symbols stay exported).
 
 use std::ffi::{c_char, c_int};
 

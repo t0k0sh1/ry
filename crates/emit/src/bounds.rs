@@ -4,8 +4,9 @@
 //! bounds-error emit sequence (`fprintf(stderr)` + `_Exit(1)` + `unreachable`).
 //! The C++ path enters through the `abi::bounds` externs, which resolve u32 ids,
 //! map the `c_int` kind to `BoundsKind`, and intern any result. `bounds_check`
-//! calls the wrap / error methods directly (no id bridge); legacy `collection.rs`
-//! still reaches the wrap / error externs through `crate::abi::*`.
+//! calls the wrap / error methods directly (no id bridge); since #2061 the
+//! migrated `collection` methods reach them the same way (the `crate::abi::*`
+//! re-export they used to go through was dropped).
 
 use std::ffi::{c_char, CStr};
 
