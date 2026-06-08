@@ -17,15 +17,16 @@ use crate::core::EmitCtx;
 
 // Per-op C boundary entry points live in child modules (one per migrated op),
 // each calling the matching `core` engine method on `EmitCtx`. The cdylib
-// exports the `#[no_mangle]` symbols regardless of module path; the extra
-// `pub use arc::*` keeps the one in-crate name-caller (`cow.rs` →
-// `ry_emit_arc_retain`, pending its own migration in #2062) resolving through
-// `crate::abi::*`.
+// exports the `#[no_mangle]` symbols regardless of module path. No `pub use` is
+// needed: since #2062 migrated `cow` to call `arc_retain` / `arc_release` as
+// engine methods directly, no in-crate module calls another op's externs by
+// name. The last such re-export — `pub use arc::*` kept solely for `cow` — was
+// dropped here, the same cleanup #2061 did for `pub use bounds::*`.
 mod arc;
-pub use arc::*;
 mod bounds;
 mod collection;
 mod control_flow;
+mod cow;
 mod lifecycle;
 mod option;
 mod result;

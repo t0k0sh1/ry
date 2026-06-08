@@ -101,6 +101,16 @@ pub(crate) enum BoundsKind {
     Array,
 }
 
+/// Collection kind selector for the Copy-on-Write clone (mirrors the boundary
+/// `RY_COW_LIST` / `RY_COW_MAP` / `RY_COW_SET` constants; the abi layer maps the
+/// `c_int` kind to this before calling the engine).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CowKind {
+    List,
+    Map,
+    Set,
+}
+
 // LLVM type accessors.
 #[inline]
 pub(crate) unsafe fn i1_type(c: LLVMContextRef) -> LLVMTypeRef {
