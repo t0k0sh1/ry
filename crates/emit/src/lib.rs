@@ -7,7 +7,8 @@
 // wrappers in include/ry/llvm_emit/cast_helpers.hpp.
 //
 // Build-time invariants (verified whenever the cdylib compiles):
-//   - the 28 boundary symbols are exported (`nm -D` / `otool -L`),
+//   - every api.h boundary symbol is exported, plus the test-only
+//     `ry_emit_test_header_layout` introspection symbol (#2071, 28 + 1 today),
 //   - the FFI types compile against api.h (sizeof / repr alignment),
 //   - corrosion-rs is wired correctly into the CMake build,
 //   - `-undefined dynamic_lookup` link arg flows through on macOS,
