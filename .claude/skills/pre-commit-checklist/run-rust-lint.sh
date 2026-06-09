@@ -32,4 +32,9 @@ cargo fmt --manifest-path "$MANIFEST" -- --check
 echo "==> cargo clippy -p emit -- -D warnings" >&2
 cargo clippy -p emit -- -D warnings
 
+# Structural gate (#2069): the abi boundary layer must emit zero LLVM IR. Pure
+# bash/grep — no LLVM needed. Mirrors the CI `lint` job step of the same name.
+echo "==> check-emit-abi-no-ir.sh (abi layer emits no IR)" >&2
+bash scripts/check-emit-abi-no-ir.sh
+
 echo "==> Rust lint OK" >&2

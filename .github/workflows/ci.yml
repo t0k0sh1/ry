@@ -51,6 +51,18 @@ jobs:
           # documented carve-out for `void *user_ctx` in RyBuildValueFn /
           # ry_emit_result_branch.
           bash scripts/check-llvm-emit-abi-header.sh include/ry/llvm_emit/api.h
+      - name: Check emit abi layer emits no LLVM IR (#2069)
+        run: |
+          # Enforces #2069 AC: the abi boundary layer (crates/emit/src/abi.rs +
+          # abi/**) must contain ZERO LLVM IR generation — it is a pure
+          # mechanical-translation shell (resolve ids, wrap handles, build
+          # closures, intern results) over the `core` engine, which owns all IR
+          # emission. Forbids LLVMBuild* / basic-block ops / phi-incoming /
+          # `llvm_sys::core`; allows `use llvm_sys::prelude` (type-cast handles).
+          # Pure bash/grep/awk — no toolchain needed, like the api.h header lint
+          # above. Keeps the abi layer uniform and deletable as ops migrate
+          # (#2023). The same script is the local reproduction.
+          bash scripts/check-emit-abi-no-ir.sh
       - name: Check for banned direct exit() calls in runtime
         run: |
           # Trap-path runtime functions must use ry_runtime_trap_exit()
