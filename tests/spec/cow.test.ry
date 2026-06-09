@@ -122,3 +122,59 @@ fn copyOnWriteTests():
       remove(b, 2)
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(2)
+
+  @describe("same-type field swap (#2071)")
+  fn sameTypeFieldSwapTests():
+    # Read back lengths AND values after a CoW clone. Same-type field swaps in
+    # the internal headers (List len<->cap, Map keys<->vals, Set elems<->buckets
+    # — all 8-byte fields) are invisible to the cross-language layout parity
+    # guard (tests/test_header_layout.cpp); only exercising the deep-copy and
+    # verifying the result catches them. Under ASan in CI a keys<->vals /
+    # elems<->buckets swap also trips the str retain loop on a non-pointer field.
+    @it("should preserve len and every value when CoW-ing a list with cap > len")
+    fn shouldPreserveLenAndValuesWhenCapExceedsLen():
+      # Grow cap beyond len while unique (append reallocates with cap doubling),
+      # so a len<->cap swap makes the clone report cap instead of len.
+      a = [1]
+      append(a, 2)
+      append(a, 3)
+      b = a
+      b[0] = 99
+      expect(a).toHaveLen(3)
+      expect(a[0]).toEq(1)
+      expect(a[1]).toEq(2)
+      expect(a[2]).toEq(3)
+      expect(b).toHaveLen(3)
+      expect(b[0]).toEq(99)
+      expect(b[1]).toEq(2)
+      expect(b[2]).toEq(3)
+
+    @it("should preserve key->value association when CoW-ing a str-keyed map")
+    fn shouldPreserveKeyValueAssociationWhenCowingStrKeyedMap():
+      # str keys (ARC) + int values (non-ARC): a keys<->vals swap mis-copies the
+      # buffers and trips the key retain loop on the int field.
+      a = {"one": 1, "two": 2}
+      b = a
+      b["three"] = 3
+      expect(a).toHaveLen(2)
+      expect(a["one"]).toEq(1)
+      expect(a["two"]).toEq(2)
+      expect(b).toHaveLen(3)
+      expect(b["one"]).toEq(1)
+      expect(b["two"]).toEq(2)
+      expect(b["three"]).toEq(3)
+
+    @it("should preserve every element when CoW-ing a str set")
+    fn shouldPreserveEveryElementWhenCowingStrSet():
+      # str elements (ARC): an elems<->buckets swap mis-copies and trips the
+      # element retain loop on the bucket array.
+      a = {"a", "b"}
+      b = a
+      add(b, "c")
+      expect(a).toHaveLen(2)
+      expect("a" in a).toEq(true)
+      expect("b" in a).toEq(true)
+      expect(b).toHaveLen(3)
+      expect("a" in b).toEq(true)
+      expect("b" in b).toEq(true)
+      expect("c" in b).toEq(true)

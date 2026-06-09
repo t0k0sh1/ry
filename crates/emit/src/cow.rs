@@ -176,21 +176,17 @@ impl EmitCtx {
         let ptr_ty = ptr_type(context);
         let arc_header_ty = arc_header_type(context);
 
-        // Anonymous mirrors of CodeGen's listHeaderTy_ / mapHeaderTy_ / setHeaderTy_
-        // (src/codegen.cpp). Field order MUST stay in sync.
+        // The header struct shape is single-sourced in `core::header_fields`
+        // (mirrors CodeGen's listHeaderTy_/mapHeaderTy_/setHeaderTy_ in
+        // src/codegen.cpp); the C++<->Rust sync is mechanically guarded by the
+        // parity test (tests/test_header_layout.cpp via ry_emit_test_header_layout)
+        // and the same-type-swap behavioral coverage in tests/spec/cow.test.ry
+        // (#2071). The field *indices* used for GEP below stay local to cow
+        // (data = elems/vals, key = keys) — only the struct shape is shared.
         let (header_ty, data_field_idx, key_field_idx): (LLVMTypeRef, u32, u32) = match d.kind {
-            CowKind::List => {
-                let mut e = [i64_ty, i64_ty, ptr_ty];
-                (LLVMStructTypeInContext(context, e.as_mut_ptr(), 3, 0), 2, 0)
-            }
-            CowKind::Map => {
-                let mut e = [i64_ty, i64_ty, ptr_ty, ptr_ty, i64_ty, ptr_ty];
-                (LLVMStructTypeInContext(context, e.as_mut_ptr(), 6, 0), 3, 2)
-            }
-            CowKind::Set => {
-                let mut e = [i64_ty, i64_ty, ptr_ty, i64_ty, ptr_ty];
-                (LLVMStructTypeInContext(context, e.as_mut_ptr(), 5, 0), 2, 0)
-            }
+            CowKind::List => (build_header_struct(context, HeaderKind::List), 2, 0),
+            CowKind::Map => (build_header_struct(context, HeaderKind::Map), 3, 2),
+            CowKind::Set => (build_header_struct(context, HeaderKind::Set), 2, 0),
         };
 
         let dl = LLVMGetModuleDataLayout(module);
