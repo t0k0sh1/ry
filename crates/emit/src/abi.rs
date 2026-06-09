@@ -32,6 +32,9 @@ mod lifecycle;
 mod option;
 mod result;
 mod runtime_call;
+// Test-only: exposes core::header_fields for the cross-language header-layout
+// parity test (#2071). IR-free (reads pure data only) — see the module doc.
+mod test_introspect;
 
 // =============================================================
 // Opaque handle types (mirror api.h).

@@ -276,11 +276,69 @@ pub(crate) unsafe fn i8_type(c: LLVMContextRef) -> LLVMTypeRef {
     LLVMInt8TypeInContext(c)
 }
 
-// Anonymous {i64, i64} ARC header struct.
+// === Internal collection / ARC header layout — single source of truth ===
+//
+// The list/map/set/arc header structs are built here from one field-kind table
+// so that BOTH the emitted LLVM struct (cow.rs `cow_ensure_unique`, arc.rs, and
+// this module) and the cross-language layout guard (the
+// `ry_emit_test_header_layout` test-extern in abi.rs, asserted against C++'s
+// canonical listHeaderTy_/mapHeaderTy_/setHeaderTy_/arcHeaderTy_ in
+// tests/test_header_layout.cpp) are driven by the *same* definition. A drift vs.
+// the C++ named structs (src/codegen.cpp:57-61) was previously guarded only by a
+// "Field order MUST stay in sync" comment; it is now caught mechanically by that
+// parity test plus the same-type-swap behavioral coverage in
+// tests/spec/cow.test.ry (#2071).
+//
+// Keep `build_header_struct` byte-identical to the previous inline
+// `LLVMStructTypeInContext` calls — it feeds a hot codegen path whose IR is
+// golden-pinned (codegen-llvm-ir-conventions.md "IR-byte-identical").
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HdrField {
+    I64,
+    Ptr,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HeaderKind {
+    List,
+    Map,
+    Set,
+    Arc,
+}
+
+// The field kinds of each header, mirroring src/codegen.cpp:57-61.
+//   List {len:i64, cap:i64, data:ptr}
+//   Map  {len:i64, cap:i64, keys:ptr, vals:ptr, bucket_count:i64, buckets:ptr}
+//   Set  {len:i64, cap:i64, elems:ptr, bucket_count:i64, buckets:ptr}
+//   Arc  {strong:i64, weak:i64}
+pub(crate) fn header_fields(kind: HeaderKind) -> &'static [HdrField] {
+    use HdrField::{Ptr, I64};
+    match kind {
+        HeaderKind::List => &[I64, I64, Ptr],
+        HeaderKind::Map => &[I64, I64, Ptr, Ptr, I64, Ptr],
+        HeaderKind::Set => &[I64, I64, Ptr, I64, Ptr],
+        HeaderKind::Arc => &[I64, I64],
+    }
+}
+
+// Build the LLVM literal struct for a header from the single-sourced field list.
+pub(crate) unsafe fn build_header_struct(c: LLVMContextRef, kind: HeaderKind) -> LLVMTypeRef {
+    let fields = header_fields(kind);
+    let mut elems: Vec<LLVMTypeRef> = Vec::with_capacity(fields.len());
+    for f in fields {
+        elems.push(match f {
+            HdrField::I64 => i64_type(c),
+            HdrField::Ptr => ptr_type(c),
+        });
+    }
+    LLVMStructTypeInContext(c, elems.as_mut_ptr(), elems.len() as u32, 0)
+}
+
+// {i64, i64} ARC header struct (single-sourced via `header_fields`).
 #[inline]
 pub(crate) unsafe fn arc_header_type(c: LLVMContextRef) -> LLVMTypeRef {
-    let mut elems = [i64_type(c), i64_type(c)];
-    LLVMStructTypeInContext(c, elems.as_mut_ptr(), 2, 0)
+    build_header_struct(c, HeaderKind::Arc)
 }
 
 // Inttoptr the process-global ARC live-count address (captured at JIT compile
