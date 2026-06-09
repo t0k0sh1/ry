@@ -1,17 +1,20 @@
-//! abi::result — C boundary for Result emission. `build_error_from_runtime` is a
-//! thin shell over the `core` engine method (resolve the type handle, intern the
-//! aggregate). `result_branch` keeps its orchestration here: its ok/err builders
-//! are C function pointers (`RyBuildValueFn`) that return interned `RyValueId`s
-//! and re-enter the emitter through this boundary, so the callback invocation and
-//! the intern/resolve juggling are irreducibly abi-side — a `&mut self` core
-//! method would alias the re-entrant `cx(ctx)` borrow across the extern call
-//! (#2060 design). The builder-derived parent rule applies (#1969).
+//! abi::result — C boundary for Result emission. Both entry points are thin
+//! shells over `core`: `ry_emit_build_error_from_runtime` resolves the type
+//! handle and interns the aggregate; `ry_emit_result_branch` validates inputs,
+//! resolves `is_err`, wraps each C builder callback (`RyBuildValueFn`) into a
+//! `FnMut() -> ValueRef` closure that re-enters the emitter and resolves the
+//! returned id, then delegates the IR emission to `core::emit_result_branch` and
+//! interns the phi. The closure invocation + intern/resolve juggling is the only
+//! abi-side work; the LLVM IR (BB scaffold + cond-br + phi) lives in `core`,
+//! which holds no `&mut EmitCtx` borrow so the re-entrant `cx(ctx)` in each
+//! closure does not alias a live receiver across the extern call (#2069 resolves
+//! the #2060 split). The builder-derived parent rule applies in `core`
+//! (#1968 / #1969).
 
 use std::ffi::{c_char, c_void};
 
-use llvm_sys::core::*;
-
-use crate::core::TypeRef;
+use crate::core::{TypeRef, ValueRef};
+use crate::result::emit_result_branch;
 
 use super::*;
 
@@ -58,37 +61,33 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     if context.is_null() || b.is_null() {
         return 0;
     }
-    let is_err = as_value(resolve(cx(ctx), is_err_id));
-    let res_ty = as_type(res_ty);
-    // Builder-derived parent function (builder-derived parent rule).
-    let insert_bb = LLVMGetInsertBlock(b);
-    if insert_bb.is_null() {
-        return 0;
-    }
-    let fn_v = LLVMGetBasicBlockParent(insert_bb);
-    let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.ok".as_ptr());
-    let err_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.err".as_ptr());
-    let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.merge".as_ptr());
-    LLVMBuildCondBr(b, is_err, err_bb, ok_bb);
-
-    LLVMPositionBuilderAtEnd(b, ok_bb);
-    let ok_id = build_ok(user_ctx);
-    let ok_val = as_value(resolve(cx(ctx), ok_id));
-    LLVMBuildBr(b, merge_bb);
-    // Re-capture the incoming block: the callback may have advanced the builder
-    // through additional BBs (load-bearing).
-    let ok_in = LLVMGetInsertBlock(b);
-
-    LLVMPositionBuilderAtEnd(b, err_bb);
-    let err_id = build_err(user_ctx);
-    let err_val = as_value(resolve(cx(ctx), err_id));
-    LLVMBuildBr(b, merge_bb);
-    let err_in = LLVMGetInsertBlock(b);
-
-    LLVMPositionBuilderAtEnd(b, merge_bb);
-    let phi = LLVMBuildPhi(b, res_ty, c"result".as_ptr());
-    let mut vals = [ok_val, err_val];
-    let mut blocks = [ok_in, err_in];
-    LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
-    intern(cx(ctx), to_ry_value(phi))
+    let is_err = ValueRef(as_value(resolve(cx(ctx), is_err_id)));
+    // Wrap each re-entrant C builder into a closure: call the callback (which
+    // re-enters the emitter and emits the arm's value IR), THEN resolve the
+    // returned id to a value. The two-step body is load-bearing — inlining
+    // `resolve(cx(ctx), build_ok(user_ctx))` would hold the `cx(ctx)` borrow
+    // across the callback (args evaluate left-to-right), aliasing the re-entrant
+    // borrow. `core::emit_result_branch` holds no EmitCtx borrow, so each
+    // closure's transient `cx(ctx)` is the only live receiver borrow.
+    let mut do_ok = move || -> ValueRef {
+        unsafe {
+            let ok_id = build_ok(user_ctx);
+            ValueRef(as_value(resolve(cx(ctx), ok_id)))
+        }
+    };
+    let mut do_err = move || -> ValueRef {
+        unsafe {
+            let err_id = build_err(user_ctx);
+            ValueRef(as_value(resolve(cx(ctx), err_id)))
+        }
+    };
+    let phi = emit_result_branch(
+        b,
+        context,
+        is_err,
+        TypeRef(as_type(res_ty)),
+        &mut do_ok,
+        &mut do_err,
+    );
+    intern(cx(ctx), to_ry_value(phi.0))
 }
