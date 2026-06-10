@@ -2,9 +2,11 @@
 //! note the `ffi` module name is the Rust-native surface and is provisional,
 //! pending #2022). Owns the locked C type contract — opaque handle types,
 //! scalar/enum typedefs, descriptor structs, the compile-time layout assertions
-//! (#1995) — plus the boundary plumbing that exists *because C++ calls in*: `cx`
-//! (opaque handle → `EmitCtx`), `intern` / `resolve` (the u32-id ↔ value
-//! bridge), the opaque-handle casts, and `cstr_bytes`. Every C item mirrors
+//! (#1995) — plus the boundary plumbing that exists *because C++ calls in*: the
+//! confined `cx` reify (opaque handle → `EmitCtx`, walled into the `ctx_access`
+//! submodule and reached only via `with_ctx` / `checked_cx`, #2081), `intern` /
+//! `resolve` (the u32-id ↔ value bridge), the opaque-handle casts, and
+//! `cstr_bytes`. Every C item mirrors
 //! `include/ry/llvm_emit/api.h` byte-for-byte — the C boundary is locked
 //! (#1949); do NOT alter without updating api.h and cast_helpers.hpp. May depend
 //! on `core` (abi → core); the reverse (`core → abi`) is forbidden (#2057).
@@ -367,17 +369,89 @@ const _: () =
     assert!(std::mem::size_of::<RyValueId>() == 4 && std::mem::align_of::<RyValueId>() == 4);
 
 // =============================================================
-// Boundary plumbing — exists because C++ calls in. `cx` reifies the opaque
-// `*mut RyEmitCtx` into the concrete `EmitCtx` (owned by `core`); `intern` /
-// `resolve` bridge the u32-id handle space the C ABI traffics in to/from raw
-// values; the `as_*` / `to_ry_*` casts reinterpret opaque boundary handles as
-// llvm-sys refs. All of this is abi → core (the reverse is forbidden, #2057).
+// Boundary plumbing — exists because C++ calls in. The opaque `*mut RyEmitCtx`
+// is reified into the concrete `EmitCtx` (owned by `core`) ONLY inside the
+// `ctx_access` submodule below, which confines the single arbitrary-lifetime
+// cast to one audited site and exports just the two scoped / validated
+// accessors (#2081). `intern` / `resolve` bridge the u32-id handle space the C
+// ABI traffics in to/from raw values; the `as_*` / `to_ry_*` casts reinterpret
+// opaque boundary handles as llvm-sys refs. All of this is abi → core (the
+// reverse is forbidden, #2057).
 // =============================================================
 
-#[inline]
-pub(crate) unsafe fn cx<'a>(p: *mut RyEmitCtx) -> &'a mut EmitCtx {
-    &mut *(p as *mut EmitCtx)
+// EmitCtx reification, confined (#2081). The arbitrary-lifetime `*mut RyEmitCtx`
+// → `&mut EmitCtx` cast (`cx`) is fully private to this module; `abi::result` /
+// `abi::lifecycle` / each `abi::<op>` are SIBLINGS of `ctx_access`, not
+// descendants, so they cannot name `cx` — the only way to touch an `EmitCtx` is
+// through `with_ctx` (scoped) or `checked_cx` (validated), both exported below.
+// This shrinks the alias-audit surface to a single reify site. It does NOT make
+// aliasing impossible: `checked_cx` still returns an escaping `&mut`, and either
+// accessor can be nested on the same handle — the layer is "confined and locally
+// auditable", not "alias-proof". New `abi/<op>.rs` files MUST reach the context
+// through these accessors, never a raw reify.
+mod ctx_access {
+    use super::RyEmitCtx;
+    use crate::core::EmitCtx;
+
+    // The sole arbitrary-lifetime reifier. Fully private — NO `pub`, not even
+    // `pub(super)` (which would re-expose it to the whole `abi` subtree, letting
+    // the sibling op modules name it again and defeating the confinement). The
+    // unbound `'a` is unconnected to the source pointer, so two `cx(p)` calls
+    // would mint aliasing `&mut`; keeping it private forces every access through
+    // the two accessors below, each of which documents how it bounds (with_ctx)
+    // or consciously does not (checked_cx) that risk.
+    #[inline]
+    unsafe fn cx<'a>(p: *mut RyEmitCtx) -> &'a mut EmitCtx {
+        &mut *(p as *mut EmitCtx)
+    }
+
+    // Scoped accessor: binds the `&mut EmitCtx` to `f`'s invocation so the borrow
+    // cannot escape — each access is a lexically-bounded transient. The
+    // re-entrant `result_branch` path uses this to keep every borrow OUTSIDE the
+    // C builder callbacks (it resolves each arm's id in a fresh `with_ctx` AFTER
+    // the callback returns), replacing the former reliance on left-to-right
+    // argument-evaluation order with a structural borrow-scope guarantee
+    // (#2081 / #2069); `lifecycle` uses it for its NULL-guarded plumbing.
+    //
+    // Precondition: `p` MUST be non-NULL — `with_ctx` does NOT NULL-check (it has
+    // no sentinel to return), so callers guard first (`if p.is_null() { return
+    // <sentinel> }`). It does NOT make aliasing impossible either: nesting two
+    // `with_ctx` on the same handle, or raw-casting the `&mut` out of `f`, still
+    // aliases. The guarantee is "the borrow scope is visible and bounded", not
+    // "the borrow is unique".
+    #[inline]
+    pub(crate) unsafe fn with_ctx<R>(p: *mut RyEmitCtx, f: impl FnOnce(&mut EmitCtx) -> R) -> R {
+        f(cx(p))
+    }
+
+    // Validated whole-body accessor: NULL ctx / context / module / builder →
+    // `None` (→ the caller returns its sentinel). Checking all three fields is a
+    // safe superset for ops that touch only a subset (`create_basic_block` uses
+    // only `context`, `get_runtime_fn` only `module`): `ry_emit_ctx_create`
+    // always stores the caller's live module/builder/context together, so a
+    // partially-NULL ctx never arises from a supported call. The pure-plumbing
+    // entries that emit no IR (`intern` / `resolve` / `set_function`) guard
+    // `ctx.is_null()` directly and reify via `with_ctx` — they touch none of the
+    // three fields.
+    //
+    // Returns an escaping arbitrary-lifetime `&mut` — safe for the non-re-entrant
+    // op modules that hold it for one entry-point body and never re-enter. A
+    // double `checked_cx(ctx)` on the same handle WOULD alias and the borrow
+    // checker cannot see it: a conscious residual of the "confined, not
+    // alias-proof" stance (#2081).
+    #[inline]
+    pub(crate) unsafe fn checked_cx<'a>(p: *mut RyEmitCtx) -> Option<&'a mut EmitCtx> {
+        if p.is_null() {
+            return None;
+        }
+        let c = cx(p);
+        if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
+            return None;
+        }
+        Some(c)
+    }
 }
+pub(crate) use ctx_access::{checked_cx, with_ctx};
 
 // Opaque boundary handle → llvm-sys C API ref (pointer cast, this crate only).
 #[inline]
@@ -434,32 +508,12 @@ pub(crate) unsafe fn resolve(c: &EmitCtx, id: RyValueId) -> RyValueRef {
 // Shared boundary input-validation helpers (#2080). Every IR-emitting entry
 // point converts malformed input to its sentinel rather than passing an unvetted
 // handle to the `core` engine (which forwards it straight to the LLVM C API). The
-// three helpers below fold the per-op inline guard sequences that runtime_call /
-// result / any / cow each spelled out — ctx + handle validation, required-id
-// resolution, FFI-array borrow — into one shared contract so the guard policy is
-// uniform across the boundary.
+// ctx + handle validation lives in `ctx_access::checked_cx` above (co-located
+// with the confined reify it builds on, #2081); the two helpers below fold the
+// remaining per-op inline guard sequences that runtime_call / result / any / cow
+// each spelled out — required-id resolution and FFI-array borrow — into one
+// shared contract so the guard policy is uniform across the boundary.
 // =============================================================
-
-// Validate the boundary ctx + the three LLVM handles every IR-emitting entry
-// point needs, returning the reified `EmitCtx` or `None` (→ the caller returns
-// its sentinel). Checking all three fields is a safe superset for ops that touch
-// only a subset (`create_basic_block` uses only `context`, `get_runtime_fn` only
-// `module`): `ry_emit_ctx_create` always stores the caller's live
-// module/builder/context together, so a partially-NULL ctx never arises from a
-// supported call. The pure-plumbing entries that emit no IR (`intern` / `resolve`
-// / `set_function`) guard `ctx.is_null()` directly instead — they touch none of
-// the three fields.
-#[inline]
-pub(crate) unsafe fn checked_cx<'a>(p: *mut RyEmitCtx) -> Option<&'a mut EmitCtx> {
-    if p.is_null() {
-        return None;
-    }
-    let c = cx(p);
-    if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
-        return None;
-    }
-    Some(c)
-}
 
 // Resolve a value id to `Some(ValueRef)`, or `None` when it resolves to NULL
 // (sentinel id 0 / out-of-range / an interned NULL). The non-NULL intent lives at

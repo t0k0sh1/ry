@@ -6,10 +6,12 @@
 //! returned id, then delegates the IR emission to `core::emit_result_branch` and
 //! interns the phi. The closure invocation + intern/resolve juggling is the only
 //! abi-side work; the LLVM IR (BB scaffold + cond-br + phi) lives in `core`,
-//! which holds no `&mut EmitCtx` borrow so the re-entrant `cx(ctx)` in each
-//! closure does not alias a live receiver across the extern call (#2069 resolves
-//! the #2060 split). The builder-derived parent rule applies in `core`
-//! (#1968 / #1969).
+//! which holds no `&mut EmitCtx` borrow so the re-entrant `with_ctx(ctx, …)`
+//! borrow in each closure does not alias a live receiver across the extern call
+//! (#2069 resolves the #2060 split; #2081 confined the raw reify behind
+//! `with_ctx`, making the no-borrow-across-callback contract structural rather
+//! than dependent on argument evaluation order). The builder-derived parent rule
+//! applies in `core` (#1968 / #1969).
 
 use std::ffi::{c_char, c_void};
 
@@ -62,29 +64,40 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     let (Some(build_ok), Some(build_err)) = (build_ok, build_err) else {
         return 0;
     };
-    let context = cx(ctx).context;
-    let b = cx(ctx).builder;
+    // Each transient context access goes through `with_ctx` (the raw reify `cx`
+    // is now private to `abi::ctx_access`, #2081); these three mirror the former
+    // separate `cx(ctx)` borrows 1:1, preserving the guard-before-resolve order.
+    let context = with_ctx(ctx, |c| c.context);
+    let b = with_ctx(ctx, |c| c.builder);
     if context.is_null() || b.is_null() {
         return 0;
     }
-    let is_err = ValueRef(as_value(resolve(cx(ctx), is_err_id)));
+    // The explicit `unsafe` block covers the `with_ctx` closure body too (an
+    // `unsafe fn`'s implicit body-unsafe does NOT reach into nested closures, but
+    // a lexical `unsafe {}` block does), so the closure needs no inner `unsafe` —
+    // matching the do_ok / do_err blocks below.
+    let is_err = unsafe { ValueRef(as_value(with_ctx(ctx, |c| resolve(c, is_err_id)))) };
     // Wrap each re-entrant C builder into a closure: call the callback (which
     // re-enters the emitter and emits the arm's value IR), THEN resolve the
-    // returned id to a value. The two-step body is load-bearing — inlining
-    // `resolve(cx(ctx), build_ok(user_ctx))` would hold the `cx(ctx)` borrow
-    // across the callback (args evaluate left-to-right), aliasing the re-entrant
-    // borrow. `core::emit_result_branch` holds no EmitCtx borrow, so each
-    // closure's transient `cx(ctx)` is the only live receiver borrow.
+    // returned id in a fresh `with_ctx`. The two-step is now STRUCTURAL — the C
+    // builder runs entirely OUTSIDE any `with_ctx`, so no `&mut EmitCtx` borrow
+    // can span the re-entrant call. (The previous code achieved the same
+    // ordering by relying on left-to-right argument evaluation: a single
+    // `resolve(cx(ctx), build_ok(user_ctx))` would have held the `cx(ctx)` borrow
+    // across the callback. `with_ctx` makes the ordering a borrow-scope guarantee
+    // instead of an evaluation-order subtlety.) `core::emit_result_branch` itself
+    // holds no EmitCtx borrow, so each closure's transient `with_ctx` is the only
+    // live receiver borrow at callback time (#2081 / #2069).
     let mut do_ok = move || -> ValueRef {
         unsafe {
             let ok_id = build_ok(user_ctx);
-            ValueRef(as_value(resolve(cx(ctx), ok_id)))
+            with_ctx(ctx, |c| ValueRef(as_value(resolve(c, ok_id))))
         }
     };
     let mut do_err = move || -> ValueRef {
         unsafe {
             let err_id = build_err(user_ctx);
-            ValueRef(as_value(resolve(cx(ctx), err_id)))
+            with_ctx(ctx, |c| ValueRef(as_value(resolve(c, err_id))))
         }
     };
     let phi = emit_result_branch(
@@ -95,5 +108,5 @@ pub unsafe extern "C" fn ry_emit_result_branch(
         &mut do_ok,
         &mut do_err,
     );
-    intern(cx(ctx), to_ry_value(phi.0))
+    unsafe { with_ctx(ctx, |c| intern(c, to_ry_value(phi.0))) }
 }
