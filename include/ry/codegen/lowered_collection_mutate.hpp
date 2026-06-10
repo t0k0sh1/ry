@@ -109,10 +109,11 @@ lowered::ListSliceOp lowerListSlice(CodeGen &cg, llvm::Value *list_ptr,
 namespace ry::codegen::emission {
 
 // Emit a List append via the libemit boundary (ry_emit_collection_append).
-// Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have been
-// called before invoking this helper because two BBs (`app.grow`, `app.store`)
-// are created inside the current function. ARC retain on op.val (if needed by
-// the element type) must be emitted BEFORE calling this helper.
+// Precondition: the builder must be positioned within a function before
+// invoking this helper because two BBs (`app.grow`, `app.store`) are created —
+// their parent is derived from the builder's insert block. ARC retain on
+// op.val (if needed by the element type) must be emitted BEFORE calling this
+// helper.
 void emitCollectionAppend(CodeGen &cg, const lowered::CollectionAppendOp &op);
 
 // Emit a List insert via the libemit boundary (ry_emit_collection_insert).
@@ -127,8 +128,8 @@ void emitCollectionInsert(CodeGen &cg, const lowered::CollectionInsertOp &op);
 llvm::Value *emitCollectionRemoveAt(CodeGen &cg,
                                     const lowered::CollectionRemoveAtOp &op);
 
-// Emit a List slice via ry_emit_list_slice. Branchless (no new BBs), so no
-// precondition on ry_emit_ctx_set_function. Returns {count, new_data}; the
+// Emit a List slice via ry_emit_list_slice. Branchless (no new BBs), so it
+// needs no positioned parent function. Returns {count, new_data}; the
 // caller is responsible for allocating the new ARC header, storing header
 // fields, propagating type metadata, and emitting any ARC retain loop over
 // the copied elements.

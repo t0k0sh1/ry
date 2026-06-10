@@ -43,8 +43,9 @@ pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
 
 /// Emit a `Result` branch: three BBs (res.ok / res.err / res.merge) joined by a
 /// PHI, with `build_ok` / `build_err` (forwarded `user_ctx`) emitting each arm;
-/// return the interned PHI. Returns 0 on NULL inputs. Precondition:
-/// `ry_emit_ctx_set_function` must be set (three BBs are created).
+/// return the interned PHI. Returns 0 on NULL inputs. The three BBs' parent
+/// function is derived from the builder's insert block, so the builder must be
+/// positioned within a function.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_result_branch(
     ctx: *mut RyEmitCtx,

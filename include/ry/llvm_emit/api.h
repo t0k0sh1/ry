@@ -36,8 +36,8 @@
 // Stage 2-C (in progress, #1965) begins migrating the remaining lowered IR
 // ops. The first step (#1967) adds two entry points for OptionWrap —
 // ry_emit_option_wrap_some and ry_emit_option_wrap_none. Unlike the BB-
-// creating ops above, these do not require ry_emit_ctx_set_function to be
-// called first (they emit no basic blocks). getOptionType's StructType
+// creating ops above, these emit no basic blocks, so they need no positioned
+// parent function. getOptionType's StructType
 // cache stays in CodeGen for the same reason as getResultType (the
 // reverse_option_types_ map is consumed by ARC release / Any wrap on the
 // CodeGen side); opt_ty crosses the boundary as `void*`, mirroring resTy_.
@@ -175,18 +175,15 @@ typedef enum {
 typedef RyValueId (*RyBuildValueFn)(void *user_ctx);
 
 // Lifecycle. Create at the top of CodeGen::compile() and destroy on exit.
-// Categories 1 (LLVM context handles) crossed the boundary as typed opaque handles
-// in Stage 2-C / #1973: RyModuleRef / RyBuilderRef / RyContextRef /
-// RyFunctionRef replace the transitional `void *` shape from Stage 2-A.
+// The LLVM context handles cross the boundary as typed opaque handles
+// (Stage 2-C / #1973): RyModuleRef / RyBuilderRef / RyContextRef replace the
+// transitional `void *` shape from Stage 2-A. There is no current-function
+// slot: every BB-creating op derives its parent function from the builder's
+// insert block per the rule in `.claude/rules/codegen-llvm-ir-conventions.md`
+// (the former `ry_emit_ctx_set_function` setter was removed in #2083).
 RyEmitCtx *ry_emit_ctx_create(RyModuleRef module, RyBuilderRef builder,
-                              RyContextRef context,
-                              RyFunctionRef function);
+                              RyContextRef context);
 void ry_emit_ctx_destroy(RyEmitCtx *ctx);
-
-// Update the current LLVM function handle mid-compile (it changes when
-// CodeGen emits a new function body — lambdas, @parallel for thunks,
-// destructors, iterator-next bodies, etc.).
-void ry_emit_ctx_set_function(RyEmitCtx *ctx, RyFunctionRef function);
 
 // Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; every
 // other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
@@ -221,8 +218,8 @@ RyValueRef ry_emit_get_runtime_fn(RyEmitCtx *ctx, const char *name,
 // caller's subsequent GEP. Internally invokes ry_emit_negative_index_wrap
 // for the wrap step and ry_emit_bounds_error for the OOB exit (both proper
 // boundary functions since Stage 2-B).
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it).
 RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id,
                                RyValueId len_id, RyBoundsKind kind,
                                const char *global_name,
@@ -235,8 +232,8 @@ RyValueId ry_emit_bounds_check(RyEmitCtx *ctx, RyValueId idx_id,
 // `res_ty` is the opaque StructType handle for Result<T, E> (mirrors
 // `error_ty` in ry_emit_build_error_from_runtime). Returns the PHI handle
 // holding the merged Result value.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (three BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (three BBs are created inside it).
 // NB: `user_ctx` remains `void *` because it is genuine opaque user data
 // (not an LLVM type) — the header lint carves it out.
 RyValueId ry_emit_result_branch(RyEmitCtx *ctx, RyValueId is_err_id,
@@ -267,15 +264,15 @@ void ry_emit_bounds_error(RyEmitCtx *ctx, RyValueId orig_idx_id,
 // and returns a handle to the resulting aggregate. `opt_ty` is the opaque
 // StructType handle for Option<T> (mirrors `res_ty` in
 // ry_emit_result_branch). inner_id must resolve to a non-null payload value
-// whose type matches opt_ty's element-1 slot. Creates no basic blocks, no
-// precondition on ry_emit_ctx_set_function.
+// whose type matches opt_ty's element-1 slot. Creates no basic blocks, so it
+// needs no positioned parent function.
 RyValueId ry_emit_option_wrap_some(RyEmitCtx *ctx, RyValueId inner_id,
                                    RyTypeRef opt_ty);
 
 // Stage 2-C entry — Option<T> None-arm construction.
 // Builds UndefValue(opt_ty) + InsertValue(tag=0, 0) + InsertValue(
-// UndefValue(opt_ty->getElementType(1)), 1). Creates no basic blocks, no
-// precondition on ry_emit_ctx_set_function.
+// UndefValue(opt_ty->getElementType(1)), 1). Creates no basic blocks, so it
+// needs no positioned parent function.
 RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, RyTypeRef opt_ty);
 
 // Emit an ARC retain on header_ptr (`{i64 strong_count, i64 weak_count}`):
@@ -285,8 +282,8 @@ RyValueId ry_emit_option_wrap_none(RyEmitCtx *ctx, RyTypeRef opt_ty);
 // increment uses atomicrmw add SeqCst when atomic == RY_ARC_ATOMIC, plain
 // Load/Add/Store otherwise. BB labels are emitted as `arc.retain` and
 // `arc.retain.done` (FileCheck-stable).
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it).
 void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
                         RyArcAtomic atomic);
 
@@ -309,8 +306,8 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 // `llvm::Function *` cast to RyValueRef). The emission layer reconstructs
 // the `void (*)(void *)` LLVM FunctionType locally so no LLVM type identity
 // crosses the boundary.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it). The
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it). The
 // caller must additionally register "gc" in CodeGen.used_native_libraries_
 // because release emits __ry_gc_track / __ry_gc_untrack calls.
 void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
@@ -330,7 +327,7 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
 // no hint (matches the third positional argument of
 // `IRBuilder<>::CreateCall(callee, args, name)`).
 //
-// Creates no basic blocks, no precondition on ry_emit_ctx_set_function.
+// Creates no basic blocks, so it needs no positioned parent function.
 //
 // Categories 1/2 migrated in #1973: `ret_ty` and each `arg_tys[i]` cross as
 // `RyTypeRef`. The implementation rebuilds the LLVM FunctionType locally.
@@ -351,8 +348,8 @@ RyValueId ry_emit_runtime_call(RyEmitCtx *ctx, const char *name,
 // `list_header_ty` is the `{i64 len, i64 cap, ptr data}` StructType handle.
 // ARC retain on `val` (if the element type warrants it) MUST be emitted by
 // the caller BEFORE invoking this boundary — append does not retain internally.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it).
 void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                RyValueId val_id, RyTypeRef list_header_ty,
                                RyTypeRef elem_ty, uint64_t elem_size);
@@ -370,8 +367,8 @@ void ry_emit_collection_append(RyEmitCtx *ctx, RyValueId list_ptr_id,
 // Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
 // ARC retain on `val` (if the element type warrants it) MUST be emitted by
 // the caller BEFORE invoking this boundary.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it).
 void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                RyValueId idx_id, RyValueId val_id,
                                RyTypeRef list_header_ty, RyTypeRef elem_ty,
@@ -389,8 +386,8 @@ void ry_emit_collection_insert(RyEmitCtx *ctx, RyValueId list_ptr_id,
 // Returns the RyValueId of the removed element (caller is responsible for
 // any ARC release decision based on its type metadata).
 // Internally invokes ry_emit_negative_index_wrap + ry_emit_bounds_error.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it).
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it).
 RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
                                        RyValueId idx_id,
                                        RyTypeRef list_header_ty,
@@ -414,7 +411,7 @@ RyValueId ry_emit_collection_remove_at(RyEmitCtx *ctx, RyValueId list_ptr_id,
 // malloc+memcpy call. The new ARC header allocation, type-metadata copy,
 // and per-element ARC retain loop stay on the codegen side (after the boundary
 // returns) because they need ValueMetadata that does not cross the boundary.
-// Precondition: NONE — ry_emit_ctx_set_function need not have been called.
+// Precondition: NONE — this op creates no basic blocks.
 void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         RyValueId start_id, RyValueId end_excl_id,
                         RyTypeRef list_header_ty, RyTypeRef elem_ty,
@@ -494,8 +491,8 @@ typedef struct {
 // NON-atomic because the per-thread thunk that owns the freshly-cloned
 // container holds the only alias for the duration of the retain loop.
 // destructor_callee may be NULL.
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (BBs are created inside it). The
+// Precondition: the builder must be positioned within a function before this
+// call (BBs are created inside it). The
 // caller must additionally register "gc" in CodeGen.used_native_libraries_
 // because the internal ry_emit_arc_release call emits __ry_gc_track /
 // __ry_gc_untrack.
@@ -534,8 +531,8 @@ RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
 //     emitEnumBoxArcFieldsRetain (gated by `!isa<CallInst> &&
 //     !isa<InvokeInst>`)
 //
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call. The boundary invokes emitArcAlloc
+// Precondition: the builder must be positioned within a function before this
+// call. The boundary invokes emitArcAlloc
 // (which calls malloc + emits an inline atomic counter delta on the
 // process-global ARC live-count balance counter) and ry_emit_arc_retain
 // internally for Box arms and NonBox-with-retain arms; both helpers
@@ -589,8 +586,8 @@ RyValueId ry_emit_any_wrap(RyEmitCtx *ctx, const RyAnyWrapDesc *desc);
 //                    `record_struct_ty_ptr` (Parent struct is a prefix of
 //                    Child by Ry's record-inheritance layout).
 //
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (multiple BBs are created
+// Precondition: the builder must be positioned within a function before this
+// call (multiple BBs are created
 // inside it).
 typedef struct {
     // 0 = Standard, 1 = F64Promote, 2 = Record.
@@ -646,8 +643,8 @@ RyValueId ry_emit_any_unwrap(RyEmitCtx *ctx, const RyAnyUnwrapDesc *desc);
 // enum / Set<T>) stay CodeGen-private and are dispatched before this op
 // is reached.
 //
-// Precondition: ry_emit_ctx_set_function must have been called with the
-// current LLVM function before this call (ry_emit_result_branch creates
+// Precondition: the builder must be positioned within a function before this
+// call (ry_emit_result_branch creates
 // three BBs inside it).
 typedef struct {
     // 0 = Standard, 1 = F64Promote.

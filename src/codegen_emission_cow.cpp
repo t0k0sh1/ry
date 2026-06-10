@@ -3,14 +3,12 @@
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 
-#include <llvm/IR/Function.h>
 #include <llvm/IR/Value.h>
 
 namespace ry::codegen::emission {
 
 llvm::Value *emitCowEnsureUnique(CodeGen &cg,
                                  const lowered::CowEnsureUniqueOp &op) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
     cg.used_native_libraries_.insert("gc");
 
     RyCowEnsureUniqueDesc desc{};

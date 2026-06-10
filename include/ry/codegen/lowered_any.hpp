@@ -183,8 +183,8 @@ namespace ry::codegen::emission {
 // Emit AnyWrap via the libemit boundary (ry_emit_any_wrap). Returns the
 // final RyAny aggregate value (loaded from the internal alloca).
 //
-// Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have
-// been called before invoking this helper.
+// Precondition: the builder must be positioned within a function before
+// invoking this helper (the new BBs' parent is derived from the builder).
 //
 // Caller responsibilities BEFORE invoking (none of these cross the boundary
 // because they depend on ValueMetadata / CodeGen-private state):
@@ -199,8 +199,8 @@ llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op);
 // the unwrapped value (targetTy for Standard / Record arms; f64 for the
 // F64Promote arm).
 //
-// Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have
-// been called before invoking this helper.
+// Precondition: the builder must be positioned within a function before
+// invoking this helper (the new BBs' parent is derived from the builder).
 //
 // Caller responsibilities AFTER invoking:
 //   - For AnyUnwrapKind::Record: emitRecordArcFieldsRetain on the returned
@@ -212,8 +212,8 @@ llvm::Value *emitAnyUnwrap(CodeGen &cg, const lowered::AnyUnwrapOp &op);
 // Returns the Result<targetTy, Error> aggregate value (the PHI joined by
 // emitResultBranch).
 //
-// Precondition: ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_) must have
-// been called before invoking this helper.
+// Precondition: the builder must be positioned within a function before
+// invoking this helper (the new BBs' parent is derived from the builder).
 llvm::Value *emitAnyTryUnwrap(CodeGen &cg, const lowered::AnyTryUnwrapOp &op);
 
 } // namespace ry::codegen::emission

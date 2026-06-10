@@ -430,9 +430,8 @@ mod ctx_access {
     // only `context`, `get_runtime_fn` only `module`): `ry_emit_ctx_create`
     // always stores the caller's live module/builder/context together, so a
     // partially-NULL ctx never arises from a supported call. The pure-plumbing
-    // entries that emit no IR (`intern` / `resolve` / `set_function`) guard
-    // `ctx.is_null()` directly and reify via `with_ctx` — they touch none of the
-    // three fields.
+    // entries that emit no IR (`intern` / `resolve`) guard `ctx.is_null()`
+    // directly and reify via `with_ctx` — they touch none of the three fields.
     //
     // Returns an escaping arbitrary-lifetime `&mut` — safe for the non-re-entrant
     // op modules that hold it for one entry-point body and never re-enter. A

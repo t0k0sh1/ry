@@ -58,8 +58,9 @@ namespace ry::codegen::emission {
 // downstream callers feed this into `propagateMeta` / `propagateMetaWide`.
 //
 // Preconditions:
-//   - The caller has called `ry_emit_ctx_set_function(cg.emit_ctx_, cg.fn_)`
-//     because the helper creates basic blocks inside the current function.
+//   - The builder must be positioned within a function, because the helper
+//     creates basic blocks whose parent is derived from the builder's insert
+//     block.
 //   - The caller has inserted `"gc"` into `cg.used_native_libraries_`
 //     because the internal `ry_emit_arc_release` emits __ry_gc_track /
 //     __ry_gc_untrack calls (CodeGen-side bookkeeping not visible to the

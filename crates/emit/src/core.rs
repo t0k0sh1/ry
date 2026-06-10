@@ -23,7 +23,6 @@ pub(crate) struct EmitCtx {
     pub(crate) module: LLVMModuleRef,
     pub(crate) builder: LLVMBuilderRef,
     pub(crate) context: LLVMContextRef,
-    pub(crate) function: LLVMValueRef,
     pub(crate) values: Vec<LLVMValueRef>,
     // Dedup cache for ry_emit_bounds_error / any-error fmt-string globals
     // (keyed by message bytes).
@@ -38,13 +37,11 @@ impl EmitCtx {
         module: LLVMModuleRef,
         builder: LLVMBuilderRef,
         context: LLVMContextRef,
-        function: LLVMValueRef,
     ) -> EmitCtx {
         EmitCtx {
             module,
             builder,
             context,
-            function,
             values: vec![std::ptr::null_mut()],
             bounds_msg_cache: HashMap::new(),
         }

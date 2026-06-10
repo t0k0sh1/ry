@@ -59,9 +59,8 @@ namespace ry::codegen::emission {
 // the desired result variable name); pass nullptr for no hint. Matches the
 // third positional argument of `IRBuilder<>::CreateCall(callee, args, name)`.
 //
-// No `ry_emit_ctx_set_function` call: this op creates no basic blocks
-// (CreateCall is a single instruction that stays in the current block), so
-// the currently-active LLVM function pointer is not consulted.
+// This op creates no basic blocks (CreateCall is a single instruction that
+// stays in the current block), so it needs no positioned parent function.
 llvm::Value *emitRuntimeCall(CodeGen &cg, const lowered::RuntimeCallOp &op,
                              const char *name_hint);
 

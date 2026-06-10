@@ -44,9 +44,9 @@ namespace ry::codegen::emission {
 // holding the merged Result<T, E> value, so callers can attach metadata via
 // propagateMeta (e.g. emitResultBranchWithMeta in src/codegen_call_io.cpp).
 //
-// Precondition: the caller has called ry_emit_ctx_set_function(cg.emit_ctx_,
-// cg.fn_) before invoking this helper, because three BBs are created inside
-// the current function (same precondition as emission::emitBoundsCheck).
+// Precondition: the builder must be positioned within a function before
+// invoking this helper, because three BBs are created — their parent is
+// derived from the builder's insert block (same as emission::emitBoundsCheck).
 llvm::Value *emitResultBranch(CodeGen &cg, const lowered::ResultBranchOp &op,
                               llvm::function_ref<llvm::Value *()> build_ok,
                               llvm::function_ref<llvm::Value *()> build_err);

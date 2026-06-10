@@ -93,16 +93,16 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 
     // Initialize the LLVM IR emission boundary context. Stage 2-C / #1973 migrated
-    // module / builder / context / function pointers to typed opaque handles
-    // (RyModuleRef / RyBuilderRef / RyContextRef / RyFunctionRef);
-    // the cast helpers in include/ry/llvm_emit/cast_helpers.hpp keep the call
-    // sites readable. The fn_ slot is set as bodies are emitted via
-    // ry_emit_ctx_set_function.
+    // module / builder / context pointers to typed opaque handles
+    // (RyModuleRef / RyBuilderRef / RyContextRef); the cast helpers in
+    // include/ry/llvm_emit/cast_helpers.hpp keep the call sites readable. There
+    // is no current-function slot: BB-creating boundary ops derive the parent
+    // function from the builder's insert block (the ry_emit_ctx_set_function
+    // setter was removed in #2083).
     emit_ctx_ = ry_emit_ctx_create(
         ry::llvm_emit::asRyModule(mod_.get()),
         ry::llvm_emit::asRyBuilder(&builder_),
-        ry::llvm_emit::asRyContext(ctx_.get()),
-        ry::llvm_emit::asRyFunction(nullptr));
+        ry::llvm_emit::asRyContext(ctx_.get()));
 }
 
 CodeGen::~CodeGen() {
