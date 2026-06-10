@@ -255,11 +255,10 @@ impl EmitCtx {
 
         LLVMPositionBuilderAtEnd(b, copy_bb);
 
+        // `alloc_buf` stays in the dispatcher for the ARC-box allocation below;
+        // the per-kind copy helpers call `emit_malloc` / `emit_memcpy` directly.
         let alloc_buf = move |byte_size: LLVMValueRef, name: *const c_char| -> LLVMValueRef {
             unsafe { emit_malloc(b, module, i64_ty, ptr_ty, byte_size, name) }
-        };
-        let memcpy_to = move |dst: LLVMValueRef, src: LLVMValueRef, byte_size: LLVMValueRef| unsafe {
-            emit_memcpy(b, module, ptr_ty, i64_ty, dst, src, byte_size);
         };
 
         // Allocate the ARC-backed collection header (mirror emitArcAlloc inline).
@@ -286,136 +285,50 @@ impl EmitCtx {
             LLVMBuildStructGEP2(b, header_ty, data_ptr, 0, c"cow_old_len_ptr".as_ptr());
         let old_len = LLVMBuildLoad2(b, i64_ty, old_len_ptr, c"cow_old_len".as_ptr());
 
+        // Per-kind buffer copy (List data / Map keys+vals+buckets / Set
+        // elems+buckets). Each helper emits its own allocations + memcpys + new
+        // header field stores; the shared scaffold above and the retain loops /
+        // release / merge PHI below stay in the dispatcher.
         match d.kind {
             CowKind::List => {
-                let old_data_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_data_field".as_ptr());
-                let old_data = LLVMBuildLoad2(b, ptr_ty, old_data_field, c"cow_old_data".as_ptr());
-                let buf_size = LLVMBuildMul(
+                cow_copy_list(
                     b,
-                    old_len,
-                    LLVMConstInt(i64_ty, d.elem_size, 0),
-                    c"cow_buf_size".as_ptr(),
-                );
-                let new_buf = alloc_buf(buf_size, c"cow_new_buf".as_ptr());
-                memcpy_to(new_buf, old_data, buf_size);
-                let new_len_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_new_len_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_len_ptr);
-                let new_cap_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_new_cap_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_cap_ptr);
-                let new_data_field = LLVMBuildStructGEP2(
-                    b,
+                    module,
                     header_ty,
+                    data_ptr,
                     new_data_ptr,
-                    2,
-                    c"cow_new_data_ptr".as_ptr(),
+                    old_len,
+                    i64_ty,
+                    ptr_ty,
+                    d.elem_size,
                 );
-                LLVMBuildStore(b, new_buf, new_data_field);
             }
             CowKind::Map => {
-                let old_keys_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_keys_field".as_ptr());
-                let old_keys = LLVMBuildLoad2(b, ptr_ty, old_keys_field, c"cow_old_keys".as_ptr());
-                let old_vals_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_vals_field".as_ptr());
-                let old_vals = LLVMBuildLoad2(b, ptr_ty, old_vals_field, c"cow_old_vals".as_ptr());
-                let old_bc_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bc_ptr".as_ptr());
-                let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
-                let old_bk_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 5, c"cow_old_bk_ptr".as_ptr());
-                let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
-
-                let keys_size = LLVMBuildMul(
+                cow_copy_map(
                     b,
+                    module,
+                    header_ty,
+                    data_ptr,
+                    new_data_ptr,
                     old_len,
-                    LLVMConstInt(i64_ty, d.key_size, 0),
-                    c"cow_keys_size".as_ptr(),
+                    i64_ty,
+                    ptr_ty,
+                    d.key_size,
+                    d.val_size,
                 );
-                let new_keys = alloc_buf(keys_size, c"cow_new_keys".as_ptr());
-                memcpy_to(new_keys, old_keys, keys_size);
-                let vals_size = LLVMBuildMul(
-                    b,
-                    old_len,
-                    LLVMConstInt(i64_ty, d.val_size, 0),
-                    c"cow_vals_size".as_ptr(),
-                );
-                let new_vals = alloc_buf(vals_size, c"cow_new_vals".as_ptr());
-                memcpy_to(new_vals, old_vals, vals_size);
-                let bk_size = LLVMBuildMul(
-                    b,
-                    old_bc,
-                    LLVMConstInt(i64_ty, 8, 0),
-                    c"cow_bk_size".as_ptr(),
-                );
-                let new_bk = alloc_buf(bk_size, c"cow_new_bk".as_ptr());
-                memcpy_to(new_bk, old_bk, bk_size);
-
-                let new_len_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_m_len_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_len_ptr);
-                let new_cap_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_m_cap_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_cap_ptr);
-                let new_keys_field =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_m_keys_ptr".as_ptr());
-                LLVMBuildStore(b, new_keys, new_keys_field);
-                let new_vals_field =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_m_vals_ptr".as_ptr());
-                LLVMBuildStore(b, new_vals, new_vals_field);
-                let new_bc_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_m_bc_ptr".as_ptr());
-                LLVMBuildStore(b, old_bc, new_bc_ptr);
-                let new_bk_field =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 5, c"cow_m_bk_ptr".as_ptr());
-                LLVMBuildStore(b, new_bk, new_bk_field);
             }
             CowKind::Set => {
-                let old_elems_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_elems_field".as_ptr());
-                let old_elems =
-                    LLVMBuildLoad2(b, ptr_ty, old_elems_field, c"cow_old_elems".as_ptr());
-                let old_bc_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_bc_ptr".as_ptr());
-                let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
-                let old_bk_field =
-                    LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bk_ptr".as_ptr());
-                let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
-
-                let elems_size = LLVMBuildMul(
+                cow_copy_set(
                     b,
+                    module,
+                    header_ty,
+                    data_ptr,
+                    new_data_ptr,
                     old_len,
-                    LLVMConstInt(i64_ty, d.elem_size, 0),
-                    c"cow_elems_size".as_ptr(),
+                    i64_ty,
+                    ptr_ty,
+                    d.elem_size,
                 );
-                let new_elems = alloc_buf(elems_size, c"cow_new_elems".as_ptr());
-                memcpy_to(new_elems, old_elems, elems_size);
-                let bk_size = LLVMBuildMul(
-                    b,
-                    old_bc,
-                    LLVMConstInt(i64_ty, 8, 0),
-                    c"cow_bk_size".as_ptr(),
-                );
-                let new_bk = alloc_buf(bk_size, c"cow_new_bk".as_ptr());
-                memcpy_to(new_bk, old_bk, bk_size);
-
-                let new_len_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_s_len_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_len_ptr);
-                let new_cap_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_s_cap_ptr".as_ptr());
-                LLVMBuildStore(b, old_len, new_cap_ptr);
-                let new_elems_field =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_s_elems_ptr".as_ptr());
-                LLVMBuildStore(b, new_elems, new_elems_field);
-                let new_bc_ptr =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_s_bc_ptr".as_ptr());
-                LLVMBuildStore(b, old_bc, new_bc_ptr);
-                let new_bk_field =
-                    LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_s_bk_ptr".as_ptr());
-                LLVMBuildStore(b, new_bk, new_bk_field);
             }
         }
 
@@ -460,4 +373,185 @@ impl EmitCtx {
         LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
         ValueRef(phi)
     }
+}
+
+// Per-kind CoW buffer copy helpers, factored out of `cow_ensure_unique`. Each is
+// entered after the shared scaffold has allocated `new_data_ptr` and loaded
+// `old_len`, runs on the `cow.copy` block (no new blocks created), and writes the
+// cloned buffers + new-header fields. They allocate via `emit_malloc` / copy via
+// `emit_memcpy` directly (the dispatcher keeps the `alloc_buf` closure only for
+// the ARC-box allocation). The cached LLVM types are threaded individually,
+// mirroring `cow_retain_loop`; the resulting arity trips
+// `clippy::too_many_arguments`, suppressed per the same "intentional pattern"
+// policy (see .claude/rules/build-warning-flags.md) rather than bundled into a
+// struct that would touch this hot codegen path.
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn cow_copy_list(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    header_ty: LLVMTypeRef,
+    data_ptr: LLVMValueRef,
+    new_data_ptr: LLVMValueRef,
+    old_len: LLVMValueRef,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    elem_size: u64,
+) {
+    let old_data_field =
+        LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_data_field".as_ptr());
+    let old_data = LLVMBuildLoad2(b, ptr_ty, old_data_field, c"cow_old_data".as_ptr());
+    let buf_size = LLVMBuildMul(
+        b,
+        old_len,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"cow_buf_size".as_ptr(),
+    );
+    let new_buf = emit_malloc(b, module, i64_ty, ptr_ty, buf_size, c"cow_new_buf".as_ptr());
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_buf, old_data, buf_size);
+    let new_len_ptr =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_new_len_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_len_ptr);
+    let new_cap_ptr =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_new_cap_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_cap_ptr);
+    let new_data_field =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_new_data_ptr".as_ptr());
+    LLVMBuildStore(b, new_buf, new_data_field);
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn cow_copy_map(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    header_ty: LLVMTypeRef,
+    data_ptr: LLVMValueRef,
+    new_data_ptr: LLVMValueRef,
+    old_len: LLVMValueRef,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    key_size: u64,
+    val_size: u64,
+) {
+    let old_keys_field =
+        LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_keys_field".as_ptr());
+    let old_keys = LLVMBuildLoad2(b, ptr_ty, old_keys_field, c"cow_old_keys".as_ptr());
+    let old_vals_field =
+        LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_vals_field".as_ptr());
+    let old_vals = LLVMBuildLoad2(b, ptr_ty, old_vals_field, c"cow_old_vals".as_ptr());
+    let old_bc_ptr = LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bc_ptr".as_ptr());
+    let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
+    let old_bk_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 5, c"cow_old_bk_ptr".as_ptr());
+    let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
+
+    let keys_size = LLVMBuildMul(
+        b,
+        old_len,
+        LLVMConstInt(i64_ty, key_size, 0),
+        c"cow_keys_size".as_ptr(),
+    );
+    let new_keys = emit_malloc(
+        b,
+        module,
+        i64_ty,
+        ptr_ty,
+        keys_size,
+        c"cow_new_keys".as_ptr(),
+    );
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_keys, old_keys, keys_size);
+    let vals_size = LLVMBuildMul(
+        b,
+        old_len,
+        LLVMConstInt(i64_ty, val_size, 0),
+        c"cow_vals_size".as_ptr(),
+    );
+    let new_vals = emit_malloc(
+        b,
+        module,
+        i64_ty,
+        ptr_ty,
+        vals_size,
+        c"cow_new_vals".as_ptr(),
+    );
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_vals, old_vals, vals_size);
+    let bk_size = LLVMBuildMul(
+        b,
+        old_bc,
+        LLVMConstInt(i64_ty, 8, 0),
+        c"cow_bk_size".as_ptr(),
+    );
+    let new_bk = emit_malloc(b, module, i64_ty, ptr_ty, bk_size, c"cow_new_bk".as_ptr());
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_bk, old_bk, bk_size);
+
+    let new_len_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_m_len_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_len_ptr);
+    let new_cap_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_m_cap_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_cap_ptr);
+    let new_keys_field =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_m_keys_ptr".as_ptr());
+    LLVMBuildStore(b, new_keys, new_keys_field);
+    let new_vals_field =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_m_vals_ptr".as_ptr());
+    LLVMBuildStore(b, new_vals, new_vals_field);
+    let new_bc_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_m_bc_ptr".as_ptr());
+    LLVMBuildStore(b, old_bc, new_bc_ptr);
+    let new_bk_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 5, c"cow_m_bk_ptr".as_ptr());
+    LLVMBuildStore(b, new_bk, new_bk_field);
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn cow_copy_set(
+    b: LLVMBuilderRef,
+    module: LLVMModuleRef,
+    header_ty: LLVMTypeRef,
+    data_ptr: LLVMValueRef,
+    new_data_ptr: LLVMValueRef,
+    old_len: LLVMValueRef,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    elem_size: u64,
+) {
+    let old_elems_field =
+        LLVMBuildStructGEP2(b, header_ty, data_ptr, 2, c"cow_old_elems_field".as_ptr());
+    let old_elems = LLVMBuildLoad2(b, ptr_ty, old_elems_field, c"cow_old_elems".as_ptr());
+    let old_bc_ptr = LLVMBuildStructGEP2(b, header_ty, data_ptr, 3, c"cow_old_bc_ptr".as_ptr());
+    let old_bc = LLVMBuildLoad2(b, i64_ty, old_bc_ptr, c"cow_old_bc".as_ptr());
+    let old_bk_field = LLVMBuildStructGEP2(b, header_ty, data_ptr, 4, c"cow_old_bk_ptr".as_ptr());
+    let old_bk = LLVMBuildLoad2(b, ptr_ty, old_bk_field, c"cow_old_bk".as_ptr());
+
+    let elems_size = LLVMBuildMul(
+        b,
+        old_len,
+        LLVMConstInt(i64_ty, elem_size, 0),
+        c"cow_elems_size".as_ptr(),
+    );
+    let new_elems = emit_malloc(
+        b,
+        module,
+        i64_ty,
+        ptr_ty,
+        elems_size,
+        c"cow_new_elems".as_ptr(),
+    );
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_elems, old_elems, elems_size);
+    let bk_size = LLVMBuildMul(
+        b,
+        old_bc,
+        LLVMConstInt(i64_ty, 8, 0),
+        c"cow_bk_size".as_ptr(),
+    );
+    let new_bk = emit_malloc(b, module, i64_ty, ptr_ty, bk_size, c"cow_new_bk".as_ptr());
+    emit_memcpy(b, module, ptr_ty, i64_ty, new_bk, old_bk, bk_size);
+
+    let new_len_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 0, c"cow_s_len_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_len_ptr);
+    let new_cap_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 1, c"cow_s_cap_ptr".as_ptr());
+    LLVMBuildStore(b, old_len, new_cap_ptr);
+    let new_elems_field =
+        LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 2, c"cow_s_elems_ptr".as_ptr());
+    LLVMBuildStore(b, new_elems, new_elems_field);
+    let new_bc_ptr = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 3, c"cow_s_bc_ptr".as_ptr());
+    LLVMBuildStore(b, old_bc, new_bc_ptr);
+    let new_bk_field = LLVMBuildStructGEP2(b, header_ty, new_data_ptr, 4, c"cow_s_bk_ptr".as_ptr());
+    LLVMBuildStore(b, new_bk, new_bk_field);
 }
