@@ -201,163 +201,217 @@ impl EmitCtx {
         Some(ValueRef(result))
     }
 
+    // Dispatcher: extract the tag once (the only IR emitted before the kind
+    // dispatch) and derive the parent function from the builder (builder-derived
+    // parent rule), then delegate to the per-kind helper. Each helper is entered
+    // with the builder still positioned on this original block and owns every
+    // basic block it appends from there.
     pub(crate) unsafe fn any_unwrap(&mut self, d: &AnyUnwrap) -> Option<ValueRef> {
         let b = self.builder;
-        let context = self.context;
-        let module = self.module;
         let any_val = d.any_val.0;
-        let any_ty = d.any_ty.0;
-        let i8_ty = i8_type(context);
-        let i64_ty = i64_type(context);
-        let ptr_ty = ptr_type(context);
-        let f64_ty = LLVMDoubleTypeInContext(context);
 
         let tag = LLVMBuildExtractValue(b, any_val, 0, c"any.tag.val".as_ptr());
-        // Builder-derived parent (builder-derived parent rule).
         let fn_v = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
 
         let mismatch_msg = cstr_bytes(d.mismatch_msg);
         let mismatch_name = d.mismatch_global_name;
 
-        // Record — tag check + descriptor chain walk.
-        if matches!(d.kind, AnyUnwrapKind::Record) {
-            let (Some(layout_ty), Some(record_struct_ty), Some(expected_desc)) =
-                (d.box_layout_ty, d.record_struct_ty, d.expected_desc)
-            else {
-                return None;
-            };
-            let layout_ty = layout_ty.0;
-            let record_struct_ty = record_struct_ty.0;
-            let expected_desc = expected_desc.0;
-            let desc_mismatch_msg = cstr_bytes(d.desc_mismatch_msg);
-            let desc_mismatch_name = d.desc_mismatch_global_name;
-
-            let tag_match_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_ok".as_ptr());
-            let tag_mismatch_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_err".as_ptr());
-            let desc_check_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_check".as_ptr());
-            let desc_mismatch_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_err".as_ptr());
-
-            let is_record = LLVMBuildICmp(
-                b,
-                LLVMIntPredicate::LLVMIntEQ,
-                tag,
-                LLVMConstInt(i64_ty, d.expected_tag as u64, 0),
-                c"any.is_record".as_ptr(),
-            );
-            LLVMBuildCondBr(b, is_record, tag_match_bb, tag_mismatch_bb);
-
-            LLVMPositionBuilderAtEnd(b, tag_mismatch_bb);
-            emit_inline_runtime_error(self, mismatch_msg, mismatch_name);
-
-            LLVMPositionBuilderAtEnd(b, tag_match_bb);
-            let tmp = LLVMBuildAlloca(b, any_ty, c"any.rec.tmp".as_ptr());
-            LLVMBuildStore(b, any_val, tmp);
-            let any_data_slot =
-                LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.rec.data.ptr".as_ptr());
-            let data_ptr = LLVMBuildLoad2(b, ptr_ty, any_data_slot, c"any.rec.data".as_ptr());
-            let desc_slot =
-                LLVMBuildStructGEP2(b, layout_ty, data_ptr, 0, c"any.rec.desc.slot".as_ptr());
-            let actual_desc = LLVMBuildLoad2(b, ptr_ty, desc_slot, c"any.rec.desc".as_ptr());
-
-            let mut is_subtype_p = [ptr_ty, ptr_ty];
-            let is_subtype_ty = LLVMFunctionType(i64_ty, is_subtype_p.as_mut_ptr(), 2, 0);
-            let is_subtype_fn = get_or_insert_function(
-                module,
-                c"__ry_record_is_subtype_desc".as_ptr(),
-                is_subtype_ty,
-            );
-            let mut is_subtype_a = [actual_desc, expected_desc];
-            let chain_ok = LLVMBuildCall2(
-                b,
-                is_subtype_ty,
-                is_subtype_fn,
-                is_subtype_a.as_mut_ptr(),
-                2,
-                c"any.rec.chain.ok".as_ptr(),
-            );
-            let chain_bool = LLVMBuildICmp(
-                b,
-                LLVMIntPredicate::LLVMIntNE,
-                chain_ok,
-                LLVMConstInt(i64_ty, 0, 0),
-                c"any.rec.chain.bool".as_ptr(),
-            );
-            LLVMBuildCondBr(b, chain_bool, desc_check_bb, desc_mismatch_bb);
-
-            LLVMPositionBuilderAtEnd(b, desc_mismatch_bb);
-            emit_inline_runtime_error(self, desc_mismatch_msg, desc_mismatch_name);
-
-            LLVMPositionBuilderAtEnd(b, desc_check_bb);
-            let fields_slot =
-                LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, c"any.rec.fields.slot".as_ptr());
-            let record_val = LLVMBuildLoad2(
-                b,
-                record_struct_ty,
-                fields_slot,
-                c"any.rec.unwrap.val".as_ptr(),
-            );
-            return Some(ValueRef(record_val));
+        match d.kind {
+            AnyUnwrapKind::Record => {
+                self.any_unwrap_record(d, tag, fn_v, mismatch_msg, mismatch_name)
+            }
+            AnyUnwrapKind::F64Promote => {
+                self.any_unwrap_f64_promote(d, tag, fn_v, mismatch_msg, mismatch_name)
+            }
+            AnyUnwrapKind::Standard => {
+                self.any_unwrap_standard(d, tag, fn_v, mismatch_msg, mismatch_name)
+            }
         }
+    }
 
-        // F64Promote — 5 BBs; merge PHI(f64).
-        if matches!(d.kind, AnyUnwrapKind::F64Promote) {
-            let float_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.float".as_ptr());
-            let check_int_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.check_int".as_ptr());
-            let int_promote_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.int2float".as_ptr());
-            let mismatch_bb =
-                LLVMAppendBasicBlockInContext(context, fn_v, c"any.mismatch".as_ptr());
-            let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.merge".as_ptr());
+    // Record unwrap — tag check + descriptor chain walk. Appends tag-ok / tag-err
+    // / desc-check / desc-err blocks off `fn_v`; on success leaves the builder on
+    // `any.rec.desc_check` holding the loaded record value.
+    unsafe fn any_unwrap_record(
+        &mut self,
+        d: &AnyUnwrap,
+        tag: LLVMValueRef,
+        fn_v: LLVMValueRef,
+        mismatch_msg: &[u8],
+        mismatch_name: *const c_char,
+    ) -> Option<ValueRef> {
+        let b = self.builder;
+        let context = self.context;
+        let module = self.module;
+        let any_val = d.any_val.0;
+        let any_ty = d.any_ty.0;
+        let i64_ty = i64_type(context);
+        let ptr_ty = ptr_type(context);
 
-            let tmp = LLVMBuildAlloca(b, any_ty, c"any.tmp.fp".as_ptr());
-            LLVMBuildStore(b, any_val, tmp);
-            let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.data.fp".as_ptr());
+        let (Some(layout_ty), Some(record_struct_ty), Some(expected_desc)) =
+            (d.box_layout_ty, d.record_struct_ty, d.expected_desc)
+        else {
+            return None;
+        };
+        let layout_ty = layout_ty.0;
+        let record_struct_ty = record_struct_ty.0;
+        let expected_desc = expected_desc.0;
+        let desc_mismatch_msg = cstr_bytes(d.desc_mismatch_msg);
+        let desc_mismatch_name = d.desc_mismatch_global_name;
 
-            let is_float = LLVMBuildICmp(
-                b,
-                LLVMIntPredicate::LLVMIntEQ,
-                tag,
-                LLVMConstInt(i64_ty, ANY_TAG_FLOAT as u64, 0),
-                c"is.float".as_ptr(),
-            );
-            LLVMBuildCondBr(b, is_float, float_bb, check_int_bb);
+        let tag_match_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_ok".as_ptr());
+        let tag_mismatch_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.tag_err".as_ptr());
+        let desc_check_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_check".as_ptr());
+        let desc_mismatch_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.rec.desc_err".as_ptr());
 
-            LLVMPositionBuilderAtEnd(b, check_int_bb);
-            let is_int = LLVMBuildICmp(
-                b,
-                LLVMIntPredicate::LLVMIntEQ,
-                tag,
-                LLVMConstInt(i64_ty, ANY_TAG_INT as u64, 0),
-                c"is.int".as_ptr(),
-            );
-            LLVMBuildCondBr(b, is_int, int_promote_bb, mismatch_bb);
+        let is_record = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, d.expected_tag as u64, 0),
+            c"any.is_record".as_ptr(),
+        );
+        LLVMBuildCondBr(b, is_record, tag_match_bb, tag_mismatch_bb);
 
-            LLVMPositionBuilderAtEnd(b, mismatch_bb);
-            emit_inline_runtime_error(self, mismatch_msg, mismatch_name);
+        LLVMPositionBuilderAtEnd(b, tag_mismatch_bb);
+        emit_inline_runtime_error(self, mismatch_msg, mismatch_name);
 
-            LLVMPositionBuilderAtEnd(b, float_bb);
-            let float_val = LLVMBuildLoad2(b, f64_ty, data_ptr, c"any.f64".as_ptr());
-            LLVMBuildBr(b, merge_bb);
+        LLVMPositionBuilderAtEnd(b, tag_match_bb);
+        let tmp = LLVMBuildAlloca(b, any_ty, c"any.rec.tmp".as_ptr());
+        LLVMBuildStore(b, any_val, tmp);
+        let any_data_slot = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.rec.data.ptr".as_ptr());
+        let data_ptr = LLVMBuildLoad2(b, ptr_ty, any_data_slot, c"any.rec.data".as_ptr());
+        let desc_slot =
+            LLVMBuildStructGEP2(b, layout_ty, data_ptr, 0, c"any.rec.desc.slot".as_ptr());
+        let actual_desc = LLVMBuildLoad2(b, ptr_ty, desc_slot, c"any.rec.desc".as_ptr());
 
-            LLVMPositionBuilderAtEnd(b, int_promote_bb);
-            let int_val = LLVMBuildLoad2(b, i64_ty, data_ptr, c"any.i64".as_ptr());
-            let promoted = LLVMBuildSIToFP(b, int_val, f64_ty, c"any.i2f".as_ptr());
-            LLVMBuildBr(b, merge_bb);
+        let mut is_subtype_p = [ptr_ty, ptr_ty];
+        let is_subtype_ty = LLVMFunctionType(i64_ty, is_subtype_p.as_mut_ptr(), 2, 0);
+        let is_subtype_fn = get_or_insert_function(
+            module,
+            c"__ry_record_is_subtype_desc".as_ptr(),
+            is_subtype_ty,
+        );
+        let mut is_subtype_a = [actual_desc, expected_desc];
+        let chain_ok = LLVMBuildCall2(
+            b,
+            is_subtype_ty,
+            is_subtype_fn,
+            is_subtype_a.as_mut_ptr(),
+            2,
+            c"any.rec.chain.ok".as_ptr(),
+        );
+        let chain_bool = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntNE,
+            chain_ok,
+            LLVMConstInt(i64_ty, 0, 0),
+            c"any.rec.chain.bool".as_ptr(),
+        );
+        LLVMBuildCondBr(b, chain_bool, desc_check_bb, desc_mismatch_bb);
 
-            LLVMPositionBuilderAtEnd(b, merge_bb);
-            let phi = LLVMBuildPhi(b, f64_ty, c"any.unwrap.f64".as_ptr());
-            let mut vals = [float_val, promoted];
-            let mut blocks = [float_bb, int_promote_bb];
-            LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
-            return Some(ValueRef(phi));
-        }
+        LLVMPositionBuilderAtEnd(b, desc_mismatch_bb);
+        emit_inline_runtime_error(self, desc_mismatch_msg, desc_mismatch_name);
 
-        // Standard — 2-way path.
+        LLVMPositionBuilderAtEnd(b, desc_check_bb);
+        let fields_slot =
+            LLVMBuildStructGEP2(b, layout_ty, data_ptr, 1, c"any.rec.fields.slot".as_ptr());
+        let record_val = LLVMBuildLoad2(
+            b,
+            record_struct_ty,
+            fields_slot,
+            c"any.rec.unwrap.val".as_ptr(),
+        );
+        Some(ValueRef(record_val))
+    }
+
+    // F64Promote unwrap — 5 BBs; merge PHI(f64). Accepts both Float and Int tags
+    // (Int auto-promoted via SIToFP); leaves the builder on `any.merge`.
+    unsafe fn any_unwrap_f64_promote(
+        &mut self,
+        d: &AnyUnwrap,
+        tag: LLVMValueRef,
+        fn_v: LLVMValueRef,
+        mismatch_msg: &[u8],
+        mismatch_name: *const c_char,
+    ) -> Option<ValueRef> {
+        let b = self.builder;
+        let context = self.context;
+        let any_val = d.any_val.0;
+        let any_ty = d.any_ty.0;
+        let i64_ty = i64_type(context);
+        let f64_ty = LLVMDoubleTypeInContext(context);
+
+        let float_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.float".as_ptr());
+        let check_int_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.check_int".as_ptr());
+        let int_promote_bb =
+            LLVMAppendBasicBlockInContext(context, fn_v, c"any.int2float".as_ptr());
+        let mismatch_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.mismatch".as_ptr());
+        let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"any.merge".as_ptr());
+
+        let tmp = LLVMBuildAlloca(b, any_ty, c"any.tmp.fp".as_ptr());
+        LLVMBuildStore(b, any_val, tmp);
+        let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"any.data.fp".as_ptr());
+
+        let is_float = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, ANY_TAG_FLOAT as u64, 0),
+            c"is.float".as_ptr(),
+        );
+        LLVMBuildCondBr(b, is_float, float_bb, check_int_bb);
+
+        LLVMPositionBuilderAtEnd(b, check_int_bb);
+        let is_int = LLVMBuildICmp(
+            b,
+            LLVMIntPredicate::LLVMIntEQ,
+            tag,
+            LLVMConstInt(i64_ty, ANY_TAG_INT as u64, 0),
+            c"is.int".as_ptr(),
+        );
+        LLVMBuildCondBr(b, is_int, int_promote_bb, mismatch_bb);
+
+        LLVMPositionBuilderAtEnd(b, mismatch_bb);
+        emit_inline_runtime_error(self, mismatch_msg, mismatch_name);
+
+        LLVMPositionBuilderAtEnd(b, float_bb);
+        let float_val = LLVMBuildLoad2(b, f64_ty, data_ptr, c"any.f64".as_ptr());
+        LLVMBuildBr(b, merge_bb);
+
+        LLVMPositionBuilderAtEnd(b, int_promote_bb);
+        let int_val = LLVMBuildLoad2(b, i64_ty, data_ptr, c"any.i64".as_ptr());
+        let promoted = LLVMBuildSIToFP(b, int_val, f64_ty, c"any.i2f".as_ptr());
+        LLVMBuildBr(b, merge_bb);
+
+        LLVMPositionBuilderAtEnd(b, merge_bb);
+        let phi = LLVMBuildPhi(b, f64_ty, c"any.unwrap.f64".as_ptr());
+        let mut vals = [float_val, promoted];
+        let mut blocks = [float_bb, int_promote_bb];
+        LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
+        Some(ValueRef(phi))
+    }
+
+    // Standard unwrap — 2-way tag check; on match loads the target-typed value
+    // and runs the retain guard. Leaves the builder on `any.match`.
+    unsafe fn any_unwrap_standard(
+        &mut self,
+        d: &AnyUnwrap,
+        tag: LLVMValueRef,
+        fn_v: LLVMValueRef,
+        mismatch_msg: &[u8],
+        mismatch_name: *const c_char,
+    ) -> Option<ValueRef> {
+        let b = self.builder;
+        let context = self.context;
+        let any_val = d.any_val.0;
+        let any_ty = d.any_ty.0;
+        let i8_ty = i8_type(context);
+        let i64_ty = i64_type(context);
+
         let target_ty = d.target_ty?.0;
         let cmp = LLVMBuildICmp(
             b,
@@ -446,6 +500,8 @@ impl EmitCtx {
         };
 
         // F64Promote — both loads share one alloca; Ok arm selects via isFloat.
+        // The pre-diamond compute (loads + accept/err predicate) stays here; the
+        // ok/err/merge diamond is shared via `any_try_unwrap_result_diamond`.
         if matches!(d.kind, AnyTryUnwrapKind::F64Promote) {
             let tmp = LLVMBuildAlloca(b, any_ty, c"tryany.fp.tmp".as_ptr());
             LLVMBuildStore(b, any_val, tmp);
@@ -470,31 +526,27 @@ impl EmitCtx {
             let is_accept = LLVMBuildOr(b, is_float, is_int, c"tryany.fp.is_accept".as_ptr());
             let is_err = LLVMBuildNot(b, is_accept, c"tryany.fp.is_err".as_ptr());
 
-            let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.ok".as_ptr());
-            let err_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.err".as_ptr());
-            let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.merge".as_ptr());
-            LLVMBuildCondBr(b, is_err, err_bb, ok_bb);
-
-            LLVMPositionBuilderAtEnd(b, ok_bb);
-            let chosen = LLVMBuildSelect(b, is_float, f_val, promoted, c"tryany.fp.val".as_ptr());
-            let ok_val = build_ok(chosen);
-            LLVMBuildBr(b, merge_bb);
-            let ok_incoming = LLVMGetInsertBlock(b);
-
-            LLVMPositionBuilderAtEnd(b, err_bb);
-            let err_val = build_err();
-            LLVMBuildBr(b, merge_bb);
-            let err_incoming = LLVMGetInsertBlock(b);
-
-            LLVMPositionBuilderAtEnd(b, merge_bb);
-            let phi = LLVMBuildPhi(b, res_ty, c"result".as_ptr());
-            let mut vals = [ok_val, err_val];
-            let mut blocks = [ok_incoming, err_incoming];
-            LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
-            return Some(ValueRef(phi));
+            let phi = self.any_try_unwrap_result_diamond(
+                fn_v,
+                res_ty,
+                is_err,
+                |s| {
+                    let chosen = LLVMBuildSelect(
+                        s.builder,
+                        is_float,
+                        f_val,
+                        promoted,
+                        c"tryany.fp.val".as_ptr(),
+                    );
+                    build_ok(chosen)
+                },
+                |_s| build_err(),
+            );
+            return Some(phi);
         }
 
-        // Standard — tag-check primitive arm.
+        // Standard — tag-check primitive arm. The Ok arm extracts + retain-guards
+        // the value; the ok/err/merge diamond is shared with F64Promote above.
         let target_ty = d.target_ty?.0;
         let cmp = LLVMBuildICmp(
             b,
@@ -505,29 +557,66 @@ impl EmitCtx {
         );
         let is_err = LLVMBuildNot(b, cmp, c"tryany.is_err".as_ptr());
 
+        let phi = self.any_try_unwrap_result_diamond(
+            fn_v,
+            res_ty,
+            is_err,
+            |s| {
+                let b = s.builder;
+                let tmp = LLVMBuildAlloca(b, any_ty, c"tryany.tmp".as_ptr());
+                LLVMBuildStore(b, any_val, tmp);
+                let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"tryany.data".as_ptr());
+                let unwrapped = LLVMBuildLoad2(b, target_ty, data_ptr, c"tryany.val".as_ptr());
+                s.any_retain_guard(
+                    i8_ty,
+                    i64_ty,
+                    unwrapped,
+                    d.do_collection_retain,
+                    d.do_str_retain,
+                );
+                build_ok(unwrapped)
+            },
+            |_s| build_err(),
+        );
+        Some(phi)
+    }
+
+    // Shared ok/err/merge Result diamond for `any_try_unwrap` (dedups the
+    // F64Promote and Standard arms, which were byte-identical apart from the Ok
+    // value). Appends `res.ok` / `res.err` / `res.merge` off `fn_v`, branches on
+    // `is_err`, runs the per-arm builders, and merges into the `result` PHI on
+    // `res_ty`. Two ordering invariants are load-bearing and preserve the IR
+    // byte-for-byte: (1) all three blocks are appended (in ok/err/merge order)
+    // before `ok_value` runs — Standard's `ok_value` calls the retain guard,
+    // which may append further blocks that must land after `res.merge`; (2) each
+    // arm is "build value -> Br res.merge -> capture the current insert block",
+    // so the PHI incoming edge is the builder's block after the arm (advanced
+    // past any guard blocks), not `res.ok` itself. The arm builders capture only
+    // Copy LLVM refs and are not re-entrant abi callbacks, so a plain `&mut self`
+    // helper threading `self` into `ok_value` is sound (cf. #2063).
+    unsafe fn any_try_unwrap_result_diamond(
+        &mut self,
+        fn_v: LLVMValueRef,
+        res_ty: LLVMTypeRef,
+        is_err: LLVMValueRef,
+        ok_value: impl FnOnce(&mut Self) -> LLVMValueRef,
+        err_value: impl FnOnce(&mut Self) -> LLVMValueRef,
+    ) -> ValueRef {
+        let b = self.builder;
+        let context = self.context;
+
         let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.ok".as_ptr());
         let err_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.err".as_ptr());
         let merge_bb = LLVMAppendBasicBlockInContext(context, fn_v, c"res.merge".as_ptr());
         LLVMBuildCondBr(b, is_err, err_bb, ok_bb);
 
         LLVMPositionBuilderAtEnd(b, ok_bb);
-        let tmp = LLVMBuildAlloca(b, any_ty, c"tryany.tmp".as_ptr());
-        LLVMBuildStore(b, any_val, tmp);
-        let data_ptr = LLVMBuildStructGEP2(b, any_ty, tmp, 1, c"tryany.data".as_ptr());
-        let unwrapped = LLVMBuildLoad2(b, target_ty, data_ptr, c"tryany.val".as_ptr());
-        self.any_retain_guard(
-            i8_ty,
-            i64_ty,
-            unwrapped,
-            d.do_collection_retain,
-            d.do_str_retain,
-        );
-        let ok_val = build_ok(unwrapped);
+        let ok_val = ok_value(self);
         LLVMBuildBr(b, merge_bb);
         let ok_incoming = LLVMGetInsertBlock(b);
 
         LLVMPositionBuilderAtEnd(b, err_bb);
-        let err_val = build_err();
+        let err_val = err_value(self);
         LLVMBuildBr(b, merge_bb);
         let err_incoming = LLVMGetInsertBlock(b);
 
@@ -536,7 +625,7 @@ impl EmitCtx {
         let mut vals = [ok_val, err_val];
         let mut blocks = [ok_incoming, err_incoming];
         LLVMAddIncoming(phi, vals.as_mut_ptr(), blocks.as_mut_ptr(), 2);
-        Some(ValueRef(phi))
+        ValueRef(phi)
     }
 
     // Emit the any retain guard: when the boxed value is a heap collection or a
