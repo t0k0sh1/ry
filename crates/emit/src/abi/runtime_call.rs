@@ -26,29 +26,26 @@ pub unsafe extern "C" fn ry_emit_runtime_call(
     arg_count: u32,
     name_hint: *const c_char,
 ) -> RyValueId {
-    // boundary input validation: malformed callers get sentinel 0
-    // instead of crashing the emitter. `name_hint` is optional and may be NULL.
-    if ctx.is_null() || name.is_null() || ret_ty.is_null() {
+    // boundary input validation: malformed callers get sentinel 0 instead of
+    // crashing the emitter. `name_hint` is optional and may be NULL.
+    if name.is_null() || ret_ty.is_null() {
         return 0;
     }
-    let c = cx(ctx);
-    if c.module.is_null() || c.builder.is_null() {
+    let Some(c) = checked_cx(ctx) else {
         return 0;
-    }
-    if (arg_ty_count > 0 && arg_tys.is_null()) || (arg_count > 0 && arg_ids.is_null()) {
-        return 0;
-    }
+    };
     if arg_ty_count != arg_count {
         return 0;
     }
-    // The guards above only reject (count > 0 && null); a zero count paired with a
-    // null pointer still reaches here, and slice::from_raw_parts requires a
-    // non-null pointer even for zero length — so map an empty arg list to an empty
-    // slice explicitly before borrowing the FFI buffers.
-    let arg_tys_s: &[RyTypeRef] = if arg_ty_count == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(arg_tys, arg_ty_count as usize)
+    // Borrow the two parallel FFI buffers through `ffi_slice`: a zero count maps
+    // to an empty slice without touching the pointer (slice::from_raw_parts
+    // rejects a NULL base even for length 0), and a positive count with a NULL
+    // pointer rejects to sentinel 0.
+    let (Some(arg_tys_s), Some(arg_ids_s)) = (
+        ffi_slice(arg_tys, arg_ty_count),
+        ffi_slice(arg_ids, arg_count),
+    ) else {
+        return 0;
     };
     let mut arg_tys_v: Vec<TypeRef> = Vec::with_capacity(arg_ty_count as usize);
     for &t in arg_tys_s {
@@ -57,18 +54,12 @@ pub unsafe extern "C" fn ry_emit_runtime_call(
         }
         arg_tys_v.push(TypeRef(as_type(t)));
     }
-    let arg_ids_s: &[RyValueId] = if arg_count == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(arg_ids, arg_count as usize)
-    };
     let mut args_v: Vec<ValueRef> = Vec::with_capacity(arg_count as usize);
     for &id in arg_ids_s {
-        let a = as_value(resolve(c, id));
-        if a.is_null() {
+        let Some(a) = resolve_value(c, id) else {
             return 0;
-        }
-        args_v.push(ValueRef(a));
+        };
+        args_v.push(a);
     }
     let result = c.runtime_call(
         name,
@@ -90,13 +81,12 @@ pub unsafe extern "C" fn ry_emit_get_runtime_fn(
 ) -> RyValueRef {
     // boundary input validation: malformed callers get a NULL handle instead of
     // crashing the emitter (mirrors ry_emit_runtime_call's guards).
-    if ctx.is_null() || name.is_null() || fn_ty.is_null() {
+    if name.is_null() || fn_ty.is_null() {
         return std::ptr::null_mut();
     }
-    let c = cx(ctx);
-    if c.module.is_null() {
+    let Some(c) = checked_cx(ctx) else {
         return std::ptr::null_mut();
-    }
+    };
     let f = c.get_runtime_fn(name, FuncTypeRef(as_functype(fn_ty)));
     to_ry_value(f.0)
 }

@@ -4,10 +4,13 @@
 //! value (intern / resolve are abi-side; the engine methods never touch them).
 //! `ry_emit_list_slice` keeps its C out-param signature (`*mut RyValueId` ×2,
 //! api.h-locked) and splits the engine's `SliceParts` aggregate into the two
-//! out-params. Behaviour is preserved verbatim from the pre-#2061 externs — no
-//! new NULL guards (a pure relocation; hardening is a separate follow-up).
+//! out-params. Each entry point validates its inputs at the boundary (#2080):
+//! `checked_cx` rejects a NULL ctx / context / module / builder, the required
+//! ids resolve through `resolve_value`, the type handles are NULL-checked, and
+//! `ry_emit_list_slice` rejects NULL out-params — malformed input becomes a
+//! no-op / sentinel 0 instead of reaching the engine's `LLVMBuild*` calls.
 
-use crate::core::{TypeRef, ValueRef};
+use crate::core::TypeRef;
 
 use super::*;
 
@@ -22,9 +25,18 @@ pub unsafe extern "C" fn ry_emit_collection_append(
     elem_ty: RyTypeRef,
     elem_size: u64,
 ) {
-    let c = cx(ctx);
-    let list_ptr = ValueRef(as_value(resolve(c, list_ptr_id)));
-    let val = ValueRef(as_value(resolve(c, val_id)));
+    // boundary input validation: malformed callers are a no-op rather than
+    // feeding NULL handles to the list-grow IR.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    let (Some(list_ptr), Some(val)) = (resolve_value(c, list_ptr_id), resolve_value(c, val_id))
+    else {
+        return;
+    };
+    if list_header_ty.is_null() || elem_ty.is_null() {
+        return;
+    }
     c.collection_append(
         list_ptr,
         val,
@@ -46,10 +58,21 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     elem_ty: RyTypeRef,
     elem_size: u64,
 ) {
-    let c = cx(ctx);
-    let list_ptr = ValueRef(as_value(resolve(c, list_ptr_id)));
-    let orig_idx = ValueRef(as_value(resolve(c, idx_id)));
-    let val = ValueRef(as_value(resolve(c, val_id)));
+    // boundary input validation: malformed callers are a no-op rather than
+    // feeding NULL handles to the insert / tail-shift IR.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    let (Some(list_ptr), Some(orig_idx), Some(val)) = (
+        resolve_value(c, list_ptr_id),
+        resolve_value(c, idx_id),
+        resolve_value(c, val_id),
+    ) else {
+        return;
+    };
+    if list_header_ty.is_null() || elem_ty.is_null() {
+        return;
+    }
     c.collection_insert(
         list_ptr,
         orig_idx,
@@ -71,9 +94,19 @@ pub unsafe extern "C" fn ry_emit_collection_remove_at(
     elem_ty: RyTypeRef,
     elem_size: u64,
 ) -> RyValueId {
-    let c = cx(ctx);
-    let list_ptr = ValueRef(as_value(resolve(c, list_ptr_id)));
-    let orig_idx = ValueRef(as_value(resolve(c, idx_id)));
+    // boundary input validation: malformed callers get sentinel 0 rather than
+    // feeding NULL handles to the remove / tail-shift IR.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(list_ptr), Some(orig_idx)) =
+        (resolve_value(c, list_ptr_id), resolve_value(c, idx_id))
+    else {
+        return 0;
+    };
+    if list_header_ty.is_null() || elem_ty.is_null() {
+        return 0;
+    }
     let removed = c.collection_remove_at(
         list_ptr,
         orig_idx,
@@ -99,10 +132,25 @@ pub unsafe extern "C" fn ry_emit_list_slice(
     out_count: *mut RyValueId,
     out_new_data: *mut RyValueId,
 ) {
-    let c = cx(ctx);
-    let list_ptr = ValueRef(as_value(resolve(c, list_ptr_id)));
-    let start_val = ValueRef(as_value(resolve(c, start_id)));
-    let end_excl_val = ValueRef(as_value(resolve(c, end_excl_id)));
+    // boundary input validation: the two out-params are written unconditionally
+    // on the happy path, so a NULL out-param (or ctx / handle) must reject before
+    // the engine call rather than dereference a NULL write target.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    if out_count.is_null() || out_new_data.is_null() {
+        return;
+    }
+    let (Some(list_ptr), Some(start_val), Some(end_excl_val)) = (
+        resolve_value(c, list_ptr_id),
+        resolve_value(c, start_id),
+        resolve_value(c, end_excl_id),
+    ) else {
+        return;
+    };
+    if list_header_ty.is_null() || elem_ty.is_null() {
+        return;
+    }
     let parts = c.list_slice(
         list_ptr,
         start_val,

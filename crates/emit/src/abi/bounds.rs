@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use crate::core::{BoundsKind, ValueRef};
+use crate::core::BoundsKind;
 
 use super::*;
 
@@ -38,9 +38,15 @@ pub unsafe extern "C" fn ry_emit_bounds_check(
     global_name: *const c_char,
     bb_prefix: *const c_char,
 ) -> RyValueId {
-    let c = cx(ctx);
-    let idx = ValueRef(as_value(resolve(c, idx_id)));
-    let len = ValueRef(as_value(resolve(c, len_id)));
+    // boundary input validation: malformed callers get sentinel 0. The string
+    // params (global_name / bb_prefix) are NULL-safe in the engine (`cstr_bytes`
+    // maps NULL → empty), so only ctx + the resolved operands need guarding.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(idx), Some(len)) = (resolve_value(c, idx_id), resolve_value(c, len_id)) else {
+        return 0;
+    };
     let result = c.bounds_check(idx, len, bounds_kind_from(kind), global_name, bb_prefix);
     intern(c, to_ry_value(result.0))
 }
@@ -55,9 +61,15 @@ pub unsafe extern "C" fn ry_emit_negative_index_wrap(
     wrap_base_id: RyValueId,
     prefix: *const c_char,
 ) -> RyValueId {
-    let c = cx(ctx);
-    let idx = ValueRef(as_value(resolve(c, idx_id)));
-    let wrap_base = ValueRef(as_value(resolve(c, wrap_base_id)));
+    // boundary input validation: malformed callers get sentinel 0 (`prefix` is
+    // NULL-safe in the engine via `cstr_bytes`).
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(idx), Some(wrap_base)) = (resolve_value(c, idx_id), resolve_value(c, wrap_base_id))
+    else {
+        return 0;
+    };
     let result = c.negative_index_wrap(idx, wrap_base, prefix);
     intern(c, to_ry_value(result.0))
 }
@@ -74,8 +86,15 @@ pub unsafe extern "C" fn ry_emit_bounds_error(
     fmt_msg: *const c_char,
     global_name: *const c_char,
 ) {
-    let c = cx(ctx);
-    let orig_idx = ValueRef(as_value(resolve(c, orig_idx_id)));
-    let len = ValueRef(as_value(resolve(c, len_id)));
+    // boundary input validation: malformed callers are a no-op. The string params
+    // (fmt_msg / global_name) are NULL-safe in the engine (`cstr_bytes` +
+    // `bounds_error`'s explicit `global_name.is_null()` check).
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    let (Some(orig_idx), Some(len)) = (resolve_value(c, orig_idx_id), resolve_value(c, len_id))
+    else {
+        return;
+    };
     c.bounds_error(orig_idx, len, fmt_msg, global_name);
 }

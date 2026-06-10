@@ -40,11 +40,14 @@ pub unsafe extern "C" fn ry_emit_arc_retain(
     header_ptr_id: RyValueId,
     atomic: c_int,
 ) {
-    if ctx.is_null() {
+    // boundary input validation: NULL ctx / handles → no-op. An invalid id that
+    // resolves to a NULL header must not reach the retain IR (#2080).
+    let Some(c) = checked_cx(ctx) else {
         return;
-    }
-    let c = cx(ctx);
-    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
+    };
+    let Some(header) = resolve_value(c, header_ptr_id) else {
+        return;
+    };
     c.arc_retain(header, atomicity_from(atomic));
 }
 
@@ -59,11 +62,15 @@ pub unsafe extern "C" fn ry_emit_arc_release(
     destructor_callee: RyValueRef,
     gc_visit_fn: RyValueRef,
 ) {
-    if ctx.is_null() {
+    // boundary input validation: NULL ctx / handles → no-op. An invalid id that
+    // resolves to a NULL header must not reach the release IR (#2080). The
+    // destructor / gc-visit callees stay nullable (mapped to Option below).
+    let Some(c) = checked_cx(ctx) else {
         return;
-    }
-    let c = cx(ctx);
-    let header = ValueRef(as_value(resolve(c, header_ptr_id)));
+    };
+    let Some(header) = resolve_value(c, header_ptr_id) else {
+        return;
+    };
     c.arc_release(
         header,
         atomicity_from(atomic),

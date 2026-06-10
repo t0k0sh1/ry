@@ -17,7 +17,15 @@ pub unsafe extern "C" fn ry_emit_create_basic_block(
     name: *const c_char,
     fn_handle: RyFunctionRef,
 ) -> RyBasicBlockRef {
-    let c = cx(ctx);
+    // boundary input validation: malformed callers get a NULL block instead of
+    // dereferencing a bad ctx or handing a NULL parent function to LLVM. `name`
+    // is optional (NULL → empty).
+    let Some(c) = checked_cx(ctx) else {
+        return std::ptr::null_mut();
+    };
+    if fn_handle.is_null() {
+        return std::ptr::null_mut();
+    }
     let nm = if name.is_null() { c"".as_ptr() } else { name };
     to_ry_bb(
         c.create_basic_block(FunctionRef(as_function(fn_handle)), nm)
@@ -34,8 +42,17 @@ pub unsafe extern "C" fn ry_emit_branch_cond(
     true_bb: RyBasicBlockRef,
     false_bb: RyBasicBlockRef,
 ) {
-    let c = cx(ctx);
-    let cond_val = ValueRef(as_value(resolve(c, cond)));
+    // boundary input validation: malformed callers are a no-op rather than
+    // feeding a NULL cond / target to LLVMBuildCondBr.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    let Some(cond_val) = resolve_value(c, cond) else {
+        return;
+    };
+    if true_bb.is_null() || false_bb.is_null() {
+        return;
+    }
     c.branch_cond(
         cond_val,
         BasicBlockRef(as_bb(true_bb)),
@@ -47,7 +64,13 @@ pub unsafe extern "C" fn ry_emit_branch_cond(
 /// point (insert point unchanged).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_branch_uncond(ctx: *mut RyEmitCtx, target: RyBasicBlockRef) {
-    let c = cx(ctx);
+    // boundary input validation: NULL ctx / target → no-op.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    if target.is_null() {
+        return;
+    }
     c.branch_uncond(BasicBlockRef(as_bb(target)));
 }
 
@@ -63,18 +86,37 @@ pub unsafe extern "C" fn ry_emit_create_phi(
     count: u32,
     name_hint: *const c_char,
 ) -> RyValueId {
-    let c = cx(ctx);
+    // boundary input validation: malformed callers get sentinel 0. The parallel
+    // incoming arrays are borrowed through `ffi_slice` (rejecting a NULL base for
+    // count > 0 before the per-edge index), and each edge's value must resolve
+    // non-NULL with a non-NULL block. `name_hint` is optional (NULL → empty).
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if ty.is_null() {
+        return 0;
+    }
+    let (Some(values), Some(blocks)) = (
+        ffi_slice(incoming_values, count),
+        ffi_slice(incoming_blocks, count),
+    ) else {
+        return 0;
+    };
     let nm = if name_hint.is_null() {
         c"".as_ptr()
     } else {
         name_hint
     };
     let mut edges: Vec<(ValueRef, BasicBlockRef)> = Vec::with_capacity(count as usize);
-    for i in 0..count as usize {
-        edges.push((
-            ValueRef(as_value(resolve(c, *incoming_values.add(i)))),
-            BasicBlockRef(as_bb(*incoming_blocks.add(i))),
-        ));
+    for (&val_id, &block) in values.iter().zip(blocks.iter()) {
+        let Some(v) = resolve_value(c, val_id) else {
+            return 0;
+        };
+        let bb = as_bb(block);
+        if bb.is_null() {
+            return 0;
+        }
+        edges.push((v, BasicBlockRef(bb)));
     }
     let phi = c.create_phi(TypeRef(as_type(ty)), &edges, nm);
     intern(c, to_ry_value(phi.0))
