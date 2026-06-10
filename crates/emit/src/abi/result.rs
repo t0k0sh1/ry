@@ -29,13 +29,12 @@ pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
 ) -> RyValueId {
     // boundary input validation: malformed callers get sentinel 0 instead of
     // crashing the emitter (mirrors ry_emit_runtime_call's guards).
-    if ctx.is_null() || err_fn_name.is_null() || error_ty.is_null() {
+    if err_fn_name.is_null() || error_ty.is_null() {
         return 0;
     }
-    let c = cx(ctx);
-    if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
+    let Some(c) = checked_cx(ctx) else {
         return 0;
-    }
+    };
     let result = c.build_error_from_runtime(err_fn_name, TypeRef(as_type(error_ty)));
     intern(c, to_ry_value(result.0))
 }

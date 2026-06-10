@@ -11,6 +11,13 @@
 //     arc_retain / arc_release (#2057).
 //   - result_branch build_ok / build_err == NULL → sentinel 0 (replaces the
 //     former `build_ok.unwrap()` panic across the extern "C" boundary).
+//   - #2080 extends the same contract to the remaining entry points
+//     (control_flow / collection / bounds / option / lifecycle): ctx == NULL →
+//     sentinel / no-op; the reachable non-ctx UB cases (create_phi with NULL
+//     incoming arrays, list_slice with NULL out-params, arc retain / release on
+//     an id that resolves to a NULL header); plus, with a real ctx, the NULL
+//     type / fn handle guards and the `resolve_value → None` reject on a
+//     value-returning entry. See the #2080 section below.
 //
 // Deeper guards that need a *corrupted* ctx (c.module / c.context / c.builder
 // NULL) have no supported-API trigger and are documented as defensive in
@@ -106,6 +113,216 @@ TEST_F(EmitAbiGuardTest, ArcReleaseNullCtxDoesNotCrash) {
     ry_emit_arc_release(nullptr, /*header_ptr_id=*/0, RY_ARC_NONATOMIC,
                         /*destructor_callee=*/nullptr, /*gc_visit_fn=*/nullptr);
     SUCCEED();
+}
+
+// =============================================================================
+// #2080 — uniform input-validation guards across the remaining entry points
+// (control_flow / collection / bounds / option / lifecycle), mirroring the
+// validated runtime_call / result / any / cow contract via the shared
+// `checked_cx` / `resolve_value` / `ffi_slice` helpers.
+//
+// Same #2028 test-vs-document split: a guard reachable through a *supported*
+// boundary call (NULL ctx, NULL FFI array, NULL out-param, or an id that
+// resolves to a NULL handle) gets a direct-call case here; the inner
+// c.module/context/builder == NULL guards need a *corrupted* ctx (no supported
+// call produces one) and stay documented-only in
+// .claude/rules/tests-rejection-tdd.md.
+//
+// Post-fix lock-in: pre-fix these branches dereferenced a NULL ctx / raw FFI
+// pointer / out-param and crashed the process, so a clean "red" is impossible —
+// the tests are authored against the fixed guards (same convention as the
+// ResultBranch* cases above).
+// =============================================================================
+
+// --- ctx == NULL → sentinel (value-returning entries) ---
+
+TEST_F(EmitAbiGuardTest, CreateBasicBlockNullCtxReturnsNull) {
+    EXPECT_EQ(ry_emit_create_basic_block(nullptr, "bb", /*fn=*/nullptr), nullptr);
+}
+
+TEST_F(EmitAbiGuardTest, CreatePhiNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_create_phi(nullptr, /*ty=*/nullptr, /*incoming_values=*/nullptr,
+                                 /*incoming_blocks=*/nullptr, /*count=*/0, /*name_hint=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, CollectionRemoveAtNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_collection_remove_at(nullptr, /*list_ptr_id=*/0, /*idx_id=*/0,
+                                           /*list_header_ty=*/nullptr, /*elem_ty=*/nullptr,
+                                           /*elem_size=*/8),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, BoundsCheckNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_bounds_check(nullptr, /*idx_id=*/0, /*len_id=*/0, RY_BOUNDS_LIST,
+                                   /*global_name=*/"g", /*bb_prefix=*/"p"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, NegativeIndexWrapNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_negative_index_wrap(nullptr, /*idx_id=*/0, /*wrap_base_id=*/0,
+                                          /*prefix=*/"p"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, OptionWrapSomeNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_option_wrap_some(nullptr, /*inner_id=*/0, /*opt_ty=*/nullptr), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, OptionWrapNoneNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_option_wrap_none(nullptr, /*opt_ty=*/nullptr), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, InternNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_intern(nullptr, /*value=*/nullptr), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, ResolveNullCtxReturnsNull) {
+    EXPECT_EQ(ry_emit_resolve(nullptr, /*id=*/1), nullptr);
+}
+
+// --- ctx == NULL → no-op (void entries; the test passes by not crashing) ---
+
+TEST_F(EmitAbiGuardTest, BranchCondNullCtxDoesNotCrash) {
+    ry_emit_branch_cond(nullptr, /*cond=*/0, /*true_bb=*/nullptr, /*false_bb=*/nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, BranchUncondNullCtxDoesNotCrash) {
+    ry_emit_branch_uncond(nullptr, /*target=*/nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, CollectionAppendNullCtxDoesNotCrash) {
+    ry_emit_collection_append(nullptr, /*list_ptr_id=*/0, /*val_id=*/0, /*list_header_ty=*/nullptr,
+                              /*elem_ty=*/nullptr, /*elem_size=*/8);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, CollectionInsertNullCtxDoesNotCrash) {
+    ry_emit_collection_insert(nullptr, /*list_ptr_id=*/0, /*idx_id=*/0, /*val_id=*/0,
+                              /*list_header_ty=*/nullptr, /*elem_ty=*/nullptr, /*elem_size=*/8);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ListSliceNullCtxDoesNotCrash) {
+    ry_emit_list_slice(nullptr, /*list_ptr_id=*/0, /*start_id=*/0, /*end_excl_id=*/0,
+                       /*list_header_ty=*/nullptr, /*elem_ty=*/nullptr, /*elem_size=*/8,
+                       /*out_count=*/nullptr, /*out_new_data=*/nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, BoundsErrorNullCtxDoesNotCrash) {
+    ry_emit_bounds_error(nullptr, /*orig_idx_id=*/0, /*len_id=*/0, /*fmt_msg=*/"%lld %lld",
+                         /*global_name=*/"g");
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, CtxSetFunctionNullCtxDoesNotCrash) {
+    ry_emit_ctx_set_function(nullptr, /*function=*/nullptr);
+    SUCCEED();
+}
+
+// --- Reachable non-ctx UB cases (the #2080-specific hardening; each needs a
+//     real ctx so the guard — not the ctx-NULL check — is what fires) ---
+
+// create_phi with count > 0 but NULL incoming arrays: pre-fix this raw-deref'd
+// `*incoming_values.add(0)`; the ffi_slice guard now rejects to sentinel 0
+// before any element access. `resultTy_` is a valid non-NULL type so the ty
+// guard is passed and ffi_slice is the trigger.
+TEST_F(EmitAbiGuardTest, CreatePhiNullIncomingArraysReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_phi(ctx, asRyType(resultTy_), /*incoming_values=*/nullptr,
+                                 /*incoming_blocks=*/nullptr, /*count=*/1, /*name_hint=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// list_slice with NULL out-params: pre-fix this wrote through `*out_count` /
+// `*out_new_data`; the out-param guard now makes it a no-op (the guard fires
+// before the engine call, so the unpositioned builder is never touched).
+TEST_F(EmitAbiGuardTest, ListSliceNullOutParamsDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_list_slice(ctx, /*list_ptr_id=*/0, /*start_id=*/0, /*end_excl_id=*/0,
+                       /*list_header_ty=*/nullptr, /*elem_ty=*/nullptr, /*elem_size=*/8,
+                       /*out_count=*/nullptr, /*out_new_data=*/nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// arc_retain / arc_release with an id that resolves to a NULL header (sentinel
+// id 0): the #2080 resolved-header guard makes both a no-op rather than feeding
+// a NULL header to the retain / release IR (the issue's explicit arc gap).
+TEST_F(EmitAbiGuardTest, ArcRetainNullHeaderDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_arc_retain(ctx, /*header_ptr_id=*/0, RY_ARC_NONATOMIC);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ArcReleaseNullHeaderDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_arc_release(ctx, /*header_ptr_id=*/0, RY_ARC_NONATOMIC,
+                        /*destructor_callee=*/nullptr, /*gc_visit_fn=*/nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + NULL type / fn handle → sentinel. The ctx-NULL cases above
+//     reject at `checked_cx` before reaching the handle guards, so these use a
+//     real ctx to make the handle guard itself the trigger; each returns before
+//     any builder use. ---
+
+TEST_F(EmitAbiGuardTest, CreateBasicBlockNullFnReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_basic_block(ctx, "bb", /*fn=*/nullptr), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CreatePhiNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_phi(ctx, /*ty=*/nullptr, /*incoming_values=*/nullptr,
+                                 /*incoming_blocks=*/nullptr, /*count=*/0, /*name_hint=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, OptionWrapNoneNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_option_wrap_none(ctx, /*opt_ty=*/nullptr), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + an id that resolves to NULL → sentinel on a value-returning
+//     entry. The arc cases above cover the void no-op path; these cover the
+//     `resolve_value → None → return 0` path, which fires before the engine /
+//     builder is touched. ---
+
+TEST_F(EmitAbiGuardTest, BoundsCheckNullResolvedIdReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // idx_id 0 resolves to a NULL handle, so the guard fires before bounds_check
+    // touches the (unpositioned) builder.
+    EXPECT_EQ(ry_emit_bounds_check(ctx, /*idx_id=*/0, /*len_id=*/0, RY_BOUNDS_LIST,
+                                   /*global_name=*/"g", /*bb_prefix=*/"p"),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, OptionWrapSomeNullResolvedInnerReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid opt_ty passes the type guard; inner_id 0 then resolves to NULL and
+    // the resolve_value guard returns the sentinel.
+    EXPECT_EQ(ry_emit_option_wrap_some(ctx, /*inner_id=*/0, asRyType(resultTy_)), 0u);
+    ry_emit_ctx_destroy(ctx);
 }
 
 } // namespace

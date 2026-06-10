@@ -13,7 +13,7 @@ use std::ffi::{c_char, c_int, c_void};
 
 use llvm_sys::prelude::*;
 
-use crate::core::EmitCtx;
+use crate::core::{EmitCtx, ValueRef};
 
 // Per-op C boundary entry points live in child modules (one per migrated op),
 // each calling the matching `core` engine method on `EmitCtx`. The cdylib
@@ -428,6 +428,71 @@ pub(crate) unsafe fn resolve(c: &EmitCtx, id: RyValueId) -> RyValueRef {
         return std::ptr::null_mut();
     }
     to_ry_value(c.values[id as usize])
+}
+
+// =============================================================
+// Shared boundary input-validation helpers (#2080). Every IR-emitting entry
+// point converts malformed input to its sentinel rather than passing an unvetted
+// handle to the `core` engine (which forwards it straight to the LLVM C API). The
+// three helpers below fold the per-op inline guard sequences that runtime_call /
+// result / any / cow each spelled out — ctx + handle validation, required-id
+// resolution, FFI-array borrow — into one shared contract so the guard policy is
+// uniform across the boundary.
+// =============================================================
+
+// Validate the boundary ctx + the three LLVM handles every IR-emitting entry
+// point needs, returning the reified `EmitCtx` or `None` (→ the caller returns
+// its sentinel). Checking all three fields is a safe superset for ops that touch
+// only a subset (`create_basic_block` uses only `context`, `get_runtime_fn` only
+// `module`): `ry_emit_ctx_create` always stores the caller's live
+// module/builder/context together, so a partially-NULL ctx never arises from a
+// supported call. The pure-plumbing entries that emit no IR (`intern` / `resolve`
+// / `set_function`) guard `ctx.is_null()` directly instead — they touch none of
+// the three fields.
+#[inline]
+pub(crate) unsafe fn checked_cx<'a>(p: *mut RyEmitCtx) -> Option<&'a mut EmitCtx> {
+    if p.is_null() {
+        return None;
+    }
+    let c = cx(p);
+    if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
+        return None;
+    }
+    Some(c)
+}
+
+// Resolve a value id to `Some(ValueRef)`, or `None` when it resolves to NULL
+// (sentinel id 0 / out-of-range / an interned NULL). The non-NULL intent lives at
+// the call site: a *required* operand maps `None` to the entry point's sentinel
+// (`let Some(v) = resolve_value(..) else { return 0 }`), while an *optional* one
+// (e.g. an absent `any` descriptor) stores the `Option` directly. Subsumes the
+// former `any.rs::opt_value_id`.
+#[inline]
+pub(crate) unsafe fn resolve_value(c: &EmitCtx, id: RyValueId) -> Option<ValueRef> {
+    let v = as_value(resolve(c, id));
+    if v.is_null() {
+        None
+    } else {
+        Some(ValueRef(v))
+    }
+}
+
+// Borrow a parallel FFI array as a slice under the C `(ptr, count)` contract: an
+// empty count yields an empty slice WITHOUT touching the pointer
+// (`slice::from_raw_parts` requires a non-NULL base even for length 0), a
+// positive count with a NULL pointer yields `None` (→ caller's sentinel), and
+// otherwise the borrowed slice. Generalizes the inline guard runtime_call spelled
+// out for its `arg_tys` / `arg_ids` buffers so create_phi's two incoming arrays
+// reuse it.
+#[inline]
+pub(crate) unsafe fn ffi_slice<'a, T>(ptr: *const T, count: u32) -> Option<&'a [T]> {
+    if count == 0 {
+        Some(&[])
+    } else if ptr.is_null() {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(ptr, count as usize))
+    }
 }
 
 // `cstr_bytes` lives in `core` (#2060) — a pure `CStr` primitive used by the

@@ -56,25 +56,25 @@ pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
     ctx: *mut RyEmitCtx,
     desc: *const RyCowEnsureUniqueDesc,
 ) -> RyValueId {
-    if ctx.is_null() || desc.is_null() {
+    if desc.is_null() {
         return 0;
     }
-    let c = cx(ctx);
-    if c.context.is_null() || c.module.is_null() || c.builder.is_null() {
+    let Some(c) = checked_cx(ctx) else {
         return 0;
-    }
-    let data_ptr = as_value(resolve(c, (*desc).data_ptr_id));
-    let slot_ptr = as_value(resolve(c, (*desc).slot_ptr_id));
-    if data_ptr.is_null() || slot_ptr.is_null() {
+    };
+    let (Some(data_ptr), Some(slot_ptr)) = (
+        resolve_value(c, (*desc).data_ptr_id),
+        resolve_value(c, (*desc).slot_ptr_id),
+    ) else {
         return 0;
-    }
+    };
     let kind = match cow_kind_from((*desc).kind) {
         Some(k) => k,
         None => return 0,
     };
     let d = CowEnsureUnique {
-        data_ptr: ValueRef(data_ptr),
-        slot_ptr: ValueRef(slot_ptr),
+        data_ptr,
+        slot_ptr,
         kind,
         atomic: if (*desc).atomic == RY_ARC_ATOMIC {
             Atomicity::Atomic

@@ -2,7 +2,7 @@
 //! value id / translate the opaque type handle, call the `core` `EmitCtx`
 //! method, and intern the produced aggregate (intern / resolve are abi-side).
 
-use crate::core::{TypeRef, ValueRef};
+use crate::core::TypeRef;
 
 use super::*;
 
@@ -14,8 +14,17 @@ pub unsafe extern "C" fn ry_emit_option_wrap_some(
     inner_id: RyValueId,
     opt_ty: RyTypeRef,
 ) -> RyValueId {
-    let c = cx(ctx);
-    let inner = ValueRef(as_value(resolve(c, inner_id)));
+    // boundary input validation: malformed callers get sentinel 0 rather than
+    // feeding a NULL inner value / Option type to the aggregate build.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if opt_ty.is_null() {
+        return 0;
+    }
+    let Some(inner) = resolve_value(c, inner_id) else {
+        return 0;
+    };
     let val = c.option_wrap_some(inner, TypeRef(as_type(opt_ty)));
     intern(c, to_ry_value(val.0))
 }
@@ -26,7 +35,14 @@ pub unsafe extern "C" fn ry_emit_option_wrap_none(
     ctx: *mut RyEmitCtx,
     opt_ty: RyTypeRef,
 ) -> RyValueId {
-    let c = cx(ctx);
+    // boundary input validation: malformed callers get sentinel 0 rather than
+    // feeding a NULL Option type to the aggregate build.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if opt_ty.is_null() {
+        return 0;
+    }
     let val = c.option_wrap_none(TypeRef(as_type(opt_ty)));
     intern(c, to_ry_value(val.0))
 }

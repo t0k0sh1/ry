@@ -41,12 +41,22 @@ pub unsafe extern "C" fn ry_emit_ctx_destroy(ctx: *mut RyEmitCtx) {
 /// BB-creating ops derive the parent from the builder, not this field.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_ctx_set_function(ctx: *mut RyEmitCtx, function: RyFunctionRef) {
+    // boundary input validation: NULL ctx → no-op. This entry touches no LLVM
+    // module/builder/context, so only the ctx pointer itself needs guarding
+    // (the `checked_cx` three-field check would be over-strict here).
+    if ctx.is_null() {
+        return;
+    }
     cx(ctx).function = function as LLVMValueRef;
 }
 
 /// Intern an opaque `value` handle into a `RyValueId` (sentinel 0 = invalid).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_intern(ctx: *mut RyEmitCtx, value: RyValueRef) -> RyValueId {
+    // boundary input validation: NULL ctx → sentinel 0 (no LLVM handle touched).
+    if ctx.is_null() {
+        return 0;
+    }
     intern(cx(ctx), value)
 }
 
@@ -54,5 +64,9 @@ pub unsafe extern "C" fn ry_emit_intern(ctx: *mut RyEmitCtx, value: RyValueRef) 
 /// `ry_emit_intern`).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_resolve(ctx: *mut RyEmitCtx, id: RyValueId) -> RyValueRef {
+    // boundary input validation: NULL ctx → NULL (no LLVM handle touched).
+    if ctx.is_null() {
+        return std::ptr::null_mut();
+    }
     resolve(cx(ctx), id)
 }
