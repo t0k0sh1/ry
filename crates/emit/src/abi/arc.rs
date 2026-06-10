@@ -32,6 +32,8 @@ fn opt_value_ref(p: RyValueRef) -> Option<ValueRef> {
     }
 }
 
+/// Emit an ARC retain on the header at `header_ptr_id` (`atomic` selects atomic
+/// vs non-atomic); immortal objects are skipped. No-op on NULL ctx.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_arc_retain(
     ctx: *mut RyEmitCtx,
@@ -46,6 +48,9 @@ pub unsafe extern "C" fn ry_emit_arc_retain(
     c.arc_retain(header, atomicity_from(atomic));
 }
 
+/// Emit an ARC release on the header at `header_ptr_id` (`atomic` mode),
+/// invoking `destructor_callee` / `gc_visit_fn` when non-NULL on the free path.
+/// No-op on NULL ctx.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_arc_release(
     ctx: *mut RyEmitCtx,

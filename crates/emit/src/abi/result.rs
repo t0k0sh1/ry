@@ -18,6 +18,9 @@ use crate::result::emit_result_branch;
 
 use super::*;
 
+/// Build an `Error` aggregate by calling runtime error function `err_fn_name`,
+/// with `error_ty` the opaque Error StructType; return the interned value.
+/// Returns 0 (sentinel) on NULL ctx / name / type or an uninitialized emitter.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
     ctx: *mut RyEmitCtx,
@@ -37,6 +40,10 @@ pub unsafe extern "C" fn ry_emit_build_error_from_runtime(
     intern(c, to_ry_value(result.0))
 }
 
+/// Emit a `Result` branch: three BBs (res.ok / res.err / res.merge) joined by a
+/// PHI, with `build_ok` / `build_err` (forwarded `user_ctx`) emitting each arm;
+/// return the interned PHI. Returns 0 on NULL inputs. Precondition:
+/// `ry_emit_ctx_set_function` must be set (three BBs are created).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_result_branch(
     ctx: *mut RyEmitCtx,

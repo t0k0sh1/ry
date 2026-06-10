@@ -25,6 +25,10 @@ fn bounds_kind_from(kind: c_int) -> BoundsKind {
     }
 }
 
+/// Emit a bounds-check sequence for the interned index `idx_id` against length
+/// `len_id` (List or Array per `kind`); return the interned wrapped index for the
+/// caller's GEP. `global_name` / `bb_prefix` name the error string and generated
+/// blocks. Precondition: `ry_emit_ctx_set_function` must be set (BBs are created).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_bounds_check(
     ctx: *mut RyEmitCtx,
@@ -41,6 +45,9 @@ pub unsafe extern "C" fn ry_emit_bounds_check(
     intern(c, to_ry_value(result.0))
 }
 
+/// Emit `wrapped = (idx < 0) ? idx + wrap_base : idx` for interned `idx_id` /
+/// `wrap_base_id`; return the interned wrapped index (i64). `prefix` names the
+/// generated blocks.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_negative_index_wrap(
     ctx: *mut RyEmitCtx,
@@ -55,6 +62,10 @@ pub unsafe extern "C" fn ry_emit_negative_index_wrap(
     intern(c, to_ry_value(result.0))
 }
 
+/// Emit the out-of-bounds exit (`fprintf(stderr, fmt_msg, orig_idx, len)` → exit
+/// → unreachable) for interned `orig_idx_id` / `len_id`. `fmt_msg` needs two
+/// `%lld`; `global_name` hints the dedup'd format-string global. The caller must
+/// split BBs around this call (it terminates the current block).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_bounds_error(
     ctx: *mut RyEmitCtx,

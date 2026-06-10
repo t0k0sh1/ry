@@ -21,20 +21,34 @@ use crate::core::*;
 // resolves the u32 handle ids to `ValueRef`, maps the `c_int` kind / atomic and
 // the flag fields into core vocabulary (`CowKind` / `Atomicity` / `bool` /
 // `Option<ValueRef>`), and builds this before calling the engine method. The C
-// `RyCowEnsureUniqueDesc` stays the locked boundary surface in `abi.rs`; this is
-// its core-side counterpart, consumed only here.
+// `RyCowEnsureUniqueDesc` stays the locked boundary surface in `abi.rs` (see
+// there for the per-field semantics); this is its already-converted core-side
+// counterpart, consumed only here, so the docs below note just the post-shell
+// form.
 pub(crate) struct CowEnsureUnique {
+    /// Resolved `data_ptr_id`.
     pub(crate) data_ptr: ValueRef,
+    /// Resolved `slot_ptr_id`.
     pub(crate) slot_ptr: ValueRef,
+    /// `kind` validated into `CowKind`.
     pub(crate) kind: CowKind,
+    /// `atomic` mapped to `Atomicity`.
     pub(crate) atomic: Atomicity,
+    /// Element byte size (List / Set).
     pub(crate) elem_size: u64,
+    /// Key byte size (Map).
     pub(crate) key_size: u64,
+    /// Value byte size (Map).
     pub(crate) val_size: u64,
+    /// `do_elem_retain` as `bool`.
     pub(crate) do_elem_retain: bool,
+    /// `elem_is_str` as `bool` (retain header-offset selector).
     pub(crate) elem_is_str: bool,
+    /// `do_key_retain` as `bool`.
     pub(crate) do_key_retain: bool,
+    /// `key_is_str` as `bool` (retain header-offset selector).
     pub(crate) key_is_str: bool,
+    /// Resolved `destructor_callee` (`None` when null).
     pub(crate) destructor_callee: Option<ValueRef>,
 }
 

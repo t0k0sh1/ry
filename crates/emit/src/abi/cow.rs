@@ -46,6 +46,11 @@ fn cow_kind_from(kind: c_int) -> Option<CowKind> {
     }
 }
 
+/// Emit the Copy-on-Write uniqueness check for the slot described by `desc`: if
+/// the collection is shared, deep-copy it, release the old header, and store the
+/// new dataPtr; return the interned dataPtr PHI (original or copied), or 0 on a
+/// NULL guard / invalid kind. See `RyCowEnsureUniqueDesc`. Precondition:
+/// `ry_emit_ctx_set_function` must be set (BBs are created).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_cow_ensure_unique(
     ctx: *mut RyEmitCtx,

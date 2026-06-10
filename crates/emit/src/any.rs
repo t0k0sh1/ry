@@ -24,48 +24,85 @@ use crate::core::*;
 // calling the engine. The C `RyAnyWrapDesc` stays the locked boundary surface in
 // `abi.rs`; this is its core-side counterpart, consumed only here.
 pub(crate) struct AnyWrap {
+    /// `kind` validated into `AnyWrapKind` (NonBox / RecordBox / EnumBox).
     pub(crate) kind: AnyWrapKind,
+    /// RyAnyTag to store in any.tag (raw i64).
     pub(crate) target_tag: i64,
+    /// Resolved `val_id` — the value to wrap.
     pub(crate) val: ValueRef,
+    /// `do_collection_retain` as `bool` (NonBox).
     pub(crate) do_collection_retain: bool,
+    /// `do_str_retain` as `bool` (NonBox; exclusive with the above).
     pub(crate) do_str_retain: bool,
+    /// Box arms: resolved `descriptor_id` (per-type descriptor constant).
     pub(crate) descriptor: Option<ValueRef>,
+    /// Box arms: resolved `box_layout_ty` (`{ ptr desc, payload }` struct).
     pub(crate) box_layout_ty: Option<TypeRef>,
+    /// Box arms: allocation size of `box_layout_ty` in bytes.
     pub(crate) box_data_size: u64,
+    /// The `any` StructType.
     pub(crate) any_ty: TypeRef,
 }
 
-// Rust-native descriptor for any_unwrap. The message / global-name fields stay
-// `*const c_char` (per the #2059 Section A name convention); the engine calls
-// `cstr_bytes` at the point of use, keeping this struct Copy / lifetime-free.
+// Rust-native descriptor for any_unwrap (core-side counterpart of the C
+// `RyAnyUnwrapDesc` in `abi.rs`; see there for per-field semantics). The message
+// / global-name fields stay `*const c_char` (per the #2059 Section A name
+// convention); the engine calls `cstr_bytes` at the point of use, keeping this
+// struct Copy / lifetime-free.
 pub(crate) struct AnyUnwrap {
+    /// `kind` validated into `AnyUnwrapKind` (Standard / F64Promote / Record).
     pub(crate) kind: AnyUnwrapKind,
+    /// Resolved `any_val_id` — the source any value.
     pub(crate) any_val: ValueRef,
+    /// The `any` StructType.
     pub(crate) any_ty: TypeRef,
+    /// Standard: target LLVM type; Record / F64Promote: `None` (unused).
     pub(crate) target_ty: Option<TypeRef>,
+    /// Standard / Record: expected RyAnyTag value (raw i64).
     pub(crate) expected_tag: i64,
+    /// `do_collection_retain` as `bool` (Standard).
     pub(crate) do_collection_retain: bool,
+    /// `do_str_retain` as `bool` (Standard; exclusive with the above).
     pub(crate) do_str_retain: bool,
+    /// Tag-mismatch error message (borrowed `*const c_char`, read via
+    /// `cstr_bytes` at the point of use).
     pub(crate) mismatch_msg: *const c_char,
+    /// cachedGlobalString name hint for `mismatch_msg`.
     pub(crate) mismatch_global_name: *const c_char,
+    /// Record only: resolved `expected_desc_id` (expected descriptor constant).
     pub(crate) expected_desc: Option<ValueRef>,
+    /// Record only: resolved `box_layout_ty` (`{ ptr desc, record struct }`).
     pub(crate) box_layout_ty: Option<TypeRef>,
+    /// Record only: the record's struct type for the payload GEP/load.
     pub(crate) record_struct_ty: Option<TypeRef>,
+    /// Record only: descriptor-mismatch error message (borrowed `*const c_char`).
     pub(crate) desc_mismatch_msg: *const c_char,
+    /// Record only: name hint for `desc_mismatch_msg`.
     pub(crate) desc_mismatch_global_name: *const c_char,
 }
 
-// Rust-native descriptor for any_try_unwrap.
+// Rust-native descriptor for any_try_unwrap (core-side counterpart of the C
+// `RyAnyTryUnwrapDesc` in `abi.rs`; see there for per-field semantics).
 pub(crate) struct AnyTryUnwrap {
+    /// `kind` validated into `AnyTryUnwrapKind` (Standard / F64Promote).
     pub(crate) kind: AnyTryUnwrapKind,
+    /// Resolved `any_val_id` — the source any value.
     pub(crate) any_val: ValueRef,
+    /// The `any` StructType.
     pub(crate) any_ty: TypeRef,
+    /// `Result<targetTy, Error>` StructType.
     pub(crate) res_ty: TypeRef,
+    /// `Error` StructType.
     pub(crate) error_ty: TypeRef,
+    /// Standard: target LLVM type; F64Promote: `None` (f64 hard-coded).
     pub(crate) target_ty: Option<TypeRef>,
+    /// Standard only: expected RyAnyTag value (raw i64).
     pub(crate) expected_tag: i64,
+    /// `do_collection_retain` as `bool` (Standard).
     pub(crate) do_collection_retain: bool,
+    /// `do_str_retain` as `bool` (Standard; exclusive with the above).
     pub(crate) do_str_retain: bool,
+    /// Resolved `err_msg_str_id` — stored into Error slot 0.
     pub(crate) err_msg_str: ValueRef,
 }
 

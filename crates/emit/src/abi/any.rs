@@ -81,6 +81,9 @@ unsafe fn opt_value_id(c: &EmitCtx, id: RyValueId) -> Option<ValueRef> {
     }
 }
 
+/// Wrap a value into `any` per `desc` (NonBox / RecordBox / EnumBox); return the
+/// interned boxed value, or 0 on a NULL guard or invalid kind. See
+/// `RyAnyWrapDesc` for the fields.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_any_wrap(
     ctx: *mut RyEmitCtx,
@@ -119,6 +122,9 @@ pub unsafe extern "C" fn ry_emit_any_wrap(
     }
 }
 
+/// Unwrap an `any` to a concrete type per `desc` (Standard / F64Promote /
+/// Record), emitting the tag / descriptor check and the mismatch trap; return
+/// the interned value, or 0 on a guard failure. See `RyAnyUnwrapDesc`.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_any_unwrap(
     ctx: *mut RyEmitCtx,
@@ -162,6 +168,9 @@ pub unsafe extern "C" fn ry_emit_any_unwrap(
     }
 }
 
+/// Fallibly unwrap an `any` per `desc` (Standard / F64Promote) into a
+/// `Result<T, Error>`; return the interned Result, or 0 on a guard failure. See
+/// `RyAnyTryUnwrapDesc`.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_any_try_unwrap(
     ctx: *mut RyEmitCtx,

@@ -6,6 +6,8 @@ use crate::core::{TypeRef, ValueRef};
 
 use super::*;
 
+/// Wrap the interned `inner_id` into a `Some` of Option type `opt_ty`; return the
+/// interned aggregate.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_option_wrap_some(
     ctx: *mut RyEmitCtx,
@@ -18,6 +20,7 @@ pub unsafe extern "C" fn ry_emit_option_wrap_some(
     intern(c, to_ry_value(val.0))
 }
 
+/// Build a `None` of Option type `opt_ty`; return the interned aggregate.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_option_wrap_none(
     ctx: *mut RyEmitCtx,

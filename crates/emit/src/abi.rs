@@ -116,67 +116,150 @@ pub type RyBuildValueFn = Option<unsafe extern "C" fn(user_ctx: *mut c_void) -> 
 
 // =============================================================
 // Descriptor structs (mirror api.h verbatim — field order, types,
-// and layout MUST match the C declarations).
+// and layout MUST match the C declarations). The per-field docs below
+// summarize each field for the Rust reader and call out the handle kind
+// (`RyValueId` u32 intern id the shell `resolve`s, vs. opaque
+// `RyValueRef` / `RyTypeRef` pointers passed straight through) and the
+// core vocabulary the abi shell maps it into. api.h holds the canonical
+// long-form (kind tables, BB-level emission sequences) — keep these
+// short and defer there rather than restating it.
 // =============================================================
 
 #[repr(C)]
 pub struct RyCowEnsureUniqueDesc {
+    /// Current ARC-backed dataPtr (`RyValueId`). The op derives headerPtr as
+    /// `data_ptr - ARC_HEADER_SIZE`.
     pub data_ptr_id: RyValueId,
+    /// Slot (alloca or GEP) that receives the new dataPtr on the copy path;
+    /// left untouched on the unique / immortal path (`RyValueId`).
     pub slot_ptr_id: RyValueId,
+    /// RyCowKind selector, mapped to `CowKind`: 0 = List, 1 = Map, 2 = Set.
     pub kind: c_int,
+    /// RyArcAtomic, mapped to `Atomicity`; gates the strong_count load
+    /// ordering (Acquire vs NotAtomic) and the internal arc_release mode.
     pub atomic: c_int,
+    /// List / Set: element bytes. Map: unused (use `val_size`).
     pub elem_size: u64,
+    /// Map: key bytes. 0 for List / Set.
     pub key_size: u64,
+    /// Map: value bytes. 0 for List / Set.
     pub val_size: u64,
+    /// 1 = retain each cloned element after the memcpy (always NON-atomic);
+    /// mapped to `bool`.
     pub do_elem_retain: c_int,
+    /// Element-retain header offset: 1 = StringHeader (-24), 0 = ArcHeader
+    /// (-16). Consulted only when `do_elem_retain`.
     pub elem_is_str: c_int,
+    /// Map only: 1 = retain each cloned Map key (always NON-atomic); mapped to
+    /// `bool`. Independent of `do_elem_retain`.
     pub do_key_retain: c_int,
+    /// Key-retain header offset: 1 = StringHeader (-24), 0 = ArcHeader (-16).
+    /// Consulted only when `do_key_retain`.
     pub key_is_str: c_int,
+    /// Per-kind collection destructor — opaque `RyValueRef` passed straight to
+    /// the internal arc_release (mapped to `Option<ValueRef>`). NULL when the
+    /// kind has no element-side cleanup.
     pub destructor_callee: RyValueRef,
 }
 
 #[repr(C)]
 pub struct RyAnyWrapDesc {
+    /// `kind` selector, mapped to `AnyWrapKind`: 0 = NonBox, 1 = RecordBox,
+    /// 2 = EnumBox.
     pub kind: c_int,
+    /// RyAnyTag to store in any.tag, passed as a raw i64 (matches the C++
+    /// `ry::RyAnyTag` enum numerically, Int=0..Enum=9) so the boundary need
+    /// not share the enum identifier.
     pub target_tag: i64,
+    /// Value to wrap (`RyValueId`). NonBox: primitive / bool / str /
+    /// collection pointer. Box arms: the record/enum payload.
     pub val_id: RyValueId,
+    /// NonBox only: 1 = retain the collection element header (-16) before the
+    /// alloca/store; mapped to `bool`.
     pub do_collection_retain: c_int,
+    /// NonBox only: 1 = retain the StringHeader (-24) before the alloca/store.
+    /// Mutually exclusive with `do_collection_retain`.
     pub do_str_retain: c_int,
+    /// Box arms only: per-type descriptor LLVM Constant (`RyValueId`; the
+    /// nullable resolve maps it to `Option<ValueRef>`).
     pub descriptor_id: RyValueId,
+    /// Box arms only: `{ ptr desc, payload }` StructType — opaque `RyTypeRef`
+    /// passed straight through (mapped to `Option<TypeRef>`).
     pub box_layout_ty: RyTypeRef,
+    /// Box arms only: DataLayout-derived allocation size of `box_layout_ty` in
+    /// bytes, pre-computed so the boundary need not consult DataLayout.
     pub box_data_size: u64,
+    /// Common: the `any` StructType handle (anyTy_) — opaque `RyTypeRef`.
     pub any_ty: RyTypeRef,
 }
 
 #[repr(C)]
 pub struct RyAnyUnwrapDesc {
+    /// `kind` selector: 0 = Standard (2-way tag check), 1 = F64Promote
+    /// (int→float auto-promote, 5 BBs), 2 = Record (descriptor-chain walk).
     pub kind: c_int,
+    /// Source any value (`RyValueId`).
     pub any_val_id: RyValueId,
+    /// `any` StructType handle (anyTy_) — opaque `RyTypeRef`.
     pub any_ty: RyTypeRef,
+    /// Standard: target LLVM type (i64 / i1 / ptr / ...). Record: ignored
+    /// (`record_struct_ty` is used). F64Promote: ignored. Opaque `RyTypeRef`.
     pub target_ty: RyTypeRef,
+    /// Standard / Record: expected RyAnyTag value (raw i64).
     pub expected_tag: i64,
+    /// Standard only: 1 = retain the collection element header (-16) after the
+    /// load; mapped to `bool`.
     pub do_collection_retain: c_int,
+    /// Standard only: 1 = retain the StringHeader (-24) after the load.
+    /// Mutually exclusive with `do_collection_retain`.
     pub do_str_retain: c_int,
+    /// Tag-mismatch error message — borrowed `*const c_char` (valid only for
+    /// the call) for the cachedGlobalString'd format string.
     pub mismatch_msg: *const c_char,
+    /// Global-name hint for `mismatch_msg`'s interned string (borrowed
+    /// `*const c_char`).
     pub mismatch_global_name: *const c_char,
+    /// Record only: expected per-type descriptor LLVM Constant (`RyValueId`).
     pub expected_desc_id: RyValueId,
+    /// Record only: `{ ptr desc, record struct }` StructType — opaque
+    /// `RyTypeRef`.
     pub box_layout_ty: RyTypeRef,
+    /// Record only: the record's struct type for the payload GEP/load — opaque
+    /// `RyTypeRef`.
     pub record_struct_ty: RyTypeRef,
+    /// Record only: descriptor-mismatch error message (borrowed `*const
+    /// c_char`).
     pub desc_mismatch_msg: *const c_char,
+    /// Record only: global-name hint for `desc_mismatch_msg` (borrowed
+    /// `*const c_char`).
     pub desc_mismatch_global_name: *const c_char,
 }
 
 #[repr(C)]
 pub struct RyAnyTryUnwrapDesc {
+    /// `kind` selector: 0 = Standard (tag-check primitive arm via
+    /// result_branch), 1 = F64Promote (f64 target with int auto-promote).
     pub kind: c_int,
+    /// Source any value (`RyValueId`).
     pub any_val_id: RyValueId,
+    /// `any` StructType handle (anyTy_) — opaque `RyTypeRef`.
     pub any_ty: RyTypeRef,
+    /// `Result<targetTy, Error>` StructType handle — opaque `RyTypeRef`.
     pub res_ty: RyTypeRef,
+    /// `Error` StructType handle (errorTy_) — opaque `RyTypeRef`.
     pub error_ty: RyTypeRef,
+    /// Standard: target LLVM type (i64 / i1 / ptr / ...). F64Promote: ignored
+    /// (f64 hard-coded). Opaque `RyTypeRef`.
     pub target_ty: RyTypeRef,
+    /// Standard only: expected RyAnyTag value (raw i64).
     pub expected_tag: i64,
+    /// Standard only: 1 = retain the collection element header (-16); same
+    /// semantics as `RyAnyUnwrapDesc`. Mapped to `bool`.
     pub do_collection_retain: c_int,
+    /// Standard only: 1 = retain the StringHeader (-24). Mutually exclusive
+    /// with `do_collection_retain`.
     pub do_str_retain: c_int,
+    /// Both kinds: error message string (`RyValueId`) stored into Error slot 0.
     pub err_msg_str_id: RyValueId,
 }
 

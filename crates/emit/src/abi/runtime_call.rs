@@ -11,6 +11,10 @@ use crate::core::{FuncTypeRef, TypeRef, ValueRef};
 
 use super::*;
 
+/// Emit a call to runtime function `name` (return type `ret_ty`) with the
+/// `arg_count` interned `arg_ids` typed by the parallel `arg_tys` (`arg_ty_count`
+/// must equal `arg_count`); return the interned call result. Returns 0 on NULL /
+/// count-mismatch / per-arg NULL. `name_hint` is optional.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_runtime_call(
     ctx: *mut RyEmitCtx,
@@ -76,6 +80,8 @@ pub unsafe extern "C" fn ry_emit_runtime_call(
     intern(c, to_ry_value(result.0))
 }
 
+/// Look up or declare runtime function `name` of type `fn_ty` and return its raw
+/// (un-interned) callee handle. Returns NULL on a guard failure.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_get_runtime_fn(
     ctx: *mut RyEmitCtx,
