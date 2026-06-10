@@ -3,8 +3,10 @@
 //! `Atomicity` handle types, the basic-IR layer (LLVM 1:1 type constructors),
 //! and the combination layer (name builders, module-global lookup, layout
 //! constants, the libc / runtime-error / ARC-alloc emitters). Must NOT reference
-//! `crate::abi` — this is the `core⇏abi` invariant (#2057); the only dependency
-//! is on `llvm_sys` + `std`.
+//! `crate::abi` — the `core⇏abi` invariant (#2057): `core` stays compilable
+//! without the removable `abi` C shell (the #2023 Rust-native end-state), and
+//! `core`'s rlib does not depend on the `abi` cdylib once the crate split lands.
+//! The only dependency is `llvm_sys` + `std`. See `lib.rs` for the full layering.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};

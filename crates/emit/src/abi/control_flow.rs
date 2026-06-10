@@ -9,6 +9,8 @@ use crate::core::{BasicBlockRef, FunctionRef, TypeRef, ValueRef};
 
 use super::*;
 
+/// Create a fresh basic block named `name` inside `fn_handle` and return its
+/// opaque handle. NULL `name` is treated as empty.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_create_basic_block(
     ctx: *mut RyEmitCtx,
@@ -23,6 +25,8 @@ pub unsafe extern "C" fn ry_emit_create_basic_block(
     )
 }
 
+/// Emit a conditional branch on the interned i1 `cond` to `true_bb` / `false_bb`
+/// at the builder's current insert point (insert point unchanged).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_branch_cond(
     ctx: *mut RyEmitCtx,
@@ -39,12 +43,17 @@ pub unsafe extern "C" fn ry_emit_branch_cond(
     );
 }
 
+/// Emit an unconditional branch to `target` at the builder's current insert
+/// point (insert point unchanged).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_branch_uncond(ctx: *mut RyEmitCtx, target: RyBasicBlockRef) {
     let c = cx(ctx);
     c.branch_uncond(BasicBlockRef(as_bb(target)));
 }
 
+/// Emit a PHI of type `ty` from `count` parallel (value, block) incoming pairs
+/// (`incoming_values` / `incoming_blocks`) at the builder's current insert point;
+/// return the interned PHI handle. NULL `name_hint` is treated as empty.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_create_phi(
     ctx: *mut RyEmitCtx,

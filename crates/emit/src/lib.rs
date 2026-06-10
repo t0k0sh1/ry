@@ -58,8 +58,13 @@
 //     migrated, no legacy module remains.
 //
 // Dependency direction is one-way `abi → core`, with `ffi` re-exporting the
-// `core` surface. The `#[no_mangle] extern "C"` boundary functions are exported
-// from the cdylib regardless of which (private) module they live in.
+// `core` surface. Why one-way: `abi` is the *removable* C-boundary shell — the
+// #2023 end-state drops `extern "C"` for a Rust-native library — so `core` must
+// stay compilable without it; once the physical crate split lands `abi` becomes
+// a separate cdylib that `core`'s rlib does not depend on, and Rust-direct
+// callers bypass `abi` to call `core` methods (the convergence point `ffi`
+// names). The `#[no_mangle] extern "C"` boundary functions are exported from the
+// cdylib regardless of which (private) module they live in.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]

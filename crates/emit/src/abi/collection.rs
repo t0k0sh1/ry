@@ -11,6 +11,8 @@ use crate::core::{TypeRef, ValueRef};
 
 use super::*;
 
+/// Append the interned `val_id` to the List at `list_ptr_id` (growing the buffer
+/// in place); `list_header_ty` / `elem_ty` / `elem_size` describe the layout.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_collection_append(
     ctx: *mut RyEmitCtx,
@@ -32,6 +34,8 @@ pub unsafe extern "C" fn ry_emit_collection_append(
     );
 }
 
+/// Insert the interned `val_id` at `idx_id` into the List at `list_ptr_id`
+/// (negative index wrapped, shifting the tail up).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_collection_insert(
     ctx: *mut RyEmitCtx,
@@ -56,6 +60,8 @@ pub unsafe extern "C" fn ry_emit_collection_insert(
     );
 }
 
+/// Remove the element at `idx_id` from the List at `list_ptr_id` and return the
+/// interned removed value (negative index wrapped, shifting the tail down).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_collection_remove_at(
     ctx: *mut RyEmitCtx,
@@ -78,6 +84,9 @@ pub unsafe extern "C" fn ry_emit_collection_remove_at(
     intern(c, to_ry_value(removed.0))
 }
 
+/// Slice the List at `list_ptr_id` over `[start_id, end_excl_id)`; write the
+/// interned clamped element count and the freshly-malloc'd sub-list buffer into
+/// the `out_count` / `out_new_data` out-params (the engine's `SliceParts` split).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_list_slice(
     ctx: *mut RyEmitCtx,
