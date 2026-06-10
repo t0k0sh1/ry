@@ -6,6 +6,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.27] - 2026-06-10
+
+### Added
+
+- `min`, `max`, and `sum` now accept a variadic scalar form in addition
+  to the existing single-list form: `min(3, 5)`, `max(1, 2, 3)`,
+  `sum(1.0, 2.0, 3.0)` (previously only the list form such as
+  `min([3, 5])` worked, and `min(3, 5)` failed with
+  `min() takes exactly 1 argument`). The variadic form takes two or more
+  arguments (unbounded), all of the same type; `min`/`max` accept
+  `int`/`float` and `sum` accepts `int`/`float`/`u8`, matching the
+  element types each already supported for the list form. (#1886)
+- `case` **expressions** now accept indented-block arms, not only single-line `pattern : value` arms — closing the asymmetry where only "case expression × indented block" was rejected (`unexpected token '
+'`) while the other three case-form / arm-notation combinations parsed. A block arm runs its intermediate statements and yields its **tail expression** as the arm's value (Rust/Scala `match`-style), so an arm that needs a local computation can be written directly:
+  ```ry
+  r = case x:
+      1:
+          tmp = x + 10
+          tmp * 2          # tail expression — the arm's value
+      _ : 0
+  ```
+  Covers both the subject form (`case x:`) and the no-subject condition form (`case:`), including the latter's `_:` else arm. The tail line is parsed as an expression, so an identifier-starting tail (`tmp * 2`) or a UFCS / method-call tail is accepted without parentheses — unlike `if`-expression block branches, which still require parenthesizing such a tail. A block whose final line produces no value (e.g. an assignment) is rejected at parse time with `case arm block must end with an expression`. Inline and block arms may be mixed within one `case`; the formatter canonicalizes a block arm with no intermediate statements back to the inline `pattern : value` form. (#1891)
+- `scripts/check-prompt-refs.sh` — a reference-integrity lint for the prompt /
+  instruction definition files (`.claude/**/*.md`, `AGENTS.md`, `CLAUDE.md`),
+  wired into the CI `lint` job. It fails on (a) inline-code paths that do not
+  exist on disk, (b) `/<name>` slash-command references with no matching
+  `.claude/skills/<name>/SKILL.md`, and (c) `KNOWLEDGE.md` section references
+  whose heading is not present verbatim in `KNOWLEDGE.md`. Detection is
+  inline-code-span only — fenced blocks, plain prose, and `<...>` placeholders
+  are the escape hatch. A local mirror
+  (`.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh`,
+  `/pre-commit-checklist` §3.5.7) and a path-scoped rule
+  (`.claude/rules/prompt-reference-integrity.md`) accompany it. (#2029)
+
+### Changed
+
+- **Breaking:** Type conversions are now spelled `int`, `float`, and `str` — the same as the type names. `int(s)` / `float(s)` parse a string and return `Result<_, Error>`; `str(v)` renders any value to a string and stays overridable for records via `fn str(v: MyRecord) -> str`. The type-vs-call ambiguity is resolved by parse position, so `x: int = int("1") ?? 0` is legal; `int` and `float` are reserved built-in names. Passing a non-`str` to `int` / `float` is a compile error that points at the `as` cast (`3.14 as int`, `n as str`). The previous `toInt` / `toFloat` / `toStr` helpers — and the `parseInt` / `parseFloat` aliases added in #1772 — are removed with no deprecation period. (#1773)
+- `emit` crate refactor: extended the #2057 abi/ffi/core layering to the `control_flow` (`create_basic_block` / `branch_cond` / `branch_uncond` / `create_phi`), `option` (`option_wrap_some` / `_none`), and `lifecycle` (`ctx_create` / `_destroy` / `_set_function` / `intern` / `resolve`) ops, and added the Rust-native `BasicBlockRef` / `FunctionRef` / `TypeRef` handle newtypes to `core`. Each migrated op's `#[no_mangle]` externs now live in a per-op child module under `crates/emit/src/abi/` (resolve / translate / intern shells), while the IR-emission bodies became `impl EmitCtx` methods in abi-independent core-role modules; the already-merged arc pilot's externs relocated there too. `lifecycle` (which emits no IR) collapsed into a `core::EmitCtx::new` constructor and `src/lifecycle.rs` was removed. Pure refactor — the emitted LLVM IR is byte-identical (verified by an `--emit-llvm-ir` diff over an `if`-expr / `while` / `Some`/`None` / CoW probe, ASLR-normalized), the `api.h` C surface is unchanged (`scripts/check-llvm-emit-abi-header.sh` clean), and the `#[no_mangle]` boundary symbols stay exported. (#2059)
+- `emit` crate refactor: migrated `collection` (`collection_append` / `_insert` / `_remove_at` / `list_slice`) to the #2057 abi/ffi/core layering. The four `#[no_mangle]` externs became resolve / intern shells in `crates/emit/src/abi/collection.rs`, while the IR-emission bodies became `impl EmitCtx` methods in the abi-independent core-role `collection.rs`; `insert` / `remove_at` now call the `negative_index_wrap` / `bounds_error` engine methods directly instead of round-tripping through the abi externs. `list_slice` returns a new `core::SliceParts { count, new_data }` aggregate (the crate's first multi-value engine return) that the shell splits into its two `*mut RyValueId` out-params. As `collection` was the last in-crate caller of the `bounds` externs, the `pub use bounds::*` re-export in `abi.rs` was dropped. Pure refactor — the emitted LLVM IR is byte-identical (verified by an `--emit-llvm-ir` diff over an `append!` / `insert` / `removeAt` / `slice` probe, ASLR-normalized, with all 15 filecheck fixtures unchanged), the `api.h` C surface is unchanged (`scripts/check-llvm-emit-abi-header.sh` clean), and the `#[no_mangle]` boundary symbols stay exported. (#2061)
+- `emit` crate refactor: migrated `any` (`any_wrap` / `_unwrap` / `_try_unwrap`) to the #2057 abi/ffi/core layering — the largest and final op, completing the series. The three `#[no_mangle]` externs became resolve / map / intern shells in `crates/emit/src/abi/any.rs` that translate each C descriptor (`RyAnyWrapDesc` / `RyAnyUnwrapDesc` / `RyAnyTryUnwrapDesc`) into a Rust-native struct and map the `c_int` kind into a dedicated `AnyWrapKind` / `AnyUnwrapKind` / `AnyTryUnwrapKind` enum (in `core`), while the IR-emission bodies became `impl EmitCtx` methods in the abi-independent core-role `any.rs`. Because `any`'s guards are branch-nested (unlike `cow`'s flat validation), the engine methods return `Option<ValueRef>` and the shell interns `None` to the 0 sentinel, keeping the branch-specific guards in place so the relocation stays byte-identical even on error paths. As `any` was the last in-crate `use crate::abi` consumer, the transitional `cstr_bytes` re-export in `abi.rs` was dropped; no module outside the `abi/` children now references `crate::abi`. Pure refactor — the emitted LLVM IR is byte-identical (verified by an `--emit-llvm-ir` diff over a probe exercising all eight `any` kind-paths plus both the ARC and str retain guards, each marker coverage-gated before the ASLR-normalized diff, with all 15 filecheck fixtures unchanged), the `api.h` C surface is unchanged (`scripts/check-llvm-emit-abi-header.sh` clean), and the `#[no_mangle]` boundary symbols stay exported. (#2063)
+- `emit` crate hardening: the internal list/map/set/arc header structs the cdylib rebuilds (`crates/emit/src/cow.rs` `cow_ensure_unique`, `crates/emit/src/core.rs` `arc_header_type`) to mirror CodeGen's `listHeaderTy_` / `mapHeaderTy_` / `setHeaderTy_` / `arcHeaderTy_` (`src/codegen.cpp`) are now single-sourced through `core::header_fields` and guarded mechanically instead of by a `// Field order MUST stay in sync` comment. A C++ field-order change the Rust mirror failed to follow previously compiled, passed `tests/test_abi_layout.cpp` (which pins only the boundary descriptors, not the internal headers), passed the filecheck goldens (which don't emit the CoW Map/Set paths), and only corrupted Copy-on-Write deep-copy at runtime. The guard is a cross-language parity test (`tests/test_header_layout.cpp` asserts the canonical `CodeGen` types against a test-only `ry_emit_test_header_layout` extern — field count + per-index type + ABI size — plus a permanent negative test that the comparator rejects a permuted layout) backed by same-type-swap (`len↔cap` / `keys↔vals` / `strong↔weak`) behavioral coverage in `tests/spec/cow.test.ry`, since those all-8-byte swaps are invisible to any layout check. Pure refactor — the emitted LLVM IR is byte-identical (`build_header_struct` produces the same literal struct as the previous inline `LLVMStructTypeInContext` calls), the `api.h` C surface and `RyCowEnsureUniqueDesc` are unchanged, and the test-only extern reads only the pure-data field-kind table so `crates/emit/src/abi/` stays clear of the `scripts/check-emit-abi-no-ir.sh` gate. (#2071)
+- `emit` crate cleanup: removed the unused `EmitCtx::function` internal state and its entire write path. The cached `function` field — written by `ry_emit_ctx_create`'s 4th argument and the `ry_emit_ctx_set_function` setter — was never read once the BB-creating emission ops migrated to deriving their parent function from `ctx->builder->GetInsertBlock()->getParent()` (the builder-derived-parent rule in `.claude/rules/codegen-llvm-ir-conventions.md`, #1968 / #1996). The field is gone from `crates/emit/src/core.rs`'s `EmitCtx` / `EmitCtx::new`; the `ry_emit_ctx_set_function` boundary entry (`crates/emit/src/abi/lifecycle.rs` + the `include/ry/llvm_emit/api.h` declaration) and `ry_emit_ctx_create`'s `function` parameter were removed; and the ~13 `ry_emit_ctx_set_function(cg.emit_ctx_, …)` call sites across the `src/codegen_emission_*.cpp` emission TUs plus the now-stale "Precondition: ry_emit_ctx_set_function must be called" comments in `include/ry/codegen/lowered_*.hpp` and `include/ry/llvm_emit/api.h` were swept. **Full removal rather than a documented no-op was chosen** because the `api.h` surface is an internal FFI boundary — `ry` and the `libemit` cdylib are always built and linked together in one corrosion build, there is no external consumer, and no test pins the signatures — so there is no ABI-compatibility constraint, and keeping a do-nothing setter would have left exactly the misleading contract this cleanup removes. `RyFunctionRef` / `asRyFunction` survive: `ry_emit_create_basic_block(ctx, name, fn)` still takes an explicit parent-function handle. Pure refactor — the removed setter wrote only the never-read `EmitCtx::function` field, so eliminating its writes is a dead store that cannot affect emitted IR. Confirmed byte-identical by an ASLR-normalized `--emit-llvm-ir` diff (baseline vs after) over the 15 filecheck goldens plus a probe exercising the arc-retain, CoW-ensure-unique, collection append-grow / insert + removeAt (memmove) / slice, bounds-check, Result-construction, and any wrap + unwrap emission paths; the two remaining setter-removal sites (the `ry_emit_result_branch` three-BB merge-phi and `ry_emit_any_try_unwrap`) are the identical one-line deletion and are covered at runtime by `ry_tests` + `ry test -p`. `scripts/check-llvm-emit-abi-header.sh` and `scripts/check-emit-abi-no-ir.sh` stay clean, and `ry_tests` (2577 cases, including `tests/test_emit_abi_guards.cpp`) + `ry test -p` (204 files) remain green. (#2083)
+- Bump the Linux release container image pin (`ry-ci-glibc-old`) from `llvm-21-rev7` to `llvm-21-rev12` so byte-reproducible release builds track the latest published CI base image, matching what mainline CI already runs against via the mutable `:llvm-21` pointer. (#2088)
+
+### Fixed
+
+- Fixed a pre-existing use-after-free in `if`-expression block branches: a branch that bound an ARC-managed value (`List` / `Map` / `Set` / `str` / `Option` payload) to a local and returned it as the parenthesized tail (e.g. `if c:` … `items = [...]` … `(items)`) released that binding when the branch scope closed, so the result came back freed/empty. The block-tail value is now retained before scope cleanup — the same escape-retain that makes the new `case`-expression block arms above sound. (#1891)
+- Swept the #1827 parser/lexer path drift through the prompt definitions:
+  ~20 stale inline-code paths (the old flat `src/parser*.cpp` /
+  `include/ry/parser.hpp` forms updated to their current subdirectory
+  locations under `src/parser/`, `src/lexer/`, `include/ry/parser/`,
+  `include/ry/diagnostic/`, and `editor/tree-sitter/src/`), a dead
+  slash-command link in `.claude/agents/sanitizer-runner.md`, and the
+  English/Japanese `KNOWLEDGE.md` "sanitizer issues" section-name mismatch in
+  `AGENTS.md` that made a grep for the cited section silently miss. Also
+  corrected three references to now-closed issues (two of which were closed
+  not-planned, not fixed) and a drifted `CHANGELOG.md` line-number citation in
+  `AGENTS.md`. (#2029)
+- A corrosion crate rename (`ry_codegen` → `emit`, #2040) leaves the old
+  cdylib (`libry_codegen.{so,dylib}`) as an orphan in a non-clean build
+  tree: a non-destructive `cmake` reconfigure self-heals `build.ninja` to
+  `libemit` but does not garbage-collect the stale output, and
+  `bundle-dist.sh`'s `libry_*` glob would then ship the dead cdylib in the
+  release tarball. The packaging path now guards against this structurally
+  using a zero-drift discriminator — the emission cdylib is the only native
+  lib that links `libLLVM`, while stdlib `libry_*` libs do not:
+  `scripts/verify-bundle.sh` (the pre-`tar` release gate) now FAILs if any
+  bundled native lib other than `libemit` links `libLLVM`,
+  `scripts/bundle-dist.sh` skips such orphans when copying (with a warning),
+  and `.claude/skills/pre-commit-checklist/run-tests.sh` removes them from
+  the host build tree after each build so a manual `--clean` is no longer
+  required to clear the orphan. `ADDITIONAL_CLEAN_FILES` was intentionally
+  not used: it is keyed to the current target name and cannot retroactively
+  GC a renamed-away output. (#2041)
+- `emit` crate hardening: unified the input-validation contract across every `crates/emit/src/abi/` boundary entry point. Previously only `runtime_call` / `build_error_from_runtime` / `get_runtime_fn` / `result_branch` (#2028) converted malformed input to a sentinel; `control_flow`, `collection`, `bounds`, `option`, and part of `lifecycle` passed unvetted values straight to the `core` engine, which forwards them to the LLVM C API — so a NULL ctx, a NULL FFI array (`create_phi`'s incoming buffers, raw-deref'd via `*ptr.add(i)`), a NULL out-param (`list_slice`'s `*out_count` / `*out_new_data`), or an id that resolves to a NULL handle (`arc_retain` / `arc_release`'s header) reached undefined behavior immediately. Every production entry point now shares one contract via three shared helpers in `crates/emit/src/abi.rs` — `checked_cx` (ctx + context / module / builder NULL), `resolve_value` (id → non-NULL handle, subsuming `any.rs`'s former `opt_value_id`), and `ffi_slice` (the `(ptr, count)` borrow) — converting malformed input to a sentinel (`0` / NULL) or a no-op before any LLVM call; the re-entrant `result_branch` keeps its inline guards, and the IR-free `ctx_set_function` / `intern` / `resolve` guard `ctx.is_null()` only. Additive hardening — happy-path emitted IR is unchanged (`scripts/check-emit-abi-no-ir.sh` stays green and the filecheck goldens are byte-identical), and the reachable guard branches (per-entry ctx-NULL plus the `create_phi` NULL-array, `list_slice` NULL-out-param, and `arc` NULL-header cases) are locked in `tests/test_emit_abi_guards.cpp`. (#2080)
+
 ## [0.0.26] - 2026-06-03
 
 ### Added
@@ -3139,7 +3215,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.26...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.27...HEAD
+[0.0.27]: https://github.com/t0k0sh1/ry/compare/v0.0.26...v0.0.27
 [0.0.26]: https://github.com/t0k0sh1/ry/compare/v0.0.25...v0.0.26
 [0.0.25]: https://github.com/t0k0sh1/ry/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/t0k0sh1/ry/compare/v0.0.23...v0.0.24
