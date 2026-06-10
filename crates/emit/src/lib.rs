@@ -23,8 +23,10 @@
 // `crate::abi`):
 //   - `abi`   : the C/C++ emission boundary — opaque handle types, scalar / enum
 //               typedefs, descriptor structs, layout assertions, and the
-//               plumbing that exists because C++ calls in (`cx`, `intern` /
-//               `resolve`, handle casts). `cstr_bytes` lives in `core` (a pure
+//               plumbing that exists because C++ calls in (the `ctx_access`-
+//               confined `cx` reify reached only via `with_ctx` / `checked_cx`
+//               (#2081), `intern` / `resolve`, handle casts). `cstr_bytes` lives
+//               in `core` (a pure
 //               `CStr` primitive used by the bounds / any engines, which reach
 //               it via `crate::core` directly). Each migrated op's `#[no_mangle]`
 //               externs live in a child module `abi::<op>` (`abi/any.rs`,

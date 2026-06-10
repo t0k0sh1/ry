@@ -43,11 +43,12 @@ pub unsafe extern "C" fn ry_emit_ctx_destroy(ctx: *mut RyEmitCtx) {
 pub unsafe extern "C" fn ry_emit_ctx_set_function(ctx: *mut RyEmitCtx, function: RyFunctionRef) {
     // boundary input validation: NULL ctx → no-op. This entry touches no LLVM
     // module/builder/context, so only the ctx pointer itself needs guarding
-    // (the `checked_cx` three-field check would be over-strict here).
+    // (the `checked_cx` three-field check would be over-strict here). The
+    // preceding NULL guard satisfies `with_ctx`'s non-NULL precondition.
     if ctx.is_null() {
         return;
     }
-    cx(ctx).function = function as LLVMValueRef;
+    with_ctx(ctx, |c| c.function = function as LLVMValueRef);
 }
 
 /// Intern an opaque `value` handle into a `RyValueId` (sentinel 0 = invalid).
@@ -57,7 +58,10 @@ pub unsafe extern "C" fn ry_emit_intern(ctx: *mut RyEmitCtx, value: RyValueRef) 
     if ctx.is_null() {
         return 0;
     }
-    intern(cx(ctx), value)
+    // The explicit `unsafe` block covers the `with_ctx` closure body (a nested
+    // closure is not reached by the `unsafe fn`'s implicit body-unsafe), so the
+    // closure needs no inner `unsafe`.
+    unsafe { with_ctx(ctx, |c| intern(c, value)) }
 }
 
 /// Resolve a `RyValueId` back to its opaque value handle (inverse of
@@ -68,5 +72,5 @@ pub unsafe extern "C" fn ry_emit_resolve(ctx: *mut RyEmitCtx, id: RyValueId) -> 
     if ctx.is_null() {
         return std::ptr::null_mut();
     }
-    resolve(cx(ctx), id)
+    unsafe { with_ctx(ctx, |c| resolve(c, id)) }
 }
