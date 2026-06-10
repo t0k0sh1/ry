@@ -66,7 +66,7 @@ protected:
 
     RyEmitCtx *makeCtx() {
         return ry_emit_ctx_create(asRyModule(module_.get()), asRyBuilder(builder_.get()),
-                                  asRyContext(&llctx_), /*function=*/nullptr);
+                                  asRyContext(&llctx_));
     }
 };
 
@@ -215,11 +215,6 @@ TEST_F(EmitAbiGuardTest, ListSliceNullCtxDoesNotCrash) {
 TEST_F(EmitAbiGuardTest, BoundsErrorNullCtxDoesNotCrash) {
     ry_emit_bounds_error(nullptr, /*orig_idx_id=*/0, /*len_id=*/0, /*fmt_msg=*/"%lld %lld",
                          /*global_name=*/"g");
-    SUCCEED();
-}
-
-TEST_F(EmitAbiGuardTest, CtxSetFunctionNullCtxDoesNotCrash) {
-    ry_emit_ctx_set_function(nullptr, /*function=*/nullptr);
     SUCCEED();
 }
 

@@ -40,8 +40,8 @@ namespace ry::codegen::emission {
 // Emit an Option<T> wrap producing either Some(inner) or None, depending on
 // op.is_some. Unlike emitBoundsCheck / emitResultBranch, this op creates no
 // basic blocks (it is a pure UndefValue + two InsertValue sequence), so it
-// does NOT call ry_emit_ctx_set_function — the current LLVM function pointer
-// is irrelevant. No trampoline is needed because there are no caller-side
+// needs no positioned parent function — there is nothing for which a parent
+// would be derived. No trampoline is needed because there are no caller-side
 // closures to bridge.
 //
 // The Ry-semantic side effects of the Some arm (propagateMeta and

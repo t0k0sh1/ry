@@ -37,8 +37,6 @@ RyValueId trampolineErr(void *user) {
 llvm::Value *emitResultBranch(CodeGen &cg, const lowered::ResultBranchOp &op,
                               llvm::function_ref<llvm::Value *()> build_ok,
                               llvm::function_ref<llvm::Value *()> build_err) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
-
     ResultBranchTrampolineCtx tctx{build_ok, build_err, cg.emit_ctx_};
     RyValueId isErrId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.is_err));
     RyValueId resultId = ry_emit_result_branch(

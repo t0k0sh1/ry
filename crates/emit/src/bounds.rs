@@ -57,8 +57,9 @@ impl EmitCtx {
 
         let oob_block = cname_pfx(p, b".oob");
         let ok_block = cname_pfx(p, b".ok");
-        // Derive parent function from the builder, not ctx->function (builder-derived
-        // parent rule — .claude/rules/codegen-llvm-ir-conventions.md, #1996).
+        // Derive parent function from the builder, not a cached function field
+        // (builder-derived parent rule — .claude/rules/codegen-llvm-ir-conventions.md,
+        // #1996; the cached EmitCtx::function field was removed in #2083).
         let fn_v = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
         let oob_bb = LLVMAppendBasicBlockInContext(context, fn_v, oob_block.as_ptr());
         let ok_bb = LLVMAppendBasicBlockInContext(context, fn_v, ok_block.as_ptr());

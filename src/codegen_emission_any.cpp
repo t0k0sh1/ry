@@ -10,8 +10,6 @@
 namespace ry::codegen::emission {
 
 llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
-
     RyAnyWrapDesc desc{};
     desc.kind = static_cast<int>(op.kind);
     desc.target_tag = op.target_tag;
@@ -29,8 +27,6 @@ llvm::Value *emitAnyWrap(CodeGen &cg, const lowered::AnyWrapOp &op) {
 }
 
 llvm::Value *emitAnyUnwrap(CodeGen &cg, const lowered::AnyUnwrapOp &op) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
-
     RyAnyUnwrapDesc desc{};
     desc.kind = static_cast<int>(op.kind);
     desc.any_val_id = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
@@ -53,8 +49,6 @@ llvm::Value *emitAnyUnwrap(CodeGen &cg, const lowered::AnyUnwrapOp &op) {
 }
 
 llvm::Value *emitAnyTryUnwrap(CodeGen &cg, const lowered::AnyTryUnwrapOp &op) {
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
-
     RyAnyTryUnwrapDesc desc{};
     desc.kind = static_cast<int>(op.kind);
     desc.any_val_id = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));

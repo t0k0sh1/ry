@@ -64,7 +64,7 @@ impl EmitCtx {
 // so the abi closures may re-enter the emitter via `cx(ctx)` while a builder
 // runs without aliasing a live receiver borrow across the extern call (#2069 /
 // #2060). The parent function for the new BBs is derived from the builder, not a
-// cached `ctx->function`, per the builder-derived parent rule (#1968): a NULL
+// cached function field, per the builder-derived parent rule (#1968): a NULL
 // insert block yields a NULL `ValueRef` (the abi shell interns it to 0).
 pub(crate) unsafe fn emit_result_branch(
     builder: LLVMBuilderRef,

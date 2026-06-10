@@ -11,13 +11,6 @@ namespace ry::codegen::emission {
 
 llvm::Value *emitBoundsCheck(CodeGen &cg, const lowered::BoundsCheckOp &op,
                              const std::string &bb_prefix) {
-    // Sync the LLVM function pointer with the boundary ctx so internal
-    // BasicBlock::Create calls inside ry_emit_bounds_check land in the
-    // current function. Other boundary entrypoints (build_error_from_runtime,
-    // get_runtime_fn) do not need this because they only emit at the
-    // builder's current insert point.
-    ry_emit_ctx_set_function(cg.emit_ctx_, ry::llvm_emit::asRyFunction(cg.fn_));
-
     RyValueId idxId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.idx));
     RyValueId lenId = ry_emit_intern(cg.emit_ctx_, ry::llvm_emit::asRyValue(op.len));
     RyBoundsKind kind = (op.error_spec.kind == lowered::BoundsKind::List)

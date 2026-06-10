@@ -28,7 +28,8 @@ fn bounds_kind_from(kind: c_int) -> BoundsKind {
 /// Emit a bounds-check sequence for the interned index `idx_id` against length
 /// `len_id` (List or Array per `kind`); return the interned wrapped index for the
 /// caller's GEP. `global_name` / `bb_prefix` name the error string and generated
-/// blocks. Precondition: `ry_emit_ctx_set_function` must be set (BBs are created).
+/// blocks. The generated blocks' parent function is derived from the builder's
+/// insert block, so the builder must be positioned within a function.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_bounds_check(
     ctx: *mut RyEmitCtx,

@@ -55,9 +55,9 @@ lowered::ArcReleaseOp lowerArcRelease(CodeGen &cg, llvm::Value *header_ptr,
 namespace ry::codegen::emission {
 
 // Emit an ARC retain via the libemit boundary (ry_emit_arc_retain).
-// Precondition: the caller has called ry_emit_ctx_set_function(cg.emit_ctx_,
-// cg.fn_) before invoking this helper, because two BBs (`arc.retain`,
-// `arc.retain.done`) are created inside the current function.
+// Precondition: the builder must be positioned within a function before
+// invoking this helper, because two BBs (`arc.retain`, `arc.retain.done`) are
+// created — their parent is derived from the builder's insert block.
 void emitArcRetain(CodeGen &cg, const lowered::ArcRetainOp &op);
 
 // Emit an ARC release via the libemit boundary (ry_emit_arc_release).
