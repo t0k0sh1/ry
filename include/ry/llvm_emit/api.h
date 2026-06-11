@@ -418,6 +418,42 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data);
 
+// Numeric reduce builtins (#2092) — sum / min / max, the ARC-independent batch.
+// `elem_ty` is the element LLVM type: i64 / f64 / i8 for sum, i64 / f64 for
+// min/max; only float-vs-int picks FAdd/FCmp over Add/ICmp.
+
+// sum([..]): emit the list-sum loop — interleaved `sum_*` header load + a
+// zero-seeded accumulator + the sum.cond/body/end loop — and return the
+// accumulated `sum_result`. `list_header_ty` is CodeGen::listHeaderTy_.
+// Precondition: the builder must be positioned within a function (BBs created
+// inside this call).
+RyValueId ry_emit_reduce_sum_list(RyEmitCtx *ctx, RyValueId list_ptr_id,
+                                  RyTypeRef elem_ty, RyTypeRef list_header_ty);
+
+// sum(a, b, ..): emit one straight-line fold step `acc + v` (named `sum_v`). The
+// C++ variadic loop seeds with arg[0] then calls this once per remaining
+// argument, so operand evaluation stays interleaved with the adds. No BBs.
+RyValueId ry_emit_reduce_sum_step(RyEmitCtx *ctx, RyValueId acc_id,
+                                  RyValueId val_id, RyTypeRef elem_ty);
+
+// min/max([..]): emit the seed + loop (`mm_first` + the
+// mm.cond/body/update/next/end blocks) at the `mm.ok` block the caller is
+// positioned at. The empty-list guard and emitRuntimeError stay on the C++ side
+// (they build an ARC string global — out of scope for this ARC-free batch), so
+// this entry receives the already-loaded `data_id` (mm_data) and `len_id`
+// (mm_len). `is_max != 0` selects max. Returns `mm_result`. Precondition: the
+// builder must be positioned at mm.ok (BBs created inside this call).
+RyValueId ry_emit_reduce_minmax_list_loop(RyEmitCtx *ctx, RyValueId data_id,
+                                          RyValueId len_id, RyTypeRef elem_ty,
+                                          int is_max);
+
+// min/max(a, b, ..): emit one fold step — `mm_cmp = cmp(v, best)` then
+// `mm_best = select(mm_cmp, v, best)`. `is_max != 0` selects max (OGT/SGT) vs
+// min (OLT/SLT). The C++ variadic loop calls this once per argument. No BBs.
+RyValueId ry_emit_reduce_minmax_step(RyEmitCtx *ctx, RyValueId best_id,
+                                     RyValueId val_id, RyTypeRef elem_ty,
+                                     int is_max);
+
 // Descriptor for ry_emit_cow_ensure_unique. CodeGen collects all metadata
 // (kind, element sizes, retain flags, destructor) and flattens it to this
 // plain-int / handle struct so the boundary stays C-only and LLVM types do not

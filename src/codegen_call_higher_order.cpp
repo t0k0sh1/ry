@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_reduce.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 
 
@@ -544,8 +545,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
                 llvm::Value *v = emitExpr(*e.args[i]);
                 if (v->getType() != ty)
                     codegenError("sum() requires all arguments to have the same type");
-                acc = (ty == f64Ty_) ? builder_.CreateFAdd(acc, v, "sum_v")
-                                     : builder_.CreateAdd(acc, v, "sum_v");
+                acc = codegen::emission::emitReduceSumStep(*this, acc, v, ty);
             }
             return acc;
         }
@@ -559,39 +559,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
             codegenError("sum() requires a numeric list (int, float, or u8)");
 
-        auto lf = loadListHeader(listVal, "sum");
-        llvm::Value *srcLen = lf.len;
-        llvm::Value *srcData = lf.data;
-
-        llvm::AllocaInst *accVar = builder_.CreateAlloca(elemTy, nullptr, "sum_acc");
-        if (elemTy == f64Ty_)
-            builder_.CreateStore(llvm::ConstantFP::get(f64Ty_, 0.0), accVar);
-        else
-            builder_.CreateStore(llvm::ConstantInt::get(elemTy, 0), accVar);
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "sum_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-        llvm::BasicBlock *condBB = createBB("sum.cond");
-        llvm::BasicBlock *bodyBB = createBB("sum.body");
-        llvm::BasicBlock *endBB = createBB("sum.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "si");
-        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "sum_ep");
-        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "sum_elem");
-        llvm::Value *acc = builder_.CreateLoad(elemTy, accVar, "sum_acc_val");
-        llvm::Value *newAcc;
-        if (elemTy == f64Ty_)
-            newAcc = builder_.CreateFAdd(acc, elem, "sum_add");
-        else
-            newAcc = builder_.CreateAdd(acc, elem, "sum_add");
-        builder_.CreateStore(newAcc, accVar);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
-        return builder_.CreateLoad(elemTy, accVar, "sum_result");
+        // List-sum loop emitted by the Rust emission layer (#2092). The Rust op
+        // loads the list header (interleaved, matching loadListHeader) and runs
+        // the sum.cond/body/end accumulate loop; only type-gating stays here.
+        return codegen::emission::emitReduceSumList(*this, listVal, elemTy,
+                                                    listHeaderTy_);
     }
 
     // ===== min(list) / max(list) =====
@@ -616,14 +588,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
                 llvm::Value *v = emitExpr(*e.args[i]);
                 if (v->getType() != ty)
                     codegenError(e.callee + "() requires all arguments to have the same type");
-                llvm::Value *cmp;
-                if (ty == f64Ty_)
-                    cmp = isMax ? builder_.CreateFCmpOGT(v, best, "mm_cmp")
-                                : builder_.CreateFCmpOLT(v, best, "mm_cmp");
-                else
-                    cmp = isMax ? builder_.CreateICmpSGT(v, best, "mm_cmp")
-                                : builder_.CreateICmpSLT(v, best, "mm_cmp");
-                best = builder_.CreateSelect(cmp, v, best, "mm_best");
+                best = codegen::emission::emitReduceMinmaxStep(*this, best, v, ty, isMax);
             }
             return best;
         }
@@ -649,41 +614,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         emitRuntimeError("runtime error: " + e.callee + "() on empty list\n", ".mm_empty_err");
         builder_.SetInsertPoint(okBBMM);
 
-        llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "mm_first");
-        llvm::AllocaInst *bestVar = builder_.CreateAlloca(elemTy, nullptr, "mm_best");
-        builder_.CreateStore(first, bestVar);
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mm_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
-
-        llvm::BasicBlock *condBB = createBB("mm.cond");
-        llvm::BasicBlock *bodyBB = createBB("mm.body");
-        llvm::BasicBlock *updateBB = createBB("mm.update");
-        llvm::BasicBlock *nextBB = createBB("mm.next");
-        llvm::BasicBlock *endBB = createBB("mm.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mi");
-        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "mm_ep");
-        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "mm_elem");
-        llvm::Value *best = builder_.CreateLoad(elemTy, bestVar, "mm_best_val");
-        llvm::Value *cmp;
-        if (elemTy == f64Ty_)
-            cmp = isMax ? builder_.CreateFCmpOGT(elem, best, "mm_cmp")
-                        : builder_.CreateFCmpOLT(elem, best, "mm_cmp");
-        else
-            cmp = isMax ? builder_.CreateICmpSGT(elem, best, "mm_cmp")
-                        : builder_.CreateICmpSLT(elem, best, "mm_cmp");
-        emitBranchCond(cmp, updateBB, nextBB);
-        builder_.SetInsertPoint(updateBB);
-        builder_.CreateStore(elem, bestVar);
-        emitBranchUncond(nextBB);
-        builder_.SetInsertPoint(nextBB);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
-        return builder_.CreateLoad(elemTy, bestVar, "mm_result");
+        // Seed + loop emitted by the Rust emission layer (#2092). The empty-list
+        // guard + emitRuntimeError above stay C++-side: emitRuntimeError builds
+        // an ARC string global, out of scope for this ARC-free batch. The builder
+        // is positioned at mm.ok, where the Rust op emits mm_first + the
+        // mm.cond/body/update/next/end loop and returns mm_result.
+        return codegen::emission::emitReduceMinmaxListLoop(*this, srcData, srcLen,
+                                                           elemTy, isMax);
     }
 
 

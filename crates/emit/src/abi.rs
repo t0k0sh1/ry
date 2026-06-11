@@ -33,6 +33,7 @@ mod cow;
 mod lifecycle;
 mod option;
 mod primitive;
+mod reduce;
 mod result;
 mod runtime_call;
 // Test-only: exposes core::header_fields for the cross-language header-layout

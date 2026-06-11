@@ -28,6 +28,7 @@
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -67,6 +68,14 @@ protected:
     RyEmitCtx *makeCtx() {
         return ry_emit_ctx_create(asRyModule(module_.get()), asRyBuilder(builder_.get()),
                                   asRyContext(&llctx_));
+    }
+
+    // Intern a free-standing i64 constant so a value id resolves to a non-NULL
+    // handle — lets a reduce guard test isolate the NULL-type branch (which sits
+    // AFTER resolve_value) rather than tripping the resolve_value → None branch.
+    RyValueId internDummy(RyEmitCtx *ctx) {
+        llvm::Value *v = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+        return ry_emit_intern(ctx, asRyValue(v));
     }
 };
 
@@ -388,6 +397,113 @@ TEST_F(EmitAbiGuardTest, SelectNullResolvedOperandReturnsZero) {
     RyEmitCtx *ctx = makeCtx();
     ASSERT_NE(ctx, nullptr);
     EXPECT_EQ(ry_emit_select(ctx, /*cond_id=*/0, /*then_id=*/0, /*else_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// =============================================================================
+// #2092 — numeric reduce builtins (sum / min / max). Four value-returning
+// entries; each gets the same three-guard contract: ctx == NULL, an operand id
+// that resolves to None, and a NULL element-type handle. All return the sentinel
+// 0. (No FFI-array params — the variadic forms are per-step ops, not array
+// folds — so there is no ffi_slice guard to exercise here.)
+// =============================================================================
+
+// --- ctx == NULL → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, ReduceSumListNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_reduce_sum_list(nullptr, /*list_ptr_id=*/0, /*elem_ty=*/nullptr,
+                                      /*list_header_ty=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceSumStepNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_reduce_sum_step(nullptr, /*acc_id=*/0, /*val_id=*/0, /*elem_ty=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxListLoopNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_reduce_minmax_list_loop(nullptr, /*data_id=*/0, /*len_id=*/0,
+                                              /*elem_ty=*/nullptr, /*is_max=*/0),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_reduce_minmax_step(nullptr, /*best_id=*/0, /*val_id=*/0, /*elem_ty=*/nullptr,
+                                         /*is_max=*/1),
+              0u);
+}
+
+// --- valid ctx + an operand id that resolves to None → sentinel 0. id 0 resolves
+//     to a NULL handle, and resolve_value sits before the type guard, so a valid
+//     elem_ty makes resolve_value the trigger. ---
+
+TEST_F(EmitAbiGuardTest, ReduceSumListNullResolvedListPtrReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_reduce_sum_list(ctx, /*list_ptr_id=*/0, asRyType(resultTy_),
+                                      asRyType(resultTy_)),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceSumStepNullResolvedAccReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_reduce_sum_step(ctx, /*acc_id=*/0, /*val_id=*/0, asRyType(resultTy_)), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxListLoopNullResolvedDataReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_reduce_minmax_list_loop(ctx, /*data_id=*/0, /*len_id=*/0,
+                                              asRyType(resultTy_), /*is_max=*/0),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullResolvedBestReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_reduce_minmax_step(ctx, /*best_id=*/0, /*val_id=*/0, asRyType(resultTy_),
+                                         /*is_max=*/1),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + resolved operands + NULL element type → sentinel 0. internDummy
+//     gives each value id a non-NULL handle so the NULL-elem_ty branch (after
+//     resolve_value) is what fires. ---
+
+TEST_F(EmitAbiGuardTest, ReduceSumListNullElemTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId listId = internDummy(ctx);
+    EXPECT_EQ(ry_emit_reduce_sum_list(ctx, listId, /*elem_ty=*/nullptr, asRyType(resultTy_)), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceSumStepNullElemTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_reduce_sum_step(ctx, id, id, /*elem_ty=*/nullptr), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxListLoopNullElemTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_reduce_minmax_list_loop(ctx, id, id, /*elem_ty=*/nullptr, /*is_max=*/0), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullElemTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_reduce_minmax_step(ctx, id, id, /*elem_ty=*/nullptr, /*is_max=*/1), 0u);
     ry_emit_ctx_destroy(ctx);
 }
 

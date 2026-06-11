@@ -49,7 +49,7 @@ The vocabulary is kept small so the LLVM IR emission layer can map each op to a 
 
 **Explicit non-inclusion** (the surface is intentionally not extended to keep emission near-1:1):
 
-- **Low-level primitive arithmetic** (`i32 + i32` → `CreateAdd`, `f64 * f64` → `CreateFMul`, integer comparisons, bit ops). These are **passthrough**: the lowering layer forwards them as a thin "primitive op" without inventing a vocabulary entry. Adding a `PrimitiveOp` op would inflate the vocabulary without giving the lowering layer anything to decide.
+- **Low-level primitive arithmetic** (`i32 + i32` → `CreateAdd`, `f64 * f64` → `CreateFMul`, integer comparisons, bit ops). These are **passthrough**: the lowering layer forwards them as a thin "primitive op" without inventing a vocabulary entry. Adding a `PrimitiveOp` op would inflate the vocabulary without giving the lowering layer anything to decide. (Coarse numeric reductions — `sum` / `min` / `max`, migrated whole into the emission crate in #2092 — are a separate case: they are semantic list / variadic ops whose *implementation* internally uses `CreateAdd` / `CreateFAdd` / `CreateSelect`, so that arithmetic crosses the boundary as part of a whole op, not as the standalone binary-arithmetic passthrough excluded here.)
 - **Lexical scope and SSA bookkeeping**. These belong inside the emission layer; the lowering layer treats variable bindings as Ry-level names and lets emission map them to allocas / `Value*`.
 - **Module-level symbol declarations** (`@native` symbol registration, global variable emission). The lowering layer states "this call resolves to symbol X with signature S"; the emission layer is responsible for the `getOrInsertFunction` / `GlobalVariable` plumbing.
 
