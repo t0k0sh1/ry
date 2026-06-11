@@ -129,6 +129,35 @@ pub unsafe extern "C" fn ry_emit_gep(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit a struct-field `getelementptr struct_ty, ptr, 0, field_idx` — the
+/// compile-time field-index GEP (`LLVMBuildStructGEP2`), distinct from the
+/// runtime-index `ry_emit_gep`. NULL ctx / type / ptr → 0. NULL `name` → empty.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_struct_gep(
+    ctx: *mut RyEmitCtx,
+    struct_ty: RyTypeRef,
+    ptr_id: RyValueId,
+    field_idx: u32,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if struct_ty.is_null() {
+        return 0;
+    }
+    let Some(ptr) = resolve_value(c, ptr_id) else {
+        return 0;
+    };
+    let v = c.build_struct_gep(
+        TypeRef(as_type(struct_ty)),
+        ptr,
+        field_idx,
+        name_or_empty(name),
+    );
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `icmp <predicate> lhs, rhs`. NULL ctx / unknown predicate / NULL operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_icmp(

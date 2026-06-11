@@ -272,6 +272,58 @@ llvm::Value *CodeGen::emitConstInt(llvm::Type *ty, uint64_t value, bool sign_ext
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+// === Function / call IR primitives (Stage 2-C / #2098, [C]=(ii) boundary move) ===
+// Thin wrappers over the ry_emit_* function / call primitives. emitCreateFunction
+// returns the llvm::Function* recovered from the opaque RyFunctionRef (no
+// intern/resolve — same handle shape as createBBInFn), so it doubles as a
+// createBBInFn parent and the value stored into an iterator header's next_fn.
+// The rest hide the intern -> ry_emit -> resolve round-trip. SSA names cross
+// verbatim via the `name` argument so the emitted IR stays byte-for-byte
+// identical (#2026).
+
+llvm::Function *CodeGen::emitCreateFunction(llvm::FunctionType *fn_ty,
+                                            llvm::GlobalValue::LinkageTypes linkage,
+                                            const char *name) {
+    int ryLinkage = linkage == llvm::GlobalValue::InternalLinkage  ? RY_LINKAGE_INTERNAL
+                    : linkage == llvm::GlobalValue::PrivateLinkage ? RY_LINKAGE_PRIVATE
+                                                                   : RY_LINKAGE_EXTERNAL;
+    RyFunctionRef fref = ry_emit_create_function(
+        emit_ctx_, name, ry::llvm_emit::asRyFuncType(fn_ty), ryLinkage);
+    return ry::llvm_emit::asLlvmFunction(fref);
+}
+
+llvm::Value *CodeGen::emitGetParam(llvm::Function *fn, uint32_t idx) {
+    RyValueId id = ry_emit_get_param(emit_ctx_, ry::llvm_emit::asRyFunction(fn), idx);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitStructGEP(llvm::Type *struct_ty, llvm::Value *ptr,
+                                    uint32_t field_idx, const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId id = ry_emit_struct_gep(emit_ctx_, ry::llvm_emit::asRyType(struct_ty),
+                                      ptrId, field_idx, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitCallIndirect(llvm::FunctionType *fn_ty, llvm::Value *callee,
+                                       llvm::ArrayRef<llvm::Value *> args,
+                                       const char *name) {
+    std::vector<RyValueId> arg_ids;
+    arg_ids.reserve(args.size());
+    for (auto *v : args)
+        arg_ids.push_back(ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v)));
+    RyValueId calleeId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(callee));
+    RyValueId id = ry_emit_call_indirect(
+        emit_ctx_, ry::llvm_emit::asRyFuncType(fn_ty), calleeId, arg_ids.data(),
+        static_cast<uint32_t>(arg_ids.size()), name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+void CodeGen::emitRet(llvm::Value *val) {
+    RyValueId valId = val ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val)) : 0;
+    ry_emit_ret(emit_ctx_, valId);
+}
+
 llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty,
                                             llvm::ArrayRef<llvm::Type *> arg_tys,
                                             llvm::ArrayRef<llvm::Value *> args,

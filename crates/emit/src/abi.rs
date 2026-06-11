@@ -30,6 +30,7 @@ mod bounds;
 mod collection;
 mod control_flow;
 mod cow;
+mod function;
 mod lifecycle;
 mod option;
 mod primitive;
@@ -125,6 +126,12 @@ pub const RY_ICMP_ULT: c_int = 6;
 pub const RY_ICMP_ULE: c_int = 7;
 pub const RY_ICMP_UGT: c_int = 8;
 pub const RY_ICMP_UGE: c_int = 9;
+
+// Function linkage selector for ry_emit_create_function (#2098). MUST match the
+// RyLinkage enum in api.h. abi/function.rs maps these to the core LLVMLinkage.
+pub const RY_LINKAGE_EXTERNAL: c_int = 0;
+pub const RY_LINKAGE_INTERNAL: c_int = 1;
+pub const RY_LINKAGE_PRIVATE: c_int = 2;
 
 // Callback for ok/err value builders consumed by ry_emit_result_branch.
 // Wrapped in Option<...> so the FFI representation is a nullable
@@ -495,6 +502,10 @@ pub(crate) fn to_ry_value(v: LLVMValueRef) -> RyValueRef {
 #[inline]
 pub(crate) fn to_ry_bb(b: LLVMBasicBlockRef) -> RyBasicBlockRef {
     b as RyBasicBlockRef
+}
+#[inline]
+pub(crate) fn to_ry_function(v: LLVMValueRef) -> RyFunctionRef {
+    v as RyFunctionRef
 }
 
 // Bridge llvm::Value* ↔ RyValueId handle space. The internal forms take

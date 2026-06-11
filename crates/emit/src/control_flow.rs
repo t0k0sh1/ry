@@ -36,6 +36,20 @@ impl EmitCtx {
         LLVMBuildBr(self.builder, target.0);
     }
 
+    // `ret val` (or `ret void` when `val` is None) at the builder's current
+    // insert point. The function-builder counterpart to the branch terminators
+    // (#2098).
+    pub(crate) unsafe fn build_ret(&mut self, val: Option<ValueRef>) {
+        match val {
+            Some(v) => {
+                LLVMBuildRet(self.builder, v.0);
+            }
+            None => {
+                LLVMBuildRetVoid(self.builder);
+            }
+        }
+    }
+
     // Build a PHI of `ty` with the given incoming (value, block) edges, added in
     // order. `name` is the already-NUL-defaulted SSA-name pointer. Returns the
     // raw phi value; the abi boundary interns it (intern/resolve are abi-side).

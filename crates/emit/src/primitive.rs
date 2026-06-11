@@ -80,6 +80,25 @@ impl EmitCtx {
         ))
     }
 
+    // Struct-field `getelementptr struct_ty, ptr, i32 0, i32 field_idx`
+    // (`LLVMBuildStructGEP2`). Distinct from `build_gep`'s single runtime i64
+    // index — this is a compile-time field index into an aggregate (#2098).
+    pub(crate) unsafe fn build_struct_gep(
+        &mut self,
+        struct_ty: TypeRef,
+        ptr: ValueRef,
+        field_idx: u32,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildStructGEP2(
+            self.builder,
+            struct_ty.0,
+            ptr.0,
+            field_idx,
+            name,
+        ))
+    }
+
     // `icmp <pred> lhs, rhs`.
     pub(crate) unsafe fn build_icmp(
         &mut self,
