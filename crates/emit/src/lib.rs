@@ -49,7 +49,7 @@
 //               Provisional name (a holistic rename is deferred to #2022).
 //   - migrated core-role op modules, each an `impl EmitCtx` over the core engine
 //     only (no `use crate::abi`): `any`, `arc`, `bounds`, `collection`,
-//     `control_flow`, `cow`, `option`, `runtime_call`, and `result`. `any`
+//     `control_flow`, `cow`, `option`, `reduce`, `runtime_call`, and `result`. `any`
 //     (#2063) holds the three `any_{wrap,unwrap,try_unwrap}` methods returning
 //     `Option<ValueRef>` — the abi shell does the kind mapping + top-level guards
 //     and interns `None → 0`, while the branch-specific guards stay in the method
@@ -57,7 +57,12 @@
 //     asymmetrically — only `build_error_from_runtime` is a core method here;
 //     `result_branch` keeps its orchestration in `abi/result.rs` because its
 //     ok/err builders are re-entrant C callbacks that cannot cross into a
-//     `&mut self` method (#2060). `lifecycle` emits no IR, so its only core part
+//     `&mut self` method (#2060). `reduce` (#2092) holds the `sum` / `min` / `max`
+//     builtins — the list forms emit a whole accumulate loop, the variadic forms
+//     one fold step per call (a single array-fold op would reorder the operand
+//     loads and break byte-exactness); `reduce_minmax_list_loop` is partial, the
+//     empty-list `emitRuntimeError` staying C++-side as it builds an ARC string
+//     global out of scope for this ARC-free batch. `lifecycle` emits no IR, so its only core part
 //     (`EmitCtx::new`) lives in `core` and it has no core-role module. With `any`
 //     migrated, no legacy module remains.
 //
@@ -85,6 +90,7 @@ mod cow;
 mod ffi;
 mod option;
 mod primitive;
+mod reduce;
 mod result;
 mod runtime_call;
 

@@ -173,12 +173,16 @@ fn listTests():
   @it("should sum")
   fn shouldSum():
     expect(sum([1, 2, 3, 4, 5])).toEq(15)
+    expect(sum([1.0, 2.0, 3.0])).toEq(6.0)
+    expect(sum([10u8, 20u8, 30u8]) == 60).toBeTrue()
   @it("should find min")
   fn shouldFindMin():
     expect(min([3, 1, 4, 1, 5])).toEq(1)
+    expect(min([3.0, 1.0, 2.0])).toEq(1.0)
   @it("should find max")
   fn shouldFindMax():
     expect(max([3, 1, 4, 1, 5])).toEq(5)
+    expect(max([3.0, 1.0, 2.0])).toEq(3.0)
   @it("should sum variadic scalars")
   fn shouldSumVariadicScalars():
     expect(sum(3, 5)).toEq(8)
