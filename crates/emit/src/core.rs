@@ -110,6 +110,25 @@ pub(crate) enum CowKind {
     Set,
 }
 
+/// Integer-comparison predicate for `build_icmp` (mirrors the boundary
+/// `RY_ICMP_*` constants in api.h; the abi layer maps the `c_int` predicate to
+/// this before calling the engine, which translates it to the llvm-sys
+/// `LLVMIntPredicate`). Added for the #2072 scalar-primitive vocabulary
+/// ([C] = (ii) boundary move).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IcmpPred {
+    Eq,
+    Ne,
+    Slt,
+    Sle,
+    Sgt,
+    Sge,
+    Ult,
+    Ule,
+    Ugt,
+    Uge,
+}
+
 /// IR-shape selector for `any_wrap` (mirrors the C++ `lowered::AnyWrapKind`; the
 /// abi layer maps the `c_int` kind — `0`/`1`/`2` — to this before calling the
 /// engine, rejecting any other value as the legacy `kind > 2` guard did).

@@ -172,6 +172,134 @@ llvm::PHINode *CodeGen::createPhi(
         ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, phiId)));
 }
 
+// === Scalar / memory IR primitives (Stage 2-C / #2072, [C]=(ii) boundary move) ===
+// Thin wrappers over the ry_emit_* scalar primitives — intern operands, call the
+// boundary op, resolve the result — so the migrated string byte-ops carry no
+// IRBuilder<>::Create* on the CodeGen side. SSA names cross verbatim via the
+// `name` argument so the emitted IR stays byte-for-byte identical (#2072).
+
+namespace {
+// Shared intern -> ry_emit_icmp -> resolve for the per-predicate conveniences
+// (predicate is a RyICmpPred int, so a function-pointer indirection is avoided).
+llvm::Value *icmpImpl(::RyEmitCtx *ctx, int pred, llvm::Value *lhs,
+                      llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(ctx, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(ctx, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(ctx, ry_emit_icmp(ctx, pred, l, r, name)));
+}
+} // namespace
+
+llvm::Value *CodeGen::emitAlloca(llvm::Type *ty, const char *name) {
+    RyValueId id = ry_emit_alloca(emit_ctx_, ry::llvm_emit::asRyType(ty), name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitLoad(llvm::Type *ty, llvm::Value *ptr, const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId id = ry_emit_load(emit_ctx_, ry::llvm_emit::asRyType(ty), ptrId, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+void CodeGen::emitStore(llvm::Value *val, llvm::Value *ptr) {
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    ry_emit_store(emit_ctx_, valId, ptrId);
+}
+
+llvm::Value *CodeGen::emitGEP(llvm::Type *base_ty, llvm::Value *ptr,
+                              llvm::Value *idx, const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId idxId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(idx));
+    RyValueId id = ry_emit_gep(emit_ctx_, ry::llvm_emit::asRyType(base_ty), ptrId,
+                               idxId, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitICmpEQ(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_EQ, lhs, rhs, name);
+}
+llvm::Value *CodeGen::emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_SLT, lhs, rhs, name);
+}
+llvm::Value *CodeGen::emitICmpSGT(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_SGT, lhs, rhs, name);
+}
+llvm::Value *CodeGen::emitICmpUGE(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_UGE, lhs, rhs, name);
+}
+llvm::Value *CodeGen::emitICmpULE(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_ULE, lhs, rhs, name);
+}
+
+llvm::Value *CodeGen::emitAnd(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_and(emit_ctx_, l, r, name)));
+}
+llvm::Value *CodeGen::emitOr(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_or(emit_ctx_, l, r, name)));
+}
+llvm::Value *CodeGen::emitAdd(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_add(emit_ctx_, l, r, name)));
+}
+llvm::Value *CodeGen::emitSub(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_sub(emit_ctx_, l, r, name)));
+}
+
+llvm::Value *CodeGen::emitSelect(llvm::Value *cond, llvm::Value *then_v,
+                                 llvm::Value *else_v, const char *name) {
+    RyValueId c = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(cond));
+    RyValueId t = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(then_v));
+    RyValueId e = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(else_v));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_select(emit_ctx_, c, t, e, name)));
+}
+
+llvm::Value *CodeGen::emitConstInt(llvm::Type *ty, uint64_t value, bool sign_extend) {
+    RyValueId id = ry_emit_const_int(emit_ctx_, ry::llvm_emit::asRyType(ty), value,
+                                     sign_extend ? 1 : 0);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty,
+                                            llvm::ArrayRef<llvm::Type *> arg_tys,
+                                            llvm::ArrayRef<llvm::Value *> args,
+                                            const char *name_hint) {
+    // Defensive precondition: ry_emit_runtime_call builds a non-variadic
+    // FunctionType from arg_tys and a CreateCall from args, so the two counts
+    // must match. This is an internal-invariant guard against a future
+    // mismatched caller — unreachable from Ry source (every call site is
+    // hardcoded arity-correct), so no regression test is required per
+    // .claude/rules/tests-rejection-tdd.md ("Defensive ... unreachable from Ry
+    // source"). IR-neutral: never fires for the in-tree callers.
+    if (arg_tys.size() != args.size())
+        codegenError("emitRuntimeCallDirect: arg type/value arity mismatch");
+    std::vector<RyTypeRef> arg_ty_refs;
+    arg_ty_refs.reserve(arg_tys.size());
+    for (auto *t : arg_tys)
+        arg_ty_refs.push_back(ry::llvm_emit::asRyType(t));
+    std::vector<RyValueId> arg_ids;
+    arg_ids.reserve(args.size());
+    for (auto *v : args)
+        arg_ids.push_back(ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v)));
+    RyValueId resultId = ry_emit_runtime_call(
+        emit_ctx_, name, ry::llvm_emit::asRyType(ret_ty), arg_ty_refs.data(),
+        static_cast<uint32_t>(arg_ty_refs.size()), arg_ids.data(),
+        static_cast<uint32_t>(arg_ids.size()), name_hint);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
+}
+
 int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {
     auto [it, inserted] = canonical_type_ids_.try_emplace(canonicalName, next_type_id_);
     if (inserted) ++next_type_id_;

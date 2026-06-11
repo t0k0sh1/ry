@@ -6,13 +6,17 @@ namespace ry {
 
 // ===== Whitespace helper =====
 
+// #2072 [C]=(ii): emitted via ry_emit_* primitives. The 4 ICmpEQ and 3 Or are
+// unnamed (no name arg in the pre-migration CreateICmpEQ/CreateOr), so each
+// wrapper is called with name "" to keep the auto-numbered SSA values identical.
+// The nested Or structure is preserved verbatim so the compiler's
+// argument-evaluation order (and thus the emission order) matches the baseline.
 llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
-    llvm::Value *isSp  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' '));
-    llvm::Value *isTab = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'));
-    llvm::Value *isNl  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n'));
-    llvm::Value *isCr  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'));
-    return builder_.CreateOr(builder_.CreateOr(isSp, isTab),
-                             builder_.CreateOr(isNl, isCr));
+    llvm::Value *isSp  = emitICmpEQ(ch, emitConstInt(i8Ty_, ' '), "");
+    llvm::Value *isTab = emitICmpEQ(ch, emitConstInt(i8Ty_, '\t'), "");
+    llvm::Value *isNl  = emitICmpEQ(ch, emitConstInt(i8Ty_, '\n'), "");
+    llvm::Value *isCr  = emitICmpEQ(ch, emitConstInt(i8Ty_, '\r'), "");
+    return emitOr(emitOr(isSp, isTab, ""), emitOr(isNl, isCr, ""), "");
 }
 
 // ===== Builtin String (dispatch table) =====
@@ -327,6 +331,9 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
 }
 
 // toUpper(s) → str
+// #2072 [C]=(ii): emitted via the ry_emit_* scalar primitives (no
+// builder_.Create*). emitStringByteLen / SetInsertPoint stay direct (see
+// codegen.hpp). IR is byte-for-byte identical to the pre-migration form.
 llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
@@ -334,11 +341,11 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
         codegenError("toUpper() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "upper_buf");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {len}, "upper_buf");
 
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "upper_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::Value *iVar = emitAlloca(i64Ty_, "upper_i");
+    emitStore(emitConstInt(i64Ty_, 0), iVar);
 
     llvm::BasicBlock *condBB = createBB("upper.cond");
     llvm::BasicBlock *bodyBB = createBB("upper.body");
@@ -346,21 +353,21 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
 
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
-    llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "upper_idx");
-    emitBranchCond(builder_.CreateICmpSLT(i, len, "upper_cond"), bodyBB, endBB);
+    llvm::Value *i = emitLoad(i64Ty_, iVar, "upper_idx");
+    emitBranchCond(emitICmpSLT(i, len, "upper_cond"), bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "upper_i_cur");
-    llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, iCur, "upper_src");
-    llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "upper_ch");
-    llvm::Value *isLowerA = builder_.CreateICmpUGE(ch, llvm::ConstantInt::get(i8Ty_, 'a'), "is_lower_a");
-    llvm::Value *isLowerZ = builder_.CreateICmpULE(ch, llvm::ConstantInt::get(i8Ty_, 'z'), "is_lower_z");
-    llvm::Value *isLower = builder_.CreateAnd(isLowerA, isLowerZ, "is_lower");
-    llvm::Value *upper = builder_.CreateSub(ch, llvm::ConstantInt::get(i8Ty_, 32), "upper_ch_val");
-    llvm::Value *result = builder_.CreateSelect(isLower, upper, ch, "upper_result");
-    llvm::Value *dstPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, iCur, "upper_dst");
-    builder_.CreateStore(result, dstPtr);
-    builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "upper_next"), iVar);
+    llvm::Value *iCur = emitLoad(i64Ty_, iVar, "upper_i_cur");
+    llvm::Value *srcPtr = emitGEP(i8Ty_, s, iCur, "upper_src");
+    llvm::Value *ch = emitLoad(i8Ty_, srcPtr, "upper_ch");
+    llvm::Value *isLowerA = emitICmpUGE(ch, emitConstInt(i8Ty_, 'a'), "is_lower_a");
+    llvm::Value *isLowerZ = emitICmpULE(ch, emitConstInt(i8Ty_, 'z'), "is_lower_z");
+    llvm::Value *isLower = emitAnd(isLowerA, isLowerZ, "is_lower");
+    llvm::Value *upper = emitSub(ch, emitConstInt(i8Ty_, 32), "upper_ch_val");
+    llvm::Value *result = emitSelect(isLower, upper, ch, "upper_result");
+    llvm::Value *dstPtr = emitGEP(i8Ty_, buf, iCur, "upper_dst");
+    emitStore(result, dstPtr);
+    emitStore(emitAdd(iCur, emitConstInt(i64Ty_, 1), "upper_next"), iVar);
     emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
@@ -369,6 +376,9 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
 }
 
 // toLower(s) → str
+// #2072 [C]=(ii): same shape as toUpper via ry_emit_* primitives. NB the SSA
+// names invert semantically (is_upper_a / lower_ch_val) and the case arithmetic
+// is Add (+32), not Sub — threaded through emitConstInt / emitAdd verbatim.
 llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
@@ -376,11 +386,11 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
         codegenError("toLower() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "lower_buf");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {len}, "lower_buf");
 
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lower_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::Value *iVar = emitAlloca(i64Ty_, "lower_i");
+    emitStore(emitConstInt(i64Ty_, 0), iVar);
 
     llvm::BasicBlock *condBB = createBB("lower.cond");
     llvm::BasicBlock *bodyBB = createBB("lower.body");
@@ -388,21 +398,21 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
 
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
-    llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "lower_idx");
-    emitBranchCond(builder_.CreateICmpSLT(i, len, "lower_cond"), bodyBB, endBB);
+    llvm::Value *i = emitLoad(i64Ty_, iVar, "lower_idx");
+    emitBranchCond(emitICmpSLT(i, len, "lower_cond"), bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lower_i_cur");
-    llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, iCur, "lower_src");
-    llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "lower_ch");
-    llvm::Value *isUpperA = builder_.CreateICmpUGE(ch, llvm::ConstantInt::get(i8Ty_, 'A'), "is_upper_a");
-    llvm::Value *isUpperZ = builder_.CreateICmpULE(ch, llvm::ConstantInt::get(i8Ty_, 'Z'), "is_upper_z");
-    llvm::Value *isUpper = builder_.CreateAnd(isUpperA, isUpperZ, "is_upper");
-    llvm::Value *lower = builder_.CreateAdd(ch, llvm::ConstantInt::get(i8Ty_, 32), "lower_ch_val");
-    llvm::Value *result = builder_.CreateSelect(isUpper, lower, ch, "lower_result");
-    llvm::Value *dstPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, iCur, "lower_dst");
-    builder_.CreateStore(result, dstPtr);
-    builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "lower_next"), iVar);
+    llvm::Value *iCur = emitLoad(i64Ty_, iVar, "lower_i_cur");
+    llvm::Value *srcPtr = emitGEP(i8Ty_, s, iCur, "lower_src");
+    llvm::Value *ch = emitLoad(i8Ty_, srcPtr, "lower_ch");
+    llvm::Value *isUpperA = emitICmpUGE(ch, emitConstInt(i8Ty_, 'A'), "is_upper_a");
+    llvm::Value *isUpperZ = emitICmpULE(ch, emitConstInt(i8Ty_, 'Z'), "is_upper_z");
+    llvm::Value *isUpper = emitAnd(isUpperA, isUpperZ, "is_upper");
+    llvm::Value *lower = emitAdd(ch, emitConstInt(i8Ty_, 32), "lower_ch_val");
+    llvm::Value *result = emitSelect(isUpper, lower, ch, "lower_result");
+    llvm::Value *dstPtr = emitGEP(i8Ty_, buf, iCur, "lower_dst");
+    emitStore(result, dstPtr);
+    emitStore(emitAdd(iCur, emitConstInt(i64Ty_, 1), "lower_next"), iVar);
     emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
@@ -411,17 +421,19 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
 }
 
 // trim(s) → str
+// #2072 [C]=(ii): forward + backward whitespace scan then memcpy, emitted via
+// ry_emit_* primitives. memcpy / __ry_string_make_uninit go through
+// emitRuntimeCallDirect (ry_emit_runtime_call) instead of builder_.CreateCall.
 llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trim() requires str argument");
-    auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *len = emitStringByteLen(s);
 
-    llvm::AllocaInst *startVar = builder_.CreateAlloca(i64Ty_, nullptr, "trim_start");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), startVar);
+    llvm::Value *startVar = emitAlloca(i64Ty_, "trim_start");
+    emitStore(emitConstInt(i64Ty_, 0), startVar);
 
     llvm::BasicBlock *startCondBB = createBB("trim.start_cond");
     llvm::BasicBlock *startBodyBB = createBB("trim.start_body");
@@ -429,28 +441,28 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
 
     emitBranchUncond(startCondBB);
     builder_.SetInsertPoint(startCondBB);
-    llvm::Value *startIdx = builder_.CreateLoad(i64Ty_, startVar, "start_idx");
-    llvm::Value *startInBounds = builder_.CreateICmpSLT(startIdx, len, "start_in_bounds");
+    llvm::Value *startIdx = emitLoad(i64Ty_, startVar, "start_idx");
+    llvm::Value *startInBounds = emitICmpSLT(startIdx, len, "start_in_bounds");
 
     llvm::BasicBlock *startCheckBB = createBB("trim.start_check");
     emitBranchCond(startInBounds, startCheckBB, startEndBB);
 
     builder_.SetInsertPoint(startCheckBB);
-    llvm::Value *startPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, startIdx, "start_ptr");
-    llvm::Value *startCh = builder_.CreateLoad(i8Ty_, startPtr, "start_ch");
+    llvm::Value *startPtr = emitGEP(i8Ty_, s, startIdx, "start_ptr");
+    llvm::Value *startCh = emitLoad(i8Ty_, startPtr, "start_ch");
     llvm::Value *isWs = emitIsWhitespace(startCh);
     emitBranchCond(isWs, startBodyBB, startEndBB);
 
     builder_.SetInsertPoint(startBodyBB);
-    llvm::Value *startNext = builder_.CreateAdd(startIdx, llvm::ConstantInt::get(i64Ty_, 1), "start_next");
-    builder_.CreateStore(startNext, startVar);
+    llvm::Value *startNext = emitAdd(startIdx, emitConstInt(i64Ty_, 1), "start_next");
+    emitStore(startNext, startVar);
     emitBranchUncond(startCondBB);
 
     builder_.SetInsertPoint(startEndBB);
-    llvm::Value *finalStart = builder_.CreateLoad(i64Ty_, startVar, "final_start");
+    llvm::Value *finalStart = emitLoad(i64Ty_, startVar, "final_start");
 
-    llvm::AllocaInst *endVar = builder_.CreateAlloca(i64Ty_, nullptr, "trim_end");
-    builder_.CreateStore(len, endVar);
+    llvm::Value *endVar = emitAlloca(i64Ty_, "trim_end");
+    emitStore(len, endVar);
 
     llvm::BasicBlock *endCondBB = createBB("trim.end_cond");
     llvm::BasicBlock *endBodyBB = createBB("trim.end_body");
@@ -458,50 +470,51 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
 
     emitBranchUncond(endCondBB);
     builder_.SetInsertPoint(endCondBB);
-    llvm::Value *endIdx = builder_.CreateLoad(i64Ty_, endVar, "end_idx");
-    llvm::Value *endGtStart = builder_.CreateICmpSGT(endIdx, finalStart, "end_gt_start");
+    llvm::Value *endIdx = emitLoad(i64Ty_, endVar, "end_idx");
+    llvm::Value *endGtStart = emitICmpSGT(endIdx, finalStart, "end_gt_start");
 
     llvm::BasicBlock *endCheckBB = createBB("trim.end_check");
     emitBranchCond(endGtStart, endCheckBB, endEndBB);
 
     builder_.SetInsertPoint(endCheckBB);
-    llvm::Value *endPrev = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "end_prev");
-    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, endPrev, "end_ptr");
-    llvm::Value *endCh = builder_.CreateLoad(i8Ty_, endPtr, "end_ch");
+    llvm::Value *endPrev = emitSub(endIdx, emitConstInt(i64Ty_, 1), "end_prev");
+    llvm::Value *endPtr = emitGEP(i8Ty_, s, endPrev, "end_ptr");
+    llvm::Value *endCh = emitLoad(i8Ty_, endPtr, "end_ch");
     llvm::Value *isWs2 = emitIsWhitespace(endCh);
     emitBranchCond(isWs2, endBodyBB, endEndBB);
 
     builder_.SetInsertPoint(endBodyBB);
-    builder_.CreateStore(endPrev, endVar);
+    emitStore(endPrev, endVar);
     emitBranchUncond(endCondBB);
 
     builder_.SetInsertPoint(endEndBB);
-    llvm::Value *finalEnd = builder_.CreateLoad(i64Ty_, endVar, "final_end");
+    llvm::Value *finalEnd = emitLoad(i64Ty_, endVar, "final_end");
 
-    llvm::Value *resultLen = builder_.CreateSub(finalEnd, finalStart, "trim_result_len");
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *isNeg = builder_.CreateICmpSLT(resultLen, zero, "trim_neg");
-    llvm::Value *safeLen = builder_.CreateSelect(isNeg, zero, resultLen, "trim_safe_len");
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {safeLen}, "trim_buf");
-    llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "trim_src");
-    builder_.CreateCall(memcpyFn, {buf, srcPtr, safeLen});
+    llvm::Value *resultLen = emitSub(finalEnd, finalStart, "trim_result_len");
+    llvm::Value *zero = emitConstInt(i64Ty_, 0);
+    llvm::Value *isNeg = emitICmpSLT(resultLen, zero, "trim_neg");
+    llvm::Value *safeLen = emitSelect(isNeg, zero, resultLen, "trim_safe_len");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {safeLen}, "trim_buf");
+    llvm::Value *srcPtr = emitGEP(i8Ty_, s, finalStart, "trim_src");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {buf, srcPtr, safeLen}, "");
     arc_str_owned_values_.insert(buf);
     return buf;
 }
 
 // trimStart(s) → str
+// #2072 [C]=(ii): forward whitespace scan then memcpy, via ry_emit_* primitives.
 llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trimStart() requires str argument");
-    auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *len = emitStringByteLen(s);
 
-    llvm::AllocaInst *startVar = builder_.CreateAlloca(i64Ty_, nullptr, "tstart_start");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), startVar);
+    llvm::Value *startVar = emitAlloca(i64Ty_, "tstart_start");
+    emitStore(emitConstInt(i64Ty_, 0), startVar);
 
     llvm::BasicBlock *condBB = createBB("tstart.cond");
     llvm::BasicBlock *checkBB = createBB("tstart.check");
@@ -510,42 +523,45 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
 
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
-    llvm::Value *idx = builder_.CreateLoad(i64Ty_, startVar, "tstart_idx");
-    emitBranchCond(builder_.CreateICmpSLT(idx, len, "tstart_bound"), checkBB, endBB);
+    llvm::Value *idx = emitLoad(i64Ty_, startVar, "tstart_idx");
+    emitBranchCond(emitICmpSLT(idx, len, "tstart_bound"), checkBB, endBB);
 
     builder_.SetInsertPoint(checkBB);
-    llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "tstart_ptr");
-    llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tstart_ch");
+    llvm::Value *ptr = emitGEP(i8Ty_, s, idx, "tstart_ptr");
+    llvm::Value *ch = emitLoad(i8Ty_, ptr, "tstart_ch");
     llvm::Value *isWs = emitIsWhitespace(ch);
     emitBranchCond(isWs, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    builder_.CreateStore(builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "tstart_next"), startVar);
+    emitStore(emitAdd(idx, emitConstInt(i64Ty_, 1), "tstart_next"), startVar);
     emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
-    llvm::Value *finalStart = builder_.CreateLoad(i64Ty_, startVar, "tstart_final");
-    llvm::Value *resultLen = builder_.CreateSub(len, finalStart, "tstart_rlen");
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "tstart_buf");
-    llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "tstart_src");
-    builder_.CreateCall(memcpyFn, {buf, srcPtr, resultLen});
+    llvm::Value *finalStart = emitLoad(i64Ty_, startVar, "tstart_final");
+    llvm::Value *resultLen = emitSub(len, finalStart, "tstart_rlen");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {resultLen}, "tstart_buf");
+    llvm::Value *srcPtr = emitGEP(i8Ty_, s, finalStart, "tstart_src");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {buf, srcPtr, resultLen}, "");
     arc_str_owned_values_.insert(buf);
     return buf;
 }
 
 // trimEnd(s) → str
+// #2072 [C]=(ii): backward whitespace scan then memcpy, via ry_emit_*
+// primitives. The memcpy source is `s` directly (prefix copy), unlike trim /
+// trimStart which offset by the trimmed start.
 llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trimEnd() requires str argument");
-    auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *len = emitStringByteLen(s);
 
-    llvm::AllocaInst *endVar = builder_.CreateAlloca(i64Ty_, nullptr, "tend_end");
-    builder_.CreateStore(len, endVar);
+    llvm::Value *endVar = emitAlloca(i64Ty_, "tend_end");
+    emitStore(len, endVar);
 
     llvm::BasicBlock *condBB = createBB("tend.cond");
     llvm::BasicBlock *checkBB = createBB("tend.check");
@@ -554,26 +570,27 @@ llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
 
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
-    llvm::Value *endIdx = builder_.CreateLoad(i64Ty_, endVar, "tend_idx");
-    llvm::Value *gtZero = builder_.CreateICmpSGT(endIdx, llvm::ConstantInt::get(i64Ty_, 0), "tend_gt0");
+    llvm::Value *endIdx = emitLoad(i64Ty_, endVar, "tend_idx");
+    llvm::Value *gtZero = emitICmpSGT(endIdx, emitConstInt(i64Ty_, 0), "tend_gt0");
     emitBranchCond(gtZero, checkBB, endBB);
 
     builder_.SetInsertPoint(checkBB);
-    llvm::Value *prevIdx = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "tend_prev");
-    llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, prevIdx, "tend_ptr");
-    llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tend_ch");
+    llvm::Value *prevIdx = emitSub(endIdx, emitConstInt(i64Ty_, 1), "tend_prev");
+    llvm::Value *ptr = emitGEP(i8Ty_, s, prevIdx, "tend_ptr");
+    llvm::Value *ch = emitLoad(i8Ty_, ptr, "tend_ch");
     llvm::Value *isWs = emitIsWhitespace(ch);
     emitBranchCond(isWs, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    builder_.CreateStore(prevIdx, endVar);
+    emitStore(prevIdx, endVar);
     emitBranchUncond(condBB);
 
     builder_.SetInsertPoint(endBB);
-    llvm::Value *finalEnd = builder_.CreateLoad(i64Ty_, endVar, "tend_final");
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {finalEnd}, "tend_buf");
-    builder_.CreateCall(memcpyFn, {buf, s, finalEnd});
+    llvm::Value *finalEnd = emitLoad(i64Ty_, endVar, "tend_final");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {finalEnd}, "tend_buf");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {buf, s, finalEnd}, "");
     arc_str_owned_values_.insert(buf);
     return buf;
 }
