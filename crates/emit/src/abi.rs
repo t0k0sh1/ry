@@ -114,6 +114,13 @@ pub const RY_COW_LIST: c_int = 0;
 pub const RY_COW_MAP: c_int = 1;
 pub const RY_COW_SET: c_int = 2;
 
+// Call-site selector for ry_emit_list_copy_full (keys / values / take, #2093).
+// MUST match the RyListCopyKind enum in api.h. abi/collection.rs maps these to
+// the core `ListCopyKind` (which picks the per-call-site SSA name pair).
+pub const RY_LISTCOPY_KEYS: c_int = 0;
+pub const RY_LISTCOPY_VALUES: c_int = 1;
+pub const RY_LISTCOPY_TAKE: c_int = 2;
+
 // Integer-comparison predicate selector for ry_emit_icmp (#2072). MUST match the
 // RyICmpPred enum in api.h. abi/primitive.rs maps these to the core `IcmpPred`.
 pub const RY_ICMP_EQ: c_int = 0;

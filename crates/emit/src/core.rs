@@ -110,6 +110,19 @@ pub(crate) enum CowKind {
     Set,
 }
 
+/// Call-site selector for `list_copy_full` (the single-source full-buffer copy
+/// shared by `keys` / `values` / `take`, #2093). The three call sites emit the
+/// identical `mul + malloc + memcpy` shape and diverge ONLY in their SSA names
+/// (`keys_ds`/`keys_nd`, `vals_ds`/`vals_nd`, `tk_dsize`/`tk_data`); this kind
+/// picks the name pair so the migrated IR stays byte-identical per call site
+/// (mirrors the boundary `RY_LISTCOPY_KEYS` / `_VALUES` / `_TAKE` constants).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListCopyKind {
+    Keys,
+    Values,
+    Take,
+}
+
 /// Integer-comparison predicate for `build_icmp` (mirrors the boundary
 /// `RY_ICMP_*` constants in api.h; the abi layer maps the `c_int` predicate to
 /// this before calling the engine, which translates it to the llvm-sys

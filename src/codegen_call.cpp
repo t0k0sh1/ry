@@ -1,6 +1,8 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include "ry/llvm_emit/api.h" // RY_LISTCOPY_KEYS / _VALUES
 
 
 namespace ry {
@@ -181,14 +183,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         if (auto *containerMeta = getMeta(mapVal))
             keyName = containerMeta->map_key_type_name;
 
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
-        llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
-        auto memcpyFn = getStdlibMemcpy();
-        builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
+        // Copy generation delegated to the llvm_emit boundary (#2093); mapLen
+        // (alloc == copy) and keysData feed the malloc + memcpy.
+        llvm::Value *newData = codegen::emission::emitListCopyFull(
+            *this, keysData, mapLen, elemSize, RY_LISTCOPY_KEYS);
 
         // memcpy duplicates raw pointers without bumping refcounts. Once
         // propagateTypeMeta below stamps list_elem_type_name on the result,
@@ -227,14 +228,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         if (auto *containerMeta = getMeta(mapVal))
             valName = containerMeta->map_value_type_name;
 
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
-        llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
-        auto memcpyFn = getStdlibMemcpy();
-        builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
+        // Copy generation delegated to the llvm_emit boundary (#2093); mapLen
+        // (alloc == copy) and valsData feed the malloc + memcpy.
+        llvm::Value *newData = codegen::emission::emitListCopyFull(
+            *this, valsData, mapLen, elemSize, RY_LISTCOPY_VALUES);
 
         // memcpy of an ARC-managed value buffer must be paired with retain;
         // see keys() above for the rationale (#1204 / #1242).

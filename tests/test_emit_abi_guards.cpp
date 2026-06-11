@@ -643,4 +643,91 @@ TEST_F(EmitAbiGuardTest, CallIndirectNullArgArrayReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2093 — collection copy-generation ops (keys / values / take / appended /
+// concat). Three value-returning entries. ry_emit_list_copy_full also has a
+// kind-selector guard (list_copy_kind_from → None) and ry_emit_list_concat a
+// NULL elem_ty guard; the others share the ctx == NULL + resolve_value → None
+// contract. All return the sentinel 0. (No FFI-array params.)
+// =============================================================================
+
+// --- ctx == NULL → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, ListCopyFullNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_list_copy_full(nullptr, /*src_data_id=*/0, /*count_id=*/0,
+                                     /*elem_size=*/8, RY_LISTCOPY_KEYS),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ListAppendedNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_list_appended(nullptr, /*new_len_id=*/0, /*old_len_id=*/0,
+                                    /*src_data_id=*/0, /*elem_size=*/8),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ListConcatNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_list_concat(nullptr, /*lhs_len_id=*/0, /*lhs_data_id=*/0,
+                                  /*rhs_len_id=*/0, /*rhs_data_id=*/0, /*new_len_id=*/0,
+                                  /*elem_ty=*/nullptr, /*elem_size=*/8),
+              0u);
+}
+
+// --- valid ctx + an operand id that resolves to None → sentinel 0. id 0 resolves
+//     to a NULL handle; resolve_value sits before the kind / elem_ty guard, so a
+//     valid kind / elem_ty makes resolve_value the trigger. ---
+
+TEST_F(EmitAbiGuardTest, ListCopyFullNullResolvedSrcReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_list_copy_full(ctx, /*src_data_id=*/0, /*count_id=*/0,
+                                     /*elem_size=*/8, RY_LISTCOPY_VALUES),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListAppendedNullResolvedReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_list_appended(ctx, /*new_len_id=*/0, /*old_len_id=*/0,
+                                    /*src_data_id=*/0, /*elem_size=*/8),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListConcatNullResolvedReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid elem_ty passes the type guard; lhs_len_id 0 resolves to NULL first.
+    EXPECT_EQ(ry_emit_list_concat(ctx, /*lhs_len_id=*/0, /*lhs_data_id=*/0,
+                                  /*rhs_len_id=*/0, /*rhs_data_id=*/0, /*new_len_id=*/0,
+                                  asRyType(resultTy_), /*elem_size=*/8),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + resolved operands + the op-specific guard. copy_full: an
+//     out-of-range kind (list_copy_kind_from → None); concat: a NULL elem_ty.
+//     internDummy gives each id a non-NULL handle so the op-specific guard (after
+//     resolve_value) is what fires. ---
+
+TEST_F(EmitAbiGuardTest, ListCopyFullUnknownKindReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId id = internDummy(ctx);
+    // 99 is outside the RyListCopyKind range [0, 2]; list_copy_kind_from returns
+    // None after the operands resolve.
+    EXPECT_EQ(ry_emit_list_copy_full(ctx, id, id, /*elem_size=*/8, /*kind=*/99), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListConcatNullElemTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_list_concat(ctx, id, id, id, id, id, /*elem_ty=*/nullptr,
+                                  /*elem_size=*/8),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace
