@@ -320,4 +320,75 @@ TEST_F(EmitAbiGuardTest, OptionWrapSomeNullResolvedInnerReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2072 — scalar / memory IR primitive guards ([C] = (ii) boundary move).
+// The eleven new `ry_emit_*` primitives (alloca / load / store / gep / icmp /
+// and / or / add / sub / select / const_int) share the same `checked_cx` /
+// `resolve_value` contract, so a representative sample of each guard SHAPE
+// suffices (the bit-exact string-op migration exercises every happy path). The
+// `ry_emit_icmp` out-of-range-predicate guard is genuinely new logic
+// (`icmp_pred_from → None`) with no precedent above, so it gets its own case.
+// Same test-vs-document split: the inner corrupted-ctx guards stay documented in
+// .claude/rules/tests-rejection-tdd.md.
+// =============================================================================
+
+// --- ctx == NULL → sentinel / no-op ---
+
+TEST_F(EmitAbiGuardTest, AllocaNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_alloca(nullptr, asRyType(llvm::Type::getInt64Ty(llctx_)), "x"), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, StoreNullCtxDoesNotCrash) {
+    ry_emit_store(nullptr, /*val_id=*/0, /*ptr_id=*/0);
+    SUCCEED();
+}
+
+// --- valid ctx + out-of-range icmp predicate → sentinel (new `icmp_pred_from`
+//     logic; the guard fires before operand resolution). ---
+
+TEST_F(EmitAbiGuardTest, IcmpUnknownPredicateReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // 99 is outside the RyICmpPred range [0, 9]; icmp_pred_from returns None
+    // before lhs/rhs are resolved, so the (sentinel) operand ids are irrelevant.
+    EXPECT_EQ(ry_emit_icmp(ctx, /*predicate=*/99, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + a NULL type handle → sentinel (the `ty.is_null()` guard;
+//     covers both the value-op and const-materialization shapes). ---
+
+TEST_F(EmitAbiGuardTest, AllocaNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_alloca(ctx, /*ty=*/nullptr, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ConstIntNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_const_int(ctx, /*ty=*/nullptr, /*value=*/42, /*sign_extend=*/0), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + an operand id that resolves to NULL → sentinel (the
+//     `resolve_value → None` guard; binary + ternary shapes). ---
+
+TEST_F(EmitAbiGuardTest, AddNullResolvedOperandReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // lhs_id 0 resolves to NULL, so the guard fires before the (unpositioned)
+    // builder is touched.
+    EXPECT_EQ(ry_emit_add(ctx, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, SelectNullResolvedOperandReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_select(ctx, /*cond_id=*/0, /*then_id=*/0, /*else_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

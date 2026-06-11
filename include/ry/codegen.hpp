@@ -2034,6 +2034,42 @@ public:
                                                         llvm::BasicBlock *>> incoming,
                               const char *name_hint = "");
 
+    // === Scalar / memory IR primitives (#2072, [C]=(ii) boundary move) ===
+    // Thin CodeGen-side wrappers over the ry_emit_* scalar primitives in
+    // crates/emit (api.h). Each takes/returns llvm::Value* and hides the
+    // intern -> ry_emit -> resolve round-trip, mirroring createBB /
+    // emitBranchCond. Used by the migrated string byte-ops so no
+    // IRBuilder<>::Create* remains in their codegen. emitConstInt wraps
+    // ConstantInt::get (not itself a Create*, but moved for (ii) completeness);
+    // SetInsertPoint / GetInsertBlock / emitStringByteLen stay direct.
+    llvm::Value *emitAlloca(llvm::Type *ty, const char *name);
+    llvm::Value *emitLoad(llvm::Type *ty, llvm::Value *ptr, const char *name);
+    void emitStore(llvm::Value *val, llvm::Value *ptr);
+    llvm::Value *emitGEP(llvm::Type *base_ty, llvm::Value *ptr, llvm::Value *idx,
+                         const char *name);
+    // Per-predicate icmp conveniences mapping 1:1 to the former
+    // builder_.CreateICmp*; each forwards to ry_emit_icmp with the RyICmpPred.
+    llvm::Value *emitICmpEQ(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpSGT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpUGE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpULE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitAnd(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitOr(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitAdd(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitSub(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitSelect(llvm::Value *cond, llvm::Value *then_v,
+                            llvm::Value *else_v, const char *name);
+    llvm::Value *emitConstInt(llvm::Type *ty, uint64_t value,
+                              bool sign_extend = false);
+    // Resolve + call a runtime symbol in one boundary op (reuses
+    // ry_emit_runtime_call) so builder_.CreateCall is not needed. Returns the
+    // call result handle (callers may discard it for void-like calls).
+    llvm::Value *emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty,
+                                       llvm::ArrayRef<llvm::Type *> arg_tys,
+                                       llvm::ArrayRef<llvm::Value *> args,
+                                       const char *name_hint);
+
     // C stdlib function helpers
     llvm::FunctionCallee getStdlibMalloc();
     llvm::FunctionCallee getStdlibRealloc();

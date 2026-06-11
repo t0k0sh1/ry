@@ -32,6 +32,7 @@ mod control_flow;
 mod cow;
 mod lifecycle;
 mod option;
+mod primitive;
 mod result;
 mod runtime_call;
 // Test-only: exposes core::header_fields for the cross-language header-layout
@@ -110,6 +111,19 @@ pub const RY_ARC_ATOMIC: c_int = 1;
 pub const RY_COW_LIST: c_int = 0;
 pub const RY_COW_MAP: c_int = 1;
 pub const RY_COW_SET: c_int = 2;
+
+// Integer-comparison predicate selector for ry_emit_icmp (#2072). MUST match the
+// RyICmpPred enum in api.h. abi/primitive.rs maps these to the core `IcmpPred`.
+pub const RY_ICMP_EQ: c_int = 0;
+pub const RY_ICMP_NE: c_int = 1;
+pub const RY_ICMP_SLT: c_int = 2;
+pub const RY_ICMP_SLE: c_int = 3;
+pub const RY_ICMP_SGT: c_int = 4;
+pub const RY_ICMP_SGE: c_int = 5;
+pub const RY_ICMP_ULT: c_int = 6;
+pub const RY_ICMP_ULE: c_int = 7;
+pub const RY_ICMP_UGT: c_int = 8;
+pub const RY_ICMP_UGE: c_int = 9;
 
 // Callback for ok/err value builders consumed by ry_emit_result_branch.
 // Wrapped in Option<...> so the FFI representation is a nullable

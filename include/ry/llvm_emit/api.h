@@ -721,6 +721,88 @@ RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
                              const RyBasicBlockRef *incoming_blocks,
                              uint32_t count, const char *name_hint);
 
+// ===========================================================================
+// #2072 — scalar / memory IR primitives ([C] = (ii) boundary move).
+//
+// These fine-grained entries wrap a single IRBuilder<>::Create* (or
+// ConstantInt::get) call each, so that the string byte-ops (toUpper / toLower /
+// trim / trimStart / trimEnd) — the first migration under the (ii) "boundary
+// move" decision — can emit their inline loop bodies WITHOUT any
+// IRBuilder<>::Create* on the CodeGen side. Unlike the coarse ops above, the
+// lowering side has no semantic decision to make for a primitive, so no
+// `lowered_*` struct layer is introduced; the CodeGen-side inline wrappers in
+// `include/ry/codegen.hpp` (emitAlloca / emitLoad / emitStore / emitGEP /
+// emitICmp* / emitAnd / emitOr / emitAdd / emitSub / emitSelect / emitConstInt)
+// bridge call sites without per-site intern/resolve clutter.
+//
+// This DELIBERATELY supersedes the (i)-era "Explicit non-inclusion" carve-out
+// in `docs/architecture/codegen-layering-plan.md` (which kept primitive
+// arithmetic / comparison / Alloca/Load/Store as a C++ carve-out to keep
+// emission near-1:1). The decision and its trade-off (physical vs semantic
+// boundary) is recorded there; this is its boundary surface. Runtime-symbol
+// calls (`__ry_string_make_uninit`, `memcpy`) reuse ry_emit_runtime_call rather
+// than a new entry; SetInsertPoint / GetInsertBlock stay on the CodeGen side
+// (they emit no IR — see the ControlFlow note above).
+// ===========================================================================
+
+// Integer-comparison predicate selector for ry_emit_icmp. Numbers are a stable
+// boundary contract; do not reorder without updating the RY_ICMP_* constants in
+// `crates/emit/src/abi.rs` (which map to the core `IcmpPred`).
+typedef enum {
+    RY_ICMP_EQ = 0,
+    RY_ICMP_NE = 1,
+    RY_ICMP_SLT = 2,
+    RY_ICMP_SLE = 3,
+    RY_ICMP_SGT = 4,
+    RY_ICMP_SGE = 5,
+    RY_ICMP_ULT = 6,
+    RY_ICMP_ULE = 7,
+    RY_ICMP_UGT = 8,
+    RY_ICMP_UGE = 9
+} RyICmpPred;
+
+// Emit `alloca ty` at the builder's current insert point; return the interned
+// result handle. NULL `name` → empty SSA name. No basic blocks created.
+RyValueId ry_emit_alloca(RyEmitCtx *ctx, RyTypeRef ty, const char *name);
+
+// Emit `load ty, ptr` (element-typed under opaque pointers); return the interned
+// result. NULL `name` → empty SSA name.
+RyValueId ry_emit_load(RyEmitCtx *ctx, RyTypeRef ty, RyValueId ptr_id,
+                       const char *name);
+
+// Emit `store val, ptr` (produces no value).
+void ry_emit_store(RyEmitCtx *ctx, RyValueId val_id, RyValueId ptr_id);
+
+// Emit a single-index `getelementptr base_ty, ptr, idx`; return the interned
+// result. NULL `name` → empty SSA name.
+RyValueId ry_emit_gep(RyEmitCtx *ctx, RyTypeRef base_ty, RyValueId ptr_id,
+                      RyValueId idx_id, const char *name);
+
+// Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
+// return the interned i1 result. An unknown predicate yields sentinel 0.
+RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,
+                       RyValueId rhs_id, const char *name);
+
+// Emit `and` / `or` / `add` / `sub` of two operands; return the interned result.
+RyValueId ry_emit_and(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                      const char *name);
+RyValueId ry_emit_or(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                     const char *name);
+RyValueId ry_emit_add(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                      const char *name);
+RyValueId ry_emit_sub(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                      const char *name);
+
+// Emit `select cond, then_val, else_val`; return the interned result.
+RyValueId ry_emit_select(RyEmitCtx *ctx, RyValueId cond_id, RyValueId then_id,
+                         RyValueId else_id, const char *name);
+
+// Materialize an integer constant (ConstantInt::get equivalent); return the
+// interned constant handle. `sign_extend` is the LLVMConstInt SignExtend flag
+// (0 = zero-extend the value into `ty`'s width). Emits no instruction.
+RyValueId ry_emit_const_int(RyEmitCtx *ctx, RyTypeRef ty, uint64_t value,
+                            int sign_extend);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
