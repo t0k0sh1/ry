@@ -546,6 +546,21 @@ TEST_F(EmitAbiGuardTest, RetNullCtxDoesNotCrash) {
     SUCCEED();
 }
 
+// A non-zero val_id that fails to resolve is malformed input → no-op, NOT a
+// silent `ret void` (#2105 CodeRabbit). With a real ctx whose builder is
+// unpositioned, an out-of-range id (999) must return early *before* any
+// LLVMBuildRet — reaching this point without a crash proves the early-return
+// guard (a stray `ret void` on an unpositioned builder would crash). val_id == 0
+// is deliberately excluded: the 0 sentinel intentionally emits `ret void`, which
+// requires a positioned builder.
+TEST_F(EmitAbiGuardTest, RetUnresolvedNonZeroValDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_ret(ctx, /*val_id=*/999);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
 // --- valid ctx + NULL type / fn handle → sentinel (the handle-NULL guards) ---
 
 TEST_F(EmitAbiGuardTest, CreateFunctionNullFnTypeReturnsNull) {

@@ -284,9 +284,16 @@ llvm::Value *CodeGen::emitConstInt(llvm::Type *ty, uint64_t value, bool sign_ext
 llvm::Function *CodeGen::emitCreateFunction(llvm::FunctionType *fn_ty,
                                             llvm::GlobalValue::LinkageTypes linkage,
                                             const char *name) {
-    int ryLinkage = linkage == llvm::GlobalValue::InternalLinkage  ? RY_LINKAGE_INTERNAL
-                    : linkage == llvm::GlobalValue::PrivateLinkage ? RY_LINKAGE_PRIVATE
-                                                                   : RY_LINKAGE_EXTERNAL;
+    // Reject any linkage outside the three the boundary models, rather than
+    // silently coercing it to external (which would alter symbol semantics). The
+    // 33 Function::Create sites use only External / Internal; Private is included
+    // for completeness. Defensive — unreachable from the current callers.
+    int ryLinkage = linkage == llvm::GlobalValue::InternalLinkage    ? RY_LINKAGE_INTERNAL
+                    : linkage == llvm::GlobalValue::PrivateLinkage   ? RY_LINKAGE_PRIVATE
+                    : linkage == llvm::GlobalValue::ExternalLinkage  ? RY_LINKAGE_EXTERNAL
+                                                                     : -1;
+    if (ryLinkage < 0)
+        codegenError("emitCreateFunction: unsupported linkage for emit boundary");
     RyFunctionRef fref = ry_emit_create_function(
         emit_ctx_, name, ry::llvm_emit::asRyFuncType(fn_ty), ryLinkage);
     return ry::llvm_emit::asLlvmFunction(fref);
