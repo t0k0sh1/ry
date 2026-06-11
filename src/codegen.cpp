@@ -276,6 +276,15 @@ llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty
                                             llvm::ArrayRef<llvm::Type *> arg_tys,
                                             llvm::ArrayRef<llvm::Value *> args,
                                             const char *name_hint) {
+    // Defensive precondition: ry_emit_runtime_call builds a non-variadic
+    // FunctionType from arg_tys and a CreateCall from args, so the two counts
+    // must match. This is an internal-invariant guard against a future
+    // mismatched caller — unreachable from Ry source (every call site is
+    // hardcoded arity-correct), so no regression test is required per
+    // .claude/rules/tests-rejection-tdd.md ("Defensive ... unreachable from Ry
+    // source"). IR-neutral: never fires for the in-tree callers.
+    if (arg_tys.size() != args.size())
+        codegenError("emitRuntimeCallDirect: arg type/value arity mismatch");
     std::vector<RyTypeRef> arg_ty_refs;
     arg_ty_refs.reserve(arg_tys.size());
     for (auto *t : arg_tys)
