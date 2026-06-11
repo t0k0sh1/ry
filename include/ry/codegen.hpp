@@ -2062,6 +2062,28 @@ public:
                             llvm::Value *else_v, const char *name);
     llvm::Value *emitConstInt(llvm::Type *ty, uint64_t value,
                               bool sign_extend = false);
+
+    // === Function / call IR primitives (#2098, [C]=(ii) boundary move) ===
+    // Acquire the function-creation capability in the emission layer: build a
+    // fresh function definition (the llvm::Function::Create equivalent), read
+    // its params, emit an indirect call through a loaded fn-pointer value, and
+    // emit a return. emitCreateFunction returns llvm::Function* directly — the
+    // handle is recovered via asLlvmFunction (not intern/resolve, same shape as
+    // createBBInFn's BB handle) so it doubles as a createBBInFn parent and as the
+    // value stored into an iterator header's next_fn slot. The take iterator
+    // next-fn (the #2098 pilot) emits its Part A through these so it carries no
+    // IRBuilder<>::Create*. emitStructGEP is the compile-time field-index GEP
+    // (distinct from emitGEP's runtime index).
+    llvm::Function *emitCreateFunction(llvm::FunctionType *fn_ty,
+                                       llvm::GlobalValue::LinkageTypes linkage,
+                                       const char *name);
+    llvm::Value *emitGetParam(llvm::Function *fn, uint32_t idx);
+    llvm::Value *emitStructGEP(llvm::Type *struct_ty, llvm::Value *ptr,
+                               uint32_t field_idx, const char *name);
+    llvm::Value *emitCallIndirect(llvm::FunctionType *fn_ty, llvm::Value *callee,
+                                  llvm::ArrayRef<llvm::Value *> args,
+                                  const char *name);
+    void emitRet(llvm::Value *val);
     // Resolve + call a runtime symbol in one boundary op (reuses
     // ry_emit_runtime_call) so builder_.CreateCall is not needed. Returns the
     // call result handle (callers may discard it for void-like calls).

@@ -459,8 +459,14 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         std::string fnName = "__iter_take_next." + std::to_string(iterator_fn_counter_++);
         llvm::StructType *optTy = getOptionType(elemTy);
         llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-        llvm::Function *takeNextFn = llvm::Function::Create(
-            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+        // #2098 pilot: the next-fn is built entirely through the emission
+        // boundary — emitCreateFunction (llvm::Function::Create), emitGetParam,
+        // emitStructGEP / emitLoad / emitICmpSGT / emitConstInt / emitSub /
+        // emitStore (existing primitives), emitCallIndirect, emitRet — so Part A
+        // carries no IRBuilder<>::Create*. FnScope / fn_ / pushScope / popScope /
+        // SetInsertPoint stay C++ (codegen state / builder position, not IR).
+        llvm::Function *takeNextFn = emitCreateFunction(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName.c_str());
 
         {
             FnScope guard(*this);
@@ -469,28 +475,28 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             llvm::BasicBlock *entry = createBBInFn("entry", takeNextFn);
             builder_.SetInsertPoint(entry);
 
-            llvm::Value *statePtr = takeNextFn->getArg(0);
-            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
-            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
-            llvm::Value *remField = builder_.CreateStructGEP(stateTy, statePtr, 2, "rem_f");
-            llvm::Value *remaining = builder_.CreateLoad(i64Ty_, remField, "remaining");
+            llvm::Value *statePtr = emitGetParam(takeNextFn, 0);
+            llvm::Value *srcNextFn = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 0, ""), "src_next_fn");
+            llvm::Value *srcState = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 1, ""), "src_state");
+            llvm::Value *remField = emitStructGEP(stateTy, statePtr, 2, "rem_f");
+            llvm::Value *remaining = emitLoad(i64Ty_, remField, "remaining");
 
             llvm::BasicBlock *callBB = createBBInFn("call", takeNextFn);
             llvm::BasicBlock *noneBB = createBBInFn("none", takeNextFn);
             emitBranchCond(
-                builder_.CreateICmpSGT(remaining, llvm::ConstantInt::get(i64Ty_, 0), "has_rem"),
+                emitICmpSGT(remaining, emitConstInt(i64Ty_, 0), "has_rem"),
                 callBB, noneBB);
 
             builder_.SetInsertPoint(callBB);
-            builder_.CreateStore(
-                builder_.CreateSub(remaining, llvm::ConstantInt::get(i64Ty_, 1), "new_rem"), remField);
+            emitStore(
+                emitSub(remaining, emitConstInt(i64Ty_, 1), "new_rem"), remField);
             llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-            builder_.CreateRet(builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt"));
+            emitRet(emitCallIndirect(srcNextCallTy, srcNextFn, {srcState}, "src_opt"));
 
             builder_.SetInsertPoint(noneBB);
-            builder_.CreateRet(buildNoneValue(optTy));
+            emitRet(buildNoneValue(optTy));
             popScope();
         }
 

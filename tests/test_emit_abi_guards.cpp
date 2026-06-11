@@ -507,4 +507,140 @@ TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullElemTyReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2098 — function definition + indirect call primitive guards
+// ([C] = (ii) boundary move). The five new entries (create_function / get_param
+// / struct_gep / call_indirect / ret) share the same checked_cx / handle-NULL /
+// resolve_value / ffi_slice contract, so each guard SHAPE gets a representative
+// case (the bit-exact `take` migration exercises every happy path). The
+// create_function unknown-linkage reject is genuinely new logic (`linkage_from →
+// None`) with no precedent above, so it gets its own case. The corrupted-ctx
+// inner guards stay documented in .claude/rules/tests-rejection-tdd.md.
+// =============================================================================
+
+// --- ctx == NULL → sentinel / no-op ---
+
+TEST_F(EmitAbiGuardTest, CreateFunctionNullCtxReturnsNull) {
+    EXPECT_EQ(ry_emit_create_function(nullptr, "f", asRyFuncType(fnTy_), RY_LINKAGE_EXTERNAL),
+              nullptr);
+}
+
+TEST_F(EmitAbiGuardTest, GetParamNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_get_param(nullptr, /*fn=*/nullptr, /*idx=*/0), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, StructGepNullCtxReturnsZero) {
+    EXPECT_EQ(
+        ry_emit_struct_gep(nullptr, asRyType(resultTy_), /*ptr_id=*/0, /*field_idx=*/0, "x"),
+        0u);
+}
+
+TEST_F(EmitAbiGuardTest, CallIndirectNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_call_indirect(nullptr, asRyFuncType(fnTy_), /*callee_id=*/0,
+                                    /*arg_ids=*/nullptr, /*arg_count=*/0, /*name=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, RetNullCtxDoesNotCrash) {
+    ry_emit_ret(nullptr, /*val_id=*/0);
+    SUCCEED();
+}
+
+// A non-zero val_id that fails to resolve is malformed input → no-op, NOT a
+// silent `ret void` (#2105 CodeRabbit). With a real ctx whose builder is
+// unpositioned, an out-of-range id (999) must return early *before* any
+// LLVMBuildRet — reaching this point without a crash proves the early-return
+// guard (a stray `ret void` on an unpositioned builder would crash). val_id == 0
+// is deliberately excluded: the 0 sentinel intentionally emits `ret void`, which
+// requires a positioned builder.
+TEST_F(EmitAbiGuardTest, RetUnresolvedNonZeroValDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_ret(ctx, /*val_id=*/999);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + NULL type / fn handle → sentinel (the handle-NULL guards) ---
+
+TEST_F(EmitAbiGuardTest, CreateFunctionNullFnTypeReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_function(ctx, "f", /*fn_ty=*/nullptr, RY_LINKAGE_EXTERNAL), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, GetParamNullFnReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_get_param(ctx, /*fn=*/nullptr, /*idx=*/0), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, StructGepNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_struct_gep(ctx, /*struct_ty=*/nullptr, /*ptr_id=*/0, /*field_idx=*/0, "x"),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CallIndirectNullFnTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_call_indirect(ctx, /*fn_ty=*/nullptr, /*callee_id=*/0,
+                                    /*arg_ids=*/nullptr, /*arg_count=*/0, /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + unknown linkage → NULL (the new `linkage_from → None` logic;
+//     fires before LLVMAddFunction so no stray function is added). ---
+
+TEST_F(EmitAbiGuardTest, CreateFunctionUnknownLinkageReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_function(ctx, "f", asRyFuncType(fnTy_), /*linkage=*/99), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + an id that resolves to NULL → sentinel (resolve_value → None,
+//     fires before the unpositioned builder is touched). ---
+
+TEST_F(EmitAbiGuardTest, StructGepNullResolvedPtrReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // ptr_id 0 resolves to NULL after the valid struct_ty passes the type guard.
+    EXPECT_EQ(ry_emit_struct_gep(ctx, asRyType(resultTy_), /*ptr_id=*/0, /*field_idx=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CallIndirectNullCalleeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid fn_ty passes the type guard; callee_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_call_indirect(ctx, asRyFuncType(fnTy_), /*callee_id=*/0,
+                                    /*arg_ids=*/nullptr, /*arg_count=*/0, /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- valid ctx + resolvable callee + NULL arg array with count > 0 → sentinel
+//     (the ffi_slice NULL-array guard, mirroring CreatePhiNullIncomingArrays).
+//     The callee is a function created through the boundary so it resolves
+//     non-NULL, isolating the arg-array guard as the trigger. ---
+
+TEST_F(EmitAbiGuardTest, CallIndirectNullArgArrayReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyFunctionRef fn =
+        ry_emit_create_function(ctx, "ci_dummy", asRyFuncType(fnTy_), RY_LINKAGE_EXTERNAL);
+    ASSERT_NE(fn, nullptr);
+    RyValueId calleeId = ry_emit_intern(ctx, asRyValue(asLlvmFunction(fn)));
+    EXPECT_EQ(ry_emit_call_indirect(ctx, asRyFuncType(fnTy_), calleeId,
+                                    /*arg_ids=*/nullptr, /*arg_count=*/1, /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

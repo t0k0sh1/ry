@@ -85,6 +85,10 @@ inline llvm::BasicBlock *asLlvmBasicBlock(RyBasicBlockRef p) {
     return reinterpret_cast<llvm::BasicBlock *>(p);
 }
 
+inline llvm::Function *asLlvmFunction(RyFunctionRef p) {
+    return reinterpret_cast<llvm::Function *>(p);
+}
+
 } // namespace ry::llvm_emit
 
 #endif // RY_LLVM_EMIT_CAST_HELPERS_HPP

@@ -757,6 +757,11 @@ RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
                              const RyBasicBlockRef *incoming_blocks,
                              uint32_t count, const char *name_hint);
 
+// Emit `ret val_id` at the builder's current insert point. `val_id == 0`
+// (sentinel) emits `ret void`. The return terminator that completes a function
+// body built via ry_emit_create_function (#2098).
+void ry_emit_ret(RyEmitCtx *ctx, RyValueId val_id);
+
 // ===========================================================================
 // #2072 — scalar / memory IR primitives ([C] = (ii) boundary move).
 //
@@ -814,6 +819,15 @@ void ry_emit_store(RyEmitCtx *ctx, RyValueId val_id, RyValueId ptr_id);
 RyValueId ry_emit_gep(RyEmitCtx *ctx, RyTypeRef base_ty, RyValueId ptr_id,
                       RyValueId idx_id, const char *name);
 
+// Emit a struct-field `getelementptr struct_ty, ptr, 0, field_idx` — the
+// compile-time field-index GEP (distinct from the runtime-index ry_emit_gep
+// above). `field_idx` is the aggregate field index. NULL `name` → empty SSA
+// name. Added for #2098 (function-creation capability; struct-field access is
+// pervasive in the migrated function bodies).
+RyValueId ry_emit_struct_gep(RyEmitCtx *ctx, RyTypeRef struct_ty,
+                             RyValueId ptr_id, uint32_t field_idx,
+                             const char *name);
+
 // Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
 // return the interned i1 result. An unknown predicate yields sentinel 0.
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,
@@ -838,6 +852,56 @@ RyValueId ry_emit_select(RyEmitCtx *ctx, RyValueId cond_id, RyValueId then_id,
 // (0 = zero-extend the value into `ty`'s width). Emits no instruction.
 RyValueId ry_emit_const_int(RyEmitCtx *ctx, RyTypeRef ty, uint64_t value,
                             int sign_extend);
+
+// ===========================================================================
+// #2098 — function definition + indirect call ([C] = (ii) boundary move).
+//
+// The function-CREATION capability: until now the emission ABI could only emit
+// instructions / basic blocks INSIDE a function the C++ side already had open
+// (create_basic_block took an explicit parent handle; there was no way to MAKE
+// the parent). These three entries close that gap — `ry_emit_create_function`
+// is the `llvm::Function::Create` equivalent (LLVMAddFunction + linkage),
+// `ry_emit_get_param` reads a parameter, and `ry_emit_call_indirect` calls
+// through a loaded function-pointer value (vs. ry_emit_runtime_call's
+// name-keyed getOrInsertFunction). They are generic and semantically trivial —
+// nothing here knows about iterators or any Ry concept — so they generalize to
+// every C++ Function::Create site (iterator-next / tostring / closure /
+// destructor / thunk), unlike a coarse per-op `ry_emit_iter_take_next` which
+// would leak Ry semantics into emission. The pilot consumer is the `take`
+// iterator's next-fn (src/codegen_call_iterator.cpp); see
+// docs/architecture/codegen-layering-plan.md for the capability decision.
+// ===========================================================================
+
+// Function linkage selector for ry_emit_create_function. Numbers are a stable
+// boundary contract; do not reorder without updating the RY_LINKAGE_* constants
+// in `crates/emit/src/abi.rs` (which map to the core LLVMLinkage).
+typedef enum {
+    RY_LINKAGE_EXTERNAL = 0,
+    RY_LINKAGE_INTERNAL = 1,
+    RY_LINKAGE_PRIVATE = 2
+} RyLinkage;
+
+// Create a fresh function `name` of type `fn_ty` with `linkage` (a RyLinkage
+// value) in the module, and return its opaque handle (NOT interned — same shape
+// as ry_emit_create_basic_block's RyBasicBlockRef). Always adds a new function
+// (the caller owns name uniqueness). NULL ctx / fn_ty / name, or an unknown
+// linkage, → NULL. Creates no basic blocks.
+RyFunctionRef ry_emit_create_function(RyEmitCtx *ctx, const char *name,
+                                      RyFuncTypeRef fn_ty, int linkage);
+
+// Read the `idx`-th parameter value of `fn`; return the interned result.
+// NULL ctx / fn → 0.
+RyValueId ry_emit_get_param(RyEmitCtx *ctx, RyFunctionRef fn, uint32_t idx);
+
+// Emit a call through the runtime function-pointer value `callee_id` (a loaded
+// `ptr`), typed by `fn_ty`, with `arg_ids[0..arg_count]`; return the interned
+// result. Distinct from ry_emit_runtime_call, whose callee is a module-keyed
+// name. A void return type drops the SSA name (LLVM forbids naming a void call).
+// NULL ctx / fn_ty / callee, a NULL arg array for `arg_count > 0`, or any arg
+// resolving to NULL → 0. NULL `name` → empty SSA name.
+RyValueId ry_emit_call_indirect(RyEmitCtx *ctx, RyFuncTypeRef fn_ty,
+                                RyValueId callee_id, const RyValueId *arg_ids,
+                                uint32_t arg_count, const char *name);
 
 #ifdef __cplusplus
 } // extern "C"

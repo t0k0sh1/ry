@@ -74,6 +74,28 @@ pub unsafe extern "C" fn ry_emit_branch_uncond(ctx: *mut RyEmitCtx, target: RyBa
     c.branch_uncond(BasicBlockRef(as_bb(target)));
 }
 
+/// Emit `ret val_id` at the builder's current insert point. `val_id == 0` (the
+/// explicit sentinel) emits `ret void`; a non-zero id that fails to resolve is a
+/// no-op — NOT a silent `ret void`, which would be invalid IR for a non-void
+/// function. NULL ctx → no-op. The function-builder return terminator (#2098).
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_ret(ctx: *mut RyEmitCtx, val_id: RyValueId) {
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    // `ret void` is gated strictly on the 0 sentinel; an unresolvable non-zero id
+    // is malformed input → no-op (do not coerce it to `ret void`).
+    let val = if val_id == 0 {
+        None
+    } else {
+        let Some(v) = resolve_value(c, val_id) else {
+            return;
+        };
+        Some(v)
+    };
+    c.build_ret(val);
+}
+
 /// Emit a PHI of type `ty` from `count` parallel (value, block) incoming pairs
 /// (`incoming_values` / `incoming_blocks`) at the builder's current insert point;
 /// return the interned PHI handle. NULL `name_hint` is treated as empty.

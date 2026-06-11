@@ -88,6 +88,7 @@ mod control_flow;
 mod core;
 mod cow;
 mod ffi;
+mod function;
 mod option;
 mod primitive;
 mod reduce;
