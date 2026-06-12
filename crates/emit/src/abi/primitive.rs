@@ -158,6 +158,27 @@ pub unsafe extern "C" fn ry_emit_struct_gep(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `extractvalue agg, idx` — read a single aggregate field by compile-time
+/// index (`LLVMBuildExtractValue`), distinct from the pointer-addressing
+/// `ry_emit_struct_gep`: this reads a field out of an aggregate *value*. NULL ctx
+/// / unresolved agg → 0. NULL `name` → empty.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_extract_value(
+    ctx: *mut RyEmitCtx,
+    agg_id: RyValueId,
+    idx: u32,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let Some(agg) = resolve_value(c, agg_id) else {
+        return 0;
+    };
+    let v = c.build_extract_value(agg, idx, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `icmp <predicate> lhs, rhs`. NULL ctx / unknown predicate / NULL operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_icmp(

@@ -99,6 +99,21 @@ impl EmitCtx {
         ))
     }
 
+    // `extractvalue agg, idx` — read a single aggregate field by compile-time
+    // index (`LLVMBuildExtractValue`). Distinct from `build_struct_gep`, which
+    // addresses a struct field through a *pointer*; this reads a field out of an
+    // aggregate *value* (e.g. an `Option<T>` struct's tag / payload). Added for
+    // #2099 (closure / FnTypeInfo crossing: the filter / map iterator next-fn
+    // destructures the source `Option` in-register).
+    pub(crate) unsafe fn build_extract_value(
+        &mut self,
+        agg: ValueRef,
+        idx: u32,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildExtractValue(self.builder, agg.0, idx, name))
+    }
+
     // `icmp <pred> lhs, rhs`.
     pub(crate) unsafe fn build_icmp(
         &mut self,

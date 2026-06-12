@@ -370,15 +370,21 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         return result;
     };
 
+    // #2099 pilot: the closure CALL crosses the emission boundary through the
+    // generic primitives — emitStructGEP / emitLoad (existing) + emitCallIndirect
+    // (#2098) — so this carries no IRBuilder<>::Create*. FnTypeInfo stays C++:
+    // the calling-convention dispatch (uniform vs plain vs captured), the
+    // FunctionType construction, and the arg/capture counts are a lowering
+    // decision selecting WHICH primitives to emit, NOT a descriptor that must
+    // cross the boundary. Void calls pass an empty SSA name (LLVM forbids naming
+    // a void call); the boundary drops it either way.
     if (info.isUniformClosure) {
         // Uniform closure: {thunk_ptr, env_ptr}
         auto *ucTy = getUniformClosureTy();
-        auto *thunkField = builder_.CreateStructGEP(
-            ucTy, lambdaVal, 0, "uc.thunk_field");
-        auto *thunkPtr = builder_.CreateLoad(ptrTy_, thunkField, "uc.thunk");
-        auto *envField = builder_.CreateStructGEP(
-            ucTy, lambdaVal, 1, "uc.env_field");
-        auto *envPtr = builder_.CreateLoad(ptrTy_, envField, "uc.env");
+        auto *thunkField = emitStructGEP(ucTy, lambdaVal, 0, "uc.thunk_field");
+        auto *thunkPtr = emitLoad(ptrTy_, thunkField, "uc.thunk");
+        auto *envField = emitStructGEP(ucTy, lambdaVal, 1, "uc.env_field");
+        auto *envPtr = emitLoad(ptrTy_, envField, "uc.env");
 
         std::vector<llvm::Value*> callArgs = args;
         callArgs.push_back(envPtr);
@@ -387,16 +393,16 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 
         auto *ft = llvm::FunctionType::get(info.returnType, callTypes, false);
         if (info.returnType->isVoidTy())
-            return builder_.CreateCall(ft, thunkPtr, callArgs);
-        return annotateResult(builder_.CreateCall(ft, thunkPtr, callArgs, name));
+            return emitCallIndirect(ft, thunkPtr, callArgs, "");
+        return annotateResult(emitCallIndirect(ft, thunkPtr, callArgs, name.c_str()));
     }
 
     if (info.capturedVars.empty()) {
         llvm::FunctionType *ft = llvm::FunctionType::get(
             info.returnType, info.paramTypes, false);
         if (info.returnType->isVoidTy())
-            return builder_.CreateCall(ft, lambdaVal, args);
-        return annotateResult(builder_.CreateCall(ft, lambdaVal, args, name));
+            return emitCallIndirect(ft, lambdaVal, args, "");
+        return annotateResult(emitCallIndirect(ft, lambdaVal, args, name.c_str()));
     } else {
         std::vector<llvm::Type*> closureFields;
         closureFields.push_back(ptrTy_);
@@ -404,17 +410,18 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             closureFields.push_back(ct);
         llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
-        llvm::Value *fnPtrField = builder_.CreateStructGEP(
-            closureTy, lambdaVal, 0, "lcall.fn_ptr");
-        llvm::Value *fnPtr = builder_.CreateLoad(ptrTy_, fnPtrField, "lcall.fn");
+        llvm::Value *fnPtrField = emitStructGEP(closureTy, lambdaVal, 0, "lcall.fn_ptr");
+        llvm::Value *fnPtr = emitLoad(ptrTy_, fnPtrField, "lcall.fn");
 
         std::vector<llvm::Value*> fullArgs = args;
         std::vector<llvm::Type*> allParamTypes = info.paramTypes;
         for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
-            llvm::Value *capField = builder_.CreateStructGEP(
-                closureTy, lambdaVal, static_cast<unsigned>(i + 1), "lcall.cap." + std::to_string(i));
-            llvm::Value *capVal = builder_.CreateLoad(
-                info.capturedTypes[i], capField, "lcall.cap_val." + std::to_string(i));
+            llvm::Value *capField = emitStructGEP(
+                closureTy, lambdaVal, static_cast<unsigned>(i + 1),
+                ("lcall.cap." + std::to_string(i)).c_str());
+            llvm::Value *capVal = emitLoad(
+                info.capturedTypes[i], capField,
+                ("lcall.cap_val." + std::to_string(i)).c_str());
             fullArgs.push_back(capVal);
             allParamTypes.push_back(info.capturedTypes[i]);
         }
@@ -422,8 +429,8 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         llvm::FunctionType *ft = llvm::FunctionType::get(
             info.returnType, allParamTypes, false);
         if (info.returnType->isVoidTy())
-            return builder_.CreateCall(ft, fnPtr, fullArgs);
-        return annotateResult(builder_.CreateCall(ft, fnPtr, fullArgs, name));
+            return emitCallIndirect(ft, fnPtr, fullArgs, "");
+        return annotateResult(emitCallIndirect(ft, fnPtr, fullArgs, name.c_str()));
     }
 }
 

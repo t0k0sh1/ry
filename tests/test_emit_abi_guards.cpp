@@ -730,4 +730,25 @@ TEST_F(EmitAbiGuardTest, ListConcatNullElemTyReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2099 — extractvalue primitive guards (closure / FnTypeInfo crossing). Same
+// checked_cx / resolve_value contract as the #2098 entries above, so the two
+// reachable guard shapes (ctx == NULL, and a valid ctx with an agg id that
+// resolves to None) each get a representative case; the bit-exact filter / map
+// migration exercises the happy path.
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, ExtractValueNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_extract_value(nullptr, /*agg_id=*/0, /*idx=*/0, "x"), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, ExtractValueUnresolvedAggReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // agg_id 0 resolves to None (resolve_value → None), the reject fires before
+    // any builder use.
+    EXPECT_EQ(ry_emit_extract_value(ctx, /*agg_id=*/0, /*idx=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

@@ -272,6 +272,13 @@ llvm::Value *CodeGen::emitConstInt(llvm::Type *ty, uint64_t value, bool sign_ext
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+llvm::Value *CodeGen::emitExtractValue(llvm::Value *agg, unsigned idx,
+                                       const char *name) {
+    RyValueId aggId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(agg));
+    RyValueId id = ry_emit_extract_value(emit_ctx_, aggId, idx, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
 // === Function / call IR primitives (Stage 2-C / #2098, [C]=(ii) boundary move) ===
 // Thin wrappers over the ry_emit_* function / call primitives. emitCreateFunction
 // returns the llvm::Function* recovered from the opaque RyFunctionRef (no
