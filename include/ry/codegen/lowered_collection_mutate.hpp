@@ -136,4 +136,30 @@ llvm::Value *emitCollectionRemoveAt(CodeGen &cg,
 lowered::ListSliceResult emitListSlice(CodeGen &cg,
                                        const lowered::ListSliceOp &op);
 
+// Collection copy-generation wrappers (#2093). No lowered:: op struct — the call
+// sites already hold the C++-loaded length / data Values, so these wrappers just
+// intern → call the boundary → resolve (mirroring the reduce wrappers, #2092).
+// Each emits only the malloc+memcpy chain and returns the new buffer; the header
+// alloc, ARC retain loop, and metadata propagation stay on the caller side.
+// Branchless (no new BBs).
+
+// keys / values / take: copy `count` elements wholesale from `src_data`. `kind`
+// is an RyListCopyKind (RY_LISTCOPY_KEYS / _VALUES / _TAKE) selecting the SSA
+// names. Via ry_emit_list_copy_full.
+llvm::Value *emitListCopyFull(CodeGen &cg, llvm::Value *src_data,
+                              llvm::Value *count, uint64_t elem_size, int kind);
+
+// appended: alloc new_len, copy the old_len-element source range (the appended
+// element is stored caller-side). Via ry_emit_list_appended.
+llvm::Value *emitListAppendedCopy(CodeGen &cg, llvm::Value *new_len,
+                                  llvm::Value *old_len, llvm::Value *src_data,
+                                  uint64_t elem_size);
+
+// list `+` concat: copy lhs at offset 0 then rhs at the elem-typed GEP offset
+// lhs_len. `new_len` (= lhs+rhs) is passed for SSA reuse. Via ry_emit_list_concat.
+llvm::Value *emitListConcatCopy(CodeGen &cg, llvm::Value *lhs_len,
+                                llvm::Value *lhs_data, llvm::Value *rhs_len,
+                                llvm::Value *rhs_data, llvm::Value *new_len,
+                                llvm::Type *elem_ty, uint64_t elem_size);
+
 } // namespace ry::codegen::emission

@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include <climits>
@@ -2087,8 +2088,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
 llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
 
     auto lf = loadListHeader(lhs, "catl");
     auto rf = loadListHeader(rhs, "catr");
@@ -2097,15 +2096,11 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
 
     llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
-    llvm::Value *dataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ds");
-    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "cat_data");
-
-    llvm::Value *lhsSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ls");
-    builder_.CreateCall(memcpyFn, {newData, lf.data, lhsSize});
-
-    llvm::Value *rhsDst = builder_.CreateGEP(elemTy, newData, lf.len, "cat_rhs_dst");
-    llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
-    builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
+    // Copy generation (malloc + the two memcpys + the mid-buffer GEP) delegated
+    // to the llvm_emit boundary (#2093). lf/rf lengths+data and newLen are loaded
+    // above and reused by the retain loop / metadata propagation below.
+    llvm::Value *newData = codegen::emission::emitListConcatCopy(
+        *this, lf.len, lf.data, rf.len, rf.data, newLen, elemTy, elemSize);
 
     // Reference-typed elements share ownership with the source lists. memcpy
     // duplicates raw pointers without bumping refcounts; without retention,

@@ -393,4 +393,102 @@ impl EmitCtx {
             new_data: ValueRef(new_data),
         }
     }
+
+    /// Single-source full-buffer copy shared by `keys` / `values` / `take`
+    /// (#2093): `<ds> = count * elem_size`, `<nd> = malloc(<ds>)`,
+    /// `memcpy(<nd>, src_data, <ds>)`, return `<nd>`. Alloc count == copy count,
+    /// so a single size-mul drives both. The caller (C++) has already loaded the
+    /// source buffer and the count (`mapLen` / clamped `n`) and emitted the new
+    /// ARC header; this op is the malloc+memcpy chain only. SSA names are picked
+    /// by `kind` to stay byte-identical to the pre-migration inline emission.
+    /// Creates no BBs.
+    pub(crate) unsafe fn list_copy_full(
+        &mut self,
+        src_data: ValueRef,
+        count: ValueRef,
+        elem_size: u64,
+        kind: ListCopyKind,
+    ) -> ValueRef {
+        let b = self.builder;
+        let i64_ty = i64_type(self.context);
+        let ptr_ty = ptr_type(self.context);
+        let (ds_name, nd_name) = match kind {
+            ListCopyKind::Keys => (c"keys_ds".as_ptr(), c"keys_nd".as_ptr()),
+            ListCopyKind::Values => (c"vals_ds".as_ptr(), c"vals_nd".as_ptr()),
+            ListCopyKind::Take => (c"tk_dsize".as_ptr(), c"tk_data".as_ptr()),
+        };
+        let ds = LLVMBuildMul(b, count.0, LLVMConstInt(i64_ty, elem_size, 0), ds_name);
+        let nd = emit_malloc(b, self.module, i64_ty, ptr_ty, ds, nd_name);
+        emit_memcpy(b, self.module, ptr_ty, i64_ty, nd, src_data.0, ds);
+        ValueRef(nd)
+    }
+
+    /// Non-destructive `appended` copy (#2093): alloc `new_len` elements but copy
+    /// only the `old_len`-element source range (the appended element is stored by
+    /// the C++ caller after its retain loop, so it is NOT part of this op).
+    /// `apd_ds = new_len * elem_size`, `apd_nd = malloc(apd_ds)`,
+    /// `apd_ods = old_len * elem_size`, `memcpy(apd_nd, src_data, apd_ods)`,
+    /// return `apd_nd`. `new_len` (apd_new_len, `old_len + 1`) is passed in rather
+    /// than recomputed so the caller's storeListHeaderFields reuses the same SSA
+    /// value. Creates no BBs.
+    pub(crate) unsafe fn list_appended_copy(
+        &mut self,
+        new_len: ValueRef,
+        old_len: ValueRef,
+        src_data: ValueRef,
+        elem_size: u64,
+    ) -> ValueRef {
+        let b = self.builder;
+        let i64_ty = i64_type(self.context);
+        let ptr_ty = ptr_type(self.context);
+        let esz = LLVMConstInt(i64_ty, elem_size, 0);
+        let ds = LLVMBuildMul(b, new_len.0, esz, c"apd_ds".as_ptr());
+        let nd = emit_malloc(b, self.module, i64_ty, ptr_ty, ds, c"apd_nd".as_ptr());
+        let ods = LLVMBuildMul(b, old_len.0, esz, c"apd_ods".as_ptr());
+        emit_memcpy(b, self.module, ptr_ty, i64_ty, nd, src_data.0, ods);
+        ValueRef(nd)
+    }
+
+    /// Two-source List concat copy (#2093): alloc `new_len` (= lhs+rhs) elements,
+    /// `memcpy` the lhs buffer at offset 0, then `memcpy` the rhs buffer at the
+    /// element-typed GEP offset `lhs_len`. `cat_ds = new_len * elem_size`,
+    /// `cat_data = malloc(cat_ds)`, `cat_ls = lhs_len * elem_size`,
+    /// `memcpy(cat_data, lhs_data, cat_ls)`,
+    /// `cat_rhs_dst = gep elem_ty, cat_data, lhs_len`,
+    /// `cat_rs = rhs_len * elem_size`, `memcpy(cat_rhs_dst, rhs_data, cat_rs)`,
+    /// return `cat_data`. `new_len` (cat_len) is passed in so the caller reuses
+    /// the same SSA value for storeListHeaderFields / the retain loop. This is the
+    /// only copy op that needs `elem_ty` (for the mid-buffer GEP). Creates no BBs.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) unsafe fn list_concat_copy(
+        &mut self,
+        new_len: ValueRef,
+        lhs_len: ValueRef,
+        lhs_data: ValueRef,
+        rhs_len: ValueRef,
+        rhs_data: ValueRef,
+        elem_ty: TypeRef,
+        elem_size: u64,
+    ) -> ValueRef {
+        let b = self.builder;
+        let i64_ty = i64_type(self.context);
+        let ptr_ty = ptr_type(self.context);
+        let esz = LLVMConstInt(i64_ty, elem_size, 0);
+        let ds = LLVMBuildMul(b, new_len.0, esz, c"cat_ds".as_ptr());
+        let nd = emit_malloc(b, self.module, i64_ty, ptr_ty, ds, c"cat_data".as_ptr());
+        let ls = LLVMBuildMul(b, lhs_len.0, esz, c"cat_ls".as_ptr());
+        emit_memcpy(b, self.module, ptr_ty, i64_ty, nd, lhs_data.0, ls);
+        let mut rhs_idx = [lhs_len.0];
+        let rhs_dst = LLVMBuildGEP2(
+            b,
+            elem_ty.0,
+            nd,
+            rhs_idx.as_mut_ptr(),
+            1,
+            c"cat_rhs_dst".as_ptr(),
+        );
+        let rs = LLVMBuildMul(b, rhs_len.0, esz, c"cat_rs".as_ptr());
+        emit_memcpy(b, self.module, ptr_ty, i64_ty, rhs_dst, rhs_data.0, rs);
+        ValueRef(nd)
+    }
 }

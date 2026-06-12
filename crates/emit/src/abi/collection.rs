@@ -10,9 +10,26 @@
 //! `ry_emit_list_slice` rejects NULL out-params — malformed input becomes a
 //! no-op / sentinel 0 instead of reaching the engine's `LLVMBuild*` calls.
 
-use crate::core::TypeRef;
+use std::ffi::c_int;
+
+use crate::core::{ListCopyKind, TypeRef};
 
 use super::*;
+
+// c_int → ListCopyKind, preserving the `RY_LISTCOPY_KEYS` / `_VALUES` / `_TAKE`
+// mapping; any other value is rejected (no-op / sentinel 0 at the caller).
+#[inline]
+fn list_copy_kind_from(kind: c_int) -> Option<ListCopyKind> {
+    if kind == RY_LISTCOPY_KEYS {
+        Some(ListCopyKind::Keys)
+    } else if kind == RY_LISTCOPY_VALUES {
+        Some(ListCopyKind::Values)
+    } else if kind == RY_LISTCOPY_TAKE {
+        Some(ListCopyKind::Take)
+    } else {
+        None
+    }
+}
 
 /// Append the interned `val_id` to the List at `list_ptr_id` (growing the buffer
 /// in place); `list_header_ty` / `elem_ty` / `elem_size` describe the layout.
@@ -161,4 +178,104 @@ pub unsafe extern "C" fn ry_emit_list_slice(
     );
     *out_count = intern(c, to_ry_value(parts.count.0));
     *out_new_data = intern(c, to_ry_value(parts.new_data.0));
+}
+
+/// Single-source full-buffer copy for `keys` / `values` / `take` (#2093): malloc
+/// `count * elem_size` bytes and memcpy the whole `src_data` range into it,
+/// returning the interned new buffer. `kind` selects the call site so the SSA
+/// names stay byte-identical. Header alloc, ARC retain, and metadata propagation
+/// stay on the codegen side (after this returns).
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_list_copy_full(
+    ctx: *mut RyEmitCtx,
+    src_data_id: RyValueId,
+    count_id: RyValueId,
+    elem_size: u64,
+    kind: c_int,
+) -> RyValueId {
+    // boundary input validation: malformed callers get sentinel 0 rather than
+    // feeding NULL handles / an unknown kind to the malloc+memcpy IR.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(src_data), Some(count)) = (resolve_value(c, src_data_id), resolve_value(c, count_id))
+    else {
+        return 0;
+    };
+    let Some(k) = list_copy_kind_from(kind) else {
+        return 0;
+    };
+    let new_data = c.list_copy_full(src_data, count, elem_size, k);
+    intern(c, to_ry_value(new_data.0))
+}
+
+/// Non-destructive `appended` copy (#2093): malloc `new_len * elem_size` bytes
+/// and memcpy the `old_len`-element source range, returning the interned new
+/// buffer. The appended element is stored by the codegen side after its retain
+/// loop, so it is not part of this op.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_list_appended(
+    ctx: *mut RyEmitCtx,
+    new_len_id: RyValueId,
+    old_len_id: RyValueId,
+    src_data_id: RyValueId,
+    elem_size: u64,
+) -> RyValueId {
+    // boundary input validation: malformed callers get sentinel 0.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(new_len), Some(old_len), Some(src_data)) = (
+        resolve_value(c, new_len_id),
+        resolve_value(c, old_len_id),
+        resolve_value(c, src_data_id),
+    ) else {
+        return 0;
+    };
+    let new_data = c.list_appended_copy(new_len, old_len, src_data, elem_size);
+    intern(c, to_ry_value(new_data.0))
+}
+
+/// Two-source List concat copy (#2093): malloc `new_len * elem_size` bytes, then
+/// memcpy the lhs buffer at offset 0 and the rhs buffer at the element-typed GEP
+/// offset `lhs_len`, returning the interned new buffer. `elem_ty` is required for
+/// the mid-buffer GEP. ARC retain + metadata propagation stay on the codegen side.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_list_concat(
+    ctx: *mut RyEmitCtx,
+    lhs_len_id: RyValueId,
+    lhs_data_id: RyValueId,
+    rhs_len_id: RyValueId,
+    rhs_data_id: RyValueId,
+    new_len_id: RyValueId,
+    elem_ty: RyTypeRef,
+    elem_size: u64,
+) -> RyValueId {
+    // boundary input validation: malformed callers get sentinel 0 rather than
+    // feeding NULL handles to the malloc / two-memcpy / GEP IR.
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(lhs_len), Some(lhs_data), Some(rhs_len), Some(rhs_data), Some(new_len)) = (
+        resolve_value(c, lhs_len_id),
+        resolve_value(c, lhs_data_id),
+        resolve_value(c, rhs_len_id),
+        resolve_value(c, rhs_data_id),
+        resolve_value(c, new_len_id),
+    ) else {
+        return 0;
+    };
+    if elem_ty.is_null() {
+        return 0;
+    }
+    let new_data = c.list_concat_copy(
+        new_len,
+        lhs_len,
+        lhs_data,
+        rhs_len,
+        rhs_data,
+        TypeRef(as_type(elem_ty)),
+        elem_size,
+    );
+    intern(c, to_ry_value(new_data.0))
 }

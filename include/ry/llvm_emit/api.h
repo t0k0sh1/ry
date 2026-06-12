@@ -168,6 +168,17 @@ typedef enum {
     RY_COW_SET = 2
 } RyCowKind;
 
+// Call-site selector for ry_emit_list_copy_full (keys / values / take, #2093).
+// The three builtins emit the identical mul+malloc+memcpy shape and diverge only
+// in their SSA names; this kind picks the name pair so the migrated IR stays
+// byte-identical per call site. Numbers must match RY_LISTCOPY_* in abi.rs; do
+// not reorder without updating both sides.
+typedef enum {
+    RY_LISTCOPY_KEYS = 0,
+    RY_LISTCOPY_VALUES = 1,
+    RY_LISTCOPY_TAKE = 2
+} RyListCopyKind;
+
 // Callback type for ok/err value builders consumed by ry_emit_result_branch.
 // Stage 2-B keeps callbacks at the C boundary (function pointer +
 // user_ctx) — the C++ side translates `llvm::function_ref<>` closures into
@@ -417,6 +428,41 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         RyTypeRef list_header_ty, RyTypeRef elem_ty,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data);
+
+// Collection copy-generation ops (#2093) — the malloc+memcpy chain that copies a
+// source buffer into a fresh List buffer for `keys` / `values` / `take` /
+// `appended` / list `+` concat. The codegen side keeps the header load (so the
+// length / clamped-count stays live for the retain loop), the new ARC header
+// allocation, the per-element ARC retain loop, and metadata propagation — all of
+// which need ValueMetadata that does not cross the boundary. These ops create no
+// basic blocks (Precondition: NONE). Each returns the malloc'd new buffer.
+
+// keys / values / take: alloc `count * elem_size` bytes and memcpy the whole
+// `src_data` range (alloc count == copy count). `kind` (RyListCopyKind) selects
+// the call site so the SSA names (keys_ds/keys_nd, vals_ds/vals_nd,
+// tk_dsize/tk_data) stay byte-identical. Returns the new buffer.
+RyValueId ry_emit_list_copy_full(RyEmitCtx *ctx, RyValueId src_data_id,
+                                 RyValueId count_id, uint64_t elem_size,
+                                 int kind);
+
+// appended: alloc `new_len * elem_size` bytes (apd_ds/apd_nd) but memcpy only the
+// `old_len`-element source range (apd_ods). The appended element is stored by the
+// codegen side after its retain loop, so it is not part of this op. `new_len`
+// (apd_new_len) is passed in so storeListHeaderFields reuses the same SSA value.
+// Returns the new buffer.
+RyValueId ry_emit_list_appended(RyEmitCtx *ctx, RyValueId new_len_id,
+                                RyValueId old_len_id, RyValueId src_data_id,
+                                uint64_t elem_size);
+
+// list `+` concat: alloc `new_len * elem_size` bytes (cat_ds/cat_data), memcpy
+// the lhs buffer at offset 0 (cat_ls), then memcpy the rhs buffer at the
+// element-typed GEP offset `lhs_len` (cat_rhs_dst/cat_rs). `elem_ty` is required
+// for the mid-buffer GEP; `new_len` (cat_len) is passed in for SSA reuse.
+// Returns the new buffer.
+RyValueId ry_emit_list_concat(RyEmitCtx *ctx, RyValueId lhs_len_id,
+                              RyValueId lhs_data_id, RyValueId rhs_len_id,
+                              RyValueId rhs_data_id, RyValueId new_len_id,
+                              RyTypeRef elem_ty, uint64_t elem_size);
 
 // Numeric reduce builtins (#2092) — sum / min / max, the ARC-independent batch.
 // `elem_ty` is the element LLVM type: i64 / f64 / i8 for sum, i64 / f64 for

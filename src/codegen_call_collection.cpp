@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include "ry/llvm_emit/api.h" // RY_LISTCOPY_TAKE
 
 
 
@@ -443,18 +444,16 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
 
         auto lf = loadListHeader(listPtr, "apd");
         llvm::Value *newLen = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "apd_new_len");
 
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-        llvm::Value *newDataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {newDataSize}, "apd_nd");
-
-        llvm::Value *oldDataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ods");
-        builder_.CreateCall(memcpyFn, {newData, lf.data, oldDataSize});
+        // Copy generation (malloc + memcpy of the old range) is delegated to the
+        // llvm_emit boundary (#2093). newLen/lf.len/lf.data are loaded above and
+        // reused after; the appended-element store + ARC retains stay below.
+        llvm::Value *newData = codegen::emission::emitListAppendedCopy(
+            *this, newLen, lf.len, lf.data, elemSize);
 
         // The new list co-owns the memcpy'd range AND the appended value
         // with the source.  After #1242 the destructor recursively releases
@@ -640,8 +639,6 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
 
         auto lf = loadListHeader(listPtr, "tk");
 
@@ -654,11 +651,10 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
 
         // Allocate new list
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-        llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
-
-        // Copy elements
-        builder_.CreateCall(memcpyFn, {newData, lf.data, dataSize});
+        // Copy generation delegated to the llvm_emit boundary (#2093); clampedN
+        // (alloc == copy) and lf.data feed the malloc + memcpy.
+        llvm::Value *newData = codegen::emission::emitListCopyFull(
+            *this, lf.data, clampedN, elemSize, RY_LISTCOPY_TAKE);
 
         // Reference-typed elements share ownership with the source list.
         // memcpy duplicates raw pointers without bumping refcounts; without
