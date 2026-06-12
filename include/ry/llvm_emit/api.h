@@ -925,6 +925,13 @@ RyValueId ry_emit_array_gep(RyEmitCtx *ctx, RyTypeRef array_ty,
 RyValueId ry_emit_extract_value(RyEmitCtx *ctx, RyValueId agg_id, uint32_t idx,
                                 const char *name);
 
+// Emit `zext val to dest_ty` — zero-extend an integer value to the wider
+// integer type `dest_ty` (`LLVMBuildZExt`). NULL `name` → empty SSA name.
+// Added for #2101 (hash-table lookup capability: the conditional i1→i64 key
+// widening in emitHashTableLookup). Creates no basic blocks.
+RyValueId ry_emit_zext(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
+                       const char *name);
+
 // Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
 // return the interned i1 result. An unknown predicate yields sentinel 0.
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,

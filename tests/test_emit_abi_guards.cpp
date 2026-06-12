@@ -844,4 +844,39 @@ TEST_F(EmitAbiGuardTest, ArrayGepUnresolvableOperandReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2101 — zext primitive guard (hash-table lookup capability, [C] = (ii)
+// boundary move). Same checked_cx / NULL-type / resolve_value contract as the
+// scalar #2072 entries: ctx == NULL, NULL dest_ty (the type guard fires before
+// resolve_value), and a valid dest_ty with an unresolvable val each get a
+// representative case. The bit-exact Set<bool> / Map hash-lookup migration
+// exercises the happy path.
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, ZExtNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_zext(nullptr, /*val_id=*/0,
+                           asRyType(llvm::Type::getInt64Ty(llctx_)), "x"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ZExtNullDestTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A resolvable val isolates the NULL-dest_ty guard (it fires before the
+    // resolve_value check).
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_zext(ctx, id, /*dest_ty=*/nullptr, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ZExtUnresolvableValReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid dest_ty passes the type guard; val_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_zext(ctx, /*val_id=*/0,
+                           asRyType(llvm::Type::getInt64Ty(llctx_)), "x"),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

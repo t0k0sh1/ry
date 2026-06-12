@@ -21,21 +21,26 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
 
     auto sf = loadSetHeader(iterSet, prefix);
 
-    llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, prefix + "_result");
-    builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), resultVar);
+    // #2101 ([C] = (ii) boundary move): the subset loop scaffold crosses via
+    // generic primitives. emitSetElementLookup (already migrated) does the
+    // membership test; propagateTypeMeta stays C++-side (type meta does not
+    // cross — the #2100 precedent), and loadSetHeader's header read is a
+    // separate header-load capability deferred as follow-on.
+    llvm::Value *resultVar = emitAlloca(i1Ty_, (prefix + "_result").c_str());
+    emitStore(emitConstInt(i1Ty_, 1), resultVar);
 
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, prefix + "_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::Value *iVar = emitAlloca(i64Ty_, (prefix + "_i").c_str());
+    emitStore(emitConstInt(i64Ty_, 0), iVar);
     llvm::BasicBlock *condBB = createBBInFn((prefix + ".cond").c_str(), fn_);
     llvm::BasicBlock *bodyBB = createBBInFn((prefix + ".body").c_str(), fn_);
     llvm::BasicBlock *endBB  = createBBInFn((prefix + ".end").c_str(), fn_);
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(condBB);
-    llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, prefix + "_ci");
-    emitBranchCond(builder_.CreateICmpSLT(i, sf.len), bodyBB, endBB);
+    llvm::Value *i = emitLoad(i64Ty_, iVar, (prefix + "_ci").c_str());
+    emitBranchCond(emitICmpSLT(i, sf.len, ""), bodyBB, endBB);
     builder_.SetInsertPoint(bodyBB);
-    llvm::Value *ep = builder_.CreateGEP(elemTy, sf.elems, {i}, prefix + "_ep");
-    llvm::Value *ev = builder_.CreateLoad(elemTy, ep, prefix + "_ev");
+    llvm::Value *ep = emitGEP(elemTy, sf.elems, i, (prefix + "_ep").c_str());
+    llvm::Value *ev = emitLoad(elemTy, ep, (prefix + "_ev").c_str());
 
     // Pointer elements lose ValueMetadata on GEP load; rebuild from the
     // parent set's stored type name before the lookup. Without this,
@@ -48,18 +53,18 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     llvm::BasicBlock *nextBB = createBBInFn((prefix + ".next").c_str(), fn_);
 
     llvm::Value *found = emitSetElementLookup(lookupSet, ev, elemTy, elemName);
-    llvm::Value *notFound = builder_.CreateICmpSLT(found, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
+    llvm::Value *notFound = emitICmpSLT(found, emitConstInt(i64Ty_, 0), (prefix + "_nf").c_str());
     emitBranchCond(notFound, failBB, nextBB);
 
     builder_.SetInsertPoint(failBB);
-    builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
+    emitStore(emitConstInt(i1Ty_, 0), resultVar);
     emitBranchUncond(endBB);
     builder_.SetInsertPoint(nextBB);
-    builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+    emitStore(emitAdd(i, emitConstInt(i64Ty_, 1), ""), iVar);
     emitBranchUncond(condBB);
     builder_.SetInsertPoint(endBB);
 
-    return builder_.CreateLoad(i1Ty_, resultVar, prefix + "_result");
+    return emitLoad(i1Ty_, resultVar, (prefix + "_result").c_str());
 }
 
 llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {

@@ -244,6 +244,9 @@ llvm::Value *CodeGen::emitArrayGEP(llvm::Type *array_ty, llvm::Value *base,
 llvm::Value *CodeGen::emitICmpEQ(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
     return icmpImpl(emit_ctx_, RY_ICMP_EQ, lhs, rhs, name);
 }
+llvm::Value *CodeGen::emitICmpNE(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_NE, lhs, rhs, name);
+}
 llvm::Value *CodeGen::emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
     return icmpImpl(emit_ctx_, RY_ICMP_SLT, lhs, rhs, name);
 }
@@ -301,6 +304,13 @@ llvm::Value *CodeGen::emitExtractValue(llvm::Value *agg, unsigned idx,
                                        const char *name) {
     RyValueId aggId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(agg));
     RyValueId id = ry_emit_extract_value(emit_ctx_, aggId, idx, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitZExt(llvm::Value *val, llvm::Type *dest_ty,
+                               const char *name) {
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RyValueId id = ry_emit_zext(emit_ctx_, valId, ry::llvm_emit::asRyType(dest_ty), name);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 

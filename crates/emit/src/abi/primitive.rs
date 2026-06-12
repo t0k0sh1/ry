@@ -204,6 +204,31 @@ pub unsafe extern "C" fn ry_emit_extract_value(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `zext val to dest_ty` — zero-extend `val` to the wider integer type
+/// `dest_ty` (`LLVMBuildZExt`). NULL ctx / NULL dest_ty / unresolved val → 0.
+/// NULL `name` → empty. Added for #2101 (hash-table lookup capability: the
+/// conditional i1→i64 key widening in emitHashTableLookup). The NULL-type guard
+/// fires before resolve_value, mirroring `ry_emit_load` / `ry_emit_gep`.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_zext(
+    ctx: *mut RyEmitCtx,
+    val_id: RyValueId,
+    dest_ty: RyTypeRef,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if dest_ty.is_null() {
+        return 0;
+    }
+    let Some(val) = resolve_value(c, val_id) else {
+        return 0;
+    };
+    let v = c.build_zext(val, TypeRef(as_type(dest_ty)), name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `icmp <predicate> lhs, rhs`. NULL ctx / unknown predicate / NULL operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_icmp(
