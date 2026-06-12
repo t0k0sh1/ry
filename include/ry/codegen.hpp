@@ -2065,6 +2065,7 @@ public:
     // Per-predicate icmp conveniences mapping 1:1 to the former
     // builder_.CreateICmp*; each forwards to ry_emit_icmp with the RyICmpPred.
     llvm::Value *emitICmpEQ(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpNE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpSGT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpUGE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
@@ -2083,6 +2084,10 @@ public:
     // builder_.CreateExtractValue.
     llvm::Value *emitExtractValue(llvm::Value *agg, unsigned idx,
                                   const char *name);
+    // zext an integer value to a wider integer type. Added for #2101 (hash-table
+    // lookup capability) so emitHashTableLookup's conditional i1→i64 key widening
+    // carries no builder_.CreateZExt.
+    llvm::Value *emitZExt(llvm::Value *val, llvm::Type *dest_ty, const char *name);
 
     // === Function / call IR primitives (#2098, [C]=(ii) boundary move) ===
     // Acquire the function-creation capability in the emission layer: build a

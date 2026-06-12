@@ -382,16 +382,22 @@ llvm::Value *CodeGen::coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
 llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
                                             const HashTableLayout &layout,
                                             llvm::Value *key, llvm::Type *keyTy) {
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketCountIdx, "ht_bc_ptr");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "ht_bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "ht_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketsPtrIdx, "ht_buckets_ptr");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "ht_buckets");
+    // #2101 ([C] = (ii) boundary move): the hash-table lookup is expressed in
+    // generic primitives — struct_gep / load / sub / zext for the header reads
+    // and key widening, and emitRuntimeCallDirect (ry_emit_runtime_call, the
+    // fixed-arity 5-operand __ry_ht_find_* call) for the lookup itself. No
+    // RyHashTableDesc descriptor crosses the boundary; keyTy stays C++-side
+    // selecting WHICH __ry_ht_find_* symbol and key-arg type to emit.
+    llvm::Value *bucketCountPtr = emitStructGEP(headerTy, containerPtr, layout.bucketCountIdx, "ht_bc_ptr");
+    llvm::Value *bucketCount = emitLoad(i64Ty_, bucketCountPtr, "ht_bc");
+    llvm::Value *bucketMask = emitSub(bucketCount, emitConstInt(i64Ty_, 1), "ht_bmask");
+    llvm::Value *bucketsField = emitStructGEP(headerTy, containerPtr, layout.bucketsPtrIdx, "ht_buckets_ptr");
+    llvm::Value *bucketsPtr = emitLoad(ptrTy_, bucketsField, "ht_buckets");
 
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.lenIdx, "ht_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "ht_len");
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(headerTy, containerPtr, layout.keysPtrIdx, "ht_keys_ptr");
-    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "ht_keys");
+    llvm::Value *lenPtr = emitStructGEP(headerTy, containerPtr, layout.lenIdx, "ht_len_ptr");
+    llvm::Value *length = emitLoad(i64Ty_, lenPtr, "ht_len");
+    llvm::Value *keysPtrField = emitStructGEP(headerTy, containerPtr, layout.keysPtrIdx, "ht_keys_ptr");
+    llvm::Value *keysPtr = emitLoad(ptrTy_, keysPtrField, "ht_keys");
 
     std::string fnName;
     llvm::Type *keyArgTy;
@@ -406,15 +412,14 @@ llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::Struc
         keyArgTy = i64Ty_;
     }
 
-    llvm::FunctionType *findTy = llvm::FunctionType::get(
-        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy}, false);
-    llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
-
     llvm::Value *keyArg = key;
     if (keyTy != keyArgTy && keyTy->isIntegerTy() && keyArgTy->isIntegerTy())
-        keyArg = builder_.CreateZExt(key, keyArgTy, "key_ext");
+        keyArg = emitZExt(key, keyArgTy, "key_ext");
 
-    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
+    return emitRuntimeCallDirect(fnName.c_str(), i64Ty_,
+                                 {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy},
+                                 {bucketsPtr, bucketMask, keysPtr, length, keyArg},
+                                 "ht_lookup_idx");
 }
 
 llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem,
@@ -432,20 +437,24 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
     if (needsLinearScan) {
         const bool elemIsAny = isAnyType(elemTy);
         auto sf = loadSetHeader(setPtr, "slin");
-        llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_res");
-        builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
-        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_j");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        // #2101 ([C] = (ii) boundary move): the linear-scan scaffold crosses via
+        // generic primitives. The element comparison stays C++-side — the
+        // emitComparisonOp dispatch (and the __ry_any_eq runtime call's i1
+        // interpretation) is a separate capability, not part of the lookup
+        // scaffold; only loadSetHeader's header read stays unmigrated as a
+        // follow-on (header-load capability, like loadListHeader).
+        llvm::Value *resVar = emitAlloca(i64Ty_, "slin_res");
+        emitStore(emitConstInt(i64Ty_, static_cast<uint64_t>(-1), /*sign_extend=*/true), resVar);
+        llvm::Value *jVar = emitAlloca(i64Ty_, "slin_j");
+        emitStore(emitConstInt(i64Ty_, 0), jVar);
         // For Set<any>, hoist scratch alloca/store for the search element outside
         // the loop so emitAnyBinaryOp does not create new allocas every iteration.
-        llvm::AllocaInst *anyElemPtr = nullptr;
-        llvm::AllocaInst *anyCandPtr = nullptr;
-        llvm::FunctionCallee anyEqFn;
+        llvm::Value *anyElemPtr = nullptr;
+        llvm::Value *anyCandPtr = nullptr;
         if (elemIsAny) {
-            anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.elem");
-            builder_.CreateStore(elem, anyElemPtr);
-            anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.cand");
-            anyEqFn = getRuntimeFn("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_});
+            anyElemPtr = emitAlloca(anyTy_, "slin.any.elem");
+            emitStore(elem, anyElemPtr);
+            anyCandPtr = emitAlloca(anyTy_, "slin.any.cand");
         }
         llvm::BasicBlock *condBB  = createBB("slin.cond");
         llvm::BasicBlock *bodyBB  = createBB("slin.body");
@@ -454,30 +463,31 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         llvm::BasicBlock *endBB   = createBB("slin.end");
         emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
-        llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "slin_cj");
-        emitBranchCond(builder_.CreateICmpSLT(j, sf.len), bodyBB, endBB);
+        llvm::Value *j = emitLoad(i64Ty_, jVar, "slin_cj");
+        emitBranchCond(emitICmpSLT(j, sf.len, ""), bodyBB, endBB);
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *cp   = builder_.CreateGEP(elemTy, sf.elems, {j}, "slin_cp");
-        llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
+        llvm::Value *cp   = emitGEP(elemTy, sf.elems, j, "slin_cp");
+        llvm::Value *cand = emitLoad(elemTy, cp, "slin_cand");
         if (!elemName.empty())
             propagateTypeMeta(elemName, cand);
         llvm::Value *eq;
         if (elemIsAny) {
-            builder_.CreateStore(cand, anyCandPtr);
-            llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "slin.any.eq");
-            eq = builder_.CreateICmpNE(r, builder_.getInt64(0), "slin.any.eq.bool");
+            emitStore(cand, anyCandPtr);
+            llvm::Value *r = emitRuntimeCallDirect("__ry_any_eq", i64Ty_, {ptrTy_, ptrTy_},
+                                                   {anyElemPtr, anyCandPtr}, "slin.any.eq");
+            eq = emitICmpNE(r, emitConstInt(i64Ty_, 0), "slin.any.eq.bool");
         } else {
             eq = emitComparisonOp("==", elem, cand, "", "");
         }
         emitBranchCond(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
-        builder_.CreateStore(j, resVar);
+        emitStore(j, resVar);
         emitBranchUncond(endBB);
         builder_.SetInsertPoint(nextBB);
-        builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        emitStore(emitAdd(j, emitConstInt(i64Ty_, 1), ""), jVar);
         emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
-        return builder_.CreateLoad(i64Ty_, resVar, "slin_result");
+        return emitLoad(i64Ty_, resVar, "slin_result");
     }
     return emitHashTableLookup(setPtr, setHeaderTy_, kSetLayout, elem, elemTy);
 }

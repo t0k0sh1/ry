@@ -141,6 +141,20 @@ impl EmitCtx {
         ValueRef(LLVMBuildExtractValue(self.builder, agg.0, idx, name))
     }
 
+    // `zext val to dest_ty` — zero-extend an integer value to a wider integer
+    // type (`LLVMBuildZExt`). Added for #2101 (hash-table lookup capability):
+    // emitHashTableLookup conditionally widens an i1 key to the i64 hash-arg
+    // type for `Set<bool>` / `Map<bool, V>`. The C++ side only routes here when
+    // `keyTy != keyArgTy`, so the widening is always non-trivial.
+    pub(crate) unsafe fn build_zext(
+        &mut self,
+        val: ValueRef,
+        dest_ty: TypeRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildZExt(self.builder, val.0, dest_ty.0, name))
+    }
+
     // `icmp <pred> lhs, rhs`.
     pub(crate) unsafe fn build_icmp(
         &mut self,
