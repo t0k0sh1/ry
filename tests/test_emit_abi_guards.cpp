@@ -77,6 +77,16 @@ protected:
         llvm::Value *v = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
         return ry_emit_intern(ctx, asRyValue(v));
     }
+
+    // A BasicBlock inside a throwaway function — gives a test a valid (non-NULL)
+    // block handle so it can isolate a guard OTHER than the NULL-block one. The
+    // block gets no terminator: these guard tests reject before any IR reaches it.
+    llvm::BasicBlock *makeBB() {
+        auto *fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(llctx_), false);
+        auto *fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage,
+                                          "guard_test_fn", module_.get());
+        return llvm::BasicBlock::Create(llctx_, "entry", fn);
+    }
 };
 
 // --- ctx == NULL → sentinel (directly triggers the new ctx-NULL guard) ---
@@ -748,6 +758,89 @@ TEST_F(EmitAbiGuardTest, ExtractValueUnresolvedAggReturnsZero) {
     // agg_id 0 resolves to None (resolve_value → None), the reject fires before
     // any builder use.
     EXPECT_EQ(ry_emit_extract_value(ctx, /*agg_id=*/0, /*idx=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// =============================================================================
+// #2100 — switch construction + array-element GEP primitive guards
+// ([B] = (ii) boundary move). create_switch returns the opaque RySwitchRef (NULL
+// sentinel, like create_basic_block); switch_add_case is void (no-op on bad
+// input); array_gep returns a value id (0 sentinel). Each shares the checked_cx /
+// resolve_value / handle-NULL contract, so a representative case per guard SHAPE
+// suffices (the bit-exact str(List<enum>) migration exercises the happy path).
+// =============================================================================
+
+// --- ry_emit_create_switch: ctx == NULL / unresolvable val / NULL default_bb
+//     → NULL (opaque-handle sentinel) ---
+
+TEST_F(EmitAbiGuardTest, CreateSwitchNullCtxReturnsNull) {
+    EXPECT_EQ(ry_emit_create_switch(nullptr, /*val=*/0, /*default_bb=*/nullptr, /*num_cases=*/0),
+              nullptr);
+}
+
+TEST_F(EmitAbiGuardTest, CreateSwitchUnresolvableValReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid default_bb isolates the unresolvable-val guard: val id 0 resolves
+    // to NULL and resolve_value fires (before the default_bb NULL check and
+    // before the unpositioned builder is touched).
+    EXPECT_EQ(ry_emit_create_switch(ctx, /*val=*/0, asRyBasicBlock(makeBB()), /*num_cases=*/0),
+              nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CreateSwitchNullDefaultBbReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // internDummy makes val resolvable so resolve_value passes and the NULL
+    // default_bb guard is the trigger.
+    RyValueId val = internDummy(ctx);
+    EXPECT_EQ(ry_emit_create_switch(ctx, val, /*default_bb=*/nullptr, /*num_cases=*/0), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- ry_emit_switch_add_case: void; ctx == NULL / NULL switch → no-op (passes
+//     by not crashing) ---
+
+TEST_F(EmitAbiGuardTest, SwitchAddCaseNullCtxDoesNotCrash) {
+    ry_emit_switch_add_case(nullptr, /*sw=*/nullptr, /*on_val=*/0, /*dest_bb=*/nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, SwitchAddCaseNullSwitchDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid dest_bb isolates the NULL-switch guard (sw.is_null() short-circuits
+    // before dest_bb / on_val are inspected).
+    ry_emit_switch_add_case(ctx, /*sw=*/nullptr, /*on_val=*/0, asRyBasicBlock(makeBB()));
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- ry_emit_array_gep: ctx == NULL / NULL array_ty / unresolvable operand
+//     → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, ArrayGepNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_array_gep(nullptr, /*array_ty=*/nullptr, /*base_id=*/0, /*idx_id=*/0, "x"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ArrayGepNullArrayTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // Resolvable operands isolate the NULL-array_ty guard (it fires before the
+    // resolve_value checks).
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_array_gep(ctx, /*array_ty=*/nullptr, id, id, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ArrayGepUnresolvableOperandReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid array type passes the type guard; base_id 0 then resolves to NULL.
+    llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvm::Type::getInt64Ty(llctx_), 4);
+    EXPECT_EQ(ry_emit_array_gep(ctx, asRyType(arrayTy), /*base_id=*/0, /*idx_id=*/0, "x"), 0u);
     ry_emit_ctx_destroy(ctx);
 }
 

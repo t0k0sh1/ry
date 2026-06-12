@@ -172,6 +172,22 @@ llvm::PHINode *CodeGen::createPhi(
         ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, phiId)));
 }
 
+llvm::SwitchInst *CodeGen::createSwitch(llvm::Value *val,
+                                        llvm::BasicBlock *default_bb,
+                                        unsigned num_cases) {
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RySwitchRef sw = ry_emit_create_switch(
+        emit_ctx_, valId, ry::llvm_emit::asRyBasicBlock(default_bb), num_cases);
+    return ry::llvm_emit::asLlvmSwitch(sw);
+}
+
+void CodeGen::switchAddCase(llvm::SwitchInst *sw, llvm::ConstantInt *on_val,
+                            llvm::BasicBlock *dest_bb) {
+    RyValueId onValId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(on_val));
+    ry_emit_switch_add_case(emit_ctx_, ry::llvm_emit::asRySwitch(sw), onValId,
+                            ry::llvm_emit::asRyBasicBlock(dest_bb));
+}
+
 // === Scalar / memory IR primitives (Stage 2-C / #2072, [C]=(ii) boundary move) ===
 // Thin wrappers over the ry_emit_* scalar primitives — intern operands, call the
 // boundary op, resolve the result — so the migrated string byte-ops carry no
@@ -213,6 +229,15 @@ llvm::Value *CodeGen::emitGEP(llvm::Type *base_ty, llvm::Value *ptr,
     RyValueId idxId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(idx));
     RyValueId id = ry_emit_gep(emit_ctx_, ry::llvm_emit::asRyType(base_ty), ptrId,
                                idxId, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitArrayGEP(llvm::Type *array_ty, llvm::Value *base,
+                                   llvm::Value *idx, const char *name) {
+    RyValueId baseId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(base));
+    RyValueId idxId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(idx));
+    RyValueId id = ry_emit_array_gep(emit_ctx_, ry::llvm_emit::asRyType(array_ty),
+                                     baseId, idxId, name);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 

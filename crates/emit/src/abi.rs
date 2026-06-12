@@ -98,6 +98,15 @@ pub struct RyBasicBlockOpaque {
 }
 pub type RyBasicBlockRef = *mut RyBasicBlockOpaque;
 
+#[repr(C)]
+pub struct RySwitchOpaque {
+    _private: [u8; 0],
+}
+/// Opaque handle for `llvm::SwitchInst*` (carried as LLVMValueRef). Mutated after
+/// creation via ry_emit_switch_add_case, so it crosses as an opaque handle like
+/// RyBasicBlockRef / RyFunctionRef — never interned (#2100).
+pub type RySwitchRef = *mut RySwitchOpaque;
+
 // =============================================================
 // Scalar typedefs and enum constants.
 // =============================================================
@@ -392,6 +401,8 @@ const _: () =
 const _: () = assert!(
     std::mem::size_of::<RyBasicBlockRef>() == 8 && std::mem::align_of::<RyBasicBlockRef>() == 8
 );
+const _: () =
+    assert!(std::mem::size_of::<RySwitchRef>() == 8 && std::mem::align_of::<RySwitchRef>() == 8);
 
 // --- Scalar intern-handle typedefs (u32) ---
 const _: () =
@@ -513,6 +524,14 @@ pub(crate) fn to_ry_bb(b: LLVMBasicBlockRef) -> RyBasicBlockRef {
 #[inline]
 pub(crate) fn to_ry_function(v: LLVMValueRef) -> RyFunctionRef {
     v as RyFunctionRef
+}
+#[inline]
+pub(crate) fn as_switch(p: RySwitchRef) -> LLVMValueRef {
+    p as LLVMValueRef
+}
+#[inline]
+pub(crate) fn to_ry_switch(v: LLVMValueRef) -> RySwitchRef {
+    v as RySwitchRef
 }
 
 // Bridge llvm::Value* ↔ RyValueId handle space. The internal forms take

@@ -2033,6 +2033,16 @@ public:
                               llvm::ArrayRef<std::pair<llvm::Value *,
                                                         llvm::BasicBlock *>> incoming,
                               const char *name_hint = "");
+    // Build a switch + append cases via the emission boundary so the enum
+    // variant-name lowering in str(List<enum>) carries no builder_.CreateSwitch /
+    // addCase (#2100, [B]=(ii) boundary move). createSwitch returns
+    // llvm::SwitchInst* (RySwitchRef stays inside codegen.cpp, same handle shape
+    // as createBBInFn). Like createPhi's later addIncoming, switchAddCase is a
+    // post-creation mutation, not a Create*, so it stays outside the AC gate.
+    llvm::SwitchInst *createSwitch(llvm::Value *val, llvm::BasicBlock *default_bb,
+                                   unsigned num_cases);
+    void switchAddCase(llvm::SwitchInst *sw, llvm::ConstantInt *on_val,
+                       llvm::BasicBlock *dest_bb);
 
     // === Scalar / memory IR primitives (#2072, [C]=(ii) boundary move) ===
     // Thin CodeGen-side wrappers over the ry_emit_* scalar primitives in
@@ -2047,6 +2057,11 @@ public:
     void emitStore(llvm::Value *val, llvm::Value *ptr);
     llvm::Value *emitGEP(llvm::Type *base_ty, llvm::Value *ptr, llvm::Value *idx,
                          const char *name);
+    // Two-index array-element GEP `{i64 0, idx}` into an `[N x T]` aggregate
+    // (e.g. an enum name-array global). Distinct from emitGEP's single runtime
+    // index; folds to a ConstantExpr for constant operands (#2100).
+    llvm::Value *emitArrayGEP(llvm::Type *array_ty, llvm::Value *base,
+                              llvm::Value *idx, const char *name);
     // Per-predicate icmp conveniences mapping 1:1 to the former
     // builder_.CreateICmp*; each forwards to ry_emit_icmp with the RyICmpPred.
     llvm::Value *emitICmpEQ(llvm::Value *lhs, llvm::Value *rhs, const char *name);

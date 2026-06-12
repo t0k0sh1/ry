@@ -235,6 +235,10 @@ fn explicitEnumValuesTests():
   fn shouldShowVariantNameWhenPrinting():
     s = HttpStatus::Ok
     expect(str(s)).toEq("Ok")
+  @it("should stringify a List of explicit-value enums via variant names")
+  fn shouldStringifyListOfExplicitValueEnums():
+    statuses: List<HttpStatus> = [HttpStatus::Ok, HttpStatus::NotFound]
+    expect(str(statuses)).toEq("[Ok, NotFound]")
   @it("should support bitmask-style values")
   fn shouldSupportBitmaskStyleValues():
     p = Permission::Execute
