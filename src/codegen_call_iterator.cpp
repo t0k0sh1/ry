@@ -323,36 +323,45 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             llvm::BasicBlock *entry = createBBInFn("entry", filterNextFn);
             builder_.SetInsertPoint(entry);
 
-            llvm::Value *statePtr = filterNextFn->getArg(0);
-            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
-            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
-            llvm::Value *predPtr = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 2), "pred_ptr");
+            // #2099 pilot: the next-fn body is built entirely through the
+            // emission boundary — emitGetParam / emitStructGEP / emitLoad /
+            // emitCallIndirect / emitExtractValue (#2099) / emitRet + existing
+            // emitBranchCond / buildSomeValue / buildNoneValue — so it carries no
+            // IRBuilder<>::Create*. The closure call goes through emitLambdaCall
+            // (also boundary-routed). FnScope / fn_ / pushScope / SetInsertPoint
+            // stay C++ (codegen state / builder position, not IR). The outer
+            // state-setup below (malloc + the three stores + header alloc) stays
+            // C++ — that is the ValueMetadata-crossing surface (#2100).
+            llvm::Value *statePtr = emitGetParam(filterNextFn, 0);
+            llvm::Value *srcNextFn = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 0, ""), "src_next_fn");
+            llvm::Value *srcState = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 1, ""), "src_state");
+            llvm::Value *predPtr = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 2, ""), "pred_ptr");
 
             llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
             llvm::BasicBlock *loopBB = createBBInFn("loop", filterNextFn);
             emitBranchUncond(loopBB);
 
             builder_.SetInsertPoint(loopBB);
-            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
-            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+            llvm::Value *opt = emitCallIndirect(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = emitExtractValue(opt, 0, "has_val");
             llvm::BasicBlock *checkBB = createBBInFn("check", filterNextFn);
             llvm::BasicBlock *noneBB = createBBInFn("none", filterNextFn);
             emitBranchCond(hasVal, checkBB, noneBB);
 
             builder_.SetInsertPoint(checkBB);
-            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
+            llvm::Value *elem = emitExtractValue(opt, 1, "elem");
             llvm::Value *predResult = emitLambdaCall(predPtr, info, {elem}, "pred_result");
             llvm::BasicBlock *matchBB = createBBInFn("match", filterNextFn);
             emitBranchCond(predResult, matchBB, loopBB);
 
             builder_.SetInsertPoint(matchBB);
-            builder_.CreateRet(buildSomeValue(elem, optTy));
+            emitRet(buildSomeValue(elem, optTy));
 
             builder_.SetInsertPoint(noneBB);
-            builder_.CreateRet(buildNoneValue(optTy));
+            emitRet(buildNoneValue(optTy));
             popScope();
         }
 
@@ -403,28 +412,31 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             llvm::BasicBlock *entry = createBBInFn("entry", mapNextFn);
             builder_.SetInsertPoint(entry);
 
-            llvm::Value *statePtr = mapNextFn->getArg(0);
-            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
-            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
-            llvm::Value *transPtr = builder_.CreateLoad(ptrTy_,
-                builder_.CreateStructGEP(stateTy, statePtr, 2), "trans_ptr");
+            // #2099 pilot: same boundary-routed next-fn body as filter above —
+            // zero IRBuilder<>::Create*; the transform closure call goes through
+            // emitLambdaCall. Outer state-setup stays C++ (#2100).
+            llvm::Value *statePtr = emitGetParam(mapNextFn, 0);
+            llvm::Value *srcNextFn = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 0, ""), "src_next_fn");
+            llvm::Value *srcState = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 1, ""), "src_state");
+            llvm::Value *transPtr = emitLoad(ptrTy_,
+                emitStructGEP(stateTy, statePtr, 2, ""), "trans_ptr");
 
             llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(srcOptTy, {ptrTy_}, false);
-            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
-            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+            llvm::Value *opt = emitCallIndirect(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = emitExtractValue(opt, 0, "has_val");
 
             llvm::BasicBlock *someBB = createBBInFn("some", mapNextFn);
             llvm::BasicBlock *noneBB = createBBInFn("none", mapNextFn);
             emitBranchCond(hasVal, someBB, noneBB);
 
             builder_.SetInsertPoint(someBB);
-            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
-            builder_.CreateRet(buildSomeValue(emitLambdaCall(transPtr, info, {elem}, "mapped"), outOptTy));
+            llvm::Value *elem = emitExtractValue(opt, 1, "elem");
+            emitRet(buildSomeValue(emitLambdaCall(transPtr, info, {elem}, "mapped"), outOptTy));
 
             builder_.SetInsertPoint(noneBB);
-            builder_.CreateRet(buildNoneValue(outOptTy));
+            emitRet(buildNoneValue(outOptTy));
             popScope();
         }
 

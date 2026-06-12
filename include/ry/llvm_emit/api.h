@@ -874,6 +874,14 @@ RyValueId ry_emit_struct_gep(RyEmitCtx *ctx, RyTypeRef struct_ty,
                              RyValueId ptr_id, uint32_t field_idx,
                              const char *name);
 
+// Emit `extractvalue agg, idx` — read field `idx` out of an aggregate *value*
+// (`LLVMBuildExtractValue`), distinct from the pointer-addressing
+// ry_emit_struct_gep. NULL `name` → empty SSA name. Added for #2099 (closure /
+// FnTypeInfo crossing: the filter / map iterator next-fn destructures the source
+// Option in-register). Creates no basic blocks.
+RyValueId ry_emit_extract_value(RyEmitCtx *ctx, RyValueId agg_id, uint32_t idx,
+                                const char *name);
+
 // Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
 // return the interned i1 result. An unknown predicate yields sentinel 0.
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,

@@ -2062,6 +2062,12 @@ public:
                             llvm::Value *else_v, const char *name);
     llvm::Value *emitConstInt(llvm::Type *ty, uint64_t value,
                               bool sign_extend = false);
+    // extractvalue on an aggregate VALUE (distinct from emitStructGEP's
+    // pointer-addressed field GEP). Added for #2099 so the filter / map iterator
+    // next-fn can destructure the source Option in-register without
+    // builder_.CreateExtractValue.
+    llvm::Value *emitExtractValue(llvm::Value *agg, unsigned idx,
+                                  const char *name);
 
     // === Function / call IR primitives (#2098, [C]=(ii) boundary move) ===
     // Acquire the function-creation capability in the emission layer: build a
