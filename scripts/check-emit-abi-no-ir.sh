@@ -15,7 +15,7 @@
 #   - LLVMBuild<Upper>     IR builder calls (LLVMBuildCondBr / LLVMBuildPhi / ...).
 #                          The LLVMBuilderRef *type* is allowed: its 10th char is
 #                          a lowercase 'e', so LLVMBuild[A-Z] does not match it.
-#   - LLVMAppendBasicBlock* / LLVMPositionBuilder* / LLVMAddIncoming
+#   - LLVMAppendBasicBlock* / LLVMPositionBuilder* / LLVMAddIncoming / LLVMAddCase
 #   - LLVMGetInsertBlock / LLVMGetBasicBlockParent   (BB navigation for IR shaping)
 #   - llvm_sys::core       the IR-generation API path. Matched as a substring so it
 #                          catches both `use llvm_sys::core::*;` and a fully-
@@ -52,7 +52,7 @@ if [[ ${#files[@]} -eq 0 ]]; then
 fi
 
 # LLVMBuild[A-Z] matches the IR builders but NOT the LLVMBuilderRef type handle.
-FORBIDDEN='LLVMBuild[A-Z]|LLVMAppendBasicBlock|LLVMPositionBuilder|LLVMAddIncoming|LLVMGetInsertBlock|LLVMGetBasicBlockParent|llvm_sys::core'
+FORBIDDEN='LLVMBuild[A-Z]|LLVMAppendBasicBlock|LLVMPositionBuilder|LLVMAddIncoming|LLVMAddCase|LLVMGetInsertBlock|LLVMGetBasicBlockParent|llvm_sys::core'
 
 bad=0
 for f in "${files[@]}"; do

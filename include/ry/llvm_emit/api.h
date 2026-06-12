@@ -141,6 +141,12 @@ typedef struct RyValueOpaque    *RyValueRef;       // llvm::Value *
 // === BasicBlock handle (used by ControlFlow boundary added in #1973) ===
 typedef struct RyBasicBlockOpaque *RyBasicBlockRef; // llvm::BasicBlock *
 
+// === SwitchInst handle (used by the switch boundary added in #2100) ===
+// llvm::SwitchInst* (carried as LLVMValueRef internally). A switch is mutated
+// after creation — ry_emit_switch_add_case appends each case — so it crosses as
+// an opaque handle (NOT interned), mirroring RyBasicBlockRef / RyFunctionRef.
+typedef struct RySwitchOpaque *RySwitchRef;
+
 // Bounds-check kind selector. Numbers chosen to match the order in
 // `lowered::BoundsKind`; do not reorder without updating both sides.
 typedef enum {
@@ -808,6 +814,30 @@ RyValueId ry_emit_create_phi(RyEmitCtx *ctx, RyTypeRef ty,
 // body built via ry_emit_create_function (#2098).
 void ry_emit_ret(RyEmitCtx *ctx, RyValueId val_id);
 
+// === Switch boundary (#2100, [B] = (ii) boundary move) ===
+// The switch-construction capability for non-ADT enum variant-name lowering
+// (str(List<enum>) tostring, src/codegen_tostring.cpp). These are generic — they
+// know nothing about enums — mirroring how create_basic_block / create_phi are
+// generic CF primitives. The C++ side selects WHICH cases to add (from the
+// EnumInfo it already holds); the ValueMetadata that drives that choice never
+// crosses the boundary.
+
+// Build `switch val, default_bb [ num_cases ]` at the builder's current insert
+// point and return an opaque RySwitchRef. `num_cases` is the case-count hint
+// (LLVMBuildSwitch's NumCases). The handle is NOT interned — it mirrors
+// ry_emit_create_basic_block's RyBasicBlockRef shape — and must be passed to
+// ry_emit_switch_add_case for each case. NULL ctx / default_bb, or an
+// unresolvable val, → NULL. Does not change the builder's insert point.
+RySwitchRef ry_emit_create_switch(RyEmitCtx *ctx, RyValueId val,
+                                  RyBasicBlockRef default_bb,
+                                  unsigned int num_cases);
+
+// Append a case to `sw`: when the switch operand equals the interned ConstantInt
+// `on_val` (same integer type as the operand), control branches to `dest_bb`
+// (`LLVMAddCase`). NULL ctx / sw / dest_bb, or an unresolvable on_val, → no-op.
+void ry_emit_switch_add_case(RyEmitCtx *ctx, RySwitchRef sw, RyValueId on_val,
+                             RyBasicBlockRef dest_bb);
+
 // ===========================================================================
 // #2072 — scalar / memory IR primitives ([C] = (ii) boundary move).
 //
@@ -873,6 +903,19 @@ RyValueId ry_emit_gep(RyEmitCtx *ctx, RyTypeRef base_ty, RyValueId ptr_id,
 RyValueId ry_emit_struct_gep(RyEmitCtx *ctx, RyTypeRef struct_ty,
                              RyValueId ptr_id, uint32_t field_idx,
                              const char *name);
+
+// Emit a two-index `getelementptr array_ty, base, i64 0, idx` — the array-element
+// GEP that indexes an `[N x T]` aggregate (e.g. an enum name-array global),
+// distinct from the single-index ry_emit_gep and the field-index
+// ry_emit_struct_gep. The leading `i64 0` constant is synthesized inside the
+// emission layer. When `base` and `idx` are both constants the IRBuilder folds
+// the result to a ConstantExpr (no instruction emitted), byte-for-byte matching
+// the C++ builder_.CreateGEP it replaces. NULL ctx / array_ty, or unresolvable
+// base / idx, → 0. NULL `name` → empty. Added for #2100 (enum variant-name
+// lookup in str(List<enum>)). Creates no basic blocks.
+RyValueId ry_emit_array_gep(RyEmitCtx *ctx, RyTypeRef array_ty,
+                            RyValueId base_id, RyValueId idx_id,
+                            const char *name);
 
 // Emit `extractvalue agg, idx` — read field `idx` out of an aggregate *value*
 // (`LLVMBuildExtractValue`), distinct from the pointer-addressing

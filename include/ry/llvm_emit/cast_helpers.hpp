@@ -22,6 +22,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -67,6 +68,12 @@ inline RyBasicBlockRef asRyBasicBlock(llvm::BasicBlock *bb) {
     return reinterpret_cast<RyBasicBlockRef>(bb);
 }
 
+// llvm::SwitchInst* is a Value subclass; the boundary carries it as the opaque
+// RySwitchRef (a mutable handle fed cases via ry_emit_switch_add_case). (#2100)
+inline RySwitchRef asRySwitch(llvm::SwitchInst *sw) {
+    return reinterpret_cast<RySwitchRef>(sw);
+}
+
 // === boundary → CodeGen (opaque handle to LLVM pointer) ===
 
 inline llvm::Value *asLlvmValue(RyValueRef p) {
@@ -87,6 +94,10 @@ inline llvm::BasicBlock *asLlvmBasicBlock(RyBasicBlockRef p) {
 
 inline llvm::Function *asLlvmFunction(RyFunctionRef p) {
     return reinterpret_cast<llvm::Function *>(p);
+}
+
+inline llvm::SwitchInst *asLlvmSwitch(RySwitchRef p) {
+    return reinterpret_cast<llvm::SwitchInst *>(p);
 }
 
 } // namespace ry::llvm_emit

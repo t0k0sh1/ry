@@ -158,6 +158,31 @@ pub unsafe extern "C" fn ry_emit_struct_gep(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit a two-index `getelementptr array_ty, base, i64 0, idx` — the array-element
+/// GEP (`LLVMBuildGEP2` with a synthesized leading `i64 0`), distinct from the
+/// single-index `ry_emit_gep` and the field-index `ry_emit_struct_gep`. NULL ctx
+/// / array_ty, or unresolvable base / idx, → 0. NULL `name` → empty. (#2100)
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_array_gep(
+    ctx: *mut RyEmitCtx,
+    array_ty: RyTypeRef,
+    base_id: RyValueId,
+    idx_id: RyValueId,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if array_ty.is_null() {
+        return 0;
+    }
+    let (Some(base), Some(idx)) = (resolve_value(c, base_id), resolve_value(c, idx_id)) else {
+        return 0;
+    };
+    let v = c.build_array_gep(TypeRef(as_type(array_ty)), base, idx, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `extractvalue agg, idx` — read a single aggregate field by compile-time
 /// index (`LLVMBuildExtractValue`), distinct from the pointer-addressing
 /// `ry_emit_struct_gep`: this reads a field out of an aggregate *value*. NULL ctx

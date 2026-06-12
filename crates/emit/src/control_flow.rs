@@ -67,4 +67,35 @@ impl EmitCtx {
         }
         ValueRef(phi)
     }
+
+    // Build `switch val, default_bb [num_cases]` at the builder's current insert
+    // point and return the SwitchInst wrapped in ValueRef. The abi shell unwraps
+    // `.0` into the opaque RySwitchRef (NOT interned) and feeds each case to
+    // switch_add_case below — a switch is mutated after creation, so it crosses as
+    // a handle, not an interned value. (#2100)
+    pub(crate) unsafe fn build_switch(
+        &mut self,
+        val: ValueRef,
+        default_bb: BasicBlockRef,
+        num_cases: u32,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildSwitch(
+            self.builder,
+            val.0,
+            default_bb.0,
+            num_cases,
+        ))
+    }
+
+    // Append a case `on_val -> dest_bb` to `switch_inst` (`LLVMAddCase`). The
+    // mutation counterpart of build_switch; `on_val` must be a ConstantInt of the
+    // switch operand's integer type. (#2100)
+    pub(crate) unsafe fn switch_add_case(
+        &mut self,
+        switch_inst: ValueRef,
+        on_val: ValueRef,
+        dest_bb: BasicBlockRef,
+    ) {
+        LLVMAddCase(switch_inst.0, on_val.0, dest_bb.0);
+    }
 }

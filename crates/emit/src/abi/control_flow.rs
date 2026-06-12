@@ -3,7 +3,7 @@
 //! types, calls the `core` `EmitCtx` method, and interns any produced value
 //! (intern / resolve are abi-side; the engine method never touches them).
 
-use std::ffi::c_char;
+use std::ffi::{c_char, c_uint};
 
 use crate::core::{BasicBlockRef, FunctionRef, TypeRef, ValueRef};
 
@@ -142,4 +142,59 @@ pub unsafe extern "C" fn ry_emit_create_phi(
     }
     let phi = c.create_phi(TypeRef(as_type(ty)), &edges, nm);
     intern(c, to_ry_value(phi.0))
+}
+
+/// Build `switch val, default_bb [num_cases]` at the builder's current insert
+/// point and return the opaque RySwitchRef. The handle is NOT interned (it mirrors
+/// ry_emit_create_basic_block's RyBasicBlockRef shape); each case is added via
+/// ry_emit_switch_add_case. NULL ctx / default_bb, or an unresolvable val, → NULL.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_create_switch(
+    ctx: *mut RyEmitCtx,
+    val: RyValueId,
+    default_bb: RyBasicBlockRef,
+    num_cases: c_uint,
+) -> RySwitchRef {
+    // boundary input validation: malformed callers get a NULL switch instead of
+    // dereferencing a bad ctx or handing a NULL default block to LLVM.
+    let Some(c) = checked_cx(ctx) else {
+        return std::ptr::null_mut();
+    };
+    let Some(val_v) = resolve_value(c, val) else {
+        return std::ptr::null_mut();
+    };
+    if default_bb.is_null() {
+        return std::ptr::null_mut();
+    }
+    to_ry_switch(
+        c.build_switch(val_v, BasicBlockRef(as_bb(default_bb)), num_cases)
+            .0,
+    )
+}
+
+/// Append a case `on_val -> dest_bb` to `sw` (`LLVMAddCase`). NULL ctx / sw /
+/// dest_bb, or an unresolvable on_val, → no-op.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_switch_add_case(
+    ctx: *mut RyEmitCtx,
+    sw: RySwitchRef,
+    on_val: RyValueId,
+    dest_bb: RyBasicBlockRef,
+) {
+    // boundary input validation: malformed callers are a no-op rather than
+    // feeding a NULL switch / case value / target to LLVMAddCase.
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    if sw.is_null() || dest_bb.is_null() {
+        return;
+    }
+    let Some(on_val_v) = resolve_value(c, on_val) else {
+        return;
+    };
+    c.switch_add_case(
+        ValueRef(as_switch(sw)),
+        on_val_v,
+        BasicBlockRef(as_bb(dest_bb)),
+    );
 }

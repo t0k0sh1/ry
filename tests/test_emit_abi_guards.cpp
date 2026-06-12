@@ -751,4 +751,80 @@ TEST_F(EmitAbiGuardTest, ExtractValueUnresolvedAggReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2100 — switch construction + array-element GEP primitive guards
+// ([B] = (ii) boundary move). create_switch returns the opaque RySwitchRef (NULL
+// sentinel, like create_basic_block); switch_add_case is void (no-op on bad
+// input); array_gep returns a value id (0 sentinel). Each shares the checked_cx /
+// resolve_value / handle-NULL contract, so a representative case per guard SHAPE
+// suffices (the bit-exact str(List<enum>) migration exercises the happy path).
+// =============================================================================
+
+// --- ry_emit_create_switch: ctx == NULL / unresolvable val / NULL default_bb
+//     → NULL (opaque-handle sentinel) ---
+
+TEST_F(EmitAbiGuardTest, CreateSwitchNullCtxReturnsNull) {
+    EXPECT_EQ(ry_emit_create_switch(nullptr, /*val=*/0, /*default_bb=*/nullptr, /*num_cases=*/0),
+              nullptr);
+}
+
+TEST_F(EmitAbiGuardTest, CreateSwitchUnresolvableValReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // val id 0 resolves to NULL; the resolve_value guard fires before the
+    // (unpositioned) builder is touched.
+    EXPECT_EQ(ry_emit_create_switch(ctx, /*val=*/0, /*default_bb=*/nullptr, /*num_cases=*/0),
+              nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CreateSwitchNullDefaultBbReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // internDummy makes val resolvable so resolve_value passes and the NULL
+    // default_bb guard is the trigger.
+    RyValueId val = internDummy(ctx);
+    EXPECT_EQ(ry_emit_create_switch(ctx, val, /*default_bb=*/nullptr, /*num_cases=*/0), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- ry_emit_switch_add_case: void; ctx == NULL / NULL switch → no-op (passes
+//     by not crashing) ---
+
+TEST_F(EmitAbiGuardTest, SwitchAddCaseNullCtxDoesNotCrash) {
+    ry_emit_switch_add_case(nullptr, /*sw=*/nullptr, /*on_val=*/0, /*dest_bb=*/nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, SwitchAddCaseNullSwitchDoesNotCrash) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_switch_add_case(ctx, /*sw=*/nullptr, /*on_val=*/0, /*dest_bb=*/nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- ry_emit_array_gep: ctx == NULL / NULL array_ty / unresolvable operand
+//     → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, ArrayGepNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_array_gep(nullptr, /*array_ty=*/nullptr, /*base_id=*/0, /*idx_id=*/0, "x"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ArrayGepNullArrayTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_array_gep(ctx, /*array_ty=*/nullptr, /*base_id=*/0, /*idx_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ArrayGepUnresolvableOperandReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid array_ty passes the type guard; base_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_array_gep(ctx, asRyType(resultTy_), /*base_id=*/0, /*idx_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

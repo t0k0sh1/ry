@@ -26,21 +26,27 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 if (einfo.hasExplicitValues) {
                     llvm::BasicBlock *mergeBB = createBB("vts.enum.merge");
                     llvm::BasicBlock *defaultBB = createBB("vts.enum.default");
-                    auto *sw = builder_.CreateSwitch(val, defaultBB, static_cast<unsigned>(einfo.variantCount));
+                    // (ii) boundary move (#2100): the switch + each case cross the
+                    // emission ABI via the generic createSwitch / switchAddCase
+                    // primitives. The enum's variant values / name-array index stay
+                    // C++ side (driven by EnumInfo, never crossing the boundary).
+                    auto *sw = createSwitch(val, defaultBB, static_cast<unsigned>(einfo.variantCount));
                     builder_.SetInsertPoint(mergeBB);
                     auto *namePhi = createPhi(ptrTy_, {}, "vts.enum.name");
                     for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
                         const auto &vname = einfo.variantOrder[i];
                         int64_t vval = einfo.variants.at(vname);
                         llvm::BasicBlock *caseBB = createBBInFn(("vts.enum." + vname).c_str(), fn_);
-                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vval))), caseBB);
+                        switchAddCase(sw, llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vval))), caseBB);
                         builder_.SetInsertPoint(caseBB);
-                        llvm::Value *namePtr = builder_.CreateGEP(
+                        // Two-index array GEP `{i64 0, i}` into the name-array; the
+                        // leading 0 is synthesized inside emitArrayGEP.
+                        llvm::Value *namePtr = emitArrayGEP(
                             llvm::ArrayType::get(ptrTy_, einfo.variantCount),
                             einfo.nameArray,
-                            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+                            llvm::ConstantInt::get(i64Ty_, i),
                             "enum_name_ptr");
-                        llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+                        llvm::Value *nameStr = emitLoad(ptrTy_, namePtr, "enum_name");
                         namePhi->addIncoming(nameStr, caseBB);
                         emitBranchUncond(mergeBB);
                     }
@@ -417,41 +423,48 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
 
             auto lf = loadListHeader(val, "vts_list");
 
+            // sprint-buffer writes go through the variadic __ry_sprint_printf,
+            // which ry_emit_runtime_call (non-variadic) cannot model; the shared
+            // sprint mechanism is carved out of this (ii) migration (#2100).
             builder_.CreateCall(spf, {cachedGlobalString("[", ".vts_list_lb")});
 
             llvm::BasicBlock *condBB = createBB("vts_list.cond");
             llvm::BasicBlock *bodyBB = createBB("vts_list.body");
             llvm::BasicBlock *endBB  = createBB("vts_list.end");
 
-            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_list_i");
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::Value *iVar = emitAlloca(i64Ty_, "vts_list_i");
+            emitStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(condBB);
-            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-            emitBranchCond(builder_.CreateICmpSLT(iVal, lf.len), bodyBB, endBB);
+            llvm::Value *iVal = emitLoad(i64Ty_, iVar, "i");
+            emitBranchCond(emitICmpSLT(iVal, lf.len, ""), bodyBB, endBB);
 
             builder_.SetInsertPoint(bodyBB);
-            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::Value *iCur = emitLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_list.comma");
             llvm::BasicBlock *elemBB  = createBB("vts_list.elem");
-            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, elemBB);
+            emitBranchCond(emitICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), ""), commaBB, elemBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_list_comma")});
             emitBranchUncond(elemBB);
 
             builder_.SetInsertPoint(elemBB);
-            llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
-            llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
+            llvm::Value *elemPtr = emitGEP(listElemTy, lf.data, iCur, "vts_list_elem_ptr");
+            // The element load round-trips the boundary (intern → ry_emit_load →
+            // resolve); the returned SSA value still serves as a value_metadata_
+            // key C++ side, where propagateElemMeta re-stamps the enum type so the
+            // recursive valueToString reaches the enum-switch branch. Type meta
+            // never crosses the boundary — the (ii) settle for #2100.
+            llvm::Value *elem = emitLoad(listElemTy, elemPtr, "vts_list_elem");
             propagateElemMeta(val, elem,
                               &ValueMetadata::list_elem_type_name,
                               &ValueMetadata::list_elem_fn_type_info);
             llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
-            builder_.CreateStore(
-                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            emitStore(emitAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), ""), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(endBB);

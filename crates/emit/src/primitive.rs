@@ -99,6 +99,33 @@ impl EmitCtx {
         ))
     }
 
+    // Two-index `getelementptr array_ty, base, i64 0, idx` — indexes an `[N x T]`
+    // aggregate (e.g. an enum name-array global). The leading `i64 0` is
+    // synthesized from `self.context`; `idx` is the caller's runtime/constant
+    // i64 index. When `base` and `idx` are constants the IRBuilder folds the
+    // result to a ConstantExpr, byte-for-byte matching the C++
+    // builder_.CreateGEP(ArrayType, base, {0, idx}) it replaces (#2100).
+    pub(crate) unsafe fn build_array_gep(
+        &mut self,
+        array_ty: TypeRef,
+        base: ValueRef,
+        idx: ValueRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        let mut idxs = [
+            LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0),
+            idx.0,
+        ];
+        ValueRef(LLVMBuildGEP2(
+            self.builder,
+            array_ty.0,
+            base.0,
+            idxs.as_mut_ptr(),
+            2,
+            name,
+        ))
+    }
+
     // `extractvalue agg, idx` — read a single aggregate field by compile-time
     // index (`LLVMBuildExtractValue`). Distinct from `build_struct_gep`, which
     // addresses a struct field through a *pointer*; this reads a field out of an
