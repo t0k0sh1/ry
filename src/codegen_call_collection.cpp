@@ -1043,8 +1043,14 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
 
     // 3-arg: -> T
     llvm::Value *defaultVal = emitExpr(*e.args[2]);
-    if (defaultVal->getType() != elemTy)
-        codegenError("get() default value type must match list element type");
+    if (defaultVal->getType() != elemTy) {
+        if (isAnyType(elemTy))
+            defaultVal = wrapInAny(defaultVal);
+        else if (isAnyType(defaultVal->getType()) && canAnyHoldType(elemTy))
+            defaultVal = unwrapFromAny(defaultVal, elemTy);
+        else
+            codegenError("get() default value type must match list element type");
+    }
 
     llvm::BasicBlock *oobBB = createBB("getl3.oob");
     llvm::BasicBlock *okBB = createBB("getl3.ok");

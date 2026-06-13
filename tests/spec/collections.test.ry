@@ -643,6 +643,11 @@ fn listTests():
     xs: List<int> = [10, 20, 30]
     expect(xs.get(0, 99)).toEq(10)
     expect(xs.get(100, 99)).toEq(99)
+  @it("should wrap int default into any element for List<any>.get-with-default")
+  fn shouldWrapIntDefaultIntoAnyForListAny():
+    xs: List<any> = [10, 20, 30]
+    expect(xs.get(100, 0)).toEq(0)
+    expect(xs.get(1, 0)).toEq(20)
 
 @describe("Map")
 fn mapTests():
