@@ -929,9 +929,6 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
             codegenError("get() key type mismatch");
-        llvm::Value *defaultVal = emitExpr(*e.args[2]);
-        if (defaultVal->getType() != valTy)
-            codegenError("get() default value type must match map's value type");
         // #2094 ([C] = (ii) boundary move): same primitives as the 2-arg
         // arm — the only structural difference is the merge PHI types
         // (V vs Option<V>) and the default-value tail vs None.
@@ -952,8 +949,11 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         emitBranchUncond(mergeBB);
 
         builder_.SetInsertPoint(notFoundBB);
-        llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+        llvm::Value *defaultVal = emitExpr(*e.args[2]);
+        if (defaultVal->getType() != valTy)
+            codegenError("get() default value type must match map's value type");
         emitBranchUncond(mergeBB);
+        llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(mergeBB);
         llvm::PHINode *phi = createPhi(valTy, {}, "get_result");
@@ -1042,16 +1042,6 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
     }
 
     // 3-arg: -> T
-    llvm::Value *defaultVal = emitExpr(*e.args[2]);
-    if (defaultVal->getType() != elemTy) {
-        if (isAnyType(elemTy))
-            defaultVal = wrapInAny(defaultVal);
-        else if (isAnyType(defaultVal->getType()) && canAnyHoldType(elemTy))
-            defaultVal = unwrapFromAny(defaultVal, elemTy);
-        else
-            codegenError("get() default value type must match list element type");
-    }
-
     llvm::BasicBlock *oobBB = createBB("getl3.oob");
     llvm::BasicBlock *okBB = createBB("getl3.ok");
     llvm::BasicBlock *mergeBB = createBB("getl3.merge");
@@ -1065,6 +1055,15 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
     llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
     builder_.SetInsertPoint(oobBB);
+    llvm::Value *defaultVal = emitExpr(*e.args[2]);
+    if (defaultVal->getType() != elemTy) {
+        if (isAnyType(elemTy))
+            defaultVal = wrapInAny(defaultVal);
+        else if (isAnyType(defaultVal->getType()) && canAnyHoldType(elemTy))
+            defaultVal = unwrapFromAny(defaultVal, elemTy);
+        else
+            codegenError("get() default value type must match list element type");
+    }
     emitBranchUncond(mergeBB);
     llvm::BasicBlock *oobEndBB = builder_.GetInsertBlock();
 

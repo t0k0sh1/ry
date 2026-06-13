@@ -1,4 +1,7 @@
-from testing import it, describe, expect
+from testing import it, describe, expect, mock, verify
+
+fn defaultSideEffect() -> int:
+  return 99
 
 @describe("List")
 fn listTests():
@@ -648,6 +651,26 @@ fn listTests():
     xs: List<any> = [10, 20, 30]
     expect(xs.get(100, 0)).toEq(0)
     expect(xs.get(1, 0)).toEq(20)
+  @it("should not call default fn when index in-bounds in 3-arg get")
+  fn shouldNotCallDefaultFnWhenIndexInBounds():
+    mock("defaultSideEffect", () => 99)
+    xs: List<int> = [10, 20, 30]
+    r = get(xs, 1, defaultSideEffect())
+    expect(r).toEq(20)
+    expect(verify("defaultSideEffect")).toEq(0)
+  @it("should call default fn once when index out-of-bounds in 3-arg get")
+  fn shouldCallDefaultFnOnceWhenOobInListGet():
+    mock("defaultSideEffect", () => 99)
+    xs: List<int> = [10, 20, 30]
+    r = get(xs, 100, defaultSideEffect())
+    expect(r).toEq(99)
+    expect(verify("defaultSideEffect")).toEq(1)
+  @it("should support block-creating default expr in 3-arg get for list")
+  fn shouldSupportBlockCreatingDefaultInListGet():
+    ys: List<int> = [42]
+    xs: List<int> = [10, 20, 30]
+    r = get(xs, 100, get(ys, 999, 0))
+    expect(r).toEq(0)
 
 @describe("Map")
 fn mapTests():
@@ -717,6 +740,26 @@ fn mapTests():
     m = {"a": 1, "b": 2}
     expect(get(m, "a", 0)).toEq(1)
     expect(get(m, "z", 0)).toEq(0)
+  @it("should not call default fn when key found in 3-arg get")
+  fn shouldNotCallDefaultFnWhenKeyFound():
+    mock("defaultSideEffect", () => 99)
+    m = {"a": 1, "b": 2}
+    r = get(m, "a", defaultSideEffect())
+    expect(r).toEq(1)
+    expect(verify("defaultSideEffect")).toEq(0)
+  @it("should call default fn once when key not found in 3-arg get")
+  fn shouldCallDefaultFnOnceWhenKeyNotFound():
+    mock("defaultSideEffect", () => 99)
+    m: Map<str, int> = {"a": 1}
+    r = get(m, "z", defaultSideEffect())
+    expect(r).toEq(99)
+    expect(verify("defaultSideEffect")).toEq(1)
+  @it("should support block-creating default expr in 3-arg get for map")
+  fn shouldSupportBlockCreatingDefaultInMapGet():
+    ys: Map<str, int> = {"x": 42}
+    m: Map<str, int> = {"a": 1}
+    r = get(m, "z", get(ys, "missing", 0))
+    expect(r).toEq(0)
   @it("should get optional")
   fn shouldGetOptional():
     m = {"a": 1, "b": 2}

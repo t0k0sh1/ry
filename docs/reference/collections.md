@@ -250,7 +250,7 @@ print(xs)   # [1, 2]
 Two overloads are available:
 
 - `get(list, index) -> Option<T>`: Returns `Some(value)` for an in-range index, or `None` for an out-of-range one. Negative indices wrap around from the end, matching [`xs[i]?`](#safe-index-access-xsi) semantics.
-- `get(list, index, default) -> T`: Returns the value at the index, or `default` for any out-of-range case (including a negative index whose wrap is still out of range).
+- `get(list, index, default) -> T`: Returns the value at the index, or `default` for any out-of-range case (including a negative index whose wrap is still out of range). The `default` expression is evaluated lazily — it runs only on the out-of-range path, so passing a function call as the default does not invoke it when the index is in range.
 
 ```ry
 xs = [10, 20, 30]
@@ -899,7 +899,7 @@ print(m)   # {b: 2}
 Two overloads are available:
 
 - `get(map, key) -> Option<V>`: Returns `Some(value)` if the key exists, or `None` if it does not.
-- `get(map, key, default) -> V`: Returns the value for the key, or `default` if the key does not exist.
+- `get(map, key, default) -> V`: Returns the value for the key, or `default` if the key does not exist. The `default` expression is evaluated lazily — it runs only when the key is missing, so passing a function call as the default does not invoke it for keys that are present.
 
 ```ry
 m = {"a": 1, "b": 2}
