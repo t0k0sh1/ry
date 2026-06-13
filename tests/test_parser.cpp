@@ -1983,6 +1983,39 @@ TEST(ParserTest, DotAtStatementStartAloneFails) {
     EXPECT_THROW(parseStr(".iter()"), std::runtime_error);
 }
 
+TEST(ParserTest, UfcsMultilineChainRejectsBlankLineSeparator) {
+    // #2115 scope guard: a blank line between the expression and the
+    // continuation `.` is a statement separator, not a chain
+    // continuation. Only ONE Newline (+ optional Indent/Dedent) is
+    // absorbed; a second Newline ends the speculative skip, restores
+    // state, and ends the chain — the leading `.toList()` then fails
+    // as an invalid statement start. Locks in the single-newline limit
+    // against future regressions (CodeRabbit #2121).
+    EXPECT_THROW(parseStr("x = xs\n\n    .toList()"), std::runtime_error);
+}
+
+TEST(ParserTest, UfcsMultilineChainKeepsSurroundingBlockOpen) {
+    // #2115 scope guard: after a multiline UFCS chain ends, the
+    // surrounding block must remain open. Without the `chainIndents`
+    // counter + trailing-Dedent drain in parsePostfixContinuation, the
+    // stray Dedent emitted when the chain's continuation indent unwinds
+    // would terminate the enclosing fn body before `print(result)` is
+    // parsed. The fn body must contain BOTH the assignment and the
+    // print call.
+    Program prog = parseStr(
+        "fn foo():\n"
+        "    result = [1, 2, 3]\n"
+        "        .iter()\n"
+        "        .toList()\n"
+        "    print(result)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.body.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(fn.body[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
+}
+
 // ===== Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {

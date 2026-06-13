@@ -401,13 +401,15 @@ The lexer (`src/lexer/lexer.cpp:189-202`) emits `Indent`/`Dedent` by raw column 
 
 Algorithm:
 
-1. `auto saved = lex_.saveState(); int savedChainIndents = chainIndents;`
-2. Loop: consume `Newline` / `Indent` (`++chainIndents`) / `Dedent` *only when* `chainIndents > 0` (`--chainIndents`); break on anything else.
-3. If now `peek == Dot` → commit (do not restore). Outer loop dispatches on the `Dot`.
+1. `auto saved = lex_.saveState(); int savedChainIndents = chainIndents; bool sawNewline = false;`
+2. Loop: consume `Newline` *only when* `!sawNewline` (set `sawNewline = true`) / `Indent` (`++chainIndents`) *only when* `sawNewline` / `Dedent` (`--chainIndents`) *only when* `sawNewline && chainIndents > 0`; break on anything else.
+3. If now `sawNewline && peek == Dot` → commit (do not restore). Outer loop dispatches on the `Dot`.
 4. Else → `lex_.restoreState(saved); chainIndents = savedChainIndents; break;`.
 5. After the outer loop exits, drain matching trailing Dedents: while `chainIndents > 0`, consume `Newline` or `Dedent` (decrementing on Dedent); break on anything else (defensive).
 
 The `chainIndents > 0` guard inside the speculative skip is critical — without it, a Dedent that belongs to the surrounding block (e.g. the function-body end after the chain's last call) is greedily consumed during speculation, and the restore can only put it back into the lexer state (not into the parser-side counter), so the matching cleanup later would over-drain. With the guard, Dedents the chain didn't "earn" are left alone for the surrounding context.
+
+**Single-Newline limit (no blank-line continuation)**: the `sawNewline` flag caps the absorbed Newline count at one. A blank line between the expression and the `.` (`x = xs\n\n.toList()`) is intentionally rejected as a statement separator, matching the Swift / JS / Kotlin convention and the single-Newline form documented in `docs/reference/collections.md`. Allowing multiple Newlines would silently let blank lines change statement boundaries — surfaced by CodeRabbit during #2115 review and locked in by `ParserTest.UfcsMultilineChainRejectsBlankLineSeparator`.
 
 **Why ONLY `.` continues, not `[` / `?`**: `[` on a continuation line is ambiguous with a fresh list-literal statement; `?` rarely makes sense as a leading postfix on a new line. Both are excluded conservatively.
 

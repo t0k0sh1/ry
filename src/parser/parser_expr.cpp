@@ -1189,31 +1189,37 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
         if (cur != TokenKind::Dot && cur != TokenKind::LBracket &&
             cur != TokenKind::Question) {
             // Multiline UFCS chain continuation (#2115): speculatively
-            // skip Newline/Indent/Dedent and check whether the next
-            // significant token is `.`. Only `.` extends the chain —
-            // `[` and `?` on a fresh line would be ambiguous with a
-            // new list literal / postfix start. The leading-`.<digit>`
-            // tuple-index form (`x.0`) is NOT supported on continuation
-            // lines because the lexer (lexer.cpp:452-458) tokenizes
-            // `.<digit>` after Newline as a Float literal — a separate
-            // issue would have to relax that disambiguation.
+            // skip a single Newline (+ optional Indent/Dedent run) and
+            // check whether the next significant token is `.`. Only one
+            // Newline is consumed — a blank line is a statement
+            // separator, not a chain continuation (matches the Swift /
+            // JS / Kotlin convention and what `collections.md`
+            // documents). Only `.` extends the chain — `[` and `?` on
+            // a fresh line would be ambiguous with a new list literal
+            // / postfix start. The leading-`.<digit>` tuple-index form
+            // (`x.0`) is NOT supported on continuation lines because
+            // the lexer (lexer.cpp:452-458) tokenizes `.<digit>` after
+            // Newline as a Float literal — a separate issue would have
+            // to relax that disambiguation.
             auto saved = lex_.saveState();
             int savedChainIndents = chainIndents;
+            bool sawNewline = false;
             while (true) {
                 TokenKind k = lex_.peek().kind;
-                if (k == TokenKind::Newline) {
+                if (!sawNewline && k == TokenKind::Newline) {
                     lex_.next();
-                } else if (k == TokenKind::Indent) {
+                    sawNewline = true;
+                } else if (sawNewline && k == TokenKind::Indent) {
                     lex_.next();
                     ++chainIndents;
-                } else if (k == TokenKind::Dedent && chainIndents > 0) {
+                } else if (sawNewline && k == TokenKind::Dedent && chainIndents > 0) {
                     lex_.next();
                     --chainIndents;
                 } else {
                     break;
                 }
             }
-            if (lex_.peek().kind != TokenKind::Dot) {
+            if (!sawNewline || lex_.peek().kind != TokenKind::Dot) {
                 lex_.restoreState(saved);
                 chainIndents = savedChainIndents;
                 break;

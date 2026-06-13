@@ -362,20 +362,23 @@ unary_expr       ::= ( '-' | '+' | '~' | 'not' | 'await' | 'weak' ) unary_expr
                    | postfix_expression
 
 /* postfix chain: call, index, field access, ?, ++, --
-   Multiline UFCS chain (#2115): a postfix `.` may be preceded by
-   NEWLINE (optionally followed by INDENT / DEDENT structural tokens)
-   so iterator-pipeline-style chains can span lines:
+   Multiline UFCS chain (#2115): a postfix `.` may be preceded by a
+   single NEWLINE (optionally followed by INDENT / DEDENT structural
+   tokens) so iterator-pipeline-style chains can span lines:
        result = xs
            .iter()
            .filter(...)
            .toList()
-   This relaxation applies ONLY to the `'.' IDENT` form. The
-   `'.' INTEGER` (tuple-index) form is NOT covered because the lexer
-   tokenizes a leading `.<digit>` after NEWLINE as a Float literal
-   (see lexer.cpp:452-458's prev_kind_ exclusion list); enabling
-   `obj\n.0` requires a separate lexer relaxation. `[` and `?` on a
-   continuation line are also excluded (ambiguous with a fresh
-   statement starting with `[` and rarely useful as a leading `?`). */
+   A blank line (two consecutive NEWLINEs) is NOT a continuation — it
+   terminates the statement, matching the Swift / JS / Kotlin
+   convention. The relaxation applies ONLY to the `'.' IDENT` form;
+   the `'.' INTEGER` (tuple-index) form is NOT covered because the
+   lexer tokenizes a leading `.<digit>` after NEWLINE as a Float
+   literal (see lexer.cpp:452-458's prev_kind_ exclusion list);
+   enabling `obj\n.0` requires a separate lexer relaxation. `[` and
+   `?` on a continuation line are also excluded (ambiguous with a
+   fresh statement starting with `[` and rarely useful as a leading
+   `?`). */
 postfix_expression ::= primary_expression { postfix_op }
 
 postfix_op       ::= '(' [ argument_list ] ')'                       // call
@@ -383,7 +386,7 @@ postfix_op       ::= '(' [ argument_list ] ')'                       // call
                                                                        // generic call: f[T](args); the C++ parser only accepts this form
                                                                        // when the callee is a bare IDENT (#1906, see #1885 / #1887)
                    | '[' expression { ',' expression } ']'           // index; if immediately followed by '?', returns Option<elem> on Map<K,V> / List<T> (#1699)
-                   | [ NEWLINE { INDENT | DEDENT } ] '.' IDENT        // method / field; leading NEWLINE allowed for multiline UFCS chains (#2115)
+                   | [ NEWLINE { INDENT | DEDENT } ] '.' IDENT        // method / field; single leading NEWLINE allowed for multiline UFCS chains (#2115)
                    | '.' INTEGER                                      // tuple index; NO NEWLINE prefix (lexer tokenizes `.<digit>` after NEWLINE as Float)
                    | '?'                                              // unwrap Result/Option; after '[..]' becomes the Option-returning index above
                    | '++' | '--'                                      // post-inc/dec
