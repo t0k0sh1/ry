@@ -2,7 +2,10 @@
 
 Run tests in a Linux environment (Debian trixie + glibc 2.40, via the pre-baked `ry-ci` GHCR image) from macOS, matching CI conditions for all sanitizer presets, libFuzzer, and static analysis.
 
-See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-dev/SKILL.md) for full workflow documentation.
+On macOS, use this environment for sanitizer, fuzzer, and static-analysis
+verification. Do not silently fall back to native execution. Reset stale
+Docker build directories with the owning command's `--clean` option; do not
+manually delete them.
 
 ## Quick start
 
@@ -59,14 +62,14 @@ See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-
 | `scan-build` | `/usr/local/llvm/bin/scan-build` | Configures+builds in dedicated `build-scan-docker/` (host bind-mount), HTML report at `build-scan-docker/scan-build-report/<timestamp>/`, exits non-zero on findings via `--status-bugs` |
 | `all` | — | Runs clang-tidy → cppcheck → scan-build in sequence |
 
-> **`scan-build` and `all`** isolate their analyzer-wrapped CMake configuration in `build-scan-docker/` (host) ↔ `build-scan/` (container). `build-docker/` is untouched, so `./docker/run.sh default ...` works without an intervening cleanup. To wipe the analyzer report, remove `build-scan-docker/` directly (the directory is also recreated on the next scan-build run).
+> **`scan-build` and `all`** isolate their analyzer-wrapped CMake configuration in `build-scan-docker/` (host) ↔ `build-scan/` (container). `build-docker/` is untouched. To reset analyzer state, use `./.claude/skills/pre-commit-checklist/run-scan-build.sh --clean`.
 
 ## Notes
 
 - Host build dirs (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`, `build-fuzz-docker/`, `build-scan-docker/`) are separate from native macOS builds (`build/`, `build-asan/`, `build-tsan/`, `build-fuzz/`). The container only sees the per-preset Docker build dir, never the host macOS ones.
 - `run.sh` bind-mounts source/config entries individually (`src/`, `include/`, `tests/`, `share/`, `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, analyzer configs) rather than the whole project root, preventing host macOS build artifacts from appearing inside the container.
+- When the build consumes a new top-level source directory, config file, or dotfile, add it to `run.sh` mount arguments and, when required at startup, `entrypoint.sh` required-mount checks. Verify the container sees the new path.
 - `entrypoint.sh` fails fast (exit codes 70/71/72) if a required mount is missing, a macOS Mach-O binary slips into the per-preset build dir, or `/Users/...` paths appear in `compile_commands.json`.
-- See [`Mount strategy`](../.claude/skills/linux-docker-dev/SKILL.md#mount-strategy) for the full rationale (issue #1876).
 - On Apple Silicon the container runs arm64 Linux natively (no x86_64 QEMU emulation).
 - ccache is persisted in a named Docker volume (`ry-ccache-docker`). The first build compiles everything; subsequent runs reuse the cache.
 - Image name: `ry-linux-dev:latest`. Built locally; not pushed to any registry.

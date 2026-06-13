@@ -8,9 +8,12 @@ metadata:
 
 # Ry Playground
 
+- `ry -c` reads source from stdin, not the next argument.
+- Run from the repository root so project-local `share/std/` resolution applies.
+
 Execute Ry language snippets via heredoc to verify behavior. This is for ad-hoc verification only, not for self-tests (`ry test`).
 
-> **macOS**: substitute `./build-rust/ry` for `./build/ry` and `cmake --build build-rust` for `cmake --build build` throughout this skill (post-Rust-cutover preset split; see `AGENTS.md` § "Build & Test").
+> **macOS**: use `./build-rust/ry` and `cmake --build build-rust`; see AGENTS.md "Build And Test".
 
 ## Absolute Rules
 

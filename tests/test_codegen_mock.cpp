@@ -342,7 +342,7 @@ TEST_F(CodeGenTest, VerifyCalledWithNestedListArgUnsupportedError) {
 TEST_F(CodeGenTest, VerifyCalledWithMapStrIntArgAccepted) {
     // #1705: Map<str, int> arg matches a recorded call with the same {k -> v} pairs.
     // Flipped from VerifyCalledWithMapArgUnsupportedError per
-    // .claude/rules/tests-rejection-tdd.md (relaxing rejection: flip THROW -> NO_THROW).
+    // .claude/skills/test-checklist/SKILL.md (relaxing rejection: flip THROW -> NO_THROW).
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn takesMap(m: Map<str, int>) -> int:\n"
         "    return len(m)\n"
@@ -1082,7 +1082,7 @@ TEST_F(CodeGenTest, SpyNonExistentFunctionError) {
 
 // spy() on an overloaded function (bare name) is now legal: it registers all overloads
 // aggregately. Previously rejected with "spy: 'compute' is overloaded" (v1 limit, #1682).
-// Flipped per .claude/rules/tests-rejection-tdd.md "Relaxing a rejection branch requires
+// Flipped per .claude/skills/test-checklist/SKILL.md "Relaxing a rejection branch requires
 // flipping (not deleting) existing EXPECT_THROW tests". Augmented with runtime assertions
 // to verify aggregate vs per-overload counts (PR #1777 CodeRabbit nitpick).
 TEST_F(CodeGenTest, SpyOverloadedFunctionAggregates) {

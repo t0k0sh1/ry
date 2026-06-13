@@ -1165,7 +1165,7 @@ TEST(ParserTest, QualifiedImportAsRegistersAlias) {
     // the QualifiedImportStmt while preserving the original module name. This
     // is the positive sibling of the (formerly rejecting) test that locked
     // in the pre-#1724 spec — flipped per
-    // .claude/rules/tests-rejection-tdd.md "Relaxing a rejection branch
+    // .claude/skills/test-checklist/SKILL.md "Relaxing a rejection branch
     // requires flipping (not deleting) existing EXPECT_THROW tests".
     Program prog = parseStr("import math as m");
     ASSERT_EQ(prog.size(), 1u);

@@ -1864,7 +1864,7 @@ TEST_F(DirectiveTest, PublicDirectiveOnRecordCodegenPass) {
 }
 
 // Direct regression for the max_positional=0 rejection branch
-// (per .claude/rules/tests-rejection-tdd.md).
+// (per .claude/skills/test-checklist/SKILL.md).
 TEST_F(DirectiveTest, PublicDirectiveRejectsArgs) {
     EXPECT_THROW({
         runSource("@public(\"foo\")\nfn bar() -> int:\n    return 1\n");

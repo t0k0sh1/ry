@@ -24,6 +24,15 @@ The **project manifest** at the root of a Ry project, describing project metadat
 
 See [Project Management](project.md) for the manifest specification.
 
+## Legacy internal identifiers
+
+The following internal identifiers retain historical `package` naming for source or binary stability. Use them verbatim; use the current terminology elsewhere.
+
+- `effectivePackage`
+- `deriveNativePackage`
+- `RY_REGISTER_STDLIB_PACKAGE`
+- `__ry_<symbol>`
+
 ## Visibility scopes
 
 The visibility model uses three named scopes:

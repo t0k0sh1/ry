@@ -18,7 +18,7 @@ metadata:
 
 ### 0. Branch ensure
 
-> **AGENTS.md §Git ブランチ運用ルール違反警告**: `main` 上で本 skill を呼ばずに `git commit` を直接実行することは禁止。常にこの skill を経由してブランチ作成 → コミットの順を保つこと。
+> AGENTS.md "Git And GitHub": do not commit directly on `main`; use this skill to create the feature branch first.
 
 - Run `git rev-parse --abbrev-ref HEAD` to determine the current branch.
 - If the current branch is **not** `main`, skip the rest of Step 0 and proceed to Step 1 on the existing branch.
@@ -36,7 +36,7 @@ metadata:
 
   2. **Generate a short kebab-case description** (2-4 words ideal). Examples: `feat/add-crypto-stdlib`, `fix/utf8-overread`, `refactor/parser-cleanup`.
 
-     > **MUST (no exceptions)**: The generated branch name `<type>/<short-description>` must NOT contain `main` as a substring after lowercasing it and stripping every non-alphabetic character. This rejects e.g. `chore/rebase-main-sync` (`chorerebasemainsync` contains `main`), `feat/m-a-i-n` (`featmain` after stripping), and even `feat/domain-driven` (`featdomaindriven` contains `main` inside `domain`). See AGENTS.md §Git ブランチ運用ルール.
+     > The generated branch name `<type>/<short-description>` must satisfy AGENTS.md "Git And GitHub".
 
   3. **Validate** the chosen branch name before `git checkout -b`: lowercase it, strip every non-alphabetic character, and check that the result does NOT contain the substring `main`. If it does, regenerate a different `<short-description>` and re-validate. Repeat until clean. This is a hard MUST — never bypass.
   4. Run `git checkout -b <type>/<short-description>` and report the chosen branch name in the next message. Do **not** stop to ask for approval — auto-progress matches the legacy `git-branch-naming` behavior. If the user wants a different name afterwards, they can rename via `git branch -m <new>` (the rename must also satisfy the MUST rule above).

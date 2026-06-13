@@ -8,7 +8,7 @@ allowed-tools: Bash
 
 Use `--trace` to observe Ry's internal execution pipeline. Trace output is a JSON Lines stream (machine-readable), not a human log.
 
-> **Source of truth**: AGENTS.md §"内部挙動の解析に trace を使う" was migrated to this skill in #1498.
+> **Source of truth**: this skill.
 
 ## Rules
 

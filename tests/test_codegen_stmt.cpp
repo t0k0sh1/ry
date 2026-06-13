@@ -2782,7 +2782,7 @@ TEST_F(CodeGenTest, DefaultArgGenericError) {
 //
 // `import <mod>` / `import <mod> as <alias>` requires ModuleLoader to
 // run, which `runSource` does not invoke (see
-// .claude/rules/tests-cpp-conventions.md "CodeGenTest::runSource cannot
+// .claude/skills/test-checklist/SKILL.md "CodeGenTest::runSource cannot
 // compile code that imports stdlib modules"). The alias-then-bare-call
 // regression case (`import math as m; math.sqrt(2.0)`) is therefore
 // covered by smoke tests in the PR description rather than here.
@@ -2943,7 +2943,7 @@ TEST_F(CodeGenTest, AnyToTypedListIntThroughAnyReturningFnStillWorks) {
 // (`resolvedSource != resolvedColl`). The empty-source branch above is covered
 // by the FromResult cases; without these tests, a refactor that drops the
 // concrete-mismatch check (but keeps the empty check) would pass the existing
-// suite. See .claude/rules/tests-rejection-tdd.md.
+// suite. See .claude/skills/test-checklist/SKILL.md.
 TEST_F(CodeGenTest, AnyToTypedListConcreteSourceMismatchRejected) {
     expectCompileError(
         "xs: List<int> = [1, 2, 3]\n"

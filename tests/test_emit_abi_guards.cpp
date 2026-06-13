@@ -21,7 +21,7 @@
 //
 // Deeper guards that need a *corrupted* ctx (c.module / c.context / c.builder
 // NULL) have no supported-API trigger and are documented as defensive in
-// .claude/rules/tests-rejection-tdd.md rather than tested here.
+// .claude/rules/tests-cpp-conventions.md rather than tested here.
 
 #include <gtest/gtest.h>
 
@@ -145,7 +145,7 @@ TEST_F(EmitAbiGuardTest, ArcReleaseNullCtxDoesNotCrash) {
 // resolves to a NULL handle) gets a direct-call case here; the inner
 // c.module/context/builder == NULL guards need a *corrupted* ctx (no supported
 // call produces one) and stay documented-only in
-// .claude/rules/tests-rejection-tdd.md.
+// .claude/rules/tests-cpp-conventions.md.
 //
 // Post-fix lock-in: pre-fix these branches dereferenced a NULL ctx / raw FFI
 // pointer / out-param and crashed the process, so a clean "red" is impossible —
@@ -348,7 +348,7 @@ TEST_F(EmitAbiGuardTest, OptionWrapSomeNullResolvedInnerReturnsZero) {
 // `ry_emit_icmp` out-of-range-predicate guard is genuinely new logic
 // (`icmp_pred_from → None`) with no precedent above, so it gets its own case.
 // Same test-vs-document split: the inner corrupted-ctx guards stay documented in
-// .claude/rules/tests-rejection-tdd.md.
+// .claude/rules/tests-cpp-conventions.md.
 // =============================================================================
 
 // --- ctx == NULL → sentinel / no-op ---
@@ -542,7 +542,7 @@ TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullElemTyReturnsZero) {
 // case (the bit-exact `take` migration exercises every happy path). The
 // create_function unknown-linkage reject is genuinely new logic (`linkage_from →
 // None`) with no precedent above, so it gets its own case. The corrupted-ctx
-// inner guards stay documented in .claude/rules/tests-rejection-tdd.md.
+// inner guards stay documented in .claude/rules/tests-cpp-conventions.md.
 // =============================================================================
 
 // --- ctx == NULL → sentinel / no-op ---
