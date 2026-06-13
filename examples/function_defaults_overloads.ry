@@ -1,0 +1,14 @@
+# 関数のデフォルト引数と引数数によるオーバーロードを示す
+fn greet(name: str, punctuation: str = "!") -> str:
+  return "Hello, " + name + punctuation
+
+fn area(side: int) -> int:
+  return side * side
+
+fn area(width: int, height: int) -> int:
+  return width * height
+
+print(greet("Ry"))
+print(greet("Ry", "."))
+print(area(5))
+print(area(3, 4))

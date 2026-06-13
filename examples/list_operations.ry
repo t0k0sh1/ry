@@ -1,0 +1,15 @@
+# Listの安全なindexアクセスと非破壊・破壊操作を示す
+values = [10, 20, 30]
+
+# getは範囲外でNone、default付きgetは指定した値を返す
+print(get(values, 1))
+print(get(values, 100, -1))
+
+# ?付きindexも安全なOption取得に利用できる
+print(values[-1]?)
+
+copy = appended(values, 40)
+append!(values, 50)
+
+print(f"copy = {copy}")
+print(f"values = {values}")

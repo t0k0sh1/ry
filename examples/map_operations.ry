@@ -1,0 +1,10 @@
+# Mapの安全な取得、追加、反復を示す
+scores: Map<str, int> = {"alice": 90, "bob": 80}
+scores["carol"] = 95
+
+# getは存在しないkeyに対してNoneを返す
+print(get(scores, "alice"))
+print(get(scores, "dave", 0))
+
+for name, score in items(scores):
+  print(f"{name}: {score}")

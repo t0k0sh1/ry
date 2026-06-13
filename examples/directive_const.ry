@@ -1,0 +1,10 @@
+# @constで変数とrecordの変更を禁止する方法を示す
+record Point:
+  x: int
+  y: int
+
+@const
+origin = Point(0, 0)
+
+# originとそのfieldは再代入できない
+print(origin)

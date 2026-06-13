@@ -1,0 +1,11 @@
+# async関数、await、同期コードからのblockOnを示す
+async fn add(a: int, b: int) -> int:
+  return a + b
+
+async fn doubledSum(a: int, b: int) -> int:
+  # async関数の内部ではawaitでTaskの結果を受け取る
+  total = await add(a, b)
+  return total * 2
+
+task: Task<int> = doubledSum(20, 1)
+print(blockOn(task))

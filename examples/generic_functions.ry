@@ -1,0 +1,10 @@
+# ジェネリック関数の型推論と明示的な型引数を示す
+fn firstOf<T>(values: List<T>) -> T:
+  return values[0]
+
+fn pair<T, U>(left: T, right: U) -> (T, U):
+  return (left, right)
+
+print(firstOf([10, 20, 30]))
+print(firstOf[str](["a", "b"]))
+print(pair(42, "answer"))

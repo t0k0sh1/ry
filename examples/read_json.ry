@@ -1,26 +1,25 @@
 # JSON 読み込み (stdlib の json モジュール)
-
 from json import load
 
 # パース: Map<str, any> として型付きで取得
 raw = "{\"name\": \"Alice\", \"age\": 30, \"items\": [1, 2, 3]}"
-case load[Map<str, any>](raw):
-    Ok(v):
-        print(f"parsed (map): {v}")
-    Err(e):
-        print(f"parse err: {e.message}")
+case load[Map<str,any>](raw):
+  Ok(v):
+    print(f"parsed (map): {v}")
+  Err(e):
+    print(f"parse err: {e.message}")
 
 # プリミティブ値のパース
 case load[int]("42"):
-    Ok(n):
-        print(f"int from json: {n}")
-    Err(_):
-        print("err")
+  Ok(n):
+    print(f"int from json: {n}")
+  Err(_):
+    print("err")
 
 case load[List<int>]("[1, 2, 3]"):
-    Ok(xs):
-        print(f"list from json: {xs}")
-        for x in xs:
-            print(f"  item: {x}")
-    Err(_):
-        print("err")
+  Ok(xs):
+    print(f"list from json: {xs}")
+    for x in xs:
+      print(f"  item: {x}")
+  Err(_):
+    print("err")

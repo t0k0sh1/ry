@@ -1,0 +1,14 @@
+# recordに加算と文字列変換の独自動作を定義する
+record Vec2:
+  x: int
+  y: int
+
+fn operator+(left: Vec2, right: Vec2) -> Vec2:
+  return Vec2(left.x + right.x, left.y + right.y)
+
+fn str(value: Vec2) -> str:
+  return f"Vec2({value.x}, {value.y})"
+
+a = Vec2(1, 2)
+b = Vec2(3, 4)
+print(a + b)
