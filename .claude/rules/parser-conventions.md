@@ -388,6 +388,40 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 - Reference site: `src/parser/parser_expr.cpp::parseParenLambdaExpr` (commit flag set just past `)` and the `'->' / '=>' / ':'` lookahead) + `src/parser/parser_expr.cpp::parsePrimary` (save/restore + conditional re-throw in the lambda dispatch). The flag itself lives on `include/ry/parser/parser.hpp`.
 - The disambiguator-then-flag ordering matters: if you set the flag before the lookahead check, valid tuples with snake_case names like `(my_a, my_b)` would be rejected even though they have no lambda body marker. Tests `LambdaParamRejectsSnakeCase` (negative) and `LambdaParamAcceptsCamelCase` (positive) lock both halves.
 
+### Multiline postfix `.` continuation needs `chainIndents` balanced-Dedent drain to keep the surrounding block intact
+
+**Source**: #2115 (2026-06-13, implementation — advisor call-out)
+**Tags**: parser, postfix, ufcs, multiline, indent-dedent, save-restore, block-boundary, blind-spot
+
+**Context**: `parsePostfixContinuation` (`src/parser/parser_expr.cpp`) historically exited on any token other than `Dot`/`LBracket`/`Question`, so the documented multiline UFCS idiom in `docs/reference/collections.md` "Lazy Method Chaining" — `result = xs\n    .iter()\n    .toList()` — failed with `"unexpected token '.'"`. The naive fix (`lex_.saveState()` + skip `Newline`/`Indent`/`Dedent` looking for `.`, commit on Dot / restore otherwise) handles the dispatch but leaves a hole: when the speculative pass commits an `Indent` (because the continuation line is at a deeper column), the matching `Dedent` lands AFTER the chain ends. `parseBlock` (`src/parser/parser.cpp:1059`) reads the chain's trailing `Newline`, then sees `Dedent`, and exits the surrounding block prematurely. At top level the equivalent failure is `parseProgram` seeing a stray `Dedent` it cannot route into a statement.
+
+The lexer (`src/lexer/lexer.cpp:189-202`) emits `Indent`/`Dedent` by raw column change regardless of context — there is no bracket-depth suppression — so the asymmetry is real, not avoidable by lexer tuning.
+
+**Rule**: When extending `parsePostfixContinuation` (or any other expression-internal speculative consumer of structural tokens) with multiline `.` continuation, track the net `Indent` count the chain consumed via a local counter (`chainIndents`) and **drain matching `Dedent`s before returning**. The drain consumes intervening `Newline`s and `Dedent`s until `chainIndents` returns to 0; on any other token, stop and leave the rest in the stream.
+
+Algorithm:
+
+1. `auto saved = lex_.saveState(); int savedChainIndents = chainIndents; bool sawNewline = false;`
+2. Loop: consume `Newline` *only when* `!sawNewline` (set `sawNewline = true`) / `Indent` (`++chainIndents`) *only when* `sawNewline` / `Dedent` (`--chainIndents`) *only when* `sawNewline && chainIndents > 0`; break on anything else.
+3. If now `sawNewline && peek == Dot` → commit (do not restore). Outer loop dispatches on the `Dot`.
+4. Else → `lex_.restoreState(saved); chainIndents = savedChainIndents; break;`.
+5. After the outer loop exits, drain matching trailing Dedents: while `chainIndents > 0`, consume `Newline` or `Dedent` (decrementing on Dedent); break on anything else (defensive).
+
+The `chainIndents > 0` guard inside the speculative skip is critical — without it, a Dedent that belongs to the surrounding block (e.g. the function-body end after the chain's last call) is greedily consumed during speculation, and the restore can only put it back into the lexer state (not into the parser-side counter), so the matching cleanup later would over-drain. With the guard, Dedents the chain didn't "earn" are left alone for the surrounding context.
+
+**Single-Newline limit (no blank-line continuation)**: the `sawNewline` flag caps the absorbed Newline count at one. A blank line between the expression and the `.` (`x = xs\n\n.toList()`) is intentionally rejected as a statement separator, matching the Swift / JS / Kotlin convention and the single-Newline form documented in `docs/reference/collections.md`. Allowing multiple Newlines would silently let blank lines change statement boundaries — surfaced by CodeRabbit during #2115 review and locked in by `ParserTest.UfcsMultilineChainRejectsBlankLineSeparator`.
+
+**Why ONLY `.` continues, not `[` / `?`**: `[` on a continuation line is ambiguous with a fresh list-literal statement; `?` rarely makes sense as a leading postfix on a new line. Both are excluded conservatively.
+
+**Lexer-side limitation — `. INTEGER` (tuple-index) is not supported on continuation lines**: `src/lexer/lexer.cpp:452-458` tokenizes `.<digit>` as a Float literal whenever `prev_kind_` is not in the explicit exclusion list, and `Newline` / `Indent` / `Dedent` are not in that list. So `xs\n.0` reaches the parser as `xs Newline Indent Float(".0")` — the `Dot` lookahead never fires. Relaxing this requires a separate lexer change (add structural-token kinds to the exclusion list); for now the `docs/grammar.ebnf` comment splits the postfix `.` rule into `[ NEWLINE { INDENT | DEDENT } ] '.' IDENT` (multiline-tolerant) vs `'.' INTEGER` (single-line only) so the asymmetry is documented for future audits. `ParserTest.UfcsMultilineChainTupleIndexFailsAsLimitation` (`tests/test_parser.cpp`) locks this in.
+
+**tree-sitter blind spot — `optional($._newline)` on its own is a major regression**: extending `field_access` with `optional($._newline)` in `editor/tree-sitter/grammar.js` causes tree-sitter's GLR parser to speculatively consume every statement-terminating `_newline` as a continuation prefix; baseline `check.sh` drops from 157 PASS / 0 FAIL to 11 PASS / 146 FAIL across the spec corpus. The conflict is between `_newline` as statement terminator (in `block`/`source_file`) and `_newline` as chain continuation marker (in `field_access`). Resolving it requires a more sophisticated grammar structure (dynamic precedence or a dedicated multiline-field-access variant gated by a lookahead trick); #2115 explicitly defers the tree-sitter side to a follow-up issue. To avoid degrading the editor view of existing spec files, the multiline-UFCS test cases live in a dedicated spec file `tests/spec/expr_stmt_multiline_ufcs.test.ry` (registered in `editor/tree-sitter/expected-fail.txt`) rather than appended to `expr_stmt.test.ry`.
+
+**How to apply**:
+- Reference site: `src/parser/parser_expr.cpp::parsePostfixContinuation` (the `chainIndents` counter + speculative skip + tail Dedent drain pattern). The C++ side is self-contained — no helper extraction needed because the only call site is this function.
+- Any future expression-internal feature that speculatively skips structural tokens (e.g. a multiline `if`-expression body, multiline `case` scrutinee) must replicate the `chainIndents > 0` Dedent guard + trailing-drain pattern, or the surrounding block will exit early on the unbalanced Dedent.
+- For tree-sitter follow-ups, do NOT default to `optional($._newline)` between a postfix operator and `.`; investigate dynamic-precedence (`prec.dynamic`) or a dedicated `field_access_multiline` variant gated by lookahead before committing.
+
 ### `in_if_cond_` flag suppresses bare-ident `Ident FatArrow` dispatch inside if-expression conditions
 
 **Source**: #1572 (2026-05-04, implementation)

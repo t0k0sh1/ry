@@ -1,0 +1,32 @@
+from testing import it, describe, expect
+
+# #2115: multiline UFCS chains with continuation lines starting with `.`.
+# Isolated into its own spec file so the tree-sitter grammar gap
+# (editor/tree-sitter/grammar.js does not yet accept the optional NEWLINE
+# between a postfix expression and `.`) is contained to this single file
+# in editor/tree-sitter/expected-fail.txt instead of degrading the editor
+# view of the entire expr_stmt.test.ry suite.
+
+@describe("multiline UFCS chain")
+fn multilineUfcsChainTests():
+  @it("should run iterator pipeline across multiple lines")
+  fn shouldRunIteratorPipelineAcrossMultipleLines():
+    result = [1, 2, 3, 4, 5]
+        .iter()
+        .filter((x: int) => x > 2)
+        .map((x: int) => x * 2)
+        .take(2)
+        .toList()
+    expect(result).toEq([6, 8])
+  @it("should support multiline UFCS chain on bare ident")
+  fn shouldSupportMultilineUfcsChainOnBareIdent():
+    xs = [1, 2, 3]
+    result = xs
+        .iter()
+        .toList()
+    expect(result).toEq([1, 2, 3])
+  @it("should support multiline UFCS chain as statement")
+  fn shouldSupportMultilineUfcsChainAsStatement():
+    [1, 2, 3]
+        .iter()
+        .toList()

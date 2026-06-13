@@ -1178,14 +1178,60 @@ ExprPtr Parser::parsePostfix() {
 }
 
 ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
-    while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
-           lex_.peek().kind == TokenKind::Question) {
-        if (lex_.peek().kind == TokenKind::Question) {
+    // #2115: track Indents the chain absorbed across multiline `.`
+    // continuations so the matching Dedents can be drained at chain
+    // end. Without this, the surrounding parseBlock / parseProgram
+    // would see a stray Dedent and either exit a block prematurely
+    // (inside a fn body) or hit "unexpected token" (at top level).
+    int chainIndents = 0;
+    while (true) {
+        TokenKind cur = lex_.peek().kind;
+        if (cur != TokenKind::Dot && cur != TokenKind::LBracket &&
+            cur != TokenKind::Question) {
+            // Multiline UFCS chain continuation (#2115): speculatively
+            // skip a single Newline (+ optional Indent/Dedent run) and
+            // check whether the next significant token is `.`. Only one
+            // Newline is consumed — a blank line is a statement
+            // separator, not a chain continuation (matches the Swift /
+            // JS / Kotlin convention and what `collections.md`
+            // documents). Only `.` extends the chain — `[` and `?` on
+            // a fresh line would be ambiguous with a new list literal
+            // / postfix start. The leading-`.<digit>` tuple-index form
+            // (`x.0`) is NOT supported on continuation lines because
+            // the lexer (lexer.cpp:452-458) tokenizes `.<digit>` after
+            // Newline as a Float literal — a separate issue would have
+            // to relax that disambiguation.
+            auto saved = lex_.saveState();
+            int savedChainIndents = chainIndents;
+            bool sawNewline = false;
+            while (true) {
+                TokenKind k = lex_.peek().kind;
+                if (!sawNewline && k == TokenKind::Newline) {
+                    lex_.next();
+                    sawNewline = true;
+                } else if (sawNewline && k == TokenKind::Indent) {
+                    lex_.next();
+                    ++chainIndents;
+                } else if (sawNewline && k == TokenKind::Dedent && chainIndents > 0) {
+                    lex_.next();
+                    --chainIndents;
+                } else {
+                    break;
+                }
+            }
+            if (!sawNewline || lex_.peek().kind != TokenKind::Dot) {
+                lex_.restoreState(saved);
+                chainIndents = savedChainIndents;
+                break;
+            }
+            continue; // outer loop dispatches on the exposed Dot
+        }
+        if (cur == TokenKind::Question) {
             Token qTok = lex_.next(); // consume '?'
             expr = makeErrorPropagateExpr(std::move(expr), qTok);
             continue;
         }
-        if (lex_.peek().kind == TokenKind::LBracket) {
+        if (cur == TokenKind::LBracket) {
             Token lbTok = lex_.next(); // consume '['
             std::vector<ExprPtr> indices;
             indices.reserve(2);
@@ -1259,6 +1305,19 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             node->data = std::move(fa);
             node->loc = locFromToken(dotTok);
             expr = std::move(node);
+        }
+    }
+    // Drain matching Dedents for chain-internal Indents so surrounding
+    // parseBlock / parseProgram does not see a stray Dedent (#2115).
+    while (chainIndents > 0) {
+        TokenKind k = lex_.peek().kind;
+        if (k == TokenKind::Newline) {
+            lex_.next();
+        } else if (k == TokenKind::Dedent) {
+            lex_.next();
+            --chainIndents;
+        } else {
+            break;
         }
     }
     return expr;
