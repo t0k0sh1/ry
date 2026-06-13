@@ -1,0 +1,71 @@
+# FileCheck golden: List<str>.join(sep) IR (#2096 — emitStrOp_join migration
+# to the Rust emit cdylib). Pins the 2-pass scaffold (length aggregation
+# loop, total computation with `safe_sep_count` select and `join_sep_total`
+# multiply, and the alloca-dst memcpy chain loop) so the migrated path
+# stays bit-exact with the C++ baseline.
+#
+# Uses function args (non-constant operands) so CreateAlloca / CreateLoad /
+# CreateStore / CreateMul / CreateSelect / CreateICmp* cannot constant-fold
+# the BB scaffold or PHI-shaped state away. With literal
+# ["a","b","c"].join(",") the entire scaffold never reaches IR and a
+# botched port would pass the empty diff (#2092 coverage trap).
+#
+# CHECK-LABEL: define ptr @doJoin(ptr %xs, ptr %sep)
+# CHECK:         %join_len_ptr = getelementptr inbounds nuw %ListHeader,
+# CHECK:         %join_len = load i64, ptr %join_len_ptr
+# CHECK:         %join_data_ptr = getelementptr inbounds nuw %ListHeader,
+# CHECK:         %join_data = load ptr, ptr %join_data_ptr
+# CHECK:         %str_bytelen_ptr = getelementptr i8, ptr {{.*}}, i64 -8
+# CHECK:         %str_bytelen = load i64, ptr %str_bytelen_ptr
+# CHECK:         %join_total = alloca i64
+# CHECK:         %join_i = alloca i64
+#
+# CHECK:       join.len_cond:
+# CHECK:         %join_i1 = load i64, ptr %join_i
+# CHECK:         %join_len_cond = icmp slt i64 %join_i1, %join_len
+# CHECK:         br i1 %join_len_cond, label %join.len_body, label %join.len_end
+#
+# CHECK:       join.len_body:
+# CHECK:         %join_elem_ptr = getelementptr ptr, ptr %join_data,
+# CHECK:         %join_elem = load ptr, ptr %join_elem_ptr
+# CHECK:         %join_total_cur = load i64, ptr %join_total
+# CHECK:         %join_total_add = add i64 %join_total_cur,
+#
+# CHECK:       join.len_end:
+# CHECK:         %join_sep_count = sub i64 %join_len, 1
+# CHECK:         %join_has_elems = icmp sgt i64 %join_len, 0
+# CHECK:         %safe_sep_count = select i1 %join_has_elems, i64 %join_sep_count, i64 0
+# CHECK:         %join_sep_total = mul i64 %safe_sep_count, %str_bytelen
+# CHECK:         %join_grand_total = add i64 {{.*}}, %join_sep_total
+# CHECK:         %join_buf = call ptr @__ry_string_make_uninit(i64 %join_grand_total)
+# CHECK:         %join_dst = alloca ptr
+#
+# CHECK:       join.build_cond:
+# CHECK:         %join_i2 = load i64, ptr %join_i
+# CHECK:         %join_build_cond = icmp slt i64 %join_i2, %join_len
+# CHECK:         br i1 %join_build_cond, label %join.build_body, label %join.build_end
+#
+# CHECK:       join.build_body:
+# CHECK:         %join_not_first = icmp sgt i64 {{.*}}, 0
+# CHECK:         br i1 %join_not_first, label %join.sep, label %join.elem
+#
+# CHECK:       join.sep:
+# CHECK:         %dst_before_sep = load ptr, ptr %join_dst
+# CHECK:         call ptr @memcpy(ptr %dst_before_sep, ptr {{.*}}, i64 %str_bytelen)
+# CHECK:         %dst_after_sep = getelementptr i8, ptr %dst_before_sep, i64 %str_bytelen
+#
+# CHECK:       join.elem:
+# CHECK:         %dst_for_elem = load ptr, ptr %join_dst
+# CHECK:         %join_elem_ptr2 = getelementptr ptr, ptr %join_data,
+# CHECK:         %join_elem2 = load ptr, ptr %join_elem_ptr2
+# CHECK:         call ptr @memcpy(ptr %dst_for_elem, ptr %join_elem2, i64
+# CHECK:         %dst_after_elem = getelementptr i8, ptr %dst_for_elem, i64
+
+fn doJoin(xs: List<str>, sep: str) -> str:
+    return sep.join(xs)
+
+fn main():
+    ys: List<str> = ["a", "b", "c"]
+    s: str = ", "
+    x = doJoin(ys, s)
+    print(x)

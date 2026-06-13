@@ -92,12 +92,13 @@ llvm::Value *CodeGen::emitStrGetDataPtr(llvm::Value *strHeaderPtr) {
 
 llvm::Value *CodeGen::emitStringByteLen(llvm::Value *handle) {
     // The byte_len field lives STRING_BYTELEN_OFFSET (8) bytes before the
-    // string data pointer.  Emit: load i64, (handle - 8)
-    auto *bytelenPtr = builder_.CreateGEP(
+    // string data pointer.  Emit: load i64, (handle - 8) (#2096 — routed
+    // through emitGEP / emitLoad so all IR emission flows via ry_emit_*).
+    auto *bytelenPtr = emitGEP(
         i8Ty_, handle,
         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(STRING_BYTELEN_OFFSET))),
         "str_bytelen_ptr");
-    return builder_.CreateLoad(i64Ty_, bytelenPtr, "str_bytelen");
+    return emitLoad(i64Ty_, bytelenPtr, "str_bytelen");
 }
 
 llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,

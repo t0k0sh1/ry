@@ -212,6 +212,29 @@ impl EmitCtx {
         ValueRef(LLVMBuildSub(self.builder, lhs.0, rhs.0, name))
     }
 
+    // `mul lhs, rhs`. Added for #2096 (string-build op migration): str * n /
+    // join sep total / repeat byte_len * count all multiply two i64 values.
+    pub(crate) unsafe fn build_mul(
+        &mut self,
+        lhs: ValueRef,
+        rhs: ValueRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildMul(self.builder, lhs.0, rhs.0, name))
+    }
+
+    // `sdiv lhs, rhs` (signed). Added for #2096: emitStringRepeat's overflow
+    // bound `INT64_MAX / strLen` needs a signed divide; the divisor is guarded
+    // `strLen > 0` upstream so no division-by-zero path exists here.
+    pub(crate) unsafe fn build_sdiv(
+        &mut self,
+        lhs: ValueRef,
+        rhs: ValueRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildSDiv(self.builder, lhs.0, rhs.0, name))
+    }
+
     // `select cond, then_v, else_v`.
     pub(crate) unsafe fn build_select(
         &mut self,

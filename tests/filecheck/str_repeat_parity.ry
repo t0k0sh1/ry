@@ -1,0 +1,72 @@
+# FileCheck golden: str * int repeat IR (#2096 — emitStringRepeat migration
+# to the Rust emit cdylib). Pins the n>0 / strLen>0 / overflow guards, the
+# `INT64_MAX / strLen` divide, the `strLen * n` multiply, the PHI copy loop,
+# and the merge PHI so the migrated path stays bit-exact with the C++
+# baseline.
+#
+# Uses function args (non-constant operands) so CreateSDiv / CreateMul /
+# CreateICmp* / CreateAdd cannot constant-fold the guard scaffold away.
+# With literal "ab" * 3 the entire BB scaffold and PHI nodes never reach IR
+# and a botched port would pass the empty diff (#2092 coverage trap).
+#
+# [D] coverage gate補完: existing spec lacks `repeat` overflow coverage
+# because emitRuntimeError calls _Exit(1). This filecheck pins the
+# `would_overflow` icmp and the `.str_rep_overflow.arc` GlobalVariable as
+# a structural guarantee.
+#
+# CHECK: @.str_rep_overflow.arc = private unnamed_addr constant {{.*}} c"runtime error: str * count overflows\0A\00"
+#
+# CHECK-LABEL: define ptr @doRepeat(ptr %s, i64 %n)
+# CHECK:         %str_bytelen_ptr = getelementptr i8, ptr {{.*}}, i64 -8
+# CHECK:         %str_bytelen = load i64, ptr %str_bytelen_ptr
+# CHECK:         %n_pos = icmp sgt i64 {{.*}}, 0
+# CHECK:         br i1 %n_pos, label %str_rep.repeat, label %str_rep.empty
+#
+# CHECK:       str_rep.empty:
+# CHECK:         %empty_buf = call ptr @__ry_string_make_uninit(i64 0)
+# CHECK:         br label %str_rep.merge
+#
+# CHECK:       str_rep.repeat:
+# CHECK:         %slen_pos = icmp sgt i64 %str_bytelen, 0
+# CHECK:         br i1 %slen_pos, label %str_rep.ovf_check, label %str_rep.empty
+#
+# CHECK:       str_rep.merge:
+# CHECK:         %str_rep_result = phi ptr [ %empty_buf, %str_rep.empty ], [ %rep_buf, %str_rep.done ]
+# CHECK:         ret ptr %str_rep_result
+#
+# CHECK:       str_rep.ovf_check:
+# CHECK:         %max_n = sdiv i64 9223372036854775807, %str_bytelen
+# CHECK:         %would_overflow = icmp sgt i64 {{.*}}, %max_n
+# CHECK:         br i1 %would_overflow, label %str_rep.ovf_err, label %str_rep.alloc
+#
+# CHECK:       str_rep.alloc:
+# CHECK:         %total_len = mul i64 %str_bytelen, {{.*}}
+# CHECK:         %rep_buf = call ptr @__ry_string_make_uninit(i64 %total_len)
+# CHECK:         br label %str_rep.loop
+#
+# CHECK:       str_rep.ovf_err:
+# CHECK:         %stderr = load ptr, ptr @{{.*}}stderr{{.*}}
+# CHECK:         call i32 (ptr, ptr, ...) @fprintf(ptr %stderr,
+# CHECK:         %stdout = load ptr, ptr @{{.*}}stdout{{.*}}
+# CHECK:         call i32 @fflush(ptr %stdout)
+# CHECK:         call i32 @fflush(ptr %stderr)
+# CHECK:         call void @_Exit(i32 1)
+# CHECK:         unreachable
+#
+# CHECK:       str_rep.loop:
+# CHECK:         %i = phi i64 [ 0, %str_rep.alloc ], [ %i_next, %str_rep.loop ]
+# CHECK:         %offset = mul i64 %i, %str_bytelen
+# CHECK:         %dst = getelementptr i8, ptr %rep_buf, i64 %offset
+# CHECK:         call ptr @memcpy(ptr %dst, ptr {{.*}}, i64 %str_bytelen)
+# CHECK:         %i_next = add i64 %i, 1
+# CHECK:         %loop_cond = icmp slt i64 %i_next, {{.*}}
+# CHECK:         br i1 %loop_cond, label %str_rep.loop, label %str_rep.done
+
+fn doRepeat(s: str, n: int) -> str:
+    return s * n
+
+fn main():
+    p: str = "ab"
+    q: int = 3
+    x = doRepeat(p, q)
+    print(x)

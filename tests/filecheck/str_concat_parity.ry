@@ -1,0 +1,47 @@
+# FileCheck golden: str + str concat IR (#2096 — emitArithmeticOp string
+# branch migration to the Rust emit cdylib). Pins the StringHeader byte-len
+# reads, the overflow guard, the buffer allocation, the emitRuntimeError
+# scaffold (instruction order distinct from bounds_error per #2097), and the
+# two memcpys so the migrated path stays bit-exact with the C++ baseline.
+#
+# Uses function args (non-constant operands) so CreateAdd / CreateICmpSLT /
+# CreateCall / CreateGEP cannot constant-fold the concat scaffold away.
+# With literal "a" + "b" the entire BB scaffold never reaches IR and a
+# botched port would pass the empty diff (#2092 coverage trap).
+#
+# [D] coverage gate补完: existing spec lacks str+str overflow coverage
+# because emitRuntimeError calls _Exit(1) (cannot be triggered from a
+# runtime test). This filecheck pins the `cat_ovf` icmp and the
+# `.str_cat_overflow.arc` GlobalVariable as a structural guarantee.
+#
+# CHECK: @.str_cat_overflow.arc = private unnamed_addr constant {{.*}} c"runtime error: str + str overflows\0A\00"
+#
+# CHECK-LABEL: define ptr @doConcat(ptr %a, ptr %b)
+# CHECK:         %str_bytelen_ptr = getelementptr i8, ptr {{.*}}, i64 -8
+# CHECK:         %str_bytelen = load i64, ptr %str_bytelen_ptr
+# CHECK:         %str_bytelen_ptr5 = getelementptr i8, ptr {{.*}}, i64 -8
+# CHECK:         %str_bytelen6 = load i64, ptr %str_bytelen_ptr5
+# CHECK:         %concat_len = add i64 %str_bytelen, %str_bytelen6
+# CHECK:         %cat_ovf = icmp slt i64 %concat_len, %str_bytelen
+# CHECK:         br i1 %cat_ovf
+# CHECK:         %stderr = load ptr, ptr @{{.*}}stderr{{.*}}
+# CHECK:         call i32 (ptr, ptr, ...) @fprintf(ptr %stderr,
+# CHECK:         %stdout = load ptr, ptr @{{.*}}stdout{{.*}}
+# CHECK:         call i32 @fflush(ptr %stdout)
+# CHECK:         call i32 @fflush(ptr %stderr)
+# CHECK:         call void @_Exit(i32 1)
+# CHECK:         unreachable
+# CHECK:         %concat_buf = call ptr @__ry_string_make_uninit(i64 %concat_len)
+# CHECK:         call ptr @memcpy(ptr %concat_buf, ptr {{.*}}, i64 %str_bytelen)
+# CHECK:         %concat_dst = getelementptr i8, ptr %concat_buf, i64 %str_bytelen
+# CHECK:         call ptr @memcpy(ptr %concat_dst, ptr {{.*}}, i64 %str_bytelen6)
+# CHECK:         ret ptr %concat_buf
+
+fn doConcat(a: str, b: str) -> str:
+    return a + b
+
+fn main():
+    p: str = "hello"
+    q: str = "world"
+    x = doConcat(p, q)
+    print(x)

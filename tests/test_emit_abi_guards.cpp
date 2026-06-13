@@ -411,6 +411,23 @@ TEST_F(EmitAbiGuardTest, SelectNullResolvedOperandReturnsZero) {
 }
 
 // =============================================================================
+// #2096 — `mul` / `sdiv` share the binary primitive shape with #2072's
+// `add` / `sub`, so the resolve_value and name guards are covered by
+// `AddNullResolvedOperandReturnsZero` above (the representative-sample
+// principle in the #2072 comment). Each new entry gets a `nullptr ctx` smoke
+// test so a future regression that removes `checked_cx` from one extern but
+// not the other still trips.
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, MulNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_mul(nullptr, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, SDivNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_sdiv(nullptr, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
+}
+
+// =============================================================================
 // #2092 — numeric reduce builtins (sum / min / max). Four value-returning
 // entries; each gets the same three-guard contract: ctx == NULL, an operand id
 // that resolves to None, and a NULL element-type handle. All return the sentinel
