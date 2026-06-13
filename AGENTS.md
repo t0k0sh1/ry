@@ -199,6 +199,74 @@ When explaining a CI failure or test failure, Claude Code MUST use one of the fo
 - This rule applies only to **new writing (future additions to `KNOWLEDGE.md` / commit messages / PR descriptions / Claude Code responses / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.)**.
 - **MUST**: **reintroducing `flake` as a conclusion by quoting or referencing historical flake text** is also prohibited (it is the same accident path as CI #2578). When describing a symptom that hits historical text, convert it into one of (a)/(b)/(c) before writing.
 
+## Communication discipline on PR review and verification failures
+
+PR #2122 のレビュー対応 / self-verification 中、Claude Code は CI 失敗報告に防衛的前置きを置き、レビュー指摘に対称性論証だけで拒否する草稿を生成する 2 つの語り口問題を示した。それぞれ #2123 / #2125 で禁止ルール化されたものを、以下に統合する。`## Prohibited terminology: flake / flaky` セクションと同じく「Claude 自身の出力 framing」の禁止クラスであり、状況発火 (失敗報告 / レビュー応答) でセルフチェックする。
+
+### Ban: defensive prefaces on CI / verification failure reports (#2123)
+
+CI / sanitizer / fuzzer / static-analysis / pre-commit-checklist の失敗を報告するとき、または PR レビュー reply / ユーザー直接指摘への応答を書くとき、「私の PR とは無関係です」「これは既存問題です」「自分の変更が原因ではありません」のような防衛的前置きで書き出してはならない。ユーザーが知りたいのは失敗の原因と次の手であり、責任不在の主張ではない。前置きは情報価値を生まず、責任回避としても読まれ得る。
+
+**Prohibition rule (no exceptions)**
+
+- **MUST NOT**: 失敗報告 / レビュー応答の冒頭に、責任不在を主張する防衛的前置きを置く。「PR とは無関係」「既存問題」「私の変更が原因ではない」「unrelated to my changes」その他同等表現を、ファクトに先行して書くことの一切を含む。
+- **Scope**: CI / sanitizer / fuzzer / static-analysis / pre-commit-checklist のあらゆる失敗報告、PR レビュー reply、CodeRabbit 指摘への応答、およびユーザーから直接受けた指摘への応答すべて。Subagent (例: `.claude/agents/pr-review-responder.md` の生成する draft) も same agent context が main に戻った時点で post 直前に再 verify される (本セクションは AGENTS.md に always-loaded で 2 段防御)。
+
+**Required wording**
+
+失敗報告 / 応答は次の順に書く:
+
+1. 観測された症状 (どのジョブで何が起きたか) を端的に記述する。
+2. 再現条件 (発火する状況、入力、環境) を述べる。
+3. 必要なら切り分け証拠 (該当ログの抜粋、関連 issue 番号、KNOWLEDGE.md エントリへのリンク) を添える。
+4. PR との関係性を伝える必要があれば、上記の証拠の **後段に** ファクトの一部として書く。前置きとしての枠付けは禁止。
+
+例 (省略記号 `...` を含むパス断片は fenced block 内に置いて prompt-refs lint のエスケープを活用):
+
+```
+✗ 「CI test ジョブの失敗は私の PR とは無関係です。原因は crates.io への接続失敗で …」
+
+✓ 「test ジョブが失敗。原因: CI runner から index.crates.io:443 への
+   接続失敗で cargo 依存ダウンロード不能。PR の diff 範囲 (tests/spec/ + codegen + docs)
+   には Cargo.toml / crates/emit/ の変更なし。」
+```
+
+### Ban: symmetry-only rationale for rejecting review feedback (#2125)
+
+レビュー指摘 (CodeRabbit / 人間レビュワー) を拒否するとき、「他がそうなっていない」「既存実装と非対称になる」「`xs[i]?` / Map.get と一貫しない」のような対称性論証 **だけ** を理由にしてはならない。指摘の真意は「現状の挙動がユーザーから見て妥当か」「型安全性 / 意図の明示性は保たれるか」といった本質的な観点であり、対称性論証は「現状を維持する」結論を補強するだけでその本質的な観点に答えていない。
+
+**Prohibition rule (no exceptions)**
+
+- **MUST NOT**: 修正を拒否する根拠として「対称性が崩れる」「他の API もそうなっていない」「既存と一貫しない」を単独使用する。
+- **Scope**: CodeRabbit からの auto-review コメント、人間レビュワーの comment、ユーザー直接フィードバックすべて。Subagent (`.claude/agents/pr-review-responder.md`) が生成する draft も同様で、post 直前に main agent が再 verify する。
+
+**Required reasoning**
+
+拒否する前に、指摘の真意 (ユーザー視点の妥当性 / 型安全性 / ergonomics / 設計上の不変条件) を分析する。拒否を残す場合は次のいずれかを根拠として書く:
+
+- 設計上の不変条件 (API 契約 / type contract / メモリレイアウト等) に反する。
+- パフォーマンスや別の load-bearing な要件と衝突する。
+- 修正の意味が論点で別 Issue 化したい (scope 切り分け)。指摘の趣旨を別 Issue として記録して結論を未来へ送る。
+- 提案された動作と現状の動作のどちらがユーザー視点で妥当か比較した結論として現状維持を選ぶ理由を述べる。
+
+**When symmetry IS a valid factor**
+
+対称性は **scope 拡大の根拠** としては valid: 「ここだけ直すと非対称になるので、同じ修正を ABC にも適用する PR にしたい」(両方修正の建設的代案)。修正を **拒否する根拠** としては不十分: 「他がそうなっていない」だけで拒否することは指摘の真意を分析していないことと等価。
+
+例:
+
+```
+✗ 「append() / insert() は wrap しているが、get() も wrap すると
+   xs[i]? / Map.get と非対称になるので採用しない」
+
+✓ 「get(list, index, default) の default: T は OOB 時の戻り値の型を T に確定する役割。
+   List<any> で 0: int を渡す場合、Int=0 interpretation を caller が明示するか
+   implicit wrap で commit するかは別 issue で議論したい」(意味付け + 別 issue 提案)
+
+✓ 「対称性の指摘は valid。ここだけ直すと非対称なので、ABC にも同じ修正を適用する
+   PR にしたい」(対称性込みで両方修正する建設的代案)
+```
+
 ## Git branch policy
 
 - Feature branches are created from `main`, and PRs target `main`. Direct commits to `main` are prohibited.
@@ -258,6 +326,8 @@ These priority rules govern **only "how to handle a side finding"** — they do 
 ### Accumulating lessons from PR reviews
 
 For comments received in PR review that are likely to recur in other PRs, append: to the corresponding `.claude/rules/<name>.md` if it fits a path-scope, or to `.claude/skills/pr-review-recurring-patterns/SKILL.md` if it is cross-cutting. Append autonomously and push it together with the review-response commit. Single local comments do not require an addition.
+
+Self-output tone rules (defensive prefaces / symmetry-only rejection) are NOT covered by this routing — they live in the dedicated `## Communication discipline on PR review and verification failures` section above (#2123 / #2125).
 
 ## Pre-completion checklist
 
