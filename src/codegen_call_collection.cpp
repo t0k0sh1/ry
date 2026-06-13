@@ -1002,8 +1002,8 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
     };
 
     llvm::Value *index = emitExpr(*e.args[1]);
-    if (index->getType() == i1Ty_)
-        index = emitZExt(index, i64Ty_, "getl_idx_ext");
+    if (index->getType() != i64Ty_)
+        codegenError("get() index must be int");
 
     ListFields lf = loadListHeader(recv, "getl");
     llvm::Value *wrapped = emitNegativeIndexWrap(index, lf.len, "getl");

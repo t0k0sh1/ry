@@ -1056,6 +1056,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (!elemTy)
         codegenError("cannot determine list element type for index access");
 
+    // #2124: reject non-int indices for List (covers both xs[i] and xs[i]?;
+    // sibling guard in emitCollOp_get rejects bool/float on the get() side).
+    // Without this, `xs[true]` was silently i1→i64 zext'd; `xs[1.5]` would
+    // reach emitNegativeIndexWrap / lowerBoundsCheck / GEP with f64 and
+    // either misbehave or fail LLVM verify.
+    if (index->getType() != i64Ty_)
+        codegenError("list index must be int");
+
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
@@ -1116,8 +1124,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         // data-ptr struct GEP / load, element GEP / load cross via generic
         // primitives. emitNegativeIndexWrap stays C++-side (index-wrap
         // capability, follow-on).
-        if (index->getType() == i1Ty_)
-            index = emitZExt(index, i64Ty_, "tryidx_ext");
+        // #2124: i1 zext removed — the strict `index->getType() != i64Ty_`
+        // guard at the List branch entry rejects bool/float upstream.
         llvm::Value *wrapped = emitNegativeIndexWrap(index, length, "tryidx");
         llvm::Value *zero = emitConstInt(i64Ty_, 0);
         llvm::Value *negCheck = emitICmpSLT(wrapped, zero, "tryidx_neg");

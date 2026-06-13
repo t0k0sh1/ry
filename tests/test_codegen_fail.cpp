@@ -566,6 +566,59 @@ TEST_F(CodeGenTest, ListInsertAnyAcceptsCollectionType) {
         "insert(xs, 0, [1, 2, 3])\n"));
 }
 
+// #2124: List index codegen must reject non-int indices at compile time.
+// Previously `bool` was silently zero-extended to `i64` (so `xs.get(true)`
+// returned `Some(xs[1])`) and `float` would reach `emitNegativeIndexWrap`
+// with the wrong LLVM type. Mirrors the existing `insert() index must be int`
+// / `removeAt() index must be int` pattern at codegen_call_collection.cpp.
+TEST_F(CodeGenTest, ListGetRejectsBoolIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(get(xs, true))\n",
+        "get() index must be int");
+}
+
+TEST_F(CodeGenTest, ListGetRejectsFloatIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(get(xs, 1.5))\n",
+        "get() index must be int");
+}
+
+// The 3-arg overload `get(list, index, default)` shares the same handler
+// in codegen_call_collection.cpp (L1004), so the same guard fires before
+// the args.size()==3 branch — covered for both 2-arg and 3-arg forms here.
+TEST_F(CodeGenTest, ListGetWithDefaultRejectsBoolIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(get(xs, true, 0))\n",
+        "get() index must be int");
+}
+
+// #2124: same enforcement on the indexer syntax `xs[i]` (direct) and `xs[i]?`
+// (try mode). Single guard at the top of the IndexExpr List branch in
+// codegen_expr_literal.cpp covers both paths.
+TEST_F(CodeGenTest, ListIndexRejectsBoolIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(xs[true])\n",
+        "list index must be int");
+}
+
+TEST_F(CodeGenTest, ListIndexTryRejectsBoolIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(xs[true]?)\n",
+        "list index must be int");
+}
+
+TEST_F(CodeGenTest, ListIndexRejectsFloatIndex) {
+    expectCompileError(
+        "xs: List<int> = [10, 20, 30]\n"
+        "print(xs[1.5])\n",
+        "list index must be int");
+}
+
 // #1698: collection unwrap of `any` inside generic monomorphization with a
 // non-`any` element type produces silent corruption because the `any` data
 // slot is 16 bytes per element while the unwrap target strides 8 bytes per
