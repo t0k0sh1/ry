@@ -1,0 +1,70 @@
+# FileCheck golden: checked FP→int cast (#2097 — emitCheckedFPToInt migration
+# to the Rust emit cdylib). Pins the three IR shapes — signed (FPToSI),
+# unsigned (FPToUI), and the f32 source path that needs an FPExt to f64
+# before the range check — so the migrated `ry_emit_checked_fp_to_int` stays
+# bit-exact with the C++ baseline.
+#
+# Uses function args (non-constant operands) so LLVMBuildFCmp does NOT
+# constant-fold the range comparisons away. With literal operands the lo /
+# hi / invalid / .fail / .ok scaffold never reaches IR and a botched port
+# would pass the empty diff (#2092 coverage trap).
+#
+# emitRuntimeError instruction order (stderr load → fprintf → stdout load →
+# fflush stdout → fflush stderr → _Exit → unreachable) is distinct from
+# bounds_error's (stderr / stdout adjacent loads before fprintf); a stray
+# bounds_error reuse would reorder stdout's load and break the diff
+# (#2092 load_list_header lesson).
+#
+# --- signed int target (FPToSI, no FPExt: source is already f64) ---
+# CHECK-LABEL: define i64 @signedCast(double %x)
+# CHECK:         %cast_i_lo = fcmp ult double {{.*}}, 0xC3E0000000000000
+# CHECK:         %cast_i_hi = fcmp uge double {{.*}}, 0x43E0000000000000
+# CHECK:         %cast_i_invalid = or i1 %cast_i_lo, %cast_i_hi
+# CHECK:         br i1 %cast_i_invalid, label %cast_i.fail, label %cast_i.ok
+# CHECK:       cast_i.fail:
+# CHECK:         %stderr = load ptr, ptr @{{.*}}stderr{{.*}}
+# CHECK:         call i32 (ptr, ptr, ...) @fprintf(ptr %stderr,
+# CHECK:         %stdout = load ptr, ptr @{{.*}}stdout{{.*}}
+# CHECK:         call i32 @fflush(ptr %stdout)
+# CHECK:         call i32 @fflush(ptr %stderr)
+# CHECK:         call void @_Exit(i32 1)
+# CHECK:         unreachable
+# CHECK:       cast_i.ok:
+# CHECK:         %cast_i = fptosi double {{.*}} to i64
+#
+# --- unsigned u32 target (FPToUI) — exercises the half-open [0, 2^W) lo ---
+# CHECK-LABEL: define i32 @unsignedCast(double %x)
+# CHECK:         %cast_u32_lo = fcmp ult double {{.*}}, 0.000000e+00
+# CHECK:         %cast_u32_hi = fcmp uge double {{.*}}, 0x41F0000000000000
+# CHECK:         %cast_u32_invalid = or i1 %cast_u32_lo, %cast_u32_hi
+# CHECK:         br i1 %cast_u32_invalid, label %cast_u32.fail, label %cast_u32.ok
+# CHECK:       cast_u32.fail:
+# CHECK:       cast_u32.ok:
+# CHECK:         %cast_u32 = fptoui double {{.*}} to i32
+#
+# --- f32 source: FPExt to f64 before the range check (cast_i_f64ext) ---
+# CHECK-LABEL: define i64 @f32SignedCast(float %x)
+# CHECK:         %cast_i_f64ext = fpext float {{.*}} to double
+# CHECK:         %cast_i_lo = fcmp ult double %cast_i_f64ext,
+# CHECK:         %cast_i_hi = fcmp uge double %cast_i_f64ext,
+# CHECK:         %cast_i_invalid = or i1 %cast_i_lo, %cast_i_hi
+# CHECK:         br i1 %cast_i_invalid, label %cast_i.fail, label %cast_i.ok
+# CHECK:       cast_i.fail:
+# CHECK:       cast_i.ok:
+# CHECK:         %cast_i = fptosi float {{.*}} to i64
+
+fn signedCast(x: float) -> int:
+    return x as int
+
+fn unsignedCast(x: float) -> u32:
+    return x as u32
+
+fn f32SignedCast(x: f32) -> int:
+    return x as int
+
+a = signedCast(3.14)
+b = unsignedCast(3.14)
+c = f32SignedCast(3.14f32)
+print(a)
+print(b)
+print(c)

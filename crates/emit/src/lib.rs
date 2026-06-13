@@ -10,7 +10,7 @@
 //   - every api.h boundary symbol is exported, plus the test-only
 //     `ry_emit_test_header_layout` introspection symbol (#2071; #2072 added the
 //     11 scalar/memory primitives — alloca/load/store/gep/icmp/and/or/add/sub/
-//     select/const_int — so 39 + 1 today),
+//     select/const_int — and #2097 added `checked_fp_to_int`, so 40 + 1 today),
 //   - the FFI types compile against api.h (sizeof / repr alignment),
 //   - corrosion-rs is wired correctly into the CMake build,
 //   - `-undefined dynamic_lookup` link arg flows through on macOS,
@@ -83,6 +83,7 @@ mod abi;
 mod any;
 mod arc;
 mod bounds;
+mod cast;
 mod collection;
 mod control_flow;
 mod core;

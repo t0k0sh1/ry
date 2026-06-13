@@ -1047,6 +1047,50 @@ RyValueId ry_emit_intrinsic_call(RyEmitCtx *ctx, uint32_t intrinsic_id,
                                  const RyValueId *arg_ids, uint32_t arg_count,
                                  const char *name);
 
+// ===========================================================================
+// #2097 — checked FP→int conversion ([B] = (ii) boundary move).
+//
+// The shared helper that every `int(<float>)` / `<float> as <int>` cast
+// emits — `emitCheckedFPToInt`. The 9 int-target cast cases in
+// `src/codegen_expr_cast.cpp` plus the int branch of
+// `src/codegen_call_user.cpp::coerceToLowLevelType` all delegate to this
+// one helper (10 callsites), so migrating the helper pulls every callsite
+// onto the cdylib path without touching the call sites themselves.
+//
+// The op shape is "BB scaffold + range check + runtime-error exit +
+// happy-path cast" — same shape as `ry_emit_bounds_check` (#1996). The
+// engine emits FPExt(f32→f64) if needed, an unordered `FCmpULT(lo) |
+// FCmpUGE(hi)` (NaN / ±inf / out-of-range all hit failBB with one OR),
+// `CondBr` to a fresh failBB / okBB pair, then `emitRuntimeError` in
+// failBB (terminator) and FPToSI / FPToUI on the ORIGINAL value in okBB.
+//
+// `target_width` is the destination integer bit width (8/16/32/64);
+// `is_signed != 0` selects FPToSI vs FPToUI and the `[-2^(W-1), 2^(W-1))`
+// range (vs `[0, 2^W)` for unsigned). `bb_prefix` names the generated
+// blocks and the SSA values inside them (`<prefix>_lo` / `_hi` /
+// `_invalid` / `_f64ext` and `<prefix>.fail` / `.ok`). `msg` is the
+// fully-formed `runtime error: ...\n` format string the C++ caller built
+// from the typeName / siteLabel; `global_name` is the unique global-name
+// hint with the CodeGen-owned `fptoi_err_counter_++` baked in. Each
+// invocation reuses the existing per-msg cached global; `global_name` is
+// a hint only.
+//
+// The fprintf call uses an inline variadic FunctionType (`isVarArg=1`)
+// rather than `ry_emit_runtime_call` (#2100 variadic carve-out). The
+// instruction order of the runtime-error exit matches C++
+// `emitRuntimeError` byte-for-byte (stderr load → fprintf → stdout load
+// → fflush stdout → fflush stderr → _Exit → unreachable) — distinct from
+// `ry_emit_bounds_error`'s shape, where the loads are adjacent (#2092
+// `load_list_header` instruction-order lesson).
+//
+// Precondition: the builder must be positioned within a function before
+// this call (BBs are created inside it).
+// ===========================================================================
+RyValueId ry_emit_checked_fp_to_int(RyEmitCtx *ctx, RyValueId val_id,
+                                    int target_width, int is_signed,
+                                    const char *bb_prefix, const char *msg,
+                                    const char *global_name);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

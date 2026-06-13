@@ -27,6 +27,13 @@ pub(crate) struct EmitCtx {
     // Dedup cache for ry_emit_bounds_error / any-error fmt-string globals
     // (keyed by message bytes).
     pub(crate) bounds_msg_cache: HashMap<Vec<u8>, LLVMValueRef>,
+    // Dedup cache for `cachedGlobalString`-shaped (StringHeader-prefixed)
+    // fmt-string globals used by `emitRuntimeError`-style exits (#2097: the
+    // checked FP→int sequence). Keyed by message bytes, mirroring the C++
+    // `global_string_cache_`. The cached value is the ConstantExpr GEP into
+    // the data payload (a `ptr` to the first byte of the `[N+1 x i8]` slot),
+    // ready to be passed straight to a fprintf call.
+    pub(crate) arc_msg_cache: HashMap<Vec<u8>, LLVMValueRef>,
 }
 
 impl EmitCtx {
@@ -44,6 +51,7 @@ impl EmitCtx {
             context,
             values: vec![std::ptr::null_mut()],
             bounds_msg_cache: HashMap::new(),
+            arc_msg_cache: HashMap::new(),
         }
     }
 }
@@ -291,6 +299,64 @@ pub(crate) unsafe fn get_or_create_msg_global(
     LLVMSetAlignment(gv, 1);
     c.bounds_msg_cache.insert(msg.to_vec(), gv);
     gv
+}
+
+// `cachedGlobalString`-shaped global (`src/codegen.cpp::buildArcGlobal`): a
+// StringHeader-prefixed `{ i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8]
+// data }` struct whose data slot holds the message bytes (NUL-terminated). The
+// returned ConstantExpr is the in-bounds GEP `wrapTy, gv, [0, 3, 0]` — a `ptr`
+// to the first byte of the payload, the shape the C++ side passes straight to
+// `fprintf`. Used by `emitRuntimeError`-style exits whose fmt strings cross
+// runtime symbols and must match the str-handle ABI (#2097 — checked FP→int).
+// Distinct from `get_or_create_msg_global`, which builds a plain `[N+1 x i8]`
+// global used by `ry_emit_bounds_error`.
+//
+// Dedup is keyed on message bytes — repeated calls with the same content
+// share one global, mirroring the C++ `global_string_cache_`. `name` is the
+// caller-supplied global-name hint; this helper appends `.arc` to it (matching
+// `buildArcGlobal`'s `name + ".arc"`).
+pub(crate) unsafe fn get_or_create_arc_msg_global(
+    c: &mut EmitCtx,
+    msg: &[u8],
+    name: *const c_char,
+) -> LLVMValueRef {
+    if let Some(&gv) = c.arc_msg_cache.get(msg) {
+        return gv;
+    }
+    let context = c.context;
+    let i64_ty = i64_type(context);
+    let i32_ty = i32_type(context);
+    // ConstantDataArray::getString equivalent — appends a trailing NUL.
+    let str_data = LLVMConstStringInContext2(context, msg.as_ptr() as *const c_char, msg.len(), 0);
+    let str_data_ty = LLVMTypeOf(str_data);
+    let mut field_tys = [i64_ty, i64_ty, i64_ty, str_data_ty];
+    let wrap_ty = LLVMStructTypeInContext(context, field_tys.as_mut_ptr(), 4, 0);
+    // ARC_IMMORTAL = i64::MAX — retain / release are no-ops on this sentinel.
+    let arc_immortal = LLVMConstInt(i64_ty, i64::MAX as u64, 0);
+    let zero_i64 = LLVMConstInt(i64_ty, 0, 0);
+    let byte_len = LLVMConstInt(i64_ty, msg.len() as u64, 0);
+    let mut elements = [arc_immortal, zero_i64, byte_len, str_data];
+    let init_val = LLVMConstNamedStruct(wrap_ty, elements.as_mut_ptr(), 4);
+    // Append ".arc" to the global name (matches buildArcGlobal's `name +
+    // ".arc"`).
+    let name_bytes = cstr_bytes(name);
+    let arc_name = cname_pfx(name_bytes, b".arc");
+    let gv = LLVMAddGlobal(c.module, wrap_ty, arc_name.as_ptr());
+    LLVMSetLinkage(gv, LLVMLinkage::LLVMPrivateLinkage);
+    LLVMSetInitializer(gv, init_val);
+    LLVMSetGlobalConstant(gv, 1);
+    LLVMSetUnnamedAddress(gv, LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
+    LLVMSetAlignment(gv, 8);
+    // Constant in-bounds GEP `wrapTy, gv, [i64 0, i32 3, i64 0]` — the i8
+    // payload pointer.
+    let mut indices = [
+        LLVMConstInt(i64_ty, 0, 0),
+        LLVMConstInt(i32_ty, 3, 0),
+        LLVMConstInt(i64_ty, 0, 0),
+    ];
+    let gs = LLVMConstInBoundsGEP2(wrap_ty, gv, indices.as_mut_ptr(), 3);
+    c.arc_msg_cache.insert(msg.to_vec(), gs);
+    gs
 }
 
 // ARC live-count counter address (mirrors the extern in src/codegen_arc.cpp).

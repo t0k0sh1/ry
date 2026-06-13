@@ -950,4 +950,49 @@ TEST_F(EmitAbiGuardTest, IntrinsicCallUnresolvableArgReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2097 — checked FP→int conversion guard (emitCheckedFPToInt migration). Three
+// reachable cells through the supported boundary: ctx-NULL, resolve_value-None
+// on val_id, and the target_width == 0 reject (a zero bit-width has no valid
+// LLVMIntType, so the engine guards before any FCmp / BB emit). Happy path is
+// covered by tests/filecheck/cast_fp_to_int.ry's signed / unsigned / f32 source
+// markers.
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, CheckedFpToIntNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_checked_fp_to_int(nullptr, /*val_id=*/0,
+                                         /*target_width=*/64, /*is_signed=*/1,
+                                         /*bb_prefix=*/nullptr, /*msg=*/nullptr,
+                                         /*global_name=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, CheckedFpToIntUnresolvableValReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // val_id == 0 is the sentinel; resolve_value returns None and the engine
+    // rejects before any IR emission.
+    EXPECT_EQ(ry_emit_checked_fp_to_int(ctx, /*val_id=*/0,
+                                         /*target_width=*/64, /*is_signed=*/1,
+                                         /*bb_prefix=*/nullptr, /*msg=*/nullptr,
+                                         /*global_name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CheckedFpToIntZeroWidthReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // Intern a real f64 constant so val_id resolves non-NULL; isolate the
+    // target_width == 0 guard (which sits AFTER resolve_value).
+    auto *cf = llvm::ConstantFP::get(llvm::Type::getDoubleTy(llctx_), 1.0);
+    RyValueId valId = ry_emit_intern(ctx, asRyValue(cf));
+    EXPECT_EQ(ry_emit_checked_fp_to_int(ctx, valId,
+                                         /*target_width=*/0, /*is_signed=*/1,
+                                         /*bb_prefix=*/nullptr, /*msg=*/nullptr,
+                                         /*global_name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace
