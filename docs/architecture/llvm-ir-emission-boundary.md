@@ -420,6 +420,29 @@ The three string-build ops `str + str` concat (`emitArithmeticOp` "+" string bra
 - **Boundary input-validation.** The new `ry_emit_mul` / `ry_emit_sdiv` entries share the binary primitive shape with #2072's `ry_emit_add` / `ry_emit_sub`, so the resolve_value + name-NUL guards are covered by `AddNullResolvedOperandReturnsZero` (representative-sample principle from #2072). Each new entry gets a `nullptr ctx` smoke test (`MulNullCtxReturnsZero` / `SDivNullCtxReturnsZero` in `tests/test_emit_abi_guards.cpp`) so a future regression that removes `checked_cx` from one extern but not the other still trips. `scripts/check-emit-abi-no-ir.sh` stays clean (engine-only `LLVMBuild*`, abi shell never touches them).
 - **Settle ≠ unlock.** #2096 settles the string-build op cluster (3 functions + `emitStringByteLen`); the remaining `builder_.Create*` residue in `src/codegen_call_string.cpp` (e.g. `emitStrOp_split`, `emitStrOp_chars`, `emitStrOp_replace`) and other string-mutation paths stay C++-side, available to the follow-on sweep under the same primitive vocabulary. Iterator-fold cases that need `Function::Create` (#2098) and the interpolation path that needs `tostring` (#2100) are independent unlock paths and not gated by this batch.
 
+### Composite / primitive sub-layer split (#2109)
+
+After #2069 closed the `abi → core` story, the `core` umbrella still held three different kinds of responsibility: layer-neutral state and pure-data tables (`EmitCtx`, handle wrappers, enums, layout constants, `header_fields`), Ry-semantic combined emission (ARC counter delta, list-header load, inline ARC alloc, the StringHeader-prefixed `.arc` msg global), and LLVM-1:1 primitive emission (libc emitters, type constructors, name builders, `get_or_create_msg_global`). The boundary between the last two was a convention, not a structural invariant.
+
+Issue #2109 captures that boundary as a directory split. `crates/emit/src/core.rs` is dissolved; the `core` umbrella becomes three sub-modules with their own CI gates:
+
+- `context.rs` — `EmitCtx`, handle wrappers, enum selectors, layout constants, `HdrField` / `HeaderKind` / `header_fields`. IR-free (only `llvm_sys::prelude` for handle type aliases); the IR-gen lint script `scripts/check-emit-abi-no-ir.sh` covers it implicitly.
+- `primitive/**.rs` — LLVM 1:1 emission with no Ry layout knowledge: scalar / memory ops, type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, inline runtime-error, function creation, indirect call, intrinsic call, control flow, generic runtime calls.
+- `composite/**.rs` — Ry-semantic combined emission: ARC, bounds, cast, collection, cow, any, option, result, reduce, and shared header struct construction.
+
+`abi → composite → primitive → context` is the dependency direction; `abi → primitive` and `abi → context` are permitted as transitional shortcuts (the abi shell sometimes calls primitive entries directly). `context` sits below every sibling layer and imports from none of them. Two new lint gates back the layering:
+
+| Gate | Enforces |
+|---|---|
+| `scripts/check-emit-composite-no-primitive.sh` | `primitive ⇏ composite` and `context ⇏ {abi, primitive, composite}` by grepping forbidden `use crate::...` paths. |
+| `scripts/check-emit-llvm-ir-gen-concentration.sh` | composite files that call `llvm_sys::core` / `LLVMBuild*` directly are restricted to an explicit ALLOWLIST. The verbatim-move #2109 freezes the current ten files; new composite files must express their op via primitive methods (e.g. `self.build_load(...)`). |
+
+Known **blind spot** of the first gate: both `composite` and `primitive` `impl` methods on the same `EmitCtx`, so `self.composite_method()` dispatch is invisible to import-path inspection. The future physical crate split (#2023) turns this into a Cargo-enforced constraint; until then, the gate covers the practical risk (accidental `use crate::composite::*` paths added during refactors).
+
+The `crates/emit/src/abi/` layer is **unchanged** by #2109 — `abi.rs` and `abi/**.rs` only have their import paths rewritten from `crate::core::*` to `crate::context::*` (and from `crate::{any,cow,result}::*` to `crate::composite::{any,cow,result}::*` where applicable). The `check-emit-abi-no-ir.sh` regression bar continues to hold.
+
+Composite files that still depend on `llvm_sys::core` are listed in the layering plan's transitional carve-out table (see [Codegen Layering Plan](codegen-layering-plan.md) §"Composite and primitive emission sub-layers (#2109)"). Each is a migration target for a follow-on issue; the gate fails closed for any new composite addition outside the allowlist.
+
 ## Distribution packaging (#2005)
 
 The mandatory shared `libLLVM` (above) made the release binary non-self-contained: `release.yml` packages `build/ry` directly, so the shipped binary carried a build-machine-absolute reference to `libLLVM.dylib` / `libLLVM.so`. The first tag push after the #1993 cutover would therefore have published a binary that fails to start wherever that LLVM is absent (`dyld: Library not loaded` on macOS / `libLLVM.so: not found` on Linux). #2005 restores self-containment without changing the tarball-based distribution format:

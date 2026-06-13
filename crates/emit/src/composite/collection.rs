@@ -15,7 +15,12 @@ use llvm_sys::prelude::{LLVMBuilderRef, LLVMContextRef, LLVMModuleRef, LLVMTypeR
 use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::{LLVMIntPredicate, LLVMRealPredicate};
 
-use crate::core::*;
+use crate::composite::arc::emit_arc_counter_delta;
+use crate::composite::header::{emit_list_grow, load_list_header};
+use crate::context::*;
+use crate::primitive::libc::{emit_malloc, emit_memcpy, emit_memmove};
+use crate::primitive::module::get_or_insert_function;
+use crate::primitive::types::{i32_type, i64_type, ptr_type, void_type};
 
 impl EmitCtx {
     pub(crate) unsafe fn collection_append(

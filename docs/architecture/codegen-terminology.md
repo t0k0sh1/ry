@@ -14,8 +14,10 @@ The codegen stack is the `ry::codegen::*` namespace in C++ plus the Rust crate `
 | **lowering** | Translates Ry semantics into **lowered IR** ops. Owns the per-op semantic decisions (ARC retain/release, metadata, element sizes). | `src/codegen_lowering_*.cpp`, `ry::codegen::lowering` |
 | **lowered IR** | The op vocabulary — plain-data structs naming *what* should happen, not *how* to express it in LLVM. | `include/ry/codegen/lowered_*.hpp`, `ry::codegen::lowered::XxxOp` |
 | **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | `src/codegen_emission_*.cpp`, `ry::codegen::emission`, Rust crate `emit` |
+| **composite emission** | Emission code that encodes a Ry ABI / layout decision — ARC retain/release, bounds check, checked FP→int, Option / Result construction, Any wrap/unwrap, collection mutations, CoW ensure-unique, reduce, and shared header struct construction. Expressed as a fixed LLVM-instruction sequence keyed on the lowered op (#2109). | `crates/emit/src/composite/**.rs` |
+| **primitive emission** | Emission code that is LLVM 1:1 with no Ry-layout knowledge — type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, the inline runtime-error exit, scalar / memory ops, function creation / indirect call / intrinsic call, control flow, and generic `__ry_*` runtime calls (#2109). | `crates/emit/src/primitive/**.rs` |
 
-The full op list lives in [Codegen Layering Plan](codegen-layering-plan.md) §"Lowered IR vocabulary". Use the noun **lowered IR** (the data) and **lowered op** (one struct); retire the floating phrase "N-op vocabulary" — the op count changes over time.
+The full op list lives in [Codegen Layering Plan](codegen-layering-plan.md) §"Lowered IR vocabulary"; the composite / primitive split inside the `emit` crate is documented in §"Composite and primitive emission sub-layers (#2109)". Use the noun **lowered IR** (the data) and **lowered op** (one struct); retire the floating phrase "N-op vocabulary" — the op count changes over time.
 
 ## The two boundaries
 

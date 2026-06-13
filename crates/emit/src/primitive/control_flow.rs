@@ -1,14 +1,13 @@
-//! Control-flow IR generation (core-role: an `impl EmitCtx` over the core
-//! engine only, so it is abi-independent and the `core⇏abi` invariant covers
-//! this module). Basic-block creation, conditional / unconditional branches,
-//! and PHI nodes. The C++ path enters through the `abi::control_flow` externs,
-//! which resolve u32 ids / translate opaque handles and intern any result.
+//! Control-flow IR generation. Basic-block creation, conditional /
+//! unconditional branches, PHI nodes, switches, and `ret`. The C++ path enters
+//! through the `abi::control_flow` externs, which resolve u32 ids / translate
+//! opaque handles and intern any result.
 
 use std::ffi::c_char;
 
 use llvm_sys::core::*;
 
-use crate::core::*;
+use crate::context::{BasicBlockRef, EmitCtx, FunctionRef, TypeRef, ValueRef};
 
 impl EmitCtx {
     // Append a fresh basic block to `func`. `name` is the already-NUL-defaulted

@@ -2,7 +2,7 @@
 //! value id / translate the opaque type handle, call the `core` `EmitCtx`
 //! method, and intern the produced aggregate (intern / resolve are abi-side).
 
-use crate::core::TypeRef;
+use crate::context::TypeRef;
 
 use super::*;
 

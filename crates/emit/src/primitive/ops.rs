@@ -1,27 +1,26 @@
-//! Scalar / memory IR primitives (core-role: an `impl EmitCtx` over the core
-//! engine only, so it is abi-independent and the `core⇏abi` invariant covers
-//! this module). Each method is a 1:1 wrapper over a single `LLVMBuild*` (or
-//! `LLVMConstInt`) — alloca / load / store / gep / icmp / and / or / add / sub /
-//! select / const-int. Added for #2072 ([C] = (ii) boundary move): the string
-//! byte-ops (toUpper / toLower / trim*) emit these primitives inline in C++ via
-//! `builder_.Create*` today; under (ii) the C++ side calls the matching
-//! `ry_emit_*` boundary entry (abi/primitive.rs) so all `IRBuilder<>::Create*`
-//! moves into the emission layer. The boundary is fine-grained by necessity —
-//! these primitives are semantically trivial (the lowering side has nothing to
-//! decide), which is exactly the case §"Explicit non-inclusion" in
-//! `docs/architecture/codegen-layering-plan.md` reserved for C++ carve-out under
-//! the (i) hypothesis; (ii) supersedes that for the string-op pilot.
+//! Scalar / memory IR primitives. Each method is a 1:1 wrapper over a single
+//! `LLVMBuild*` (or `LLVMConstInt`) — alloca / load / store / gep / icmp / and /
+//! or / add / sub / select / const-int. Added for #2072 ([C] = (ii) boundary
+//! move): the string byte-ops (toUpper / toLower / trim*) emit these primitives
+//! inline in C++ via `builder_.Create*` today; under (ii) the C++ side calls
+//! the matching `ry_emit_*` boundary entry (`abi/primitive.rs`) so all
+//! `IRBuilder<>::Create*` moves into the emission layer. The boundary is
+//! fine-grained by necessity — these primitives are semantically trivial (the
+//! lowering side has nothing to decide), which is exactly the case
+//! §"Explicit non-inclusion" in `docs/architecture/codegen-layering-plan.md`
+//! reserved for C++ carve-out under the (i) hypothesis; (ii) supersedes that
+//! for the string-op pilot.
 
 use std::ffi::c_char;
 
 use llvm_sys::core::*;
 use llvm_sys::LLVMIntPredicate;
 
-use crate::core::*;
+use crate::context::{EmitCtx, IcmpPred, TypeRef, ValueRef};
 
 impl IcmpPred {
-    // Translate the core predicate to the llvm-sys `LLVMIntPredicate`. Kept in
-    // the engine (not the abi shell) so no llvm-sys type appears in abi/.
+    // Translate the context predicate to the llvm-sys `LLVMIntPredicate`. Kept
+    // in the engine (not the abi shell) so no llvm-sys type appears in abi/.
     #[inline]
     fn to_llvm(self) -> LLVMIntPredicate {
         match self {

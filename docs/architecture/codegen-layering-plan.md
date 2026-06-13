@@ -176,6 +176,45 @@ The pilot (step 1) and the wider extraction (step 2) follow the [Layer Graduatio
 - Once the lowering and emission sides graduate (end of step 2), target 200–300 lines per file where it improves navigability.
 - No line-count-only splits. Splitting the current `codegen_call_*.cpp` files by filename prefix without a responsibility split is explicitly forbidden by #1819's milestone policy and by the workflow doc.
 
+### Composite and primitive emission sub-layers (#2109)
+
+After the migration installments above (#2072 / #2092–#2097 / #2098–#2102) all landed, the Rust `emit` crate carried a flat module layout in which `EmitCtx` state, Ry-semantic combined emission (ARC counter delta, list-header load, inline ARC alloc, …), and LLVM-1:1 primitive emission (libc emitters, type constructors, name builders, …) shared `core.rs` and a flat set of sibling modules. The `abi → core` one-way discipline was already gated (`scripts/check-emit-abi-no-ir.sh`), but the next boundary — between LLVM-near primitive emission and Ry-semantic composite emission — was a convention, not a structural invariant.
+
+Issue #2109 captures that boundary as a directory layout and adds two CI gates. The emit crate is reorganised into four roles, in dependency order:
+
+| Sub-layer | Owns | Imports | Where it lives |
+|---|---|---|---|
+| `abi` | C/C++ emission boundary: opaque handle types, scalar / enum typedefs, descriptor structs, layout assertions, plumbing. IR-free per #2069. | `context`, `composite`, `primitive` | `crates/emit/src/abi.rs` + `abi/**.rs` |
+| `composite` | Ry-semantic emission with layout / ABI knowledge — ARC retain/release, bounds check, checked FP→int, Option/Result construction, Any wrap/unwrap, collection mutations, CoW ensure-unique, reduce, and the shared header struct construction. | `context`, `primitive`, sibling `composite::*` modules | `crates/emit/src/composite/**.rs` |
+| `primitive` | LLVM 1:1 emission with no Ry semantics — type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, inline runtime-error, scalar / memory ops, function creation / indirect call / intrinsic call, control flow, generic `__ry_*` runtime calls. This sub-layer is the LLVM C API concentration target. | `context`, sibling `primitive::*` modules | `crates/emit/src/primitive/**.rs` |
+| `context` | Layer-neutral state, handle wrappers, enum selectors, layout constants, and the pure-data `HdrField` / `HeaderKind` / `header_fields` table. The `EmitCtx` struct itself plus its dedup caches. | `llvm_sys::prelude` (handle types only — IR-free) | `crates/emit/src/context.rs` |
+
+**Discriminating principle**: a function or type belongs in `composite` if it encodes a Ry ABI decision (e.g. the list-header field order, the StringHeader-prefixed `.arc` global shape, the ARC ref-count GEP indices). It belongs in `primitive` if it is a generic LLVM / libc operation that any consumer with no Ry knowledge could use (e.g. `LLVMBuildAdd`, `emit_malloc`, `get_or_insert_function`).
+
+**Enforcement**:
+
+1. `scripts/check-emit-composite-no-primitive.sh` enforces `primitive ⇏ composite` and `context ⇏ {abi, primitive, composite}` by grepping for forbidden `use crate::...` paths. Blind spot: `self.composite_method()` dispatch is invisible at the import-path layer because both sub-layers `impl` methods on the same `EmitCtx`; the future physical crate split (#2023) turns the gate into a Cargo-enforced constraint.
+2. `scripts/check-emit-llvm-ir-gen-concentration.sh` enforces AC #5 (composite expresses its op as a sequence of primitive method calls) and AC #7 (LLVM C IR-gen API is confined to declared sites) via an explicit allowlist of composite files permitted to call `llvm_sys::core` / `LLVMBuild*` directly.
+
+**AC #5/#7 transitional carve-out**: The #2109 refactor is a verbatim file move chosen to preserve byte-exact LLVM IR. Migrating every composite op to call `primitive::*` methods (instead of `LLVMBuild*` directly) would risk the IR-byte-exact guarantee and is out of scope for a single PR. The following composite files are therefore allowlisted to keep their direct LLVM C API calls; each is a migration target for a follow-on issue:
+
+| File | Direct LLVM call site count (approximate) | Reason allowlisted | Migration target |
+|---|---|---|---|
+| `composite/any.rs` | many | verbatim move; Any wrap/unwrap composite Ry-ABI ops | follow-on issue |
+| `composite/arc.rs` | many | verbatim move; ARC retain/release + ARC msg global | follow-on issue |
+| `composite/bounds.rs` | several | verbatim move; bounds check + bounds error | follow-on issue |
+| `composite/cast.rs` | several | verbatim move; checked FP→int + runtime_error_with_value_arg | follow-on issue |
+| `composite/collection.rs` | very many | verbatim move; list/map/set full op surface | follow-on issue |
+| `composite/cow.rs` | many | verbatim move; CoW ensure-unique | follow-on issue |
+| `composite/header.rs` | several | header struct construction (Ry layout knowledge stays here) | stays in composite — terminal |
+| `composite/option.rs` | few | verbatim move; Option construction | follow-on issue |
+| `composite/reduce.rs` | several | verbatim move; sum / min / max | follow-on issue |
+| `composite/result.rs` | several | verbatim move; build_error_from_runtime + `emit_result_branch` free fn (#2069 re-entrant discipline) | partial migration; the re-entrant free fn shape stays |
+
+New composite files must express their op via primitive methods (`self.build_load(...)` etc.) rather than direct `LLVMBuild*` calls; the gate fails closed for any addition outside ALLOWLIST.
+
+**Scope of #2109**: a pure architectural reorganisation. No new emission capability, no IR optimisation, no public C API change. Out of scope: C++ side's residual direct LLVM calls (`codegen_*.cpp`), the per-composite-file migration to primitive method sequences, and the physical crate split (#2023).
+
 ## When the codegen layers earn their graduation document
 
 The two sub-layers (`codegen-semantic-lowering-graduation.md` and `codegen-llvm-emission-graduation.md`) are written after **all** of the following hold:

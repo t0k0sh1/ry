@@ -18,7 +18,9 @@ use std::ffi::c_char;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 
-use crate::core::*;
+use crate::context::*;
+use crate::primitive::module::get_or_insert_function;
+use crate::primitive::types::{i64_type, ptr_type};
 
 impl EmitCtx {
     // Build an `Error` aggregate: call the runtime error function `err_fn_name`

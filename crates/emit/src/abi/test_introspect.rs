@@ -21,7 +21,7 @@
 
 use std::ffi::c_int;
 
-use crate::core::{
+use crate::context::{
     header_fields, HdrField, HeaderKind, LIST_FIELD_CAP, LIST_FIELD_DATA, LIST_FIELD_LEN,
     MAP_FIELD_BUCKETS, MAP_FIELD_BUCKET_COUNT, MAP_FIELD_CAP, MAP_FIELD_KEYS, MAP_FIELD_LEN,
     MAP_FIELD_VALS,

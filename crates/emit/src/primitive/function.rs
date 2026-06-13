@@ -1,8 +1,6 @@
-//! Function-definition, indirect-call, and LLVM-intrinsic IR generation
-//! (core-role: an `impl EmitCtx` over the core engine only, so it is abi-
-//! independent and the `core⇏abi` invariant covers this module). Added for
-//! #2098 ([C] = (ii) boundary move) — the function-CREATION capability — and
-//! extended in #2102 ([D] = (ii) boundary move) with the intrinsic-call
+//! Function-definition, indirect-call, and LLVM-intrinsic IR generation. Added
+//! for #2098 ([C] = (ii) boundary move) — the function-CREATION capability —
+//! and extended in #2102 ([D] = (ii) boundary move) with the intrinsic-call
 //! capability: the emission layer gains `llvm::Function::Create` (via
 //! `LLVMAddFunction`), parameter access, the indirect call through a loaded
 //! function-pointer value, and the overloaded-intrinsic declaration + call
@@ -24,7 +22,7 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMLinkage, LLVMTypeKind};
 
-use crate::core::*;
+use crate::context::{EmitCtx, FuncTypeRef, FunctionRef, TypeRef, ValueRef};
 
 impl EmitCtx {
     // Create a fresh function `name` of type `fn_ty` in the module and set its

@@ -8,7 +8,7 @@
 
 use llvm_sys::prelude::*;
 
-use crate::core::EmitCtx;
+use crate::context::EmitCtx;
 
 use super::*;
 
