@@ -1,340 +1,145 @@
-# ry - Development Guidelines
+# ry Development Guidelines
 
-Situational playbooks live in `.claude/skills/`; trigger them by description or by `/<skill-name>`.
+## Terminology
 
-> **Terminology (v0.0.17)**: definitions are in `docs/reference/glossary.md` (#1480). `module` = the unit of `from xxx import ...`; `package` is reserved for future use; `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` retain their legacy naming.
+- Use `docs/reference/glossary.md`.
 
-## Build & Test
+## Build And Test
+
+| Host | Configure | Build directory | CLI |
+|---|---|---|---|
+| Linux / CI | `cmake --preset default` | `build/` | `./build/ry` |
+| macOS | `cmake --preset rust-emit` | `build-rust/` | `./build-rust/ry` |
 
 ```bash
-cmake --preset default                                  # Ninja + LLVM (CMakePresets.json)
-cmake --build build                                     # Ninja parallelizes automatically
-./build/ry_tests                                        # C++ tests (GoogleTest)
-./build/ry test -p                                      # Ry self-tests (all *.test.ry)
-./build/ry test tests/spec/<file>.test.ry               # run an individual file
+cmake --build <build-dir>
+./<build-dir>/ry_tests
+./<build-dir>/ry test -p
+./<build-dir>/ry test tests/spec/<file>.test.ry
 ```
 
-> **macOS local builds**: the commands above are the Linux/CI form. On macOS, substitute `cmake --preset rust-emit` for `cmake --preset default`, `build-rust/` for `build/`, and `./build-rust/ry` for `./build/ry` throughout this document. The post-cutover shared-libLLVM requirement forces this split — see the **Shared libLLVM required** note below for why (and the `-DRust_COMPILER` note below if `rustc` discovery fails during configure).
->
-> The `./build/ry` built inside the repo prefers the project-local `share/std/` per the hidden `[paths]._dev_stdlib` setting in `package.toml`. Use `RY_ENV=internal` only when extra isolation is needed.
-
-> **`emit` is a Rust cdylib** (`crates/emit/`, #1949/#1950/#1993): the LLVM IR emission shared library, built automatically by every `cmake` build via corrosion. Two local prerequisites outside the Docker CI image (which bakes both in):
->
-> **Rust 1.83+ toolchain on `PATH`** — all presets (`default`/`asan`/`tsan`/`fuzz`) build the cdylib via cargo; CMake auto-derives `LLVM_SYS_211_PREFIX` (no env tweak). If configure fails with `rustc was not found` (corrosion's FindRust choking on a broken cross-compile toolchain, e.g. a Windows target), pass `-DRust_COMPILER=$(rustup which rustc)`.
->
-> **Shared libLLVM required** — `ry` and the cdylib must share ONE LLVM instance or `ConstantFP::get` hangs on float constants (#1997). Linux/CI `/usr/local/llvm` (built `LLVM_BUILD_LLVM_DYLIB=ON`) qualifies and `--preset default` links there; macOS static-only `/usr/local/llvm` does NOT, so use `--preset rust-emit` (→ `build-rust/`, Homebrew `llvm@21`; other prefixes: `-DLLVM_DIR=<shared-prefix>/lib/cmake/llvm`). Full rationale (two-LLVM `fltSemantics` split), CI coverage (`test`/`asan`/`tsan` Rust path + `workflow_dispatch` `macos-smoke-rust`), and the non-instrumented-cdylib caveat: `docs/architecture/llvm-ir-emission-boundary.md` §"Stage 2-C complete" (+ its Sub-issue 3/4 sections).
->
-> **Rust lint gate (#2015)** — the CI `lint` job gates `crates/emit` with `cargo fmt --check` + `cargo clippy -- -D warnings`; reproduce locally via `/pre-commit-checklist` §3.5.6.
-
-## tree-sitter grammar build & install
-
-A PR that modifies any of `docs/grammar.ebnf` / `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` requires rebuilding `ry.so`. Build/install commands, prerequisites, pitfalls (externals enum order / `mark_end` / `valid_symbols` semantics / highlights.scm), and the verification recipe are in `.claude/skills/tree-sitter-grammar-editing/SKILL.md` (or `/tree-sitter-grammar-editing`) and `editor/tree-sitter/README.md`; the self-verification procedure is in `/pre-commit-checklist` §3.6.5. When editing `editor/tree-sitter/grammar.js` / `editor/tree-sitter/src/scanner.c` / `queries/*.scm`, that skill is auto-loaded via a path-scoped rule.
-
-## Compiler warning flags
-
-Details on compiler warning flags are in `.claude/rules/build-warning-flags.md`.
-
-## IR golden tests
-
-The notation and execution procedure for LLVM IR golden tests are in `.claude/rules/codegen-llvm-ir-conventions.md`.
-
-## CI: container image (GHCR pre-baked)
-
-CI Linux jobs use a pre-baked container (`ghcr.io/<owner>/ry-ci:llvm-21`; the glibc-old job in release.yml is pinned to the immutable `ry-ci-glibc-old:llvm-21-rev<N>`) (#1505, #1508). Image build, version bumps, `rev<N>` tags, rollback, and the release-pin update procedure are in `.claude/skills/ci-image-workflow/SKILL.md` (or `/ci-image-workflow`). macOS continues to use Homebrew.
-
-## Knowledge base (.claude/rules/ + .claude/skills/ + .claude/agents/ + KNOWLEDGE.md)
-
-- **`.claude/rules/<name>.md`** — path-scoped rule. Auto-loaded when editing a file matching the frontmatter `paths:` glob.
-- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill. Invoked when the `description:` matches.
-- **`.claude/agents/<name>.md`** — subagent definition. Launched as an **independent context** via the `Agent` tool with `subagent_type: <name>` (in contrast to skills, which run inside the same context). Cannot be invoked via the `/<name>` slash-command form (because it is an agent, not a skill). Use this for tasks like critique of plans, design, or implementation where you want the artifact evaluated in isolation from the main conversation history. **For parallelizable verification steps, launch multiple subagents foreground concurrently** (a single message with multiple `Agent` tool calls). Background execution is prohibited (see AGENTS.md §"Bash execution rules"; #1947). Current catalog:
-    - `.claude/agents/devils-advocate.md` — critique agent for plan / design review
-    - `.claude/agents/bug-forensics-analyst.md` — bug origin determination / git archaeology / test-gap analysis (launched via `/triage-side-finding` Q3)
-    - `.claude/agents/sanitizer-runner.md` — subagent that runs and analyzes ASan+UBSan / TSan in an independent context (for parallelization)
-    - `.claude/agents/test-runner.md` — subagent that runs and triages C++ ry_tests + Ry self-tests in an independent context (for parallelization)
-    - `.claude/agents/fuzzer-runner.md` — subagent that runs and triages libFuzzer harnesses in an independent context (for parallelization)
-    - `.claude/agents/pr-review-responder.md` — subagent that analyzes CodeRabbit / human reviewer comments and produces replies and fix proposals
-- **`KNOWLEDGE.md`** (repository root) — a provisional buffer for uncategorized findings. New knowledge that has no matching entry in rules / skills accumulates here, and once stable is promoted into rules / skills. Format, grep convention, external-reference policy, "when to write" triggers, and the promotion procedure are in `/knowledge-md-management`.
-
-## ASan + UBSan (Address + UndefinedBehavior Sanitizer)
-
-For local development, use `cmake --preset asan` to enable ASan + UBSan together and run the tests. Build commands, runtime env (`ASAN_OPTIONS=detect_container_overflow=0` / `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`), and the rationale for each setting (suppressing LLVM mixed false positives / why `-fno-sanitize=vptr,function`) are in `.claude/skills/commands-environment-gotchas/SKILL.md` (or `/commands-environment-gotchas`); the self-verification procedure is in `/pre-commit-checklist` §3.5.
-
-Any issue detected by ASan or UBSan (memory leak, buffer overflow, use-after-free, undefined behavior, etc.) MUST be resolved. Do not commit with a sanitizer error left unresolved.
-
-Incident knowledge and known issues for ASan / UBSan (masking mechanisms, allocator differences, platform-specific manifestation paths) are in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`.
-
-## TSan (ThreadSanitizer)
-
-For verifying thread safety, use the TSan preset. The build command (`cmake --preset tsan`), exclusivity with ASan-UBSan (`build-tsan/` isolation), the required vs. warn-only job split, and known upstream bugs (LargeMmapAllocator / LLVM ORC teardown / signal-handler `siglongjmp`) are in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`; the self-verification procedure is in `/pre-commit-checklist` §3.5.
-
-> If you introduce a new race, you MUST fix it within the same PR. Warn-only is only a workaround for the TSan allocator bug; it does not license the introduction of an actual race.
-
-## libFuzzer (coverage-guided fuzzing)
-
-**The CI job is currently disabled** — you MUST run it manually during feature-branch self-verification (see `/pre-commit-checklist` §3.6). Save crash inputs in both `tests/fuzz/regressions/<name>/` and `tests/fuzz/corpus/<name>/`. Harness requirements, build commands, and known limitations are in `.claude/skills/libfuzzer-harness/SKILL.md` (or `/libfuzzer-harness`). Incident knowledge and known issues are also in the `## サニタイザー既知問題` section of `KNOWLEDGE.md`.
-
-## Memory-safety rules (C++ runtime)
-
-The runtime memory-safety rules (forbidden-function table / `oom_abort(n)` / NULL checks on external input / CI-lint auto-block) are in `.claude/rules/runtime-memory-safety.md`.
-
-## Workflow overview
-
-Issue review → consult the knowledge base (path-scoped rules also auto-load during implementation) → Plan mode (Task 1 = `/git-claim-issue` to attach `wip`) → TDD implementation → self-verification via `/pre-commit-checklist` → subsequent git operations (commit / push / PR / merge) follow "Separation of Concerns". If you want to chain PR review response → CI check → push → merge in a single command, use `/git-finalize-pr` (it stops on blockers).
-
-## Issue-driven development
-
-- **Repository**: `t0k0sh1/ry`
-- **Start**: the user specifies an issue number / URL → understand the content → enter Plan mode. When instructed to "find the next issue" (`/git-search-issues`), fetch open issues (excluding `wip`), present candidates with bugs prioritized → after selection, enter Plan mode.
-- **Label handling**: labels MUST be attached/removed via skills (`git-claim-issue` / `git-finalize-pr` Step 7 use `--add-label` / `--remove-label`, preserving existing labels).
-- **Scope verification when splitting an issue**: a decision to file or separate a derivative issue is checked via `/scope-decomposition` against symmetry (4 axes, REQ-1), split rationale (3 categories, REQ-2), derivative-chain caution (3rd-degree and beyond, REQ-3), and the single-preview-for-n-split rule when filing an oversized issue (REQ-5). Target-shrinking splits during Plan mode are prohibited by REQ-4.
-
-## Plan mode rules
-
-- **Entry condition**: the target issue has been identified (OPEN state confirmed with `gh issue view <n>`) and is in sync with the remote (no need to pre-attach `wip`; Task 1 attaches it).
-- **First task of the implementation plan (fixed)**:
-  - **Task 1**: attach the `wip` label to the issue via `/git-claim-issue`.
-  - Feature-branch creation is performed automatically on the first `/git-push` call, so do not list it as an independent task in the plan.
-- **Implementation-plan scope**: through self-verification only (do not include git add / commit / push / PR creation).
-- **Plan abstraction level (WHAT/HOW separation)**: the plan stays at "what to achieve" (WHAT); "how to implement" (HOW) is deferred to the implementation phase. Excessive HOW detail in the plan is detected by `/plan-rubric`.
-- **The implementation plan MUST include**:
-  - The first task matches the fixed template (Task 1 = `/git-claim-issue`). Feature-branch creation is performed automatically on the first `/git-push` call.
-  - Whether you consulted the relevant entries in `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` for the paths you intend to edit (if such entries exist, quote them in the plan body and explain how you will use them).
-  - A self-verification task confirming the implementation matches the specification.
-  - An update to the English documentation (README.md / docs) — or a confirmation that no update is needed.
-  - When a terminology change or identifier rename is involved: include `/horizontal-sweep` as a plan task (the 4-step procedure is in `.claude/skills/horizontal-sweep/SKILL.md`).
-- **Handling side findings**: follow "Handling side findings" under "Separation of Concerns" (`/triage-side-finding`). **Only when Claude Code autonomously decides `/triage-side-finding` Q4(b) "request permission to file"** should an "open a separate issue" task be included in the implementation plan (in the Q1 hard-to-reproduce / Q2 user instruction → immediate-fix branches, the work is absorbed into the same PR, so no plan task is needed). **However, the actual filing waits for explicit user permission** — even when the plan contains an "open a separate issue" task, Claude Code only presents the proposed issue contents and waits for user permission (see "Separation of Concerns" §What the user explicitly directs / §Prohibition on presenting choices in filing decisions).
-- **Prohibition on splitting the target issue (target-shrinking)**: proposing to **split the target issue itself to shrink the scope** during Plan mode is prohibited (it derails the implementation plan). The Q4(b) separate-issue filing for orthogonal side findings is outside this rule (it does not change the target issue's scope). Details: `/scope-decomposition` REQ-4 / `/plan-rubric` Axis 2. If the issue is found to be oversized, resolve the split decision **before entering Plan mode** via `/scope-decomposition` REQ-5.
-- **Prohibition on splitting TDD cycles**: do not split Red / Green / Refactor into separate plan tasks; bundle them into a single "TDD cycle" task (turn the cycle internally per case).
-
-## Use trace to analyze internal behavior
-
-Trace usage (`--trace` / `--trace-out` / JSON Lines / analyzing internal behavior, import resolution, JIT execution) is in `.claude/skills/ry-trace/SKILL.md` (or `/ry-trace`).
-
-## Bash execution rules
-
-### Total ban on Claude-initiated background execution
-
-Any background execution initiated by Claude (the main agent) is **totally banned** (#1947). No exceptions.
-
-**Prohibited targets:**
-- Use of `Bash(run_in_background=true)` (regardless of purpose or command)
-- Background startup via trailing `&` in the shell (`cmake --build &`, etc.)
-- `nohup` / `disown` / any other detach mechanism
-- `Agent({run_in_background: true, ...})` (subagent background)
-- Builds (`cmake --build`) / tests (`./build/ry_tests`) / fuzzers / any long-running process — all foreground-synchronous only
-
-**When parallelization is needed:**
-Put multiple `Agent` tool calls in a single message and **launch subagents concurrently in foreground**. Each subagent runs foreground in an independent context, and the main agent synchronizes on all return values. Dedicated subagents for the verification steps in `/pre-commit-checklist` (sanitizer / test / fuzzer / PR review response, etc.) are pre-provisioned in `.claude/agents/` — choose between them using the catalog (see AGENTS.md §"Knowledge base").
-
-**Why:** background execution structurally risks `task_id` recording loss — Bash-launched processes land in the OS process table, forcing OS-level scans that misdetect separate Claude Code sessions (#1944). A flat ban removes the risk at the root; parallelization is fully achievable via foreground subagents.
-
-> **Side note (heredoc input has an independent rule)**: heredoc input such as `./build/ry -c <<'EOF' ... EOF` MUST be run foreground, or replaced with file input (`./build/ry script.ry`). This is an independent rule that predates the background ban and is not the subject of this section (the heredoc + background hang risk is a historical matter).
-
-### Timeout settings
-
-- The Bash tool's `timeout` parameter MUST be set even for foreground execution (the 120,000 ms = 2 min default can be too short).
-- Build-class commands: `timeout: 300000` (5 min); even long tests cap at `timeout: 600000` (10 min).
-- For work exceeding these caps, split the script / step it, or parallelize via foreground subagents (do not work around with background execution).
-
-### Prohibition on temporary file creation
-
-- **Temporary-file creation inside the project (under the repository working tree) is prohibited without exception**. Files created on the assumption that they will be deleted later — `tmp_*.ry`, scratch files at the repo root, throwaway verification `*.ry`, scratch scripts — MUST NOT be placed inside the working tree. The user has repeatedly objected to "creating and deleting files in a loop".
-- For ad-hoc verification of Ry code, follow the `/ry-playground` skill (`.claude/skills/ry-playground/SKILL.md`) and use the `./build/ry -c <<'EOF' ... EOF` heredoc form (single-line or multi-line both work; the single-quoted `'EOF'` suppresses shell expansion). **Run inline without creating a file.**
-- To pin a specification or behavior (i.e., persist it), append directly to the body of `tests/spec/*.test.ry` (spec tests are durable assets).
-- For C++-side verification, append to `tests/test_runtime_*.cpp` and run with `./build/ry_tests --gtest_filter=...`.
-- **Limited `/tmp` exception**: when the GitHub CLI or another external tool's interface requires a file path that cannot be expressed via command-line arguments or heredocs alone, you MAY use a file under `/tmp/`. **However, do not delete the created file and do not attempt to delete it** (do not write `rm /tmp/...` / `unlink` / cleanup traps). Defer to OS tmp cleanup.
-- Intentionally creating a "file to be deleted in the end" as a workaround is prohibited (inside the project completely; even in `/tmp` do not write delete commands). For verification, choose one of `/ry-playground` (heredoc) / appending into an existing test file / `/tmp` (no deletion).
-- **The act of deletion itself is separately governed** — see "Total ban on Claude-initiated ad-hoc deletion" immediately below. `/tmp` files are usable but MUST NOT be deleted by Claude.
-
-### Total ban on Claude-initiated ad-hoc deletion (rm / unlink / cleanup)
-
-Any ad-hoc deletion typed by Claude (the main agent) for scratch / cleanup purposes — `rm` / `unlink` / cleanup traps — is **totally banned** (#2042). No exceptions. This generalizes the `/tmp`-specific "do not delete" rule above into a blanket prohibition on the *act of deletion itself*, in the same "repeated objection → total ban" lineage as #1947 (background execution) and #1990 (the word `flake`).
-
-**Prohibited targets (Claude's ad-hoc operations):**
-- `rm` / `unlink` typed directly into the Bash tool for scratch or cleanup (deleting a verification scratch file, tidying up afterward)
-- Deletions embedded in a one-off one-liner or heredoc script (`... && rm ...`, a cleanup `trap '... rm ...' EXIT`, etc.)
-- Manual build-tree cleanup such as `rm -rf build-*` / `rm -rf build-asan-docker/` before running a verification script — use `--clean` instead (see below)
-- Deleting a file you wrote under `/tmp/` (already covered by the Limited `/tmp` exception above; restated here as part of the blanket ban)
-
-**Non-target — legitimate `rm` that MUST be preserved (do NOT over-literally ban every `rm`):**
-The ban targets *Claude's ad-hoc typed deletion*, NOT deletion as a concept. An `rm` inside a **committed, persistent, reviewable script** is legitimate and MUST NOT be removed, weakened, or refused — and adding a new legitimate `rm` to such a script (e.g. extending a `--clean` target) is equally fine. "Using `rm` *inside a (persistent) shell script* is fine." This explicitly includes:
-- `install.sh`, `scripts/bundle-dist.sh`, `scripts/assemble-changelog.sh`
-- `.github/actions/sign-checksums/action.yml` — the `rm -f "$KEY_FILE"` wipes the signing private key from the CI runner; **removing it is a security regression**
-- `docker/*.Dockerfile`, `src/cli/self_update.cpp`
-- the `--clean` / CMakeCache auto-heal `rm` inside `.claude/skills/pre-commit-checklist/run-*.sh`
-
-**Routing for legitimate, task-driven deletion:**
-When a task genuinely requires deleting a file (e.g. a source file obsoleted by a refactor), do NOT type an ad-hoc `rm`. Route it through a reviewable mechanism: `git rm` (tracked files), a committed script, or a `run-*.sh --clean` target.
-
-**Build-tree cleanup uses `--clean`, never ad-hoc `rm`:**
-To start a build / verification from a clean state, use the script's own clean capability — `run-*.sh --clean` (or `docker/run.sh --clean <preset>`) — instead of manually deleting `build-*` directories. Every `run-*.sh` that owns a build directory accepts `--clean`.
-
-**When deletion is truly unavoidable (user handoff):**
-If none of the above applies and a deletion is genuinely required, Claude MUST NOT execute it. Present the exact command to the user, return control, and wait until the user runs it themselves (e.g. via `! <command>`) and tells you to continue. Claude never types the deletion.
-
-**Why:** the `/tmp` "do not delete" rule alone did not stop the behavior, so — per the #1947 / #1990 precedent that a flat exception-free ban is what actually changes behavior — ad-hoc deletion is banned outright and re-routed through reviewable mechanisms (`git rm` / committed scripts / `--clean`) or a user handoff.
-
-## Prohibited terminology: flake / flaky
-
-CI #2578, in which Claude Code concluded that a crash in `tests/spec/collection_meta_propagation.test.ry` was "flake; re-run", triggered this rule (#1990). A term meant for non-deterministic phenomena occurring at under 1% has been repeatedly applied to phenomena that occur over 50% of the time. Truly flaky events do not exist on a deterministic Von Neumann machine, and calling a phenomenon that necessarily occurs when its conditions are met "flaky" is equivalent to **abandoning root-cause analysis**. After repeated objections without improvement, total prohibition is the only remaining option.
-
-### Prohibition rule (no exceptions)
-
-- **MUST**: Claude Code MUST NOT use the words `flake` / `flaky` in any explanation or output (responses / commit messages / PR descriptions / new KNOWLEDGE entries / code comments / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.) **in any language**.
-  - This includes Japanese transliterations, katakana renderings, and any rendering in any other language.
-  - Substituting another-language synonym (e.g., `unstable`, `intermittent`) **as a stand-in for `flake` / `flaky`** is also prohibited (using it in any way that does not follow the "Required alternative wording" rule below is not allowed).
-- **MUST**: Claude Code MUST NOT use `flake` / `flaky` as the **reason or conclusion for a CI failure or test failure** (whether spoken, written, or as part of an autonomous triage decision).
-
-### Required alternative wording
-
-When explaining a CI failure or test failure, Claude Code MUST use one of the following:
-
-- **(a) Stating the occurrence condition**: e.g., "occurs when the timing at which heap consolidation runs during LLVM ORC JIT teardown collides with the state of glibc tcache" — specifically identify the conditions under which the phenomenon occurs.
-- **(b) An explicit link to an existing `KNOWLEDGE.md` entry**: always include the issue number + line number (e.g., `KNOWLEDGE.md` L261, #1895). A vague reference by entry name alone is not acceptable.
-- **(c) When the root cause is not yet identified**: write explicitly "**Occurrence condition not yet identified. Investigation of the reproduction condition is incomplete.**" In this case, **a casual re-run suggestion is prohibited**. Instead, either file the investigation as a task, or ask the user for permission to begin investigation.
-
-### Handling of existing text
-
-- Historical text in `KNOWLEDGE.md` / `CHANGELOG.md` (e.g., `KNOWLEDGE.md` L261 #1895's `~5-10 % Linux CI flake`, `CHANGELOG.md` L760's `Linux CI flake (~5-10 %)`, etc.) MUST NOT be modified. Reason: searchability. Cross-references with upstream LLVM issues, CI analysis logs, and GitHub Issues would break.
-- This rule applies only to **new writing (future additions to `KNOWLEDGE.md` / commit messages / PR descriptions / Claude Code responses / `.claude/skills/*.md` / `.claude/agents/*.md` / `.claude/rules/*.md` etc.)**.
-- **MUST**: **reintroducing `flake` as a conclusion by quoting or referencing historical flake text** is also prohibited (it is the same accident path as CI #2578). When describing a symptom that hits historical text, convert it into one of (a)/(b)/(c) before writing.
-
-## Communication discipline on PR review and verification failures
-
-PR #2122 のレビュー対応 / self-verification 中、Claude Code は CI 失敗報告に防衛的前置きを置き、レビュー指摘に対称性論証だけで拒否する草稿を生成する 2 つの語り口問題を示した。それぞれ #2123 / #2125 で禁止ルール化されたものを、以下に統合する。`## Prohibited terminology: flake / flaky` セクションと同じく「Claude 自身の出力 framing」の禁止クラスであり、状況発火 (失敗報告 / レビュー応答) でセルフチェックする。
-
-### Ban: defensive prefaces on CI / verification failure reports (#2123)
-
-CI / sanitizer / fuzzer / static-analysis / pre-commit-checklist の失敗を報告するとき、または PR レビュー reply / ユーザー直接指摘への応答を書くとき、「私の PR とは無関係です」「これは既存問題です」「自分の変更が原因ではありません」のような防衛的前置きで書き出してはならない。ユーザーが知りたいのは失敗の原因と次の手であり、責任不在の主張ではない。前置きは情報価値を生まず、責任回避としても読まれ得る。
-
-**Prohibition rule (no exceptions)**
-
-- **MUST NOT**: 失敗報告 / レビュー応答の冒頭に、責任不在を主張する防衛的前置きを置く。「PR とは無関係」「既存問題」「私の変更が原因ではない」「unrelated to my changes」その他同等表現を、ファクトに先行して書くことの一切を含む。
-- **Scope**: CI / sanitizer / fuzzer / static-analysis / pre-commit-checklist のあらゆる失敗報告、PR レビュー reply、CodeRabbit 指摘への応答、およびユーザーから直接受けた指摘への応答すべて。Subagent (例: `.claude/agents/pr-review-responder.md` の生成する draft) も same agent context が main に戻った時点で post 直前に再 verify される (本セクションは AGENTS.md に always-loaded で 2 段防御)。
-
-**Required wording**
-
-失敗報告 / 応答は次の順に書く:
-
-1. 観測された症状 (どのジョブで何が起きたか) を端的に記述する。
-2. 再現条件 (発火する状況、入力、環境) を述べる。
-3. 必要なら切り分け証拠 (該当ログの抜粋、関連 issue 番号、KNOWLEDGE.md エントリへのリンク) を添える。
-4. PR との関係性を伝える必要があれば、上記の証拠の **後段に** ファクトの一部として書く。前置きとしての枠付けは禁止。
-
-例 (省略記号 `...` を含むパス断片は fenced block 内に置いて prompt-refs lint のエスケープを活用):
-
-```
-✗ 「CI test ジョブの失敗は私の PR とは無関係です。原因は crates.io への接続失敗で …」
-
-✓ 「test ジョブが失敗。原因: CI runner から index.crates.io:443 への
-   接続失敗で cargo 依存ダウンロード不能。PR の diff 範囲 (tests/spec/ + codegen + docs)
-   には Cargo.toml / crates/emit/ の変更なし。」
-```
-
-### Ban: symmetry-only rationale for rejecting review feedback (#2125)
-
-レビュー指摘 (CodeRabbit / 人間レビュワー) を拒否するとき、「他がそうなっていない」「既存実装と非対称になる」「`xs[i]?` / Map.get と一貫しない」のような対称性論証 **だけ** を理由にしてはならない。指摘の真意は「現状の挙動がユーザーから見て妥当か」「型安全性 / 意図の明示性は保たれるか」といった本質的な観点であり、対称性論証は「現状を維持する」結論を補強するだけでその本質的な観点に答えていない。
-
-**Prohibition rule (no exceptions)**
-
-- **MUST NOT**: 修正を拒否する根拠として「対称性が崩れる」「他の API もそうなっていない」「既存と一貫しない」を単独使用する。
-- **Scope**: CodeRabbit からの auto-review コメント、人間レビュワーの comment、ユーザー直接フィードバックすべて。Subagent (`.claude/agents/pr-review-responder.md`) が生成する draft も同様で、post 直前に main agent が再 verify する。
-
-**Required reasoning**
-
-拒否する前に、指摘の真意 (ユーザー視点の妥当性 / 型安全性 / ergonomics / 設計上の不変条件) を分析する。拒否を残す場合は次のいずれかを根拠として書く:
-
-- 設計上の不変条件 (API 契約 / type contract / メモリレイアウト等) に反する。
-- パフォーマンスや別の load-bearing な要件と衝突する。
-- 修正の意味が論点で別 Issue 化したい (scope 切り分け)。指摘の趣旨を別 Issue として記録して結論を未来へ送る。
-- 提案された動作と現状の動作のどちらがユーザー視点で妥当か比較した結論として現状維持を選ぶ理由を述べる。
-
-**When symmetry IS a valid factor**
-
-対称性は **scope 拡大の根拠** としては valid: 「ここだけ直すと非対称になるので、同じ修正を ABC にも適用する PR にしたい」(両方修正の建設的代案)。修正を **拒否する根拠** としては不十分: 「他がそうなっていない」だけで拒否することは指摘の真意を分析していないことと等価。
-
-例:
-
-```
-✗ 「append() / insert() は wrap しているが、get() も wrap すると
-   xs[i]? / Map.get と非対称になるので採用しない」
-
-✓ 「get(list, index, default) の default: T は OOB 時の戻り値の型を T に確定する役割。
-   List<any> で 0: int を渡す場合、Int=0 interpretation を caller が明示するか
-   implicit wrap で commit するかは別 issue で議論したい」(意味付け + 別 issue 提案)
-
-✓ 「対称性の指摘は valid。ここだけ直すと非対称なので、ABC にも同じ修正を適用する
-   PR にしたい」(対称性込みで両方修正する建設的代案)
-```
-
-## Git branch policy
-
-- Feature branches are created from `main`, and PRs target `main`. Direct commits to `main` are prohibited.
-- **MUST (no exceptions)**: a feature-branch name MUST NOT contain the string `main`. The check is performed against the branch name after lowercasing and stripping all non-alphabetic characters (`/`, `-`, `_`, digits, symbols, etc.); if `m`, `a`, `i`, `n` appear consecutively in that order in the resulting string, it is a violation (no evasion via symbols, case, or kebab segment boundaries; and even when the substring appears incidentally inside a natural word such as `domain-driven`, it is still prohibited). Reason: to fully eliminate search noise from queries like `git branch | grep -i main` and false matches in script-based detection. On a violation, rename via `git branch -m <new>` before pushing.
-- To bring the latest `main` into a feature branch, use **`git rebase origin/main`** (to keep history linear). Do not merge `main` into the feature branch. The concrete procedure is in `/git-push` / `/git-create-pr` / `/git-resolve-conflicts`.
-- For pushes after a rebase, use **`git push --force-with-lease`** (a force push is required from the second push onwards because SHAs are rewritten; `--force-with-lease` detects unexpected progression of the remote and blocks the overwrite). Do not re-run `git fetch` between `fetch` and `push` (it relaxes the lease guard).
-- The rebase policy above applies only to bringing `main` into a feature branch. The update of `main` itself in `/preparing-for-release` is on a separate path and remains `git pull --ff-only origin main` (linearity is guaranteed, so no change is needed).
-- Before merging a PR, verify there are no untracked files or uncommitted changes. If there are, report to the user before merging and confirm whether to commit them.
-- When there are diffs under `.serena/`, commit them together with the other changes.
-
-## Separation of Concerns
-
-### What Claude Code does autonomously
-
-- Implementation
-- Test execution
-- Self-verification
-- Documentation updates
-- Removing the `wip` label after PR merge (consolidated into `git-finalize-pr` Step 7. Executed autonomously immediately after merge completion, without waiting for user instruction. Issue closure is performed automatically by GitHub via the `Closes #xx` keyword. Note that this is a record of the feature landing on `main`, not a release completion — see "Release Workflow").
-
-#### Handling side findings
-
-The phase-aware short-circuit flow (Q1 hard-to-reproduce CI → Q2 explicit user instruction → Q3 `bug-forensics-analyst` → Q4 autonomous decision; Phase A/B branches, crash-class unconditional escalation, the 1000-line threshold) and the Issue Creation Steps are in `/triage-side-finding`. Q4's autonomous-decision requirements are governed by §"Prohibition on presenting choices in filing decisions" below.
-
-#### Priority order for side-finding decisions
-
-These priority rules govern **only "how to handle a side finding"** — they do NOT override quality gates (sanitizer-error ban / TDD-cycle split ban / direct-commit-to-`main` ban / committing `.serena/` diffs together).
-
-1. **User wish takes priority** — an explicit user instruction (`/triage-side-finding` Q2 = Yes) beats the decision flow; skill / agent / advisor judgments MUST NOT override it.
-2. **Immediate fix for hard-to-reproduce issues** — CI-detected memory corruption / races / fuzz crashes (`/triage-side-finding` Q1 = Yes) prioritize fix timing over origin determination, to not miss the reproduction window.
-3. **Fixing takes priority over analysis** — when Q1 / Q2 applies, skip `bug-forensics-analyst` / advisor: don't burn time on analysis after choosing the immediate fix (this does not weaken the root-cause-investment principle; the fix still starts after Q3 completes).
-
-> **Notation**: `bug-forensics-analyst` is a `.claude/agents/` subagent (backticks); advisor is the built-in tool or a generic reviewer role (no agent file, hence no backticks).
-
-#### Prohibition on presenting choices in filing decisions
-
-- **MUST (no exceptions)**: the choices Claude Code presents to the user MUST NOT include "open as a separate issue". This applies to `AskUserQuestion` options, textual enumerations of choices ("(a)... (b)... (c)..." / "either of: ..." etc.), spoken three-way prompts, and any other form. Filing decisions are Claude Code's autonomous responsibility, and MUST NOT be substituted by presenting choices to the user.
-- When a filing is needed, follow `/git-create-issue` Step 1 (6-item preview → explicit permission). The preview presents the issue *contents*, not a *choice* — the user only permits/declines a single proposal.
-- **Scope**: a user spontaneously asking "should this be a separate issue?" is a Q2 user instruction (follow `/triage-side-finding` Q2's informed-consent flow). The rule bans Claude *initiating* a 3-way choice; it does not affect user-initiated questions.
-- **Why**: #1851 regression prevention (Claude presented "file as a separate issue" as a choice and steered the user); removes duplication with the `/git-create-issue` permission gate.
-- Related: `/triage-side-finding` Q4 + Issue Creation Steps Step 1; `/git-create-issue` Step 1 (preview gate).
-
-### What the user explicitly directs
-
-- External review (GitHub PR review, etc.)
-- git add / commit / push
-- PR creation
-- **Filing a new issue (`gh issue create`)** — Claude only presents the proposed contents (6-item preview, see `/git-create-issue`) and waits for explicit permission ("file it" / "OK"). Repo-wide incidents (CI failures, sanitizer detections, fuzz crashes) are reported in text only, never filed autonomously. **MUST NOT present "open as a separate issue" as a choice** → §"Prohibition on presenting choices in filing decisions".
-  - **Exception**: via the `preparing-for-release` skill (Release prep / Release / Cleanup issue), the user invocation of `/preparing-for-release <X.Y.Z>` doubles as filing permission, so this is outside the permission-required rule.
-
-### PR review response
-
-- **Committing/pushing is mandatory**: a fix that is not committed and pushed is not reflected in the PR. When review response is complete, if there are uncommitted changes, report them to the user without fail and encourage commit and push.
-- **Resolve decisions are delegated to the reviewer**: CodeRabbit auto-verifies reply content and resolves the conversation itself, so if Claude Code resolves preemptively, the verification flow does not work. Human reviewer comments are the same — reply only and delegate the resolve decision.
-- **Pre-merge unresolved check**: `git-finalize-pr` Step 6 automatically detects unresolved conversations and aborts the merge if any remain.
-
-### Accumulating lessons from PR reviews
-
-For comments received in PR review that are likely to recur in other PRs, append: to the corresponding `.claude/rules/<name>.md` if it fits a path-scope, or to `.claude/skills/pr-review-recurring-patterns/SKILL.md` if it is cross-cutting. Append autonomously and push it together with the review-response commit. Single local comments do not require an addition.
-
-Self-output tone rules (defensive prefaces / symmetry-only rejection) are NOT covered by this routing — they live in the dedicated `## Communication discipline on PR review and verification failures` section above (#2123 / #2125).
-
-## Pre-completion checklist
-
-The procedure to execute without fail before completing a task (documentation reflection / CHANGELOG / rules+skills update / full test / ASan+UBSan / TSan / libFuzzer / background-task check / label cleanup) is in `.claude/skills/pre-commit-checklist/SKILL.md` (or `/pre-commit-checklist`).
-
-## Release Workflow
-
-> **Note**: merging into `main` = mainline landing only. The release (tag push → GitHub Release) is a separate process.
-
-Details on the release startup procedure, the tag-push-driven mechanism, and the milestone-close policy are in `.claude/skills/release-orchestrator/SKILL.md` (or `/release-orchestrator`). Once feature-complete, launch `/preparing-for-release <X.Y.Z>`.
+- Requirements: Rust 1.83+ and shared libLLVM.
+- If corrosion cannot find Rust, configure with `-DRust_COMPILER=$(rustup which rustc)`.
+- Repo-built `ry` prefers `share/std/`; use `RY_ENV=internal` only for extra isolation.
+- Full verification: `/pre-commit-checklist`.
+
+## Instruction Routing
+
+| Location | Purpose |
+|---|---|
+| `.claude/rules/*.md` | Path-scoped implementation constraints |
+| `.claude/skills/*/SKILL.md` | Task procedures and decision flows |
+| `.claude/agents/*.md` | Independent analysis and verification roles |
+| `KNOWLEDGE.md` | Unclassified findings and sanitizer incident notes |
+
+- Search tags before implementing: `rg '\*\*Tags\*\*:.*<keyword>' .claude KNOWLEDGE.md`.
+- New path-specific lesson: update the matching rule.
+- New procedure or cross-cutting lesson: update the matching skill.
+- No matching destination: use `/knowledge-md-management`.
+- Prompt-file edits must pass `.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh`.
+
+## Workflow
+
+- When a user asks to start work on an identified `#<n>` issue, run `scripts/claim-issue.sh '#<n>'` before investigation, design, or implementation.
+  - Claim success is not a stopping point; continue the requested work in the same turn.
+  - If the script reports the issue is already `wip`, stop to avoid duplicate work.
+- Issue work: claim when required → inspect issue → TDD → `/pre-commit-checklist`.
+- Plan mode is optional. Use it when the user requests a plan or when complexity makes an explicit plan useful; do not require it before implementation.
+- TDD:
+  - Existing code: add a detector test first; remove old-spec tests only after the new specification passes.
+  - New features: run Red-Green-Refactor for each test case.
+- When using a plan:
+  - Cover implementation through self-verification only.
+  - State outcomes, not implementation details.
+  - Include matching rules / skills, documentation decision, and verification.
+  - Keep each Red-Green-Refactor cycle in one task.
+  - Use `/horizontal-sweep` for terminology or identifier changes.
+  - Do not shrink or split the target issue after implementation scope is committed.
+- Side findings: follow `/triage-side-finding`.
+- Internal behavior investigation: use `/ry-trace`.
+- Release flow: start with `/preparing-for-release <X.Y.Z>`; releases are published by `.github/workflows/release.yml` after a validated `vX.Y.Z` tag push.
+
+## Execution Constraints
+
+- Never start background or detached processes.
+- Run builds and tests in the foreground.
+- Set command timeouts:
+  - Build: 300 seconds.
+  - Tests: at most 600 seconds.
+- Parallelize verification only with foreground subagents.
+- Do not create temporary files in the worktree.
+- For ad-hoc Ry checks, use `/ry-playground`.
+- `/tmp` files are allowed only when a tool requires a path; do not delete them.
+- Do not run ad-hoc `rm`, `unlink`, cleanup traps, or manual build-tree deletion.
+- Required deletion:
+  - Tracked file: `git rm`.
+  - Build tree: owning script's `--clean`.
+  - Otherwise: give the exact command to the user and wait.
+- `rm` inside committed scripts is allowed.
+
+## Failure Handling
+
+- Fix every ASan, UBSan, race, and fuzzer finding before completion.
+- Failure reports must state:
+  1. Observed symptom.
+  2. Reproduction condition.
+  3. Evidence and next action.
+  4. Relationship to the current change, when relevant.
+- Do not dismiss a failure with a generic nondeterminism label.
+- When the occurrence condition is unknown, say:
+  - `Occurrence condition not yet identified. Investigation of the reproduction condition is incomplete.`
+- Sanitizer incident notes: `KNOWLEDGE.md` section `## サニタイザー既知問題`.
+
+## Review Communication
+
+- Do not begin failure reports or review replies with responsibility disclaimers.
+- Do not reject feedback solely because it differs from neighboring APIs.
+- A rejection must cite an invariant, user-facing behavior, type safety, performance requirement, or explicit scope decision.
+- Reply to review threads; do not resolve them preemptively.
+- Recurring review lesson:
+  - Path-specific: matching rule.
+  - Cross-cutting or uncategorized: `/knowledge-md-management`.
+
+## Git And GitHub
+
+- Do not commit directly to `main`.
+- Feature branches must not contain `main` after lowercasing and removing non-letters.
+- Bring `main` into a feature branch with `git rebase origin/main`, never merge.
+- After rebase, push with `--force-with-lease`; do not fetch again before that push.
+- Feature branch creation, commit, rebase, and push: `/git-push`.
+- PR creation: `/git-create-pr`.
+- Conflict resolution: `/git-resolve-conflicts`.
+- Final review, CI, verification, push, merge, and `wip` cleanup: `/git-finalize-pr`.
+- Before merge, stop and report any uncommitted or untracked files.
+- Commit `.serena/` changes with the related work.
+
+## User Permission Gates
+
+Require explicit user direction for:
+
+- External review requests.
+- `git add`, commit, push, and PR creation.
+- Creating a GitHub issue.
+
+Issue creation:
+
+- Decide whether filing is appropriate via `/triage-side-finding`.
+- Present one concrete issue proposal via `/git-create-issue`.
+- Wait for approval before `gh issue create`.
+- Do not present “create a separate issue” as a menu option.
+- `/preparing-for-release <X.Y.Z>` is pre-authorization for its release-tracking issues.
+
+## Path-Specific Entry Points
+
+- Runtime memory safety: `.claude/rules/runtime-memory-safety.md`.
+- Compiler warnings and static analysis: `.claude/rules/build-warning-flags.md`, `docker/README.md`.
+- LLVM IR golden conventions: `.claude/rules/codegen-llvm-ir-conventions.md`.
+- Stdlib module work: `/stdlib-module-add`.
+- tree-sitter edits: `editor/tree-sitter/README.md` and `.claude/rules/tree-sitter-grammar-editing.md`; rebuild `ry.so`.
+- CI image changes: `/ci-image-workflow`.
+- Fuzzer harness changes: `/libfuzzer-harness`.
+
+## Completion
+
+- Run `/pre-commit-checklist` before declaring work complete.
+- Do not change labels during self-verification; `/git-finalize-pr` handles post-merge cleanup.

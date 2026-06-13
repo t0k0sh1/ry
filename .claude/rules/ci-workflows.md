@@ -346,7 +346,7 @@ that proves the released SHA itself is clean.
 **Rule**: Always pass `--use-analyzer=/usr/local/llvm/bin/clang`
 explicitly to every `scan-build` invocation in
 `.github/workflows/ci.yml` and every example in
-`.claude/skills/static-analysis-tools/SKILL.md`. The `--use-cc` flag
+`docker/README.md`. The `--use-cc` flag
 controls only the build-time compiler and is ignored by the
 analyzer-clang lookup.
 
@@ -374,7 +374,7 @@ keeping the flag uniform across history avoids drift.
 
 **How to apply**: In every CI `scan-build` invocation
 (`.github/workflows/ci.yml`) and every local-execution example
-(`.claude/skills/static-analysis-tools/SKILL.md`), include
+(`docker/README.md`), include
 `--use-analyzer=/usr/local/llvm/bin/clang` alongside `--use-cc` /
 `--use-c++`. macOS Homebrew `scan-build` resolves clang via
 `$RealBin/bin/clang` correctly when scan-build is at
@@ -382,7 +382,7 @@ keeping the flag uniform across history avoids drift.
 there — but keeping it uniform prevents drift between local-macOS and
 CI invocations.
 
-**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml .claude/skills/static-analysis-tools/SKILL.md`
+**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml docker/README.md`
 and confirm `--use-analyzer` accompanies every invocation. In CI logs,
 the `Use of uninitialized value $Clang` warning must be absent.
 
@@ -461,7 +461,7 @@ depend on the wider coverage being produced by mainline runs.
   findings backlog is triaged) and CodeQL (no `continue-on-error`,
   fails the workflow on findings) keep their existing status semantics
   — do not flip them in the same change.
-- Local documentation in `.claude/skills/static-analysis-tools/SKILL.md`
+- Local documentation in `docker/README.md`
   and `.claude/skills/pre-commit-checklist/SKILL.md` mirrors the same
   fast / full split for `scan-build`, and the
   `xargs -0 -n 1 -P "$(nproc)"` /
@@ -670,6 +670,6 @@ CI. This is the "new tool added to image" path in
 `ry-ci-glibc-old` does not lint, so it is left unchanged.
 
 **Local reproduction**: `./.claude/skills/pre-commit-checklist/run-rust-lint.sh`
-(`/pre-commit-checklist` §3.5.6). Lint policy is declared in
+(`/pre-commit-checklist`). Lint policy is declared in
 `[workspace.lints]` (root `Cargo.toml`); FFI carve-outs stay as
 crate-level `#![allow(...)]` in `lib.rs`.

@@ -91,7 +91,7 @@ TEST_F(JsonAnyTypedCollPanicTest, StringifyMapStrIntPanics) {
 // =========================================================================
 // Positive siblings: List<any> / Map<str, any> still stringify normally.
 // (No side-table entry — the wrap arm's gate `meta->*_elem != anyTy_`
-//  excludes these.) Required by `.claude/rules/tests-rejection-tdd.md`:
+//  excludes these.) Required by `.claude/skills/test-checklist/SKILL.md`:
 // "New rejections that narrow a form need a positive test for the
 //  preserved sibling".
 // =========================================================================

@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # libFuzzer Harness
 
+For Linux Rust-cdylib/fuzz build verification, use the current `ghcr.io/t0k0sh1/ry-ci:llvm-21` image directly; the local development image may lag its baked Rust toolchain.
+
 Reference for libFuzzer toolchain requirements and harness conventions in the ry project.
 
 ---
@@ -82,6 +84,6 @@ top-level `catch (const std::exception &)`.
 established top-level pattern used across `src/app/main.cpp:308`,
 `src/cli/cli.cpp:51,96`, `src/runtime/native/json.cpp:766`, `src/formatter.cpp:702,798`
 — a single `catch (const std::exception &)` backstop. Preserve the
-`// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
-under the `/static-analysis-tools` skill (Clang-Tidy section). Document the expected exception types in the
+`// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean;
+suppression policy lives in `.claude/rules/build-warning-flags.md`. Document the expected exception types in the
 catch-block comment instead of splitting into multiple specific catches.

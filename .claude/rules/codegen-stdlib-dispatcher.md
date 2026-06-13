@@ -40,7 +40,7 @@ When a bare builtin (in `builtins_` map or `emitBuiltinCore` inline branch) call
 
 **How to apply**:
 - When writing a new dispatcher, the first statement after parameter unpacking should be `cg.used_native_libraries_.insert("<mod>")` where `<mod>` matches the `RY_REGISTER_STDLIB_PACKAGE(<mod>, ...)` declaration.
-- Skip this rule only for modules that genuinely have no `libry_<mod>.dylib` (purely inline codegen, like `math`). For those modules, the bare-`@native` form is correct per `stdlib-module-additions.md` and inserting the library would cause a "native library not found" runtime error.
+- Skip this rule only for modules that genuinely have no `libry_<mod>.dylib` (purely inline codegen, like `math`). For those modules, the bare-`@native` form is correct per `/stdlib-module-add` and inserting the library would cause a "native library not found" runtime error.
 - Add at least one regression test per inline / custom-emitter entry point using **partial single-symbol imports**: `from <mod> import <one-fn>` with no other imports from the same module. One file per partial import (combining them in one file lets the first dispatch register the library and masks the bug for the rest). Mirror `tests/spec/io_partial_import_open.test.ry` and `tests/spec/io_partial_import_writetext.test.ry`.
 
 ### `emitPtrToResult(ptr, name, "static msg", rk_X)` discards runtime `setLastError` messages — prefer `wrapPtrAsResult(ptr) + addResourceKind`
@@ -123,7 +123,7 @@ If the output is `999`, the user fn wins (fall-through) — the name does NOT be
 
 **When to update `kReservedBuiltinFunctionNames`**:
 - Any new `emitBuiltin*` sub-handler added to the hardcoded `e.callee == "..."` dispatch chain.
-- Any new `@native fn` declaration in `share/std/*.ry` (excluding internal `_xxx` aliases per `stdlib-module-additions.md`).
+- Any new `@native fn` declaration in `share/std/*.ry` (excluding internal `_xxx` aliases per `/stdlib-module-add`).
 - After the change, run the empirical check above for every newly-touched name and add the ones where the stdlib wins. Cross-check the existing list with `grep -rEn "^fn <name>\b" tests/spec/ examples/` to confirm no legitimate top-level user fn would be over-rejected.
 
 **Why this rule cannot be derived from the dispatch chain alone**: the chain's order (qualified_module → ADT → verifyCalledWith → `emitBuiltin*` chain → StdlibRegistry → struct constructor → `findFunction`) is a static property, but whether any specific name "wins" against `findFunction` depends on whether each `emitBuiltin*` checker rejects unknown signatures and falls through, or unconditionally claims the call. That predicate is per-name and only the empirical check reveals it.

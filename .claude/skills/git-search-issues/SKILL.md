@@ -1,7 +1,7 @@
 ---
 name: git-search-issues
 description: Search GitHub issues by number, label, keyword, or find next issue candidates to work on. Also fires on Japanese triggers 次の issue 探して, issue 検索, ラベルで絞り込み, 次やる issue 探す.
-allowed-tools: mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__issue_read
+allowed-tools: mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__issue_read, Bash(scripts/claim-issue.sh:*)
 metadata:
   short-description: Search GitHub issues
 ---
@@ -40,6 +40,10 @@ Find candidate issues to work on next:
    - High-impact improvements (`enhancement` label)
    - Others
 3. Display each candidate as `#number: title [labels]`
+
+After the user selects a candidate and asks to start work, run
+`scripts/claim-issue.sh '#<n>'` before continuing. A successful claim is not a
+stopping point; continue the requested work in the same turn.
 
 ### Issue number specified (e.g. `307`, `#307`)
 

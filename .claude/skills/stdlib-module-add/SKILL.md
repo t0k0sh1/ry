@@ -6,17 +6,13 @@ allowed-tools: Read, Grep, Glob, Bash
 
 # Stdlib Module Add
 
-Procedure for adding a new standard library module (e.g. `crypto`) to ry, plus recipes for constants and extending existing modules.
-
-> Relocated from `AGENTS.md` by #1384.
->
-> **Terminology** (`docs/reference/glossary.md`, v0.0.17 / #1480): the unit imported via `from xxx import ...` is a **module** (one `.ry` file or directory). "Package" is reserved for the future `ry add` external-library feature. Legacy C++ identifiers (`effectivePackage`, `RY_REGISTER_STDLIB_PACKAGE`, `__ry_<symbol>` boundary) retain "package" for binary/source stability — use them verbatim in code, "module" in prose.
+Procedure for adding a new standard library module, constants, or functions. Terminology is defined in `docs/reference/glossary.md`.
 
 ## Steps
 
 ### 1. Ry declaration file
 
-Declare `@native("mod")` in `share/std/<mod>/<mod>.ry`. `manifest.json` needs no update; the declaration alone does not make the module usable.
+Declare `@native("mod")` in `share/std/<mod>/<mod>.ry`. Use bare `@native` only when all functions are custom-emitted and no `libry_<mod>.*` exists; the argument otherwise drives runtime library loading. `manifest.json` needs no update.
 
 ```ry
 @native("crypto")
@@ -61,7 +57,7 @@ Shared helpers (in `codegen_call_dispatch.cpp`):
 
 ## Adding Constants
 
-Add an `@const` declaration in `share/std/<mod>/<mod>.ry`. Usually paired with `@native("mod")`, but modules without a dedicated shared library (e.g. `math`) use bare `@native` — see `.claude/rules/stdlib-module-additions.md`. From the dispatch file, call `StdlibRegistry::instance().registerConstant(...)` in static init (registry: `include/ry/stdlib_registry.hpp`; example: `MathConstReg` in `src/codegen_call.cpp`). `codegen_stmt.cpp` needs no changes.
+Add an `@const` declaration in `share/std/<mod>/<mod>.ry`. From the dispatch file, call `StdlibRegistry::instance().registerConstant(...)` in static init (registry: `include/ry/stdlib_registry.hpp`; example: `MathConstReg` in `src/codegen_call.cpp`). `codegen_stmt.cpp` needs no changes.
 
 ## Adding Functions to Existing Modules
 
@@ -71,3 +67,9 @@ Touch:
 2. `src/runtime/native/<mod>.cpp` — C++ implementation.
 3. `src/codegen_call_<mod>.cpp` — `custom_emitter` if custom dispatch is required (skip for simple functions).
 4. Tests — selective-import and execution cases.
+
+## Declaration Invariants
+
+- A stdlib record type needed even when users do not import its name must be registered programmatically in `CodeGen`; `Match` follows this pattern.
+- Name-keyed dispatchers may declare default arguments directly on one `@native fn`.
+- Table-driven custom emitters use strict arity matching; declare one signature per supported arity and test each arity.

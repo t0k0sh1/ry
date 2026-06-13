@@ -8,7 +8,7 @@ metadata:
 
 # Preparing for Release
 
-Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone (AGENTS.md "リリースワークフロー"). The skill only files issues — prep & release use the standard `git-claim-issue` → branch → PR → `git-finalize-pr` flow; cleanup is verification-only (`gh run list`, `gh release view`, `gh api PATCH milestone`).
+Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone. See AGENTS.md "Workflow".
 
 ## Inputs
 
@@ -71,7 +71,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`git-claim-issue` → branch → PR → `git-finalize-pr`); the release tag itself is out of scope (sibling Release issue).
+Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`scripts/claim-issue.sh '#<P>'` → branch → PR → `git-finalize-pr`); the release tag itself is out of scope (sibling Release issue).
 
 ## Tasks
 
@@ -276,4 +276,4 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 7: Report
 
-Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` (claim via `git-claim-issue`); `#<C>` is addressed after `#<R>` closes.
+Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` after running `scripts/claim-issue.sh '#<P>'`; `#<C>` is addressed after `#<R>` closes.

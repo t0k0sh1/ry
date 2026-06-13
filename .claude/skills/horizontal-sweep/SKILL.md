@@ -8,6 +8,8 @@ metadata:
 
 # Horizontal Sweep
 
+On macOS, BSD `sed` does not support `\b`; use `perl` or BSD word-boundary syntax. In zsh, drive newline-separated path loops with `while read -r` rather than relying on scalar word splitting.
+
 Terminology and identifier renames must be performed via batch grep + `sed -i ''`, not per-site `Read` + `Edit`. The latter is the pattern that produced the #1466 / #1482 / #1487 / #1490 sweep gaps.
 
 ## When to use
@@ -26,21 +28,15 @@ Terminology and identifier renames must be performed via batch grep + `sed -i ''
 | `.claude/rules/docs-reference-conventions.md` "Terminology sweeps must include lexical derivatives" | #1482 | Step 1 derivative table + Step 2 Pattern B |
 | `.claude/rules/tests-cpp-conventions.md` "Renaming stdlib @native functions" | #1414 | Step 2 Pattern D — `runSource("...")` embedded Ry |
 
-## Carve-outs (do NOT rename)
+## Carve-outs
 
-These legacy identifiers are intentionally preserved (see `AGENTS.md:5`). Add them to `grep -v` filters when sweeping `package` / `Package`:
-
-| Identifier | Why preserved |
-|---|---|
-| `effectivePackage` | legacy field name — binary-adjacent |
-| `RY_REGISTER_STDLIB_PACKAGE` | C macro, binary-stable |
-| `__ry_<symbol>` (e.g., `__ry_filesystem_listDir`) | C runtime symbols, binary-stable |
+Read `docs/reference/glossary.md` before terminology sweeps. Preserve its legacy internal identifiers.
 
 ## Steps
 
 ### Step 1: Build the canonical + derivative word table
 
-Use the canonical pairs in `.claude/rules/docs-reference-conventions.md:375-389` as the reference table — do not duplicate it. Add project-specific derivatives only when they are absent from the canonical table. For approved Ry abbreviations consult `docs/reference/naming.md` "Approved abbreviations".
+Use `docs/reference/glossary.md` for terminology and `docs/reference/naming.md` for casing and approved abbreviations. Add project-specific derivatives to the sweep table.
 
 Worked example for `package` → `module`:
 
@@ -131,6 +127,6 @@ If source files (`*.cpp`, `*.hpp`, `*.ry`) were modified, build + test before de
 cmake --build build && ./build/ry_tests && ./build/ry test -p
 ```
 
-> **macOS**: substitute `cmake --build build-rust` for `cmake --build build` and `./build-rust/ry` for `./build/ry` (post-Rust-cutover preset split; see `AGENTS.md` § "Build & Test").
+> **macOS**: use `cmake --build build-rust` and `./build-rust/ry`; see AGENTS.md "Build And Test".
 
 For docs / `.claude/` only changes, hand off to `/pre-commit-checklist`.

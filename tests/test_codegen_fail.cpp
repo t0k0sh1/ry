@@ -506,7 +506,7 @@ TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
 // `any` slot in any collection-mutating builtin. Flipped from
 // EXPECT_THROW to EXPECT_NO_THROW per "Relaxing a rejection branch
 // requires flipping (not deleting) existing EXPECT_THROW tests"
-// (.claude/rules/tests-rejection-tdd.md). The old "'any' can only
+// (.claude/skills/test-checklist/SKILL.md). The old "'any' can only
 // hold int/float/bool/str" error path is gone for collection inputs;
 // fn-ptr / resource still hit it (covered by
 // AnyTypeRejectionForFunctionPointer in test_codegen.cpp).
@@ -1131,7 +1131,7 @@ TEST_F(CodeGenTest, UserFnOverloadAmbiguousCallEmitsCandidateList) {
 // so it is only reachable in test_mode; use `runTestSource` plus
 // a manual try/catch (the `expectCompileError` helper compiles
 // outside test mode and would fail earlier on the `expect()`
-// guard). See `.claude/rules/tests-rejection-tdd.md` P8.
+// guard). See `.claude/skills/test-checklist/SKILL.md`.
 // ============================================================
 
 TEST_F(CodeGenTest, ExpectToMatchRejectsNonStrActual) {

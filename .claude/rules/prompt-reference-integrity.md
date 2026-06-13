@@ -7,6 +7,9 @@ paths:
 
 # Prompt / Instruction Reference Integrity
 
+- Ensure each skill's `allowed-tools` covers every command prescribed by its body.
+- After editing agent frontmatter, validate the YAML; prompt-reference lint does not validate YAML syntax.
+
 ### Inline-code references in prompt files are CI-linted — keep paths, `/<name>` skill links, and KNOWLEDGE.md section names resolvable
 
 **Source**: #2029 (2026-06-07; cleanup of the #1827 parser path drift)
@@ -45,7 +48,7 @@ stripped before the existence check.
 
 - Run locally before pushing prompt-file changes:
   `.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh`
-  (`/pre-commit-checklist` §3.5.7).
+  (`/pre-commit-checklist`).
 - When code moves, sweep the prompt files in the same PR
   (`/horizontal-sweep`); the lint is the completeness oracle — re-run it
   to zero.

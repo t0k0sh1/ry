@@ -253,17 +253,10 @@ eyeball the syntax highlighting and confirm no regressions.
 > hand-curated `tree-sitter test` corpus with S-expression assertions
 > lives at `test/corpus/*.txt` (see [Corpus tests](#corpus-tests-tree-sitter-test) above; #1633).
 
-The pre-commit version of this loop, with the same trigger paths, lives
-in [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md)
-§3.6.5.
+The pre-commit version of this loop lives in
+[`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md).
 
-Recurring pitfalls in grammar / scanner / highlights editing — externals
-enum-order invariant, `mark_end` semantics for non-zero-width tokens, the
-`valid_symbols` early-return pattern, and highlights.scm named-node vs
-anonymous-literal traps — together with verification recipes
-(`tree-sitter parse -d`, `tree-sitter query`) live in
-[`/tree-sitter-grammar-editing`](../../.claude/skills/tree-sitter-grammar-editing/SKILL.md).
-The same paths listed above auto-load that skill via
+Scanner and query invariants not covered here live in the path-scoped
 [`.claude/rules/tree-sitter-grammar-editing.md`](../../.claude/rules/tree-sitter-grammar-editing.md).
 
 Other editors are not yet supported in-tree; integrations may be added under

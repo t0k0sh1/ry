@@ -9,6 +9,8 @@ paths:
 
 # Build Warning Flags
 
+Static-analysis commands and Docker behavior are documented in `docker/README.md`; required wrappers live under `.claude/skills/pre-commit-checklist/`.
+
 ### Compiler warning flags require SYSTEM includes for third-party headers
 
 **Source**: #895 (implementation)
@@ -89,6 +91,8 @@ suppressed with `// NOLINT(...)` rather than refactored:
 **Rule**: When using NOLINT, always include the specific check name and
 a one-line comment explaining why the suppression is justified.
 
+For `bugprone-exception-escape`, prefer an explicit `noexcept` only when the operation is genuinely non-throwing. At process boundaries, watcher callbacks, and thread entries where termination is acceptable, use a reasoned `NOLINTNEXTLINE`; do not mark ordinary throwing functions `noexcept`.
+
 ### Cppcheck: suppression strategy and known false positives
 
 **Source**: #894 (implementation)
@@ -165,3 +169,5 @@ do not count.
 The flag set applies to internal targets (`ry_lib`, `ry`, `ry_tests`,
 native libs); see the sibling entry "Compiler warning flags require
 SYSTEM includes" for the `RY_WARNING_FLAGS` mechanism.
+
+Corrosion crate and CMake target names must not use reserved targets such as `codegen`, `test`, `all`, `clean`, `install`, or `package`; configure must complete without CMP0171 warnings.

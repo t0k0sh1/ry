@@ -416,7 +416,7 @@ llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty
     // must match. This is an internal-invariant guard against a future
     // mismatched caller — unreachable from Ry source (every call site is
     // hardcoded arity-correct), so no regression test is required per
-    // .claude/rules/tests-rejection-tdd.md ("Defensive ... unreachable from Ry
+    // .claude/rules/tests-cpp-conventions.md ("Defensive ... unreachable from Ry
     // source"). IR-neutral: never fires for the in-tree callers.
     if (arg_tys.size() != args.size())
         codegenError("emitRuntimeCallDirect: arg type/value arity mismatch");

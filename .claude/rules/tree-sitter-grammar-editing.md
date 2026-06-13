@@ -7,91 +7,13 @@ paths:
 
 # tree-sitter Grammar Editing
 
-This rule auto-loads when editing the in-tree tree-sitter grammar.
-Full guidance lives in `.claude/skills/tree-sitter-grammar-editing/SKILL.md`
-(or `/tree-sitter-grammar-editing`) — see it for the externals enum-order
-invariant, `mark_end` and `valid_symbols` semantics, highlights.scm
-named-vs-anonymous pitfalls, and verification recipes.
-
-### Externals are matched by ordinal index, not name
-
-**Source**: `editor/tree-sitter/src/scanner.c:35-43`,
-`editor/tree-sitter/grammar.js:62-70`
-**Tags**: tree-sitter, externals, scanner, ordinal-index, invariant
-
-**Rule**: tree-sitter pairs `enum TokenType` entries in `scanner.c:35-43`
-with the `externals: $ => [...]` array in `grammar.js:62-70` by **position
-in the list**, not by name. Adding, removing, or reordering an entry on
-one side requires the matching change on the other side in the same
-commit, plus an update to the documenting header comment at
-`scanner.c:1-26`.
-
-A drift here is silent — the parser still builds, but every external
-token is reinterpreted as a different token kind. Reproducer and full
-verification steps in `/tree-sitter-grammar-editing` §"Externals enum
-order in scanner.c MUST match the externals array in grammar.js".
-
-### Live-editing tolerance for body fields
-
-**Source**: issue #1623, `editor/tree-sitter/README.md` §"Live-editing tolerance",
-`editor/tree-sitter/grammar.js` (`function_body`, `if_statement`,
-`while_statement`, `for_statement`, `case_match_statement`,
-`case_cond_statement`)
-**Tags**: tree-sitter, grammar, live-editing, optional-body, indents.scm
-
-**Rule**: Block-introducing statement bodies are wrapped in `optional(...)`
-so partial input (`fn foo():` typed but body not yet started) still
-produces a complete named node. This is what allows `indents.scm`
-`@indent.begin` captures to fire during incremental editing and is the
-canonical (intentional) divergence from `docs/grammar.ebnf`. Each relaxed
-rule carries a `// Live-editing tolerance (#1623):` comment in
-`grammar.js`. Do **not** apply the same relaxation to `case_arm` /
-`case_cond_arm` — it introduces a parser conflict; the outer
-`case_*_statement` relaxation is sufficient. Detailed pattern, recipes,
-and ambiguity caveat live in `/tree-sitter-grammar-editing` §"Live-editing
-tolerance".
-
-### Canonical edit-propagation order
-
-`docs/grammar.ebnf` (canonical EBNF) → `editor/tree-sitter/grammar.js`
-→ `editor/tree-sitter/src/scanner.c` (only if external tokens change)
-→ `editor/tree-sitter/queries/highlights.scm` (only for new named
-nodes). See the skill's first entry for the rationale and the contract
-that `docs/grammar.ebnf` is the single source of truth that
-implementations under `editor/<tool>/` mirror.
-
-### After editing, rebuild and inspect
-
-Build/install workflow and verification recipes
-(`tree-sitter parse -d`, `tree-sitter query`, smoke inputs covering
-block tokens + f-string + regex) live in the skill and in
-`editor/tree-sitter/README.md` §Contributor workflow. Pre-commit gating
-is handled by `/pre-commit-checklist` §3.6.5.
-
-### Brace-internal newline tolerance is a grammar-rule concern, not a scanner concern
-
-**Source**: issue #1727, `editor/tree-sitter/grammar.js`
-(`import_list`, `list_literal`, `map_literal`, `set_literal`,
-`bracedSep1` helper), `editor/tree-sitter/README.md`
-§"Brace-internal newline tolerance"
-**Tags**: tree-sitter, scanner, valid-symbols, brace-internal, newline,
-bracket-depth, blind-spot
-
-**Rule**: `editor/tree-sitter/src/scanner.c` cannot suppress NEWLINE / INDENT / DEDENT
-inside `{` / `[` / `(` by tracking bracket depth locally. tree-sitter
-only calls the external scanner when `valid_symbols[]` requests an
-external token, so for `from std.io import {` the scanner is *not*
-invoked between `{` and the first `import_item` (parser expects an
-identifier, no external is valid). A bracket-depth counter that
-increments on `{` lookahead therefore never observes the opening brace,
-and the tolerance must be expressed at the grammar-rule level instead.
-
-**How to apply**: For brace-delimited rules that need to accept
-newlines between elements, use the `bracedSep1(rule, separator,
-newline)` helper in `grammar.js` and pass **only** `$._newline`. Do
-not pass `$._indent` / `$._dedent` — the scanner's indent stack must
-stay clean. This mirrors the C++ parser's `skipStructuralTokens`
-(`src/parser/parser.cpp:352`). Out-of-scope rules (`tuple_literal`,
-`_parenthesized`, `argument_list`, `parameter_list`, `case_*` arm
-bodies) still ERROR for multi-line forms — extend the pattern when
-warranted, tracked as separate issues.
+- Read `editor/tree-sitter/README.md` for the canonical spec relationship, build, install, corpus tests, smoke check, live-editing tolerance, brace-newline tolerance, and contributor workflow.
+- Scanner:
+  - Keep `scanner.c` `enum TokenType` and `grammar.js` `externals` in identical ordinal order; update the scanner header comment when tokens change.
+  - After consuming a non-zero-width external token, call `mark_end()`.
+  - Early-return guards must use the requested `valid_symbols` set, not initial lookahead.
+  - Implement brace-newline tolerance at grammar level, not by tracking bracket depth in the scanner.
+- Queries:
+  - `(node_name)` matches a named node; `"literal"` matches an anonymous source literal.
+  - Use unquoted field labels in `field_name: (node)`; quote only literal source tokens.
+- Run `/pre-commit-checklist`.

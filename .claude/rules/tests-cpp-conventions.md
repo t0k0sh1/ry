@@ -6,6 +6,16 @@ paths:
 
 # Tests — C++ Conventions
 
+### Defensive guards: test every branch reachable through a supported API
+
+For defensive validation, distinguish supported calls from corrupted internal state:
+
+- If a supported C/C++/FFI call can trigger the guard, add a direct regression test.
+- If reaching it requires constructing corrupted private state, document the guard near its owning implementation instead of manufacturing an unsupported test.
+- `emit` boundary NULL handles and callbacks are supported-input cases and belong in `tests/test_emit_abi_guards.cpp`; inner NULL fields of a corrupted `EmitCtx` are documented-only.
+
+When subprocess GoogleTests execute `RY_BINARY_PATH`, rebuild both `ry_tests` and the `ry` executable. Pass `RY_BINARY_PATH` as `execl`'s path and `argv[0]`; bare `"ry"` breaks stdlib discovery on Linux.
+
 ### Renaming stdlib `@native` functions: also sweep embedded Ry source in C++ tests
 
 **Source**: #1414 (2026-04-29, implementation — advisor call-out)
@@ -214,4 +224,3 @@ execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
 - 新規 subprocess test を追加する時、`execl(RY_BINARY_PATH, ?, ...)` の `?` は **常に `RY_BINARY_PATH`** にする。`"ry"` / `argv[0]` / 任意の短縮形を使わない
 - import を含む Ry source を subprocess で実行するテストでのみ症状が顕在化するが、import を含まないテスト (bare builtin `input()` など) も将来 import を足された瞬間に再発するため、**全 subprocess test に予防適用**する
 - canonical 例: `tests/test_read_line_builtin.cpp` (#1869 で導入), `tests/test_input_builtin.cpp` / `tests/test_help.cpp` / `tests/test_stdin.cpp` (#1869 で予防修正)
-
