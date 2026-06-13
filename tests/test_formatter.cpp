@@ -28,6 +28,22 @@ TEST(Formatter, LiteralFormatting) {
     EXPECT_EQ(fmt("x = none\n"), "x = none\n");
 }
 
+// ===== Regex Literal Formatting (#2113) =====
+
+TEST(Formatter, RegexLiteralFormatting) {
+    EXPECT_EQ(fmt("x = /abc/\n"), "x = /abc/\n");
+    // Discriminating: lexer keeps regex backslashes verbatim, so routing
+    // pattern through escapeString would emit /\\d+/ and break regex meaning.
+    EXPECT_EQ(fmt("x = /\\d+/\n"), "x = /\\d+/\n");
+    EXPECT_EQ(fmt("x = /a\\/b/\n"), "x = /a\\/b/\n");
+    // Lexer translates `\0` -> literal NUL inside pattern; formatter must
+    // reverse it so the output file stays text and remains executable.
+    EXPECT_EQ(fmt("x = /a\\0b/\n"), "x = /a\\0b/\n");
+    // End-to-end repro from the issue body.
+    EXPECT_EQ(fmt("from regex import replace\nprint(replace(\"order-12\", /\\d+/, \"N\"))\n"),
+              "from regex import replace\nprint(replace(\"order-12\", /\\d+/, \"N\"))\n");
+}
+
 // ===== Expression Formatting =====
 
 TEST(Formatter, ExpressionFormatting) {

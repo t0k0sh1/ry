@@ -451,3 +451,25 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
 
+### `formatExprInner` literal branches: escape strategy depends on whether the lexer decoded or preserved escapes — and `verifyFormatting`'s text-idempotency check does NOT catch a dispatch miss
+
+**Source**: #2113 (2026-06-13, fix)
+**Tags**: formatter, regex-literal, string-literal, escape, lexer-asymmetry, verifyFormatting, blind-spot
+
+**Context**: `formatExprInner` in `src/formatter.cpp` dispatches `ExprNode` variants via an `if constexpr` chain ending in a `/* unknown expr */` fallthrough. `StringExpr` routes its value through `escapeString` because the lexer **decoded** `\n` / `\t` / `\\` / `\"` / `\0` into the corresponding bytes (`src/lexer/lexer.cpp` string branch). `RegexExpr` looks like a sibling literal, but the lexer **preserves** the two-byte sequence `\` + next-char verbatim — `/\d+/` produces `pattern = "\d+"` (3 bytes: `\`, `d`, `+`). The only translation the regex lexer performs is `\0` → a single NUL byte. So `RegexExpr` must emit `v.pattern` verbatim and only reverse the NUL translation; routing through `escapeString` would turn `\d` into `\\d`, changing the regex semantics silently.
+
+Why `Formatter::verifyFormatting` (`src/formatter.cpp:778-791`) does **not** rescue a missing dispatch arm: the check is **text idempotency** (`formatSource(formatSource(x)) == formatSource(x)`), not AST equivalence. `/* unknown expr */` appears in a value-token context after a comma (`replace("…", X, "…")`), where the lexer treats the leading `/` as the start of a regex literal (the preceding `,` is not in the lexer's value-producing exclusion set). The whole sequence parses as `RegexExpr{pattern: "* unknown expr *"}`, which the formatter then re-emits via the same fallthrough into the **same** `/* unknown expr */` text. The output is a perfect fixed point of the formatter, so idempotency passes — but the runtime regex engine fails to compile `* unknown expr *`. Likewise inside string-arg position the comment-form is its own fixed point. A missing dispatch arm therefore ships silently.
+
+**Rule**:
+
+1. When adding a new literal kind to `formatExprInner`, look at the lexer's storage form for that kind before choosing the escape strategy:
+   - lexer **decoded** the escapes (escape sequences became bytes) → route through `escapeString` (the StringExpr pattern);
+   - lexer **preserved** the escapes (two-byte `\<x>` kept as-is) → emit `v.<field>` verbatim and only undo any one-off translations (for `RegexExpr` that is NUL → `\0`).
+2. The discriminating test for any verbatim-emit branch is a backslash-bearing input that is *not* a single-char escape (`/\d+/` works because the lexer keeps both bytes; a string literal `"\d+"` would be a parse-time decision and not the same case). The round-trip test must use a backslash sequence that survives the lexer two-byte preserved, because that is the form `escapeString` would corrupt.
+3. Do not rely on `verifyFormatting` to catch a dispatch miss. The `/* unknown expr */` fallthrough is a fixed point of the formatter in every value-token context (after `=`, `,`, `(`, `[`, etc.). Each new variant added to `ExprNode` must come with at least one direct round-trip test in `tests/test_formatter.cpp`.
+
+**How to apply**:
+- Same site whenever extending `formatExprInner`: insert the branch next to siblings, then immediately add a `tests/test_formatter.cpp` test that includes a backslash-bearing input. The test is the primary guard — `verifyFormatting` is not.
+- If a future PR makes `verifyFormatting` AST-aware (current scope rejects it — fixing it would also need a roundtrip-AST equality helper that ignores doc-comment whitespace), this rule's #3 can be relaxed. Until then, treat the safety net as text-level only.
+- Adjacent invariant: `src/lexer/lexer.cpp` regex branch (lines 325–360) and `RegexExpr::pattern` (`include/ry/ast/ast.hpp`) form a contract — backslash-anything is two-byte preserved, only `\0` is one-byte translated. A future addition of regex flags (`/pattern/i`) or a new translation would invalidate the "NUL is the only lossy translation" assumption and the `RegexExpr` formatter branch must be updated in the same PR.
+
