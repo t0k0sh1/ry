@@ -951,10 +951,11 @@ TEST_F(EmitAbiGuardTest, IntrinsicCallUnresolvableArgReturnsZero) {
 }
 
 // =============================================================================
-// #2097 — checked FP→int conversion guard (emitCheckedFPToInt migration). Three
+// #2097 — checked FP→int conversion guard (emitCheckedFPToInt migration). Four
 // reachable cells through the supported boundary: ctx-NULL, resolve_value-None
-// on val_id, and the target_width == 0 reject (a zero bit-width has no valid
-// LLVMIntType, so the engine guards before any FCmp / BB emit). Happy path is
+// on val_id, the target_width == 0 reject, and the unsupported-positive-width
+// reject (the guard accepts only the documented 8 / 16 / 32 / 64 widths to keep
+// the ABI behavior aligned with `include/ry/llvm_emit/api.h`). Happy path is
 // covered by tests/filecheck/cast_fp_to_int.ry's signed / unsigned / f32 source
 // markers.
 // =============================================================================
@@ -989,6 +990,21 @@ TEST_F(EmitAbiGuardTest, CheckedFpToIntZeroWidthReturnsZero) {
     RyValueId valId = ry_emit_intern(ctx, asRyValue(cf));
     EXPECT_EQ(ry_emit_checked_fp_to_int(ctx, valId,
                                          /*target_width=*/0, /*is_signed=*/1,
+                                         /*bb_prefix=*/nullptr, /*msg=*/nullptr,
+                                         /*global_name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, CheckedFpToIntUnsupportedWidthReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A positive but unsupported width (anything outside the documented
+    // 8 / 16 / 32 / 64) trips the same guard — the engine never sees it.
+    auto *cf = llvm::ConstantFP::get(llvm::Type::getDoubleTy(llctx_), 1.0);
+    RyValueId valId = ry_emit_intern(ctx, asRyValue(cf));
+    EXPECT_EQ(ry_emit_checked_fp_to_int(ctx, valId,
+                                         /*target_width=*/7, /*is_signed=*/1,
                                          /*bb_prefix=*/nullptr, /*msg=*/nullptr,
                                          /*global_name=*/nullptr),
               0u);

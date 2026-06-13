@@ -36,9 +36,11 @@ pub unsafe extern "C" fn ry_emit_checked_fp_to_int(
     let Some(val) = resolve_value(c, val_id) else {
         return 0;
     };
-    // A zero / non-positive width has no valid LLVMIntType; reject before
-    // touching the engine. (Negative c_int values also fall here.)
-    if target_width <= 0 {
+    // Only the documented bit widths (8 / 16 / 32 / 64) are accepted; reject
+    // any other value (0, negative, or an unsupported positive width like 7)
+    // before touching the engine — keeps the ABI guard aligned with the
+    // contract spelled out in `include/ry/llvm_emit/api.h`.
+    if !matches!(target_width, 8 | 16 | 32 | 64) {
         return 0;
     }
     let result = c.checked_fp_to_int(
