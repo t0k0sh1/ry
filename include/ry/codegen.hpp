@@ -2068,6 +2068,7 @@ public:
     llvm::Value *emitICmpNE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpSGT(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitICmpSGE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpUGE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitICmpULE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitAnd(llvm::Value *lhs, llvm::Value *rhs, const char *name);

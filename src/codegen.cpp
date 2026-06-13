@@ -253,6 +253,9 @@ llvm::Value *CodeGen::emitICmpSLT(llvm::Value *lhs, llvm::Value *rhs, const char
 llvm::Value *CodeGen::emitICmpSGT(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
     return icmpImpl(emit_ctx_, RY_ICMP_SGT, lhs, rhs, name);
 }
+llvm::Value *CodeGen::emitICmpSGE(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    return icmpImpl(emit_ctx_, RY_ICMP_SGE, lhs, rhs, name);
+}
 llvm::Value *CodeGen::emitICmpUGE(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
     return icmpImpl(emit_ctx_, RY_ICMP_UGE, lhs, rhs, name);
 }

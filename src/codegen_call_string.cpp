@@ -176,14 +176,19 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
 
     // NUL-safe: read byte lengths from StringHeader, call __ry_str_find_byte which
     // returns the byte offset (>= 0) or -1 if not found.
+    // #2094 ([C] = (ii) boundary move): both runtime calls (__ry_str_find_byte
+    // 5-arg + __ry_utf8_char_index_n 3-arg, both non-variadic) cross via
+    // emitRuntimeCallDirect (ry_emit_runtime_call); the found/not-found
+    // condition compute crosses via emitICmpEQ. emitStringByteLen stays
+    // C++-side (StringHeader-load capability, follow-on).
     llvm::Value *sl   = emitStringByteLen(s);
     llvm::Value *subl = emitStringByteLen(sub);
-    auto findByteFn = getRuntimeFn("__ry_str_find_byte", i64Ty_,
-                                   {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
-    llvm::Value *byteOff = builder_.CreateCall(
-        findByteFn, {s, sl, sub, subl, llvm::ConstantInt::get(i32Ty_, 0)}, "find_byte_off");
-    llvm::Value *notFound = builder_.CreateICmpEQ(
-        byteOff, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)), "find_notfound");
+    llvm::Value *byteOff = emitRuntimeCallDirect(
+        "__ry_str_find_byte", i64Ty_,
+        {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_},
+        {s, sl, sub, subl, emitConstInt(i32Ty_, 0)}, "find_byte_off");
+    llvm::Value *notFound = emitICmpEQ(
+        byteOff, emitConstInt(i64Ty_, static_cast<uint64_t>(-1LL)), "find_notfound");
 
     llvm::BasicBlock *foundBB    = createBB("find.found");
     llvm::BasicBlock *notFoundBB = createBB("find.notfound");
@@ -193,8 +198,9 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
     builder_.SetInsertPoint(foundBB);
     // NUL-safe byte-offset → char-index conversion (replaces __ry_utf8_char_index
     // which stopped at the first '\0').
-    auto charIdxFn = getRuntimeFn("__ry_utf8_char_index_n", i64Ty_, {ptrTy_, i64Ty_, i64Ty_});
-    llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, sl, byteOff}, "find_char_idx");
+    llvm::Value *charIdx = emitRuntimeCallDirect(
+        "__ry_utf8_char_index_n", i64Ty_,
+        {ptrTy_, i64Ty_, i64Ty_}, {s, sl, byteOff}, "find_char_idx");
     llvm::Value *someVal = buildSomeValue(charIdx, optTy);
     emitBranchUncond(mergeBB);
     llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();

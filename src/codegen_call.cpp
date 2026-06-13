@@ -261,7 +261,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
 
-        llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
+        // #2094 ([C] = (ii) boundary move): condition compute and element load
+        // cross via generic primitives; BB scaffold, PHI, and Some/None aggregate
+        // build were already boundary-emitted.
+        llvm::Value *isEmptyF = emitICmpEQ(srcLen, emitConstInt(i64Ty_, 0), "first_empty");
         llvm::BasicBlock *emptyBB = createBB("first.empty");
         llvm::BasicBlock *okBB = createBB("first.ok");
         llvm::BasicBlock *mergeBB = createBB("first.merge");
@@ -273,7 +276,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(okBB);
-        llvm::Value *firstVal = builder_.CreateLoad(elemTy, srcData, "first_val");
+        llvm::Value *firstVal = emitLoad(elemTy, srcData, "first_val");
         llvm::Value *someVal = buildSomeValue(firstVal, optTy);
         emitBranchUncond(mergeBB);
         llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
@@ -296,7 +299,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
 
-        llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
+        // #2094 ([C] = (ii) boundary move): condition compute, last-index sub,
+        // element GEP + load cross via generic primitives.
+        llvm::Value *isEmptyL = emitICmpEQ(srcLen, emitConstInt(i64Ty_, 0), "last_empty");
         llvm::BasicBlock *emptyBBL = createBB("last.empty");
         llvm::BasicBlock *okBBL = createBB("last.ok");
         llvm::BasicBlock *mergeBBL = createBB("last.merge");
@@ -308,9 +313,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::BasicBlock *emptyEndBBL = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(okBBL);
-        llvm::Value *lastIdx = builder_.CreateSub(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
-        llvm::Value *lastVal = builder_.CreateLoad(elemTy, elemPtr, "last_val");
+        llvm::Value *lastIdx = emitSub(srcLen, emitConstInt(i64Ty_, 1), "last_idx");
+        llvm::Value *elemPtr = emitGEP(elemTy, srcData, lastIdx, "last_ep");
+        llvm::Value *lastVal = emitLoad(elemTy, elemPtr, "last_val");
         llvm::Value *someValL = buildSomeValue(lastVal, optTy);
         emitBranchUncond(mergeBBL);
         llvm::BasicBlock *okEndBBL = builder_.GetInsertBlock();
