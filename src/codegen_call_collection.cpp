@@ -527,7 +527,11 @@ llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
         llvm::StructType *optTy = getOptionType(elemTy);
         auto lf = loadListHeader(listPtr, "pop");
 
-        llvm::Value *isEmpty = builder_.CreateICmpEQ(lf.len, llvm::ConstantInt::get(i64Ty_, 0), "pop_empty");
+        // #2094 ([C] = (ii) boundary move): condition compute, last-index sub,
+        // element GEP + load, and destructive len store cross via generic
+        // primitives. lf.lenPtr (from loadListHeader, header-load capability is
+        // a follow-on) is passed across as the C++-side llvm::Value*.
+        llvm::Value *isEmpty = emitICmpEQ(lf.len, emitConstInt(i64Ty_, 0), "pop_empty");
         llvm::BasicBlock *emptyBB = createBB("pop.empty");
         llvm::BasicBlock *okBB = createBB("pop.ok");
         llvm::BasicBlock *mergeBB = createBB("pop.merge");
@@ -539,10 +543,10 @@ llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
         llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
         builder_.SetInsertPoint(okBB);
-        llvm::Value *lastIdx = builder_.CreateSub(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "pop_last_idx");
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, lastIdx, "pop_elem_ptr");
-        llvm::Value *val = builder_.CreateLoad(elemTy, elemPtr, "pop_val");
-        builder_.CreateStore(lastIdx, lf.lenPtr);
+        llvm::Value *lastIdx = emitSub(lf.len, emitConstInt(i64Ty_, 1), "pop_last_idx");
+        llvm::Value *elemPtr = emitGEP(elemTy, lf.data, lastIdx, "pop_elem_ptr");
+        llvm::Value *val = emitLoad(elemTy, elemPtr, "pop_val");
+        emitStore(lastIdx, lf.lenPtr);
         llvm::Value *someVal = buildSomeValue(val, optTy);
         emitBranchUncond(mergeBB);
         llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
@@ -1082,8 +1086,12 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             if (key->getType() != keyTy)
                 codegenError("get() key type mismatch");
             llvm::StructType *optTy = getOptionType(valTy);
+            // #2094 ([C] = (ii) boundary move): the found/not-found condition,
+            // mapHeader vals-field struct GEP + load, and value GEP + load
+            // cross via generic primitives. emitMapKeyLookup is already
+            // boundary-emitted via #2101 (hash lookup capability).
             llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
-            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get2_found");
+            llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "get2_found");
 
             llvm::BasicBlock *foundBB = createBB("get2.found");
             llvm::BasicBlock *notFoundBB = createBB("get2.notfound");
@@ -1091,10 +1099,10 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             emitBranchCond(found, foundBB, notFoundBB);
 
             builder_.SetInsertPoint(foundBB);
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 3, "get2_vals_field");
-            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "get2_vals");
-            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {idx}, "get2_val_ptr");
-            llvm::Value *foundVal = builder_.CreateLoad(valTy, valPtr, "get2_val");
+            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, mapPtr, 3, "get2_vals_field");
+            llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get2_vals");
+            llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get2_val_ptr");
+            llvm::Value *foundVal = emitLoad(valTy, valPtr, "get2_val");
             llvm::Value *someVal = buildSomeValue(foundVal, optTy);
             emitBranchUncond(mergeBB);
             llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
@@ -1124,8 +1132,11 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             llvm::Value *defaultVal = emitExpr(*e.args[2]);
             if (defaultVal->getType() != valTy)
                 codegenError("get() default value type must match map's value type");
+            // #2094 ([C] = (ii) boundary move): same primitives as the 2-arg
+            // arm — the only structural difference is the merge PHI types
+            // (V vs Option<V>) and the default-value tail vs None.
             llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
-            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get_found");
+            llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "get_found");
 
             llvm::BasicBlock *foundBB = createBB("get.found");
             llvm::BasicBlock *notFoundBB = createBB("get.notfound");
@@ -1133,10 +1144,10 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             emitBranchCond(found, foundBB, notFoundBB);
 
             builder_.SetInsertPoint(foundBB);
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 3, "get_vals_field");
-            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "get_vals");
-            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {idx}, "get_val_ptr");
-            llvm::Value *foundVal = builder_.CreateLoad(valTy, valPtr, "get_val");
+            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, mapPtr, 3, "get_vals_field");
+            llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get_vals");
+            llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get_val_ptr");
+            llvm::Value *foundVal = emitLoad(valTy, valPtr, "get_val");
             llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
             emitBranchUncond(mergeBB);
 

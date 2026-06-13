@@ -973,8 +973,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
         if (e->try_mode) {
             // #1699: m[k]? returns Option<V> instead of aborting on missing key.
+            // #2094 ([C] = (ii) boundary move): structurally identical to the
+            // 2-arg emitCollOp_get arm — found/not-found compare, mapHeader vals
+            // field struct GEP + load, value GEP + load via generic primitives.
+            // emitMapKeyLookup is already boundary-emitted via #2101.
             llvm::StructType *optTy = getOptionType(mapValTy);
-            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "trymap_found");
+            llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "trymap_found");
 
             llvm::BasicBlock *foundBB = createBB("trymap.found");
             llvm::BasicBlock *notFoundBB = createBB("trymap.notfound");
@@ -982,10 +986,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             emitBranchCond(found, foundBB, notFoundBB);
 
             builder_.SetInsertPoint(foundBB);
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "trymap_vals_field");
-            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "trymap_vals");
-            llvm::Value *valPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "trymap_val_ptr");
-            llvm::Value *foundVal = builder_.CreateLoad(mapValTy, valPtr, "trymap_val");
+            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, objPtr, 3, "trymap_vals_field");
+            llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "trymap_vals");
+            llvm::Value *valPtr = emitGEP(mapValTy, valsPtr, idx, "trymap_val_ptr");
+            llvm::Value *foundVal = emitLoad(mapValTy, valPtr, "trymap_val");
             // Propagate element metadata onto foundVal BEFORE buildSomeValue,
             // so the retain inside buildSomeValue picks the right kind
             // (e.g. str_elem → StringHeader at -24).
@@ -1108,13 +1112,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         // #1699: xs[i]? returns Option<T> instead of aborting on OOB.
         // Apply the existing negative-index wrap (matches the abort path),
         // then ICmp-only bounds check (no abort) → PHI Some/None.
+        // #2094 ([C] = (ii) boundary move): zext key widening, OOB conjunction,
+        // data-ptr struct GEP / load, element GEP / load cross via generic
+        // primitives. emitNegativeIndexWrap stays C++-side (index-wrap
+        // capability, follow-on).
         if (index->getType() == i1Ty_)
-            index = builder_.CreateZExt(index, i64Ty_, "tryidx_ext");
+            index = emitZExt(index, i64Ty_, "tryidx_ext");
         llvm::Value *wrapped = emitNegativeIndexWrap(index, length, "tryidx");
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *negCheck = builder_.CreateICmpSLT(wrapped, zero, "tryidx_neg");
-        llvm::Value *overCheck = builder_.CreateICmpSGE(wrapped, length, "tryidx_over");
-        llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "tryidx_oob");
+        llvm::Value *zero = emitConstInt(i64Ty_, 0);
+        llvm::Value *negCheck = emitICmpSLT(wrapped, zero, "tryidx_neg");
+        llvm::Value *overCheck = emitICmpSGE(wrapped, length, "tryidx_over");
+        llvm::Value *oob = emitOr(negCheck, overCheck, "tryidx_oob");
 
         llvm::StructType *optTy = getOptionType(elemTy);
         llvm::BasicBlock *oobBB = createBB("trylist.oob");
@@ -1123,10 +1131,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         emitBranchCond(oob, oobBB, okBB);
 
         builder_.SetInsertPoint(okBB);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
-        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {wrapped}, "tryelem_ptr");
-        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "tryelem");
+        llvm::Value *dataPtrField = emitStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
+        llvm::Value *dataPtr = emitLoad(ptrTy_, dataPtrField, "data");
+        llvm::Value *elemPtr = emitGEP(elemTy, dataPtr, wrapped, "tryelem_ptr");
+        llvm::Value *elem = emitLoad(elemTy, elemPtr, "tryelem");
         stampLoadedElem(elem);
         llvm::Value *someVal = buildSomeValue(elem, optTy);
         emitBranchUncond(mergeBB);
