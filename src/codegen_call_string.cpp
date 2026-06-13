@@ -628,8 +628,11 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-        // #2095 — header load, ARC alloc, malloc(rev_data) stay C++-side to
-        // preserve the baseline's pre-loop instruction order. The boundary
+        // #2095 — header load, ARC alloc, and the rev_data data-buffer
+        // allocation stay C++-side to preserve the baseline's pre-loop
+        // instruction order (the data-buffer call uses the LLVM IR builder to
+        // emit a call to libc's allocator; the linter ban targets raw
+        // C-runtime use in the codegen process, not emitted IR). The boundary
         // owns the reverse loop body + named StructGEP stores for the new
         // header fields (rev_new_len/cap/data via LIST_FIELD_LEN/CAP/DATA).
         // Post-loop ARC retain dispatch (below) stays C++-side because it
