@@ -608,9 +608,10 @@ pub(crate) unsafe fn ffi_slice<'a, T>(ptr: *const T, count: u32) -> Option<&'a [
     }
 }
 
-// `cstr_bytes` lives in `core` (#2060) — a pure `CStr` primitive used by the
-// bounds and any engines, both of which are now core-role modules reaching it
-// via `crate::core` directly. The transitional `pub(crate) use crate::context::
-// cstr_bytes` re-export here (kept for the legacy `any.rs` while it still did
-// `use crate::abi::*`) was dropped once #2063 migrated `any` — its last consumer
-// — mirroring #2062 dropping `pub use arc::*`.
+// `cstr_bytes` lives in `primitive::util` (#2109; previously `core` per #2060)
+// — a pure `CStr` primitive used by the bounds and any engines, both of which
+// are composite-role modules reaching it via `crate::primitive::util` directly.
+// The transitional `pub(crate) use crate::context::cstr_bytes` re-export here
+// (kept for the legacy `any.rs` while it still did `use crate::abi::*`) was
+// dropped once #2063 migrated `any` — its last consumer — mirroring #2062
+// dropping `pub use arc::*`.

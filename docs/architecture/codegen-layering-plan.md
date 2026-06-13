@@ -180,7 +180,7 @@ The pilot (step 1) and the wider extraction (step 2) follow the [Layer Graduatio
 
 After the migration installments above (#2072 / #2092–#2097 / #2098–#2102) all landed, the Rust `emit` crate carried a flat module layout in which `EmitCtx` state, Ry-semantic combined emission (ARC counter delta, list-header load, inline ARC alloc, …), and LLVM-1:1 primitive emission (libc emitters, type constructors, name builders, …) shared `core.rs` and a flat set of sibling modules. The `abi → core` one-way discipline was already gated (`scripts/check-emit-abi-no-ir.sh`), but the next boundary — between LLVM-near primitive emission and Ry-semantic composite emission — was a convention, not a structural invariant.
 
-#2109 captures that boundary as a directory layout and adds two CI gates. The emit crate is reorganised into four roles, in dependency order:
+Issue #2109 captures that boundary as a directory layout and adds two CI gates. The emit crate is reorganised into four roles, in dependency order:
 
 | Sub-layer | Owns | Imports | Where it lives |
 |---|---|---|---|

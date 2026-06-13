@@ -424,7 +424,7 @@ The three string-build ops `str + str` concat (`emitArithmeticOp` "+" string bra
 
 After #2069 closed the `abi → core` story, the `core` umbrella still held three different kinds of responsibility: layer-neutral state and pure-data tables (`EmitCtx`, handle wrappers, enums, layout constants, `header_fields`), Ry-semantic combined emission (ARC counter delta, list-header load, inline ARC alloc, the StringHeader-prefixed `.arc` msg global), and LLVM-1:1 primitive emission (libc emitters, type constructors, name builders, `get_or_create_msg_global`). The boundary between the last two was a convention, not a structural invariant.
 
-#2109 captures that boundary as a directory split. `crates/emit/src/core.rs` is dissolved; the `core` umbrella becomes three sub-modules with their own CI gates:
+Issue #2109 captures that boundary as a directory split. `crates/emit/src/core.rs` is dissolved; the `core` umbrella becomes three sub-modules with their own CI gates:
 
 - `context.rs` — `EmitCtx`, handle wrappers, enum selectors, layout constants, `HdrField` / `HeaderKind` / `header_fields`. IR-free (only `llvm_sys::prelude` for handle type aliases); the IR-gen lint script `scripts/check-emit-abi-no-ir.sh` covers it implicitly.
 - `primitive/**.rs` — LLVM 1:1 emission with no Ry layout knowledge: scalar / memory ops, type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, inline runtime-error, function creation, indirect call, intrinsic call, control flow, generic runtime calls.

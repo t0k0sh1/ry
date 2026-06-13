@@ -104,8 +104,10 @@ strip_comments() {
 }
 
 # Same FORBIDDEN pattern as check-emit-abi-no-ir.sh — LLVMBuild[A-Z] matches IR
-# builders but not the LLVMBuilderRef handle type.
-FORBIDDEN='LLVMBuild[A-Z]|LLVMAppendBasicBlock|LLVMPositionBuilder|LLVMAddIncoming|LLVMAddCase|LLVMGetInsertBlock|LLVMGetBasicBlockParent|llvm_sys::core'
+# builders but not the LLVMBuilderRef handle type. The trailing alternative
+# catches `use llvm_sys::{core, prelude};` grouped imports that the literal
+# `llvm_sys::core` substring misses.
+FORBIDDEN='LLVMBuild[A-Z]|LLVMAppendBasicBlock|LLVMPositionBuilder|LLVMAddIncoming|LLVMAddCase|LLVMGetInsertBlock|LLVMGetBasicBlockParent|llvm_sys::core|use[[:space:]]+llvm_sys::\{[^}]*core([[:space:]:,}]|$)'
 
 bad=0
 while IFS= read -r f; do

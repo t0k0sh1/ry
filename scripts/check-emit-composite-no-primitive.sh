@@ -73,14 +73,17 @@ strip_comments() {
 bad=0
 for f in "${files[@]}"; do
     stripped="$(strip_comments "$f")"
-    # primitive/** and context.rs: forbid composite import.
-    if printf '%s\n' "$stripped" | grep -nE 'use[[:space:]]+crate::composite' >&2; then
+    # primitive/** and context.rs: forbid composite import. The second arm of
+    # each regex catches a path nested inside a brace-group import
+    # (`use crate::{composite::..., context::...};`) so the grouped form
+    # cannot bypass the gate.
+    if printf '%s\n' "$stripped" | grep -nE 'use[[:space:]]+crate::composite|use[[:space:]]+crate::\{[^}]*composite([[:space:]:,}]|$)' >&2; then
         echo "::error::check-emit-composite-no-primitive: forbidden 'use crate::composite' in $f" >&2
         bad=1
     fi
     # context.rs gets two additional bans.
     if [[ "$f" == "$CTX_FILE" ]]; then
-        if printf '%s\n' "$stripped" | grep -nE 'use[[:space:]]+crate::(abi|primitive)' >&2; then
+        if printf '%s\n' "$stripped" | grep -nE 'use[[:space:]]+crate::(abi|primitive)|use[[:space:]]+crate::\{[^}]*(abi|primitive)([[:space:]:,}]|$)' >&2; then
             echo "::error::check-emit-composite-no-primitive: forbidden 'use crate::{abi|primitive}' in $f (context must not depend on sibling layers)" >&2
             bad=1
         fi
