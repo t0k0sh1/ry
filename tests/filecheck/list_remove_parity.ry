@@ -1,0 +1,71 @@
+# FileCheck golden: List.remove(val) linear-search + memmove (#2095 —
+# emitListRemove migration to the Rust emit cdylib). Pins the cond/body/
+# found/next/end_search/remove/done BB scaffold and the three element-type
+# comparison paths (icmp for int, fcmp for float, strcmp+icmp for str) so
+# the migrated `ry_emit_list_remove` stays bit-exact with the C++ baseline.
+#
+# Uses function args (non-constant operands) so the IRBuilder does NOT
+# constant-fold the per-iteration compare away — with literal values the
+# entire BB scaffold and `lrem_match` marker never reach IR, and a botched
+# port would pass the empty diff (#2092 coverage trap).
+#
+# The list header is loaded INTERLEAVED (gep_len/load_len/gep_cap/load_cap/
+# gep_data/load_data) to match C++ `CodeGen::loadListHeader`; `core::
+# load_list_header` groups gep×3-then-load×3 which would reorder the IR
+# (#2092 load_list_header lesson).
+#
+# --- int element (ICmpEQ path) ---
+# CHECK-LABEL: define i64 @intRemove(
+# CHECK:         %lrem_len_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %lrem_len = load i64, ptr %lrem_len_ptr
+# CHECK:         %lrem_cap_ptr = getelementptr {{.*}}, i32 0, i32 1
+# CHECK:         %lrem_cap = load i64, ptr %lrem_cap_ptr
+# CHECK:         %lrem_data_ptr = getelementptr {{.*}}, i32 0, i32 2
+# CHECK:         %lrem_data = load ptr, ptr %lrem_data_ptr
+# CHECK:         %lrem_found_idx = alloca i64
+# CHECK:         store i64 -1, ptr %lrem_found_idx
+# CHECK:       lrem.cond:
+# CHECK:         %lrem_not_found = icmp slt i64 %lrem_fi, 0
+# CHECK:         %lrem_in_bounds = icmp slt i64 %lrem_iv, %lrem_len
+# CHECK:         %lrem_cont = and i1 %lrem_not_found, %lrem_in_bounds
+# CHECK:         br i1 %lrem_cont, label %lrem.body, label %lrem.end_search
+# CHECK:       lrem.body:
+# CHECK:         %lrem_match = icmp eq i64 {{.*}}, %lrem_elem
+# CHECK:         br i1 %lrem_match, label %lrem.found, label %lrem.next
+# CHECK:       lrem.end_search:
+# CHECK:         %lrem_was_found = icmp sge i64 %lrem_idx, 0
+# CHECK:         br i1 %lrem_was_found, label %lrem.remove, label %lrem.done
+# CHECK:       lrem.remove:
+# CHECK:         %lrem_move_bytes = mul i64 %lrem_move_count, 8
+# CHECK:         call ptr @memmove
+# CHECK:         %lrem_new_len = sub i64 %lrem_len, 1
+# CHECK:         store i64 %lrem_new_len, ptr %lrem_len_ptr
+#
+# --- float element (FCmpOEQ path) ---
+# CHECK-LABEL: define i64 @floatRemove(
+# CHECK:         %lrem_match = fcmp oeq double {{.*}}, %lrem_elem
+#
+# --- str element (strcmp+ICmpEQ path) ---
+# CHECK-LABEL: define i64 @strRemove(
+# CHECK:         %lrem_strcmp = call i32 @strcmp(
+# CHECK:         %lrem_match = icmp eq i32 %lrem_strcmp, 0
+
+fn intRemove(xs: List<int>, v: int) -> int:
+    xs.remove(v)
+    return xs.len()
+
+fn floatRemove(xs: List<float>, v: float) -> int:
+    xs.remove(v)
+    return xs.len()
+
+fn strRemove(xs: List<str>, v: str) -> int:
+    xs.remove(v)
+    return xs.len()
+
+fn main():
+    a: List<int> = [1, 2, 3, 4]
+    b: List<float> = [1.0, 2.0, 3.0]
+    c: List<str> = ["alpha", "beta", "gamma"]
+    print(intRemove(a, 2))
+    print(floatRemove(b, 2.0))
+    print(strRemove(c, "beta"))

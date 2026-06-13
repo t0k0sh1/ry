@@ -155,6 +155,13 @@ pub const RY_LINKAGE_PRIVATE: c_int = 2;
 // function pointer matching the C typedef.
 pub type RyBuildValueFn = Option<unsafe extern "C" fn(user_ctx: *mut c_void) -> RyValueId>;
 
+// Side-effecting retain callback for the per-element retain step of
+// tuple-producing ops (#2095: enumerate / zip / map_items). Nullable; NULL =
+// no retain needed (primitive or unnamed-elem path). The callback receives
+// the loaded tuple-component value id and emits the retain IR by re-entering
+// the C++ emitter.
+pub type RyRetainFn = Option<unsafe extern "C" fn(val_id: RyValueId, user_ctx: *mut c_void)>;
+
 // =============================================================
 // Descriptor structs (mirror api.h verbatim — field order, types,
 // and layout MUST match the C declarations). The per-field docs below

@@ -1,0 +1,40 @@
+# FileCheck golden: zip(list1, list2) → List<(T1, T2)> (#2095). Pins:
+#   - min(len1, len2) clamp emitted BEFORE the ARC alloc (C++ baseline order).
+#   - zip.cond/body/end BB scaffold with parallel GEP/load for both inputs.
+#   - tuple insertvalue pair (field 0 = e1, field 1 = e2).
+#   - storeListHeaderFields at LIST_FIELD_LEN/CAP/DATA.
+# Uses 2 List<T> args so the cross-input compares + loads are emitted.
+#
+# --- int×int (primitive, no retain) ---
+# CHECK-LABEL: define i64 @intIntZip(
+# CHECK:         %zip_minlen = select i1 %{{[0-9]+}}, i64 %zip1_len, i64 %zip2_len
+# CHECK:         %arc_hdr = call ptr @malloc
+# CHECK:         %zip_ds = mul i64 %zip_minlen, 16
+# CHECK:         %zip_nd = call ptr @malloc(i64 %zip_ds)
+# CHECK:       zip.cond:
+# CHECK:       zip.body:
+# CHECK:         %zip_ep1 = getelementptr i64, ptr %zip1_data, i64 %zi{{[0-9]*}}
+# CHECK:         %zip_ep2 = getelementptr i64, ptr %zip2_data, i64 %zi{{[0-9]*}}
+# CHECK:         %zip_e1 = load i64, ptr %zip_ep1
+# CHECK:         %zip_e2 = load i64, ptr %zip_ep2
+#
+# --- str×str (retain for both components) ---
+# CHECK-LABEL: define i64 @strStrZip(
+# CHECK:         %zip_minlen = select
+# CHECK:         %zip_e1 = load ptr, ptr %zip_ep1
+# CHECK:         %zip_e2 = load ptr, ptr %zip_ep2
+# CHECK:         atomicrmw add ptr {{.*}}, i64 1
+
+fn intIntZip(xs: List<int>, ys: List<int>) -> int:
+    return zip(xs, ys).len()
+
+fn strStrZip(xs: List<str>, ys: List<str>) -> int:
+    return zip(xs, ys).len()
+
+fn main():
+    a: List<int> = [1, 2, 3]
+    b: List<int> = [4, 5]
+    c: List<str> = ["a", "b"]
+    d: List<str> = ["c", "d", "e"]
+    print(intIntZip(a, b))
+    print(strStrZip(c, d))

@@ -1,0 +1,56 @@
+# FileCheck golden: flat(list<list<T>>) two-pass migration (#2095). Pins:
+#   - Pass 1 sum loop (flat.s.cond/body/end) reading inner.len via
+#     LIST_FIELD_LEN.
+#   - Inline ARC alloc shape (arc_hdr malloc, named %ArcHeader GEPs for
+#     strong/weak, arc_data GEP +ARC_HEADER_SIZE).
+#   - storeListHeaderFields onto the new collection header.
+#   - Pass 2 memcpy loop (flat.c.cond/body/end) reading inner.data via
+#     LIST_FIELD_DATA.
+# A botched `core::header_fields` constant-value drift would surface as a
+# wrong-field GEP and break this fixture.
+#
+# Uses List<List<T>> arguments (non-constant operands) so the inner-list
+# loads never get constant-folded.
+#
+# --- int element ---
+# CHECK-LABEL: define i64 @intFlatten(
+# CHECK:         %flat_total = alloca i64
+# CHECK:         %flat_ilen_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %flat_ilen = load i64, ptr %flat_ilen_ptr
+# CHECK:         %arc_hdr = call ptr @malloc
+# CHECK:         %arc_strong_ptr = getelementptr {{.*}}%ArcHeader, ptr %arc_hdr, i32 0, i32 0
+# CHECK:         store i64 1, ptr %arc_strong_ptr
+# CHECK:         %arc_weak_ptr = getelementptr {{.*}}%ArcHeader, ptr %arc_hdr, i32 0, i32 1
+# CHECK:         store i64 0, ptr %arc_weak_ptr
+# CHECK:         %arc_data = getelementptr i8, ptr %arc_hdr, i64 16
+# CHECK:         %flat_ds = mul i64 %flat_total_len, 8
+# CHECK:         %flat_data = call ptr @malloc(i64 %flat_ds)
+# CHECK:         %flat_c_ilen_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %flat_c_idata_field = getelementptr {{.*}}, i32 0, i32 2
+# CHECK:         %flat_c_idata = load ptr, ptr %flat_c_idata_field
+# CHECK:         call ptr @memcpy
+#
+# --- float element ---
+# CHECK-LABEL: define i64 @floatFlatten(
+# CHECK:         %flat_ds = mul i64 %flat_total_len, 8
+#
+# --- str element ---
+# CHECK-LABEL: define i64 @strFlatten(
+# CHECK:         %flat_ds = mul i64 %flat_total_len, 8
+
+fn intFlatten(xs: List<List<int>>) -> int:
+    return flat(xs).len()
+
+fn floatFlatten(xs: List<List<float>>) -> int:
+    return flat(xs).len()
+
+fn strFlatten(xs: List<List<str>>) -> int:
+    return flat(xs).len()
+
+fn main():
+    a: List<List<int>> = [[1, 2], [3], [4, 5, 6]]
+    b: List<List<float>> = [[1.0, 2.0], [3.0]]
+    c: List<List<str>> = [["a", "b"], ["c"]]
+    print(intFlatten(a))
+    print(floatFlatten(b))
+    print(strFlatten(c))

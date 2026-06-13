@@ -1,5 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include "ry/llvm_emit/api.h" // ry_emit_list_reverse (#2095)
+#include "ry/llvm_emit/cast_helpers.hpp" // asRyValue / asRyType (#2095)
 
 
 namespace ry {
@@ -626,6 +628,15 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
+        // #2095 — header load, ARC alloc, and the rev_data data-buffer
+        // allocation stay C++-side to preserve the baseline's pre-loop
+        // instruction order (the data-buffer call uses the LLVM IR builder to
+        // emit a call to libc's allocator; the linter ban targets raw
+        // C-runtime use in the codegen process, not emitted IR). The boundary
+        // owns the reverse loop body + named StructGEP stores for the new
+        // header fields (rev_new_len/cap/data via LIST_FIELD_LEN/CAP/DATA).
+        // Post-loop ARC retain dispatch (below) stays C++-side because it
+        // touches ValueMetadata.
         auto lf = loadListHeader(arg, "rev");
         llvm::Value *len = lf.len;
         llvm::Value *srcData = lf.data;
@@ -634,34 +645,13 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, elemSize), "rev_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "rev_data");
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "rev_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("lrev.cond");
-        llvm::BasicBlock *bodyBB = createBB("lrev.body");
-        llvm::BasicBlock *endBB = createBB("lrev.end");
-        emitBranchUncond(condBB);
-
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "rev_idx");
-        emitBranchCond(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
-
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "rev_i_cur");
-        llvm::Value *srcIdx = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "rev_src_idx");
-        llvm::Value *srcPtr = builder_.CreateGEP(elemTy, srcData, srcIdx, "rev_src");
-        llvm::Value *val = builder_.CreateLoad(elemTy, srcPtr, "rev_val");
-        llvm::Value *dstPtr = builder_.CreateGEP(elemTy, newData, iCur, "rev_dst");
-        builder_.CreateStore(val, dstPtr);
-        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-
-        builder_.SetInsertPoint(endBB);
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "rev_new_len");
-        builder_.CreateStore(len, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "rev_new_cap");
-        builder_.CreateStore(len, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
-        builder_.CreateStore(newData, newDataField);
+        ry_emit_list_reverse(emit_ctx_,
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(len)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(srcData)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newData)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newHeader)),
+            ry::llvm_emit::asRyType(listHeaderTy_),
+            ry::llvm_emit::asRyType(elemTy));
 
         // Per-element copy loop above duplicates ARC pointers without
         // retaining them; propagateMeta inherits the destructor, so source

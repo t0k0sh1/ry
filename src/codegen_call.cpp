@@ -2,7 +2,8 @@
 #include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
-#include "ry/llvm_emit/api.h" // RY_LISTCOPY_KEYS / _VALUES
+#include "ry/llvm_emit/api.h" // RY_LISTCOPY_KEYS / _VALUES / ry_emit_list_enumerate (#2095)
+#include "ry/llvm_emit/cast_helpers.hpp" // asRyValue / asRyType / asLlvmValue (#2095)
 
 
 namespace ry {
@@ -374,46 +375,41 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         std::string srcElemName = snapshotListElemName(listVal, elemTy);
 
         auto lf = loadListHeader(listVal, "enum");
-        llvm::Value *srcLen = lf.len;
-        llvm::Value *srcData = lf.data;
-
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
-        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "enum_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "enum_nd");
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "enum_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("enum.cond");
-        llvm::BasicBlock *bodyBB = createBB("enum.body");
-        llvm::BasicBlock *endBB = createBB("enum.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ei");
-        emitBranchCond(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "enum_ep");
-        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "enum_elem");
-        // #1667: tuple-elem List<(int, T)> destructor now releases T per slot;
-        // retain the component to keep the symmetric refcount discipline.
-        // The retain helper itself recurses into nested tuple components, so
-        // T may be either a pointer type (str/List/Map/Set) or an inline
-        // tuple struct (e.g. enumerate(List<(List<int>, int)>)).
-        if (!srcElemName.empty())
-            emitTupleComponentRetain(elem, srcElemName);
-        llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
-        tupleVal = builder_.CreateInsertValue(tupleVal, i, 0);
-        tupleVal = builder_.CreateInsertValue(tupleVal, elem, 1);
-        llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "enum_dp");
-        builder_.CreateStore(tupleVal, dstPtr);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
-        storeListHeaderFields(newHeader, srcLen, srcLen, newData);
+        // #2095 migration. The boundary owns the loop body + tuple build +
+        // storeListHeaderFields; the C++ side retains the metadata propagation.
+        // emitTupleComponentRetain (re-entrant: it recurses through nested
+        // tuple components) crosses via a stack-struct trampoline (see #2069 /
+        // ResultBranchTrampolineCtx pattern).
+        struct EnumRetainCtx {
+            CodeGen *cg;
+            std::string sig;
+        } retainCtx{this, srcElemName};
+        RyRetainFn retainFn = nullptr;
+        if (!srcElemName.empty()) {
+            retainFn = [](RyValueId valId, void *uc) {
+                auto *r = static_cast<EnumRetainCtx *>(uc);
+                llvm::Value *v =
+                    ry::llvm_emit::asLlvmValue(ry_emit_resolve(r->cg->emit_ctx_, valId));
+                r->cg->emitTupleComponentRetain(v, r->sig);
+            };
+        }
+        RyValueId srcLenId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.len));
+        RyValueId srcDataId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+        RyValueId newHeaderId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newHeader));
+        ry_emit_list_enumerate(emit_ctx_, srcLenId, srcDataId, newHeaderId,
+                                ry::llvm_emit::asRyType(listHeaderTy_),
+                                ry::llvm_emit::asRyType(elemTy),
+                                ry::llvm_emit::asRyType(tupleTy), tupleSize,
+                                retainFn,
+                                retainFn ? static_cast<void *>(&retainCtx) : nullptr);
+
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         if (!srcElemName.empty())
             getOrCreateMeta(newHeader).list_elem_type_name =
@@ -448,53 +444,52 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         auto lf1 = loadListHeader(list1, "zip1");
         auto lf2 = loadListHeader(list2, "zip2");
-        llvm::Value *len1 = lf1.len;
-        llvm::Value *len2 = lf2.len;
-        llvm::Value *data1 = lf1.data;
-        llvm::Value *data2 = lf2.data;
-
-        llvm::Value *minLen = builder_.CreateSelect(builder_.CreateICmpSLT(len1, len2), len1, len2, "zip_minlen");
+        // Compute zip_minlen on the C++ side BEFORE the ARC alloc to preserve
+        // the C++ baseline's instruction order byte-for-byte.
+        llvm::Value *minLen = builder_.CreateSelect(
+            builder_.CreateICmpSLT(lf1.len, lf2.len), lf1.len, lf2.len, "zip_minlen");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
-        llvm::Value *dataSize = builder_.CreateMul(minLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "zip_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "zip_nd");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "zip_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("zip.cond");
-        llvm::BasicBlock *bodyBB = createBB("zip.body");
-        llvm::BasicBlock *endBB = createBB("zip.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "zi");
-        emitBranchCond(builder_.CreateICmpSLT(i, minLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *ep1 = builder_.CreateGEP(elemTy1, data1, {i}, "zip_ep1");
-        llvm::Value *ep2 = builder_.CreateGEP(elemTy2, data2, {i}, "zip_ep2");
-        llvm::Value *e1 = builder_.CreateLoad(elemTy1, ep1, "zip_e1");
-        llvm::Value *e2 = builder_.CreateLoad(elemTy2, ep2, "zip_e2");
-        // #1667: tuple-elem List<(T1, T2)> destructor now releases each
-        // component per slot; retain on store to keep refcount symmetric.
-        // The retain helper recurses into nested tuple components, so T1/T2
-        // may be either a pointer type or an inline tuple struct.
-        if (!n1.empty())
-            emitTupleComponentRetain(e1, n1);
-        if (!n2.empty())
-            emitTupleComponentRetain(e2, n2);
-        llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
-        tupleVal = builder_.CreateInsertValue(tupleVal, e1, 0);
-        tupleVal = builder_.CreateInsertValue(tupleVal, e2, 1);
-        llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "zip_dp");
-        builder_.CreateStore(tupleVal, dstPtr);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
+        // #2095 — same trampoline pattern as enumerate, with 2 callbacks.
+        struct ZipRetainCtx {
+            CodeGen *cg;
+            std::string n1;
+            std::string n2;
+        } retainCtx{this, n1, n2};
+        RyRetainFn retain1Fn = nullptr;
+        if (!n1.empty()) {
+            retain1Fn = [](RyValueId valId, void *uc) {
+                auto *r = static_cast<ZipRetainCtx *>(uc);
+                llvm::Value *v =
+                    ry::llvm_emit::asLlvmValue(ry_emit_resolve(r->cg->emit_ctx_, valId));
+                r->cg->emitTupleComponentRetain(v, r->n1);
+            };
+        }
+        RyRetainFn retain2Fn = nullptr;
+        if (!n2.empty()) {
+            retain2Fn = [](RyValueId valId, void *uc) {
+                auto *r = static_cast<ZipRetainCtx *>(uc);
+                llvm::Value *v =
+                    ry::llvm_emit::asLlvmValue(ry_emit_resolve(r->cg->emit_ctx_, valId));
+                r->cg->emitTupleComponentRetain(v, r->n2);
+            };
+        }
+        ry_emit_list_zip(emit_ctx_,
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(minLen)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf1.data)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf2.data)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newHeader)),
+            ry::llvm_emit::asRyType(listHeaderTy_),
+            ry::llvm_emit::asRyType(elemTy1),
+            ry::llvm_emit::asRyType(elemTy2),
+            ry::llvm_emit::asRyType(tupleTy), tupleSize,
+            retain1Fn, retain2Fn,
+            (retain1Fn || retain2Fn) ? static_cast<void *>(&retainCtx) : nullptr);
 
-        storeListHeaderFields(newHeader, minLen, minLen, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         if (!n1.empty() && !n2.empty())
             getOrCreateMeta(newHeader).list_elem_type_name =

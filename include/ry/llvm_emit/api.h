@@ -435,6 +435,123 @@ void ry_emit_list_slice(RyEmitCtx *ctx, RyValueId list_ptr_id,
                         uint64_t elem_size, RyValueId *out_count,
                         RyValueId *out_new_data);
 
+// Linear-search-and-memmove `remove(val)` on a List (#2095). Mirrors the C++
+// emitListRemove:
+//   for (i = 0; i < len && foundIdx < 0; ++i)
+//     if (cmp(val, data[i]) == 0) foundIdx = i;
+//   if (foundIdx >= 0) {
+//     memmove(data + foundIdx, data + foundIdx + 1,
+//             (len - foundIdx - 1) * elem_size);
+//     list.len = len - 1;
+//   }
+//   return i64 0;
+// `elem_is_str` selects strcmp+ICmpEQ (caller must positively allowlist str
+// pointer elements at the call site — Map/Set/closure headers in a list of
+// pointers are UB under strcmp); `elem_is_double` selects FCmpOEQ; otherwise
+// plain ICmpEQ. Both flags ignored together default to ICmpEQ.
+// Precondition: builder positioned within a function (BBs are created inside
+// the search and the remove path). Returns the interned `i64 0` sentinel.
+RyValueId ry_emit_list_remove(RyEmitCtx *ctx, RyValueId container_ptr_id,
+                              RyValueId val_id, RyTypeRef list_header_ty,
+                              RyTypeRef list_elem_ty, uint64_t elem_size,
+                              int elem_is_str, int elem_is_double);
+
+// O(n²) `distinct(list)` dedup (#2095). The caller pre-loads the source list
+// header (loadListHeader) and pre-allocates the ARC collection header via
+// emitArcAllocCollectionHeader (which registers the result in
+// arc_owned_values_) — in that order, so the C++ baseline's instruction order
+// is preserved byte-for-byte. The boundary then:
+//   1. malloc(src_len * elem_size); store into new_header.data, src_len into
+//      new_header.cap.
+//   2. Outer loop scans each source element; inner loop checks for duplicates
+//      already written into new_header.data[0..out_len); strcmp / FCmpOEQ /
+//      ICmpEQ per element-type flag.
+//   3. After loops: store the final dedup count into new_header.len.
+// Caller-side allowlist guards str-only pointer elements before this call
+// (Map/Set/closure header strcmp is UB). Precondition: builder positioned
+// within a function (BBs are created inside).
+void ry_emit_list_distinct(RyEmitCtx *ctx, RyValueId src_len_id,
+                           RyValueId src_data_id, RyValueId new_header_id,
+                           RyTypeRef list_header_ty, RyTypeRef elem_ty,
+                           uint64_t elem_size, int elem_is_str,
+                           int elem_is_double);
+
+// Side-effecting retain callback for the per-element retain step of
+// tuple-producing ops (#2095: enumerate / zip / map_items). Nullable; NULL =
+// no retain needed (primitive or unnamed-elem path). The callback receives
+// the loaded tuple-component value id and emits the retain IR by re-entering
+// the C++ emitter.
+typedef void (*RyRetainFn)(RyValueId val_id, void *user_ctx);
+
+// `enumerate(list)` → `List<(int, T)>` (#2095). Caller pre-loads the source
+// list header (loadListHeader) and pre-allocates the ARC collection header
+// (emitArcAllocCollectionHeader) — in that order to preserve the C++ baseline.
+// `retain_fn` is invoked once per loop iteration with the loaded element value
+// id to emit emitTupleComponentRetain; NULL = primitive elements (no retain).
+// Precondition: builder positioned within a function.
+void ry_emit_list_enumerate(RyEmitCtx *ctx, RyValueId src_len_id,
+                            RyValueId src_data_id, RyValueId new_header_id,
+                            RyTypeRef list_header_ty, RyTypeRef elem_ty,
+                            RyTypeRef tuple_ty, uint64_t tuple_size,
+                            RyRetainFn retain_fn, void *user_ctx);
+
+// `reverse(list)` (#2095). Caller pre-loads list header, pre-allocates the
+// ARC collection header AND the data buffer (so rev_dsize / rev_data land at
+// the C++ baseline's positions); engine emits the reverse loop + named
+// StructGEPs rev_new_len/cap/data via LIST_FIELD_LEN/CAP/DATA. Post-loop ARC
+// retain dispatch stays C++-side (emitTupleElemRetainLoop /
+// emitCowRetainArcElements operate on ValueMetadata). Precondition: builder
+// positioned within a function.
+void ry_emit_list_reverse(RyEmitCtx *ctx, RyValueId len_id,
+                          RyValueId src_data_id, RyValueId new_data_id,
+                          RyValueId new_header_id,
+                          RyTypeRef list_header_ty, RyTypeRef elem_ty);
+
+// `items(map)` → `List<(K, V)>` (#2095). Caller pre-loads the map header
+// (mf.len/keys/vals) and pre-allocates the ARC collection header. Engine
+// emits the loop body + 2 retain callbacks + storeListHeaderFields.
+void ry_emit_map_items(RyEmitCtx *ctx, RyValueId map_len_id,
+                       RyValueId map_keys_id, RyValueId map_vals_id,
+                       RyValueId new_header_id, RyTypeRef list_header_ty,
+                       RyTypeRef key_ty, RyTypeRef val_ty,
+                       RyTypeRef tuple_ty, uint64_t tuple_size,
+                       RyRetainFn retain_key_fn, RyRetainFn retain_val_fn,
+                       void *user_ctx);
+
+// `zip(list1, list2)` → `List<(T1, T2)>` (#2095). Same shape as enumerate but
+// 2 sources with min(len1, len2) clamp via Select named `zip_minlen`. retain1
+// fires on e1, retain2 on e2 inside the loop body — both nullable.
+// Precondition: builder positioned within a function.
+void ry_emit_list_zip(RyEmitCtx *ctx, RyValueId min_len_id,
+                      RyValueId data1_id, RyValueId data2_id,
+                      RyValueId new_header_id, RyTypeRef list_header_ty,
+                      RyTypeRef elem_ty1, RyTypeRef elem_ty2,
+                      RyTypeRef tuple_ty, uint64_t tuple_size,
+                      RyRetainFn retain1_fn, RyRetainFn retain2_fn,
+                      void *user_ctx);
+
+// Two-pass `flat(list<list<T>>)` (#2095). Caller pre-loads the outer list
+// header (so loadListHeader order matches C++ baseline) and passes outer_len /
+// outer_data. The boundary then:
+//   1. Pass 1 loop: sum inner.len fields (LIST_FIELD_LEN) into `flat_total`.
+//   2. Inline ARC alloc (mirrors `emitArcAllocCollectionHeader` byte-for-byte:
+//      `arc_hdr` malloc(40), counter +1, strong=1, weak=0, GEP +ARC_HEADER_SIZE
+//      named `arc_data`).
+//   3. malloc(total * inner_elem_size) named `flat_data`; storeListHeaderFields
+//      writes total / total / new_data via LIST_FIELD_LEN/CAP/DATA.
+//   4. Pass 2 loop: memcpy each inner.data (LIST_FIELD_DATA) into new_data at
+//      the running offset.
+// Returns the new collection header pointer. The caller MUST register the
+// returned value in `arc_owned_values_` to match the original
+// `emitArcGetDataPtr` bookkeeping. Precondition: builder positioned within
+// a function (BBs created inside).
+RyValueId ry_emit_list_flatten(RyEmitCtx *ctx, RyValueId outer_len_id,
+                               RyValueId outer_data_id,
+                               RyTypeRef list_header_ty,
+                               RyTypeRef arc_header_ty,
+                               RyTypeRef inner_elem_ty,
+                               uint64_t inner_elem_size);
+
 // Collection copy-generation ops (#2093) — the malloc+memcpy chain that copies a
 // source buffer into a fresh List buffer for `keys` / `values` / `take` /
 // `appended` / list `+` concat. The codegen side keeps the header load (so the

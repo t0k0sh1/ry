@@ -1,0 +1,41 @@
+# FileCheck golden: reverse(list) (#2095, list branch of emitStrOp_reverse).
+# Pins:
+#   - Pre-boundary `rev_dsize` / `rev_data` malloc (C++ baseline order).
+#   - lrev.cond/body/end BB scaffold (rev_src_idx = (len-1) - i).
+#   - Named StructGEPs rev_new_len / rev_new_cap / rev_new_data at
+#     LIST_FIELD_LEN/CAP/DATA on the new collection header.
+#   - Post-loop ARC retain dispatch (C++-side): for `List<List<T>>` the
+#     atomicrmw fires on each preserved-then-reversed element via
+#     emitCowRetainArcElements.
+# String reverse (__ry_utf8_reverse) stays C++-side and is NOT covered here.
+#
+# --- int element (primitive, no retain dispatch) ---
+# CHECK-LABEL: define i64 @intReverse(
+# CHECK:         %rev_dsize = mul i64 %rev_len, 8
+# CHECK:         %rev_data{{[0-9]*}} = call ptr @malloc(i64 %rev_dsize)
+# CHECK:       lrev.cond:
+# CHECK:       lrev.body:
+# CHECK:         %rev_src_idx = sub i64 %{{[0-9]+}}, %rev_i_cur
+# CHECK:         %rev_val = load i64, ptr %rev_src
+# CHECK:         store i64 %rev_val, ptr %rev_dst
+# CHECK:       lrev.end:
+# CHECK:         %rev_new_len = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         store i64 %rev_len, ptr %rev_new_len
+# CHECK:         %rev_new_cap = getelementptr {{.*}}, i32 0, i32 1
+# CHECK:         %rev_new_data = getelementptr {{.*}}, i32 0, i32 2
+#
+# --- nested list (ARC element — retain dispatch fires) ---
+# CHECK-LABEL: define i64 @nestedReverse(
+# CHECK:         %rev_data{{[0-9]*}} = call ptr @malloc
+
+fn intReverse(xs: List<int>) -> int:
+    return reverse(xs).len()
+
+fn nestedReverse(xs: List<List<int>>) -> int:
+    return reverse(xs).len()
+
+fn main():
+    a: List<int> = [1, 2, 3]
+    c: List<List<int>> = [[1, 2], [3]]
+    print(intReverse(a))
+    print(nestedReverse(c))

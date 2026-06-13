@@ -1,0 +1,39 @@
+# FileCheck golden: items(map) → List<(K, V)> (#2095). Pins:
+#   - items.cond/body/end BB scaffold.
+#   - parallel GEP/load on keys + vals arrays.
+#   - tuple insertvalue pair (field 0 = k, field 1 = v).
+#   - storeListHeaderFields at LIST_FIELD_LEN/CAP/DATA on the new List.
+#   - Map header KEYS / VALS lookup uses the pre-loaded items_keys / items_vals
+#     so a future MAP_FIELD_KEYS / VALS constant-value drift would fail
+#     test_header_layout.cpp before reaching this fixture.
+#
+# Uses Map<K,V> args so the GEP/load pairs emit (non-constant operands).
+#
+# --- int → int (primitive K + V, no retain) ---
+# CHECK-LABEL: define i64 @intItems(
+# CHECK:         %items_ds = mul i64 %items_len, 16
+# CHECK:         %items_data = call ptr @malloc(i64 %items_ds)
+# CHECK:       items.cond:
+# CHECK:       items.body:
+# CHECK:         %items_kp = getelementptr i64, ptr %items_keys
+# CHECK:         %items_vp = getelementptr i64, ptr %items_vals
+# CHECK:         %items_k = load i64, ptr %items_kp
+# CHECK:         %items_v = load i64, ptr %items_vp
+#
+# --- str → str (both retain) ---
+# CHECK-LABEL: define i64 @strStrItems(
+# CHECK:         %items_k = load ptr, ptr %items_kp
+# CHECK:         %items_v = load ptr, ptr %items_vp
+# CHECK:         atomicrmw add ptr {{.*}}, i64 1
+
+fn intItems(m: Map<int, int>) -> int:
+    return items(m).len()
+
+fn strStrItems(m: Map<str, str>) -> int:
+    return items(m).len()
+
+fn main():
+    a: Map<int, int> = {1: 10, 2: 20}
+    b: Map<str, str> = {"a": "x", "b": "y"}
+    print(intItems(a))
+    print(strStrItems(b))
