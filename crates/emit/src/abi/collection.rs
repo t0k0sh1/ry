@@ -12,9 +12,28 @@
 
 use std::ffi::c_int;
 
+use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
+
 use crate::core::{ListCopyKind, TypeRef};
 
 use super::*;
+
+/// Reject a `tuple_size` that disagrees with the ABI size implied by
+/// `tuple_ty` under the module data layout — guards the per-iteration
+/// `len * tuple_size` data-buffer allocation in `enumerate` / `zip` /
+/// `items` from a caller-supplied under-/over-allocation (#2095 CodeRabbit).
+/// The C++ callsites compute `tuple_size` via `dl.getTypeAllocSize(tupleTy)`
+/// so a clean caller never hits this branch; the check is a no-cost belt
+/// on top of the suspenders.
+#[inline]
+unsafe fn tuple_size_matches(
+    module: llvm_sys::prelude::LLVMModuleRef,
+    tuple_ty: RyTypeRef,
+    tuple_size: u64,
+) -> bool {
+    let dl = LLVMGetModuleDataLayout(module);
+    LLVMABISizeOfType(dl, as_type(tuple_ty)) == tuple_size
+}
 
 // c_int → ListCopyKind, preserving the `RY_LISTCOPY_KEYS` / `_VALUES` / `_TAKE`
 // mapping; any other value is rejected (no-op / sentinel 0 at the caller).
@@ -306,6 +325,9 @@ pub unsafe extern "C" fn ry_emit_list_enumerate(
     if list_header_ty.is_null() || elem_ty.is_null() || tuple_ty.is_null() {
         return;
     }
+    if !tuple_size_matches(module, tuple_ty, tuple_size) {
+        return;
+    }
     let (Some(src_len), Some(src_data), Some(new_header)) = (
         with_ctx(ctx, |c| resolve_value(c, src_len_id)),
         with_ctx(ctx, |c| resolve_value(c, src_data_id)),
@@ -418,6 +440,9 @@ pub unsafe extern "C" fn ry_emit_map_items(
     if list_header_ty.is_null() || key_ty.is_null() || val_ty.is_null() || tuple_ty.is_null() {
         return;
     }
+    if !tuple_size_matches(module, tuple_ty, tuple_size) {
+        return;
+    }
     let (Some(map_len), Some(map_keys), Some(map_vals), Some(new_header)) = (
         with_ctx(ctx, |c| resolve_value(c, map_len_id)),
         with_ctx(ctx, |c| resolve_value(c, map_keys_id)),
@@ -497,6 +522,9 @@ pub unsafe extern "C" fn ry_emit_list_zip(
         return;
     }
     if list_header_ty.is_null() || elem_ty1.is_null() || elem_ty2.is_null() || tuple_ty.is_null() {
+        return;
+    }
+    if !tuple_size_matches(module, tuple_ty, tuple_size) {
         return;
     }
     let (Some(min_len), Some(data1), Some(data2), Some(new_header)) = (
