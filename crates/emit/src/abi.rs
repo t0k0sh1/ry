@@ -15,7 +15,7 @@ use std::ffi::{c_char, c_int, c_void};
 
 use llvm_sys::prelude::*;
 
-use crate::core::{EmitCtx, ValueRef};
+use crate::context::{EmitCtx, ValueRef};
 
 // Per-op C boundary entry points live in child modules (one per migrated op),
 // each calling the matching `core` engine method on `EmitCtx`. The cdylib
@@ -439,7 +439,7 @@ const _: () =
 // through these accessors, never a raw reify.
 mod ctx_access {
     use super::RyEmitCtx;
-    use crate::core::EmitCtx;
+    use crate::context::EmitCtx;
 
     // The sole arbitrary-lifetime reifier. Fully private — NO `pub`, not even
     // `pub(super)` (which would re-expose it to the whole `abi` subtree, letting
@@ -610,7 +610,7 @@ pub(crate) unsafe fn ffi_slice<'a, T>(ptr: *const T, count: u32) -> Option<&'a [
 
 // `cstr_bytes` lives in `core` (#2060) — a pure `CStr` primitive used by the
 // bounds and any engines, both of which are now core-role modules reaching it
-// via `crate::core` directly. The transitional `pub(crate) use crate::core::
+// via `crate::core` directly. The transitional `pub(crate) use crate::context::
 // cstr_bytes` re-export here (kept for the legacy `any.rs` while it still did
 // `use crate::abi::*`) was dropped once #2063 migrated `any` — its last consumer
 // — mirroring #2062 dropping `pub use arc::*`.

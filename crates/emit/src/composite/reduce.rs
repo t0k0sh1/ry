@@ -27,7 +27,8 @@
 use llvm_sys::core::*;
 use llvm_sys::{LLVMIntPredicate, LLVMRealPredicate};
 
-use crate::core::*;
+use crate::context::*;
+use crate::primitive::types::{i64_type, ptr_type};
 
 impl EmitCtx {
     /// `sum([..])` — accumulate a numeric list. Emits the interleaved list-header

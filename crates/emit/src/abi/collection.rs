@@ -14,7 +14,7 @@ use std::ffi::c_int;
 
 use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 
-use crate::core::{ListCopyKind, TypeRef};
+use crate::context::{ListCopyKind, TypeRef};
 
 use super::*;
 
@@ -350,7 +350,7 @@ pub unsafe extern "C" fn ry_emit_list_enumerate(
     let retain_arg: Option<&mut dyn FnMut(ValueRef)> =
         retain_fn.map(|_| &mut do_retain as &mut dyn FnMut(ValueRef));
 
-    crate::collection::emit_list_enumerate(
+    crate::composite::collection::emit_list_enumerate(
         b,
         context,
         module,
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn ry_emit_list_reverse(
     }
     let b = c.builder;
     let context = c.context;
-    crate::collection::emit_list_reverse(
+    crate::composite::collection::emit_list_reverse(
         b,
         context,
         len,
@@ -473,7 +473,7 @@ pub unsafe extern "C" fn ry_emit_map_items(
     let retain_val_arg: Option<&mut dyn FnMut(ValueRef)> =
         retain_val_fn.map(|_| &mut do_retain_val as &mut dyn FnMut(ValueRef));
 
-    crate::collection::emit_map_items(
+    crate::composite::collection::emit_map_items(
         b,
         context,
         module,
@@ -557,7 +557,7 @@ pub unsafe extern "C" fn ry_emit_list_zip(
     let retain2_arg: Option<&mut dyn FnMut(ValueRef)> =
         retain2_fn.map(|_| &mut do_retain2 as &mut dyn FnMut(ValueRef));
 
-    crate::collection::emit_list_zip(
+    crate::composite::collection::emit_list_zip(
         b,
         context,
         module,

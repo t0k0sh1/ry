@@ -15,7 +15,12 @@ use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::{LLVMAtomicOrdering, LLVMIntPredicate};
 use std::ffi::c_char;
 
-use crate::core::*;
+use crate::composite::arc::{emit_arc_counter_delta, emit_atomic_i64_load};
+use crate::composite::header::{arc_header_type, build_header_struct};
+use crate::context::*;
+use crate::primitive::libc::{emit_malloc, emit_memcpy};
+use crate::primitive::types::{i64_type, i8_type, ptr_type};
+use crate::primitive::util::cname3;
 
 // Rust-native descriptor for cow_ensure_unique. The abi shell (`abi/cow.rs`)
 // resolves the u32 handle ids to `ValueRef`, maps the `c_int` kind / atomic and

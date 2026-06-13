@@ -13,8 +13,8 @@
 
 use std::ffi::c_int;
 
-use crate::core::{Atomicity, CowKind, ValueRef};
-use crate::cow::CowEnsureUnique;
+use crate::composite::cow::CowEnsureUnique;
+use crate::context::{Atomicity, CowKind, ValueRef};
 
 use super::*;
 

@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use crate::core::BoundsKind;
+use crate::context::BoundsKind;
 
 use super::*;
 

@@ -5,7 +5,8 @@
 
 use llvm_sys::core::*;
 
-use crate::core::*;
+use crate::context::*;
+use crate::primitive::types::i1_type;
 
 impl EmitCtx {
     // Build `Some(inner)`: insert tag = 1 then the payload into an undef Option

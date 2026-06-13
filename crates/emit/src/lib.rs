@@ -16,85 +16,83 @@
 //   - `-undefined dynamic_lookup` link arg flows through on macOS,
 //   - llvm-sys = "211" finds LLVM 21 via LLVM_SYS_211_PREFIX.
 //
-// Module layout (#2057 — abi/ffi/core layering with arc as the pilot; builds on
-// the #2025 single-file split. #2059 extended the migration to control_flow /
-// option / lifecycle and moved each migrated op's externs into the `abi/`
-// directory; #2060 migrated bounds / result / runtime_call; #2061 migrated
-// collection; #2062 migrated cow; #2063 migrated any — the last legacy module,
-// completing the series so no module outside the `abi/` children references
-// `crate::abi`):
-//   - `abi`   : the C/C++ emission boundary — opaque handle types, scalar / enum
-//               typedefs, descriptor structs, layout assertions, and the
-//               plumbing that exists because C++ calls in (the `ctx_access`-
-//               confined `cx` reify reached only via `with_ctx` / `checked_cx`
-//               (#2081), `intern` / `resolve`, handle casts). `cstr_bytes` lives
-//               in `core` (a pure
-//               `CStr` primitive used by the bounds / any engines, which reach
-//               it via `crate::core` directly). Each migrated op's `#[no_mangle]`
-//               externs live in a child module `abi::<op>` (`abi/any.rs`,
-//               `abi/arc.rs`, `abi/bounds.rs`, `abi/collection.rs`,
-//               `abi/control_flow.rs`, `abi/cow.rs`, `abi/lifecycle.rs`,
-//               `abi/option.rs`, `abi/result.rs`, `abi/runtime_call.rs`) that
-//               resolves / translates and calls the matching core method.
-//   - `core`  : the abi-independent IR generation engine — `EmitCtx` (+ its
-//               `new` constructor), the Rust-native `ValueRef` / `Atomicity` /
-//               `BasicBlockRef` / `FunctionRef` / `TypeRef` / `FuncTypeRef`
-//               handles + the `BoundsKind` enum, basic-IR type constructors,
-//               name builders (`cstr_bytes` / `cname_pfx`), module-global
-//               lookup, layout constants, libc / runtime-error / ARC-alloc
-//               emitters. Must NOT reference `abi` (the `core⇏abi` invariant).
-//   - `ffi`   : the Rust-native public surface — re-exports `EmitCtx` /
-//               `ValueRef` / `Atomicity` from `core`. The convergence point
-//               where the C++ path (via `abi`) and the Rust-direct path meet.
-//               Provisional name (a holistic rename is deferred to #2022).
-//   - migrated core-role op modules, each an `impl EmitCtx` over the core engine
-//     only (no `use crate::abi`): `any`, `arc`, `bounds`, `collection`,
-//     `control_flow`, `cow`, `option`, `reduce`, `runtime_call`, and `result`. `any`
-//     (#2063) holds the three `any_{wrap,unwrap,try_unwrap}` methods returning
-//     `Option<ValueRef>` — the abi shell does the kind mapping + top-level guards
-//     and interns `None → 0`, while the branch-specific guards stay in the method
-//     (the descriptor-passing pattern from #2062). `result` splits
-//     asymmetrically — only `build_error_from_runtime` is a core method here;
-//     `result_branch` keeps its orchestration in `abi/result.rs` because its
-//     ok/err builders are re-entrant C callbacks that cannot cross into a
-//     `&mut self` method (#2060). `reduce` (#2092) holds the `sum` / `min` / `max`
-//     builtins — the list forms emit a whole accumulate loop, the variadic forms
-//     one fold step per call (a single array-fold op would reorder the operand
-//     loads and break byte-exactness); `reduce_minmax_list_loop` is partial, the
-//     empty-list `emitRuntimeError` staying C++-side as it builds an ARC string
-//     global out of scope for this ARC-free batch. `lifecycle` emits no IR, so its only core part
-//     (`EmitCtx::new`) lives in `core` and it has no core-role module. With `any`
-//     migrated, no legacy module remains.
+// Module layout (#2057 — `abi → core` layering with arc as the pilot; the
+// #2025 single-file split; #2059..#2063 migrated all op extern bodies into
+// `abi/`; #2069 made `result_branch` re-entrant-safe via a `core` free fn so
+// every `abi/**` file became IR-free; #2109 split the former `core` umbrella
+// into `context` + `primitive/` + `composite/` for layered responsibility):
 //
-// Dependency direction is one-way `abi → core`, with `ffi` re-exporting the
-// `core` surface. Why one-way: `abi` is the *removable* C-boundary shell — the
-// #2023 end-state drops `extern "C"` for a Rust-native library — so `core` must
-// stay compilable without it; once the physical crate split lands `abi` becomes
-// a separate cdylib that `core`'s rlib does not depend on, and Rust-direct
-// callers bypass `abi` to call `core` methods (the convergence point `ffi`
-// names). The `#[no_mangle] extern "C"` boundary functions are exported from the
-// cdylib regardless of which (private) module they live in.
+//   - `abi`        : the C/C++ emission boundary — opaque handle types, scalar
+//                    / enum typedefs, descriptor structs, layout assertions,
+//                    and the plumbing that exists because C++ calls in (the
+//                    `ctx_access`-confined `cx` reify reached only via
+//                    `with_ctx` / `checked_cx` (#2081), `intern` / `resolve`,
+//                    handle casts). Each migrated op's `#[no_mangle]` externs
+//                    live in a child module `abi::<op>` (`abi/any.rs`,
+//                    `abi/arc.rs`, `abi/bounds.rs`, `abi/cast.rs`,
+//                    `abi/collection.rs`, `abi/control_flow.rs`, `abi/cow.rs`,
+//                    `abi/function.rs`, `abi/lifecycle.rs`, `abi/option.rs`,
+//                    `abi/primitive.rs`, `abi/reduce.rs`, `abi/result.rs`,
+//                    `abi/runtime_call.rs`, `abi/test_introspect.rs`) that
+//                    resolves / translates and calls the matching engine
+//                    method or free function. The CI gate
+//                    `scripts/check-emit-abi-no-ir.sh` keeps the abi layer
+//                    IR-free (#2069).
+//
+//   - `context`    : the layer-neutral state, handles, enums, layout
+//                    constants, and the pure-data `HdrField` / `HeaderKind` /
+//                    `header_fields` table. Holds the concrete `EmitCtx` (LLVM
+//                    handles + intern table + msg dedup caches) but no IR
+//                    generation; `llvm_sys::prelude` is permitted for the raw
+//                    handle types, `llvm_sys::core` is not. Imported by every
+//                    other layer; imports nothing from sibling layers.
+//
+//   - `primitive`  : LLVM-near 1:1 emission with no Ry semantics — type
+//                    constructors, name builders, module-symbol lookup, plain
+//                    string globals, libc emitters, inline runtime-error,
+//                    scalar / memory ops, function creation / indirect call /
+//                    intrinsic call, control flow, generic `__ry_*` runtime
+//                    calls. `primitive` is the LLVM C API concentration target.
+//                    `primitive ⇏ composite` is enforced by
+//                    `scripts/check-emit-composite-no-primitive.sh`.
+//
+//   - `composite`  : Ry-semantic emission — ARC retain/release, bounds check,
+//                    checked FP→int, Option/Result construction, Any wrap/
+//                    unwrap, collection mutations, CoW ensure-unique, reduce,
+//                    and the shared header layout helpers
+//                    (`build_header_struct` / `load_list_header` / etc.).
+//                    `composite` may call `primitive` (the layering goal) and
+//                    other `composite` siblings (sharing layout helpers).
+//                    Some `composite/**.rs` still call `llvm_sys::core` /
+//                    `LLVMBuild*` directly as a transitional carve-out
+//                    (verbatim move preserved IR byte-exactness); a future
+//                    issue migrates those to primitive method calls. The CI
+//                    gate `scripts/check-emit-llvm-ir-gen-concentration.sh`
+//                    freezes the carve-out allowlist and blocks new
+//                    `llvm_sys::core` callers (#2109 AC #7).
+//
+//   - `ffi`        : the Rust-native public surface — re-exports `EmitCtx` /
+//                    `ValueRef` / `Atomicity` from `context`. The convergence
+//                    point where the C++ path (via `abi`) and the Rust-direct
+//                    path meet. Provisional name (a holistic rename is
+//                    deferred to #2022).
+//
+// Dependency direction is `abi → composite → primitive → context`, with
+// `abi → primitive` and `abi → context` permitted as transitional shortcuts
+// (the abi shell sometimes calls primitive entries directly). `context` sits
+// below every other layer and imports nothing from siblings. The future
+// physical crate split (#2023) drops `extern "C"` and turns the import-path
+// gates into Cargo dependency constraints.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
 
 mod abi;
-mod any;
-mod arc;
-mod bounds;
-mod cast;
-mod collection;
-mod control_flow;
-mod core;
-mod cow;
+mod composite;
+mod context;
 mod ffi;
-mod function;
-mod option;
 mod primitive;
-mod reduce;
-mod result;
-mod runtime_call;
 
 // Surface the boundary types/constants at the crate root. Some of them
 // (e.g. `RY_BOUNDS_ARRAY`) mirror api.h for boundary

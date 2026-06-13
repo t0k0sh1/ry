@@ -63,6 +63,28 @@ jobs:
           # above. Keeps the abi layer uniform and deletable as ops migrate
           # (#2023). The same script is the local reproduction.
           bash scripts/check-emit-abi-no-ir.sh
+      - name: Check emit layering direction (primitive ⇏ composite, context ⇏ all) (#2109)
+        run: |
+          # Enforces #2109 layering invariants: primitive/** and context.rs
+          # must not import from crate::composite (the reverse of the allowed
+          # abi → composite → primitive → context direction). context.rs
+          # additionally must not import crate::abi or crate::primitive,
+          # because context sits below every other layer. The gate has a known
+          # blind spot — self.method() dispatch (both layers impl on EmitCtx)
+          # cannot be caught by import-path inspection; the future physical
+          # crate split (#2023) turns this into a Cargo-enforced constraint.
+          bash scripts/check-emit-composite-no-primitive.sh
+      - name: Check emit composite LLVM IR-gen concentration (#2109 AC #5/#7)
+        run: |
+          # Enforces #2109 AC #5/#7: the LLVM C IR-generation API
+          # (`llvm_sys::core`, `LLVMBuild*`) must be confined to the primitive
+          # layer. composite/**.rs files that still call LLVM C API directly
+          # are listed in the script's ALLOWLIST as a transitional carve-out
+          # (the #2109 verbatim move preserves byte-exact IR; full migration
+          # to primitive method sequences is a follow-on issue). New composite
+          # files outside the allowlist must express their op via primitive
+          # methods (self.build_load(...) etc.).
+          bash scripts/check-emit-llvm-ir-gen-concentration.sh
       - name: Check for banned direct exit() calls in runtime
         run: |
           # Trap-path runtime functions must use ry_runtime_trap_exit()

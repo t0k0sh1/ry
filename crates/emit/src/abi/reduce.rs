@@ -17,7 +17,7 @@
 
 use std::ffi::c_int;
 
-use crate::core::TypeRef;
+use crate::context::TypeRef;
 
 use super::*;
 

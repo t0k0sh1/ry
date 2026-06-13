@@ -11,13 +11,13 @@
 //! retain guard calls `arc_retain` as an engine method directly, so — like #2062
 //! — `any` no longer reaches the `ry_emit_arc_*` externs by name; `any` was the
 //! last in-crate `use crate::abi` consumer, so `abi.rs` also dropped its dead
-//! `pub(crate) use crate::core::cstr_bytes;` re-export (whose sole remaining
+//! `pub(crate) use crate::context::cstr_bytes;` re-export (whose sole remaining
 //! caller was the legacy `any.rs`).
 
 use std::ffi::c_int;
 
-use crate::any::{AnyTryUnwrap, AnyUnwrap, AnyWrap};
-use crate::core::{AnyTryUnwrapKind, AnyUnwrapKind, AnyWrapKind, TypeRef};
+use crate::composite::any::{AnyTryUnwrap, AnyUnwrap, AnyWrap};
+use crate::context::{AnyTryUnwrapKind, AnyUnwrapKind, AnyWrapKind, TypeRef};
 
 use super::*;
 

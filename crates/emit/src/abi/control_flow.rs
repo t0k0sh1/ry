@@ -5,7 +5,7 @@
 
 use std::ffi::{c_char, c_uint};
 
-use crate::core::{BasicBlockRef, FunctionRef, TypeRef, ValueRef};
+use crate::context::{BasicBlockRef, FunctionRef, TypeRef, ValueRef};
 
 use super::*;
 

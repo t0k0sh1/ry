@@ -26,7 +26,11 @@ use std::ffi::c_char;
 use llvm_sys::core::*;
 use llvm_sys::{LLVMRealPredicate, LLVMTypeKind};
 
-use crate::core::*;
+use crate::composite::arc::get_or_create_arc_msg_global;
+use crate::context::*;
+use crate::primitive::module::{get_or_insert_function, get_or_insert_global};
+use crate::primitive::types::{i32_type, ptr_type, void_type};
+use crate::primitive::util::{cname_pfx, cstr_bytes};
 
 impl EmitCtx {
     /// Emit the checked FP→int conversion sequence: FPExt(f32→f64) if needed →

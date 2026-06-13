@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use crate::core::{IcmpPred, TypeRef};
+use crate::context::{IcmpPred, TypeRef};
 
 use super::*;
 

@@ -6,7 +6,7 @@
 
 use std::ffi::c_int;
 
-use crate::core::{Atomicity, ValueRef};
+use crate::context::{Atomicity, ValueRef};
 
 use super::*;
 

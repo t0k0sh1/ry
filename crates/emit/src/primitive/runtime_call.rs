@@ -1,10 +1,9 @@
-//! Runtime-function emission (core-role: an `impl EmitCtx` over the core engine
-//! only, so it is abi-independent and the `core⇏abi` invariant covers this
-//! module). The generic runtime call (`runtime_call`) and the runtime-fn
-//! declaration / lookup helper (`get_runtime_fn`). The C++ path enters through
-//! the `abi::runtime_call` externs, which validate inputs, resolve the u32 ids /
-//! translate the type handles into the typed slices these methods consume, and
-//! intern the call result (`get_runtime_fn` returns a raw, un-interned handle).
+//! Runtime-function emission. The generic runtime call (`runtime_call`) and
+//! the runtime-fn declaration / lookup helper (`get_runtime_fn`). The C++ path
+//! enters through the `abi::runtime_call` externs, which validate inputs,
+//! resolve the u32 ids / translate the type handles into the typed slices these
+//! methods consume, and intern the call result (`get_runtime_fn` returns a raw,
+//! un-interned handle).
 
 use std::ffi::c_char;
 
@@ -12,7 +11,8 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::LLVMTypeKind;
 
-use crate::core::*;
+use crate::context::{EmitCtx, FuncTypeRef, FunctionRef, TypeRef, ValueRef};
+use crate::primitive::module::get_or_insert_function;
 
 impl EmitCtx {
     // Declare-or-reuse `name` with signature `(arg_tys) -> ret_ty` and emit a

@@ -7,7 +7,7 @@
 
 use std::ffi::c_char;
 
-use crate::core::{FuncTypeRef, TypeRef, ValueRef};
+use crate::context::{FuncTypeRef, TypeRef, ValueRef};
 
 use super::*;
 

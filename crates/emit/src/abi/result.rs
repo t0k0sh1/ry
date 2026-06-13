@@ -15,8 +15,8 @@
 
 use std::ffi::{c_char, c_void};
 
-use crate::core::{TypeRef, ValueRef};
-use crate::result::emit_result_branch;
+use crate::composite::result::emit_result_branch;
+use crate::context::{TypeRef, ValueRef};
 
 use super::*;
 

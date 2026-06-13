@@ -15,7 +15,12 @@ use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::LLVMIntPredicate;
 use std::ffi::{c_char, CStr};
 
-use crate::core::*;
+use crate::composite::arc::emit_inline_arc_alloc;
+use crate::context::*;
+use crate::primitive::error::emit_inline_runtime_error;
+use crate::primitive::module::get_or_insert_function;
+use crate::primitive::types::{i1_type, i64_type, i8_type, ptr_type};
+use crate::primitive::util::cstr_bytes;
 
 // Rust-native descriptor for any_wrap. The abi shell (`abi/any.rs`) resolves the
 // u32 handle ids to `ValueRef`, maps the `c_int` kind → `AnyWrapKind`, converts

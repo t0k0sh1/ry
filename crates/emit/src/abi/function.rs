@@ -16,7 +16,7 @@ use std::ffi::{c_char, c_int};
 
 use llvm_sys::LLVMLinkage;
 
-use crate::core::{FuncTypeRef, FunctionRef, TypeRef, ValueRef};
+use crate::context::{FuncTypeRef, FunctionRef, TypeRef, ValueRef};
 
 use super::*;
 

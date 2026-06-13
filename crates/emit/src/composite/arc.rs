@@ -1,15 +1,169 @@
-//! arc — ARC retain / release IR generation (core-role: an `impl EmitCtx` that
-//! uses only the core engine, so it is abi-independent and the `core⇏abi`
-//! invariant covers this module too). These bodies are the migrated #2057 pilot:
-//! they take the Rust-native `ValueRef` / `Atomicity` and are the convergence
-//! point shared by the C++ path (via the `abi` `ry_emit_arc_*` externs, which
-//! resolve the u32 id and translate `c_int`) and the Rust-direct path (the Any
-//! retain-guard in `any.rs`, which passes the value in without the id bridge).
+//! composite/arc — ARC retain / release IR generation (#2057 pilot), plus the
+//! shared ARC-side helpers carried over from the former `core.rs`:
+//! the `__ry_arc_counter_address` extern, the StringHeader-prefixed
+//! `get_or_create_arc_msg_global` (#2097 — the `cachedGlobalString` shape
+//! distinct from `primitive::global::get_or_create_msg_global`), the
+//! `emit_arc_counter_delta` live-count bump, the mode-scaled
+//! `emit_atomic_i64_load`, and the `emit_inline_arc_alloc` helper used by
+//! `composite::any` / `composite::collection` to create a fresh ARC-headed box.
+//!
+//! `impl EmitCtx` methods take the Rust-native `ValueRef` / `Atomicity` and are
+//! the convergence point shared by the C++ path (via the `abi` `ry_emit_arc_*`
+//! externs) and the Rust-direct path (`composite::any`'s retain-guard, which
+//! passes the value in without the id bridge).
+
+use std::ffi::c_char;
 
 use llvm_sys::core::*;
-use llvm_sys::{LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate};
+use llvm_sys::prelude::*;
+use llvm_sys::{
+    LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate, LLVMLinkage, LLVMUnnamedAddr,
+};
 
-use crate::core::*;
+use crate::composite::header::arc_header_type;
+use crate::context::{Atomicity, EmitCtx, ValueRef, ARC_HEADER_SIZE, ARC_IMMORTAL};
+use crate::primitive::libc::{emit_free, emit_malloc};
+use crate::primitive::module::get_or_insert_function;
+use crate::primitive::types::{i32_type, i64_type, i8_type, ptr_type, void_type};
+use crate::primitive::util::{cname_pfx, cstr_bytes};
+
+// ARC live-count counter address (mirrors the extern in src/codegen_arc.cpp).
+extern "C" {
+    fn __ry_arc_counter_address() -> *mut i64;
+}
+
+// `cachedGlobalString`-shaped global (`src/codegen.cpp::buildArcGlobal`): a
+// StringHeader-prefixed `{ i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8]
+// data }` struct whose data slot holds the message bytes (NUL-terminated). The
+// returned ConstantExpr is the in-bounds GEP `wrapTy, gv, [0, 3, 0]` — a `ptr`
+// to the first byte of the payload, the shape the C++ side passes straight to
+// `fprintf`. Used by `emitRuntimeError`-style exits whose fmt strings cross
+// runtime symbols and must match the str-handle ABI (#2097 — checked FP→int).
+// Distinct from `primitive::global::get_or_create_msg_global`, which builds a
+// plain `[N+1 x i8]` global used by `ry_emit_bounds_error`.
+//
+// Dedup is keyed on message bytes — repeated calls with the same content
+// share one global, mirroring the C++ `global_string_cache_`. `name` is the
+// caller-supplied global-name hint; this helper appends `.arc` to it (matching
+// `buildArcGlobal`'s `name + ".arc"`).
+pub(crate) unsafe fn get_or_create_arc_msg_global(
+    c: &mut EmitCtx,
+    msg: &[u8],
+    name: *const c_char,
+) -> LLVMValueRef {
+    if let Some(&gv) = c.arc_msg_cache.get(msg) {
+        return gv;
+    }
+    let context = c.context;
+    let i64_ty = i64_type(context);
+    let i32_ty = i32_type(context);
+    // ConstantDataArray::getString equivalent — appends a trailing NUL.
+    let str_data = LLVMConstStringInContext2(context, msg.as_ptr() as *const c_char, msg.len(), 0);
+    let str_data_ty = LLVMTypeOf(str_data);
+    let mut field_tys = [i64_ty, i64_ty, i64_ty, str_data_ty];
+    let wrap_ty = LLVMStructTypeInContext(context, field_tys.as_mut_ptr(), 4, 0);
+    // ARC_IMMORTAL = i64::MAX — retain / release are no-ops on this sentinel.
+    let arc_immortal = LLVMConstInt(i64_ty, i64::MAX as u64, 0);
+    let zero_i64 = LLVMConstInt(i64_ty, 0, 0);
+    let byte_len = LLVMConstInt(i64_ty, msg.len() as u64, 0);
+    let mut elements = [arc_immortal, zero_i64, byte_len, str_data];
+    let init_val = LLVMConstNamedStruct(wrap_ty, elements.as_mut_ptr(), 4);
+    // Append ".arc" to the global name (matches buildArcGlobal's `name +
+    // ".arc"`).
+    let name_bytes = cstr_bytes(name);
+    let arc_name = cname_pfx(name_bytes, b".arc");
+    let gv = LLVMAddGlobal(c.module, wrap_ty, arc_name.as_ptr());
+    LLVMSetLinkage(gv, LLVMLinkage::LLVMPrivateLinkage);
+    LLVMSetInitializer(gv, init_val);
+    LLVMSetGlobalConstant(gv, 1);
+    LLVMSetUnnamedAddress(gv, LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
+    LLVMSetAlignment(gv, 8);
+    // Constant in-bounds GEP `wrapTy, gv, [i64 0, i32 3, i64 0]` — the i8
+    // payload pointer.
+    let mut indices = [
+        LLVMConstInt(i64_ty, 0, 0),
+        LLVMConstInt(i32_ty, 3, 0),
+        LLVMConstInt(i64_ty, 0, 0),
+    ];
+    let gs = LLVMConstInBoundsGEP2(wrap_ty, gv, indices.as_mut_ptr(), 3);
+    c.arc_msg_cache.insert(msg.to_vec(), gs);
+    gs
+}
+
+// Inttoptr the process-global ARC live-count address (captured at JIT compile
+// time) and atomicrmw add `delta`.
+pub(crate) unsafe fn emit_arc_counter_delta(
+    builder: LLVMBuilderRef,
+    i64_ty: LLVMTypeRef,
+    ptr_ty: LLVMTypeRef,
+    delta: i64,
+) {
+    let addr = __ry_arc_counter_address() as usize as u64;
+    let ctr_addr_const = LLVMConstInt(i64_ty, addr, 0);
+    let ctr_ptr = LLVMBuildIntToPtr(builder, ctr_addr_const, ptr_ty, c"arc_ctr".as_ptr());
+    LLVMBuildAtomicRMW(
+        builder,
+        LLVMAtomicRMWBinOp::LLVMAtomicRMWBinOpAdd,
+        ctr_ptr,
+        LLVMConstInt(i64_ty, delta as u64, 0),
+        LLVMAtomicOrdering::LLVMAtomicOrderingMonotonic,
+        0,
+    );
+}
+
+// NotAtomic ordering uses a plain load (data-layout default alignment) to match
+// the non-atomic codepath byte-for-byte; otherwise an 8-byte-aligned atomic
+// load with the given ordering.
+pub(crate) unsafe fn emit_atomic_i64_load(
+    builder: LLVMBuilderRef,
+    i64_ty: LLVMTypeRef,
+    ptr: LLVMValueRef,
+    ordering: LLVMAtomicOrdering,
+    name: *const c_char,
+) -> LLVMValueRef {
+    let ld = LLVMBuildLoad2(builder, i64_ty, ptr, name);
+    if ordering != LLVMAtomicOrdering::LLVMAtomicOrderingNotAtomic {
+        LLVMSetAlignment(ld, 8);
+        LLVMSetOrdering(ld, ordering);
+    }
+    ld
+}
+
+// malloc ARC_HEADER_SIZE + boxDataSize, bump the live-count (+1), init
+// strong=1/weak=0, return the headerPtr (caller GEPs +ARC_HEADER_SIZE for the
+// data pointer).
+pub(crate) unsafe fn emit_inline_arc_alloc(
+    c: &mut EmitCtx,
+    box_data_size: LLVMValueRef,
+) -> LLVMValueRef {
+    let b = c.builder;
+    let context = c.context;
+    let module = c.module;
+    let i64_ty = i64_type(context);
+    let ptr_ty = ptr_type(context);
+    let arc_header_ty = arc_header_type(context);
+    let header_size_c = LLVMConstInt(i64_ty, ARC_HEADER_SIZE, 0);
+    let total_size = LLVMBuildAdd(b, header_size_c, box_data_size, c"arc_alloc_size".as_ptr());
+    let header_ptr = emit_malloc(b, module, i64_ty, ptr_ty, total_size, c"arc_box".as_ptr());
+    emit_arc_counter_delta(b, i64_ty, ptr_ty, 1);
+    let strong_ptr = LLVMBuildStructGEP2(
+        b,
+        arc_header_ty,
+        header_ptr,
+        0,
+        c"arc_box_strong_ptr".as_ptr(),
+    );
+    LLVMBuildStore(b, LLVMConstInt(i64_ty, 1, 0), strong_ptr);
+    let weak_ptr = LLVMBuildStructGEP2(
+        b,
+        arc_header_ty,
+        header_ptr,
+        1,
+        c"arc_box_weak_ptr".as_ptr(),
+    );
+    LLVMBuildStore(b, LLVMConstInt(i64_ty, 0, 0), weak_ptr);
+    header_ptr
+}
 
 impl EmitCtx {
     // ARC retain. `header` is the already-resolved ARC/String header pointer

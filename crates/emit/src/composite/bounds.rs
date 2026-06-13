@@ -13,7 +13,11 @@ use std::ffi::{c_char, CStr};
 use llvm_sys::core::*;
 use llvm_sys::LLVMIntPredicate;
 
-use crate::core::*;
+use crate::context::*;
+use crate::primitive::global::get_or_create_msg_global;
+use crate::primitive::module::{get_or_insert_function, get_or_insert_global};
+use crate::primitive::types::{i1_type, i32_type, i64_type, ptr_type, void_type};
+use crate::primitive::util::{cname_pfx, cstr_bytes};
 
 impl EmitCtx {
     // Emit a runtime index bounds-check: normalize i1 → i64, apply the
