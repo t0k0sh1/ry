@@ -1007,6 +1007,46 @@ RyValueId ry_emit_call_indirect(RyEmitCtx *ctx, RyFuncTypeRef fn_ty,
                                 RyValueId callee_id, const RyValueId *arg_ids,
                                 uint32_t arg_count, const char *name);
 
+// ===========================================================================
+// #2102 — LLVM intrinsic call ([D] = (ii) boundary move).
+//
+// The intrinsic-call capability: declaration acquisition + the call itself
+// cross the boundary as a SINGLE primitive. The engine calls
+// `LLVMGetIntrinsicDeclaration` for the overloaded `llvm::Function*`, derives
+// the FunctionType via `LLVMIntrinsicGetType` engine-side, and emits the call
+// with `LLVMBuildCall2`. Nothing about the resulting `llvm::Function*` or its
+// FunctionType leaks back to C++ — the alternative (a `get_intrinsic_decl` +
+// reuse-`call_indirect` 2-step split) would force C++ to call `getFunctionType`
+// on the returned function handle, defeating the boundary-ownership purpose.
+//
+// `{T, i1}` aggregate results (the `*_with_overflow` family) are then
+// decomposed via the existing `ry_emit_extract_value` (#2099). Pilot consumer
+// is `emitIntOverflowCheck`'s non-constant path (`src/codegen_arith.cpp`); the
+// constant-fold path stays C++-side (APInt compile-time evaluation).
+// ===========================================================================
+
+// Emit a call to the overloaded LLVM intrinsic identified by `intrinsic_id`
+// (`llvm::Intrinsic::ID` cast to uint32_t — same numeric value across the
+// process because `ry` and the cdylib share ONE libLLVM via llvm-sys
+// `force-dynamic`), parameterised by `overload_tys[0..overload_count]`, with
+// operand `arg_ids[0..arg_count]`. The engine acquires the declaration, derives
+// the FunctionType, and emits the call. Return the interned result.
+//
+// `overload_count == 0` is valid (non-overloaded intrinsics like `llvm.memcpy`
+// with explicit type args, or scalar-only ones; the caller must supply exactly
+// the type parameters the intrinsic declaration requires — same caller-
+// contract as `LLVMBuildCall2`'s arg count).
+//
+// NULL ctx, a NULL overload-type array for `overload_count > 0`, any NULL
+// overload-type element, a NULL arg array for `arg_count > 0`, or any arg
+// resolving to NULL → 0. NULL `name` → empty SSA name. A void return type
+// drops the SSA name (LLVM forbids naming a void call).
+RyValueId ry_emit_intrinsic_call(RyEmitCtx *ctx, uint32_t intrinsic_id,
+                                 const RyTypeRef *overload_tys,
+                                 uint32_t overload_count,
+                                 const RyValueId *arg_ids, uint32_t arg_count,
+                                 const char *name);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

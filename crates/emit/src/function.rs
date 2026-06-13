@@ -1,19 +1,24 @@
-//! Function-definition and indirect-call IR generation (core-role: an `impl
-//! EmitCtx` over the core engine only, so it is abi-independent and the
-//! `core⇏abi` invariant covers this module). Added for #2098 ([C] = (ii)
-//! boundary move): this is the function-CREATION capability — the emission layer
-//! gains `llvm::Function::Create` (via `LLVMAddFunction`), parameter access, and
-//! the indirect call through a loaded function-pointer value, so the iterator-
-//! next / tostring / closure / destructor function-builders can move their
-//! `Function::Create` + body emission across the boundary.
+//! Function-definition, indirect-call, and LLVM-intrinsic IR generation
+//! (core-role: an `impl EmitCtx` over the core engine only, so it is abi-
+//! independent and the `core⇏abi` invariant covers this module). Added for
+//! #2098 ([C] = (ii) boundary move) — the function-CREATION capability — and
+//! extended in #2102 ([D] = (ii) boundary move) with the intrinsic-call
+//! capability: the emission layer gains `llvm::Function::Create` (via
+//! `LLVMAddFunction`), parameter access, the indirect call through a loaded
+//! function-pointer value, and the overloaded-intrinsic declaration + call
+//! (`LLVMGetIntrinsicDeclaration` + `LLVMIntrinsicGetType` + `LLVMBuildCall2`)
+//! so the iterator-next / tostring / closure / destructor function-builders
+//! and the `*_with_overflow` / `*_sat` / `floor` / `fabs` intrinsic users can
+//! move their `Function::Create` + body emission and intrinsic calls across
+//! the boundary.
 //!
 //! These primitives are generic and semantically trivial — nothing here knows
-//! about iterators or any Ry-level concept (the (ii) non-semantic op surface).
-//! The C++ path enters through the `abi::function` externs, which resolve u32
-//! ids / translate opaque handles, map the linkage selector, and intern any
-//! produced value.
+//! about iterators or overflow checks or any Ry-level concept (the (ii) non-
+//! semantic op surface). The C++ path enters through the `abi::function`
+//! externs, which resolve u32 ids / translate opaque handles, map the linkage
+//! selector, and intern any produced value.
 
-use std::ffi::c_char;
+use std::ffi::{c_char, c_uint};
 
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
@@ -69,6 +74,59 @@ impl EmitCtx {
             self.builder,
             fn_ty.0,
             callee.0,
+            args_v.as_mut_ptr(),
+            args_v.len() as u32,
+            call_name,
+        ))
+    }
+
+    // Emit a call to the overloaded LLVM intrinsic identified by `intrinsic_id`
+    // (`llvm::Intrinsic::ID`, passed as a u32; same numeric value across the
+    // process because both `ry` and the cdylib share ONE libLLVM via
+    // `force-dynamic`) parameterised by `overload_tys[..]`, with operand
+    // `args[..]`. Three C-API calls: `LLVMGetIntrinsicDeclaration` gets / inserts
+    // the per-overload `llvm::Function*`, `LLVMIntrinsicGetType` derives its
+    // FunctionType (purpose-built — preferred over `LLVMGlobalGetValueType`),
+    // and `LLVMBuildCall2` emits the call. Same void-name-drop as
+    // `call_indirect` so a void-returning intrinsic (e.g. `llvm.memcpy`) stays
+    // valid. Returns the raw call value; the abi boundary interns it.
+    //
+    // `overload_tys` is the type-parameter array LLVM uses to specialise the
+    // overloaded intrinsic (e.g. `{i32}` for `sadd_with_overflow.i32`); for a
+    // non-overloaded intrinsic it is empty. The slice is materialised into a
+    // local Vec because `LLVMGetIntrinsicDeclaration` / `LLVMIntrinsicGetType`
+    // take a `*mut LLVMTypeRef` (C API artifact; they do not write).
+    pub(crate) unsafe fn build_intrinsic_call(
+        &mut self,
+        intrinsic_id: u32,
+        overload_tys: &[TypeRef],
+        args: &[ValueRef],
+        name: *const c_char,
+    ) -> ValueRef {
+        let mut tys_v: Vec<LLVMTypeRef> = overload_tys.iter().map(|t| t.0).collect();
+        let decl = LLVMGetIntrinsicDeclaration(
+            self.module,
+            intrinsic_id as c_uint,
+            tys_v.as_mut_ptr(),
+            tys_v.len(),
+        );
+        let fn_ty = LLVMIntrinsicGetType(
+            self.context,
+            intrinsic_id as c_uint,
+            tys_v.as_mut_ptr(),
+            tys_v.len(),
+        );
+        let mut args_v: Vec<LLVMValueRef> = args.iter().map(|a| a.0).collect();
+        let call_name =
+            if LLVMGetTypeKind(LLVMGetReturnType(fn_ty)) == LLVMTypeKind::LLVMVoidTypeKind {
+                c"".as_ptr()
+            } else {
+                name
+            };
+        ValueRef(LLVMBuildCall2(
+            self.builder,
+            fn_ty,
+            decl,
             args_v.as_mut_ptr(),
             args_v.len() as u32,
             call_name,

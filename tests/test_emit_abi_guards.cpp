@@ -879,4 +879,75 @@ TEST_F(EmitAbiGuardTest, ZExtUnresolvableValReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// =============================================================================
+// #2102 — LLVM intrinsic call guard ([D] = (ii) boundary move). Same shape as
+// ry_emit_call_indirect's three guards (ctx-NULL / NULL array with count > 0 /
+// resolve_value -> None), plus a per-element NULL-type check on the overload
+// type array — five reachable cells through the supported boundary. Happy path
+// is covered by the emitIntOverflowCheck migration's coverage gate (signed
+// sadd/ssub/smul + unsigned umul_with_overflow markers in the baseline IR).
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, IntrinsicCallNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_intrinsic_call(nullptr, /*intrinsic_id=*/0,
+                                     /*overload_tys=*/nullptr, /*overload_count=*/0,
+                                     /*arg_ids=*/nullptr, /*arg_count=*/0,
+                                     /*name=*/nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, IntrinsicCallNullOverloadArrayReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_intrinsic_call(ctx, /*intrinsic_id=*/0,
+                                     /*overload_tys=*/nullptr, /*overload_count=*/1,
+                                     /*arg_ids=*/nullptr, /*arg_count=*/0,
+                                     /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, IntrinsicCallNullOverloadElementReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A non-NULL overload array whose single element is NULL → the per-element
+    // type-NULL guard fires before LLVMGetIntrinsicDeclaration.
+    RyTypeRef nullTy = nullptr;
+    EXPECT_EQ(ry_emit_intrinsic_call(ctx, /*intrinsic_id=*/0,
+                                     /*overload_tys=*/&nullTy, /*overload_count=*/1,
+                                     /*arg_ids=*/nullptr, /*arg_count=*/0,
+                                     /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, IntrinsicCallNullArgArrayReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // overload_count == 0 yields an empty slice (valid for non-overloaded
+    // intrinsics); the NULL arg array with arg_count > 0 trips the ffi_slice
+    // guard before any LLVMBuildCall2.
+    EXPECT_EQ(ry_emit_intrinsic_call(ctx, /*intrinsic_id=*/0,
+                                     /*overload_tys=*/nullptr, /*overload_count=*/0,
+                                     /*arg_ids=*/nullptr, /*arg_count=*/1,
+                                     /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, IntrinsicCallUnresolvableArgReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A resolvable overload type passes the overload guards, but arg_id 0
+    // resolves to NULL → resolve_value-None reject before LLVMBuildCall2.
+    RyTypeRef i64Handle = asRyType(llvm::Type::getInt64Ty(llctx_));
+    RyValueId nullArg = 0;
+    EXPECT_EQ(ry_emit_intrinsic_call(ctx, /*intrinsic_id=*/0,
+                                     /*overload_tys=*/&i64Handle, /*overload_count=*/1,
+                                     /*arg_ids=*/&nullArg, /*arg_count=*/1,
+                                     /*name=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace

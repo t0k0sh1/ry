@@ -153,11 +153,10 @@ llvm::Value *CodeGen::emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
         }
     }
 
-    llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
-        mod_.get(), intrinsicId, {lhs->getType()});
-    llvm::Value *result = builder_.CreateCall(intrinsic, {lhs, rhs}, opName + "_ov");
-    llvm::Value *value = builder_.CreateExtractValue(result, 0, opName + "_val");
-    llvm::Value *overflow = builder_.CreateExtractValue(result, 1, opName + "_flag");
+    llvm::Value *result = emitIntrinsicCall(intrinsicId, {lhs->getType()},
+                                             {lhs, rhs}, (opName + "_ov").c_str());
+    llvm::Value *value = emitExtractValue(result, 0, (opName + "_val").c_str());
+    llvm::Value *overflow = emitExtractValue(result, 1, (opName + "_flag").c_str());
 
     llvm::BasicBlock *errBB = createBBInFn((opName + ".overflow_err").c_str(), fn_);
     llvm::BasicBlock *okBB  = createBBInFn((opName + ".ok").c_str(), fn_);
