@@ -404,11 +404,31 @@ pub(crate) enum HeaderKind {
     Arc,
 }
 
+// Named GEP-field index constants — the single source of truth for List/Map
+// header layouts mirrored from src/codegen.cpp:57-61. Migration sites use these
+// (LIST_FIELD_DATA, MAP_FIELD_KEYS, …) instead of bare numeric indices so a
+// future layout change is a single-point edit. The `header_fields` slice below
+// stores the field *type* at each named position; both are pinned against C++'s
+// canonical struct by tests/test_header_layout.cpp (#2071 extended in #2095).
+pub(crate) const LIST_FIELD_LEN: u32 = 0;
+pub(crate) const LIST_FIELD_CAP: u32 = 1;
+pub(crate) const LIST_FIELD_DATA: u32 = 2;
+
+pub(crate) const MAP_FIELD_LEN: u32 = 0;
+pub(crate) const MAP_FIELD_CAP: u32 = 1;
+pub(crate) const MAP_FIELD_KEYS: u32 = 2;
+pub(crate) const MAP_FIELD_VALS: u32 = 3;
+pub(crate) const MAP_FIELD_BUCKET_COUNT: u32 = 4;
+pub(crate) const MAP_FIELD_BUCKETS: u32 = 5;
+
 // The field kinds of each header, mirroring src/codegen.cpp:57-61.
-//   List {len:i64, cap:i64, data:ptr}
-//   Map  {len:i64, cap:i64, keys:ptr, vals:ptr, bucket_count:i64, buckets:ptr}
+//   List {len:i64, cap:i64, data:ptr}                           (indices 0..3)
+//   Map  {len:i64, cap:i64, keys:ptr, vals:ptr, bcnt:i64, bks:ptr}  (0..6)
 //   Set  {len:i64, cap:i64, elems:ptr, bucket_count:i64, buckets:ptr}
 //   Arc  {strong:i64, weak:i64}
+// The slice positions agree with the LIST_FIELD_* / MAP_FIELD_* constants above
+// — drift is caught by tests/test_header_layout.cpp (per-index type + ABI size
+// + named-index field-type assertions).
 pub(crate) fn header_fields(kind: HeaderKind) -> &'static [HdrField] {
     use HdrField::{Ptr, I64};
     match kind {
@@ -500,21 +520,21 @@ pub(crate) unsafe fn load_list_header(
         b,
         list_header_ty,
         list_ptr,
-        0,
+        LIST_FIELD_LEN,
         cname_pfx(prefix, b"_len_ptr").as_ptr(),
     );
     let cap_ptr = LLVMBuildStructGEP2(
         b,
         list_header_ty,
         list_ptr,
-        1,
+        LIST_FIELD_CAP,
         cname_pfx(prefix, b"_cap_ptr").as_ptr(),
     );
     let data_ptr = LLVMBuildStructGEP2(
         b,
         list_header_ty,
         list_ptr,
-        2,
+        LIST_FIELD_DATA,
         cname_pfx(prefix, b"_data_ptr").as_ptr(),
     );
     let len = LLVMBuildLoad2(b, i64_ty, len_ptr, cname_pfx(prefix, b"_len").as_ptr());

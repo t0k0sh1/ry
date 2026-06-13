@@ -21,7 +21,11 @@
 
 use std::ffi::c_int;
 
-use crate::core::{header_fields, HdrField, HeaderKind};
+use crate::core::{
+    header_fields, HdrField, HeaderKind, LIST_FIELD_CAP, LIST_FIELD_DATA, LIST_FIELD_LEN,
+    MAP_FIELD_BUCKETS, MAP_FIELD_BUCKET_COUNT, MAP_FIELD_CAP, MAP_FIELD_KEYS, MAP_FIELD_LEN,
+    MAP_FIELD_VALS,
+};
 
 // Header kind selector (the C++ side passes these literals). List/Map/Set match
 // RY_COW_LIST / _MAP / _SET (0/1/2); Arc is appended as 3.
@@ -41,6 +45,41 @@ const FIELD_PTR: u8 = 1;
 pub struct RyTestHeaderLayout {
     pub count: u32,
     pub kinds: [u8; 8],
+}
+
+// Named GEP-field index constants for List/Map headers, exported as flat fields
+// so the C++ side can assert each constant indexes a field of the expected type
+// in the canonical struct (tests/test_header_layout.cpp). The constants are
+// pinned to GEP positions; a future layout change is a single-point edit in
+// core.rs that this struct + the C++ test catch via per-named-position parity.
+#[repr(C)]
+pub struct RyTestFieldIndices {
+    pub list_len: u32,
+    pub list_cap: u32,
+    pub list_data: u32,
+    pub map_len: u32,
+    pub map_cap: u32,
+    pub map_keys: u32,
+    pub map_vals: u32,
+    pub map_bucket_count: u32,
+    pub map_buckets: u32,
+}
+
+/// Report the Rust-side named GEP-field index constants for List/Map headers.
+/// Pure data lookup — emits no IR.
+#[no_mangle]
+pub extern "C" fn ry_emit_test_field_indices() -> RyTestFieldIndices {
+    RyTestFieldIndices {
+        list_len: LIST_FIELD_LEN,
+        list_cap: LIST_FIELD_CAP,
+        list_data: LIST_FIELD_DATA,
+        map_len: MAP_FIELD_LEN,
+        map_cap: MAP_FIELD_CAP,
+        map_keys: MAP_FIELD_KEYS,
+        map_vals: MAP_FIELD_VALS,
+        map_bucket_count: MAP_FIELD_BUCKET_COUNT,
+        map_buckets: MAP_FIELD_BUCKETS,
+    }
 }
 
 /// Report the single-sourced field layout of an internal header for the

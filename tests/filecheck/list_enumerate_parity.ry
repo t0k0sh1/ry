@@ -1,0 +1,39 @@
+# FileCheck golden: enumerate(list) → List<(int, T)> (#2095). Pins:
+#   - Pre-loop list header load + ARC alloc (loadListHeader → emitArc order
+#     preserved across boundary).
+#   - enum.cond/body/end BB scaffold + tuple construction via insertvalue
+#     (field 0 = index, field 1 = elem).
+#   - storeListHeaderFields at LIST_FIELD_LEN/CAP/DATA.
+#   - For str element types: the retain callback fires (str retain emits
+#     atomicrmw on the string ARC header).
+# Uses List<T> args (non-constant) so the loop emits all expected markers.
+#
+# --- int element (primitive, no retain) ---
+# CHECK-LABEL: define i64 @intEnumerate(
+# CHECK:         %enum_len_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %enum_ds = mul i64 %enum_len, 16
+# CHECK:         %enum_nd = call ptr @malloc(i64 %enum_ds)
+# CHECK:       enum.cond:
+# CHECK:       enum.body:
+# CHECK:         %enum_elem = load i64, ptr %enum_ep
+# CHECK:         %{{[0-9]+}} = insertvalue { i64, i64 } undef, i64 %ei{{[0-9]*}}, 0
+# CHECK:         insertvalue { i64, i64 } %{{[0-9]+}}, i64 %enum_elem, 1
+# CHECK:         %enum_dp = getelementptr {{.*}}, i64 %ei
+# CHECK:       enum.end:
+#
+# --- str element (retain callback fires; atomicrmw on the str arc header) ---
+# CHECK-LABEL: define i64 @strEnumerate(
+# CHECK:         %enum_elem = load ptr, ptr %enum_ep
+# CHECK:         atomicrmw add ptr {{.*}}, i64 1
+
+fn intEnumerate(xs: List<int>) -> int:
+    return enumerate(xs).len()
+
+fn strEnumerate(xs: List<str>) -> int:
+    return enumerate(xs).len()
+
+fn main():
+    a: List<int> = [10, 20, 30]
+    b: List<str> = ["a", "b"]
+    print(intEnumerate(a))
+    print(strEnumerate(b))

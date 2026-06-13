@@ -1,0 +1,71 @@
+# FileCheck golden: distinct(list) O(n²) dedup (#2095 — emitCollOp_distinct
+# migration to the Rust emit cdylib). Pins the outer/inner BB scaffold and
+# the three element-type comparison paths (icmp for int, fcmp for float,
+# strcmp+icmp for str) so the migrated `ry_emit_list_distinct` stays
+# bit-exact with the C++ baseline.
+#
+# Uses List arguments (non-constant operands) so the dedup compares never
+# get constant-folded — with literal values the entire BB scaffold and
+# `dist_match` marker never reach IR, and a botched port would pass the
+# empty diff (#2092 coverage trap).
+#
+# The C++ baseline emits loadListHeader BEFORE emitArcAllocCollectionHeader;
+# the migration preserves that order by pre-loading the header on the C++
+# side and passing src_len / src_data into the boundary, so a future
+# reordering would surface as a non-empty diff.
+#
+# --- int element (ICmpEQ path) ---
+# CHECK-LABEL: define i64 @intDistinct(
+# CHECK:         %dist_src_len_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %dist_src_len = load i64, ptr %dist_src_len_ptr
+# CHECK:         %dist_data_size = mul i64 %dist_src_len, 8
+# CHECK:         %dist_data = call ptr @malloc
+# CHECK:         %dist_data_field = getelementptr {{.*}}, i32 0, i32 2
+# CHECK:         store ptr %dist_data, ptr %dist_data_field
+# CHECK:         %dist_cap_ptr = getelementptr {{.*}}, i32 0, i32 1
+# CHECK:         store i64 %dist_src_len, ptr %dist_cap_ptr
+# CHECK:       dist.ocond:
+# CHECK:       dist.obody:
+# CHECK:       dist.oend:
+# CHECK:         %dist_final_len = load i64, ptr %dist_out_len
+# CHECK:         %dist_len_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         store i64 %dist_final_len, ptr %dist_len_ptr
+# CHECK:       dist.icond:
+# CHECK:         %dist_not_dup = icmp eq i1
+# CHECK:         %dist_j_inb = icmp slt i64 %dist_jv, %dist_cur_out
+# CHECK:         %dist_icont = and i1 %dist_not_dup, %dist_j_inb
+# CHECK:         br i1 %dist_icont, label %dist.ibody, label %dist.iend
+# CHECK:       dist.ibody:
+# CHECK:         %dist_match = icmp eq i64 %dist_src_elem, %dist_out_elem
+# CHECK:         br i1 %dist_match, label %dist.dup, label %dist.inext
+# CHECK:       dist.iend:
+# CHECK:       dist.dup:
+# CHECK:       dist.inext:
+# CHECK:       dist.add:
+# CHECK:       dist.onext:
+#
+# --- float element (FCmpOEQ path) ---
+# CHECK-LABEL: define i64 @floatDistinct(
+# CHECK:         %dist_match = fcmp oeq double %dist_src_elem, %dist_out_elem
+#
+# --- str element (strcmp+ICmpEQ path) ---
+# CHECK-LABEL: define i64 @strDistinct(
+# CHECK:         %dist_strcmp = call i32 @strcmp
+# CHECK:         %dist_match = icmp eq i32 %dist_strcmp, 0
+
+fn intDistinct(xs: List<int>) -> int:
+    return distinct(xs).len()
+
+fn floatDistinct(xs: List<float>) -> int:
+    return distinct(xs).len()
+
+fn strDistinct(xs: List<str>) -> int:
+    return distinct(xs).len()
+
+fn main():
+    a: List<int> = [1, 2, 2, 3, 3, 3, 4]
+    b: List<float> = [1.0, 2.0, 2.0]
+    c: List<str> = ["a", "b", "b", "c"]
+    print(intDistinct(a))
+    print(floatDistinct(b))
+    print(strDistinct(c))

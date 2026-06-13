@@ -54,12 +54,29 @@ impl EmitCtx {
         // (src/codegen_call.cpp); core::load_list_header groups the geps then the
         // loads, which would reorder the IR. `sum_cap` is loaded-but-unused, exactly
         // as the C++ helper does, so the IR stays byte-identical.
-        let len_ptr = LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 0, c"sum_len_ptr".as_ptr());
+        let len_ptr = LLVMBuildStructGEP2(
+            b,
+            list_header_ty,
+            list_ptr,
+            LIST_FIELD_LEN,
+            c"sum_len_ptr".as_ptr(),
+        );
         let src_len = LLVMBuildLoad2(b, i64_ty, len_ptr, c"sum_len".as_ptr());
-        let cap_ptr = LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 1, c"sum_cap_ptr".as_ptr());
+        let cap_ptr = LLVMBuildStructGEP2(
+            b,
+            list_header_ty,
+            list_ptr,
+            LIST_FIELD_CAP,
+            c"sum_cap_ptr".as_ptr(),
+        );
         let _src_cap = LLVMBuildLoad2(b, i64_ty, cap_ptr, c"sum_cap".as_ptr());
-        let data_ptr =
-            LLVMBuildStructGEP2(b, list_header_ty, list_ptr, 2, c"sum_data_ptr".as_ptr());
+        let data_ptr = LLVMBuildStructGEP2(
+            b,
+            list_header_ty,
+            list_ptr,
+            LIST_FIELD_DATA,
+            c"sum_data_ptr".as_ptr(),
+        );
         let src_data = LLVMBuildLoad2(b, ptr_ty, data_ptr, c"sum_data".as_ptr());
 
         let acc_var = LLVMBuildAlloca(b, elem_ty, c"sum_acc".as_ptr());

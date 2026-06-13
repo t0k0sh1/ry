@@ -32,6 +32,24 @@ struct RyTestHeaderLayout {
     uint8_t kinds[8]; // first `count` valid; 0 = i64, 1 = ptr
 };
 RyTestHeaderLayout ry_emit_test_header_layout(int kind);
+
+// Mirror of the Rust #[repr(C)] RyTestFieldIndices
+// (crates/emit/src/abi/test_introspect.rs): named GEP-field positions for
+// List / Map headers. Exposed so the C++ side can assert each constant
+// indexes a field of the expected type in the canonical struct, pinning a
+// constant-value drift that the per-index slice parity test alone misses.
+struct RyTestFieldIndices {
+    uint32_t list_len;
+    uint32_t list_cap;
+    uint32_t list_data;
+    uint32_t map_len;
+    uint32_t map_cap;
+    uint32_t map_keys;
+    uint32_t map_vals;
+    uint32_t map_bucket_count;
+    uint32_t map_buckets;
+};
+RyTestFieldIndices ry_emit_test_field_indices();
 }
 
 namespace {
@@ -102,6 +120,49 @@ TEST(HeaderLayoutParity, RustMirrorMatchesCanonical) {
     expectParity(cg, HDR_MAP, cg.mapHeaderTy_, "MapHeader");
     expectParity(cg, HDR_SET, cg.setHeaderTy_, "SetHeader");
     expectParity(cg, HDR_ARC, cg.arcHeaderTy_, "ArcHeader");
+}
+
+// Named GEP-field index parity: the Rust LIST_FIELD_* / MAP_FIELD_* constants
+// (the single source of truth migration sites use, #2095) must index a field
+// of the expected semantic type in C++'s canonical struct. A constant-value
+// drift (e.g. someone setting LIST_FIELD_DATA = 0 by mistake) is invisible to
+// the per-index slice parity test above — it would still report Ptr at slice
+// position 2 — but is caught here because position 0 in `listHeaderTy_` is
+// i64 (len), not ptr (the data semantic the constant names).
+TEST(HeaderLayoutParity, NamedFieldIndicesMatchCanonical) {
+    CodeGen cg;
+    RyTestFieldIndices idx = ry_emit_test_field_indices();
+
+    // List header: {len:i64, cap:i64, data:ptr}
+    ASSERT_LT(idx.list_len, cg.listHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.listHeaderTy_->getElementType(idx.list_len)->isIntegerTy(64))
+        << "LIST_FIELD_LEN must index an i64 (len)";
+    ASSERT_LT(idx.list_cap, cg.listHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.listHeaderTy_->getElementType(idx.list_cap)->isIntegerTy(64))
+        << "LIST_FIELD_CAP must index an i64 (cap)";
+    ASSERT_LT(idx.list_data, cg.listHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.listHeaderTy_->getElementType(idx.list_data)->isPointerTy())
+        << "LIST_FIELD_DATA must index a ptr (data)";
+
+    // Map header: {len:i64, cap:i64, keys:ptr, vals:ptr, bucket_count:i64, buckets:ptr}
+    ASSERT_LT(idx.map_len, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_len)->isIntegerTy(64))
+        << "MAP_FIELD_LEN must index an i64 (len)";
+    ASSERT_LT(idx.map_cap, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_cap)->isIntegerTy(64))
+        << "MAP_FIELD_CAP must index an i64 (cap)";
+    ASSERT_LT(idx.map_keys, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_keys)->isPointerTy())
+        << "MAP_FIELD_KEYS must index a ptr (keys)";
+    ASSERT_LT(idx.map_vals, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_vals)->isPointerTy())
+        << "MAP_FIELD_VALS must index a ptr (vals)";
+    ASSERT_LT(idx.map_bucket_count, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_bucket_count)->isIntegerTy(64))
+        << "MAP_FIELD_BUCKET_COUNT must index an i64";
+    ASSERT_LT(idx.map_buckets, cg.mapHeaderTy_->getNumElements());
+    EXPECT_TRUE(cg.mapHeaderTy_->getElementType(idx.map_buckets)->isPointerTy())
+        << "MAP_FIELD_BUCKETS must index a ptr";
 }
 
 // Negative (teeth): the comparator must REJECT a layout that disagrees, so the

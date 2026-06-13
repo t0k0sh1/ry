@@ -1,7 +1,8 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
-#include "ry/llvm_emit/api.h" // RY_LISTCOPY_TAKE
+#include "ry/llvm_emit/api.h" // RY_LISTCOPY_TAKE / ry_emit_list_remove (#2095)
+#include "ry/llvm_emit/cast_helpers.hpp" // asRyValue / asRyType / asLlvmValue (#2095)
 
 
 
@@ -211,38 +212,13 @@ llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
 
-    auto lf = loadListHeader(containerPtr, "lrem");
-
-    // Linear search for the value
-    llvm::AllocaInst *foundIdx = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_found_idx");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1)), foundIdx);
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *condBB = createBB("lrem.cond");
-    llvm::BasicBlock *bodyBB = createBB("lrem.body");
-    llvm::BasicBlock *endSearchBB = createBB("lrem.end_search");
-
-    emitBranchUncond(condBB);
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "lrem_iv");
-    llvm::Value *notYetFound = builder_.CreateICmpSLT(
-        builder_.CreateLoad(i64Ty_, foundIdx, "lrem_fi"), llvm::ConstantInt::get(i64Ty_, 0), "lrem_not_found");
-    llvm::Value *inBounds = builder_.CreateICmpSLT(iVal, lf.len, "lrem_in_bounds");
-    llvm::Value *cont = builder_.CreateAnd(notYetFound, inBounds, "lrem_cont");
-    emitBranchCond(cont, bodyBB, endSearchBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lrem_ic");
-    llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "lrem_elem_ptr");
-    llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "lrem_elem");
-
-    llvm::Value *match;
+    // Reject non-str pointer elements before crossing the boundary: the
+    // boundary's strcmp path is UB on Map/Set/List/closure/resource headers.
+    // Positive allowlist on list_elem_type_name (empty or "str" counts as str)
+    // with structural fallbacks for NestedListElem / list_elem_fn_type_info in
+    // case the name is unset. Mirrors #1262 distinct() guard. The guard reads
+    // ValueMetadata which does not cross the boundary, so it stays C++-side.
     if (listElemTy == ptrTy_) {
-        // Reject non-str pointer elements: the comparison path below calls strcmp, which is
-        // UB on Map/Set/List/closure/resource headers. Positive allowlist on list_elem_type_name
-        // (empty or "str" counts as str) with structural fallbacks for NestedListElem /
-        // list_elem_fn_type_info in case the name is unset. Mirrors #1262 distinct() guard.
         const ValueMetadata *meta = getMeta(containerPtr);
         const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
         const bool isNonStrName = !elemName.empty() && elemName != "str";
@@ -250,52 +226,21 @@ llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val
         const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
         if (isNonStrName || hasNestedList || hasFnInfo)
             codegenError("remove() is only supported for lists of primitive values or strings");
-        auto strcmpFn = getStdlibStrcmp();
-        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
-        match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
-    } else if (listElemTy->isDoubleTy()) {
-        match = builder_.CreateFCmpOEQ(val, listElem, "lrem_match");
-    } else {
-        match = builder_.CreateICmpEQ(val, listElem, "lrem_match");
     }
 
-    llvm::BasicBlock *foundBB = createBB("lrem.found");
-    llvm::BasicBlock *nextBB = createBB("lrem.next");
-    emitBranchCond(match, foundBB, nextBB);
-
-    builder_.SetInsertPoint(foundBB);
-    builder_.CreateStore(iCur, foundIdx);
-    emitBranchUncond(condBB);
-
-    builder_.SetInsertPoint(nextBB);
-    llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "lrem_inext");
-    builder_.CreateStore(iNext, iVar);
-    emitBranchUncond(condBB);
-
-    // After search: if found, memmove to close the gap
-    builder_.SetInsertPoint(endSearchBB);
-    llvm::Value *idx = builder_.CreateLoad(i64Ty_, foundIdx, "lrem_idx");
-    llvm::Value *wasFound = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "lrem_was_found");
-
-    llvm::BasicBlock *removeBB = createBB("lrem.remove");
-    llvm::BasicBlock *doneBB = createBB("lrem.done");
-    emitBranchCond(wasFound, removeBB, doneBB);
-
-    builder_.SetInsertPoint(removeBB);
-    auto memmoveFn = getStdlibMemmove();
-    llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, lf.data, {idx}, "lrem_dst");
-    llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, lf.data,
-        {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
-    llvm::Value *moveCount = builder_.CreateSub(
-        builder_.CreateSub(lf.len, idx), llvm::ConstantInt::get(i64Ty_, 1), "lrem_move_count");
-    llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "lrem_move_bytes");
-    builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
-    llvm::Value *newLen = builder_.CreateSub(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "lrem_new_len");
-    builder_.CreateStore(newLen, lf.lenPtr);
-    emitBranchUncond(doneBB);
-
-    builder_.SetInsertPoint(doneBB);
-    return llvm::ConstantInt::get(i64Ty_, 0);
+    // #2095 boundary migration. The engine method reproduces the C++ baseline
+    // byte-for-byte (interleaved loadListHeader, identical SSA names, the
+    // search/remove BB scaffold). `elem_is_str` selects strcmp; `elem_is_double`
+    // selects FCmpOEQ; otherwise plain ICmpEQ.
+    RyValueId containerId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(containerPtr));
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RyValueId resultId = ry_emit_list_remove(
+        emit_ctx_, containerId, valId,
+        ry::llvm_emit::asRyType(listHeaderTy_),
+        ry::llvm_emit::asRyType(listElemTy), elemSize,
+        listElemTy == ptrTy_ ? 1 : 0,
+        listElemTy->isDoubleTy() ? 1 : 0);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
 }
 
 llvm::Value *CodeGen::emitMapRemove(llvm::Value *containerPtr, llvm::Value *key, llvm::Type *keyTy, llvm::Type *valTy) {
@@ -792,113 +737,25 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
             codegenError("distinct() is only supported for lists of primitive values or strings");
     }
 
+    // Match the C++ baseline byte-for-byte: loadListHeader (interleaved)
+    // BEFORE emitArcAllocCollectionHeader. The boundary then runs the dedup
+    // loop body. #2095 migration — see ry_emit_list_distinct.
     auto lf = loadListHeader(listVal, "dist_src");
 
-    // Allocate new list (capacity = source length)
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
+    // Allocate the ARC collection header (registers in arc_owned_values_).
     llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-    llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "dist_data_size");
-    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "dist_data");
 
-    builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "dist_data_field"));
-    builder_.CreateStore(lf.len, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "dist_cap_ptr"));
-
-    // Output length counter
-    llvm::AllocaInst *outLen = builder_.CreateAlloca(i64Ty_, nullptr, "dist_out_len");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), outLen);
-
-    // Outer loop: for each source element
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "dist_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *outerCondBB = createBB("dist.ocond");
-    llvm::BasicBlock *outerBodyBB = createBB("dist.obody");
-    llvm::BasicBlock *outerEndBB = createBB("dist.oend");
-
-    emitBranchUncond(outerCondBB);
-    builder_.SetInsertPoint(outerCondBB);
-    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "dist_iv");
-    emitBranchCond(builder_.CreateICmpSLT(iVal, lf.len), outerBodyBB, outerEndBB);
-
-    builder_.SetInsertPoint(outerBodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "dist_ic");
-    llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "dist_src_ep");
-    llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "dist_src_elem");
-
-    // Inner loop: check if srcElem already exists in output
-    llvm::AllocaInst *dupFound = builder_.CreateAlloca(i1Ty_, nullptr, "dist_dup");
-    builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), dupFound);
-    llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "dist_j");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
-
-    llvm::BasicBlock *innerCondBB = createBB("dist.icond");
-    llvm::BasicBlock *innerBodyBB = createBB("dist.ibody");
-    llvm::BasicBlock *innerEndBB = createBB("dist.iend");
-
-    llvm::Value *curOutLen = builder_.CreateLoad(i64Ty_, outLen, "dist_cur_out");
-    emitBranchUncond(innerCondBB);
-
-    builder_.SetInsertPoint(innerCondBB);
-    llvm::Value *jVal = builder_.CreateLoad(i64Ty_, jVar, "dist_jv");
-    llvm::Value *notDup = builder_.CreateICmpEQ(builder_.CreateLoad(i1Ty_, dupFound), llvm::ConstantInt::get(i1Ty_, 0), "dist_not_dup");
-    llvm::Value *jInBounds = builder_.CreateICmpSLT(jVal, curOutLen, "dist_j_inb");
-    llvm::Value *innerCont = builder_.CreateAnd(notDup, jInBounds, "dist_icont");
-    emitBranchCond(innerCont, innerBodyBB, innerEndBB);
-
-    builder_.SetInsertPoint(innerBodyBB);
-    llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "dist_jc");
-    llvm::Value *outElemPtr = builder_.CreateGEP(elemTy, newData, {jCur}, "dist_out_ep");
-    llvm::Value *outElem = builder_.CreateLoad(elemTy, outElemPtr, "dist_out_elem");
-
-    llvm::Value *match;
-    if (elemTy == ptrTy_) {
-        auto strcmpFn = getStdlibStrcmp();
-        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {srcElem, outElem}, "dist_strcmp");
-        match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "dist_match");
-    } else if (elemTy->isDoubleTy()) {
-        match = builder_.CreateFCmpOEQ(srcElem, outElem, "dist_match");
-    } else {
-        match = builder_.CreateICmpEQ(srcElem, outElem, "dist_match");
-    }
-
-    llvm::BasicBlock *dupBB = createBB("dist.dup");
-    llvm::BasicBlock *innerNextBB = createBB("dist.inext");
-    emitBranchCond(match, dupBB, innerNextBB);
-
-    builder_.SetInsertPoint(dupBB);
-    builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), dupFound);
-    emitBranchUncond(innerCondBB);
-
-    builder_.SetInsertPoint(innerNextBB);
-    builder_.CreateStore(builder_.CreateAdd(jCur, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
-    emitBranchUncond(innerCondBB);
-
-    // After inner loop: if not duplicate, add to output
-    builder_.SetInsertPoint(innerEndBB);
-    llvm::Value *isDup = builder_.CreateLoad(i1Ty_, dupFound, "dist_is_dup");
-
-    llvm::BasicBlock *addBB = createBB("dist.add");
-    llvm::BasicBlock *outerNextBB = createBB("dist.onext");
-    emitBranchCond(isDup, outerNextBB, addBB);
-
-    builder_.SetInsertPoint(addBB);
-    llvm::Value *outIdx = builder_.CreateLoad(i64Ty_, outLen, "dist_out_idx");
-    llvm::Value *dstPtr = builder_.CreateGEP(elemTy, newData, {outIdx}, "dist_dst");
-    builder_.CreateStore(srcElem, dstPtr);
-    builder_.CreateStore(builder_.CreateAdd(outIdx, llvm::ConstantInt::get(i64Ty_, 1)), outLen);
-    emitBranchUncond(outerNextBB);
-
-    builder_.SetInsertPoint(outerNextBB);
-    builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-    emitBranchUncond(outerCondBB);
-
-    // End: set final length
-    builder_.SetInsertPoint(outerEndBB);
-    llvm::Value *finalLen = builder_.CreateLoad(i64Ty_, outLen, "dist_final_len");
-    builder_.CreateStore(finalLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "dist_len_ptr"));
+    RyValueId srcLenId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.len));
+    RyValueId srcDataId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+    RyValueId newHeaderId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newHeader));
+    ry_emit_list_distinct(emit_ctx_, srcLenId, srcDataId, newHeaderId,
+                          ry::llvm_emit::asRyType(listHeaderTy_),
+                          ry::llvm_emit::asRyType(elemTy), elemSize,
+                          elemTy == ptrTy_ ? 1 : 0,
+                          elemTy->isDoubleTy() ? 1 : 0);
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
     propagateMeta(listVal, newHeader);
@@ -921,77 +778,21 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
 
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
-
+    // #2095 migration: outer loadListHeader stays C++-side to preserve the
+    // baseline instruction order; the boundary runs pass 1 + inline ARC alloc
+    // + pass 2 and returns the new collection header pointer. arc_owned_values_
+    // registration mirrors the original emitArcGetDataPtr bookkeeping.
     auto lf = loadListHeader(listVal, "flat_o");
-    llvm::Value *outerLen = lf.len;
-    llvm::Value *outerData = lf.data;
-
-    // Pass 1: sum all inner lengths
-    llvm::AllocaInst *totalLen = builder_.CreateAlloca(i64Ty_, nullptr, "flat_total");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), totalLen);
-    {
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "flat_s_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("flat.s.cond");
-        llvm::BasicBlock *bodyBB = createBB("flat.s.body");
-        llvm::BasicBlock *endBB = createBB("flat.s.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "flat_si");
-        emitBranchCond(builder_.CreateICmpSLT(i, outerLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *innerPtr = builder_.CreateGEP(ptrTy_, outerData, {i}, "flat_inner_ptr");
-        llvm::Value *innerList = builder_.CreateLoad(ptrTy_, innerPtr, "flat_inner");
-        llvm::Value *innerLenPtr = builder_.CreateStructGEP(listHeaderTy_, innerList, 0, "flat_ilen_ptr");
-        llvm::Value *innerLen = builder_.CreateLoad(i64Ty_, innerLenPtr, "flat_ilen");
-        llvm::Value *curTotal = builder_.CreateLoad(i64Ty_, totalLen, "flat_cur_total");
-        builder_.CreateStore(builder_.CreateAdd(curTotal, innerLen), totalLen);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
-    }
-
-    // Allocate new list
-    llvm::Value *total = builder_.CreateLoad(i64Ty_, totalLen, "flat_total_len");
-    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-    llvm::Value *dataSize = builder_.CreateMul(total, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_ds");
-    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "flat_data");
-
-    // Set header
-    storeListHeaderFields(newHeader, total, total, newData);
-
-    // Pass 2: copy each inner list's data
-    llvm::AllocaInst *offset = builder_.CreateAlloca(i64Ty_, nullptr, "flat_off");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), offset);
-    {
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "flat_c_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("flat.c.cond");
-        llvm::BasicBlock *bodyBB = createBB("flat.c.body");
-        llvm::BasicBlock *endBB = createBB("flat.c.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "flat_ci");
-        emitBranchCond(builder_.CreateICmpSLT(i, outerLen), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *innerPtr = builder_.CreateGEP(ptrTy_, outerData, {i}, "flat_c_inner_ptr");
-        llvm::Value *innerList = builder_.CreateLoad(ptrTy_, innerPtr, "flat_c_inner");
-        llvm::Value *innerLenPtr = builder_.CreateStructGEP(listHeaderTy_, innerList, 0, "flat_c_ilen_ptr");
-        llvm::Value *innerLen = builder_.CreateLoad(i64Ty_, innerLenPtr, "flat_c_ilen");
-        llvm::Value *innerDataField = builder_.CreateStructGEP(listHeaderTy_, innerList, 2, "flat_c_idata_field");
-        llvm::Value *innerData = builder_.CreateLoad(ptrTy_, innerDataField, "flat_c_idata");
-
-        llvm::Value *curOff = builder_.CreateLoad(i64Ty_, offset, "flat_cur_off");
-        llvm::Value *dstPtr = builder_.CreateGEP(innerElemTy, newData, {curOff}, "flat_dst");
-        llvm::Value *copyBytes = builder_.CreateMul(innerLen, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_cb");
-        builder_.CreateCall(memcpyFn, {dstPtr, innerData, copyBytes});
-        builder_.CreateStore(builder_.CreateAdd(curOff, innerLen), offset);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
-    }
+    RyValueId outerLenId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.len));
+    RyValueId outerDataId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+    RyValueId newHeaderId = ry_emit_list_flatten(
+        emit_ctx_, outerLenId, outerDataId,
+        ry::llvm_emit::asRyType(listHeaderTy_),
+        ry::llvm_emit::asRyType(arcHeaderTy_),
+        ry::llvm_emit::asRyType(innerElemTy), innerElemSize);
+    llvm::Value *newHeader =
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, newHeaderId));
+    arc_owned_values_.insert(newHeader);
 
     setTypeMeta(TypeMeta::ListElem, newHeader, innerElemTy);
     return newHeader;
@@ -1019,46 +820,44 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
 
-        auto mallocFn = getStdlibMalloc();
-
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-        llvm::Value *dataSize = builder_.CreateMul(mf.len, llvm::ConstantInt::get(i64Ty_, tupleSize), "items_ds");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "items_data");
 
-        // Fill tuples
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "items_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-        llvm::BasicBlock *condBB = createBB("items.cond");
-        llvm::BasicBlock *bodyBB = createBB("items.body");
-        llvm::BasicBlock *endBB = createBB("items.end");
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "items_ci");
-        emitBranchCond(builder_.CreateICmpSLT(i, mf.len), bodyBB, endBB);
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *kp = builder_.CreateGEP(keyTy, mf.keys, {i}, "items_kp");
-        llvm::Value *vp = builder_.CreateGEP(valTy, mf.vals, {i}, "items_vp");
-        llvm::Value *k = builder_.CreateLoad(keyTy, kp, "items_k");
-        llvm::Value *v = builder_.CreateLoad(valTy, vp, "items_v");
-        // #1667: tuple-elem List<(K, V)> destructor releases each component
-        // per slot; retain on store keeps refcount symmetric (#1242 pattern,
-        // tuple-sig path). The retain helper recurses into nested tuple K/V
-        // (e.g. Map<str, (List<int>, int)>) so inline tuple-struct values
-        // are not skipped.
-        if (!keyName.empty())
-            emitTupleComponentRetain(k, keyName);
-        if (!valName.empty())
-            emitTupleComponentRetain(v, valName);
-        llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
-        tuple = builder_.CreateInsertValue(tuple, k, 0);
-        tuple = builder_.CreateInsertValue(tuple, v, 1);
-        llvm::Value *dp = builder_.CreateGEP(tupleTy, newData, {i}, "items_dp");
-        builder_.CreateStore(tuple, dp);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-        emitBranchUncond(condBB);
-        builder_.SetInsertPoint(endBB);
+        // #2095 — trampoline pattern with retain_key / retain_val callbacks.
+        struct ItemsRetainCtx {
+            CodeGen *cg;
+            std::string keyName;
+            std::string valName;
+        } retainCtx{this, keyName, valName};
+        RyRetainFn retainKeyFn = nullptr;
+        if (!keyName.empty()) {
+            retainKeyFn = [](RyValueId valId, void *uc) {
+                auto *r = static_cast<ItemsRetainCtx *>(uc);
+                llvm::Value *v =
+                    ry::llvm_emit::asLlvmValue(ry_emit_resolve(r->cg->emit_ctx_, valId));
+                r->cg->emitTupleComponentRetain(v, r->keyName);
+            };
+        }
+        RyRetainFn retainValFn = nullptr;
+        if (!valName.empty()) {
+            retainValFn = [](RyValueId valId, void *uc) {
+                auto *r = static_cast<ItemsRetainCtx *>(uc);
+                llvm::Value *v =
+                    ry::llvm_emit::asLlvmValue(ry_emit_resolve(r->cg->emit_ctx_, valId));
+                r->cg->emitTupleComponentRetain(v, r->valName);
+            };
+        }
+        ry_emit_map_items(emit_ctx_,
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(mf.len)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(mf.keys)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(mf.vals)),
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newHeader)),
+            ry::llvm_emit::asRyType(listHeaderTy_),
+            ry::llvm_emit::asRyType(keyTy),
+            ry::llvm_emit::asRyType(valTy),
+            ry::llvm_emit::asRyType(tupleTy), tupleSize,
+            retainKeyFn, retainValFn,
+            (retainKeyFn || retainValFn) ? static_cast<void *>(&retainCtx) : nullptr);
 
-        storeListHeaderFields(newHeader, mf.len, mf.len, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         // Stamp the tuple type name so downstream tuple-field access can
         // dispatch nested index/key lookup (#1659). Mirrors enumerate / zip

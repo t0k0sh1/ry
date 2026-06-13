@@ -1011,4 +1011,189 @@ TEST_F(EmitAbiGuardTest, CheckedFpToIntUnsupportedWidthReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// #2095 — ry_emit_list_remove guard branches: ctx == NULL / unresolved
+// container or val / NULL type handles → sentinel 0 (no IR emitted).
+TEST_F(EmitAbiGuardTest, ListRemoveNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_list_remove(nullptr, /*container_ptr_id=*/0,
+                                   /*val_id=*/0,
+                                   /*list_header_ty=*/nullptr,
+                                   /*list_elem_ty=*/nullptr,
+                                   /*elem_size=*/8,
+                                   /*elem_is_str=*/0, /*elem_is_double=*/0),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ListRemoveUnresolvableContainerReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // container_ptr_id == 0 is the sentinel; resolve_value returns None and
+    // the engine rejects before any IR emission.
+    EXPECT_EQ(ry_emit_list_remove(ctx, /*container_ptr_id=*/0,
+                                   /*val_id=*/0,
+                                   /*list_header_ty=*/nullptr,
+                                   /*list_elem_ty=*/nullptr,
+                                   /*elem_size=*/8,
+                                   /*elem_is_str=*/0, /*elem_is_double=*/0),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListRemoveNullTypeHandlesReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // Intern non-NULL container + val; isolate the NULL type-handle guard
+    // (which sits AFTER resolve_value).
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId containerId = ry_emit_intern(ctx, asRyValue(cv));
+    RyValueId valId = ry_emit_intern(ctx, asRyValue(cv));
+    EXPECT_EQ(ry_emit_list_remove(ctx, containerId, valId,
+                                   /*list_header_ty=*/nullptr,
+                                   /*list_elem_ty=*/nullptr,
+                                   /*elem_size=*/8,
+                                   /*elem_is_str=*/0, /*elem_is_double=*/0),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_list_distinct guard branches: void-returning, so each guard
+// reject is observed by the absence of new instructions in the module.
+TEST_F(EmitAbiGuardTest, ListDistinctNullCtxIsNoop) {
+    // No SetInsertPoint; the call must not crash and must not emit anything.
+    ry_emit_list_distinct(nullptr, /*src_len_id=*/0, /*src_data_id=*/0,
+                          /*new_header_id=*/0, /*list_header_ty=*/nullptr,
+                          /*elem_ty=*/nullptr, /*elem_size=*/8,
+                          /*elem_is_str=*/0, /*elem_is_double=*/0);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ListDistinctUnresolvableIdIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    ry_emit_list_distinct(ctx, /*src_len_id=*/0, /*src_data_id=*/0,
+                          /*new_header_id=*/0, /*list_header_ty=*/nullptr,
+                          /*elem_ty=*/nullptr, /*elem_size=*/8,
+                          /*elem_is_str=*/0, /*elem_is_double=*/0);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListDistinctNullTypeHandlesIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    ry_emit_list_distinct(ctx, vid, vid, vid,
+                          /*list_header_ty=*/nullptr, /*elem_ty=*/nullptr,
+                          /*elem_size=*/8,
+                          /*elem_is_str=*/0, /*elem_is_double=*/0);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_list_flatten guard branches.
+TEST_F(EmitAbiGuardTest, ListFlattenNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_list_flatten(nullptr, 0, 0,
+                                    /*list_header_ty=*/nullptr,
+                                    /*arc_header_ty=*/nullptr,
+                                    /*inner_elem_ty=*/nullptr,
+                                    /*inner_elem_size=*/8),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ListFlattenUnresolvableIdReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_list_flatten(ctx, 0, 0,
+                                    /*list_header_ty=*/nullptr,
+                                    /*arc_header_ty=*/nullptr,
+                                    /*inner_elem_ty=*/nullptr,
+                                    /*inner_elem_size=*/8),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ListFlattenNullTypeHandlesReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    EXPECT_EQ(ry_emit_list_flatten(ctx, vid, vid,
+                                    /*list_header_ty=*/nullptr,
+                                    /*arc_header_ty=*/nullptr,
+                                    /*inner_elem_ty=*/nullptr,
+                                    /*inner_elem_size=*/8),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_list_enumerate guard branches (void-returning).
+TEST_F(EmitAbiGuardTest, ListEnumerateNullCtxIsNoop) {
+    ry_emit_list_enumerate(nullptr, 0, 0, 0, nullptr, nullptr, nullptr,
+                            /*tuple_size=*/16, nullptr, nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ListEnumerateNullTypeHandlesIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    ry_emit_list_enumerate(ctx, vid, vid, vid, nullptr, nullptr, nullptr,
+                            /*tuple_size=*/16, nullptr, nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_list_zip guard branches.
+TEST_F(EmitAbiGuardTest, ListZipNullCtxIsNoop) {
+    ry_emit_list_zip(nullptr, 0, 0, 0, 0, nullptr, nullptr, nullptr, nullptr,
+                      /*tuple_size=*/16, nullptr, nullptr, nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ListZipNullTypeHandlesIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    ry_emit_list_zip(ctx, vid, vid, vid, vid, nullptr, nullptr, nullptr, nullptr,
+                      /*tuple_size=*/16, nullptr, nullptr, nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_map_items guard branches.
+TEST_F(EmitAbiGuardTest, MapItemsNullCtxIsNoop) {
+    ry_emit_map_items(nullptr, 0, 0, 0, 0, nullptr, nullptr, nullptr, nullptr,
+                       /*tuple_size=*/16, nullptr, nullptr, nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, MapItemsNullTypeHandlesIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    ry_emit_map_items(ctx, vid, vid, vid, vid, nullptr, nullptr, nullptr, nullptr,
+                       /*tuple_size=*/16, nullptr, nullptr, nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2095 — ry_emit_list_reverse guard branches.
+TEST_F(EmitAbiGuardTest, ListReverseNullCtxIsNoop) {
+    ry_emit_list_reverse(nullptr, 0, 0, 0, 0, nullptr, nullptr);
+    SUCCEED();
+}
+
+TEST_F(EmitAbiGuardTest, ListReverseNullTypeHandlesIsNoop) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *cv = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 0);
+    RyValueId vid = ry_emit_intern(ctx, asRyValue(cv));
+    ry_emit_list_reverse(ctx, vid, vid, vid, vid, nullptr, nullptr);
+    SUCCEED();
+    ry_emit_ctx_destroy(ctx);
+}
+
 } // namespace
