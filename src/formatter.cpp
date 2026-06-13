@@ -442,7 +442,12 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             return formatExpr(*v->start) + ".." + formatExpr(*v->end);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ErrorPropagateExpr>>) {
-            return formatExpr(*v->operand) + "?";
+            // #2114: split adjacent postfix `?` tokens to avoid the lexer's
+            // greedy `??` (null-coalesce) fusion. Inner ends in `?` only for
+            // ErrorPropagateExpr or IndexExpr{try_mode} — both fuse-risk cases.
+            std::string inner = formatExpr(*v->operand);
+            if (!inner.empty() && inner.back() == '?') return inner + " ?";
+            return inner + "?";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
             return "await " + formatExpr(*v->operand);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<WeakExpr>>) {
