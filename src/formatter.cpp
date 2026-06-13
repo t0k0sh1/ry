@@ -270,6 +270,16 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return v.value ? "true" : "false";
         } else if constexpr (std::is_same_v<T, StringExpr>) {
             return "\"" + escapeString(v.value) + "\"";
+        } else if constexpr (std::is_same_v<T, RegexExpr>) {
+            // Lexer stores regex backslashes verbatim (so `escapeString` would
+            // turn `\d` into `\\d`); only NUL is its lossy translation. #2113.
+            std::string out = "/";
+            for (char c : v.pattern) {
+                if (c == '\0') out += "\\0";
+                else out += c;
+            }
+            out += "/";
+            return out;
         } else if constexpr (std::is_same_v<T, VariableExpr>) {
             return v.name;
         } else if constexpr (std::is_same_v<T, NoneExpr>) {
