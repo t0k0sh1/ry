@@ -778,6 +778,20 @@ fn addOne(x: int) -> int:
 result = 5.double().addOne()   # double(5) -> 10, addOne(10) -> 11
 ```
 
+Longer chains may also be written across lines, with each continuation
+line starting with `.`:
+
+```ry
+result = 5
+    .double()
+    .addOne()
+```
+
+The continuation tolerance applies to method/field access (`.IDENT`)
+only; tuple-index (`.0` / `.1`) on a continuation line is not supported.
+See `docs/reference/collections.md` "Lazy Method Chaining" for the
+iterator-pipeline use case.
+
 ### Mixing with Field Access
 
 Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are distinguished by the presence of arguments.

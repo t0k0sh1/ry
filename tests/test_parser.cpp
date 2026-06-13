@@ -1873,6 +1873,116 @@ TEST(ParserTest, UFCSWithFieldAccess) {
     EXPECT_EQ(std::get<VariableExpr>(fa.object->data).name, "p");
 }
 
+TEST(ParserTest, UfcsMultilineChainOnListLiteral) {
+    // #2115: multiline UFCS chain with leading `.` on continuation lines.
+    // result = [1,2,3].iter().toList() across 3 lines must parse identically
+    // to the single-line form. Outer is `.toList()`, inner arg is `.iter()`
+    // on the list literal.
+    Program prog = parseStr("result = [1, 2, 3]\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(outer.callee, "toList");
+    ASSERT_EQ(outer.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "iter");
+    ASSERT_EQ(inner.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<ListExpr>>(inner.args[0]->data));
+}
+
+TEST(ParserTest, UfcsMultilineChainOnIdent) {
+    // #2115: bare-identifier leading multiline UFCS chain.
+    // `result = xs\n.iter()\n.toList()` enters via the assignment RHS
+    // (parseConditional path), so the same parsePostfixContinuation logic
+    // applies. The chain top is `.toList()` wrapping `.iter(xs)`.
+    Program prog = parseStr("result = xs\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(outer.callee, "toList");
+    ASSERT_EQ(outer.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "iter");
+    ASSERT_EQ(inner.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(inner.args[0]->data));
+    EXPECT_EQ(std::get<VariableExpr>(inner.args[0]->data).name, "xs");
+}
+
+TEST(ParserTest, UfcsMultilineChainStatementSide) {
+    // #2115: statement-position (non-assignment) multiline UFCS chain.
+    // Enters via parser.cpp:804-807 (non-Ident leading token →
+    // parseConditional → parsePostfixContinuation). Result is an ExprStmt
+    // whose value is the outer CallExpr.
+    Program prog = parseStr("[1, 2, 3]\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(es.expr->data);
+    EXPECT_EQ(outer.callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainEquivalentToSingleLine) {
+    // #2115: multiline UFCS chain must produce the same outer-callee
+    // shape as the single-line equivalent. Smoke check: both forms parse
+    // to a 1-statement AssignStmt whose top-level callee is "toList".
+    Program multi = parseStr("r = [1, 2, 3]\n    .iter()\n    .toList()");
+    Program single = parseStr("r = [1, 2, 3].iter().toList()");
+    ASSERT_EQ(multi.size(), 1u);
+    ASSERT_EQ(single.size(), 1u);
+    const auto &mc = *std::get<std::unique_ptr<CallExpr>>(
+        std::get<AssignStmt>(multi[0]).value->data);
+    const auto &sc = *std::get<std::unique_ptr<CallExpr>>(
+        std::get<AssignStmt>(single[0]).value->data);
+    EXPECT_EQ(mc.callee, sc.callee);
+    EXPECT_EQ(mc.args.size(), sc.args.size());
+}
+
+TEST(ParserTest, UfcsMultilineChainFiveHopsFromIssue) {
+    // #2115 motivating example: 5-hop pipeline iter→filter→map→take→toList
+    // across 6 lines. Verify it parses end-to-end (1 statement, outer
+    // callee is `toList`).
+    Program prog = parseStr(
+        "result = [1, 2, 3, 4, 5]\n"
+        "    .iter()\n"
+        "    .filter((x: int) => x > 2)\n"
+        "    .map((x: int) => x * 2)\n"
+        "    .take(2)\n"
+        "    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(s.value->data)->callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainTupleIndexFailsAsLimitation) {
+    // #2115 known limitation: `.0` / `.1` tuple-index access on a
+    // continuation line is NOT supported. The lexer tokenizes leading
+    // `.<digit>` as a Float literal whenever prev_kind_ is not in the
+    // exclusion list at lexer.cpp:452-458 — and Newline/Indent/Dedent
+    // are not in that list. So `pair\n    .0` reaches the parser as
+    // `pair Newline Indent Float(".0")` and the postfix-continuation
+    // lookahead never sees a Dot, leaving the Float as a stray token
+    // the surrounding parser cannot place. Locked in here so a future
+    // lexer-relaxation PR cannot silently change this behavior.
+    EXPECT_THROW(parseStr("result = pair\n    .0"), std::runtime_error);
+}
+
+TEST(ParserTest, DotAtStatementStartAloneFails) {
+    // #2115 scope guard: a statement that begins with a bare `.method()`
+    // (no preceding expression) must remain rejected. The multiline UFCS
+    // continuation only extends an existing postfix chain — it does NOT
+    // legalize a free-standing leading `.` at statement start.
+    EXPECT_THROW(parseStr(".iter()"), std::runtime_error);
+}
+
 // ===== Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {

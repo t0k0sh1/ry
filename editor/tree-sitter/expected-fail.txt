@@ -89,3 +89,16 @@ tests/spec/arc_tuple_index_assign.test.ry
 tests/spec/arc_tuple_ownership.test.ry
 tests/spec/collection_meta_propagation.test.ry
 tests/spec/mock.test.ry
+
+# === #2115: multiline UFCS chain (`obj\n.iter()...`) ===
+# The C++ parser supports multiline UFCS chains (continuation lines starting
+# with `.`), but adding `optional($._newline)` between `_postfix_expression`
+# and `.` in the tree-sitter field_access rule conflicts with the statement-
+# terminating NEWLINE elsewhere in the grammar — a baseline run drops from
+# pass=157 to pass=11 because every statement-terminating NEWLINE is
+# speculatively consumed as a chain continuation. Resolving this requires a
+# more sophisticated grammar structure (or GLR-state precedence work) that is
+# out of scope for #2115; tracked as a follow-up. The multiline-UFCS tests
+# are isolated into their own spec file so existing editor coverage of
+# expr_stmt.test.ry (and other spec files) is not degraded.
+tests/spec/expr_stmt_multiline_ufcs.test.ry
