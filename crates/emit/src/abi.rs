@@ -27,6 +27,7 @@ use crate::core::{EmitCtx, ValueRef};
 mod any;
 mod arc;
 mod bounds;
+mod cast;
 mod collection;
 mod control_flow;
 mod cow;
