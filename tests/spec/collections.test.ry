@@ -588,6 +588,67 @@ fn listTests():
     expect(l2[0]).toEq("bound_gamma")
     expect(l2[1]).toEq("literal_last")
 
+  @it("should return Some for in-range index via get")
+  fn shouldReturnSomeForInRangeGet():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, 1)).toEq(Some(20))
+  @it("should return None for out-of-bounds get")
+  fn shouldReturnNoneForOobGet():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, 100)).toBeNone()
+  @it("should return None for negative out-of-bounds get")
+  fn shouldReturnNoneForNegativeOobGet():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, -4)).toBeNone()
+  @it("should wrap negative index in get")
+  fn shouldWrapNegativeIndexInGet():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, -1)).toEq(Some(30))
+  @it("should return None for get on empty list")
+  fn shouldReturnNoneForGetOnEmptyList():
+    xs: List<int> = []
+    expect(get(xs, 0)).toBeNone()
+  @it("should support UFCS form for 2-arg get")
+  fn shouldSupportUfcsTwoArgGet():
+    xs: List<int> = [10, 20, 30]
+    expect(xs.get(0)).toEq(Some(10))
+  @it("should support get on List<str>")
+  fn shouldSupportGetOnListStr():
+    xs: List<str> = ["a", "b", "c"]
+    expect(get(xs, 1)).toEq(Some("b"))
+    expect(xs.get(-1)).toEq(Some("c"))
+    expect(get(xs, 9)).toBeNone()
+  @it("should return element for in-range index via get-with-default")
+  fn shouldReturnElementForInRangeGetWithDefault():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, 1, 99)).toEq(20)
+  @it("should return default for out-of-bounds get-with-default")
+  fn shouldReturnDefaultForOobGetWithDefault():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, 100, 99)).toEq(99)
+  @it("should return default for negative out-of-bounds get-with-default")
+  fn shouldReturnDefaultForNegativeOobGetWithDefault():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, -4, 99)).toEq(99)
+  @it("should wrap negative index in get-with-default")
+  fn shouldWrapNegativeIndexInGetWithDefault():
+    xs: List<int> = [10, 20, 30]
+    expect(get(xs, -1, 99)).toEq(30)
+  @it("should return default for get-with-default on empty list")
+  fn shouldReturnDefaultForGetWithDefaultOnEmptyList():
+    xs: List<int> = []
+    expect(get(xs, 0, 99)).toEq(99)
+  @it("should support UFCS form for 3-arg get")
+  fn shouldSupportUfcsThreeArgGet():
+    xs: List<int> = [10, 20, 30]
+    expect(xs.get(0, 99)).toEq(10)
+    expect(xs.get(100, 99)).toEq(99)
+  @it("should wrap int default into any element for List<any>.get-with-default")
+  fn shouldWrapIntDefaultIntoAnyForListAny():
+    xs: List<any> = [10, 20, 30]
+    expect(xs.get(100, 0)).toEq(0)
+    expect(xs.get(1, 0)).toEq(20)
+
 @describe("Map")
 fn mapTests():
   @it("should access by key")

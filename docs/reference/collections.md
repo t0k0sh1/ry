@@ -146,6 +146,8 @@ print(xs[100]? ?? 0) # 0           — coalesce with default (note the space bef
 
 Restrictions: read-only — `xs[i]? = v` is a compile error; range-index `xs[a..b]?` is a compile error.
 
+For an explicit named-function alternative with the same Option-returning semantics, use [`get(xs, i)`](#get).
+
 ### Index Assignment
 
 ```ry
@@ -242,6 +244,25 @@ v = xs.pop()
 print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
+
+### get
+
+Two overloads are available:
+
+- `get(list, index) -> Option<T>`: Returns `Some(value)` for an in-range index, or `None` for an out-of-range one. Negative indices wrap around from the end, matching [`xs[i]?`](#safe-index-access-xsi) semantics.
+- `get(list, index, default) -> T`: Returns the value at the index, or `default` for any out-of-range case (including a negative index whose wrap is still out of range).
+
+```ry
+xs = [10, 20, 30]
+print(get(xs, 1))        # Some(20)
+print(xs.get(100))       # None
+print(get(xs, -1))       # Some(30)  — negative wrap to last
+print(xs.get(-4))        # None       — wrap result still out of range
+print(get(xs, 100, 0))   # 0
+print(xs.get(-1, 0))     # 30
+```
+
+This is the named-function counterpart of [`xs[i]?`](#safe-index-access-xsi) and shares its wrap-then-bounds-check rule; it leaves the abort-on-out-of-range behavior of `xs[i]` unchanged. The same shape is available on `Map<K, V>` — see [`get`](#get-1) under Map.
 
 ### reverse
 
@@ -792,7 +813,7 @@ print(m["z"]? ?? -1)            # -1 — coalesce with default (note the space b
 
 Restrictions: read-only — `m[k]? = v` is a compile error (use `m[k] = v` to insert / update).
 
-For an explicit named-function alternative with the same Option-returning semantics, use [`get(m, k)`](#get).
+For an explicit named-function alternative with the same Option-returning semantics, use [`get(m, k)`](#get-1).
 
 ### Insert and Update
 

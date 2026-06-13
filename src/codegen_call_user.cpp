@@ -563,6 +563,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                      (s.callee == "insert" && nargs == 3) ||
                      (s.callee == "removeAt" && nargs == 2) ||
                      (s.callee == "remove" && nargs == 2) ||
+                     (s.callee == "get" && (nargs == 2 || nargs == 3)) ||
                      (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
                      (s.callee == "reverse!" && nargs == 1))) { // NOLINT(bugprone-branch-clone)
                     intercept = true;
