@@ -2109,6 +2109,18 @@ public:
     llvm::Value *emitCallIndirect(llvm::FunctionType *fn_ty, llvm::Value *callee,
                                   llvm::ArrayRef<llvm::Value *> args,
                                   const char *name);
+    // Emit a call to the overloaded LLVM intrinsic `intrinsicId` parameterised
+    // by `overloadTys[..]` with operand `args[..]`. The emission boundary owns
+    // declaration acquisition (`Intrinsic::getOrInsertDeclaration` equivalent)
+    // and FunctionType derivation engine-side, so the C++ side never touches
+    // the resulting `llvm::Function*`. Aggregate `{T, i1}` results are
+    // decomposed via the existing `emitExtractValue` (#2099). Added for #2102
+    // ([D]=(ii) boundary move); pilot consumer is `emitIntOverflowCheck`'s
+    // non-constant path (`src/codegen_arith.cpp`).
+    llvm::Value *emitIntrinsicCall(llvm::Intrinsic::ID intrinsicId,
+                                   llvm::ArrayRef<llvm::Type *> overloadTys,
+                                   llvm::ArrayRef<llvm::Value *> args,
+                                   const char *name);
     void emitRet(llvm::Value *val);
     // Resolve + call a runtime symbol in one boundary op (reuses
     // ry_emit_runtime_call) so builder_.CreateCall is not needed. Returns the

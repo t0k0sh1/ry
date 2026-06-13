@@ -368,6 +368,25 @@ llvm::Value *CodeGen::emitCallIndirect(llvm::FunctionType *fn_ty, llvm::Value *c
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+llvm::Value *CodeGen::emitIntrinsicCall(llvm::Intrinsic::ID intrinsicId,
+                                        llvm::ArrayRef<llvm::Type *> overloadTys,
+                                        llvm::ArrayRef<llvm::Value *> args,
+                                        const char *name) {
+    std::vector<RyTypeRef> ty_handles;
+    ty_handles.reserve(overloadTys.size());
+    for (auto *t : overloadTys)
+        ty_handles.push_back(ry::llvm_emit::asRyType(t));
+    std::vector<RyValueId> arg_ids;
+    arg_ids.reserve(args.size());
+    for (auto *v : args)
+        arg_ids.push_back(ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v)));
+    RyValueId id = ry_emit_intrinsic_call(
+        emit_ctx_, static_cast<uint32_t>(intrinsicId), ty_handles.data(),
+        static_cast<uint32_t>(ty_handles.size()), arg_ids.data(),
+        static_cast<uint32_t>(arg_ids.size()), name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
 void CodeGen::emitRet(llvm::Value *val) {
     RyValueId valId = val ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val)) : 0;
     ry_emit_ret(emit_ctx_, valId);
