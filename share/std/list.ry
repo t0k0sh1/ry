@@ -9,6 +9,14 @@ fn pop(values: List<int>) -> Option<int>
 
 @public
 @native
+fn get(values: List<int>, index: int) -> Option<int>
+
+@public
+@native
+fn get(values: List<int>, index: int, default: int) -> int
+
+@public
+@native
 fn insert(values: List<int>, index: int, value: int) -> Unit
 
 @public

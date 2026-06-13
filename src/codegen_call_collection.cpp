@@ -875,12 +875,19 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
 }
 
 llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
-    // get(map, key) -- 2-arg -> Option<V>
-    if (e.args.size() == 2) {
-        llvm::Value *mapPtr = emitExpr(*e.args[0]);
-        llvm::Type *keyTy = getMapKeyType(mapPtr);
-        llvm::Type *valTy = getMapValueType(mapPtr);
-        if (keyTy && valTy) {
+    if (e.args.size() != 2 && e.args.size() != 3)
+        return nullptr;
+
+    llvm::Value *recv = emitExpr(*e.args[0]);
+
+    // Map branch ---------------------------------------------------------
+    if (llvm::Type *keyTy = getMapKeyType(recv)) {
+        llvm::Type *valTy = getMapValueType(recv);
+        if (!valTy)
+            return nullptr;
+
+        // get(map, key) -- 2-arg -> Option<V>
+        if (e.args.size() == 2) {
             llvm::Value *key = emitExpr(*e.args[1]);
             if (key->getType() != keyTy)
                 codegenError("get() key type mismatch");
@@ -889,7 +896,7 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             // mapHeader vals-field struct GEP + load, and value GEP + load
             // cross via generic primitives. emitMapKeyLookup is already
             // boundary-emitted via #2101 (hash lookup capability).
-            llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
+            llvm::Value *idx = emitMapKeyLookup(recv, key, keyTy);
             llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "get2_found");
 
             llvm::BasicBlock *foundBB = createBB("get2.found");
@@ -898,7 +905,7 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             emitBranchCond(found, foundBB, notFoundBB);
 
             builder_.SetInsertPoint(foundBB);
-            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, mapPtr, 3, "get2_vals_field");
+            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, recv, 3, "get2_vals_field");
             llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get2_vals");
             llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get2_val_ptr");
             llvm::Value *foundVal = emitLoad(valTy, valPtr, "get2_val");
@@ -917,52 +924,150 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             phi->addIncoming(noneVal, notFoundEndBB);
             return phi;
         }
+
+        // get(map, key, default) -- 3-arg
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (key->getType() != keyTy)
+            codegenError("get() key type mismatch");
+        llvm::Value *defaultVal = emitExpr(*e.args[2]);
+        if (defaultVal->getType() != valTy)
+            codegenError("get() default value type must match map's value type");
+        // #2094 ([C] = (ii) boundary move): same primitives as the 2-arg
+        // arm — the only structural difference is the merge PHI types
+        // (V vs Option<V>) and the default-value tail vs None.
+        llvm::Value *idx = emitMapKeyLookup(recv, key, keyTy);
+        llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "get_found");
+
+        llvm::BasicBlock *foundBB = createBB("get.found");
+        llvm::BasicBlock *notFoundBB = createBB("get.notfound");
+        llvm::BasicBlock *mergeBB = createBB("get.merge");
+        emitBranchCond(found, foundBB, notFoundBB);
+
+        builder_.SetInsertPoint(foundBB);
+        llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, recv, 3, "get_vals_field");
+        llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get_vals");
+        llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get_val_ptr");
+        llvm::Value *foundVal = emitLoad(valTy, valPtr, "get_val");
+        llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(mergeBB);
+
+        builder_.SetInsertPoint(notFoundBB);
+        llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = createPhi(valTy, {}, "get_result");
+        phi->addIncoming(foundVal, foundEndBB);
+        phi->addIncoming(defaultVal, notFoundEndBB);
+        return phi;
     }
 
-    // get(map, key, default) -- 3-arg
-    if (e.args.size() == 3) {
-        llvm::Value *mapPtr = emitExpr(*e.args[0]);
-        llvm::Type *keyTy = getMapKeyType(mapPtr);
-        llvm::Type *valTy = getMapValueType(mapPtr);
-        if (keyTy && valTy) {
-            llvm::Value *key = emitExpr(*e.args[1]);
-            if (key->getType() != keyTy)
-                codegenError("get() key type mismatch");
-            llvm::Value *defaultVal = emitExpr(*e.args[2]);
-            if (defaultVal->getType() != valTy)
-                codegenError("get() default value type must match map's value type");
-            // #2094 ([C] = (ii) boundary move): same primitives as the 2-arg
-            // arm — the only structural difference is the merge PHI types
-            // (V vs Option<V>) and the default-value tail vs None.
-            llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
-            llvm::Value *found = emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "get_found");
+    // List branch --------------------------------------------------------
+    // get(list, index) -> Option<T> / get(list, index, default) -> T
+    // Mirrors `xs[i]?` semantics (codegen_expr_literal.cpp): negative-index
+    // wrap, OOB → None / default, in-range → Some(elem) / elem.
+    llvm::Type *elemTy = getListElementType(recv);
+    if (!elemTy)
+        return nullptr;
 
-            llvm::BasicBlock *foundBB = createBB("get.found");
-            llvm::BasicBlock *notFoundBB = createBB("get.notfound");
-            llvm::BasicBlock *mergeBB = createBB("get.merge");
-            emitBranchCond(found, foundBB, notFoundBB);
+    // Snapshot list element metadata BEFORE any call that may rehash
+    // value_metadata_ (propagateTypeMeta / buildSomeValue / getOptionType / emitExpr).
+    std::string elemTypeName;
+    std::optional<FnTypeInfo> elemFnTypeInfo;
+    bool listElemIsStr = false;
+    if (auto *listMeta = getMeta(recv)) {
+        elemTypeName   = listMeta->list_elem_type_name;
+        elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+        listElemIsStr  = listMeta->list_elem_is_str;
+    }
+    llvm::Type *nestedElemTy = getNestedListElementType(recv);
 
-            builder_.SetInsertPoint(foundBB);
-            llvm::Value *valsPtrField = emitStructGEP(mapHeaderTy_, mapPtr, 3, "get_vals_field");
-            llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get_vals");
-            llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get_val_ptr");
-            llvm::Value *foundVal = emitLoad(valTy, valPtr, "get_val");
-            llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
-            emitBranchUncond(mergeBB);
+    auto stampLoadedElem = [&](llvm::Value *elem) {
+        // Mirror codegen_expr_literal.cpp's stampLoadedElem so List<str> ARC,
+        // List<List<T>> nested element type, and List<closure> fn_type_info
+        // all survive the load. Without these, `Some(elem)` would drop
+        // metadata and the Option-returning path would skip the str retain
+        // (→ use-after-free post-source-mutation).
+        if (nestedElemTy)
+            setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, elem);
+        if (!elemTypeName.empty() && elemTypeName.size() >= 2 &&
+            elemTypeName.front() == '(' && elemTypeName.back() == ')')
+            getOrCreateMeta(elem).source_type_name = elemTypeName;
+        if (elemFnTypeInfo)
+            getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+        if (listElemIsStr)
+            getOrCreateMeta(elem).str_elem = true;
+    };
 
-            builder_.SetInsertPoint(notFoundBB);
-            llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
-            emitBranchUncond(mergeBB);
+    llvm::Value *index = emitExpr(*e.args[1]);
+    if (index->getType() == i1Ty_)
+        index = emitZExt(index, i64Ty_, "getl_idx_ext");
 
-            builder_.SetInsertPoint(mergeBB);
-            llvm::PHINode *phi = createPhi(valTy, {}, "get_result");
-            phi->addIncoming(foundVal, foundEndBB);
-            phi->addIncoming(defaultVal, notFoundEndBB);
-            return phi;
-        }
+    ListFields lf = loadListHeader(recv, "getl");
+    llvm::Value *wrapped = emitNegativeIndexWrap(index, lf.len, "getl");
+    llvm::Value *zero = emitConstInt(i64Ty_, 0);
+    llvm::Value *negCheck = emitICmpSLT(wrapped, zero, "getl_neg");
+    llvm::Value *overCheck = emitICmpSGE(wrapped, lf.len, "getl_over");
+    llvm::Value *oob = emitOr(negCheck, overCheck, "getl_oob");
+
+    if (e.args.size() == 2) {
+        // 2-arg: -> Option<T>
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::BasicBlock *oobBB = createBB("getl2.oob");
+        llvm::BasicBlock *okBB = createBB("getl2.ok");
+        llvm::BasicBlock *mergeBB = createBB("getl2.merge");
+        emitBranchCond(oob, oobBB, okBB);
+
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *elemPtr = emitGEP(elemTy, lf.data, wrapped, "getl2_elem_ptr");
+        llvm::Value *elem = emitLoad(elemTy, elemPtr, "getl2_elem");
+        stampLoadedElem(elem);
+        llvm::Value *someVal = buildSomeValue(elem, optTy);
+        emitBranchUncond(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(oobBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        emitBranchUncond(mergeBB);
+        llvm::BasicBlock *oobEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = createPhi(optTy, {}, "getl2_result");
+        phi->addIncoming(someVal, okEndBB);
+        phi->addIncoming(noneVal, oobEndBB);
+        propagateMeta(someVal, phi);
+        return phi;
     }
 
-    return nullptr;
+    // 3-arg: -> T
+    llvm::Value *defaultVal = emitExpr(*e.args[2]);
+    if (defaultVal->getType() != elemTy)
+        codegenError("get() default value type must match list element type");
+
+    llvm::BasicBlock *oobBB = createBB("getl3.oob");
+    llvm::BasicBlock *okBB = createBB("getl3.ok");
+    llvm::BasicBlock *mergeBB = createBB("getl3.merge");
+    emitBranchCond(oob, oobBB, okBB);
+
+    builder_.SetInsertPoint(okBB);
+    llvm::Value *elemPtr = emitGEP(elemTy, lf.data, wrapped, "getl3_elem_ptr");
+    llvm::Value *foundVal = emitLoad(elemTy, elemPtr, "getl3_elem");
+    stampLoadedElem(foundVal);
+    emitBranchUncond(mergeBB);
+    llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(oobBB);
+    emitBranchUncond(mergeBB);
+    llvm::BasicBlock *oobEndBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = createPhi(elemTy, {}, "getl3_result");
+    phi->addIncoming(foundVal, okEndBB);
+    phi->addIncoming(defaultVal, oobEndBB);
+    propagateMeta(foundVal, phi);
+    return phi;
 }
 
 llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
