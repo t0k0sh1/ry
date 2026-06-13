@@ -697,3 +697,36 @@ TEST(FormatterTest, CaseCondExprBlockArmRoundTrip) {
     EXPECT_EQ(fmt(src), expected);
     EXPECT_EQ(fmt(fmt(src)), fmt(src));
 }
+
+TEST(FormatterTest, OptionPropagateAfterSafeIndexAdjacency) {
+    // #2114: ErrorPropagateExpr wrapping IndexExpr{try_mode} must keep a space
+    // between the two `?` tokens; otherwise they fuse into the `??` null-coalesce
+    // token and re-parse fails.
+    auto src = "fn first(values: List<int>) -> Option<int>:\n"
+               "    value = values[0]? ?\n"
+               "    return Some(value)\n";
+    auto formatted = fmt(src);
+    EXPECT_NE(formatted.find("values[0]? ?"), std::string::npos)
+        << "expected space-separated `? ?`, got: " << formatted;
+    EXPECT_EQ(formatted.find("values[0]??"), std::string::npos)
+        << "fused `??` would be the null-coalesce token, not two postfix `?`: " << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}
+
+TEST(FormatterTest, OptionPropagateAfterPropagateAdjacency) {
+    // #2114: nested ErrorPropagateExpr (no IndexExpr involved) — same fusion risk.
+    // This case forces the general fix over an IndexExpr-only check.
+    auto src = "fn first(values: List<int>) -> Option<int>:\n"
+               "    value = safeGet(values, 0)? ?\n"
+               "    return Some(value)\n";
+    auto formatted = fmt(src);
+    EXPECT_NE(formatted.find("safeGet(values, 0)? ?"), std::string::npos)
+        << "expected space-separated `? ?`, got: " << formatted;
+    EXPECT_EQ(formatted.find("safeGet(values, 0)??"), std::string::npos)
+        << "fused `??` would be the null-coalesce token, not two postfix `?`: " << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}

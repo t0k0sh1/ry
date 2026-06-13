@@ -1,0 +1,3 @@
+### Fixed
+
+- `ry fmt` now preserves a parseable spelling when the postfix `?` (Option / Result propagation) follows an expression that already ends in `?` — most commonly the Option-returning safe-index form `xs[i]? ?` and nested `safeGet(...)? ?` chains. The formatter previously concatenated to `xs[i]??`, which the lexer fuses greedily into the `??` (null-coalescing) token, causing `ry fmt --check` to fail with `formatted output failed to re-parse` and skip the file. The fix inserts a space between the two `?` tokens in `formatExprInner`'s `ErrorPropagateExpr` branch whenever the inner formatted text ends with `?`. (#2114)
