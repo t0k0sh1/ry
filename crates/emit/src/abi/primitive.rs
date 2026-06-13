@@ -323,6 +323,45 @@ pub unsafe extern "C" fn ry_emit_sub(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `mul lhs, rhs`. NULL ctx / operand → 0. Added for #2096 (string-build
+/// op migration): str * n / join sep total / repeat byte_len * count multiply.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_mul(
+    ctx: *mut RyEmitCtx,
+    lhs_id: RyValueId,
+    rhs_id: RyValueId,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(lhs), Some(rhs)) = (resolve_value(c, lhs_id), resolve_value(c, rhs_id)) else {
+        return 0;
+    };
+    let v = c.build_mul(lhs, rhs, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
+/// Emit `sdiv lhs, rhs` (signed). NULL ctx / operand → 0. Added for #2096:
+/// emitStringRepeat's overflow-bound `INT64_MAX / strLen` divide. The C++ caller
+/// gates `strLen > 0` upstream, so no division-by-zero path crosses the boundary.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_sdiv(
+    ctx: *mut RyEmitCtx,
+    lhs_id: RyValueId,
+    rhs_id: RyValueId,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(lhs), Some(rhs)) = (resolve_value(c, lhs_id), resolve_value(c, rhs_id)) else {
+        return 0;
+    };
+    let v = c.build_sdiv(lhs, rhs, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `select cond, then_v, else_v`. NULL ctx / operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_select(

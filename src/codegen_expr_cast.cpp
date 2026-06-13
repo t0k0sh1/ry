@@ -284,15 +284,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
 
 // Common helper: emit IR for string repetition.
 // strVal must be a StringHeader handle (ptr), n must be i64.
+// #2096: all builder_.Create* routed through ry_emit_* primitives so this
+// function carries no inline IR generation (ARC side-effect tables stay C++).
 llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
-    auto memcpyFn = getStdlibMemcpy();
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
+    // Pre-register memcpy so its `declare` line lands BEFORE
+    // `__ry_string_make_uninit`'s declare — matches the pre-#2096 order (the
+    // old code called `getStdlibMemcpy()` before `getRuntimeFn(...)` at the
+    // top of the function). emitRuntimeCallDirect uses `getOrInsertFunction`
+    // internally so the redundant call only adds the declare; the IR call
+    // sites still go through emitRuntimeCallDirect below.
+    (void)getStdlibMemcpy();
 
     // NUL-safe: read byte_len from StringHeader
     llvm::Value *strLen = emitStringByteLen(strVal);
 
     // If n <= 0, return empty string (a StringHeader global)
-    llvm::Value *nPos = builder_.CreateICmpSGT(n, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *nPos = emitICmpSGT(n, zero, "n_pos");
 
     llvm::BasicBlock *emptyBB = createBB("str_rep.empty");
     llvm::BasicBlock *repeatBB = createBB("str_rep.repeat");
@@ -303,23 +311,23 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     // Empty case: heap-allocate so the PHI result is uniformly ARC-managed;
     // cachedGlobalString returns an immortal global that must not be released.
     builder_.SetInsertPoint(emptyBB);
-    llvm::Value *emptyStr = builder_.CreateCall(makeUninitFn, {llvm::ConstantInt::get(i64Ty_, 0)}, "empty_buf");
+    llvm::Value *emptyStr = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                                  {i64Ty_}, {zero}, "empty_buf");
     emitBranchUncond(mergeBB);
 
     // Repeat case: guard against strLen * n overflowing int64, then allocate.
     builder_.SetInsertPoint(repeatBB);
     // When strLen == 0, "" * n == "" regardless of n — short-circuit to emptyBB (O(1)).
     // Overflow is only possible when strLen > 0.
-    llvm::Value *strLenPos = builder_.CreateICmpSGT(
-        strLen, llvm::ConstantInt::get(i64Ty_, 0), "slen_pos");
+    llvm::Value *strLenPos = emitICmpSGT(strLen, zero, "slen_pos");
     llvm::BasicBlock *ovfCheckBB = createBB("str_rep.ovf_check");
     llvm::BasicBlock *allocBB    = createBB("str_rep.alloc");
     emitBranchCond(strLenPos, ovfCheckBB, emptyBB);
 
     builder_.SetInsertPoint(ovfCheckBB);
-    llvm::Value *maxN = builder_.CreateSDiv(
+    llvm::Value *maxN = emitSDiv(
         llvm::ConstantInt::get(i64Ty_, INT64_MAX), strLen, "max_n");
-    llvm::Value *wouldOverflow = builder_.CreateICmpSGT(n, maxN, "would_overflow");
+    llvm::Value *wouldOverflow = emitICmpSGT(n, maxN, "would_overflow");
     llvm::BasicBlock *ovfErrBB = createBB("str_rep.ovf_err");
     emitBranchCond(wouldOverflow, ovfErrBB, allocBB);
 
@@ -329,8 +337,9 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     // Alloc case: compute totalLen = strLen * n (overflow-free), then allocate.
     builder_.SetInsertPoint(allocBB);
-    llvm::Value *totalLen = builder_.CreateMul(strLen, n, "total_len");
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, "rep_buf");
+    llvm::Value *totalLen = emitMul(strLen, n, "total_len");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {totalLen}, "rep_buf");
 
     // Loop: copy strVal into buf n times
     llvm::BasicBlock *loopBB = createBB("str_rep.loop");
@@ -340,15 +349,16 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     builder_.SetInsertPoint(loopBB);
 
     llvm::PHINode *i = createPhi(i64Ty_, {}, "i");
-    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), allocBB);
+    i->addIncoming(zero, allocBB);
 
-    llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
-    llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
-    builder_.CreateCall(memcpyFn, {dst, strVal, strLen});
+    llvm::Value *offset = emitMul(i, strLen, "offset");
+    llvm::Value *dst = emitGEP(i8Ty_, buf, offset, "dst");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {dst, strVal, strLen}, "");
 
-    llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    llvm::Value *iNext = emitAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
     i->addIncoming(iNext, loopBB);
-    llvm::Value *cond = builder_.CreateICmpSLT(iNext, n, "loop_cond");
+    llvm::Value *cond = emitICmpSLT(iNext, n, "loop_cond");
     emitBranchCond(cond, loopBB, doneBB);
 
     builder_.SetInsertPoint(doneBB);

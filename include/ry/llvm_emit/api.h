@@ -1054,7 +1054,10 @@ RyValueId ry_emit_zext(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,
                        RyValueId rhs_id, const char *name);
 
-// Emit `and` / `or` / `add` / `sub` of two operands; return the interned result.
+// Emit `and` / `or` / `add` / `sub` / `mul` / `sdiv` of two operands;
+// return the interned result. (`mul` and `sdiv` added for #2096 string-build
+// op migration: str * n / join sep total multiply, repeat overflow-bound
+// `INT64_MAX / strLen` divide. `sdiv`'s divisor is guarded `> 0` upstream.)
 RyValueId ry_emit_and(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                       const char *name);
 RyValueId ry_emit_or(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
@@ -1063,6 +1066,10 @@ RyValueId ry_emit_add(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                       const char *name);
 RyValueId ry_emit_sub(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                       const char *name);
+RyValueId ry_emit_mul(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                      const char *name);
+RyValueId ry_emit_sdiv(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                       const char *name);
 
 // Emit `select cond, then_val, else_val`; return the interned result.
 RyValueId ry_emit_select(RyEmitCtx *ctx, RyValueId cond_id, RyValueId then_id,

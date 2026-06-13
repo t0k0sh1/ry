@@ -2075,6 +2075,11 @@ public:
     llvm::Value *emitOr(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitAdd(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitSub(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    // mul / sdiv added for #2096 (string-build op migration): str * n /
+    // join sep total multiply, repeat overflow-bound `INT64_MAX / strLen`
+    // divide. emitSDiv's divisor must be guarded `> 0` by the caller.
+    llvm::Value *emitMul(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitSDiv(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitSelect(llvm::Value *cond, llvm::Value *then_v,
                             llvm::Value *else_v, const char *name);
     llvm::Value *emitConstInt(llvm::Type *ty, uint64_t value,

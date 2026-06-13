@@ -785,6 +785,9 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 }
 
 // join(list, sep) → str
+// #2096: all builder_.Create* routed through ry_emit_* primitives so this
+// function carries no inline IR generation (loadListHeader is a C++-only
+// header-load helper; arc_str_owned_values_ stays a C++ side-effect table).
 llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     if (e.args.size() != 2)
         return nullptr; // Not the builtin join(List<str>, str); fall through
@@ -802,18 +805,24 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     }
     if (elemTy != ptrTy_)
         codegenError("join() requires List<str> as first argument");
-    auto memcpyFn = getStdlibMemcpy();
-    auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
+
+    // Pre-register memcpy so its `declare` lands BEFORE __ry_string_make_uninit's
+    // (matches the pre-#2096 order where `auto memcpyFn = getStdlibMemcpy()` ran
+    // before `getRuntimeFn("__ry_string_make_uninit", ...)`; emitRuntimeCallDirect
+    // would otherwise register make_uninit first and reorder the declares).
+    (void)getStdlibMemcpy();
 
     auto lf = loadListHeader(listPtr, "join");
     llvm::Value *listLen = lf.len;
     llvm::Value *listData = lf.data;
     llvm::Value *sepLen = emitStringByteLen(sep);
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
 
-    llvm::AllocaInst *totalVar = builder_.CreateAlloca(i64Ty_, nullptr, "join_total");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), totalVar);
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "join_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::Value *totalVar = emitAlloca(i64Ty_, "join_total");
+    emitStore(zero, totalVar);
+    llvm::Value *iVar = emitAlloca(i64Ty_, "join_i");
+    emitStore(zero, iVar);
 
     llvm::BasicBlock *len1CondBB = createBB("join.len_cond");
     llvm::BasicBlock *len1BodyBB = createBB("join.len_body");
@@ -821,32 +830,33 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
 
     emitBranchUncond(len1CondBB);
     builder_.SetInsertPoint(len1CondBB);
-    llvm::Value *i1 = builder_.CreateLoad(i64Ty_, iVar, "join_i1");
-    emitBranchCond(builder_.CreateICmpSLT(i1, listLen, "join_len_cond"), len1BodyBB, len1EndBB);
+    llvm::Value *i1 = emitLoad(i64Ty_, iVar, "join_i1");
+    emitBranchCond(emitICmpSLT(i1, listLen, "join_len_cond"), len1BodyBB, len1EndBB);
 
     builder_.SetInsertPoint(len1BodyBB);
-    llvm::Value *i1Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i1_cur");
-    llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, listData, {i1Cur}, "join_elem_ptr");
-    llvm::Value *elem = builder_.CreateLoad(ptrTy_, elemPtr, "join_elem");
+    llvm::Value *i1Cur = emitLoad(i64Ty_, iVar, "join_i1_cur");
+    llvm::Value *elemPtr = emitGEP(ptrTy_, listData, i1Cur, "join_elem_ptr");
+    llvm::Value *elem = emitLoad(ptrTy_, elemPtr, "join_elem");
     llvm::Value *elemLen = emitStringByteLen(elem);
-    llvm::Value *total = builder_.CreateLoad(i64Ty_, totalVar, "join_total_cur");
-    llvm::Value *newTotal = builder_.CreateAdd(total, elemLen, "join_total_add");
-    builder_.CreateStore(newTotal, totalVar);
-    builder_.CreateStore(builder_.CreateAdd(i1Cur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+    llvm::Value *total = emitLoad(i64Ty_, totalVar, "join_total_cur");
+    llvm::Value *newTotal = emitAdd(total, elemLen, "join_total_add");
+    emitStore(newTotal, totalVar);
+    emitStore(emitAdd(i1Cur, one, ""), iVar);
     emitBranchUncond(len1CondBB);
 
     builder_.SetInsertPoint(len1EndBB);
-    llvm::Value *elemTotal = builder_.CreateLoad(i64Ty_, totalVar, "join_elem_total");
-    llvm::Value *sepCount = builder_.CreateSub(listLen, llvm::ConstantInt::get(i64Ty_, 1), "join_sep_count");
-    llvm::Value *isPositive = builder_.CreateICmpSGT(listLen, llvm::ConstantInt::get(i64Ty_, 0), "join_has_elems");
-    llvm::Value *safeSepCount = builder_.CreateSelect(isPositive, sepCount, llvm::ConstantInt::get(i64Ty_, 0), "safe_sep_count");
-    llvm::Value *sepTotal = builder_.CreateMul(safeSepCount, sepLen, "join_sep_total");
-    llvm::Value *grandTotal = builder_.CreateAdd(elemTotal, sepTotal, "join_grand_total");
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {grandTotal}, "join_buf");
+    llvm::Value *elemTotal = emitLoad(i64Ty_, totalVar, "join_elem_total");
+    llvm::Value *sepCount = emitSub(listLen, one, "join_sep_count");
+    llvm::Value *isPositive = emitICmpSGT(listLen, zero, "join_has_elems");
+    llvm::Value *safeSepCount = emitSelect(isPositive, sepCount, zero, "safe_sep_count");
+    llvm::Value *sepTotal = emitMul(safeSepCount, sepLen, "join_sep_total");
+    llvm::Value *grandTotal = emitAdd(elemTotal, sepTotal, "join_grand_total");
+    llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                             {i64Ty_}, {grandTotal}, "join_buf");
 
-    llvm::AllocaInst *dstVar = builder_.CreateAlloca(ptrTy_, nullptr, "join_dst");
-    builder_.CreateStore(buf, dstVar);
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::Value *dstVar = emitAlloca(ptrTy_, "join_dst");
+    emitStore(buf, dstVar);
+    emitStore(zero, iVar);
 
     llvm::BasicBlock *buildCondBB = createBB("join.build_cond");
     llvm::BasicBlock *buildBodyBB = createBB("join.build_body");
@@ -854,33 +864,35 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
 
     emitBranchUncond(buildCondBB);
     builder_.SetInsertPoint(buildCondBB);
-    llvm::Value *i2 = builder_.CreateLoad(i64Ty_, iVar, "join_i2");
-    emitBranchCond(builder_.CreateICmpSLT(i2, listLen, "join_build_cond"), buildBodyBB, buildEndBB);
+    llvm::Value *i2 = emitLoad(i64Ty_, iVar, "join_i2");
+    emitBranchCond(emitICmpSLT(i2, listLen, "join_build_cond"), buildBodyBB, buildEndBB);
 
     builder_.SetInsertPoint(buildBodyBB);
-    llvm::Value *i2Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i2_cur");
+    llvm::Value *i2Cur = emitLoad(i64Ty_, iVar, "join_i2_cur");
 
-    llvm::Value *notFirst = builder_.CreateICmpSGT(i2Cur, llvm::ConstantInt::get(i64Ty_, 0), "join_not_first");
+    llvm::Value *notFirst = emitICmpSGT(i2Cur, zero, "join_not_first");
     llvm::BasicBlock *sepBB = createBB("join.sep");
     llvm::BasicBlock *elemBB = createBB("join.elem");
     emitBranchCond(notFirst, sepBB, elemBB);
 
     builder_.SetInsertPoint(sepBB);
-    llvm::Value *dstBeforeSep = builder_.CreateLoad(ptrTy_, dstVar, "dst_before_sep");
-    builder_.CreateCall(memcpyFn, {dstBeforeSep, sep, sepLen});
-    llvm::Value *dstAfterSep = builder_.CreateGEP(builder_.getInt8Ty(), dstBeforeSep, sepLen, "dst_after_sep");
-    builder_.CreateStore(dstAfterSep, dstVar);
+    llvm::Value *dstBeforeSep = emitLoad(ptrTy_, dstVar, "dst_before_sep");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {dstBeforeSep, sep, sepLen}, "");
+    llvm::Value *dstAfterSep = emitGEP(i8Ty_, dstBeforeSep, sepLen, "dst_after_sep");
+    emitStore(dstAfterSep, dstVar);
     emitBranchUncond(elemBB);
 
     builder_.SetInsertPoint(elemBB);
-    llvm::Value *dstForElem = builder_.CreateLoad(ptrTy_, dstVar, "dst_for_elem");
-    llvm::Value *elemPtr2 = builder_.CreateGEP(ptrTy_, listData, {i2Cur}, "join_elem_ptr2");
-    llvm::Value *elem2 = builder_.CreateLoad(ptrTy_, elemPtr2, "join_elem2");
+    llvm::Value *dstForElem = emitLoad(ptrTy_, dstVar, "dst_for_elem");
+    llvm::Value *elemPtr2 = emitGEP(ptrTy_, listData, i2Cur, "join_elem_ptr2");
+    llvm::Value *elem2 = emitLoad(ptrTy_, elemPtr2, "join_elem2");
     llvm::Value *elem2Len = emitStringByteLen(elem2);
-    builder_.CreateCall(memcpyFn, {dstForElem, elem2, elem2Len});
-    llvm::Value *dstAfterElem = builder_.CreateGEP(builder_.getInt8Ty(), dstForElem, elem2Len, "dst_after_elem");
-    builder_.CreateStore(dstAfterElem, dstVar);
-    builder_.CreateStore(builder_.CreateAdd(i2Cur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {dstForElem, elem2, elem2Len}, "");
+    llvm::Value *dstAfterElem = emitGEP(i8Ty_, dstForElem, elem2Len, "dst_after_elem");
+    emitStore(dstAfterElem, dstVar);
+    emitStore(emitAdd(i2Cur, one, ""), iVar);
     emitBranchUncond(buildCondBB);
 
     builder_.SetInsertPoint(buildEndBB);

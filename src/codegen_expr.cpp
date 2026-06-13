@@ -1237,14 +1237,16 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // String concatenation — NUL-safe via StringHeader (byte_len + makeStringUninit + memcpy)
+    // #2096: all builder_.Create* routed through ry_emit_* primitives so this
+    // branch carries no inline IR generation (ARC side-effect tables stay C++).
     if (op == "+" && lhsIsStr && rhsIsStr) {
         llvm::Value *lenL = emitStringByteLen(lhs);
         llvm::Value *lenR = emitStringByteLen(rhs);
-        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "concat_len");
+        llvm::Value *total = emitAdd(lenL, lenR, "concat_len");
 
         // Overflow guard: if lenL + lenR wraps (total < lenL for non-negative inputs),
         // abort before underallocating the buffer.
-        llvm::Value *catOverflow = builder_.CreateICmpSLT(total, lenL, "cat_ovf");
+        llvm::Value *catOverflow = emitICmpSLT(total, lenL, "cat_ovf");
         llvm::BasicBlock *catErrBB   = createBB("\1");
         llvm::BasicBlock *catAllocBB = createBB("\1");
         emitBranchCond(catOverflow, catErrBB, catAllocBB);
@@ -1254,11 +1256,13 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         // emitRuntimeError ends with CreateUnreachable(); no fall-through.
 
         builder_.SetInsertPoint(catAllocBB);
-        auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
-        llvm::Value *buf = builder_.CreateCall(makeUninitFn, {total}, "concat_buf");
-        builder_.CreateCall(getStdlibMemcpy(), {buf, lhs, lenL});
-        llvm::Value *dst = builder_.CreateGEP(i8Ty_, buf, lenL, "concat_dst");
-        builder_.CreateCall(getStdlibMemcpy(), {dst, rhs, lenR});
+        llvm::Value *buf = emitRuntimeCallDirect("__ry_string_make_uninit", ptrTy_,
+                                                 {i64Ty_}, {total}, "concat_buf");
+        emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                              {buf, lhs, lenL}, "");
+        llvm::Value *dst = emitGEP(i8Ty_, buf, lenL, "concat_dst");
+        emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                              {dst, rhs, lenR}, "");
         // Release owned input temps; new buf is the only surviving owner (#1583).
         for (llvm::Value *operand : {lhs, rhs}) {
             if (arc_str_owned_values_.erase(operand) > 0)
