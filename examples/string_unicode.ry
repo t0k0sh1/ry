@@ -1,0 +1,11 @@
+# UTF-8文字列の文字数、byte数、検索、反復を示す
+text = "こんにちはRy"
+
+# lenはUnicode code point数、byteLenはUTF-8 byte数
+print(f"characters = {len(text)}")
+print(f"bytes = {byteLen(text)}")
+print(f"contains Ry = {contains(text, "Ry")}")
+print(f"substring = {substr(text, 0, 5)}")
+
+for character in "日本":
+  print(character)

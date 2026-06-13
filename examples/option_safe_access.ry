@@ -1,0 +1,13 @@
+# Optionと?による安全な値取得と早期returnを示す
+fn firstTwoSum(values: List<int>) -> Option<int>:
+  # 1つ目の?はOptionを返し、空白後の?はNoneを早期returnする
+  first = values[0]? ?
+  second = values[1]? ?
+  return Some(first + second)
+
+print(firstTwoSum([10, 20]))
+print(firstTwoSum([10]))
+
+# 空Listは要素型を推論できないため型注釈が必要
+empty: List<int> = []
+print(firstTwoSum(empty))

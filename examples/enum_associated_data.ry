@@ -1,0 +1,12 @@
+# 関連データを持つenumで状態と値をまとめて表現する
+enum Shape:
+  Circle(float)
+  Rectangle(float, float)
+
+fn area(shape: Shape) -> float:
+  return case shape:
+    Shape::Circle(radius) : 3.14159 * radius * radius
+    Shape::Rectangle(width, height) : width * height
+
+print(area(Shape::Circle(2.0)))
+print(area(Shape::Rectangle(3.0, 4.0)))

@@ -1,0 +1,12 @@
+# JSON objectを型付きrecordへ復元する方法を示す
+from json import load
+
+record Person:
+  name: str
+  age: int
+
+case load[Person]("{\"name\":\"Alice\",\"age\":30}"):
+  Ok(person):
+    print(f"{person.name} is {person.age}")
+  Err(e):
+    print(e.message)

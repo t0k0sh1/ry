@@ -1,0 +1,13 @@
+# Resultと?によるエラーの早期returnを示す
+fn divide(a: int, b: int) -> Result<int, Error>:
+  if b == 0:
+    return Err(Error("division by zero"))
+  return Ok(a // b)
+
+fn quarter(value: int) -> Result<int, Error>:
+  half = divide(value, 2)?
+  result = divide(half, 2)?
+  return Ok(result)
+
+print(quarter(20))
+print(divide(20, 0))

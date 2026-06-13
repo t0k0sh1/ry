@@ -1,0 +1,8 @@
+# Setの重複除去と集合演算を示す
+left = {1, 2, 3, 3}
+right = {3, 4, 5}
+
+print(f"left = {left}")
+print(f"union = {union(left, right)}")
+print(f"intersection = {intersection(left, right)}")
+print(f"difference = {difference(left, right)}")

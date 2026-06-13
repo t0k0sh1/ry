@@ -1,0 +1,9 @@
+# Regex literalとUFCSで検索、置換、capture groupを使う
+from regex import findAll, replace
+
+text = "order-12 and order-34"
+print(replace(text, /\d+/, "N"))
+
+# findAllはmatch全体とcapture groupを返す
+for match in findAll(text, /order-(\d+)/):
+  print(f"full={match.full}, id={match.groups[0]}")

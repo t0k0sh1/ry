@@ -1,0 +1,9 @@
+# Listのコピーオンライトにより別名への変更が分離されることを示す
+original = [[1, 2], [3, 4]]
+copy = original
+
+# ネストした要素の書き換えでも必要な経路だけが複製される
+copy[0][1] = 99
+
+print(f"original = {original}")
+print(f"copy = {copy}")

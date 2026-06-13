@@ -1,0 +1,15 @@
+# caseによるADTのパターンマッチ、ガード、式形式を示す
+enum Temperature:
+  Celsius(int)
+  Unknown
+
+fn describe(value: Temperature) -> str:
+  return case value:
+    Temperature::Celsius(n) if n < 0 : "freezing"
+    Temperature::Celsius(n) if n > 30 : "hot"
+    Temperature::Celsius(_) : "mild"
+    Temperature::Unknown : "unknown"
+
+print(describe(Temperature::Celsius(-5)))
+print(describe(Temperature::Celsius(20)))
+print(describe(Temperature::Unknown))

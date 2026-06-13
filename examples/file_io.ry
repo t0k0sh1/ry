@@ -1,17 +1,16 @@
 # ファイル IO
-
 from io import readText, writeText
 
 # ファイル書き込み
 case writeText("/tmp/ry_test.txt", "hello from ry\nline 2\n"):
-    Ok(_):
-        print("written")
-    Err(e):
-        print(f"err: {e.message}")
+  Ok(_):
+    print("written")
+  Err(e):
+    print(f"err: {e.message}")
 
 # ファイル読み込み
 case readText("/tmp/ry_test.txt"):
-    Ok(text):
-        print(f"read: {text}")
-    Err(e):
-        print(f"err: {e.message}")
+  Ok(text):
+    print(f"read: {text}")
+  Err(e):
+    print(f"err: {e.message}")

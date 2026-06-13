@@ -1,0 +1,14 @@
+# for、while、break、continueの基本動作を示す
+total = 0
+for n in range(1, 6):
+  total += n
+print(total)
+
+i = 0
+while true:
+  i += 1
+  if i == 2:
+    continue
+  print(i)
+  if i == 3:
+    break

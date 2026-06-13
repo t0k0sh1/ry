@@ -1,0 +1,15 @@
+# require、ensure、record invariantによる契約プログラミングを示す
+record Account:
+  balance: int
+  invariant:
+    balance >= 0
+
+fn deposit(account: Account, amount: int) -> Account:
+  require:
+    amount > 0
+  ensure result:
+    result.balance == account.balance + amount
+  return Account(account.balance + amount)
+
+account = Account(100)
+print(deposit(account, 25))

@@ -1,15 +1,14 @@
 # 単語カウント (Map 活用、テキスト処理)
-
 text = "the quick brown fox jumps over the lazy dog the cat is on the mat"
 words = split(text, " ")
 
 counts: Map<str, int> = {}
 for w in words:
-    case get(counts, w):
-        Some(c):
-            counts[w] = c + 1
-        None:
-            counts[w] = 1
+  case get(counts, w):
+    Some(c):
+      counts[w] = c + 1
+    None:
+      counts[w] = 1
 
 # 出力: 単語数順 (Map は順序保存だが、ソートしたい)
 pairs = items(counts)
@@ -20,4 +19,4 @@ sorted = sort(pairs, (a: (str, int), b: (str, int)) => a.1 > b.1)
 
 print("Word frequency (descending):")
 for p in sorted:
-    print(f"  {p.0}: {p.1}")
+  print(f"  {p.0}: {p.1}")

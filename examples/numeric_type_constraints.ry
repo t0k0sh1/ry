@@ -1,0 +1,15 @@
+# literal型、range型、union型で受け付ける値を制限する
+type Direction = "N" | "S" | "E" | "W"
+
+type Month = 1..12
+
+fn schedule(direction: Direction, month: Month) -> str:
+  return f"{direction} in month {month}"
+
+print(schedule("N", 6))
+
+# union型は列挙した複数の型のいずれかを保持できる
+value: int | str = 42
+print(value)
+value = "forty-two"
+print(value)

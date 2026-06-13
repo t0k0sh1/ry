@@ -1,0 +1,9 @@
+# mathモジュールの定数、平方根、丸め、無限値判定を示す
+from math import PI, INF, sqrt, round, isInf
+
+radius = 3.0
+area = PI * radius * radius
+
+print(f"area = {round(area, 2)}")
+print(f"sqrt(81) = {sqrt(81)}")
+print(f"infinite constant = {isInf(INF)}")

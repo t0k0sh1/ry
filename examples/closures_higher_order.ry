@@ -1,0 +1,12 @@
+# クロージャの値キャプチャと高階関数への受け渡しを示す
+fn makeAdder(base: int) -> fn(int) -> int:
+  # 内側の関数はbaseの値をキャプチャする
+  fn add(value: int) -> int:
+    return base + value
+  return add
+
+add10 = makeAdder(10)
+values = [1, 2, 3]
+
+# mapは各要素にクロージャを適用した新しいListを返す
+print(map(values, add10))

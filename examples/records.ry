@@ -1,0 +1,11 @@
+# recordの構築、fieldアクセス、構造的等値性、更新を示す
+record Point:
+  x: int
+  y: int
+
+point = Point(3, 4)
+same = Point(3, 4)
+
+print(point == same)
+point.x += 10
+print(point)
