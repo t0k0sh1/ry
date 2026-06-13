@@ -6,6 +6,7 @@ paths:
   - "src/codegen.cpp"
   - "src/codegen_test.cpp"
   - "src/codegen_call_user.cpp"
+  - "src/codegen_call_collection.cpp"
   - "src/codegen_lowering_*.cpp"
   - "src/codegen_emission_*.cpp"
   - "src/jit/jit_runner.cpp"
@@ -107,3 +108,14 @@ But the Rust boundary helper `bounds_error` (`crates/emit/src/composite/bounds.r
 That hidden divergence is the trap: a new `emitRuntimeError`-flavored migration that copies `bounds_error`'s shape — the obvious "same shape" choice — silently produces `@.foo` (plain) instead of `@.foo.arc` (str-handle struct) AND reorders the stdout load, breaking bit-exact parity with the C++ baseline (both the `@*.arc` GlobalVariable lines and the fprintf-vs-stdout-load ordering inside every fail BB). For an `emitRuntimeError`-shaped exit, use `get_or_create_arc_msg_global` (`crates/emit/src/composite/arc.rs`) — it mirrors `buildArcGlobal` exactly (struct prefix, `.arc` name suffix, ConstantExpr GEP into the data payload) — AND author a **dedicated** `runtime_error_with_*_arg` free fn that preserves the C++ `emitRuntimeError` instruction order (load stderr → fprintf → load stdout → fflush stdout → fflush stderr → _Exit → unreachable). Do NOT call into `bounds_error` from the new helper. Dedup caches stay independent — `bounds_msg_cache` for plain globals, `arc_msg_cache` for str-handle globals; both key on message bytes. Canonical example: `crates/emit/src/composite/cast.rs::checked_fp_to_int` + `runtime_error_with_value_arg` (#2097, the `emitCheckedFPToInt` migration).
 
 This is the `load_list_header` lesson (#2092) applied to a second pair of look-alike helpers: don't assume two helpers that "do the same thing in C++" produce byte-identical Rust IR — confirm against the baseline. The same discipline applies to any future migration of `emitIntZeroDivGuard` / `emitIntDivOverflowGuard` and similar `emitRuntimeError`-callers (`src/codegen_call_user.cpp`).
+
+### 条件分岐先でしか使われない値は target BB 内で emit する (lazy default rule)
+
+**Source**: #2132 (2026-06-14, fix)
+**Tags**: codegen, branching, PHI, lazy-evaluation, short-circuit, conditional-emission, emitCollOp_get
+
+PHI の片方の incoming にしか使われない値は、 その predecessor BB に `SetInsertPoint` した後で `emitExpr` する。 分岐前の dominator block で emit すると、 他方のパスを通った場合でも IR 上は無条件に評価されるため、副作用付き式 (関数呼び出し、リソース確保等) が常に走る。 Canonical example は `emitCollOp_get` (`src/codegen_call_collection.cpp`) の 3-arg path: `emitExpr(*e.args[2])` と coerce ブロックを `builder_.SetInsertPoint(notFoundBB)` / `SetInsertPoint(oobBB)` の後に置く。 同じ原理は将来の 3-arg overload (例: `pop(list, default)`, `find(list, pred, default)`) や、 条件分岐先でしか値が要らない他の codegen 局所にも適用する。
+
+PHI の predecessor (`notFoundEndBB` / `oobEndBB`) は `emitBranchUncond(mergeBB)` の **後**に `builder_.GetInsertBlock()` で再キャプチャすること。`default` 式が内部で新 BB を生成する場合 (`and`/`or` 短絡、ネスト `get`、`if expr`)、事前にキャプチャした BB ハンドルでは LLVM verify が PHI predecessor 不一致で reject する。
+
+参照パターン: 2-arg get の `oobBB` / `notFoundBB` 内 `buildNoneValue` 構築 (同ファイル `emitCollOp_get` 2-arg arm)、`and` / `or` 短絡評価 (`src/codegen_expr.cpp` の `sc.rhs` BB 内で rhs を emit)。
