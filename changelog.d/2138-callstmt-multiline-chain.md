@@ -1,3 +1,0 @@
-### Fixed
-
-- Parser: a multiline `.method()` chain immediately after a statement-position `CallStmt` (e.g. `xs.sort()\n    .iter()\n    .toList()` or `foo()\n    .iter()`) no longer fails with `unexpected token ''`. Both the 1-hop UFCS path (`ident.method(args)`) and the direct-call path (`ident(args)`) in `src/parser/parser.cpp`'s statement dispatch now route through `parsePostfixContinuation` and fall back to a `CallStmt` (preserving the trailing-block fast path) only when no chain follows. The expression-position chain support added in #2115 / #2121 already covered statements whose leader was a primary expression (list literal, bare ident); this closes the asymmetry for the call-statement leader. Follow-up to #2121. (#2138)
