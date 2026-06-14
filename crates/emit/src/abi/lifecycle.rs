@@ -1,6 +1,6 @@
 //! abi::lifecycle — C boundary entry points for the emission-context lifecycle:
 //! create / destroy and the intern / resolve value-handle entry points.
-//! `ctx_create` boxes a `core::EmitCtx::new` and hands back the opaque handle;
+//! `ctx_create` boxes a `context::EmitCtx::new` and hands back the opaque handle;
 //! the rest are boundary plumbing over that handle (intern / resolve are
 //! abi-side). The former `set_function` setter was removed in #2083: every
 //! BB-creating op derives its parent function from the builder's insert block,

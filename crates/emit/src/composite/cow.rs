@@ -194,7 +194,7 @@ impl EmitCtx {
         let ptr_ty = ptr_type(context);
         let arc_header_ty = arc_header_type(context);
 
-        // The header struct shape is single-sourced in `core::header_fields`
+        // The header struct shape is single-sourced in `context::header_fields`
         // (mirrors CodeGen's listHeaderTy_/mapHeaderTy_/setHeaderTy_ in
         // src/codegen.cpp); the C++<->Rust sync is mechanically guarded by the
         // parity test (tests/test_header_layout.cpp via ry_emit_test_header_layout)

@@ -3,7 +3,7 @@
 //! handle and interns the aggregate; `ry_emit_result_branch` validates inputs,
 //! resolves `is_err`, wraps each C builder callback (`RyBuildValueFn`) into a
 //! `FnMut() -> ValueRef` closure that re-enters the emitter and resolves the
-//! returned id, then delegates the IR emission to `core::emit_result_branch` and
+//! returned id, then delegates the IR emission to `composite::result::emit_result_branch` and
 //! interns the phi. The closure invocation + intern/resolve juggling is the only
 //! abi-side work; the LLVM IR (BB scaffold + cond-br + phi) lives in `core`,
 //! which holds no `&mut EmitCtx` borrow so the re-entrant `with_ctx(ctx, …)`
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     // ordering by relying on left-to-right argument evaluation: a single
     // `resolve(cx(ctx), build_ok(user_ctx))` would have held the `cx(ctx)` borrow
     // across the callback. `with_ctx` makes the ordering a borrow-scope guarantee
-    // instead of an evaluation-order subtlety.) `core::emit_result_branch` itself
+    // instead of an evaluation-order subtlety.) `composite::result::emit_result_branch` itself
     // holds no EmitCtx borrow, so each closure's transient `with_ctx` is the only
     // live receiver borrow at callback time (#2081 / #2069).
     let mut do_ok = move || -> ValueRef {

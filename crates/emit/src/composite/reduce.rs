@@ -8,7 +8,7 @@
 //!   - **list forms** (`sum([..])`, `min/max([..])`): the whole loop lives in one
 //!     coarse boundary op. `reduce_sum_list` loads the list header inline (in the
 //!     INTERLEAVED gep/load order of C++ `CodeGen::loadListHeader`, NOT the
-//!     grouped `core::load_list_header`) and runs the accumulate loop.
+//!     grouped `composite::header::load_list_header`) and runs the accumulate loop.
 //!     `reduce_minmax_list_loop` is deliberately partial: the C++ side keeps
 //!     `loadListHeader` + the empty-list check + `emitRuntimeError` (which builds
 //!     an ARC string global — out of scope for this ARC-free batch), positions
@@ -52,7 +52,7 @@ impl EmitCtx {
         let fn_v = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
 
         // List header load — INTERLEAVED gep/load to match C++ CodeGen::loadListHeader
-        // (src/codegen_call.cpp); core::load_list_header groups the geps then the
+        // (src/codegen_call.cpp); composite::header::load_list_header groups the geps then the
         // loads, which would reorder the IR. `sum_cap` is loaded-but-unused, exactly
         // as the C++ helper does, so the IR stays byte-identical.
         let len_ptr = LLVMBuildStructGEP2(

@@ -2,7 +2,7 @@
 //!
 //! NOT part of the production emission path. It exposes the *same*
 //! single-sourced field-kind table that drives `cow_ensure_unique` /
-//! `arc_header_type` (`core::header_fields`) so the C++ parity test
+//! `arc_header_type` (`context::header_fields`) so the C++ parity test
 //! (`tests/test_header_layout.cpp`) can assert the Rust mirror against C++'s
 //! canonical `listHeaderTy_` / `mapHeaderTy_` / `setHeaderTy_` / `arcHeaderTy_`
 //! (`src/codegen.cpp:57-61`). This closes the layout-drift hole #2071: a C++
@@ -51,7 +51,7 @@ pub struct RyTestHeaderLayout {
 // so the C++ side can assert each constant indexes a field of the expected type
 // in the canonical struct (tests/test_header_layout.cpp). The constants are
 // pinned to GEP positions; a future layout change is a single-point edit in
-// core.rs that this struct + the C++ test catch via per-named-position parity.
+// context.rs that this struct + the C++ test catch via per-named-position parity.
 #[repr(C)]
 pub struct RyTestFieldIndices {
     pub list_len: u32,
