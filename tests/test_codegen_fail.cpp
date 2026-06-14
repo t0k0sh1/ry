@@ -1453,13 +1453,13 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsNestedShadow) {
 }
 
 TEST_F(CodeGenTest, ReservedBuiltinGetAllowsNestedShadow) {
-    EXPECT_NO_THROW(runSource(
+    EXPECT_EQ(runSource(
         "fn outer() -> int:\n"
         "    fn get(x: int) -> int:\n"
         "        return x + 1\n"
-        "    return 0\n"
+        "    return get(41)\n"
         "print(outer())\n"
-    ));
+    ), "42\n");
 }
 
 // `str` is excluded from the reserved set (see
