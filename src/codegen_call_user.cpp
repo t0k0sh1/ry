@@ -792,7 +792,7 @@ void CodeGen::emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPre
 
 void CodeGen::emitIntDivOverflowGuard(llvm::Value *dividend, llvm::Value *divisor,
                                        const std::string &bbPrefix) {
-    llvm::Value *minusOne = llvm::ConstantInt::get(divisor->getType(), -1, true);
+    llvm::Value *minusOne = llvm::ConstantInt::getSigned(divisor->getType(), -1);
     llvm::Value *intMin = llvm::ConstantInt::get(
         dividend->getType(), llvm::APInt::getSignedMinValue(64));
     llvm::Value *isMinusOne = builder_.CreateICmpEQ(divisor, minusOne, bbPrefix + "_div_m1");

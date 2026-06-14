@@ -143,7 +143,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         // Parse element types from "(T1, T2, ...)"
         std::string inner = typeName.substr(1, typeName.size() - 2); // strip parens
         std::vector<llvm::Type*> elementTypes;
-        elementTypes.reserve(std::count(inner.begin(), inner.end(), ',') + 1);
+        elementTypes.reserve(static_cast<size_t>(std::count(inner.begin(), inner.end(), ',')) + 1);
         size_t depth = 0;
         size_t start = 0;
         for (size_t i = 0; i <= inner.size(); ++i) {

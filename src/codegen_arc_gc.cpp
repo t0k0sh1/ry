@@ -183,8 +183,7 @@ void CodeGen::emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
                                 const std::string &fieldTypeName,
                                 llvm::Value *visitorFn,
                                 llvm::FunctionType *visitorCallTy,
-                                llvm::FunctionType *visitFnTy,
-                                llvm::Function *parentFn) {
+                                llvm::FunctionType *visitFnTy) {
     if (fieldTy == ptrTy_) {
         auto *fieldVal = builder_.CreateLoad(ptrTy_, fieldPtr, "gc.visit.val");
         auto *isNull = builder_.CreateICmpEQ(
@@ -241,7 +240,7 @@ llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
         auto *fieldPtr = builder_.CreateStructGEP(info.llvmType, dataPtr, i,
                                                    "gc.record.field." + std::to_string(i));
         emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
-                         visitorFnArg, visitorCallTy, visitFnTy, visitFn);
+                         visitorFnArg, visitorCallTy, visitFnTy);
     }
 
     builder_.CreateRetVoid();
@@ -334,7 +333,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
                     llvm::ConstantInt::get(i64Ty_, offset),
                     "gc.field." + std::to_string(fi));
                 emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
-                                 visitorFn, visitorCallTy, visitFnTy, visitFn);
+                                 visitorFn, visitorCallTy, visitFnTy);
             }
 
             offset += dl.getTypeAllocSize(fieldTy);
