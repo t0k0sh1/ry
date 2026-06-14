@@ -162,12 +162,22 @@ bool Lexer::consumeExponentIfPresent() {
 }
 
 Token Lexer::readToken() {
+    // #2137: comment-only lines are skipped via `continue` on this outer
+    // loop (was `return readToken()` until ASan caught a stack overflow
+    // on long runs of consecutive comment lines). Every non-skip path
+    // either `return`s a token or falls through to the body emit below.
+    for (;;) {
     // 1. Return pending tokens (multiple DEDENTs)
     if (!pending_.empty()) {
         Token t = pending_.front();
         pending_.pop();
         return t;
     }
+
+    // Snapshot whether this iteration entered at line start; Step 2 clears
+    // the member immediately, so we need a local copy to drive the
+    // comment-only line transparency in Step 4 (#2137).
+    bool entered_at_line_start = at_line_start_;
 
     // 2. Indent processing at line start
     if (at_line_start_) {
@@ -219,6 +229,26 @@ Token Lexer::readToken() {
         while (pos_ < src_.size() && src_[pos_] != '\n' && src_[pos_] != '\r') {
             ++pos_;
             ++col_;
+        }
+        // #2137: comment-only lines (entered_at_line_start && first
+        // non-whitespace was `#`) must be transparent at the token level
+        // so multiline UFCS chains can carry mid-chain comments. Suppress
+        // the trailing Newline and restart the outer loop to process the
+        // next line. mid-line comments (`foo() # x`) have
+        // entered_at_line_start=false and fall through to the normal
+        // Newline emit. Indent/Dedent are unaffected because
+        // `has_content == false` already gates Step 2.
+        if (entered_at_line_start && pos_ < src_.size() &&
+            (src_[pos_] == '\n' || src_[pos_] == '\r')) {
+            if (src_[pos_] == '\r' && pos_ + 1 < src_.size() &&
+                src_[pos_ + 1] == '\n') {
+                ++pos_;
+            }
+            ++pos_;
+            ++line_;
+            col_ = 1;
+            at_line_start_ = true;
+            continue;
         }
         // Fall through to handle the newline/EOF normally (no recursive call)
     }
@@ -655,6 +685,7 @@ Token Lexer::readToken() {
 
     ++pos_; ++col_;
     return {TokenKind::Error, std::string(1, c), line_, startCol};
+    }  // close `for (;;)` opened in Step 1 (#2137)
 }
 
 Token Lexer::readFStringSegment(bool isStart) {
