@@ -1,12 +1,18 @@
 ---
 name: git-push
-description: Ensure feature branch (auto-create from main if needed), commit, rebase onto main, and push. Use when starting work on a new feature/fix/task, or when you have local commits or working-tree changes to publish. Auto-creates a feature branch when invoked on main.
+description: User-invoked slash command that ensures a feature branch, commits, rebases onto main, and pushes. Never invoke autonomously, from another skill, or merely because changes are ready to publish.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git checkout -b:*), Bash(git rev-parse:*), Read, Edit
 metadata:
   short-description: Branch, commit and push
 ---
 
 # Git Push
+
+## Invocation Gate
+
+- Run only when the user directly invokes `/git-push`.
+- Never invoke this skill autonomously or from another skill.
+- Never propose this skill, present it as an option, include it in a plan, or list it as a next step.
 
 ## Context
 

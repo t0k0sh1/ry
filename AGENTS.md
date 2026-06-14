@@ -50,6 +50,7 @@ cmake --build <build-dir>
   - New features: run Red-Green-Refactor for each test case.
 - When using a plan:
   - Cover implementation through self-verification only.
+  - Never include `/git-push`, `/git-create-pr`, or `/git-finalize-pr`.
   - State outcomes, not implementation details.
   - Include matching rules / skills, documentation decision, and verification.
   - Keep each Red-Green-Refactor cycle in one task.
@@ -108,8 +109,11 @@ cmake --build <build-dir>
 - After rebase, push with `--force-with-lease`; do not fetch again before that push.
 - Feature branch creation, commit, rebase, and push: `/git-push`.
 - PR creation: `/git-create-pr`.
+- `/git-push`, `/git-create-pr`, and `/git-finalize-pr` run only when the user directly invokes that exact slash command.
+- Never invoke these skills autonomously or from another skill.
+- Never propose these skills, present them as options, include them in a plan, or list them as next steps.
 - Conflict resolution: `/git-resolve-conflicts`.
-- Final review, CI, verification, push, merge, and `wip` cleanup: `/git-finalize-pr`.
+- Final review, CI, verification, merge, and `wip` cleanup for an already-pushed branch: `/git-finalize-pr`.
 - Before merge, stop and report any uncommitted or untracked files.
 - Commit `.serena/` changes with the related work.
 
@@ -142,4 +146,4 @@ Issue creation:
 ## Completion
 
 - Run `/pre-commit-checklist` before declaring work complete.
-- Do not change labels during self-verification; `/git-finalize-pr` handles post-merge cleanup.
+- Do not change labels during self-verification; post-merge cleanup occurs only during a user-invoked `/git-finalize-pr`.

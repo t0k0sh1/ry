@@ -1,20 +1,26 @@
 ---
 name: git-finalize-pr
-description: PR finalization in one pass — addresses review comments, follows up unresolved threads, verifies CI, runs pre-commit checklist, pushes, and merges. Stops at the first blocker; never auto-loops fix→push→CI-wait. Use when the user wants to finalize a PR, "PR を仕上げる", "マージまで一気に", "指摘対応してマージ", "レビュー対応からマージまで", "finalize PR <number>".
-allowed-tools: Bash(gh:*), Bash(git:*), Read, Edit
+description: User-invoked slash command that finalizes an already-pushed PR by addressing review comments, verifying CI, running pre-commit checks, merging, and cleaning up. Never invoke autonomously, from another skill, or merely because a PR is ready.
+allowed-tools: Bash(gh:*), Bash(git branch:*), Read, Edit
 metadata:
-  short-description: Review → CI → push → merge in one pass
+  short-description: Review → CI → merge in one pass
 ---
 
 # Git Finalize PR
 
-Take a pull request end-to-end: address review comments, follow up unresolved threads, verify CI, run the pre-commit checklist, push, and merge.
+## Invocation Gate
+
+- Run only when the user directly invokes `/git-finalize-pr`.
+- Never invoke this skill autonomously or from another skill.
+- Never propose this skill, present it as an option, include it in a plan, or list it as a next step.
+
+Finalize an already-pushed pull request: address review comments, follow up unresolved threads, verify CI, run the pre-commit checklist, and merge.
 
 ## One-pass policy
 
 This skill runs straight through. On any blocker it reports and stops — fix → push → CI wait → re-fix loops are never started automatically. Invoking this skill is the merge consent; no additional "merge しますか？" prompt is shown.
 
-Priority order: (1) CI failures are caught first (Step 2) and stop the flow immediately so investigation takes precedence; (2) review comments are addressed next (Step 3); (3) CI completion is verified strictly at the merge gate (Step 6). Step 1 is a structural-only pre-check that stops on conflicts; transient states like `BLOCKED` (CI pending) warn and proceed so Step 2 and Step 3 run in parallel with CI. When Step 3 produces review-fix commits, Step 5 pushes them and triggers fresh CI runs, so Step 6 will typically stop on `mergeStateStatus ∉ {CLEAN, HAS_HOOKS}` until those checks complete. Rerun once CI is green.
+Priority order: (1) CI failures are caught first (Step 2) and stop the flow immediately so investigation takes precedence; (2) review comments are addressed next (Step 3); (3) CI completion is verified strictly at the merge gate (Step 6). Step 1 is a structural-only pre-check that stops on conflicts; transient states like `BLOCKED` (CI pending) warn and proceed so Step 2 and Step 3 run in parallel with CI. When Step 3 produces changes that require publication, Step 5 stops before the merge gate.
 
 ## Repository
 
@@ -89,15 +95,13 @@ Invoke `/pre-commit-checklist`. If it reports outstanding items, stop:
 
 > Pre-commit checklist reported outstanding items (above). Address them, then rerun.
 
-### Step 5: Push
+### Step 5: Verify branch publication
 
-Invoke `/git-push`. It commits any working-tree changes left by Step 3, rebases onto `origin/main`, and pushes with `--force-with-lease`. On any failure (rebase conflict, lease rejection, etc.) it stops with its own report — surface that message and stop:
-
-> Push failed. Resolve the issue as reported above, then rerun.
+If Step 3 left working-tree changes or local commits that are not on the remote, stop and report that the PR cannot be finalized until the branch is clean and up to date. Do not invoke or suggest `/git-push`.
 
 ### Step 6: Merge
 
-Re-verify status (push triggered fresh CI):
+Re-verify status:
 
 ```bash
 gh pr view <PR> --json state,mergeable,mergeStateStatus

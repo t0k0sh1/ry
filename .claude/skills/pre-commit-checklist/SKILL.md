@@ -72,4 +72,4 @@ Use `/knowledge-md-management` when no destination exists.
 
 - Confirm no background or detached process was started.
 - Do not change labels during self-verification.
-- `/git-finalize-pr` handles post-merge `wip` cleanup.
+- Post-merge `wip` cleanup occurs only during a user-invoked `/git-finalize-pr`.
