@@ -1756,7 +1756,6 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             val = coerced;
         } else if (isAnyType(valueTy)) {
             val = wrapInAny(val);
-            newTy = val->getType();
             didWrapToAny = true;
         } else if (isAnyType(newTy) && valueTy == i64Ty_) {
             // #1798 / #1697: any → i64 unwrap on module-global reassignment.
@@ -1765,7 +1764,6 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             // otherwise the standard Int unwrap (canAnyHoldType(i64) holds).
             std::string destTypeName = buildTypeNameFromMeta(anchor);
             val = unwrapFromAny(val, valueTy, destTypeName);
-            newTy = val->getType();
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(valueTy) &&
                    (isOptionType(valueTy) || isResultType(valueTy) ||
@@ -1775,13 +1773,11 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             // reassignment.
             std::string destTypeName = buildTypeNameFromMeta(anchor);
             val = unwrapFromAny(val, valueTy, destTypeName);
-            newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
             // #1697: Thread the destination's source-level type name so the
             // unwrap picks the matching collection tag and emits the retain.
             std::string destTypeName = buildTypeNameFromMeta(anchor);
             val = unwrapFromAny(val, valueTy, destTypeName);
-            newTy = val->getType();
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(valueTy) &&
                    findRecordInfoForType(llvm::cast<llvm::StructType>(valueTy))) {
@@ -1789,7 +1785,6 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             std::string destTypeName =
                 findRecordTypeName(llvm::cast<llvm::StructType>(valueTy));
             val = unwrapFromAny(val, valueTy, destTypeName);
-            newTy = val->getType();
         } else if (isResultType(valueTy) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
             // #1808: see paired function-local reassign site above for

@@ -183,7 +183,6 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 if (fnInfo) {
                     if (!fnInfo->isUniformClosure) {
                         val = wrapAsUniformClosure(val, *fnInfo);
-                        fnInfo = lookupFnTypeInfo(val);
                     }
                 }
             }
