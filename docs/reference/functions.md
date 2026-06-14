@@ -332,7 +332,7 @@ fn calc(x: int) -> int:      # conflicts with calc(int) from above
 
 ## Reserved Built-in Names
 
-Top-level user functions cannot reuse names that the standard library reserves for built-ins. Names such as `sum`, `min`, `max`, `len`, `range`, `print`, `enumerate`, `zip`, `map`, `filter`, `fold`, `reduce`, `iter`, `Ok`, `Err`, `Some`, `None`, `Error`, and others dispatch directly through the compiler's built-in chain. A user `fn sum(...)` at the top level would never be called — the body would be silently ignored. The compiler rejects such declarations at definition time with `cannot declare function 'sum': name is reserved for a built-in function`.
+Top-level user functions cannot reuse names that the standard library reserves for built-ins. Names such as `sum`, `min`, `max`, `len`, `range`, `print`, `enumerate`, `zip`, `map`, `filter`, `fold`, `reduce`, `iter`, `get`, `Ok`, `Err`, `Some`, `None`, `Error`, and others dispatch directly through the compiler's built-in chain. A user `fn sum(...)` at the top level would never be called — the body would be silently ignored. The compiler rejects such declarations at definition time with `cannot declare function 'sum': name is reserved for a built-in function`.
 
 ```ry
 # Error: cannot declare function 'sum': name is reserved for a built-in function

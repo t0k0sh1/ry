@@ -37,6 +37,7 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "flat",
     "float",
     "fold",
+    "get",
     "hasKey",
     "input",
     "int",

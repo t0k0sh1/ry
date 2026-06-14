@@ -1,0 +1,3 @@
+### Fixed
+
+- Top-level `fn get(...)` is now rejected at compile time with `name is reserved for a built-in function`. Previously the collection `get` builtin (#2116) silently shadowed any user-defined `fn get(xs: List<int>, i: int) -> int` (or any 2- / 3-arg signature whose first argument was a `List` or `Map`), turning the user body into dead code with no diagnostic. The single-int form used to compile via fall-through; reservation makes the rejection uniform across all signatures, matching the existing `iter` / `pop` precedent per the `kReservedBuiltinFunctionNames` empirical-maintenance rule. (#2133)
