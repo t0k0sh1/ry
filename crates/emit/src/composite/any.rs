@@ -545,7 +545,7 @@ impl EmitCtx {
                     );
                     build_ok(chosen)
                 },
-                |_s| build_err(),
+                build_err,
             );
             return Some(phi);
         }
@@ -581,7 +581,7 @@ impl EmitCtx {
                 );
                 build_ok(unwrapped)
             },
-            |_s| build_err(),
+            build_err,
         );
         Some(phi)
     }
@@ -605,7 +605,7 @@ impl EmitCtx {
         res_ty: LLVMTypeRef,
         is_err: LLVMValueRef,
         ok_value: impl FnOnce(&mut Self) -> LLVMValueRef,
-        err_value: impl FnOnce(&mut Self) -> LLVMValueRef,
+        err_value: impl FnOnce() -> LLVMValueRef,
     ) -> ValueRef {
         let b = self.builder;
         let context = self.context;
@@ -621,7 +621,7 @@ impl EmitCtx {
         let ok_incoming = LLVMGetInsertBlock(b);
 
         LLVMPositionBuilderAtEnd(b, err_bb);
-        let err_val = err_value(self);
+        let err_val = err_value();
         LLVMBuildBr(b, merge_bb);
         let err_incoming = LLVMGetInsertBlock(b);
 
