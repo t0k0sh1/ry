@@ -212,7 +212,7 @@ fn bump():
 - **Mutable top-level writes are write-through.** Assigning to a top-level mutable variable from inside a function actually mutates the top-level binding — it does not create a local with the same name.
 - **Nested blocks are not module-level.** A binding inside a top-level `if`, `while`, or `for` block is local to that block and is not visible from functions.
 
-**Limitations (v0.0.8):**
+**Limitations:**
 
 - A parallel `for` block cannot assign to a top-level mutable variable (data-race avoidance).
 - Top-level `weak` references and resource-typed bindings (file/regex handles) cannot yet be accessed from function bodies — track these use cases in follow-up issues if you need them.

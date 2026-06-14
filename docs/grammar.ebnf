@@ -2,7 +2,7 @@
  * Ry language grammar (EBNF, W3C-style notation)
  * ===============================================
  *
- * Source: ry compiler v0.0.17 — verified against
+ * Source: ry compiler v0.0.27 — verified against
  *   include/ry/lexer/lexer.hpp / src/lexer/lexer.cpp     (terminals & keyword table)
  *   src/parser/parser*.cpp                               (statement & expression productions)
  *   tests/spec/*.test.ry                     (concrete syntax samples)

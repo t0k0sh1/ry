@@ -272,9 +272,9 @@ case open("out.json", "w"):
 - `load[int]` accepts JSON floats that are whole numbers
   (`42.0` → `42`); `load[float]` accepts JSON integers
   (`42` → `42.0`).
-- Embedded NUL bytes (` `) round-trip: `load` accepts ` ` in
+- Embedded NUL bytes (`U+0000`) round-trip: `load` accepts `\u0000` in
   string values and object keys; `stringify` emits the escape sequence
-  ` ` for any NUL byte in a string.
+  `\u0000` for any NUL byte in a string.
 - `load` enforces a maximum nesting depth of **256** for arrays and
   objects (combined). Inputs that exceed this depth return
   `Err(Error{message: "json: maximum nesting depth exceeded"})`
