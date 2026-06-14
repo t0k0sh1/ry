@@ -299,7 +299,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::Value *strLen = emitStringByteLen(strVal);
 
     // If n <= 0, return empty string (a StringHeader global)
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *zero = emitConstInt(i64Ty_, 0);
     llvm::Value *nPos = emitICmpSGT(n, zero, "n_pos");
 
     llvm::BasicBlock *emptyBB = createBB("str_rep.empty");
@@ -326,7 +326,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     builder_.SetInsertPoint(ovfCheckBB);
     llvm::Value *maxN = emitSDiv(
-        llvm::ConstantInt::get(i64Ty_, INT64_MAX), strLen, "max_n");
+        emitConstInt(i64Ty_, INT64_MAX), strLen, "max_n");
     llvm::Value *wouldOverflow = emitICmpSGT(n, maxN, "would_overflow");
     llvm::BasicBlock *ovfErrBB = createBB("str_rep.ovf_err");
     emitBranchCond(wouldOverflow, ovfErrBB, allocBB);
@@ -356,7 +356,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
                           {dst, strVal, strLen}, "");
 
-    llvm::Value *iNext = emitAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    llvm::Value *iNext = emitAdd(i, emitConstInt(i64Ty_, 1), "i_next");
     i->addIncoming(iNext, loopBB);
     llvm::Value *cond = emitICmpSLT(iNext, n, "loop_cond");
     emitBranchCond(cond, loopBB, doneBB);

@@ -816,8 +816,8 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     llvm::Value *listLen = lf.len;
     llvm::Value *listData = lf.data;
     llvm::Value *sepLen = emitStringByteLen(sep);
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+    llvm::Value *zero = emitConstInt(i64Ty_, 0);
+    llvm::Value *one = emitConstInt(i64Ty_, 1);
 
     llvm::Value *totalVar = emitAlloca(i64Ty_, "join_total");
     emitStore(zero, totalVar);
