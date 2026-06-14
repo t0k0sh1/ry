@@ -628,6 +628,25 @@ TEST_F(EmitAbiGuardTest, GetParamNullFnReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// Out-of-range idx → sentinel 0 (LLVMCountParams bounds guard; #2141). The fn
+// handle is valid but idx >= param count, which would otherwise reach
+// LLVMGetParam's `arg_begin()[index]` and be UB. Mirrors the null-fn guard
+// above as the "supported FFI call can trigger this branch" regression case.
+TEST_F(EmitAbiGuardTest, GetParamOobIdxReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    auto *i64Ty = llvm::Type::getInt64Ty(llctx_);
+    llvm::Type *paramTys[] = {i64Ty, i64Ty};
+    auto *fnTy2 = llvm::FunctionType::get(llvm::Type::getVoidTy(llctx_), paramTys, false);
+    RyFunctionRef fn =
+        ry_emit_create_function(ctx, "gp_oob", asRyFuncType(fnTy2), RY_LINKAGE_EXTERNAL);
+    ASSERT_NE(fn, nullptr);
+    // Valid idx range is [0, 2); idx == count and beyond are OOB.
+    EXPECT_EQ(ry_emit_get_param(ctx, fn, /*idx=*/2), 0u);
+    EXPECT_EQ(ry_emit_get_param(ctx, fn, /*idx=*/100), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 TEST_F(EmitAbiGuardTest, StructGepNullTypeReturnsZero) {
     RyEmitCtx *ctx = makeCtx();
     ASSERT_NE(ctx, nullptr);
