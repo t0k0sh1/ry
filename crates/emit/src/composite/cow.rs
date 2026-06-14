@@ -13,7 +13,6 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target::{LLVMABISizeOfType, LLVMGetModuleDataLayout};
 use llvm_sys::{LLVMAtomicOrdering, LLVMIntPredicate};
-use std::ffi::c_char;
 
 use crate::composite::arc::{emit_arc_counter_delta, emit_atomic_i64_load};
 use crate::composite::header::{arc_header_type, build_header_struct};
@@ -260,15 +259,11 @@ impl EmitCtx {
 
         LLVMPositionBuilderAtEnd(b, copy_bb);
 
-        // `alloc_buf` stays in the dispatcher for the ARC-box allocation below;
-        // the per-kind copy helpers call `emit_malloc` / `emit_memcpy` directly.
-        let alloc_buf = move |byte_size: LLVMValueRef, name: *const c_char| -> LLVMValueRef {
-            unsafe { emit_malloc(b, module, i64_ty, ptr_ty, byte_size, name) }
-        };
-
         // Allocate the ARC-backed collection header (mirror emitArcAlloc inline).
+        // The dispatcher and per-kind copy helpers (cow_copy_list / _map / _set)
+        // all call `emit_malloc` / `emit_memcpy` directly.
         let box_size = LLVMConstInt(i64_ty, ARC_HEADER_SIZE + header_size, 0);
-        let cow_box = alloc_buf(box_size, c"cow_box".as_ptr());
+        let cow_box = emit_malloc(b, module, i64_ty, ptr_ty, box_size, c"cow_box".as_ptr());
         emit_arc_counter_delta(b, i64_ty, ptr_ty, 1);
         let new_strong_ptr =
             LLVMBuildStructGEP2(b, arc_header_ty, cow_box, 0, c"cow_new_strong_ptr".as_ptr());
@@ -384,12 +379,11 @@ impl EmitCtx {
 // entered after the shared scaffold has allocated `new_data_ptr` and loaded
 // `old_len`, runs on the `cow.copy` block (no new blocks created), and writes the
 // cloned buffers + new-header fields. They allocate via `emit_malloc` / copy via
-// `emit_memcpy` directly (the dispatcher keeps the `alloc_buf` closure only for
-// the ARC-box allocation). The cached LLVM types are threaded individually,
-// mirroring `cow_retain_loop`; the resulting arity trips
-// `clippy::too_many_arguments`, suppressed per the same "intentional pattern"
-// policy (see .claude/rules/build-warning-flags.md) rather than bundled into a
-// struct that would touch this hot codegen path.
+// `emit_memcpy` directly, matching the dispatcher's ARC-box allocation. The
+// cached LLVM types are threaded individually, mirroring `cow_retain_loop`; the
+// resulting arity trips `clippy::too_many_arguments`, suppressed per the same
+// "intentional pattern" policy (see .claude/rules/build-warning-flags.md) rather
+// than bundled into a struct that would touch this hot codegen path.
 
 #[allow(clippy::too_many_arguments)]
 unsafe fn cow_copy_list(

@@ -1111,9 +1111,11 @@ typedef enum {
 
 // Create a fresh function `name` of type `fn_ty` with `linkage` (a RyLinkage
 // value) in the module, and return its opaque handle (NOT interned — same shape
-// as ry_emit_create_basic_block's RyBasicBlockRef). Always adds a new function
-// (the caller owns name uniqueness). NULL ctx / fn_ty / name, or an unknown
-// linkage, → NULL. Creates no basic blocks.
+// as ry_emit_create_basic_block's RyBasicBlockRef). Must be interned via
+// ry_emit_intern before use as ry_emit_call_indirect's callee_id (RyFunctionRef
+// is not a RyValueId). Always adds a new function (the caller owns name
+// uniqueness). NULL ctx / fn_ty / name, or an unknown linkage, → NULL. Creates
+// no basic blocks.
 RyFunctionRef ry_emit_create_function(RyEmitCtx *ctx, const char *name,
                                       RyFuncTypeRef fn_ty, int linkage);
 
