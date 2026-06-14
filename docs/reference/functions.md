@@ -182,7 +182,7 @@ fn isOdd(n: int) -> bool:
 
 ### Top-Level Variables and `@const` in Function Bodies
 
-Top-level `let` bindings and `@const` declarations are visible from any top-level function — including nested functions and lambdas inside those functions — as long as the declaration appears **textually before** the referencing function in the same source file.
+Top-level bindings and `@const` declarations are visible from any top-level function — including nested functions and lambdas inside those functions — as long as the declaration appears **textually before** the referencing function in the same source file.
 
 ```ry
 @const
@@ -202,15 +202,15 @@ fn clampRetries(n: int) -> int:
     return n
 
 fn bump():
-    counter = counter + 1                  # writes top-level mutable `let`
+    counter = counter + 1                  # writes top-level mutable binding
 ```
 
 **Rules:**
 
 - **Source-order strict.** A function body cannot reference a top-level binding declared after it in the same file. Move the binding above the function, or wrap the binding in a helper function called lazily.
 - **`@const` is read-only.** Reassignment or field mutation (`P.x = 99` for a top-level `@const P: Point`) is rejected at compile time.
-- **Mutable `let` writes are write-through.** Assigning to a top-level mutable variable from inside a function actually mutates the top-level binding — it does not create a local with the same name.
-- **Nested blocks are not module-level.** A `let` inside a top-level `if`, `while`, or `for` block is local to that block and is not visible from functions.
+- **Mutable top-level writes are write-through.** Assigning to a top-level mutable variable from inside a function actually mutates the top-level binding — it does not create a local with the same name.
+- **Nested blocks are not module-level.** A binding inside a top-level `if`, `while`, or `for` block is local to that block and is not visible from functions.
 
 **Limitations (v0.0.8):**
 
