@@ -2063,7 +2063,7 @@ TEST(ParserTest, UfcsMultilineChainCommentBetweenTwoHopsTransparent) {
 
 TEST(ParserTest, UfcsMultilineChainMultipleCommentsBetweenHopsTransparent) {
     // #2137: multiple consecutive `#` comment lines between hops must
-    // also be transparent. The lexer's tail recursion in readToken()
+    // also be transparent. The lexer's iterative loop in readToken()
     // walks through any number of consecutive comment-only lines and
     // emits no Newline for each — the chain sees the same token stream
     // as if no comments were present.
@@ -2086,8 +2086,12 @@ TEST(ParserTest, UfcsMultilineChainRejectsBlankThenCommentSeparator) {
     // lexer's `entered_at_line_start && src_[pos_] == '#'` suppression
     // does not fire on a blank line — only on a `#`-leading line). The
     // drain loop sees `Newline Newline` and breaks on the second,
-    // preserving the blank-line separator semantics.
-    EXPECT_THROW(parseStr("x = xs\n\n# c\n.iter()"), std::runtime_error);
+    // preserving the blank-line separator semantics. `.iter()` and the
+    // `# c` line are indented so the rejection isolates the drain-loop
+    // break, not the bare-leading-dot statement guard
+    // (`DotAtStatementStartAloneFails` already covers that case).
+    EXPECT_THROW(parseStr("x = xs\n\n    # c\n    .iter()"),
+                 std::runtime_error);
 }
 
 TEST(ParserTest, UfcsMultilineChainRejectsCommentThenBlankSeparator) {
@@ -2096,8 +2100,11 @@ TEST(ParserTest, UfcsMultilineChainRejectsCommentThenBlankSeparator) {
     // (transparent), but the blank line that follows still emits a
     // Newline. The drain loop sees `Newline (from xs) Newline (from
     // blank line)` and breaks on the second, preserving the blank-line
-    // separator semantics across the comment-blank interleave.
-    EXPECT_THROW(parseStr("x = xs\n# c\n\n.iter()"), std::runtime_error);
+    // separator semantics across the comment-blank interleave. `.iter()`
+    // and the `# c` line are indented to isolate the drain-loop break
+    // from the bare-leading-dot statement guard.
+    EXPECT_THROW(parseStr("x = xs\n    # c\n\n    .iter()"),
+                 std::runtime_error);
 }
 
 TEST(ParserTest, ManyConsecutiveCommentLinesDoNotOverflowStack) {

@@ -1023,7 +1023,7 @@ TEST(LexerTest, CommentAtEndOfLine) {
 
 TEST(LexerTest, CommentAtStartOfLine) {
     // #2137: a comment-only line is transparent at the token level.
-    // The lexer suppresses its trailing Newline and tail-recurses so
+    // The lexer suppresses its trailing Newline and iterates so
     // multiline UFCS chains can carry mid-chain comments without the
     // drain loop tripping on a second Newline (see
     // ParserTest.UfcsMultilineChainCommentBetweenHopsTransparent).
@@ -1045,7 +1045,7 @@ TEST(LexerTest, CommentOnly) {
 
 TEST(LexerTest, ConsecutiveCommentLines) {
     // #2137: consecutive comment-only lines are all transparent at the
-    // token level — the lexer's tail recursion walks through any number
+    // token level — the lexer's iterative loop walks through any number
     // of consecutive `#`-leading lines emitting no Newline for each.
     auto toks = tokenize("# line 1\n# line 2\nx = 1");
     ASSERT_EQ(toks.size(), 4u); // Ident Equals Number Eof
