@@ -87,6 +87,7 @@ The table below shows the most common runtime errors; it is not exhaustive.
 | Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
 | `int` overflow | A checked `int` operation (`+`, `-`, `*`, unary `-`, `//`, `%`, or `math.abs`) overflowed (`runtime error: integer overflow`) | `maxInt + 1`, `(minInt) // -1`, `math.abs(minInt)` |
 | `range()` step zero | Called `range()` with a step argument of `0` (`runtime error: range() step must not be zero`) | `range(1, 10, 0)` |
+| `min()` / `max()` on empty list | Called `min()` or `max()` on an empty list (`runtime error: min() on empty list` / `runtime error: max() on empty list`) | `min([])`, `max([])` |
 
 All runtime errors terminate the process with `exit(1)`.
 
