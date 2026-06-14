@@ -2,7 +2,7 @@
 //! core engine only, so it is abi-independent and the `core⇏abi` invariant
 //! covers this module). `append` / `insert` / `remove_at` / `slice` build the
 //! malloc / memcpy / memmove + header GEP / load / store sequences; the shared
-//! list-grow and header-load helpers live in `core`. `insert` / `remove_at` call
+//! list-grow and header-load helpers live in `composite::header`. `insert` / `remove_at` call
 //! `self.negative_index_wrap` / `self.bounds_error` directly (no id bridge) — the
 //! former `intern` → extern → `resolve` round-trip is gone (IR-neutral; ids never
 //! appear in the emitted IR). `slice` returns a `SliceParts` aggregate. The C++
@@ -332,7 +332,7 @@ impl EmitCtx {
         let fn_v = LLVMGetBasicBlockParent(LLVMGetInsertBlock(b));
 
         // List header load — INTERLEAVED gep/load to match C++ CodeGen::loadListHeader
-        // (src/codegen_call.cpp); core::load_list_header groups the geps then the
+        // (src/codegen_call.cpp); composite::header::load_list_header groups the geps then the
         // loads, which would reorder the IR. `lrem_cap` is loaded-but-unused, exactly
         // as the C++ helper does, so the IR stays byte-identical.
         let len_ptr = LLVMBuildStructGEP2(
@@ -993,7 +993,7 @@ impl EmitCtx {
         let outer_data = outer_data.0;
         let list_header_ty = list_header_ty.0;
         // arc_header_ty is the C++-side named %ArcHeader struct (vs the
-        // anonymous {i64,i64} from core::arc_header_type); passed across the
+        // anonymous {i64,i64} from composite::header::arc_header_type); passed across the
         // boundary so the migrated GEPs reference the same named type as the
         // C++ baseline byte-for-byte.
         let arc_header_ty = arc_header_ty.0;
