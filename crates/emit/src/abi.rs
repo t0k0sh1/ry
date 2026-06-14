@@ -133,6 +133,9 @@ pub const RY_LISTCOPY_TAKE: c_int = 2;
 
 // Integer-comparison predicate selector for ry_emit_icmp (#2072). MUST match the
 // RyICmpPred enum in api.h. abi/primitive.rs maps these to the core `IcmpPred`.
+// Cross-language parity is enforced by tests/test_abi_layout.cpp
+// (AbiLayout.RyICmpPredRustMirrorMatchesCanonical) via the test-only extern
+// `ry_emit_test_icmp_pred_values` in abi/test_introspect.rs (#2143).
 pub const RY_ICMP_EQ: c_int = 0;
 pub const RY_ICMP_NE: c_int = 1;
 pub const RY_ICMP_SLT: c_int = 2;

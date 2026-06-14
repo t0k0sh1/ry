@@ -111,6 +111,51 @@ static_assert(sizeof(RyBoundsKind) == sizeof(int), "RyBoundsKind underlying type
 static_assert(sizeof(RyArcAtomic) == sizeof(int), "RyArcAtomic underlying type is int");
 static_assert(sizeof(RyCowKind) == sizeof(int), "RyCowKind underlying type is int");
 
+// === RyICmpPred cross-language parity (#2143) ===
+// The C++ enumerator literals (api.h L985-996) and the Rust `RY_ICMP_*`
+// constants (crates/emit/src/abi.rs) were previously protected only by a
+// prose "MUST match" comment. Two layered guards now pin them mechanically:
+//   1. `static_assert` below pins the C++ side at compile-time — any
+//      reorder of the api.h enum that changes a numeric value fires.
+//   2. `RyICmpPredRustMirrorMatchesCanonical` below calls the test-only
+//      FFI extern `ry_emit_test_icmp_pred_values` (crates/emit/src/abi/
+//      test_introspect.rs) which reports the Rust constants by value; a
+//      Rust-only edit that drifts from C++ fires the runtime test.
+// Following the precedent in .claude/rules/codegen-llvm-ir-conventions.md
+// "Rust mirrors of C++ header structs need a cross-language parity guard,
+// not a 'keep in sync' comment".
+static_assert(RY_ICMP_EQ == 0 && RY_ICMP_NE == 1,
+              "RyICmpPred EQ/NE literal mismatch (api.h reorder?)");
+static_assert(RY_ICMP_SLT == 2 && RY_ICMP_SLE == 3 && RY_ICMP_SGT == 4 && RY_ICMP_SGE == 5,
+              "RyICmpPred signed predicates literal mismatch (api.h reorder?)");
+static_assert(RY_ICMP_ULT == 6 && RY_ICMP_ULE == 7 && RY_ICMP_UGT == 8 && RY_ICMP_UGE == 9,
+              "RyICmpPred unsigned predicates literal mismatch (api.h reorder?)");
+
+extern "C" {
+// Mirror of the Rust #[repr(C)] RyTestICmpPredValues
+// (crates/emit/src/abi/test_introspect.rs).
+struct RyTestICmpPredValues {
+    int eq, ne;
+    int slt, sle, sgt, sge;
+    int ult, ule, ugt, uge;
+};
+RyTestICmpPredValues ry_emit_test_icmp_pred_values();
+}
+
+TEST(AbiLayout, RyICmpPredRustMirrorMatchesCanonical) {
+    const RyTestICmpPredValues rust = ry_emit_test_icmp_pred_values();
+    EXPECT_EQ(rust.eq,  static_cast<int>(RY_ICMP_EQ));
+    EXPECT_EQ(rust.ne,  static_cast<int>(RY_ICMP_NE));
+    EXPECT_EQ(rust.slt, static_cast<int>(RY_ICMP_SLT));
+    EXPECT_EQ(rust.sle, static_cast<int>(RY_ICMP_SLE));
+    EXPECT_EQ(rust.sgt, static_cast<int>(RY_ICMP_SGT));
+    EXPECT_EQ(rust.sge, static_cast<int>(RY_ICMP_SGE));
+    EXPECT_EQ(rust.ult, static_cast<int>(RY_ICMP_ULT));
+    EXPECT_EQ(rust.ule, static_cast<int>(RY_ICMP_ULE));
+    EXPECT_EQ(rust.ugt, static_cast<int>(RY_ICMP_UGT));
+    EXPECT_EQ(rust.uge, static_cast<int>(RY_ICMP_UGE));
+}
+
 // A no-op runtime test so CTest shows a named green signal confirming this
 // TU (and therefore every static_assert above) compiled successfully.
 TEST(AbiLayout, LayoutContractCompiled) { SUCCEED(); }

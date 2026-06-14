@@ -82,6 +82,46 @@ pub extern "C" fn ry_emit_test_field_indices() -> RyTestFieldIndices {
     }
 }
 
+// Flat report of the Rust-side RY_ICMP_* numeric values for the C++ parity test
+// (tests/test_abi_layout.cpp). The 10 fields mirror the RyICmpPred enum in
+// include/ry/llvm_emit/api.h 1:1; any cross-language drift (a C++ reorder the
+// Rust side fails to mirror, or vice versa) fires the runtime parity test.
+#[repr(C)]
+pub struct RyTestICmpPredValues {
+    pub eq: c_int,
+    pub ne: c_int,
+    pub slt: c_int,
+    pub sle: c_int,
+    pub sgt: c_int,
+    pub sge: c_int,
+    pub ult: c_int,
+    pub ule: c_int,
+    pub ugt: c_int,
+    pub uge: c_int,
+}
+
+/// Report the Rust-side RY_ICMP_* numeric values for the cross-language parity
+/// test (#2143). Pure data lookup — emits no IR.
+#[no_mangle]
+pub extern "C" fn ry_emit_test_icmp_pred_values() -> RyTestICmpPredValues {
+    use crate::abi::{
+        RY_ICMP_EQ, RY_ICMP_NE, RY_ICMP_SGE, RY_ICMP_SGT, RY_ICMP_SLE, RY_ICMP_SLT, RY_ICMP_UGE,
+        RY_ICMP_UGT, RY_ICMP_ULE, RY_ICMP_ULT,
+    };
+    RyTestICmpPredValues {
+        eq: RY_ICMP_EQ,
+        ne: RY_ICMP_NE,
+        slt: RY_ICMP_SLT,
+        sle: RY_ICMP_SLE,
+        sgt: RY_ICMP_SGT,
+        sge: RY_ICMP_SGE,
+        ult: RY_ICMP_ULT,
+        ule: RY_ICMP_ULE,
+        ugt: RY_ICMP_UGT,
+        uge: RY_ICMP_UGE,
+    }
+}
+
 /// Report the single-sourced field layout of an internal header for the
 /// cross-language parity test. Pure data lookup — emits no IR.
 #[no_mangle]
