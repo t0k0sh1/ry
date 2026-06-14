@@ -126,13 +126,12 @@ Requirements:
 - Rust 1.83+ (`cargo` / `rustc` on `PATH`) — the LLVM IR emission layer is a Rust cdylib (`crates/emit/`)
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
-cmake --build build
+cmake --preset default && cmake --build build
 ```
 
-> `ry` and the Rust cdylib must share one LLVM instance, so the `-DLLVM_DIR` prefix must ship a shared `libLLVM` (a static-only LLVM build will not link). Building inside the `ry-ci` Docker image (`ghcr.io/<owner>/ry-ci:llvm-21-rev<N>`) needs no separate Rust or shared-LLVM setup — both are baked in.
+> `ry` and the Rust cdylib must share one LLVM instance, so `LLVM_DIR` must point at a shared `libLLVM` prefix (a static-only LLVM build will not link). The `default` preset uses `/usr/local/llvm/lib/cmake/llvm`; override with `-DLLVM_DIR=<path>` (passed to `cmake --preset default`) if your LLVM lives elsewhere. Building inside the `ry-ci` Docker image (`ghcr.io/<owner>/ry-ci:llvm-21-rev<N>`) needs no separate Rust or shared-LLVM setup — both are baked in.
 >
-> **macOS**: `/usr/local/llvm` (shown above) is typically static-only and will not link — point `-DLLVM_DIR` at a shared-`libLLVM` prefix such as Homebrew `llvm@21` (`-DLLVM_DIR=/opt/homebrew/opt/llvm@21/lib/cmake/llvm`).
+> **macOS**: `/usr/local/llvm` is typically static-only and will not link — use `cmake --preset rust-emit && cmake --build build-rust` instead. The `rust-emit` preset points `LLVM_DIR` at Homebrew `llvm@21` (`/opt/homebrew/opt/llvm@21/lib/cmake/llvm`) and outputs to `build-rust/` (`./build-rust/ry`). See `AGENTS.md` § "Build And Test".
 
 ## Usage
 
