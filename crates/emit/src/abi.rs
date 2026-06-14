@@ -553,8 +553,13 @@ pub(crate) unsafe fn intern(c: &mut EmitCtx, value: RyValueRef) -> RyValueId {
     if value.is_null() {
         return 0;
     }
+    let v = as_value(value);
+    if let Some(&id) = c.value_id_cache.get(&v) {
+        return id;
+    }
     let id = c.values.len() as RyValueId;
-    c.values.push(as_value(value));
+    c.values.push(v);
+    c.value_id_cache.insert(v, id);
     id
 }
 

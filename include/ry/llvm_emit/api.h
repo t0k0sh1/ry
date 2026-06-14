@@ -202,9 +202,10 @@ RyEmitCtx *ry_emit_ctx_create(RyModuleRef module, RyBuilderRef builder,
                               RyContextRef context);
 void ry_emit_ctx_destroy(RyEmitCtx *ctx);
 
-// Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; every
-// other value gets a fresh handle. ry_emit_resolve returns NULL for handle 0
-// and for any out-of-range handle.
+// Handle marshalling. ry_emit_intern returns 0 if `value` is NULL; a non-NULL
+// value gets a stable handle — interning the same value pointer twice returns
+// the same id (#2147). ry_emit_resolve returns NULL for handle 0 and for any
+// out-of-range handle.
 RyValueId ry_emit_intern(RyEmitCtx *ctx, RyValueRef value);
 RyValueRef ry_emit_resolve(RyEmitCtx *ctx, RyValueId id);
 
