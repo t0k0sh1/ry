@@ -229,7 +229,10 @@ int runTestFiles(const std::vector<std::string> &test_files,
         return runTestFilesSequential(test_files, argv0, skip_global_lib, coverage, false);
     }
     unsigned hw = std::thread::hardware_concurrency();
-    int parallelism = static_cast<int>(std::min({hw, 8u, static_cast<unsigned>(test_files.size())}));
+    // Multiple concurrent LLVM O2/JITLink subprocesses amplify the known
+    // glibc heap-corruption family (#1187/#1895/#2172). Four workers retain
+    // most of the speedup without the recurrent 8-worker SIGABRTs.
+    int parallelism = static_cast<int>(std::min({hw, 4u, static_cast<unsigned>(test_files.size())}));
     if (parallelism < 1) parallelism = 1;
     return runTestFilesParallel(test_files, exe_path, parallelism);
 }
