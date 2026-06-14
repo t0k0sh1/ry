@@ -444,7 +444,7 @@ Converts a value to a string.
 | Type | Conversion Format |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g`, with trailing `.0` for whole-number values (e.g. `"3.0"`, `"0.0"`) |
+| `float` | Shortest round-trip decimal (minimum digits to recover the exact `double`), with trailing `.0` for whole-number values (e.g. `"3.0"`, `"0.0"`) |
 | `bool` | `"true"` / `"false"` |
 | `str` | Returned as-is |
 | enum | Variant name (e.g. `"Red"`) |

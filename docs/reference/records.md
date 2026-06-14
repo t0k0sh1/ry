@@ -153,6 +153,41 @@ print(p1 != p3)  # true
 
 ---
 
+## String Representation
+
+Record types automatically generate a `str()` conversion that produces `TypeName(field1: val1, field2: val2, ...)`. This is used by `print()` and f-string interpolation.
+
+```ry
+record Point:
+    x: int
+    y: int
+
+p = Point(10, 20)
+print(str(p))      # Point(x: 10, y: 20)
+print(p)           # Point(x: 10, y: 20)
+print(f"pos={p}")  # pos=Point(x: 10, y: 20)
+```
+
+### User-defined `str()` override
+
+A user-defined `fn str(v: MyRecord) -> str` takes precedence over the auto-generated version. This is the canonical extension point for custom record formatting.
+
+```ry
+record Point:
+    x: int
+    y: int
+
+fn str(p: Point) -> str:
+    return f"({p.x}, {p.y})"
+
+p = Point(5, 6)
+print(str(p))   # (5, 6)
+```
+
+See [Built-in String Reference — `str`](builtins-string.md#str) for the full list of types supported by the built-in `str()`.
+
+---
+
 ## Record Subtyping (Inheritance)
 
 Records support single inheritance using the `<` syntax. A child record inherits all fields from its parent.

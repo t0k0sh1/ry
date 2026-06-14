@@ -162,6 +162,7 @@ chmod("/tmp/data.txt", 420)
 - `isFile`, `isDir`, and `isSymlink` return `Ok(false)` when the path does not exist; `Err` when the path contains an embedded NUL byte
 - `isFile` and `isDir` follow symlinks; `isSymlink` uses `lstat` to detect links
 - `listDir` returns entry names only (not full paths)
-- `walk` returns full paths for all entries (both files and directories)
+- `walk` returns full paths for all entries (both files and directories); returns `Err` when the path is not a directory
+- `copy` is intended for file copies. On Linux, `copy` returns `Err` when the source is a directory or other non-regular file; on macOS, `copyfile(3)` may succeed on directories with no recursion (avoid relying on this for portability). Unlike `cp -r`, `copy` does not recurse into directories — use `walk` + per-file `copy` for tree copies.
 - `glob` returns an empty list (not an error) when no files match the pattern
 - `remove` fails on non-empty directories; use `removeAll` for recursive deletion
