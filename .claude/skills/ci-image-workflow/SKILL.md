@@ -103,10 +103,11 @@ tab — point it at the branch ref.
    share the same major version pinning.
 2. Update the default in `build-ci-image.yml`
    (`inputs.llvm_version.default`).
-3. Open a PR with the Dockerfile changes. CI will fail because the
-   `:llvm-<MAJOR>` tag does not yet have the new version — that is
+3. PR creation is outside this skill. Do not create, propose, or include
+   PR creation in a plan. Once a PR already exists, its CI will fail because
+   the `:llvm-<MAJOR>` tag does not yet have the new version — that is
    expected.
-4. **Before merging**, manually trigger `Build CI Image` workflow on
+4. **Before merging an existing PR**, manually trigger `Build CI Image` workflow on
    the feature branch (Actions → Build CI Image → Run workflow → pick
    branch). Wait for it (60-90 minutes for both arches × both images).
 5. Verify the new tag is visible:
@@ -186,8 +187,8 @@ have different reproducibility constraints — see
 
 2. Compare the output with the literal in `release.yml`'s `container:`
    line (currently around L32, the `format(...)` argument). If
-   different, open a PR that updates only this line. Use a
-   `chore/<issue>-bump-release-image-rev` branch.
+   different, update only this line. PR creation is outside this skill;
+   do not create, propose, or include it in a plan.
 
 3. Do **not** auto-update from a workflow run. Even though
    `build-ci-image.yml` knows the new rev, the value must be a literal

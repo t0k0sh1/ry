@@ -71,7 +71,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`scripts/claim-issue.sh '#<P>'` → branch → PR → `git-finalize-pr`); the release tag itself is out of scope (sibling Release issue).
+Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Follow the standard issue implementation flow through self-verification. Git publication and PR creation are outside the implementation plan; the release tag itself is out of scope (sibling Release issue).
 
 ## Tasks
 
