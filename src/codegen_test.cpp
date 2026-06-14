@@ -3439,7 +3439,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         if (actualTy != f64Ty_)
             codegenError("line " + std::to_string(s.loc.line) +
                                      ": toBeInfinity: expected float");
-        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+        llvm::Function *fabsDecl = llvm::Intrinsic::getOrInsertDeclaration(
             mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
         llvm::Value *absVal = builder_.CreateCall(fabsDecl, {actualVal}, "abs_val");
         llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
@@ -3449,7 +3449,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             codegenError("line " + std::to_string(s.loc.line) +
                                      ": toBeFinite: expected float");
         llvm::Value *isNaN = builder_.CreateFCmpUNO(actualVal, actualVal, "is_nan");
-        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+        llvm::Function *fabsDecl = llvm::Intrinsic::getOrInsertDeclaration(
             mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
         llvm::Value *absVal = builder_.CreateCall(fabsDecl, {actualVal}, "abs_val");
         llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
@@ -3842,7 +3842,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
         auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
         llvm::Value *diff = builder_.CreateFSub(lf, rf, "close_diff");
-        llvm::Function *fabsDecl = llvm::Intrinsic::getDeclaration(
+        llvm::Function *fabsDecl = llvm::Intrinsic::getOrInsertDeclaration(
             mod_.get(), llvm::Intrinsic::fabs, {f64Ty_});
         llvm::Value *absDiff = builder_.CreateCall(fabsDecl, {diff}, "close_abs");
         double thresholdVal = 0.5 * std::pow(10.0, -static_cast<double>(decimals));

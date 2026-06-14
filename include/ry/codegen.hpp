@@ -806,8 +806,7 @@ public:
                           const std::string &fieldTypeName,
                           llvm::Value *visitorFn,
                           llvm::FunctionType *visitorCallTy,
-                          llvm::FunctionType *visitFnTy,
-                          llvm::Function *parentFn);
+                          llvm::FunctionType *visitFnTy);
 
     struct GenericEnumTemplate {
         std::string name;
