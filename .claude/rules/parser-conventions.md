@@ -89,9 +89,29 @@ stmt variant.
 **How to apply**: Any statement that starts with `Ident` and may accept
 chained postfix hops (e.g. a future `move var.a.b into ...` or similar)
 should call `parsePostfixContinuation(baseExpr)` rather than re-parsing `.`
-and `[` inline. UFCS call statements (`ident.method(args)`) remain a
-special case detected before entering the continuation, because they
-produce a `CallStmt` rather than an `ExprStmt<CallExpr>`.
+and `[` inline. Call-statement leaders — UFCS (`ident.method(args)`)
+and direct (`ident(args)`) — are not detected before the continuation;
+since #2138 they are first built as `CallExpr`, fed through
+`parsePostfixContinuation`, and collapsed back to `CallStmt` (preserving
+`tryParseTrailingBlock`, user-defined directives, and the `mock`
+coercion) only when the continuation returns the same `ExprNode*` it
+was given. When a chain (or any postfix tail) follows, control falls
+through to `finishChainedLhs` and the statement becomes an
+`ExprStmt<CallExpr>` (or `Field/IndexAssignStmt` if the tail is
+assignable).
+
+**Node-identity collapse idiom**: `parsePostfixContinuation` is
+idempotent — when no chain hop is consumed it restores `lex_` state
+and `chain_pending_dedents_` (see `src/parser/parser_expr.cpp`) and
+returns the same `ExprPtr` it was given. Snapshot
+`ExprNode* before = node.get()` before the move; after the call,
+`chain.get() == before` ⇔ no extension. This is more robust than
+inspecting the variant tail (which can be a `CallExpr` either because
+no chain ran or because the chain ended on a `.method()` hop). Any
+future statement leader that wants the "collapse back to a dedicated
+stmt variant when no chain follows, otherwise become ExprStmt" pattern
+should follow the same snapshot-and-compare shape rather than
+re-implementing the speculative skip.
 
 ### Use strtod, not std::stod, for float literal parsing
 

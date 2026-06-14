@@ -2270,6 +2270,125 @@ TEST(ParserTest, UfcsMultilineChainInLambdaBody) {
     EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
 }
 
+TEST(ParserTest, UfcsOneHopCallStmtShape) {
+    // #2138 regression guard: a 1-hop UFCS call statement (no chain,
+    // no trailing block) must still parse to a CallStmt — not the
+    // ExprStmt that the #2138 fix produces when a chain follows. The
+    // existing TrailingBlockUFCS test only verifies the block form;
+    // this locks the plain form.
+    Program prog = parseStr("xs.sort()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "sort");
+    ASSERT_EQ(s.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.args[0]->data));
+    EXPECT_EQ(std::get<VariableExpr>(s.args[0]->data).name, "xs");
+}
+
+TEST(ParserTest, DirectCallStmtShape) {
+    // #2138 regression guard for the sibling direct-call CallStmt
+    // path (parser.cpp:1036-1046). After the fix, a plain `foo()`
+    // with no chain continuation must still produce a CallStmt.
+    Program prog = parseStr("foo()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "foo");
+    EXPECT_EQ(s.args.size(), 0u);
+}
+
+TEST(ParserTest, UfcsMultilineChainAfterCallStmt) {
+    // #2138: 1-hop UFCS CallStmt followed by a multiline `.method()`
+    // chain must parse — pre-fix this fired "unexpected token ''" on
+    // the continuation line. The chain hoists the original CallStmt
+    // into a CallExpr that becomes the args[0] receiver of the outer
+    // hop, so the whole statement is now an ExprStmt whose outer
+    // callee is the tail method.
+    Program prog = parseStr("xs.sort()\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(es.expr->data)->callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainAfterCallStmtFiveHops) {
+    // #2138: longer pipeline confirms the fix scales beyond a single
+    // continuation hop and stays compatible with the existing tail-
+    // drain semantics of parsePostfixContinuation.
+    Program prog = parseStr(
+        "xs.sort()\n"
+        "    .iter()\n"
+        "    .filter((x: int) => x > 0)\n"
+        "    .map((x: int) => x * 2)\n"
+        "    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(es.expr->data)->callee, "toList");
+}
+
+TEST(ParserTest, DirectCallStmtMultilineChain) {
+    // #2138 (sibling): direct-call CallStmt path (parser.cpp:1036-1046)
+    // shares the same bug; the fix here mirrors the UFCS path. The
+    // chain leader is `foo()` (no UFCS receiver), so the outer CallExpr
+    // chain absorbs `foo()` as args[0] of `.iter()` etc.
+    Program prog = parseStr("foo()\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(es.expr->data)->callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainAfterCallStmtRejectsBlankLineSeparator) {
+    // #2138 scope guard: the single-Newline cap that the original
+    // #2115 fix established at parsePostfixContinuation must apply
+    // uniformly at the new CallStmt-leader call site too. A blank
+    // line between the CallStmt and the continuation `.` is a
+    // statement separator, not a chain continuation — the leading
+    // `.iter()` then fails the same way DotAtStatementStartAloneFails
+    // locks in.
+    EXPECT_THROW(parseStr("xs.sort()\n\n    .iter()"), std::runtime_error);
+}
+
+TEST(ParserTest, UfcsMultilineChainAfterCallStmtCommentBetweenHopsTransparent) {
+    // #2138 cross-check with #2137: a comment-only line between a
+    // CallStmt leader and its first `.method()` continuation hop is
+    // lexer-suppressed to a no-token sequence, so the chain sees the
+    // same token stream as the comment-free form. Locks in the
+    // composition; the equivalent check at expression position lives
+    // at UfcsMultilineChainCommentBetweenHopsTransparent.
+    Program prog = parseStr(
+        "xs.sort()\n    # skip empty\n    .iter()\n    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(es.expr->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(es.expr->data)->callee, "toList");
+}
+
+TEST(ParserTest, CallStmtLeaderErrorPropagateNowAccepted) {
+    // #2138 scope: routing the CallStmt leader through
+    // parsePostfixContinuation also legalises a trailing `?` on a
+    // statement-position call (the same shape the qualified-module
+    // and field-access leaders already accepted). The chain becomes
+    // ExprStmt with an ErrorPropagateExpr wrapping the CallExpr. The
+    // operand's Result-ness is a codegen concern, not a parser one —
+    // this only locks the AST shape so a future tightening of the
+    // CallStmt leader does not silently revert the capability.
+    Program prog = parseStr("foo()?");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[0]));
+    const auto &es = std::get<ExprStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<ErrorPropagateExpr>>(es.expr->data));
+    const auto &ep = *std::get<std::unique_ptr<ErrorPropagateExpr>>(es.expr->data);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(ep.operand->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(ep.operand->data)->callee, "foo");
+}
+
 // ===== Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {
