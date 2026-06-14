@@ -200,6 +200,29 @@ fn listTests():
     expect(max(3, 1, 5)).toEq(5)
     expect(min(1.5, 2.5)).toEq(1.5)
     expect(max(1.5, 2.5)).toEq(2.5)
+  @it("should sum variadic non-constant scalars")
+  fn shouldSumVariadicNonConst():
+    x = 3
+    y = 5
+    z = 7
+    expect(sum(x, y)).toEq(8)
+    expect(sum(x, y, z)).toEq(15)
+    a = 1.0
+    b = 2.0
+    c = 3.0
+    expect(sum(a, b, c)).toEq(6.0)
+  @it("should find min and max of variadic non-constant scalars")
+  fn shouldFindMinMaxVariadicNonConst():
+    p = 3
+    q = 5
+    r = 1
+    expect(min(p, q)).toEq(3)
+    expect(min(p, q, r)).toEq(1)
+    expect(max(p, r, q)).toEq(5)
+    f = 1.5
+    g = 2.5
+    expect(min(f, g)).toEq(1.5)
+    expect(max(f, g)).toEq(2.5)
   @it("should return first element")
   fn shouldReturnFirstElement():
     expect(first([10, 20, 30])).toEq(Some(10))
