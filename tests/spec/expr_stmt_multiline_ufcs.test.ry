@@ -7,6 +7,13 @@ from testing import it, describe, expect
 # in editor/tree-sitter/expected-fail.txt instead of degrading the editor
 # view of the entire expr_stmt.test.ry suite.
 
+# #2138 fixtures: helper returning a fresh List<int> so the direct-call
+# CallStmt-leader chain test can exercise the runtime path without
+# depending on side-effect plumbing the discarded chain result would
+# need to observe.
+fn buildList() -> List<int>:
+  return [1, 2, 3]
+
 @describe("multiline UFCS chain")
 fn multilineUfcsChainTests():
   @it("should run iterator pipeline across multiple lines")
@@ -71,3 +78,27 @@ fn multilineUfcsChainTests():
         # finalize
         .toList()
     expect(result).toEq([1, 2, 3])
+  @it("should support multiline UFCS chain after a CallStmt receiver")
+  fn shouldSupportMultilineUfcsChainAfterCallStmtReceiver():
+    # #2138: the statement leader is the UFCS CallStmt `xs.sort()`,
+    # not a primary expression. Pre-fix this raised "unexpected token"
+    # on the continuation `.iter()` line. The chain runs at statement
+    # position and its result is discarded — verification is that the
+    # body executes to the post-chain expect without parser/runtime
+    # error and that `xs` (non-mutated by `sort`) round-trips.
+    xs = [3, 1, 2]
+    xs.sort()
+        .iter()
+        .toList()
+    expect(xs).toEq([3, 1, 2])
+  @it("should support multiline chain after a direct CallStmt leader")
+  fn shouldSupportMultilineChainAfterDirectCallStmtLeader():
+    # #2138 sibling: the direct-call CallStmt path
+    # (src/parser/parser.cpp:1036-1046) shared the same bug; the fix
+    # mirrors the UFCS path. Helper `buildList` is a module-global
+    # function returning List<int>, so the chain leader is a plain
+    # `buildList()` direct call rather than a UFCS receiver.
+    buildList()
+        .iter()
+        .toList()
+    expect(buildList()).toEq([1, 2, 3])

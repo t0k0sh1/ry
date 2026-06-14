@@ -925,19 +925,43 @@ StmtNode Parser::parseStatement() {
                 ExprPtr chain = parsePostfixContinuation(std::move(node));
                 return finishChainedLhs(std::move(chain), first);
             }
-            // UFCS call statement: ident.method(args)
-            CallStmt s;
-            s.callee = fieldTok.value;
-            s.loc = locFromToken(first);
+            // UFCS call statement: ident.method(args). #2138: build a
+            // CallExpr in UFCS shape and route it through
+            // parsePostfixContinuation so a trailing multiline `.method()`
+            // chain (`xs.sort()\n    .iter()`) is consumed alongside the
+            // expression-position siblings at :925 / :963. When no chain
+            // follows, the helper is idempotent (lex state and
+            // chain_pending_dedents_ are save/restored on speculative
+            // failure at parser_expr.cpp:1244-1247) and the same ExprNode
+            // we passed in is returned unchanged — pointer-equality on
+            // ExprNode* before vs chain.get() detects that and lets us
+            // collapse back into a CallStmt so the existing
+            // tryParseTrailingBlock fast path keeps working.
+            auto call = std::make_unique<CallExpr>();
+            call->callee = fieldTok.value;
             auto obj = std::make_unique<ExprNode>();
             obj->data = VariableExpr{first.value};
             obj->loc = locFromToken(first);
-            s.args.push_back(std::move(obj));
-            auto rest = parseArgList(&s.named_args);
+            call->args.push_back(std::move(obj));
+            auto rest = parseArgList(&call->named_args);
             for (auto &arg : rest)
-                s.args.push_back(std::move(arg));
-            tryParseTrailingBlock(s);
-            return s;
+                call->args.push_back(std::move(arg));
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(call);
+            node->loc = locFromToken(first);
+            ExprNode *before = node.get();
+            ExprPtr chain = parsePostfixContinuation(std::move(node));
+            if (chain.get() == before) {
+                auto &ce = std::get<std::unique_ptr<CallExpr>>(chain->data);
+                CallStmt s;
+                s.callee = std::move(ce->callee);
+                s.args = std::move(ce->args);
+                s.named_args = std::move(ce->named_args);
+                s.loc = locFromToken(first);
+                tryParseTrailingBlock(s);
+                return s;
+            }
+            return finishChainedLhs(std::move(chain), first);
         }
 
         // Build `ident.field` as the chain base and continue parsing any
@@ -1033,17 +1057,35 @@ StmtNode Parser::parseStatement() {
                     "built-in directive '@" + d.name + "' is not supported on function calls");
         }
         lex_.next(); // consume '('
-        CallStmt s;
-        s.callee = first.value;
-        s.args = parseArgList(&s.named_args);
-        s.loc = locFromToken(first);
-        if (s.callee == "mock")
-            coerceFirstArgToString(s.args);
-        if (s.callee != "mock") {
-            tryParseTrailingBlock(s);
+        // #2138: mirror the UFCS CallStmt fix above. Build a CallExpr,
+        // route it through parsePostfixContinuation, and only collapse
+        // back into a CallStmt (preserving mock arg coercion, trailing
+        // block, and user-defined directives) when no chain followed.
+        // The chain-extended path produces an ExprStmt via finishChainedLhs.
+        auto call = std::make_unique<CallExpr>();
+        call->callee = first.value;
+        call->args = parseArgList(&call->named_args);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(call);
+        node->loc = locFromToken(first);
+        ExprNode *before = node.get();
+        ExprPtr chain = parsePostfixContinuation(std::move(node));
+        if (chain.get() == before) {
+            auto &ce = std::get<std::unique_ptr<CallExpr>>(chain->data);
+            CallStmt s;
+            s.callee = std::move(ce->callee);
+            s.args = std::move(ce->args);
+            s.named_args = std::move(ce->named_args);
+            s.loc = locFromToken(first);
+            if (s.callee == "mock")
+                coerceFirstArgToString(s.args);
+            if (s.callee != "mock") {
+                tryParseTrailingBlock(s);
+            }
+            s.directives = std::move(directives);
+            return s;
         }
-        s.directives = std::move(directives);
-        return s;
+        return finishChainedLhs(std::move(chain), first);
     }
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '++', '--', '.', '[', or '(' after identifier");
 }
