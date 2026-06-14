@@ -537,7 +537,7 @@ case a:
         print("none")
 ```
 
-A generic enum can also be used as a function parameter, return type, or let-binding type annotation. The type argument must be supplied wherever the enum appears in the signature:
+A generic enum can also be used as a function parameter, return type, or variable binding. The type argument must be supplied wherever the enum appears in the signature:
 
 ```ry
 fn unwrapOrInt(opt: MyOption<int>, default: int) -> int:
@@ -772,9 +772,9 @@ The `tag` field identifies the stored type, and the `data` field is interpreted 
 
 When a collection is wrapped in `any`, the element type (e.g. `List<int>` vs `List<str>`) is **not preserved** at runtime. Only the outer collection kind survives. This has two consequences:
 
-- **Implicit unwrap** trusts the static type annotation: `let xs: List<int> = anyVal` is accepted whenever the dynamic tag matches `List`, regardless of the original element type. If the elements are not actually `int` at runtime, the per-element operations later in the program will misbehave; the unwrap site itself does not catch this.
+- **Implicit unwrap** trusts the static type annotation: `xs: List<int> = anyVal` is accepted whenever the dynamic tag matches `List`, regardless of the original element type. If the elements are not actually `int` at runtime, the per-element operations later in the program will misbehave; the unwrap site itself does not catch this.
 - **Deep equality** (`anyA == anyB` where both hold a collection) compares length and the data buffer byte-by-byte at an 8-byte stride. This is exact for primitive lists (`List<int>` / `List<float>` / `List<bool>`); for `List<str>` and `List<nested-collection>` it reduces to header-pointer identity, which is conservative (may report `false` for two logically equal collections). For `Map` and `Set`, equality is **pointer identity only** — hashing requires the key/element type, which is erased.
-- **String conversion** of a collection-holding `any` emits an opaque marker (`<List>`, `<Map>`, `<Set>`) rather than rendering elements. To get a typed printout, unwrap explicitly: `let xs: List<int> = anyVal; print(xs)`.
+- **String conversion** of a collection-holding `any` emits an opaque marker (`<List>`, `<Map>`, `<Set>`) rather than rendering elements. To get a typed printout, unwrap explicitly: `xs: List<int> = anyVal; print(xs)`.
 
 These limitations are intentional for v0.0.25 and tracked in follow-up issues; for now, treat `any` as a transport mechanism for dynamic data (e.g. JSON-shaped values from #1698) and unwrap to a concrete type before doing per-element work.
 
@@ -827,7 +827,7 @@ print(spotted.name)         # "Spot"
 
 # Unrelated types still trap at runtime
 p: any = Point(1, 2)
-# let nope: Animal = p      # runtime error: any record type mismatch
+# nope: Animal = p          # runtime error: any record type mismatch
 ```
 
 Subtype coercion on the typed path (`fn f(a: Animal): ...; f(dogValue)`) is unchanged — the runtime walk only applies to `any → record` unwrap sites.
