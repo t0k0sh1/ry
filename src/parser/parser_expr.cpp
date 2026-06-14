@@ -190,6 +190,10 @@ void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) 
             parseError("case arm block must end with an expression");
 
         auto saved = lex_.saveState();
+        // #2136: case-arm tail-vs-stmt is speculative — restore cpd on
+        // either rewind path so a chain absorbed inside the tail-shaped
+        // expression does not leak into the statement re-parse.
+        int saved_pending = chain_pending_dedents_;
 
         // Try this line as the tail expression. It is the tail only if it parses
         // as a whole-line expression and the block ends right after it; anything
@@ -204,6 +208,7 @@ void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) 
             // while/for/return, or a genuine syntax error). Rewind; the statement
             // re-parse below reproduces any real diagnostic.
             lex_.restoreState(saved);
+            chain_pending_dedents_ = saved_pending;
         }
 
         if (exprParsed) {
@@ -222,6 +227,7 @@ void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) 
             // A complete expression but not the final line: rewind and treat it
             // as a (non-tail) statement (so a bare `tmp * 2` here is rejected).
             lex_.restoreState(saved);
+            chain_pending_dedents_ = saved_pending;
         }
 
         // Non-tail line: parse it as a statement.
@@ -588,6 +594,9 @@ ExprPtr Parser::parsePrimary() {
         lex_.next();
         if (lex_.peek().kind == TokenKind::LBracket) {
             auto savedState = lex_.saveState();
+            // #2136: parseArgList below may transitively absorb chain
+            // Indents; restore cpd on either rewind path.
+            int saved_pending = chain_pending_dedents_;
             try {
                 lex_.next(); // consume '['
                 std::string typeArg;
@@ -621,8 +630,10 @@ ExprPtr Parser::parsePrimary() {
                     return node;
                 }
                 lex_.restoreState(savedState);
+                chain_pending_dedents_ = saved_pending;
             } catch (...) {
                 lex_.restoreState(savedState);
+                chain_pending_dedents_ = saved_pending;
             }
         }
         // Generic enum constructor: MyOption<int>::MySome(42)
@@ -630,6 +641,9 @@ ExprPtr Parser::parsePrimary() {
             // Try to parse as generic type: Ident<Type>::Variant(...)
             Token angleTok = lex_.peek(); // position of '<' for #1885 diagnostic
             auto savedState = lex_.saveState();
+            // #2136: parseArgList inside may absorb chain Indents; restore
+            // cpd on either rewind path (committed throw propagates state).
+            int saved_pending = chain_pending_dedents_;
             bool committed = false;
             try {
                 lex_.next(); // consume '<'
@@ -736,9 +750,11 @@ ExprPtr Parser::parsePrimary() {
                 }
                 // Not a generic enum access, restore
                 lex_.restoreState(savedState);
+                chain_pending_dedents_ = saved_pending;
             } catch (...) {
                 if (committed) throw;
                 lex_.restoreState(savedState);
+                chain_pending_dedents_ = saved_pending;
             }
         }
         if (lex_.peek().kind == TokenKind::ColonColon) {
@@ -902,6 +918,10 @@ ExprPtr Parser::parsePrimary() {
         if (couldBeLambda()) {
             auto saved = lex_.saveState();
             const bool prev_committed = lambda_committed_;
+            // #2136: speculative-parse boundary — must restore cpd on
+            // fallback so a chain absorbed inside the lambda body does
+            // not leak into the outer tuple parse.
+            const int prev_pending = chain_pending_dedents_;
             lambda_committed_ = false;
             try {
                 auto lambda = parseParenLambdaExpr();
@@ -917,6 +937,7 @@ ExprPtr Parser::parsePrimary() {
                     throw;
                 }
                 lambda_committed_ = prev_committed;
+                chain_pending_dedents_ = prev_pending;
                 lex_.restoreState(std::move(saved));
             }
         }
@@ -1178,12 +1199,12 @@ ExprPtr Parser::parsePostfix() {
 }
 
 ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
-    // #2115: track Indents the chain absorbed across multiline `.`
-    // continuations so the matching Dedents can be drained at chain
-    // end. Without this, the surrounding parseBlock / parseProgram
-    // would see a stray Dedent and either exit a block prematurely
-    // (inside a fn body) or hit "unexpected token" (at top level).
-    int chainIndents = 0;
+    // #2115/#2136: track Indents the chain absorbed across multiline `.`
+    // continuations on `chain_pending_dedents_` (Parser member). The tail
+    // drain at function end balances them against subsequent Dedents.
+    // Whatever the drain can't consume (because the chain ended on `>`,
+    // `:`, `)`, `,` etc.) stays on the member for parseBlock /
+    // parseProgram / block body loops to accommodate (#2136).
     while (true) {
         TokenKind cur = lex_.peek().kind;
         if (cur != TokenKind::Dot && cur != TokenKind::LBracket &&
@@ -1202,7 +1223,7 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             // Newline as a Float literal — a separate issue would have
             // to relax that disambiguation.
             auto saved = lex_.saveState();
-            int savedChainIndents = chainIndents;
+            int savedPending = chain_pending_dedents_;
             bool sawNewline = false;
             while (true) {
                 TokenKind k = lex_.peek().kind;
@@ -1211,17 +1232,18 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
                     sawNewline = true;
                 } else if (sawNewline && k == TokenKind::Indent) {
                     lex_.next();
-                    ++chainIndents;
-                } else if (sawNewline && k == TokenKind::Dedent && chainIndents > 0) {
+                    ++chain_pending_dedents_;
+                } else if (sawNewline && k == TokenKind::Dedent &&
+                           chain_pending_dedents_ > 0) {
                     lex_.next();
-                    --chainIndents;
+                    --chain_pending_dedents_;
                 } else {
                     break;
                 }
             }
             if (!sawNewline || lex_.peek().kind != TokenKind::Dot) {
                 lex_.restoreState(saved);
-                chainIndents = savedChainIndents;
+                chain_pending_dedents_ = savedPending;
                 break;
             }
             continue; // outer loop dispatches on the exposed Dot
@@ -1308,14 +1330,18 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
         }
     }
     // Drain matching Dedents for chain-internal Indents so surrounding
-    // parseBlock / parseProgram does not see a stray Dedent (#2115).
-    while (chainIndents > 0) {
+    // parseBlock / parseProgram does not see a stray Dedent (#2115). When
+    // the chain ends on a non-Newline/Dedent token (`>`, `:`, `)`, ...),
+    // the remaining count stays on chain_pending_dedents_ for the
+    // surrounding parser to consume (#2136 — see parseBlock / parseProgram
+    // / block body loop in src/parser/parser.cpp).
+    while (chain_pending_dedents_ > 0) {
         TokenKind k = lex_.peek().kind;
         if (k == TokenKind::Newline) {
             lex_.next();
         } else if (k == TokenKind::Dedent) {
             lex_.next();
-            --chainIndents;
+            --chain_pending_dedents_;
         } else {
             break;
         }

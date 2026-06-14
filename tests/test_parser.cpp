@@ -2016,6 +2016,153 @@ TEST(ParserTest, UfcsMultilineChainKeepsSurroundingBlockOpen) {
     EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
 }
 
+TEST(ParserTest, UfcsMultilineChainInIfCondSameColumnBody) {
+    // #2136: when a multiline UFCS chain appears in an `if` condition AND
+    // the chain's continuation indent column equals the would-be body's
+    // column, the chain's absorbed Indent IS the body's Indent. Without
+    // the `chain_pending_dedents_` accommodation in parseBlock,
+    // parseBlock sees no Indent token (the chain already consumed it)
+    // and errors with "expected indented block".
+    Program prog = parseStr(
+        "xs = [1, 2, 3]\n"
+        "if xs\n"
+        "    .count() > 0:\n"
+        "    print(1)");
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfStmt>>(prog[1]));
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[1]);
+    ASSERT_EQ(ifStmt.branch.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branch.body[0]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInIfCondDeeperBody) {
+    // #2136: when the body is indented strictly deeper than the chain's
+    // continuation column, the body's own Indent is consumed normally by
+    // parseBlock and the chain's matching Dedent appears LATER at
+    // parseProgram level — the parseProgram drain absorbs it.
+    Program prog = parseStr(
+        "if xs\n"
+        "    .count() > 0:\n"
+        "        print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfStmt>>(prog[0]));
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branch.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branch.body[0]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInIfCondDoubleHop) {
+    // #2136 (advisor call-out): a chain with two indentation hops in the
+    // condition (cpd reaches 2 by parseBlock entry). parseBlock first
+    // drains chain Dedents from the stream (the deeper hop's Dedent
+    // arrives before the body content), then treats the remaining cpd as
+    // implicit Indent — the body's `handle()` at the original chain
+    // column then parses normally. A naive single-decrement would leave
+    // a Dedent in the stream and trigger "empty block is not allowed".
+    Program prog = parseStr(
+        "if data\n"
+        "    .filter(p)\n"
+        "        .map(f):\n"
+        "    handle()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfStmt>>(prog[0]));
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branch.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branch.body[0]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInBinaryRhsFollowedByStatement) {
+    // #2136 Case 3: chain in a binary RHS at top level. After parsing
+    // `> 0`, the chain's matching Dedent appears at the top-level
+    // statement boundary — parseProgram drains it before the next
+    // `print(y)`.
+    Program prog = parseStr(
+        "x = xs\n"
+        "    .count() > 0\n"
+        "print(y)");
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(prog[1]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInCallArgFollowedByStatement) {
+    // #2136 Case 4: chain inside a call arg. After `)`, the chain's
+    // matching Dedent appears at the top-level statement boundary.
+    Program prog = parseStr(
+        "foo(xs\n"
+        "    .iter())\n"
+        "y = 1");
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
+}
+
+TEST(ParserTest, UfcsMultilineNestedChainInCallArg) {
+    // #2136: nested chains (outer in assignment RHS, inner in a call arg
+    // of the outer's middle hop) — cpd reaches 2 inside the inner, the
+    // outer's subsequent speculative scan absorbs the inner's Dedent
+    // and proceeds to the next `.method()`, the outer's tail drain
+    // consumes the outer's matching Dedent. The trailing `print(result)`
+    // must parse as its own statement.
+    Program prog = parseStr(
+        "result = xs\n"
+        "    .map(ys\n"
+        "        .iter())\n"
+        "    .toList()\n"
+        "print(result)");
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(prog[1]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInWhileCond) {
+    // #2136: same fix path as `if` cond (parseBlock + body loop drain).
+    Program prog = parseStr(
+        "while xs\n"
+        "    .count() > 0:\n"
+        "    print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<WhileStmt>>(prog[0]));
+    const auto &whileStmt = *std::get<std::unique_ptr<WhileStmt>>(prog[0]);
+    ASSERT_EQ(whileStmt.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(whileStmt.body[0]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInReturnExpression) {
+    // #2136: chain in `return` expression. Fn-body parseBlock body loop
+    // drain absorbs the chain's matching Dedent before the body's own
+    // exit Dedent. Without #2136 the body would close prematurely.
+    Program prog = parseStr(
+        "fn foo() -> bool:\n"
+        "    return xs\n"
+        "        .count() > 0");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
+}
+
+TEST(ParserTest, UfcsMultilineChainInLambdaBody) {
+    // #2136: lambda dispatch's save/restore of chain_pending_dedents_
+    // must not corrupt outer-context cpd when the lambda body itself
+    // contains a multiline UFCS chain. The lambda parses successfully
+    // and drains its own chain; the outer fn body remains intact.
+    Program prog = parseStr(
+        "fn foo():\n"
+        "    f = (x: int) => xs\n"
+        "        .map((y: int) => y + x)\n"
+        "        .toList()\n"
+        "    print(f(0))");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.body.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(fn.body[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
+}
+
 // ===== Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {

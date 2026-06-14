@@ -30,3 +30,19 @@ fn multilineUfcsChainTests():
     [1, 2, 3]
         .iter()
         .toList()
+  @it("should allow multiline UFCS chain in if condition")
+  fn shouldAllowMultilineUfcsChainInIfCondition():
+    xs = [1, 2, 3]
+    seen = 0
+    if xs
+        .len() > 0:
+        seen = 1
+    expect(seen).toEq(1)
+  @it("should allow multiline UFCS chain in assignment RHS followed by statement")
+  fn shouldAllowMultilineUfcsChainInAssignmentRhsFollowedByStatement():
+    xs = [1, 2, 3]
+    flag = xs
+        .len() > 0
+    next = 1
+    expect(flag).toEq(true)
+    expect(next).toEq(1)
