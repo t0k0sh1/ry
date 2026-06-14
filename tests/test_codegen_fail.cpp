@@ -1301,6 +1301,20 @@ TEST_F(CodeGenTest, ReservedBuiltinSumListIntExactSignature) {
         "is reserved for a built-in");
 }
 
+TEST_F(CodeGenTest, ReservedBuiltinGetListIntExactSignature) {
+    expectCompileError(
+        "fn get(xs: List<int>, i: int) -> int:\n"
+        "    return 999\n",
+        "is reserved for a built-in");
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinGetSingleIntArg) {
+    expectCompileError(
+        "fn get(x: int) -> int:\n"
+        "    return x\n",
+        "is reserved for a built-in");
+}
+
 // Family representatives: at least one rejection per stdlib family
 // (builtins.ry auto-loaded fn / collection ops / conversion / query /
 // ADT constructor / regex / IO / channel / set ops / arithmetic
@@ -1432,6 +1446,16 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsNestedShadow) {
     EXPECT_NO_THROW(runSource(
         "fn outer() -> int:\n"
         "    fn sum(x: int) -> int:\n"
+        "        return x + 1\n"
+        "    return 0\n"
+        "print(outer())\n"
+    ));
+}
+
+TEST_F(CodeGenTest, ReservedBuiltinGetAllowsNestedShadow) {
+    EXPECT_NO_THROW(runSource(
+        "fn outer() -> int:\n"
+        "    fn get(x: int) -> int:\n"
         "        return x + 1\n"
         "    return 0\n"
         "print(outer())\n"
