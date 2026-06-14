@@ -2016,6 +2016,106 @@ TEST(ParserTest, UfcsMultilineChainKeepsSurroundingBlockOpen) {
     EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
 }
 
+TEST(ParserTest, UfcsMultilineChainCommentBetweenHopsTransparent) {
+    // #2137: a `#` comment-only line inserted between UFCS hops must be
+    // transparent to the chain. The lexer suppresses the trailing Newline
+    // of a comment-only line, so the token stream reduces to the
+    // already-passing no-comment form `xs Newline Indent Dot iter ( ) ...`.
+    // Without the lexer fix, the second Newline (from the comment line's
+    // end) trips the drain loop's `!sawNewline` cap and the chain breaks
+    // with "unexpected token '.'".
+    Program prog = parseStr(
+        "result = xs\n"
+        "    # skip empty\n"
+        "    .iter()\n"
+        "    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(outer.callee, "toList");
+    ASSERT_EQ(outer.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "iter");
+}
+
+TEST(ParserTest, UfcsMultilineChainCommentBetweenTwoHopsTransparent) {
+    // #2137 canonical form: comment line between two `.method()` hops
+    // (the formatter-insertion scenario from the issue's 影響範囲).
+    // Distinct from the "comment before the first hop" path because the
+    // drain loop here sees `Newline → Dot` with NO intervening Indent
+    // (both hops at the same column, so the indent stack already has
+    // this level and Step 2 emits no new Indent for `.toList()`).
+    Program prog = parseStr(
+        "result = xs\n"
+        "    .iter()\n"
+        "    # finalize\n"
+        "    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(outer.callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainMultipleCommentsBetweenHopsTransparent) {
+    // #2137: multiple consecutive `#` comment lines between hops must
+    // also be transparent. The lexer's tail recursion in readToken()
+    // walks through any number of consecutive comment-only lines and
+    // emits no Newline for each — the chain sees the same token stream
+    // as if no comments were present.
+    Program prog = parseStr(
+        "result = xs\n"
+        "    # first comment\n"
+        "    # second comment\n"
+        "    .iter()\n"
+        "    .toList()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(s.value->data)->callee, "toList");
+}
+
+TEST(ParserTest, UfcsMultilineChainRejectsBlankThenCommentSeparator) {
+    // #2137 boundary: a blank line BEFORE a comment line is still a
+    // statement separator. The blank line emits its own Newline (the
+    // lexer's `entered_at_line_start && src_[pos_] == '#'` suppression
+    // does not fire on a blank line — only on a `#`-leading line). The
+    // drain loop sees `Newline Newline` and breaks on the second,
+    // preserving the blank-line separator semantics.
+    EXPECT_THROW(parseStr("x = xs\n\n# c\n.iter()"), std::runtime_error);
+}
+
+TEST(ParserTest, UfcsMultilineChainRejectsCommentThenBlankSeparator) {
+    // #2137 boundary: a comment line followed by a blank line is still
+    // a statement separator. The comment line's Newline is suppressed
+    // (transparent), but the blank line that follows still emits a
+    // Newline. The drain loop sees `Newline (from xs) Newline (from
+    // blank line)` and breaks on the second, preserving the blank-line
+    // separator semantics across the comment-blank interleave.
+    EXPECT_THROW(parseStr("x = xs\n# c\n\n.iter()"), std::runtime_error);
+}
+
+TEST(ParserTest, ManyConsecutiveCommentLinesDoNotOverflowStack) {
+    // #2137 regression guard: the comment-only-line transparency was
+    // initially implemented via `return readToken()` tail recursion; ASan
+    // surfaced a stack-overflow on long runs of consecutive `#` lines
+    // (fuzzer corpus). The current implementation uses an iterative
+    // `for (;;)` loop in Lexer::readToken — 10000 comment lines must
+    // parse cleanly without recursing.
+    std::string src = "x = 1\n";
+    for (int i = 0; i < 10000; ++i) src += "# comment\n";
+    src += "y = 2";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "x");
+    EXPECT_EQ(std::get<AssignStmt>(prog[1]).name, "y");
+}
+
 TEST(ParserTest, UfcsMultilineChainInIfCondSameColumnBody) {
     // #2136: when a multiline UFCS chain appears in an `if` condition AND
     // the chain's continuation indent column equals the would-be body's

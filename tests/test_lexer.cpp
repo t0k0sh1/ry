@@ -1022,15 +1022,19 @@ TEST(LexerTest, CommentAtEndOfLine) {
 }
 
 TEST(LexerTest, CommentAtStartOfLine) {
+    // #2137: a comment-only line is transparent at the token level.
+    // The lexer suppresses its trailing Newline and tail-recurses so
+    // multiline UFCS chains can carry mid-chain comments without the
+    // drain loop tripping on a second Newline (see
+    // ParserTest.UfcsMultilineChainCommentBetweenHopsTransparent).
     auto toks = tokenize("# full line comment\nx = 1");
-    ASSERT_EQ(toks.size(), 5u); // Newline Ident Equals Number Eof
-    EXPECT_EQ(toks[0].kind, TokenKind::Newline);
-    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
-    EXPECT_EQ(toks[1].value, "x");
-    EXPECT_EQ(toks[2].kind, TokenKind::Equals);
-    EXPECT_EQ(toks[3].kind, TokenKind::Number);
-    EXPECT_EQ(toks[3].value, "1");
-    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+    ASSERT_EQ(toks.size(), 4u); // Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "x");
+    EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[2].kind, TokenKind::Number);
+    EXPECT_EQ(toks[2].value, "1");
+    EXPECT_EQ(toks[3].kind, TokenKind::Eof);
 }
 
 TEST(LexerTest, CommentOnly) {
@@ -1040,14 +1044,15 @@ TEST(LexerTest, CommentOnly) {
 }
 
 TEST(LexerTest, ConsecutiveCommentLines) {
+    // #2137: consecutive comment-only lines are all transparent at the
+    // token level — the lexer's tail recursion walks through any number
+    // of consecutive `#`-leading lines emitting no Newline for each.
     auto toks = tokenize("# line 1\n# line 2\nx = 1");
-    ASSERT_EQ(toks.size(), 6u); // Newline Newline Ident Equals Number Eof
-    EXPECT_EQ(toks[0].kind, TokenKind::Newline);
-    EXPECT_EQ(toks[1].kind, TokenKind::Newline);
-    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
-    EXPECT_EQ(toks[3].kind, TokenKind::Equals);
-    EXPECT_EQ(toks[4].kind, TokenKind::Number);
-    EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+    ASSERT_EQ(toks.size(), 4u); // Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[2].kind, TokenKind::Number);
+    EXPECT_EQ(toks[3].kind, TokenKind::Eof);
 }
 
 TEST(LexerTest, TypeAnnotationTokens) {
@@ -1120,11 +1125,15 @@ TEST(LexerTest, FromDotPathTokenSequence) {
 }
 
 TEST(LexerTest, CommentLineDoesNotChangeIndent) {
+    // #2137: comment-only lines emit nothing at all (no Newline either).
+    // Indent/Dedent were already unaffected by comments via the
+    // `has_content` gate at Step 2; the post-#2137 spec additionally
+    // suppresses the trailing Newline of comment-only lines.
     auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
     std::vector<TokenKind> expected = {
         TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
         TokenKind::Indent, TokenKind::Ident, TokenKind::Newline,
-        TokenKind::Newline, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Ident, TokenKind::Newline,
         TokenKind::Dedent, TokenKind::Ident, TokenKind::Eof
     };
     ASSERT_EQ(toks.size(), expected.size());

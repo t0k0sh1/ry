@@ -46,3 +46,28 @@ fn multilineUfcsChainTests():
     next = 1
     expect(flag).toEq(true)
     expect(next).toEq(1)
+  @it("should treat a comment line between hops as transparent")
+  fn shouldTreatCommentBetweenHopsAsTransparent():
+    xs = [1, 2, 3]
+    result = xs
+        # skip empty
+        .iter()
+        .toList()
+    expect(result).toEq([1, 2, 3])
+  @it("should treat multiple consecutive comment lines between hops as transparent")
+  fn shouldTreatMultipleCommentsBetweenHopsAsTransparent():
+    xs = [1, 2, 3]
+    result = xs
+        # first comment
+        # second comment
+        .iter()
+        .toList()
+    expect(result).toEq([1, 2, 3])
+  @it("should treat a comment line between two dot-hops as transparent")
+  fn shouldTreatCommentBetweenTwoHopsAsTransparent():
+    xs = [1, 2, 3]
+    result = xs
+        .iter()
+        # finalize
+        .toList()
+    expect(result).toEq([1, 2, 3])
