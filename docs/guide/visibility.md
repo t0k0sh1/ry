@@ -42,7 +42,7 @@ fn fmt(n: int) -> str:
 
 Any importer **outside** `mylib/` cannot see `add` or `fmt` until they are marked `@public`.
 
-Files that have no `package.toml` ancestor — for example, ad-hoc scripts run with `./build/ry script.ry`, or expressions passed via REPL `-c` — share a single **anonymous package**. They all behave as one package for visibility purposes, so a script can freely import any non-`@public` definition from another script in the same anonymous-package universe.
+Files that have no `package.toml` ancestor — for example, ad-hoc scripts run with `<build-dir>/ry script.ry`, or expressions passed via REPL `-c` — share a single **anonymous package**. They all behave as one package for visibility purposes, so a script can freely import any non-`@public` definition from another script in the same anonymous-package universe.
 
 ## Making a definition public
 
