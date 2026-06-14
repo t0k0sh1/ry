@@ -98,7 +98,7 @@ generic_params   ::= '<' IDENT { ',' IDENT } '>'
 fn_body          ::= ':' INDENT { contract_clause } statement { statement } DEDENT
 
 contract_clause  ::= ( 'require' ':' INDENT condition_list DEDENT
-                     | 'ensure' [ IDENT ] ':' INDENT condition_list DEDENT )
+                     | 'ensure' IDENT { ',' IDENT } ':' INDENT condition_list DEDENT )
 
 condition_list   ::= expression NEWLINE { expression NEWLINE }
 
