@@ -182,6 +182,23 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         return 1;
     }
 #ifdef __APPLE__
+    // stat() follows symlinks to match the Linux path's open()+fstat() semantics
+    // (which omits O_NOFOLLOW). copyfile() also follows symlinks by default, so
+    // both calls observe the same target.
+    //
+    // TOCTOU caveat: there is a small window between stat() and copyfile()
+    // where the source could be replaced. The Linux path closes this gap via
+    // an fd-based fstat(); reproducing that on macOS would require switching
+    // to fcopyfile() and is out of scope for this guard.
+    struct stat src_st;
+    if (stat(src, &src_st) != 0) {
+        setLastError("copy: cannot stat source '%s': %s", src, strerror(errno));
+        return 1;
+    }
+    if (!S_ISREG(src_st.st_mode)) {
+        setLastError("copy: source '%s' is not a regular file", src);
+        return 1;
+    }
     if (copyfile(src, dst, nullptr, COPYFILE_ALL) != 0) {
         setLastError("copy: failed to copy '%s' to '%s': %s", src, dst, strerror(errno));
         return 1;

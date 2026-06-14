@@ -197,6 +197,56 @@ fn copyTests():
     result = copy("/tmp/ry_fs_test_nosrc.txt", "/tmp/ry_fs_test_nodst.txt")
     expect(result).toBeErr()
 
+  @it("should reject copying a directory")
+  fn shouldRejectCopyingADirectory():
+    srcDir = "/tmp/ry_fs_test/copy_dir_src"
+    dst = "/tmp/ry_fs_test/copy_dir_dst"
+    removeAll(srcDir)
+    removeAll(dst)
+    mkdirAll(srcDir)
+    result = copy(srcDir, dst)
+    expect(result).toBeErr()
+    case isDir(dst):
+      Ok(v): expect(v).toBeFalse()
+      Err(e): fail("isDir failed: " + e.message)
+
+  @it("should reject copying a symlink to a directory")
+  fn shouldRejectCopyingASymlinkToADirectory():
+    targetDir = "/tmp/ry_fs_test/copy_symdir_target"
+    link = "/tmp/ry_fs_test/copy_symdir_link"
+    dst = "/tmp/ry_fs_test/copy_symdir_dst"
+    removeAll(targetDir)
+    removeAll(link)
+    removeAll(dst)
+    mkdirAll(targetDir)
+    case symlink(targetDir, link):
+      Ok(_): 0
+      Err(e): fail("symlink setup failed: " + e.message)
+    result = copy(link, dst)
+    expect(result).toBeErr()
+
+  @it("should follow a symlink to a regular file")
+  fn shouldFollowASymlinkToARegularFile():
+    target = "/tmp/ry_fs_test/copy_symfile_target.txt"
+    link = "/tmp/ry_fs_test/copy_symfile_link.txt"
+    dst = "/tmp/ry_fs_test/copy_symfile_dst.txt"
+    mkdirAll("/tmp/ry_fs_test")
+    writeText(target, "via symlink")
+    removeAll(link)
+    removeAll(dst)
+    case symlink(target, link):
+      Ok(_): 0
+      Err(e): fail("symlink setup failed: " + e.message)
+    case copy(link, dst):
+      Ok(_):
+        case readText(dst):
+          Ok(content):
+            expect(content).toEq("via symlink")
+          Err(e):
+            fail("readText failed: " + e.message)
+      Err(e):
+        fail("copy via symlink failed: " + e.message)
+
 @describe("move")
 fn moveTests():
   @it("should move a file")
