@@ -420,12 +420,13 @@ llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty
     // source"). IR-neutral: never fires for the in-tree callers.
     if (arg_tys.size() != args.size())
         codegenError("emitRuntimeCallDirect: arg type/value arity mismatch");
-    std::vector<RyTypeRef> arg_ty_refs;
-    arg_ty_refs.reserve(arg_tys.size());
+    // Inline cap of 5 covers every in-tree call site (max arity: __ry_ht_find_*
+    // and __ry_str_find_byte at 5 args), so the boundary trip allocates zero
+    // heap (#2147).
+    llvm::SmallVector<RyTypeRef, 5> arg_ty_refs;
     for (auto *t : arg_tys)
         arg_ty_refs.push_back(ry::llvm_emit::asRyType(t));
-    std::vector<RyValueId> arg_ids;
-    arg_ids.reserve(args.size());
+    llvm::SmallVector<RyValueId, 5> arg_ids;
     for (auto *v : args)
         arg_ids.push_back(ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v)));
     RyValueId resultId = ry_emit_runtime_call(

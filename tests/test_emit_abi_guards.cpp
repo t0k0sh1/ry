@@ -105,6 +105,36 @@ TEST_F(EmitAbiGuardTest, ResultBranchNullCtxReturnsZero) {
               0u);
 }
 
+// --- #2147 — intern dedup: same value pointer → same handle.
+//     Pre-fix the second intern of the same value got a fresh id; post-fix
+//     the lookup returns the existing handle (memory: EmitCtx::values stops
+//     growing per call when the same LLVMValueRef is reused). Caller-visible
+//     contract: stable handle per pointer, NOT fresh per call. ---
+
+TEST_F(EmitAbiGuardTest, InternSameValueReturnsSameId) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    llvm::Value *v = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 42);
+    RyValueId id1 = ry_emit_intern(ctx, asRyValue(v));
+    RyValueId id2 = ry_emit_intern(ctx, asRyValue(v));
+    EXPECT_NE(id1, 0u);
+    EXPECT_EQ(id1, id2);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, InternDistinctValuesReturnDistinctIds) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    llvm::Value *v1 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 1);
+    llvm::Value *v2 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(llctx_), 2);
+    RyValueId id1 = ry_emit_intern(ctx, asRyValue(v1));
+    RyValueId id2 = ry_emit_intern(ctx, asRyValue(v2));
+    EXPECT_NE(id1, 0u);
+    EXPECT_NE(id2, 0u);
+    EXPECT_NE(id1, id2);
+    ry_emit_ctx_destroy(ctx);
+}
+
 // --- result_branch with NULL callbacks → sentinel 0 (Critical: replaces the
 //     former unwrap()-panic across the extern "C" boundary) ---
 

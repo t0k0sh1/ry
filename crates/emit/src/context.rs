@@ -29,6 +29,13 @@ pub(crate) struct EmitCtx {
     pub(crate) builder: LLVMBuilderRef,
     pub(crate) context: LLVMContextRef,
     pub(crate) values: Vec<LLVMValueRef>,
+    // Dedup cache for ry_emit_intern: maps a previously interned value pointer
+    // to its assigned id so the same LLVMValueRef does not grow `values` per
+    // call (#2147). Raw pointers are Eq + Hash by address, and EmitCtx is
+    // single-threaded. The id type mirrors `abi::RyValueId = u32` (named in
+    // u32 here because `context` sits below `abi` per the layering invariant
+    // documented at the top of this file).
+    pub(crate) value_id_cache: HashMap<LLVMValueRef, u32>,
     // Dedup cache for ry_emit_bounds_error / any-error fmt-string globals
     // (keyed by message bytes).
     pub(crate) bounds_msg_cache: HashMap<Vec<u8>, LLVMValueRef>,
@@ -55,6 +62,7 @@ impl EmitCtx {
             builder,
             context,
             values: vec![std::ptr::null_mut()],
+            value_id_cache: HashMap::new(),
             bounds_msg_cache: HashMap::new(),
             arc_msg_cache: HashMap::new(),
         }
