@@ -38,6 +38,15 @@ private:
     // bare-lambda dispatch (`Ident FatArrow`) in parsePrimary so the `=>` is
     // recognised as the if-expression then-arm, not consumed as a lambda body.
     bool in_if_cond_ = false;
+    // #2136: Indents absorbed by a multiline UFCS chain
+    // (parsePostfixContinuation) that the tail drain could not balance
+    // because the chain ended on a non-Newline/Dedent token (`>`, `:`, `)`,
+    // ...). parseBlock / parseProgram and block body loops consume against
+    // this counter to keep the surrounding indentation accounting straight.
+    // Speculative sites that may call expression parsing (lambda dispatch,
+    // case-arm tail-vs-stmt, generic call/enum) must save/restore this
+    // alongside `lex_.saveState()`.
+    int chain_pending_dedents_ = 0;
     // Module names introduced by `import xxx` (qualified import) at the top
     // level of the current source. Used by parsePrimary's Dot dispatch to
     // disambiguate `mod.f(...)` qualified calls from UFCS / field access, and

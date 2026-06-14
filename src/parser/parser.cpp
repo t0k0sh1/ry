@@ -336,6 +336,14 @@ Program Parser::parseProgram() {
     prog.reserve(32);
     skipNewlines();
     while (lex_.peek().kind != TokenKind::Eof) {
+        // #2136: drain Dedents that balance Indents absorbed by a
+        // preceding multiline UFCS chain at top level.
+        while (chain_pending_dedents_ > 0 &&
+               lex_.peek().kind == TokenKind::Dedent) {
+            lex_.next();
+            --chain_pending_dedents_;
+        }
+        if (lex_.peek().kind == TokenKind::Eof) break;
         if (lex_.peek().kind == TokenKind::From) {
             prog.push_back(parseImportStatement());
         } else if (lex_.peek().kind == TokenKind::Import) {
@@ -1050,14 +1058,44 @@ std::vector<StmtNode> Parser::parseBlock() {
     lex_.next(); // consume Newline
     skipNewlines();
 
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next(); // consume Indent
+    // #2136: when a multiline UFCS chain in the preceding sub-expression
+    // (if/while condition, case scrutinee, ...) left absorbed Indents on
+    // `chain_pending_dedents_`, the body's expected Indent token may have
+    // been pre-consumed by that chain. First drain any chain-leftover
+    // Dedents (depth >= 2 case where the chain's deeper hops emit Dedents
+    // before the body content), then treat any remaining `cpd` as an
+    // implicit Indent. A real Indent in the stream still wins — it
+    // corresponds to a body indented deeper than the chain.
+    if (lex_.peek().kind == TokenKind::Indent) {
+        lex_.next(); // consume Indent
+    } else {
+        while (chain_pending_dedents_ > 0 &&
+               lex_.peek().kind == TokenKind::Dedent) {
+            lex_.next();
+            --chain_pending_dedents_;
+        }
+        if (chain_pending_dedents_ > 0) {
+            --chain_pending_dedents_; // chain absorbed the Indent on our behalf
+        } else {
+            parseError("expected indented block");
+        }
+    }
+    // Snapshot AFTER body's opening Indent accounting so the body loop's
+    // drain only fires for chain Dedents emitted DURING this block's
+    // parse (not those that belong to the block's own exit).
+    int entry_pending = chain_pending_dedents_;
 
     std::vector<StmtNode> stmts;
     stmts.reserve(8);
-    while (lex_.peek().kind != TokenKind::Dedent &&
-           lex_.peek().kind != TokenKind::Eof) {
+    while (true) {
+        while (chain_pending_dedents_ > entry_pending &&
+               lex_.peek().kind == TokenKind::Dedent) {
+            lex_.next();
+            --chain_pending_dedents_;
+        }
+        if (lex_.peek().kind == TokenKind::Dedent ||
+            lex_.peek().kind == TokenKind::Eof)
+            break;
         stmts.push_back(parseStatement());
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
