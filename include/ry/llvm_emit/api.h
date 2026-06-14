@@ -981,7 +981,10 @@ void ry_emit_switch_add_case(RyEmitCtx *ctx, RySwitchRef sw, RyValueId on_val,
 
 // Integer-comparison predicate selector for ry_emit_icmp. Numbers are a stable
 // boundary contract; do not reorder without updating the RY_ICMP_* constants in
-// `crates/emit/src/abi.rs` (which map to the core `IcmpPred`).
+// `crates/emit/src/abi.rs` (which map to the core `IcmpPred`). Cross-language
+// parity is enforced by tests/test_abi_layout.cpp
+// (AbiLayout.RyICmpPredRustMirrorMatchesCanonical) via the test-only extern
+// `ry_emit_test_icmp_pred_values` (#2143).
 typedef enum {
     RY_ICMP_EQ = 0,
     RY_ICMP_NE = 1,

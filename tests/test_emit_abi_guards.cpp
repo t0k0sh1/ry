@@ -510,6 +510,19 @@ TEST_F(EmitAbiGuardTest, ReduceSumListNullElemTyReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
+// #2145: mirrors the elem_ty=NULL case above for the list_header_ty=NULL arm of
+// the same `elem_ty.is_null() || list_header_ty.is_null()` guard
+// (crates/emit/src/abi/reduce.rs). Without this, an `||` → `&&` typo silently
+// lets NULL list_header_ty reach LLVMBuildStructGEP2.
+TEST_F(EmitAbiGuardTest, ReduceSumListNullListHeaderTyReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    RyValueId listId = internDummy(ctx);
+    EXPECT_EQ(ry_emit_reduce_sum_list(ctx, listId, asRyType(resultTy_), /*list_header_ty=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
 TEST_F(EmitAbiGuardTest, ReduceSumStepNullElemTyReturnsZero) {
     RyEmitCtx *ctx = makeCtx();
     ASSERT_NE(ctx, nullptr);
@@ -594,6 +607,17 @@ TEST_F(EmitAbiGuardTest, CreateFunctionNullFnTypeReturnsNull) {
     RyEmitCtx *ctx = makeCtx();
     ASSERT_NE(ctx, nullptr);
     EXPECT_EQ(ry_emit_create_function(ctx, "f", /*fn_ty=*/nullptr, RY_LINKAGE_EXTERNAL), nullptr);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// #2142: mirrors the fn_ty=NULL case above for the name=NULL arm of the same
+// `fn_ty.is_null() || name.is_null()` guard (crates/emit/src/abi/function.rs).
+TEST_F(EmitAbiGuardTest, CreateFunctionNullNameReturnsNull) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_create_function(ctx, /*name=*/nullptr, asRyFuncType(fnTy_),
+                                      RY_LINKAGE_EXTERNAL),
+              nullptr);
     ry_emit_ctx_destroy(ctx);
 }
 
@@ -858,6 +882,61 @@ TEST_F(EmitAbiGuardTest, ArrayGepUnresolvableOperandReturnsZero) {
     // A valid array type passes the type guard; base_id 0 then resolves to NULL.
     llvm::ArrayType *arrayTy = llvm::ArrayType::get(llvm::Type::getInt64Ty(llctx_), 4);
     EXPECT_EQ(ry_emit_array_gep(ctx, asRyType(arrayTy), /*base_id=*/0, /*idx_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// =============================================================================
+// #2144 — load / single-index gep primitive guards (string-ops migration #2072
+// hot path). Both follow the same three-guard contract as ry_emit_struct_gep /
+// ry_emit_array_gep: NULL ctx, NULL type handle, unresolvable ptr id (id 0).
+// Type guard fires BEFORE resolve_value in both (unlike ry_emit_reduce_sum_list,
+// whose order is the reverse).
+// =============================================================================
+
+// --- ry_emit_load: ctx == NULL / NULL ty / unresolvable ptr → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, LoadNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_load(nullptr, asRyType(resultTy_), /*ptr_id=*/0, "x"), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, LoadNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // Resolvable ptr_id isolates the NULL-ty guard (it fires before resolve_value).
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_load(ctx, /*ty=*/nullptr, id, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, LoadUnresolvablePtrReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid ty passes the type guard; ptr_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_load(ctx, asRyType(resultTy_), /*ptr_id=*/0, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- ry_emit_gep (single-index): ctx == NULL / NULL base_ty / unresolvable
+//     operand → sentinel 0 ---
+
+TEST_F(EmitAbiGuardTest, GepNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_gep(nullptr, asRyType(resultTy_), /*ptr_id=*/0, /*idx_id=*/0, "x"), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, GepNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // Resolvable operands isolate the NULL-base_ty guard.
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_gep(ctx, /*base_ty=*/nullptr, id, id, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, GepUnresolvableBaseReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid base_ty passes the type guard; ptr_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_gep(ctx, asRyType(resultTy_), /*ptr_id=*/0, /*idx_id=*/0, "x"), 0u);
     ry_emit_ctx_destroy(ctx);
 }
 
