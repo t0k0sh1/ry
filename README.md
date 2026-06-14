@@ -105,10 +105,10 @@ print(math.PI)          # 3.141592653589793
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-To specify a particular version:
+To specify a particular version (replace `<X.Y.Z>` with a version listed on the [Releases](https://github.com/t0k0sh1/ry/releases) page):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.8
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v<X.Y.Z>
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.
@@ -174,7 +174,9 @@ ry test --trace tests/spec
 ## Development
 
 ```bash
-cd build && ctest --output-on-failure
+cmake --build build
+./build/ry_tests
+./build/ry test -p
 ```
 
 ## Documentation
