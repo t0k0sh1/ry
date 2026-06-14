@@ -232,12 +232,11 @@ completely absent from the corresponding reference pages. Examples found:
 
 | Error message | Emitter location |
 |---|---|
-| `runtime error: reduce() on empty list` | `codegen_call_higher_order.cpp:237` |
-| `runtime error: min() on empty list` | `codegen_call_higher_order.cpp:480` |
-| `runtime error: max() on empty list` | `codegen_call_higher_order.cpp:480` |
+| `runtime error: min() on empty list` | `codegen_call_higher_order.cpp` |
+| `runtime error: max() on empty list` | `codegen_call_higher_order.cpp` |
 | `runtime error: floor(): cannot convert %g to int` (also `ceil()`, `round()`, `trunc()`) | `codegen_call.cpp` math path via `emitCheckedFPToInt` |
 | `flatten() requires a list of lists` (compile) | `codegen_call_collection.cpp` |
-| `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp:291-294` |
+| `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp` |
 
 **Rule**: When auditing stdlib docs (PR 3–5 of #1118), grep all `codegenError()` and
 `runtime error:` strings in `src/codegen_call_*.cpp` and `src/runtime/**/*.cpp`, then verify
