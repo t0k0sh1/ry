@@ -64,7 +64,10 @@ pub unsafe extern "C" fn ry_emit_create_function(
 }
 
 /// Read the `idx`-th parameter value of `fn_handle` and return the interned
-/// result. NULL ctx / fn_handle → 0.
+/// result. NULL ctx / fn_handle, or `idx` out of `LLVMCountParams(fn_handle)`
+/// range, → 0. The range guard lives in `get_param` (core layer) because
+/// `check-emit-abi-no-ir.sh` (#2069) forbids `llvm_sys::core` here; this shell
+/// only propagates `get_param`'s `None` as the sentinel 0 (#2141).
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_get_param(
     ctx: *mut RyEmitCtx,
@@ -77,7 +80,9 @@ pub unsafe extern "C" fn ry_emit_get_param(
     if fn_handle.is_null() {
         return 0;
     }
-    let v = c.get_param(FunctionRef(as_function(fn_handle)), idx);
+    let Some(v) = c.get_param(FunctionRef(as_function(fn_handle)), idx) else {
+        return 0;
+    };
     intern(c, to_ry_value(v.0))
 }
 

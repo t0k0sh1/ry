@@ -44,9 +44,16 @@ impl EmitCtx {
     }
 
     // Read the `idx`-th parameter value of `func` (`LLVMGetParam`). Returns the
-    // raw param value; the abi boundary interns it.
-    pub(crate) unsafe fn get_param(&mut self, func: FunctionRef, idx: u32) -> ValueRef {
-        ValueRef(LLVMGetParam(func.0, idx))
+    // raw param value; the abi boundary interns it. `None` when `idx` is out of
+    // range for `func`'s parameter count — `LLVMGetParam` itself does raw
+    // pointer arithmetic (`arg_begin()[index]`) and is UB on OOB, and the abi
+    // shell cannot do this guard itself because `check-emit-abi-no-ir.sh`
+    // (#2069) forbids `llvm_sys::core` references in `abi/**` (#2141).
+    pub(crate) unsafe fn get_param(&mut self, func: FunctionRef, idx: u32) -> Option<ValueRef> {
+        if idx >= LLVMCountParams(func.0) {
+            return None;
+        }
+        Some(ValueRef(LLVMGetParam(func.0, idx)))
     }
 
     // Emit a call through the runtime function-pointer value `callee` (a loaded
