@@ -1545,7 +1545,7 @@ bool CodeGen::isUnsignedLowLevel(llvm::Value *val) const {
 }
 
 bool CodeGen::isUnsignedLowLevelName(const std::string &name) {
-    return !name.empty() && name[0] == 'u';
+    return ry::util::isUnsignedLowLevelName(name);
 }
 
 std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {

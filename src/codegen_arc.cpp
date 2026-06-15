@@ -350,7 +350,7 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
 // ===== Collection type name helpers =====
 
 bool CodeGen::isCollectionTypeName(const std::string &typeName) {
-    return ry::util::isListTypeName(typeName) || ry::util::isMapTypeName(typeName) || ry::util::isSetTypeName(typeName);
+    return ry::util::isCollectionTypeName(typeName);
 }
 
 bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
@@ -605,7 +605,7 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
 // ===== Weak reference operations =====
 
 std::string CodeGen::weakInnerTypeName(const std::string &typeName) {
-    return typeName.substr(5);
+    return ry::util::weakInnerTypeName(typeName);
 }
 
 void CodeGen::markWeakManaged(llvm::AllocaInst *alloca) {

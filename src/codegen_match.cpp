@@ -458,33 +458,6 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
     return testResult;
 }
 
-// Extract the Nth type argument (0-indexed) from a generic type string like
-// "Option<T>", "T?" (OptionalType shorthand for Option<T>), or "Result<T, E>".
-// Returns "" when the string does not start with `prefix` or the index is out
-// of range.  Delegates to splitTypeArgs so that both angle-bracket and
-// parenthesis depth are tracked correctly (handles function types such as
-// "Option<(int, str) -> bool>").
-static std::string extractGenericTypeArg(const std::string &typeStr,
-                                          const std::string &prefix,
-                                          size_t argIdx) {
-    // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003, #1015).
-    // Only Option has a shorthand form; Result<T, E> does not.
-    if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
-        if (argIdx != 0)
-            return {};
-        return ry::util::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
-    }
-    if (typeStr.size() <= prefix.size() ||
-        typeStr.compare(0, prefix.size(), prefix) != 0 ||
-        typeStr.back() != '>')
-        return {};
-    const std::string inner = typeStr.substr(prefix.size(),
-                                              typeStr.size() - prefix.size() - 1);
-    const auto parts = CodeGen::splitTypeArgs(inner);
-    if (argIdx >= parts.size()) return {};
-    return ry::util::trimTypeNameSpaces(parts[argIdx]);
-}
-
 void CodeGen::maybeRegisterTaggedUnionSubject(llvm::AllocaInst *subjectAlloca,
                                                 llvm::Type *subjectTy,
                                                 const std::string &subjectEnumName) {
@@ -580,7 +553,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string lookupName = !subjectSourceName.empty()
                     ? subjectSourceName
                     : resolveTypeAlias(subjectEnumName);
-                const std::string innerSig = extractGenericTypeArg(lookupName, "Option<", 0);
+                const std::string innerSig = ry::util::extractGenericTypeArg(lookupName, "Option<", 0);
                 if (!innerSig.empty())
                     propagateTypeMeta(innerSig, varAlloca);
                 else
@@ -600,7 +573,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string lookupName = !subjectSourceName.empty()
                     ? subjectSourceName
                     : resolveTypeAlias(subjectEnumName);
-                const std::string innerSig = extractGenericTypeArg(lookupName, "Result<", 0);
+                const std::string innerSig = ry::util::extractGenericTypeArg(lookupName, "Result<", 0);
                 if (!innerSig.empty())
                     propagateTypeMeta(innerSig, varAlloca);
                 else
@@ -626,7 +599,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string lookupName = !subjectSourceName.empty()
                     ? subjectSourceName
                     : resolveTypeAlias(subjectEnumName);
-                const std::string innerSig = extractGenericTypeArg(lookupName, "Result<", 1);
+                const std::string innerSig = ry::util::extractGenericTypeArg(lookupName, "Result<", 1);
                 if (!innerSig.empty())
                     propagateTypeMeta(innerSig, varAlloca);
                 else
@@ -1043,32 +1016,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 // ===== Union type helpers =====
 
 std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeName) {
-    std::vector<std::string> components;
-    size_t sepCount = 0;
-    for (size_t p = 0; (p = typeName.find(" | ", p)) != std::string::npos; p += 3)
-        ++sepCount;
-    components.reserve(sepCount + 1);
-    size_t start = 0;
-    while (start < typeName.size()) {
-        size_t pos = typeName.find(" | ", start);
-        if (pos == std::string::npos) {
-            std::string comp = typeName.substr(start);
-            size_t s = comp.find_first_not_of(' ');
-            size_t e = comp.find_last_not_of(' ');
-            if (s != std::string::npos)
-                components.push_back(comp.substr(s, e - s + 1));
-            break;
-        }
-        std::string comp = typeName.substr(start, pos - start);
-        size_t s = comp.find_first_not_of(' ');
-        size_t e = comp.find_last_not_of(' ');
-        if (s != std::string::npos)
-            components.push_back(comp.substr(s, e - s + 1));
-        start = pos + 3;
-    }
-    return components;
+    return ry::util::parseUnionComponents(typeName);
 }
 
+// Local helper retained for flattenUnionWithAliases which assembles an
+// already-parsed component list. ry::util::normalizeUnionType would
+// re-parse the string; this avoids that round-trip.
 static std::string joinSortedUnion(std::vector<std::string> &components) {
     std::sort(components.begin(), components.end());
     std::string result;
@@ -1080,8 +1033,7 @@ static std::string joinSortedUnion(std::vector<std::string> &components) {
 }
 
 std::string CodeGen::normalizeUnionType(const std::string &typeName) {
-    auto components = parseUnionComponents(typeName);
-    return joinSortedUnion(components);
+    return ry::util::normalizeUnionType(typeName);
 }
 
 bool CodeGen::isUnionType(const std::string &typeName) {

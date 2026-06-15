@@ -221,17 +221,11 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
 }
 
 std::string CodeGen::extractMapKeyTypeName(const std::string &mapTypeName) {
-    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
-    auto parts = splitTypeArgs(inner);
-    if (parts.size() != 2) return "";
-    return ry::util::trimTypeNameSpaces(parts[0]);
+    return ry::util::extractMapKeyTypeName(mapTypeName);
 }
 
 std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
-    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
-    auto parts = splitTypeArgs(inner);
-    if (parts.size() != 2) return "";
-    return ry::util::trimTypeNameSpaces(parts[1]);
+    return ry::util::extractMapValueTypeName(mapTypeName);
 }
 
 std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy) {
