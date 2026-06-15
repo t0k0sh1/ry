@@ -107,8 +107,8 @@ cmake --build <build-dir>
 - Feature branches must not contain `main` after lowercasing and removing non-letters.
 - Bring `main` into a feature branch with `git rebase origin/main`, never merge.
 - After rebase, push with `--force-with-lease`; do not fetch again before that push.
-- Feature branch creation, commit, rebase, and push: `/git-push`.
-- PR creation: `/git-create-pr`.
+- Push without PR: `/git-push` (feature branch ensure + commit + rebase + push).
+- PR creation in one pass: `/git-create-pr` (the above branch prep + push, followed by opening a PR).
 - `/git-push`, `/git-create-pr`, and `/git-finalize-pr` run only when the user directly invokes that exact slash command.
 - Never invoke these skills autonomously or from another skill.
 - Never propose these skills, present them as options, include them in a plan, or list them as next steps.
