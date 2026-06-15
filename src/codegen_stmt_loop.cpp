@@ -679,31 +679,30 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             envFields.push_back(alloca->getAllocatedType());
     llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
 
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t envSize = std::max<uint64_t>(1, dl.getTypeAllocSize(envTy));
-    llvm::Value *envPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, envSize)}, "parallel_env");
+    llvm::Value *envPtr = emitRuntimeCallDirect(
+        "malloc", ptrTy_, {i64Ty_},
+        {emitConstInt(i64Ty_, envSize)}, "parallel_env");
 
     if (captures.empty()) {
-        llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "parallel_env_dummy");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
+        llvm::Value *dummyField = emitStructGEP(envTy, envPtr, 0, "parallel_env_dummy");
+        emitStore(emitConstInt(i8Ty_, 0), dummyField);
     } else {
         for (size_t i = 0; i < captures.size(); ++i) {
-            llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, static_cast<unsigned>(i), "parallel_env_field");
+            llvm::Value *fieldPtr = emitStructGEP(envTy, envPtr, static_cast<unsigned>(i), "parallel_env_field");
             llvm::AllocaInst *src = captures[i].second;
-            builder_.CreateStore(
-                builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".par_cap"),
+            emitStore(
+                emitLoad(src->getAllocatedType(), src, (captures[i].first + ".par_cap").c_str()),
                 fieldPtr);
         }
     }
 
     llvm::FunctionType *thunkTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-    llvm::Function *thunk = llvm::Function::Create(
-        thunkTy, llvm::Function::InternalLinkage,
-        "__ry_parallel_for." + std::to_string(lambda_counter_++), *mod_);
+    std::string thunkName = "__ry_parallel_for." + std::to_string(lambda_counter_++);
+    llvm::Function *thunk = emitCreateFunction(
+        thunkTy, llvm::Function::InternalLinkage, thunkName.c_str());
 
     {
         FnScope guard(*this);
@@ -720,25 +719,28 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         llvm::BasicBlock *entryBB = createBBInFn("entry", thunk);
         builder_.SetInsertPoint(entryBB);
 
-        auto argIt = thunk->arg_begin();
-        llvm::Value *envRaw = &*argIt++;
+        llvm::Value *envRaw = emitGetParam(thunk, 0);
         envRaw->setName("env_raw");
-        llvm::Value *chunkBegin = &*argIt++;
+        llvm::Value *chunkBegin = emitGetParam(thunk, 1);
         chunkBegin->setName("chunk_begin");
-        llvm::Value *chunkEnd = &*argIt++;
+        llvm::Value *chunkEnd = emitGetParam(thunk, 2);
         chunkEnd->setName("chunk_end");
-        llvm::Value *stepArg = &*argIt;
+        llvm::Value *stepArg = emitGetParam(thunk, 3);
         stepArg->setName("step");
 
-        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "parallel_env_typed");
+        // Under opaque pointers `bitcast envRaw to ptr` is the identity, so the
+        // IRBuilder folded the original `parallel_env_typed` cast to a no-op
+        // (IR baseline has zero `bitcast` lines). Use envRaw directly as the
+        // env pointer below — same byte-exact IR, one fewer instruction to
+        // synthesize.
 
         if (!captures.empty()) {
             for (size_t i = 0; i < captures.size(); ++i) {
                 const auto &[name, src] = captures[i];
                 llvm::Type *capTy = src->getAllocatedType();
-                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, typedEnv, static_cast<unsigned>(i), name + ".field");
-                llvm::AllocaInst *dst = builder_.CreateAlloca(capTy, nullptr, name);
-                builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
+                llvm::Value *fieldPtr = emitStructGEP(envTy, envRaw, static_cast<unsigned>(i), (name + ".field").c_str());
+                llvm::AllocaInst *dst = llvm::cast<llvm::AllocaInst>(emitAlloca(capTy, name.c_str()));
+                emitStore(emitLoad(capTy, fieldPtr, (name + ".cap").c_str()), dst);
                 scope_stack_.back()[name] = dst;
 
                 propagateMeta(src, dst);
@@ -767,8 +769,8 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 // "unique → mutate in place". The matching release is
                 // emitted by popScope() below while ParallelForScope is
                 // still live, so it uses the atomic path too (#630).
-                auto *dataPtr = builder_.CreateLoad(ptrTy_, dst, name + ".par_retain_load");
-                auto *isNull = builder_.CreateICmpEQ(
+                auto *dataPtr = emitLoad(ptrTy_, dst, (name + ".par_retain_load").c_str());
+                auto *isNull = emitICmpEQ(
                     dataPtr,
                     llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
                     "par_retain_null");
@@ -788,8 +790,8 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             }
         }
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, loopVarName);
-        builder_.CreateStore(chunkBegin, iVar);
+        llvm::AllocaInst *iVar = llvm::cast<llvm::AllocaInst>(emitAlloca(i64Ty_, loopVarName.c_str()));
+        emitStore(chunkBegin, iVar);
 
         llvm::BasicBlock *condBB = createBBInFn("parallel.cond", thunk);
         llvm::BasicBlock *bodyBB = createBBInFn("parallel.body", thunk);
@@ -799,11 +801,12 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "parallel_i");
-        llvm::Value *stepPos = builder_.CreateICmpSGT(stepArg, llvm::ConstantInt::get(i64Ty_, 0), "parallel_step_pos");
-        llvm::Value *posCond = builder_.CreateICmpSLT(iCur, chunkEnd, "parallel_pos_cond");
-        llvm::Value *negCond = builder_.CreateICmpSGT(iCur, chunkEnd, "parallel_neg_cond");
-        llvm::Value *loopCond = builder_.CreateSelect(stepPos, posCond, negCond, "parallel_cond");
+        llvm::Value *iCur = emitLoad(i64Ty_, iVar, "parallel_i");
+        llvm::Value *zero = emitConstInt(i64Ty_, 0);
+        llvm::Value *stepPos = emitICmpSGT(stepArg, zero, "parallel_step_pos");
+        llvm::Value *posCond = emitICmpSLT(iCur, chunkEnd, "parallel_pos_cond");
+        llvm::Value *negCond = emitICmpSGT(iCur, chunkEnd, "parallel_neg_cond");
+        llvm::Value *loopCond = emitSelect(stepPos, posCond, negCond, "parallel_cond");
         emitBranchCond(loopCond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
@@ -816,9 +819,9 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             emitBranchUncond(stepBB);
 
         builder_.SetInsertPoint(stepBB);
-        llvm::Value *iNext = builder_.CreateAdd(
-            builder_.CreateLoad(i64Ty_, iVar, "parallel_i_step"), stepArg, "parallel_i_next");
-        builder_.CreateStore(iNext, iVar);
+        llvm::Value *iNext = emitAdd(
+            emitLoad(i64Ty_, iVar, "parallel_i_step"), stepArg, "parallel_i_next");
+        emitStore(iNext, iVar);
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
@@ -827,13 +830,16 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         // worker entry. Must happen while ParallelForScope is still live
         // so the release uses the atomic path (#630).
         popScope();
-        builder_.CreateRetVoid();
+        emitRet(nullptr);
     }
 
-    llvm::FunctionCallee parallelFn = getRuntimeFn(
+    // `bitcast thunk to ptr` is the identity under opaque pointers (the IR
+    // baseline carries no such bitcast on this site either); pass the Function*
+    // directly as `ptr`.
+    emitRuntimeCallDirect(
         "__ry_parallel_for_i64", llvm::Type::getVoidTy(*ctx_),
-        {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_});
-    builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
+        {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_},
+        {begin, end, step, envPtr, thunk}, "");
 }
 
 void CodeGen::emitStmt(std::unique_ptr<UsingStmt> &s) {
