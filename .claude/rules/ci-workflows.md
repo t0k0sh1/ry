@@ -29,7 +29,14 @@ ENV.
 intermittently across all CI jobs. Pre-baking the toolchain into
 GHCR-hosted images isolates CI from upstream Ubuntu/Debian repository
 availability. Image rebuild is on demand via `build-ci-image.yml`
-(`workflow_dispatch` + `push` on Dockerfile changes).
+(`workflow_dispatch` + `push` on Dockerfile changes). The policy is
+distro-agnostic and explicitly covers Debian (the base of both
+`ry-ci` and `ry-ci-glibc-old`), not only Ubuntu. A partial unban was
+re-evaluated in #1506 and rejected — see
+`.claude/skills/ci-image-workflow/SKILL.md` "Pitfalls" → "No apt
+anywhere" for the four-point rationale (bookworm GPG signature
+errors, cppcheck 2.16→2.17.1 lint drift, snapshot.debian.org
+retention not guaranteed, delta only ~18 Dockerfile lines).
 
 **How to apply**:
 - Linux CI / CodeQL / release jobs: set
