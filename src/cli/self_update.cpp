@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <algorithm>
 #include <vector>
@@ -162,10 +163,6 @@ std::string extract_json_string(const std::string &json, const std::string &key)
 
     if (pos >= json.size()) return "";
 
-    if (json[pos] == 't') return "true";
-    if (json[pos] == 'f') return "false";
-    if (json[pos] == 'n') return "null";
-
     if (json[pos] != '"') return "";
     pos++;
 
@@ -189,10 +186,10 @@ std::string build_download_url(const std::string &tag, const PlatformInfo &platf
     return build_release_asset_url(tag, "ry-" + tag + "-" + platform.os + "-" + platform.arch + ".tar.gz");
 }
 
-UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &platform) {
+UpdateTarget resolve_update_target(const std::optional<std::string> &tag, const PlatformInfo &platform) {
     UpdateTarget target;
 
-    if (mode == "stable") {
+    if (!tag) {
         std::string api_url = "https://api.github.com/repos/" + get_repo() + "/releases/latest";
         // Check HTTP status first to distinguish 404 from other errors
         std::string http_status;
@@ -218,27 +215,19 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
         target.download_url = build_download_url(target.tag, platform);
     } else {
-        // Explicit version tag
-        std::string tag = mode;
-        if (!tag.empty() && tag[0] != 'v') {
-            tag = "v" + tag;
-        }
-
-        if (!is_valid_tag(tag)) {
-            std::cerr << "Error: Invalid version format: " << tag << "\n";
-            return target;
-        }
-
-        std::string url = build_download_url(tag, platform);
+        // Caller guarantees the tag is already validated (is_valid_tag) and
+        // normalized with the leading "v" prefix.
+        const std::string &requested = *tag;
+        std::string url = build_download_url(requested, platform);
         std::string status;
         run_command({CURL_PATH, "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
         status.erase(std::remove_if(status.begin(), status.end(), ::isspace), status.end());
 
         if (status.empty() || (status != "200" && status != "302")) {
-            std::cerr << "Error: Version " << tag << " not found.\n";
+            std::cerr << "Error: Version " << requested << " not found.\n";
             return target;
         }
-        target.tag = tag;
+        target.tag = requested;
         target.download_url = url;
     }
 
@@ -734,7 +723,7 @@ int cmd_self_update(int argc, char *argv[]) {
 
     std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
-    std::string mode = "stable";
+    std::optional<std::string> requested_tag;
     if (argc >= 1) {
         std::string arg = argv[0];
         if (arg == "--help" || arg == "-h") {
@@ -755,12 +744,12 @@ int cmd_self_update(int argc, char *argv[]) {
                 std::cerr << "Error: Invalid version format: " << arg << "\n";
                 return 1;
             }
-            mode = arg;
+            requested_tag = (arg.empty() || arg[0] == 'v') ? arg : "v" + arg;
         }
     }
 
     auto platform = detect_platform();
-    auto target = resolve_update_target(mode, platform);
+    auto target = resolve_update_target(requested_tag, platform);
     if (target.tag.empty()) {
         return 1;
     }

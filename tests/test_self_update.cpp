@@ -28,7 +28,9 @@ TEST(SelfUpdate, ExtractJsonString) {
 
     EXPECT_EQ(extract_json_string(json, "tag_name"), "v0.0.1");
     EXPECT_EQ(extract_json_string(json, "name"), "Release v0.0.1");
-    EXPECT_EQ(extract_json_string(json, "prerelease"), "false");
+    // Non-quoted JSON values (bool / null) are intentionally not extracted —
+    // the only production callers (`tag_name`, `version`) read string values.
+    EXPECT_EQ(extract_json_string(json, "prerelease"), "");
     EXPECT_EQ(extract_json_string(json, "nonexistent"), "");
 }
 
