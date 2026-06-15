@@ -80,8 +80,10 @@ static LegacyRunResult runRyInDir(
     std::string out = readAll(pipeOut[0]);
     std::string err = readAll(pipeErr[0]);
 
-    int status;
-    waitpid(pid, &status, 0);
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        return {out, err, -1};
+    }
     int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     return {out, err, exit_code};
 }
