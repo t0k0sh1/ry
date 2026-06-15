@@ -315,6 +315,11 @@ llvm::Value *CodeGen::emitConstInt(llvm::Type *ty, uint64_t value, bool sign_ext
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+llvm::Value *CodeGen::emitConstNull(llvm::Type *ty) {
+    RyValueId id = ry_emit_const_null(emit_ctx_, ry::llvm_emit::asRyType(ty));
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
 llvm::Value *CodeGen::emitExtractValue(llvm::Value *agg, unsigned idx,
                                        const char *name) {
     RyValueId aggId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(agg));
@@ -366,6 +371,10 @@ llvm::Function *CodeGen::emitCreateFunction(llvm::FunctionType *fn_ty,
 llvm::Value *CodeGen::emitGetParam(llvm::Function *fn, uint32_t idx) {
     RyValueId id = ry_emit_get_param(emit_ctx_, ry::llvm_emit::asRyFunction(fn), idx);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+void CodeGen::emitFunctionSetNounwind(llvm::Function *fn) {
+    ry_emit_function_set_nounwind(emit_ctx_, ry::llvm_emit::asRyFunction(fn));
 }
 
 // Map LLVM AtomicOrdering → boundary RY_ATOMIC_ORDERING_*.
@@ -1493,6 +1502,18 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
 
     for (auto &stmt : prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
+    }
+
+    // pilot G (#2196): visitor thunk codegen is currently unreachable from any
+    // Ry program — the 3 gates (arc_managed_vars_ membership + enum_value_type
+    // metadata + isPotentiallyCyclic) are not all satisfiable today. When this
+    // test-only flag is set, force-emit the thunks for every cyclic type so
+    // tests/test_codegen_gc_visit.cpp can assert byte-exact IR (the AC #2026
+    // coverage gate).
+    if (force_emit_cyclic_visitors_for_test_) {
+        for (const auto &t : potentially_cyclic_types_) {
+            (void)getOrCreateVisitFunction(t);
+        }
     }
 
     if (!builder_.GetInsertBlock()->getTerminator()) {

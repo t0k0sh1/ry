@@ -178,35 +178,38 @@ llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
 
 // Emit IR to visit a single potentially-cyclic field during GC traversal.
 // Handles ARC pointer fields (null check + visitor call) and embedded record
-// fields (recursive visit function call).
+// fields (recursive visit function call). Migrated for pilot G (#2196) — all
+// IR emission goes through crates/emit primitives.
 void CodeGen::emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
                                 const std::string &fieldTypeName,
                                 llvm::Value *visitorFn,
                                 llvm::FunctionType *visitorCallTy,
                                 llvm::FunctionType *visitFnTy) {
     if (fieldTy == ptrTy_) {
-        auto *fieldVal = builder_.CreateLoad(ptrTy_, fieldPtr, "gc.visit.val");
-        auto *isNull = builder_.CreateICmpEQ(
-            fieldVal,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
-            "gc.visit.null");
+        auto *fieldVal = emitLoad(ptrTy_, fieldPtr, "gc.visit.val");
+        auto *isNull = emitICmpEQ(fieldVal, emitConstNull(ptrTy_), "gc.visit.null");
         auto *visitBB = createBB("gc.visit.ptr");
         auto *skipBB = createBB("gc.skip.ptr");
         emitBranchCond(isNull, skipBB, visitBB);
 
         builder_.SetInsertPoint(visitBB);
-        auto *hdr = emitArcGetHeaderFromData(fieldVal);
-        builder_.CreateCall(visitorCallTy, visitorFn, {hdr});
+        // Inline emitArcGetHeaderFromData's GEP via primitives: data − ARC_HEADER_SIZE.
+        auto *negOffset = emitConstInt(
+            i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(ARC_HEADER_SIZE)));
+        auto *hdr = emitGEP(i8Ty_, fieldVal, negOffset, "arc_hdr_from_data");
+        emitCallIndirect(visitorCallTy, visitorFn, {hdr}, "");
         emitBranchUncond(skipBB);
 
         builder_.SetInsertPoint(skipBB);
     } else if (llvm::isa<llvm::StructType>(fieldTy)) {
         if (auto *nestedVisitFn = getOrCreateVisitFunction(fieldTypeName))
-            builder_.CreateCall(visitFnTy, nestedVisitFn, {fieldPtr, visitorFn});
+            emitCallIndirect(visitFnTy, nestedVisitFn, {fieldPtr, visitorFn}, "");
     }
 }
 
 // Visit function for record (struct) types: iterate fixed-layout fields.
+// Migrated for pilot G (#2196) — function creation, parameter access, struct
+// field GEP, and return all route through crates/emit primitives.
 llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
                                                     const RecordInfo &info) {
     gc_visit_functions_[typeName] = nullptr;
@@ -216,16 +219,15 @@ llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
 
     auto *visitFnTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    auto *visitFn = llvm::Function::Create(
-        visitFnTy, llvm::Function::InternalLinkage,
-        "__ry_gc_visit_" + typeName, *mod_);
-    visitFn->setDoesNotThrow();
+    auto *visitFn = emitCreateFunction(visitFnTy, llvm::Function::InternalLinkage,
+                                        ("__ry_gc_visit_" + typeName).c_str());
+    emitFunctionSetNounwind(visitFn);
 
     auto *entryBB = createBBInFn("entry", visitFn);
     builder_.SetInsertPoint(entryBB);
 
-    llvm::Value *dataPtr = visitFn->getArg(0);
-    llvm::Value *visitorFnArg = visitFn->getArg(1);
+    llvm::Value *dataPtr = emitGetParam(visitFn, 0);
+    llvm::Value *visitorFnArg = emitGetParam(visitFn, 1);
 
     auto *visitorCallTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -237,13 +239,13 @@ llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
         if (!isPotentiallyCyclic(fieldTypeName))
             continue;
 
-        auto *fieldPtr = builder_.CreateStructGEP(info.llvmType, dataPtr, i,
-                                                   "gc.record.field." + std::to_string(i));
+        auto *fieldPtr = emitStructGEP(info.llvmType, dataPtr, i,
+                                        ("gc.record.field." + std::to_string(i)).c_str());
         emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
                          visitorFnArg, visitorCallTy, visitFnTy);
     }
 
-    builder_.CreateRetVoid();
+    emitRet(nullptr);
 
     if (savedBB)
         builder_.SetInsertPoint(savedBB, savedPt);
@@ -253,6 +255,10 @@ llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
 }
 
 // Visit function for ADT enum types: switch on tag, visit variant fields.
+// Migrated for pilot G (#2196) — function creation, parameter access, struct
+// GEP, load, switch + addCase, byte-offset GEP, and return all route through
+// crates/emit primitives. Variant payload alignment (DataLayout) stays C++
+// side, mirroring codegen_call_dispatch.
 llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
                                                   const EnumInfo &info) {
     // Insert a placeholder to break mutual recursion.
@@ -263,28 +269,27 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
 
     auto *visitFnTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    auto *visitFn = llvm::Function::Create(
-        visitFnTy, llvm::Function::InternalLinkage,
-        "__ry_gc_visit_" + typeName, *mod_);
-    visitFn->setDoesNotThrow();
+    auto *visitFn = emitCreateFunction(visitFnTy, llvm::Function::InternalLinkage,
+                                        ("__ry_gc_visit_" + typeName).c_str());
+    emitFunctionSetNounwind(visitFn);
 
     auto *entryBB = createBBInFn("entry", visitFn);
     builder_.SetInsertPoint(entryBB);
 
-    llvm::Value *dataPtr = visitFn->getArg(0);
-    llvm::Value *visitorFn = visitFn->getArg(1);
+    llvm::Value *dataPtr = emitGetParam(visitFn, 0);
+    llvm::Value *visitorFn = emitGetParam(visitFn, 1);
 
     // Cast data to the ADT struct type: { i64 tag, [N x i8] payload }
     // Load the tag.
-    auto *tagPtr = builder_.CreateStructGEP(info.adtType, dataPtr, 0, "gc_tag_ptr");
-    auto *tag = builder_.CreateLoad(i64Ty_, tagPtr, "gc_tag");
+    auto *tagPtr = emitStructGEP(info.adtType, dataPtr, 0, "gc_tag_ptr");
+    auto *tag = emitLoad(i64Ty_, tagPtr, "gc_tag");
 
     // Payload starts after the tag.
-    auto *payloadPtr = builder_.CreateStructGEP(info.adtType, dataPtr, 1, "gc_payload");
+    auto *payloadPtr = emitStructGEP(info.adtType, dataPtr, 1, "gc_payload");
 
     // Create switch on tag to visit the right variant's fields.
     auto *doneBB = createBBInFn("gc.visit.done", visitFn);
-    auto *sw = builder_.CreateSwitch(tag, doneBB, static_cast<unsigned>(info.variantOrder.size()));
+    auto *sw = createSwitch(tag, doneBB, static_cast<unsigned>(info.variantOrder.size()));
 
     // Visitor call function type: void(ptr)
     auto *visitorCallTy = llvm::FunctionType::get(
@@ -309,12 +314,18 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
         }
         if (!hasArcField) {
             // Wire this tag to doneBB (no ARC fields to visit).
-            sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal))), doneBB);
+            switchAddCase(sw,
+                llvm::cast<llvm::ConstantInt>(
+                    emitConstInt(i64Ty_, static_cast<uint64_t>(tagVal))),
+                doneBB);
             continue;
         }
 
         auto *caseBB = createBBInFn(("gc.visit." + variantName).c_str(), visitFn);
-        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal))), caseBB);
+        switchAddCase(sw,
+            llvm::cast<llvm::ConstantInt>(
+                emitConstInt(i64Ty_, static_cast<uint64_t>(tagVal))),
+            caseBB);
         builder_.SetInsertPoint(caseBB);
 
         // Walk through fields with proper alignment (same layout as codegen_call_dispatch).
@@ -328,10 +339,9 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
             offset = (offset + align - 1) / align * align;
 
             if (isPotentiallyCyclic(fieldTypeName)) {
-                auto *fieldPtr = builder_.CreateGEP(
-                    i8Ty_, payloadPtr,
-                    llvm::ConstantInt::get(i64Ty_, offset),
-                    "gc.field." + std::to_string(fi));
+                auto *fieldPtr = emitGEP(i8Ty_, payloadPtr,
+                                          emitConstInt(i64Ty_, offset),
+                                          ("gc.field." + std::to_string(fi)).c_str());
                 emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
                                  visitorFn, visitorCallTy, visitFnTy);
             }
@@ -343,7 +353,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
     }
 
     builder_.SetInsertPoint(doneBB);
-    builder_.CreateRetVoid();
+    emitRet(nullptr);
 
     // Restore insertion point.
     if (savedBB)
