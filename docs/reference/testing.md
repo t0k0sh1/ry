@@ -397,7 +397,7 @@ fn reset():
 
 ### Interaction with `@timeout`
 
-When `@timeout` fires (the SIGALRM path), the test is aborted via `siglongjmp` past the inlined `@afterEach` body — so `@afterEach` runs only on normal completion. See the [Directives reference](directives.md#timeout) for the underlying mechanism.
+`@afterEach` runs even when `@timeout(N)` fires for the body (#1781). The codegen wraps `@afterEach` in its own `sigsetjmp` landing pad with a fresh `N`-ms `setitimer` budget, so the body's `siglongjmp` lands in the `@afterEach` phase and cleanup proceeds. If `@afterEach` itself does not complete within `N` ms, a secondary failure line `@afterEach (timeout after Nms)` is printed and the test runner moves on — a hung cleanup does NOT block subsequent tests. Worst-case wall-clock per timed test is therefore `2N` ms. Because the body / `@beforeEach` may have only partially run when `@afterEach` is invoked in the timeout path, `@afterEach` must tolerate partial setup (e.g. nil-guard each handle before closing it). See the [Directives reference](directives.md#timeout) for the underlying mechanism.
 
 ---
 
@@ -1059,13 +1059,21 @@ expect(1.00001).toBeCloseTo(1.00002, 4)       # custom decimals
 
 The matcher table near the top of this file lists the full set of float-aware matchers (`toBeCloseTo`, `toBeNaN`, `toBeInfinity`, `toBeFinite`).
 
-### `@afterEach` did not run after a `@timeout` test fired
+### `@afterEach` saw partially set-up state after a `@timeout` test fired
 
-**Symptom:** A test with `@timeout(N)` triggered the timeout, but the `@afterEach` for that test did not run.
+**Symptom:** A test with `@timeout(N)` triggered the timeout, and `@afterEach` ran but observed state that did not match what a normal-path `@beforeEach` would have produced (e.g. an uninitialized handle, a partial fixture).
 
-**Cause:** When `@timeout` fires (the SIGALRM path), the test is aborted via `siglongjmp` past the inlined `@afterEach` body. `@afterEach` runs only on normal completion.
+**Cause:** As of #1781, `@afterEach` runs even when the body or `@beforeEach` mid-times-out, so the cleanup hook may see a snapshot where only some of the setup completed. The phase that fired (body or `@beforeEach`) is not distinguished at runtime — `@afterEach` is invoked unconditionally.
 
-**Fix:** Treat `@timeout` paths as having no teardown opportunity for that single test. The next test's `@beforeEach` still runs as usual. See [Interaction with @timeout](#interaction-with-timeout) and the [Directives reference](directives.md#timeout).
+**Fix:** Make `@afterEach` defensive against partial setup — guard with nil / sentinel checks before touching each fixture (e.g. `if handle != nil: close(handle)`). If a setup step's success is meaningful to the cleanup, assign a flag in `@beforeEach` and gate the matching cleanup on it. See [Directives reference](directives.md#afterEach).
+
+### `@afterEach` itself timed out (`@afterEach (timeout after Nms)` printed)
+
+**Symptom:** stdout shows a secondary failure line `@afterEach (timeout after Nms)` below a test's normal outcome.
+
+**Cause:** `@afterEach` blew through its own `N`-ms `setitimer` budget (the AE phase is independent of the body phase since #1781). This protects subsequent tests from being blocked by a hung cleanup, at the cost of a secondary failure line for the offending `@it`.
+
+**Fix:** Trim long-running operations out of `@afterEach`, or raise the test's `@timeout(N)` so both body and cleanup fit within the budget. Worst-case wall-clock per timed test is `2N` (body + AE), so set `N` accordingly.
 
 ### `@each` or `@property` combined with `@timeout` is rejected at compile time
 
@@ -1309,7 +1317,7 @@ If you do need shared mock state, reset it explicitly in `@afterEach` to avoid a
 ## Limitations
 
 - Nested-describe inheritance of lifecycle hooks is not supported (each `@describe` owns its own hooks) — see [Nested @describe lifecycle](#nested-describe-lifecycle) under Feature interactions
-- A test fired by `@timeout` (i.e. the test body did not finish within the budget) skips its `@afterEach` (this applies symmetrically to file-level `@afterEach` declared outside any `@describe`) — see [Directives reference](directives.md#timeout) for details
+- A test with `@timeout(N)` may consume up to `2N` ms of wall-clock — the body phase and the `@afterEach` phase each get their own fresh `N`-ms `setitimer` budget (#1781). A hung `@afterEach` surfaces as a secondary failure line and does NOT block subsequent tests; see [Directives reference](directives.md#timeout) for the full composition rules.
 
 ---
 

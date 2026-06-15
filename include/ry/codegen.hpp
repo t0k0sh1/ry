@@ -1602,15 +1602,19 @@ public:
     void emitItDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItDirective(std::unique_ptr<FnStmt> &s);
     void emitPropertyItDirective(std::unique_ptr<FnStmt> &s);
-    // Per-test @timeout(ms) directive (#1688). Emits a sigsetjmp + cond-br
-    // around the user fn call: normal exit -> __ry_test_it_end_with_timeout;
-    // SIGALRM -> siglongjmp continuation -> __ry_test_it_timeout. Caller is
-    // responsible for arg validation (ms positive integer literal, no
-    // @each/@property combo) before calling this helper.
+    // Per-test @timeout(ms) directive (#1688, #1781). Emits two sigsetjmp
+    // landing pads — body phase and @afterEach phase — around the inlined
+    // hook cascade and the user fn call. Each phase has its own SIGALRM
+    // budget of `timeoutMs` and records a flag on timeout that flows into
+    // __ry_test_it_end_with_timeout(body_to, ae_to) for the per-test
+    // outcome line. Caller is responsible for arg validation (ms positive
+    // integer literal, no @each/@property combo) before calling this helper.
     // The four hook pointers form the cascade layers around the user fn:
-    // file BE → describe BE → user fn → describe AE → file AE on the
-    // normal path. The timeoutBB path intentionally skips ALL four (the
-    // existing SIGALRM siglongjmp limitation; see #1686 / #1780).
+    // file BE → describe BE → user fn → describe AE → file AE. The body
+    // pad covers file BE / describe BE / user fn; the @afterEach pad
+    // covers describe AE / file AE — so @afterEach runs even after a
+    // body timeout (#1781) and a hung @afterEach is surfaced as a
+    // secondary failure rather than blocking subsequent tests.
     void emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                            const OverloadEntry &entry,
                            std::vector<StmtNode> *fileBeforeEachBody,

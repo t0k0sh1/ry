@@ -40,13 +40,14 @@ extern const char *__ry_test_current_it_name();
 extern "C" int64_t  __ry_runtime_internal_arc_live_count();
 
 static void test_timeout_handler(int) {
-    // Per-test @timeout(ms) path (#1688): the test_runtime arms the
-    // jmpbuf and sets g_per_test_timeout_active=1 before starting the
+    // Per-test @timeout(ms) path (#1688, #1781): test_runtime arms the
+    // jmpbuf and sets g_per_test_timeout_active=1 before each phase's
     // setitimer(ITIMER_REAL). On SIGALRM we clear the flag (async-signal
     // safe write to volatile sig_atomic_t) and siglongjmp back to the
-    // codegen-emitted continuation, which calls __ry_test_it_timeout()
-    // and proceeds to the next @it. siglongjmp is async-signal-safe per
-    // POSIX.1-2017.
+    // codegen-emitted continuation. The continuation flags either the
+    // body or @afterEach phase as timed-out and falls through to
+    // __ry_test_it_end_with_timeout(body_to, ae_to) for the per-test
+    // outcome line. siglongjmp is async-signal-safe per POSIX.1-2017.
     if (ry::g_per_test_timeout_active) {
         ry::g_per_test_timeout_active = 0;
         siglongjmp(ry::g_per_test_timeout_jmpbuf, 1);
