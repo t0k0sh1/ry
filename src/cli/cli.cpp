@@ -131,7 +131,7 @@ void printMainHelp() {
     llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
     llvm::outs() << "  ry init                              Initialize a project\n";
     llvm::outs() << "  ry new <project-name>                Create a new project\n";
-    llvm::outs() << "  ry run [<script-name>]               Run a project script\n";
+    llvm::outs() << "  ry run [<name> | <file.ry>] [args...] Run a project script or Ry file\n";
     llvm::outs() << "  ry fmt [options] [<file> | <dir>]    Format source files\n";
     llvm::outs() << "  ry self-update [options]              Update ry itself\n";
     llvm::outs() << "\n";
@@ -180,9 +180,14 @@ void printFmtHelp() {
 }
 
 void printRunHelp() {
-    llvm::outs() << "Usage: ry run [<script-name>]\n\n";
-    llvm::outs() << "Run a script defined in package.toml [scripts] section.\n\n";
-    llvm::outs() << "If no script name is given, lists all available scripts.\n";
+    llvm::outs() << "Usage: ry run [<name> | <file.ry> | -- [args...]] [args...]\n\n";
+    llvm::outs() << "Run a project script defined in package.toml [scripts], or a Ry source file.\n\n";
+    llvm::outs() << "  ry run                          List all available scripts\n";
+    llvm::outs() << "  ry run <name>                   Run [scripts].<name>, or fall back to <name>.ry\n";
+    llvm::outs() << "                                  resolved via [paths] (scripts take precedence)\n";
+    llvm::outs() << "  ry run <file.ry> [args...]      Run a Ry source file (bare name, relative,\n";
+    llvm::outs() << "                                  or absolute path) with positional arguments\n";
+    llvm::outs() << "  ry run -- [args...]             Run the project entry point with arguments\n";
 }
 
 void printSelfUpdateHelp() {

@@ -550,7 +550,7 @@ build = "make"
 clean = "rm -rf build"
 )");
     // Just verify it returns 0 (success)
-    EXPECT_EQ(cmd_run(0, nullptr), 0);
+    EXPECT_EQ(cmd_run(0, nullptr, "ry-test", false), 0);
 }
 
 TEST_F(CmdRunTest, ListsEmptyScripts) {
@@ -563,7 +563,7 @@ entry = "src/main.ry"
 [paths]
 src = "src"
 )");
-    EXPECT_EQ(cmd_run(0, nullptr), 0);
+    EXPECT_EQ(cmd_run(0, nullptr, "ry-test", false), 0);
 }
 
 TEST_F(CmdRunTest, ExecutesCommand) {
@@ -581,7 +581,7 @@ ok = "true"
 )");
     char arg[] = "ok";
     char *argv[] = {arg};
-    EXPECT_EQ(cmd_run(1, argv), 0);
+    EXPECT_EQ(cmd_run(1, argv, "ry-test", false), 0);
 }
 
 TEST_F(CmdRunTest, PropagatesExitCode) {
@@ -599,7 +599,7 @@ fail = "false"
 )");
     char arg[] = "fail";
     char *argv[] = {arg};
-    EXPECT_EQ(cmd_run(1, argv), 1);
+    EXPECT_EQ(cmd_run(1, argv, "ry-test", false), 1);
 }
 
 TEST_F(CmdRunTest, UnknownScript) {
@@ -618,7 +618,7 @@ build = "make"
     char arg[] = "nonexistent";
     char *argv[] = {arg};
     testing::internal::CaptureStderr();
-    EXPECT_EQ(cmd_run(1, argv), 1);
+    EXPECT_EQ(cmd_run(1, argv, "ry-test", false), 1);
     std::string err = testing::internal::GetCapturedStderr();
     EXPECT_NE(err.find("nonexistent"), std::string::npos);
     EXPECT_NE(err.find("build"), std::string::npos);
@@ -629,5 +629,5 @@ TEST_F(CmdRunTest, NoPackageToml) {
     fs::remove(tmpdir / "package.toml");
     char arg[] = "build";
     char *argv[] = {arg};
-    EXPECT_EQ(cmd_run(1, argv), 1);
+    EXPECT_EQ(cmd_run(1, argv, "ry-test", false), 1);
 }

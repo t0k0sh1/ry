@@ -8,7 +8,7 @@ echo '<code>' | ry -c               # Run code from stdin
 ry test [options] [<file> | <dir>]  # Run tests
 ry init                             # Initialize a project
 ry new <project-name>               # Create a new project
-ry run [<script-name>]              # Run a project script
+ry run [<name>|<file.ry>|-- [args]] # Run a project script or Ry source file
 ry fmt [options] [<file> | <dir>]   # Format source files
 ry self-update [options]            # Update ry itself
 ```
@@ -107,27 +107,43 @@ my-project/
 
 ---
 
-## `ry run` - Run Project Scripts
+## `ry run` - Run Project Scripts or Ry Source Files
 
-Executes a script defined in the `[scripts]` section of `package.toml`.
+`ry run` is a dual-purpose subcommand: it runs scripts defined in the `[scripts]` section of `package.toml`, **and** it runs Ry source files directly.
 
 ```bash
-ry run              # List all available scripts
-ry run build        # Run the "build" script
-ry run test         # Run the "test" script
+ry run                      # List all available scripts
+ry run build                # Run the "build" script from [scripts]
+ry run main.ry              # Run main.ry (resolved via [paths])
+ry run src/main.ry          # Run a Ry file given by relative or absolute path
+ry run main                 # Try [scripts].main, fall back to main.ry (via [paths])
+ry run -- arg1 arg2         # Run the project entry point with arguments
+ry run main.ry foo bar      # Run main.ry with positional arguments foo, bar
 ```
+
+### Argument resolution
+
+For `ry run <name> [args...]`, the first positional argument is resolved in this order:
+
+1. **`<name>` is `--`** — runs the project entry point (`package.toml` `entry`) and passes the remaining arguments to `args()`.
+2. **`<name>` ends with `.ry`** — treated as a Ry file. If `<name>` contains a directory component or already exists, runs it directly; otherwise resolves it as a bare filename through `[paths]` (same algorithm as `ry <file.ry>` — see "Bare filename" above).
+3. **`<name>` matches a `[scripts]` key** — runs the script via the system shell (`std::system()`). The exit code is propagated.
+4. **`<name>` has no `.ry` extension and no script match** — falls back to resolving `<name>.ry` through `[paths]`.
+5. **Nothing matches** — exits with status 1, prints `Error: no such file: <name>.ry` with the searched paths, and lists the available scripts (if any) to help disambiguation.
+
+Scripts always take precedence over bare-name file resolution when both exist for the same name. To bypass scripts and run a file unambiguously, append `.ry` (e.g. `ry run build.ry` runs `build.ry` even when `[scripts].build` is defined).
 
 ### Behavior
 
-1. Searches for `package.toml` from the current directory upward
-2. Without arguments, lists all available scripts and their commands
-3. With a script name, executes the corresponding shell command via the system shell (`std::system()`, OS-dependent)
-4. The exit code of the executed command is propagated
-5. If the script name is not found, shows an error with a list of available scripts
+1. Searches for `package.toml` from the current directory upward. Fails with status 1 if none is found.
+2. Without arguments, lists all available scripts and their commands.
+3. With a script-name match, runs the shell command and propagates the exit code.
+4. With a file match, JIT-compiles and runs the Ry source. Positional arguments after the file (or after `--`) are available to the script via `args()`.
 
 ### Notes
 
-- Does not require LLVM initialization (fast startup)
+- Listing scripts (`ry run` with no arguments) and running a script do not require LLVM initialization (fast startup).
+- Running a Ry source file initializes LLVM lazily on demand.
 - Commands are executed in the current working directory
 - Shell features (pipes, redirects, etc.) are supported since commands run through the shell
 
