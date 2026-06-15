@@ -1607,10 +1607,16 @@ public:
     // SIGALRM -> siglongjmp continuation -> __ry_test_it_timeout. Caller is
     // responsible for arg validation (ms positive integer literal, no
     // @each/@property combo) before calling this helper.
+    // The four hook pointers form the cascade layers around the user fn:
+    // file BE → describe BE → user fn → describe AE → file AE on the
+    // normal path. The timeoutBB path intentionally skips ALL four (the
+    // existing SIGALRM siglongjmp limitation; see #1686 / #1780).
     void emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                            const OverloadEntry &entry,
-                           std::vector<StmtNode> *beforeEachBody,
-                           std::vector<StmtNode> *afterEachBody);
+                           std::vector<StmtNode> *fileBeforeEachBody,
+                           std::vector<StmtNode> *describeBeforeEachBody,
+                           std::vector<StmtNode> *describeAfterEachBody,
+                           std::vector<StmtNode> *fileAfterEachBody);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
 
     // Lifecycle hooks (#1686): @beforeEach / @afterEach / @beforeAll /
@@ -1630,6 +1636,15 @@ public:
         std::string afterEachName;
     };
     std::vector<DescribeHookContext> describe_hook_stack_;
+    // File-top-level lifecycle hooks (#1780). Bodies for @beforeEach /
+    // @afterEach declared outside any @describe live here for the lifetime
+    // of one CodeGen pass; emitItDirective inlines them around every @it
+    // call as the outer cascade layer (file BE → describe BE → @it →
+    // describe AE → file AE). @beforeAll / @afterAll are consumed by
+    // splicing into prog during CodeGen::compile()'s pre-scan and need no
+    // long-lived storage.
+    std::vector<StmtNode> file_before_each_body_;
+    std::vector<StmtNode> file_after_each_body_;
     void emitBeforeEachDirective(std::unique_ptr<FnStmt> &s);
     void emitAfterEachDirective(std::unique_ptr<FnStmt> &s);
     void emitBeforeAllDirective(std::unique_ptr<FnStmt> &s);

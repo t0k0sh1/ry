@@ -1,0 +1,79 @@
+from testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
+
+# #1780 — file-top-level lifecycle hooks. @beforeAll/@beforeEach/@afterEach/
+# @afterAll declared outside any @describe wrap every @it in the file. With
+# describe-scope hooks present, the cascade order per @it inside @describe
+# is: file @beforeEach → describe @beforeEach → @it → describe @afterEach
+# → file @afterEach. file @beforeAll runs once before the first test
+# anchor (@it or @describe), file @afterAll once after the last.
+
+log = ""
+
+@beforeAll
+fn fileSetupAll():
+    log = log + "FBA;"
+
+@beforeEach
+fn fileSetupEach():
+    log = log + "FBE;"
+
+@afterEach
+fn fileTeardownEach():
+    log = log + "FAE;"
+
+@afterAll
+fn fileTeardownAll():
+    log = log + "FAA;"
+
+@it("first top-level @it sees file @beforeAll + file @beforeEach")
+fn firstTopLevelIt():
+    expect(log).toEq("FBA;FBE;")
+
+@it("second top-level @it sees file @afterEach + file @beforeEach accumulated")
+fn secondTopLevelIt():
+    # After first: "FBA;FBE;FAE;". Then file @beforeEach: "FBA;FBE;FAE;FBE;".
+    expect(log).toEq("FBA;FBE;FAE;FBE;")
+
+@describe("describe with own hooks cascades after file hooks")
+fn describeWithOwnHooks():
+    @beforeEach
+    fn descBefore():
+        log = log + "DBE;"
+
+    @afterEach
+    fn descAfter():
+        log = log + "DAE;"
+
+    @it("file BE fires before describe BE; describe AE before file AE")
+    fn cascaded():
+        # Cascade in order through this @it: file FBE → describe DBE.
+        # Prior state up to here from the two top-level its: FBA;FBE;FAE;FBE;FAE;
+        # then file FBE; then describe DBE; so total at @it body time:
+        expect(log).toEq("FBA;FBE;FAE;FBE;FAE;FBE;DBE;")
+
+
+@describe("file @beforeAll fires once across the whole file")
+fn secondDescribe():
+    @beforeAll
+    fn descSetupAll():
+        log = log + "DBA;"
+
+    @it("nested describe sees file @beforeAll accumulated only once")
+    fn confirms():
+        # Trace from top: FBA splice before firstTopLevelIt.
+        # firstTopLevelIt:       it{FBE; body; FAE;}  → log="FBA;FBE;FAE;"
+        # secondTopLevelIt:      it{FBE; body; FAE;}  → log="FBA;FBE;FAE;FBE;FAE;"
+        # describeWithOwnHooks/cascaded: it{FBE;DBE; body; DAE;FAE;}
+        #                       → log="FBA;FBE;FAE;FBE;FAE;FBE;DBE;DAE;FAE;"
+        # secondDescribe enters: own DBA spliced before its first @it.
+        # confirms:              it{FBE; body[here]; ...}
+        # At body time: log="FBA;FBE;FAE;FBE;FAE;FBE;DBE;DAE;FAE;DBA;FBE;"
+        # FBA appears exactly once (file @beforeAll runs once per file).
+        expect(log).toEq("FBA;FBE;FAE;FBE;FAE;FBE;DBE;DAE;FAE;DBA;FBE;")
+
+# Full 9-step ordering — including describe @afterAll (step 8) and file
+# @afterAll (step 9) which fire after the last @it body — is verified by
+# the C++ harness test `FileAfterAllBodyActuallyRunsAfterLastIt` /
+# `FullNineStepCascadeOrdering` in tests/test_codegen_directive.cpp via
+# stdout capture. Steps 8/9 cannot be observed from inside any @it body
+# because they execute after every body completes.

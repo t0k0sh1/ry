@@ -664,16 +664,19 @@ fn counterTests():
         expect(counter).toEq(0)
 ```
 
-**Supported target:** functions inside a `@describe` body, with no
-parameters and no declared return type.
+**Supported target:** functions inside a `@describe` body or at file
+top level, with no parameters and no declared return type.
 
 **Constraints:**
 
-- At most one `@beforeEach` per describe
+- At most one `@beforeEach` per describe, and at most one per file at
+  top level
 - Cannot coexist on the same function with `@it`, `@describe`,
   `@timeout`, `@skip`, `@only`, `@todo`, `@each`, `@property`, or any
   other lifecycle hook directive
-- Hooks declared outside a `@describe` (file top-level) are rejected
+- Hooks declared outside a `@describe` (file top level) wrap every
+  test in the file and cascade with describe-level hooks; see
+  [Execution order](testing.md#execution-order)
 - The hook body cannot introduce new named variables (see
   [Lifecycle Hooks](testing.md#lifecycle-hooks) for the re-emission
   constraint)
@@ -712,9 +715,9 @@ fn cleanupTests():
         expect(log).toEq("AE;")
 ```
 
-**Supported target:** functions inside a `@describe` body, with no
-parameters and no declared return type. Same constraints as
-`@beforeEach`.
+**Supported target:** functions inside a `@describe` body or at file
+top level, with no parameters and no declared return type. Same
+constraints as `@beforeEach`.
 
 **Composition with `@timeout`:** when `@timeout` fires for a test,
 the runtime unwinds via `siglongjmp` and the test's `@afterEach`
@@ -760,9 +763,9 @@ fn sharedResourceTests():
 even when declared **after** the `@it` lexically. The describe body
 is scanned for hooks before any tests are emitted.
 
-**Supported target:** functions inside a `@describe` body, with no
-parameters and no declared return type. Same constraints as
-`@beforeEach`.
+**Supported target:** functions inside a `@describe` body or at file
+top level, with no parameters and no declared return type. Same
+constraints as `@beforeEach`.
 
 ### `@afterAll`
 
@@ -796,9 +799,9 @@ fn teardownTests():
         expect(openCount).toEq(1)
 ```
 
-**Supported target:** functions inside a `@describe` body, with no
-parameters and no declared return type. Same constraints as
-`@beforeEach`.
+**Supported target:** functions inside a `@describe` body or at file
+top level, with no parameters and no declared return type. Same
+constraints as `@beforeEach`.
 
 **Note:** `@afterAll` runs after the last `@it` regardless of
 whether individual tests failed. It does **not** run if the entire
