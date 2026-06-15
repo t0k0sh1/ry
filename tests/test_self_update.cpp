@@ -24,10 +24,13 @@ TEST(SelfUpdate, BuildDownloadUrl) {
 }
 
 TEST(SelfUpdate, ExtractJsonString) {
-    std::string json = R"({"tag_name": "v0.0.1", "name": "Release v0.0.1"})";
+    std::string json = R"({"tag_name": "v0.0.1", "name": "Release v0.0.1", "prerelease": false})";
 
     EXPECT_EQ(extract_json_string(json, "tag_name"), "v0.0.1");
     EXPECT_EQ(extract_json_string(json, "name"), "Release v0.0.1");
+    // Non-quoted JSON values (bool / null) are intentionally not extracted —
+    // the only production callers (`tag_name`, `version`) read string values.
+    EXPECT_EQ(extract_json_string(json, "prerelease"), "");
     EXPECT_EQ(extract_json_string(json, "nonexistent"), "");
 }
 
