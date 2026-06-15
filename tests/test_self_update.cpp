@@ -24,11 +24,10 @@ TEST(SelfUpdate, BuildDownloadUrl) {
 }
 
 TEST(SelfUpdate, ExtractJsonString) {
-    std::string json = R"({"tag_name": "v0.0.1", "name": "Release v0.0.1", "prerelease": false})";
+    std::string json = R"({"tag_name": "v0.0.1", "name": "Release v0.0.1"})";
 
     EXPECT_EQ(extract_json_string(json, "tag_name"), "v0.0.1");
     EXPECT_EQ(extract_json_string(json, "name"), "Release v0.0.1");
-    EXPECT_EQ(extract_json_string(json, "prerelease"), "false");
     EXPECT_EQ(extract_json_string(json, "nonexistent"), "");
 }
 

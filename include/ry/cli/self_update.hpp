@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,7 +24,7 @@ std::string get_executable_path();
 int run_command(const std::vector<std::string> &args, std::string *output = nullptr);
 std::string extract_json_string(const std::string &json, const std::string &key);
 std::string build_download_url(const std::string &tag, const PlatformInfo &platform);
-UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &platform);
+UpdateTarget resolve_update_target(const std::optional<std::string> &tag, const PlatformInfo &platform);
 bool download_file(const std::string &url, const std::string &dest_path);
 std::string build_checksums_url(const std::string &tag);
 std::string build_signature_url(const std::string &tag);
