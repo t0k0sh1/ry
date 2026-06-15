@@ -215,6 +215,16 @@ New composite files must express their op via primitive methods (`self.build_loa
 
 **Scope of #2109**: a pure architectural reorganisation. No new emission capability, no IR optimisation, no public C API change. Out of scope: C++ side's residual direct LLVM calls (`codegen_*.cpp`), the per-composite-file migration to primitive method sequences, and the physical crate split (#2023).
 
+### Atomic primitives added (#2190, pilot E (ii))
+
+After pilots A-D each chose (ii) (primitive capability over coarse op), pilot E continues the trajectory: `ry_emit_atomic_rmw` / `ry_emit_atomic_load` / `ry_emit_atomic_cmpxchg` are added to `primitive/ops.rs` to enable weak ARC migration (`emitWeakRetain` / `emitWeakRelease` / `emitWeakUpgrade` / `emitWeakReleaseVar`, `src/codegen_arc.cpp:618 / 640 / 680 / 751`) without introducing coarse `ry_emit_weak_*` composite ops.
+
+The new primitives' signatures take `RyAtomicBinOp` (Add/Sub) and `RyAtomicOrdering` (NotAtomic/Monotonic/Acquire/Release/AcquireRelease/SeqCst) — LLVM-native enums that name no Ry concept. The C++ caller picks the ordering (`SeqCst` for retain/release weak_count, `AcquireRelease/Monotonic` for the upgrade CAS, `Acquire` for the strong_count race-safe read) keeping the Ry semantic decision C++-side, mirroring pilot D's `intrinsic_call` shape (`Intrinsic::ID` selected by C++, declaration acquisition + call + aggregate result hidden in the primitive).
+
+A single composite helper `ry_emit_arc_counter_delta` is added to `composite/arc.rs` (the weak release free path's live-count bump). It owns the `__ry_arc_counter` global selection and the ASLR-baked-address inttoptr — both Ry concepts — so it belongs in composite, not primitive. The existing composite-internal `emit_atomic_i64_load` and `emit_arc_counter_delta` helpers stay `pub(crate)` and continue serving the inline ARC retain/release paths; routing them through the new primitives is a follow-on opportunity, not in scope for #2190.
+
+`#2118` (FP→int) chose (i) but does not establish (i) as a default — that PR followed the `bounds_check` pattern (one-shot helper, no reusable generic instruction). Weak ARC introduces three reusable generic atomic ops, so it follows the (ii)-favouring discipline this section records.
+
 ## When the codegen layers earn their graduation document
 
 The two sub-layers (`codegen-semantic-lowering-graduation.md` and `codegen-llvm-emission-graduation.md`) are written after **all** of the following hold:

@@ -164,6 +164,46 @@ TEST_F(EmitAbiGuardTest, ArcReleaseNullCtxDoesNotCrash) {
     SUCCEED();
 }
 
+// #2190 — atomic primitives + arc_counter_delta NULL guards.
+
+TEST_F(EmitAbiGuardTest, AtomicRmwNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_atomic_rmw(nullptr, RY_ATOMIC_BINOP_ADD,
+                                  /*ptr_id=*/0, /*val_id=*/0,
+                                  RY_ATOMIC_ORDERING_SEQ_CST, nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, AtomicLoadNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_atomic_load(nullptr, /*ty=*/nullptr, /*ptr_id=*/0,
+                                   RY_ATOMIC_ORDERING_ACQUIRE,
+                                   /*alignment=*/0, nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, AtomicLoadNullTypeReturnsZero) {
+    // Same as ry_emit_load: NULL ty → 0 before resolving the pointer.
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(ry_emit_atomic_load(ctx, /*ty=*/nullptr, /*ptr_id=*/0,
+                                   RY_ATOMIC_ORDERING_ACQUIRE,
+                                   /*alignment=*/0, nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, AtomicCmpXchgNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_atomic_cmpxchg(nullptr, /*ptr_id=*/0,
+                                      /*expected_id=*/0, /*desired_id=*/0,
+                                      RY_ATOMIC_ORDERING_ACQUIRE_RELEASE,
+                                      RY_ATOMIC_ORDERING_MONOTONIC, nullptr),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, ArcCounterDeltaNullCtxDoesNotCrash) {
+    ry_emit_arc_counter_delta(nullptr, -1);
+    SUCCEED();
+}
+
 // =============================================================================
 // #2080 — uniform input-validation guards across the remaining entry points
 // (control_flow / collection / bounds / option / lifecycle), mirroring the

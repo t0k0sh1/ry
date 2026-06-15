@@ -4,6 +4,7 @@
 //! the Rust-native `ValueRef` / `BasicBlockRef` / `FunctionRef` / `TypeRef` /
 //! `FuncTypeRef` handle wrappers, the boundary-mirrored enum selectors
 //! (`Atomicity`, `BoundsKind`, `CowKind`, `ListCopyKind`, `IcmpPred`,
+//! `AtomicBinOp`, `AtomicOrdering`,
 //! `AnyWrap/Unwrap/TryUnwrapKind`), the layout constants (`ARC_HEADER_SIZE`,
 //! `STRING_HEADER_SIZE`, `ANY_TAG_*`, `LIST_FIELD_*`, `MAP_FIELD_*`), and the
 //! pure-data `HdrField` / `HeaderKind` / `header_fields` table that drives both
@@ -161,6 +162,33 @@ pub(crate) enum IcmpPred {
     Ule,
     Ugt,
     Uge,
+}
+
+/// Atomic RMW binop for `build_atomic_rmw` (mirrors the boundary
+/// `RY_ATOMIC_BINOP_*` constants in api.h; the abi layer maps the `c_int`
+/// binop to this before calling the engine, which translates it to the
+/// llvm-sys `LLVMAtomicRMWBinOp`). Added for #2190 (weak ARC capability
+/// migration). Designed for future extension; XOR/AND/OR can be added without
+/// reshuffling.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AtomicBinOp {
+    Add,
+    Sub,
+}
+
+/// Atomic memory ordering for `build_atomic_rmw` / `build_atomic_load` /
+/// `build_atomic_cmpxchg` (mirrors the boundary `RY_ATOMIC_ORDERING_*`
+/// constants in api.h; the abi layer maps the `c_int` ordering to this before
+/// calling the engine, which translates it to the llvm-sys
+/// `LLVMAtomicOrdering`). Added for #2190 (weak ARC capability migration).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AtomicOrdering {
+    NotAtomic,
+    Monotonic,
+    Acquire,
+    Release,
+    AcquireRelease,
+    SeqCst,
 }
 
 /// IR-shape selector for `any_wrap` (mirrors the C++ `lowered::AnyWrapKind`; the

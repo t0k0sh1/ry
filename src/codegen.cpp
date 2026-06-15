@@ -361,6 +361,62 @@ llvm::Value *CodeGen::emitGetParam(llvm::Function *fn, uint32_t idx) {
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+// Map LLVM AtomicOrdering → boundary RY_ATOMIC_ORDERING_*.
+static int orderingToBoundary(llvm::AtomicOrdering ord) {
+    switch (ord) {
+    case llvm::AtomicOrdering::NotAtomic:
+        return RY_ATOMIC_ORDERING_NOT_ATOMIC;
+    case llvm::AtomicOrdering::Monotonic:
+        return RY_ATOMIC_ORDERING_MONOTONIC;
+    case llvm::AtomicOrdering::Acquire:
+        return RY_ATOMIC_ORDERING_ACQUIRE;
+    case llvm::AtomicOrdering::Release:
+        return RY_ATOMIC_ORDERING_RELEASE;
+    case llvm::AtomicOrdering::AcquireRelease:
+        return RY_ATOMIC_ORDERING_ACQUIRE_RELEASE;
+    case llvm::AtomicOrdering::SequentiallyConsistent:
+        return RY_ATOMIC_ORDERING_SEQ_CST;
+    default:
+        return RY_ATOMIC_ORDERING_NOT_ATOMIC;
+    }
+}
+
+llvm::Value *CodeGen::emitAtomicRMW(int binop, llvm::Value *ptr, llvm::Value *val,
+                                     llvm::AtomicOrdering ordering, const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RyValueId id = ry_emit_atomic_rmw(emit_ctx_, binop, ptrId, valId,
+                                       orderingToBoundary(ordering), name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitAtomicLoad(llvm::Type *ty, llvm::Value *ptr,
+                                      llvm::AtomicOrdering ordering, uint32_t alignment,
+                                      const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId id = ry_emit_atomic_load(emit_ctx_, ry::llvm_emit::asRyType(ty), ptrId,
+                                        orderingToBoundary(ordering), alignment, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitAtomicCmpXchg(llvm::Value *ptr, llvm::Value *expected,
+                                         llvm::Value *desired,
+                                         llvm::AtomicOrdering success_ord,
+                                         llvm::AtomicOrdering failure_ord,
+                                         const char *name) {
+    RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));
+    RyValueId expId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(expected));
+    RyValueId desId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(desired));
+    RyValueId id = ry_emit_atomic_cmpxchg(emit_ctx_, ptrId, expId, desId,
+                                           orderingToBoundary(success_ord),
+                                           orderingToBoundary(failure_ord), name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+void CodeGen::emitArcCounterDelta(int64_t delta) {
+    ry_emit_arc_counter_delta(emit_ctx_, delta);
+}
+
 llvm::Value *CodeGen::emitStructGEP(llvm::Type *struct_ty, llvm::Value *ptr,
                                     uint32_t field_idx, const char *name) {
     RyValueId ptrId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(ptr));

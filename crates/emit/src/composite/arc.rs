@@ -111,6 +111,20 @@ pub(crate) unsafe fn emit_arc_counter_delta(
     );
 }
 
+impl EmitCtx {
+    // ARC live-count counter delta — Ry-internal accounting bump shared with
+    // the inline ARC paths (`emit_inline_arc_alloc` for +1, `arc_release` free
+    // path for −1, `arc_release` weak path emits its own −1 inline). Exposed
+    // to the C++ boundary via `ry_emit_arc_counter_delta` so the weak release
+    // free path can call into the same `__ry_arc_counter` global without
+    // re-routing through `ry_emit_arc_release`. Added for #2190.
+    pub(crate) unsafe fn arc_counter_delta(&mut self, delta: i64) {
+        let i64_ty = i64_type(self.context);
+        let ptr_ty = ptr_type(self.context);
+        emit_arc_counter_delta(self.builder, i64_ty, ptr_ty, delta);
+    }
+}
+
 // NotAtomic ordering uses a plain load (data-layout default alignment) to match
 // the non-atomic codepath byte-for-byte; otherwise an 8-byte-aligned atomic
 // load with the given ordering.

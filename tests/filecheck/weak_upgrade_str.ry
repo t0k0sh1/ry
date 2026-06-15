@@ -1,0 +1,22 @@
+# FileCheck golden for #2190.
+# Weak upgrade for str — `emitStrGetDataPtr` (offset +24, StringHeader) is
+# selected because `inner == "str"`. Pairs with weak_upgrade_list.ry which
+# covers the non-str (ArcHeader, offset +16) branch.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      weak.cas_loop{{[0-9]*}}:
+# CHECK:      load atomic i64{{.*}}acquire
+# CHECK:      weak.try_inc{{[0-9]*}}:
+# CHECK:      cmpxchg ptr{{.*}}acq_rel monotonic
+# CHECK:      weak.success{{[0-9]*}}:
+# CHECK:      getelementptr i8, ptr {{%.*}}, i64 24
+# CHECK:      weak.upgrade_done{{[0-9]*}}:
+
+fn main() -> int:
+  s = "hello"
+  w: weak str = weak s
+  case w:
+    Some(t):
+      return t.len()
+    None:
+      return 0

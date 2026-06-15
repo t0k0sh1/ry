@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use crate::context::{IcmpPred, TypeRef};
+use crate::context::{AtomicBinOp, AtomicOrdering, IcmpPred, TypeRef};
 
 use super::*;
 
@@ -53,6 +53,41 @@ unsafe fn name_or_empty(name: *const c_char) -> *const c_char {
         c"".as_ptr()
     } else {
         name
+    }
+}
+
+// c_int → AtomicBinOp, preserving the `RY_ATOMIC_BINOP_*` mapping in api.h
+// exactly; any other value falls back to Add (the api.h comment documents this
+// fallback). Written as an if/else chain to dodge the const-in-pattern
+// footgun, same shape as `icmp_pred_from`.
+#[inline]
+fn atomic_binop_from(b: c_int) -> AtomicBinOp {
+    if b == RY_ATOMIC_BINOP_ADD {
+        AtomicBinOp::Add
+    } else if b == RY_ATOMIC_BINOP_SUB {
+        AtomicBinOp::Sub
+    } else {
+        AtomicBinOp::Add
+    }
+}
+
+// c_int → AtomicOrdering, preserving the `RY_ATOMIC_ORDERING_*` mapping in
+// api.h exactly; any other value falls back to NotAtomic (for loads this
+// produces a plain load; for rmw / cmpxchg the engine substitutes Monotonic).
+#[inline]
+fn atomic_ordering_from(o: c_int) -> AtomicOrdering {
+    if o == RY_ATOMIC_ORDERING_MONOTONIC {
+        AtomicOrdering::Monotonic
+    } else if o == RY_ATOMIC_ORDERING_ACQUIRE {
+        AtomicOrdering::Acquire
+    } else if o == RY_ATOMIC_ORDERING_RELEASE {
+        AtomicOrdering::Release
+    } else if o == RY_ATOMIC_ORDERING_ACQUIRE_RELEASE {
+        AtomicOrdering::AcquireRelease
+    } else if o == RY_ATOMIC_ORDERING_SEQ_CST {
+        AtomicOrdering::SeqCst
+    } else {
+        AtomicOrdering::NotAtomic
     }
 }
 
@@ -104,6 +139,100 @@ pub unsafe extern "C" fn ry_emit_store(ctx: *mut RyEmitCtx, val_id: RyValueId, p
         return;
     };
     c.build_store(val, ptr);
+}
+
+/// Emit `atomicrmw <binop> ptr, val <ordering>`. NULL ctx / ptr / val → 0.
+/// NULL `name` → empty SSA name (the cmpxchg / atomicrmw IR is auto-numbered
+/// regardless; the parameter exists for API symmetry).
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_atomic_rmw(
+    ctx: *mut RyEmitCtx,
+    binop: c_int,
+    ptr_id: RyValueId,
+    val_id: RyValueId,
+    ordering: c_int,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(ptr), Some(val)) = (resolve_value(c, ptr_id), resolve_value(c, val_id)) else {
+        return 0;
+    };
+    let v = c.build_atomic_rmw(
+        atomic_binop_from(binop),
+        ptr,
+        val,
+        atomic_ordering_from(ordering),
+        name_or_empty(name),
+    );
+    intern(c, to_ry_value(v.0))
+}
+
+/// Emit `load ty, ptr` with the given atomic ordering and (optionally)
+/// alignment. `alignment == 0` leaves the LLVMBuildLoad2 default in place
+/// (matches the C++ `CreateLoad + setAtomic` baseline). NULL ctx / type / ptr
+/// → 0.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_atomic_load(
+    ctx: *mut RyEmitCtx,
+    ty: RyTypeRef,
+    ptr_id: RyValueId,
+    ordering: c_int,
+    alignment: u32,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if ty.is_null() {
+        return 0;
+    }
+    let Some(ptr) = resolve_value(c, ptr_id) else {
+        return 0;
+    };
+    let v = c.build_atomic_load(
+        TypeRef(as_type(ty)),
+        ptr,
+        atomic_ordering_from(ordering),
+        alignment,
+        name_or_empty(name),
+    );
+    intern(c, to_ry_value(v.0))
+}
+
+/// Emit `cmpxchg ptr, expected, desired <success_ord> <failure_ord>`.
+/// Returns the `{T, i1}` aggregate (decompose via `ry_emit_extract_value`).
+/// NULL ctx / ptr / expected / desired → 0. NULL `name` → empty SSA name.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_atomic_cmpxchg(
+    ctx: *mut RyEmitCtx,
+    ptr_id: RyValueId,
+    expected_id: RyValueId,
+    desired_id: RyValueId,
+    success_ordering: c_int,
+    failure_ordering: c_int,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(ptr), Some(expected), Some(desired)) = (
+        resolve_value(c, ptr_id),
+        resolve_value(c, expected_id),
+        resolve_value(c, desired_id),
+    ) else {
+        return 0;
+    };
+    let v = c.build_atomic_cmpxchg(
+        ptr,
+        expected,
+        desired,
+        atomic_ordering_from(success_ordering),
+        atomic_ordering_from(failure_ordering),
+        name_or_empty(name),
+    );
+    intern(c, to_ry_value(v.0))
 }
 
 /// Emit a single-index `getelementptr base_ty, ptr, idx`. NULL ctx / type / ptr

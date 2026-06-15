@@ -1,0 +1,3 @@
+### refactor(codegen): migrate weak ARC retain/release/upgrade via crates/emit primitives (#2190)
+
+Pilot E (decisive) settles "AtomicCmpXchg capability" as (ii) primitive — three new generic LLVM atomic primitives (`ry_emit_atomic_rmw` / `_atomic_load` / `_atomic_cmpxchg`) added to `primitive/ops.rs` instead of coarse `ry_emit_weak_*` composite ops, following pilots A-D's (ii) trajectory. `emitWeakRetain` / `emitWeakRelease` / `emitWeakUpgrade` / `emitWeakReleaseVar` (`src/codegen_arc.cpp`) become thin shims; ASLR-normalized `--emit-llvm-ir` diff over a 4-cell coverage probe is bit-exact empty. The 4 public APIs' signatures are unchanged.

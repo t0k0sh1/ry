@@ -78,3 +78,15 @@ pub unsafe extern "C" fn ry_emit_arc_release(
         opt_value_ref(gc_visit_fn),
     );
 }
+
+/// Emit an inline `atomicrmw add @__ry_arc_counter, delta monotonic` on the
+/// process-global ARC live-count counter. No-op on NULL ctx. Added for #2190
+/// (weak release free path needs the same accounting bump as the strong release
+/// free path inside ry_emit_arc_release).
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_arc_counter_delta(ctx: *mut RyEmitCtx, delta: i64) {
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    c.arc_counter_delta(delta);
+}

@@ -1,0 +1,27 @@
+# FileCheck golden for #2190.
+# Weak ARC capability migrated to crates/emit via primitive boundary calls
+# (atomic_rmw / atomic_load / atomic_cmpxchg + existing struct_gep / load /
+# icmp / branch_*). This file pins the weak-upgrade BB structure and CAS
+# loop for a List<int> weak ref — `emitArcGetDataPtr` (offset +16, ArcHeader)
+# is selected because `inner != "str"`.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      weak.cas_loop{{[0-9]*}}:
+# CHECK:      load atomic i64{{.*}}acquire
+# CHECK:      weak.try_inc{{[0-9]*}}:
+# CHECK:      %weak_desired{{[0-9]*}} = add{{.*}}, 1
+# CHECK:      cmpxchg ptr{{.*}}acq_rel monotonic
+# CHECK:      %weak_cas_ok{{[0-9]*}} = extractvalue
+# CHECK:      weak.success{{[0-9]*}}:
+# CHECK:      getelementptr i8, ptr {{%.*}}, i64 16
+# CHECK:      weak.dead{{[0-9]*}}:
+# CHECK:      weak.upgrade_done{{[0-9]*}}:
+
+fn main() -> int:
+  xs = [1, 2, 3]
+  w: weak List<int> = weak xs
+  case w:
+    Some(v):
+      return v.len()
+    None:
+      return 0

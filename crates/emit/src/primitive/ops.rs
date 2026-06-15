@@ -14,9 +14,37 @@
 use std::ffi::c_char;
 
 use llvm_sys::core::*;
-use llvm_sys::LLVMIntPredicate;
+use llvm_sys::{LLVMAtomicOrdering, LLVMAtomicRMWBinOp, LLVMIntPredicate};
 
-use crate::context::{EmitCtx, IcmpPred, TypeRef, ValueRef};
+use crate::context::{AtomicBinOp, AtomicOrdering, EmitCtx, IcmpPred, TypeRef, ValueRef};
+
+impl AtomicBinOp {
+    // Translate the context binop to the llvm-sys `LLVMAtomicRMWBinOp`. Kept
+    // engine-side so no llvm-sys type appears in abi/.
+    #[inline]
+    fn to_llvm(self) -> LLVMAtomicRMWBinOp {
+        match self {
+            AtomicBinOp::Add => LLVMAtomicRMWBinOp::LLVMAtomicRMWBinOpAdd,
+            AtomicBinOp::Sub => LLVMAtomicRMWBinOp::LLVMAtomicRMWBinOpSub,
+        }
+    }
+}
+
+impl AtomicOrdering {
+    // Translate the context ordering to the llvm-sys `LLVMAtomicOrdering`. Kept
+    // engine-side so no llvm-sys type appears in abi/.
+    #[inline]
+    fn to_llvm(self) -> LLVMAtomicOrdering {
+        match self {
+            AtomicOrdering::NotAtomic => LLVMAtomicOrdering::LLVMAtomicOrderingNotAtomic,
+            AtomicOrdering::Monotonic => LLVMAtomicOrdering::LLVMAtomicOrderingMonotonic,
+            AtomicOrdering::Acquire => LLVMAtomicOrdering::LLVMAtomicOrderingAcquire,
+            AtomicOrdering::Release => LLVMAtomicOrdering::LLVMAtomicOrderingRelease,
+            AtomicOrdering::AcquireRelease => LLVMAtomicOrdering::LLVMAtomicOrderingAcquireRelease,
+            AtomicOrdering::SeqCst => LLVMAtomicOrdering::LLVMAtomicOrderingSequentiallyConsistent,
+        }
+    }
+}
 
 impl IcmpPred {
     // Translate the context predicate to the llvm-sys `LLVMIntPredicate`. Kept
@@ -58,6 +86,102 @@ impl EmitCtx {
     // `store val, ptr` (no value produced).
     pub(crate) unsafe fn build_store(&mut self, val: ValueRef, ptr: ValueRef) {
         LLVMBuildStore(self.builder, val.0, ptr.0);
+    }
+
+    // `atomicrmw <binop> ptr, val <ordering>` — generic LLVM atomic
+    // read-modify-write. Alignment is LLVM-auto-computed from the datalayout
+    // (matches the C++ `CreateAtomicRMW(..., MaybeAlign(), ...)` baseline).
+    // NotAtomic ordering is invalid for atomicrmw and falls back to Monotonic.
+    // Added for #2190 (weak ARC capability migration).
+    pub(crate) unsafe fn build_atomic_rmw(
+        &mut self,
+        binop: AtomicBinOp,
+        ptr: ValueRef,
+        val: ValueRef,
+        ordering: AtomicOrdering,
+        _name: *const c_char,
+    ) -> ValueRef {
+        let ord = if matches!(ordering, AtomicOrdering::NotAtomic) {
+            LLVMAtomicOrdering::LLVMAtomicOrderingMonotonic
+        } else {
+            ordering.to_llvm()
+        };
+        // LLVMBuildAtomicRMW does NOT take a name parameter — the C++ baseline
+        // `builder_.CreateAtomicRMW(...)` likewise has no name. The unused
+        // `_name` keeps the abi signature symmetric with the other primitives
+        // (and matches api.h) without producing a named SSA value here; LLVM
+        // auto-numbers the result instruction, mirroring the C++ baseline.
+        ValueRef(LLVMBuildAtomicRMW(
+            self.builder,
+            binop.to_llvm(),
+            ptr.0,
+            val.0,
+            ord,
+            0, // SingleThread = 0 (matches default cross-thread atomic)
+        ))
+    }
+
+    // `load ty, ptr` then optionally `LLVMSetOrdering(ld, ordering)` /
+    // `LLVMSetAlignment(ld, alignment)`. NotAtomic ordering → no SetOrdering
+    // call (plain load). `alignment == 0` → no SetAlignment call (uses the
+    // LLVMBuildLoad2 default, matching the C++ `CreateLoad + setAtomic`
+    // baseline where alignment stays at the datalayout default). Added for
+    // #2190.
+    pub(crate) unsafe fn build_atomic_load(
+        &mut self,
+        ty: TypeRef,
+        ptr: ValueRef,
+        ordering: AtomicOrdering,
+        alignment: u32,
+        name: *const c_char,
+    ) -> ValueRef {
+        let ld = LLVMBuildLoad2(self.builder, ty.0, ptr.0, name);
+        if !matches!(ordering, AtomicOrdering::NotAtomic) {
+            LLVMSetOrdering(ld, ordering.to_llvm());
+        }
+        if alignment > 0 {
+            LLVMSetAlignment(ld, alignment);
+        }
+        ValueRef(ld)
+    }
+
+    // `cmpxchg ptr, expected, desired <success_ordering> <failure_ordering>`
+    // — generic LLVM compare-and-swap returning the `{T, i1}` aggregate.
+    // Alignment is LLVM-auto-computed (matches C++ `CreateAtomicCmpXchg(...,
+    // MaybeAlign(), ...)`). NotAtomic falls back to Monotonic for either
+    // ordering (cmpxchg requires an atomic ordering). Added for #2190 (weak
+    // upgrade CAS loop). The `_name` is unused — `LLVMBuildAtomicCmpXchg`
+    // does not accept a name (the C++ baseline `CreateAtomicCmpXchg(...)`
+    // likewise yields an auto-numbered SSA value); the abi keeps the
+    // parameter symmetric with other primitives.
+    pub(crate) unsafe fn build_atomic_cmpxchg(
+        &mut self,
+        ptr: ValueRef,
+        expected: ValueRef,
+        desired: ValueRef,
+        success_ord: AtomicOrdering,
+        failure_ord: AtomicOrdering,
+        _name: *const c_char,
+    ) -> ValueRef {
+        let s = if matches!(success_ord, AtomicOrdering::NotAtomic) {
+            LLVMAtomicOrdering::LLVMAtomicOrderingMonotonic
+        } else {
+            success_ord.to_llvm()
+        };
+        let f = if matches!(failure_ord, AtomicOrdering::NotAtomic) {
+            LLVMAtomicOrdering::LLVMAtomicOrderingMonotonic
+        } else {
+            failure_ord.to_llvm()
+        };
+        ValueRef(LLVMBuildAtomicCmpXchg(
+            self.builder,
+            ptr.0,
+            expected.0,
+            desired.0,
+            s,
+            f,
+            0, // SingleThread = 0 (matches default cross-thread atomic)
+        ))
     }
 
     // Single-index `getelementptr base_ty, ptr, idx`.
