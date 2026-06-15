@@ -153,6 +153,22 @@ pub const RY_LINKAGE_EXTERNAL: c_int = 0;
 pub const RY_LINKAGE_INTERNAL: c_int = 1;
 pub const RY_LINKAGE_PRIVATE: c_int = 2;
 
+// Atomic RMW binop selector for ry_emit_atomic_rmw (#2190). MUST match the
+// RyAtomicBinOp enum in api.h. abi/primitive.rs maps these to the core
+// `AtomicBinOp`.
+pub const RY_ATOMIC_BINOP_ADD: c_int = 0;
+pub const RY_ATOMIC_BINOP_SUB: c_int = 1;
+
+// Atomic memory ordering selector for ry_emit_atomic_rmw / _atomic_load /
+// _atomic_cmpxchg (#2190). MUST match the RyAtomicOrdering enum in api.h.
+// abi/primitive.rs maps these to the core `AtomicOrdering`.
+pub const RY_ATOMIC_ORDERING_NOT_ATOMIC: c_int = 0;
+pub const RY_ATOMIC_ORDERING_MONOTONIC: c_int = 1;
+pub const RY_ATOMIC_ORDERING_ACQUIRE: c_int = 2;
+pub const RY_ATOMIC_ORDERING_RELEASE: c_int = 3;
+pub const RY_ATOMIC_ORDERING_ACQUIRE_RELEASE: c_int = 4;
+pub const RY_ATOMIC_ORDERING_SEQ_CST: c_int = 5;
+
 // Callback for ok/err value builders consumed by ry_emit_result_branch.
 // Wrapped in Option<...> so the FFI representation is a nullable
 // function pointer matching the C typedef.

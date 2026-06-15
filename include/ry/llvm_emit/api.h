@@ -164,6 +164,32 @@ typedef enum {
     RY_ARC_ATOMIC = 1
 } RyArcAtomic;
 
+// Atomic RMW binop selector — Ry-concept-free generic LLVM `atomicrmw`
+// operations. Added for #2190 (weak ARC capability migration); designed for
+// future extension (XOR/AND/OR can be added without reshuffling). Numbers
+// must match RY_ATOMIC_BINOP_* in abi/ops.rs; do not reorder without updating
+// both sides. An unknown binop value falls back to Add.
+typedef enum {
+    RY_ATOMIC_BINOP_ADD = 0,
+    RY_ATOMIC_BINOP_SUB = 1
+} RyAtomicBinOp;
+
+// Atomic memory ordering selector — Ry-concept-free generic LLVM
+// `AtomicOrdering`. Added for #2190 (weak ARC capability migration). Numbers
+// must match RY_ATOMIC_ORDERING_* in abi/ops.rs; do not reorder without
+// updating both sides. NotAtomic means the load is non-atomic (no fence)
+// — for atomic ops (rmw / cmpxchg) it is invalid and the emission layer
+// falls back to Monotonic. An unknown ordering value falls back to NotAtomic
+// (for loads) or Monotonic (for rmw/cmpxchg).
+typedef enum {
+    RY_ATOMIC_ORDERING_NOT_ATOMIC      = 0,
+    RY_ATOMIC_ORDERING_MONOTONIC       = 1,
+    RY_ATOMIC_ORDERING_ACQUIRE         = 2,
+    RY_ATOMIC_ORDERING_RELEASE         = 3,
+    RY_ATOMIC_ORDERING_ACQUIRE_RELEASE = 4,
+    RY_ATOMIC_ORDERING_SEQ_CST         = 5
+} RyAtomicOrdering;
+
 // Copy-on-Write collection kind selector. Numbers chosen to match the order
 // CodeGen's CollectionKind enum uses for List / Map / Set; do not reorder
 // without updating both sides. CollectionKind::Str is intentionally absent
@@ -331,6 +357,17 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
                          RyArcAtomic atomic, RyValueRef destructor_callee,
                          RyValueRef gc_visit_fn);
+
+// Emit an inline `atomicrmw add @__ry_arc_counter, delta monotonic` against
+// the process-global ARC live-count counter (whose address is JIT-time
+// constant via `__ry_arc_counter_address()` baked into an `inttoptr`).
+// Counterpart of the existing `arc.free`-internal counter bump inside
+// ry_emit_arc_release. Added for #2190 so the weak release free path can
+// participate in ARC live-count accounting without re-routing through
+// `ry_emit_arc_release`. Composite (not primitive): owns the
+// `__ry_arc_counter` global selection and the ASLR-baked-address inttoptr
+// shape — both Ry ARC accounting concepts. Creates no basic blocks.
+void ry_emit_arc_counter_delta(RyEmitCtx *ctx, int64_t delta);
 
 // Stage 2-C entry — RuntimeCall (#1969).
 // Resolve `name` against `mod_->getOrInsertFunction(name, fnTy)` where fnTy
@@ -1010,6 +1047,44 @@ RyValueId ry_emit_load(RyEmitCtx *ctx, RyTypeRef ty, RyValueId ptr_id,
 
 // Emit `store val, ptr` (produces no value).
 void ry_emit_store(RyEmitCtx *ctx, RyValueId val_id, RyValueId ptr_id);
+
+// Emit `atomicrmw <binop> ptr, val <ordering>` — the generic LLVM atomic
+// read-modify-write instruction. `binop` is a RyAtomicBinOp; `ordering` is a
+// RyAtomicOrdering (NotAtomic is invalid for rmw and falls back to
+// Monotonic). Alignment is LLVM-auto-computed from the datalayout (matches
+// the C++ `CreateAtomicRMW(..., MaybeAlign(), ...)` baseline). NULL `name` →
+// empty SSA name. Added for #2190 (weak ARC capability migration); also
+// usable for any future generic atomic RMW need. Creates no basic blocks.
+RyValueId ry_emit_atomic_rmw(RyEmitCtx *ctx, int binop,
+                              RyValueId ptr_id, RyValueId val_id,
+                              int ordering, const char *name);
+
+// Emit `load ty, ptr` and apply the given atomic ordering — the generic
+// LLVM atomic load primitive. `ordering` is a RyAtomicOrdering; the
+// NotAtomic case skips `LLVMSetOrdering` entirely (returns a plain load).
+// `alignment > 0` triggers `LLVMSetAlignment(load, alignment)`; alignment=0
+// leaves the LLVM default in place (matches the C++ `CreateLoad +
+// setAtomic` baseline, which yields `align 4` on the host data layout for
+// `i64` loads). Added for #2190 (weak ARC capability migration); also
+// usable for any future ordered load. Creates no basic blocks.
+RyValueId ry_emit_atomic_load(RyEmitCtx *ctx, RyTypeRef ty, RyValueId ptr_id,
+                               int ordering, uint32_t alignment,
+                               const char *name);
+
+// Emit `cmpxchg ptr, expected, desired <success_ordering> <failure_ordering>`
+// — the generic LLVM compare-and-swap primitive. Returns the `{T, i1}`
+// aggregate (caller decomposes via ry_emit_extract_value, #2099). Both
+// orderings are RyAtomicOrdering values; NotAtomic falls back to Monotonic.
+// Alignment is LLVM-auto-computed from the datalayout (matches the C++
+// `CreateAtomicCmpXchg(..., MaybeAlign(), ...)` baseline). NULL `name` →
+// empty SSA name. Added for #2190 (weak ARC upgrade CAS loop). Creates no
+// basic blocks.
+RyValueId ry_emit_atomic_cmpxchg(RyEmitCtx *ctx, RyValueId ptr_id,
+                                  RyValueId expected_id,
+                                  RyValueId desired_id,
+                                  int success_ordering,
+                                  int failure_ordering,
+                                  const char *name);
 
 // Emit a single-index `getelementptr base_ty, ptr, idx`; return the interned
 // result. NULL `name` → empty SSA name.

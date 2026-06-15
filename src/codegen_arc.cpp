@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_arc.hpp"
+#include "ry/llvm_emit/api.h" // RY_ATOMIC_BINOP_* / RY_ATOMIC_ORDERING_* (#2190)
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 #include <cstdint>
@@ -616,10 +617,13 @@ bool CodeGen::isWeakManaged(llvm::AllocaInst *alloca) const {
 }
 
 void CodeGen::emitWeakRetain(llvm::Value *headerPtr) {
-    // Skip immortal objects (strong_count == ARC_IMMORTAL) — e.g. string literals
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_retain_strong");
-    auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "weak_retain_sc");
-    auto *isImmortal = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_retain_immortal");
+    // #2190: IR construction moved to llvm_emit boundary (atomic primitives +
+    // existing struct_gep / load / icmp / branch_cond / create_basic_block).
+    // Skip immortal objects (strong_count == ARC_IMMORTAL) — e.g. string literals.
+    auto *strongPtr = emitStructGEP(arcHeaderTy_, headerPtr, 0, "weak_retain_strong");
+    auto *strong = emitLoad(i64Ty_, strongPtr, "weak_retain_sc");
+    auto *immortalConst = emitConstInt(i64Ty_, static_cast<uint64_t>(ARC_IMMORTAL));
+    auto *isImmortal = emitICmpEQ(strong, immortalConst, "weak_retain_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *retainBB = createBBInFn("weak.retain", fn);
@@ -627,21 +631,22 @@ void CodeGen::emitWeakRetain(llvm::Value *headerPtr) {
     emitBranchCond(isImmortal, doneBB, retainBB);
 
     builder_.SetInsertPoint(retainBB);
-    auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_retain_ptr");
-    builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, weakPtr,
-                             llvm::ConstantInt::get(i64Ty_, 1),
-                             llvm::MaybeAlign(),
-                             llvm::AtomicOrdering::SequentiallyConsistent);
+    auto *weakPtr = emitStructGEP(arcHeaderTy_, headerPtr, 1, "weak_retain_ptr");
+    auto *oneConst = emitConstInt(i64Ty_, 1);
+    emitAtomicRMW(RY_ATOMIC_BINOP_ADD, weakPtr, oneConst,
+                  llvm::AtomicOrdering::SequentiallyConsistent, "");
     emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
 }
 
 void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
-    // Skip immortal objects (strong_count == ARC_IMMORTAL) — e.g. string literals
-    auto *strongCheckPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_rel_strong");
-    auto *strongCheck = builder_.CreateLoad(i64Ty_, strongCheckPtr, "weak_rel_sc");
-    auto *isImmortal = builder_.CreateICmpEQ(strongCheck, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_rel_immortal");
+    // #2190: IR construction moved to llvm_emit boundary. Skip immortal objects
+    // (strong_count == ARC_IMMORTAL).
+    auto *strongCheckPtr = emitStructGEP(arcHeaderTy_, headerPtr, 0, "weak_rel_strong");
+    auto *strongCheck = emitLoad(i64Ty_, strongCheckPtr, "weak_rel_sc");
+    auto *immortalConst = emitConstInt(i64Ty_, static_cast<uint64_t>(ARC_IMMORTAL));
+    auto *isImmortal = emitICmpEQ(strongCheck, immortalConst, "weak_rel_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *releaseBB = createBBInFn("weak.release.body", fn);
@@ -649,29 +654,33 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
     emitBranchCond(isImmortal, doneBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
-    auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_rel_ptr");
-    auto *oldWeak = builder_.CreateAtomicRMW(
-        llvm::AtomicRMWInst::Sub, weakPtr,
-        llvm::ConstantInt::get(i64Ty_, 1),
-        llvm::MaybeAlign(),
-        llvm::AtomicOrdering::SequentiallyConsistent);
-    auto *isZeroWeak = builder_.CreateICmpEQ(oldWeak, llvm::ConstantInt::get(i64Ty_, 1), "weak_zero");
+    auto *weakPtr = emitStructGEP(arcHeaderTy_, headerPtr, 1, "weak_rel_ptr");
+    auto *oneConst = emitConstInt(i64Ty_, 1);
+    auto *oldWeak = emitAtomicRMW(RY_ATOMIC_BINOP_SUB, weakPtr, oneConst,
+                                   llvm::AtomicOrdering::SequentiallyConsistent, "");
+    auto *isZeroWeak = emitICmpEQ(oldWeak, oneConst, "weak_zero");
 
     auto *checkStrongBB = createBBInFn("weak.check_strong", fn);
     auto *freeBB = createBBInFn("weak.free", fn);
     emitBranchCond(isZeroWeak, checkStrongBB, doneBB);
 
     builder_.SetInsertPoint(checkStrongBB);
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_strong_ptr");
-    auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "weak_strong");
-    strong->setAtomic(llvm::AtomicOrdering::Acquire);
-    auto *isZeroStrong = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, 0), "strong_zero");
+    auto *strongPtr = emitStructGEP(arcHeaderTy_, headerPtr, 0, "weak_strong_ptr");
+    // Acquire load — matches the .claude/rules/codegen-llvm-ir-conventions.md
+    // ARC weak_count rule (a non-atomic read paired with atomic RMW writes is
+    // a TSan race). alignment=0 keeps the LLVMBuildLoad2 default (align 4 on
+    // the host datalayout), matching the baseline CreateLoad+setAtomic shape.
+    auto *strong = emitAtomicLoad(i64Ty_, strongPtr, llvm::AtomicOrdering::Acquire,
+                                   /*alignment=*/0, "weak_strong");
+    auto *zeroConst = emitConstInt(i64Ty_, 0);
+    auto *isZeroStrong = emitICmpEQ(strong, zeroConst, "strong_zero");
     emitBranchCond(isZeroStrong, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
     // Decrement the ARC live-count balance counter inline (weak release path).
-    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
-    builder_.CreateCall(getStdlibFree(), {headerPtr});
+    emitArcCounterDelta(-1);
+    emitRuntimeCallDirect("free", llvm::Type::getVoidTy(*ctx_), {ptrTy_}, {headerPtr},
+                          /*name_hint=*/"");
     emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
@@ -679,13 +688,22 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
 
 llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
                                        const std::string &innerTypeName) {
+    // #2190: IR construction moved to llvm_emit boundary. The CAS loop, the
+    // immortal early-exit, and the Option<T> Some/None construction are now
+    // assembled from primitives (struct_gep / load atomic / cmpxchg /
+    // extract_value / add / alloca / store + create_basic_block / branch_*)
+    // plus the existing composite `buildSomeValue` / `buildNoneValue` which
+    // route through `ry_emit_option_wrap_some` / `_wrap_none`. str vs non-str
+    // data ptr offset dispatch (24 vs 16) stays C++-side via the existing
+    // `emitStrGetDataPtr` / `emitArcGetDataPtr` helpers — keeping the Ry
+    // concept (str header layout) off the boundary.
     const std::string resolvedInner = resolveTypeAlias(innerTypeName);
     auto *innerTy = resolveType(innerTypeName);
     auto *optionTy = getOptionType(innerTy);
 
-    auto *resultAlloca = builder_.CreateAlloca(optionTy, nullptr, "weak_upgrade_result");
+    auto *resultAlloca = emitAlloca(optionTy, "weak_upgrade_result");
 
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_up_strong_ptr");
+    auto *strongPtr = emitStructGEP(arcHeaderTy_, headerPtr, 0, "weak_up_strong_ptr");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *immortalBB = createBBInFn("weak.immortal", fn);
@@ -695,64 +713,72 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
     auto *deadBB = createBBInFn("weak.dead", fn);
     auto *doneBB = createBBInFn("weak.upgrade_done", fn);
 
-    // Immortal objects are always alive — skip CAS and return Some directly
-    auto *initCur = builder_.CreateLoad(i64Ty_, strongPtr, "weak_up_init");
-    initCur->setAtomic(llvm::AtomicOrdering::Acquire);
-    auto *isImmortal = builder_.CreateICmpEQ(initCur, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_up_immortal");
+    // Immortal objects are always alive — skip CAS and return Some directly.
+    // alignment=0 keeps the LLVMBuildLoad2 default (align 4 on host datalayout)
+    // matching the C++ CreateLoad+setAtomic baseline.
+    auto *initCur = emitAtomicLoad(i64Ty_, strongPtr, llvm::AtomicOrdering::Acquire,
+                                    /*alignment=*/0, "weak_up_init");
+    auto *immortalConst = emitConstInt(i64Ty_, static_cast<uint64_t>(ARC_IMMORTAL));
+    auto *isImmortal = emitICmpEQ(initCur, immortalConst, "weak_up_immortal");
     emitBranchCond(isImmortal, immortalBB, loopBB);
 
-    // Immortal path: return Some(data_ptr) without incrementing
+    // Immortal path: return Some(data_ptr) without incrementing.
     builder_.SetInsertPoint(immortalBB);
     // str uses StringHeader (24 bytes); other ARC types use ArcHeader (16 bytes).
     auto *immortalDataPtr = (resolvedInner == "str")
         ? emitStrGetDataPtr(headerPtr)
         : emitArcGetDataPtr(headerPtr);
     auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
-    builder_.CreateStore(immortalSome, resultAlloca);
+    emitStore(immortalSome, resultAlloca);
     emitBranchUncond(doneBB);
 
-    // CAS loop
+    // CAS loop.
     builder_.SetInsertPoint(loopBB);
-    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "weak_up_cur");
-    cur->setAtomic(llvm::AtomicOrdering::Acquire);
-    auto *isAlive = builder_.CreateICmpSGT(cur, llvm::ConstantInt::get(i64Ty_, 0), "weak_alive");
+    auto *cur = emitAtomicLoad(i64Ty_, strongPtr, llvm::AtomicOrdering::Acquire,
+                                /*alignment=*/0, "weak_up_cur");
+    auto *zeroConst = emitConstInt(i64Ty_, 0);
+    auto *isAlive = emitICmpSGT(cur, zeroConst, "weak_alive");
     emitBranchCond(isAlive, tryIncBB, deadBB);
 
-    // Try CAS: compare_exchange(strongPtr, cur, cur+1)
+    // Try CAS: compare_exchange(strongPtr, cur, cur+1).
     builder_.SetInsertPoint(tryIncBB);
-    auto *desired = builder_.CreateAdd(cur, llvm::ConstantInt::get(i64Ty_, 1), "weak_desired");
-    auto *cmpxchg = builder_.CreateAtomicCmpXchg(
-        strongPtr, cur, desired,
-        llvm::MaybeAlign(),
-        llvm::AtomicOrdering::AcquireRelease,
-        llvm::AtomicOrdering::Monotonic);
-    auto *success = builder_.CreateExtractValue(cmpxchg, 1, "weak_cas_ok");
+    auto *oneConst = emitConstInt(i64Ty_, 1);
+    auto *desired = emitAdd(cur, oneConst, "weak_desired");
+    auto *cmpxchg = emitAtomicCmpXchg(strongPtr, cur, desired,
+                                       llvm::AtomicOrdering::AcquireRelease,
+                                       llvm::AtomicOrdering::Monotonic, "");
+    auto *success = emitExtractValue(cmpxchg, 1, "weak_cas_ok");
     emitBranchCond(success, successBB, loopBB);
 
-    // Success: strong_count incremented, return Some(data_ptr)
+    // Success: strong_count incremented, return Some(data_ptr).
     builder_.SetInsertPoint(successBB);
     auto *dataPtr = (resolvedInner == "str")
         ? emitStrGetDataPtr(headerPtr)
         : emitArcGetDataPtr(headerPtr);
     auto *someVal = buildSomeValue(dataPtr, optionTy);
-    builder_.CreateStore(someVal, resultAlloca);
+    emitStore(someVal, resultAlloca);
     emitBranchUncond(doneBB);
 
-    // Dead: strong_count == 0, return None
+    // Dead: strong_count == 0, return None.
     builder_.SetInsertPoint(deadBB);
     auto *noneVal = buildNoneValue(optionTy);
-    builder_.CreateStore(noneVal, resultAlloca);
+    emitStore(noneVal, resultAlloca);
     emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
-    return builder_.CreateLoad(optionTy, resultAlloca, "weak_upgraded");
+    return emitLoad(optionTy, resultAlloca, "weak_upgraded");
 }
 
 void CodeGen::emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca) {
-    auto *val = builder_.CreateLoad(ptrTy_, alloca, name + ".weak_cleanup");
-    auto *isNull = builder_.CreateICmpEQ(val,
-        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
-        "weak_null_check");
+    // #2190: IR construction moved to llvm_emit boundary. The wrapper is a null
+    // guard around `emitWeakRelease` — load the slot, compare to null, branch
+    // around the release when null. `ConstantPointerNull` is built directly in
+    // C++ (no boundary call needed — it has no IR cost; primitive emitConstInt
+    // is i64-only).
+    auto loadName = name + ".weak_cleanup";
+    auto *val = emitLoad(ptrTy_, alloca, loadName.c_str());
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    auto *isNull = emitICmpEQ(val, nullPtr, "weak_null_check");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *releaseBB = createBBInFn("weak.var_release", fn);

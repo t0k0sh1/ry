@@ -2109,6 +2109,31 @@ public:
     // carries no builder_.CreateZExt.
     llvm::Value *emitZExt(llvm::Value *val, llvm::Type *dest_ty, const char *name);
 
+    // Generic atomic primitives — Ry-concept-free LLVM `atomicrmw` / atomic
+    // `load` / `cmpxchg` wrappers over the boundary entries
+    // `ry_emit_atomic_rmw` / `_atomic_load` / `_atomic_cmpxchg`. Added for
+    // #2190 (weak ARC capability migration) but reusable for any future
+    // atomic-op need. Orderings are LLVM-native `AtomicOrdering` so the C++
+    // caller picks the same semantics as the original `builder_.CreateAtomic*`
+    // / `setAtomic` site (Ry concept — what ordering — stays C++-side).
+    // `emitAtomicLoad`'s `alignment == 0` skips `LLVMSetAlignment`, matching
+    // the C++ `CreateLoad + setAtomic` baseline (`align 4` on the host
+    // datalayout for i64). The atomicrmw / cmpxchg results are auto-numbered
+    // SSA values (LLVM C API does not accept a name); `name` is kept for API
+    // symmetry. `emitArcCounterDelta` wraps the composite helper that owns
+    // the `__ry_arc_counter` ASLR-baked-address inttoptr.
+    llvm::Value *emitAtomicRMW(int binop, llvm::Value *ptr, llvm::Value *val,
+                                llvm::AtomicOrdering ordering, const char *name);
+    llvm::Value *emitAtomicLoad(llvm::Type *ty, llvm::Value *ptr,
+                                 llvm::AtomicOrdering ordering, uint32_t alignment,
+                                 const char *name);
+    llvm::Value *emitAtomicCmpXchg(llvm::Value *ptr, llvm::Value *expected,
+                                    llvm::Value *desired,
+                                    llvm::AtomicOrdering success_ord,
+                                    llvm::AtomicOrdering failure_ord,
+                                    const char *name);
+    void emitArcCounterDelta(int64_t delta);
+
     // === Function / call IR primitives (#2098, [C]=(ii) boundary move) ===
     // Acquire the function-creation capability in the emission layer: build a
     // fresh function definition (the llvm::Function::Create equivalent), read

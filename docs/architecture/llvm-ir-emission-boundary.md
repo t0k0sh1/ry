@@ -127,6 +127,25 @@ The final Stage 2-C PR closes #1965 by migrating the last lowered IR op (`Contro
 
 After this PR, the lowering / emission graduation documents (`codegen-{semantic-lowering,llvm-emission}-graduation.md`) can be written per `layer-graduation-workflow.md` — Stage 2 is complete, the lowered IR vocabulary has converged, existing tests pass against the post-extraction shape, and the emission layer's `extern "C"` boundary carries no LLVM-owned types (enforced by the header-level lint).
 
+## Weak ARC migration via atomic primitives (#2190, pilot E (ii))
+
+Pilot E settles "AtomicCmpXchg capability" as (ii) — three new generic LLVM atomic primitives added to `primitive/ops.rs` instead of coarse `ry_emit_weak_*` composite ops. Decision rationale (recorded for future migrations):
+
+- **Pilot precedent**: pilots A (#2098), A2 (#2099), B (#2100), C (#2101), D (#2102) each chose (ii); the discipline `codegen-layering-plan.md` records is "a coarse op leaks Ry semantics into emission for zero capability gain." Pilot E follows.
+- **#2118 (FP→int) is the lone recent (i)** but does not apply: it follows the `bounds_check` pattern (one-shot helper, no reusable generic instruction introduced). Weak ARC introduces `atomicrmw` / `atomic-load` / `cmpxchg`, all genuine generic LLVM ops with `RyAtomicBinOp` / `RyAtomicOrdering` enums that name no Ry concept — the same shape as pilot D's `intrinsic_call` primitive.
+- **Ry semantics stay C++-side**: the ordering choice (`SeqCst` for retain/release weak_count, `AcquireRelease/Monotonic` for the upgrade CAS, `Acquire` for the strong_count read), the `ARC_IMMORTAL` sentinel reference, and the str-vs-non-str offset dispatch (`emitStrGetDataPtr` / `emitArcGetDataPtr`) all remain in `src/codegen_arc.cpp`. The boundary carries only the LLVM-vocabulary decision.
+
+ABI additions:
+
+- `ry_emit_atomic_rmw(ctx, binop, ptr, val, ordering, name)` — `atomicrmw <Add|Sub> ... <ordering>`; alignment auto-computed.
+- `ry_emit_atomic_load(ctx, ty, ptr, ordering, alignment, name)` — `load atomic ty, ptr ... <ordering>`; `alignment == 0` skips `LLVMSetAlignment` to match the C++ `CreateLoad + setAtomic` baseline (`align 4` on the host datalayout for i64).
+- `ry_emit_atomic_cmpxchg(ctx, ptr, expected, desired, success_ord, failure_ord, name)` — returns the `{T, i1}` aggregate, decompose via the existing `ry_emit_extract_value` (#2099). The result SSA value is auto-numbered (the LLVM C API does not accept a name); the `name` parameter is kept for API symmetry but currently ignored — the C++ baseline `CreateAtomicCmpXchg` likewise produces unnamed results.
+- `ry_emit_arc_counter_delta(ctx, delta)` — composite (not primitive) thin wrapper over the internal `emit_arc_counter_delta`, because the `__ry_arc_counter` global selection and the ASLR-baked-address inttoptr are Ry concepts. Lets the weak release free path bump the live-count without re-routing through `ry_emit_arc_release`.
+
+C++ migration: `emitWeakRetain` / `emitWeakRelease` / `emitWeakUpgrade` / `emitWeakReleaseVar` (`src/codegen_arc.cpp:618 / 640 / 680 / 751`) become thin shims that compose primitives — `struct_gep` + `atomic_load(Acquire)` + `atomicrmw(Add/Sub, SeqCst)` + `cmpxchg(AR/Mono)` + `extract_value` + existing `option_wrap_some/none` for the Some/None construction. The 4 public APIs' signatures are unchanged; 5 existing call sites (`src/codegen_expr.cpp:140`, `src/codegen_stmt.cpp:1134,1567,1569`, `src/codegen.cpp:816`) are untouched. ASLR-normalized `--emit-llvm-ir` diff over a 4-cell probe (scope-exit `emitWeakReleaseVar`, weak-ref reassignment `emitWeakRetain` + bare `emitWeakRelease`, list upgrade `emitArcGetDataPtr`, str upgrade `emitStrGetDataPtr`) is bit-exact empty.
+
+Out-of-scope (explicit): the existing composite-internal helpers `emit_atomic_i64_load` and `emit_arc_counter_delta` (`composite/arc.rs`) continue serving the inline ARC retain/release paths and are NOT routed through the new primitives. A future sweep can migrate them via the same primitives — the discipline is "one new generic op covers all current and future atomic callers", not "rewrite existing composite code".
+
 ## boundary struct-layout verification (#1995)
 
 `#[repr(C)]` on the Rust side guarantees a C-compatible layout, but it does **not** by itself guarantee that the Rust structs match the C++ structs in `include/ry/llvm_emit/api.h` byte-for-byte: field order, padding, and `enum` underlying-type interpretation can each drift incidentally when the two declarations are maintained by hand. Because the Rust reimplementation of `emit` (#1950 / #1993) passes these descriptors across the FFI boundary by pointer, any such drift is a silent miscompile. The verification mechanism below is the safety net that turns that class of drift into a build failure.
