@@ -14,6 +14,8 @@ metadata:
 - Never invoke this skill autonomously or from another skill.
 - Never propose this skill, present it as an option, include it in a plan, or list it as a next step.
 
+> **Sync with `/git-create-pr`**: `.claude/skills/git-create-pr/SKILL.md` inlines the *actions* of Step 0-3 below as its Step 1-4. When editing Step 0-3 here, keep them in sync with the inlined versions there at the action level — not byte-for-byte. The inlined versions carry skip guards that this push-only skill intentionally omits.
+
 ## Context
 
 - Current git status: !`git status`
