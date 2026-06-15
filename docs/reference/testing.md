@@ -273,7 +273,7 @@ fn booleansTests():
 
 ## Lifecycle Hooks
 
-Four directives — `@beforeEach`, `@afterEach`, `@beforeAll`, `@afterAll` — let you factor common setup/teardown out of every `@it` body. They are declared on parameterless, return-typeless functions inside a `@describe` block; the body is **inlined** into the describe at codegen time and runs in the describe's variable scope.
+Four directives — `@beforeEach`, `@afterEach`, `@beforeAll`, `@afterAll` — let you factor common setup/teardown out of every `@it` body. They are declared on parameterless, return-typeless functions either **inside a `@describe` block** (the body is inlined into the describe at codegen time and runs in the describe's variable scope) or **at file top level** (the body is inlined around every `@it` in the file and runs in the file's top-level scope). File-level and describe-level hooks cascade — see [Execution order](#execution-order) for the full ordering.
 
 ```ry
 from testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect
@@ -319,6 +319,57 @@ For a describe with `N` tests, hooks run in this order:
 @afterAll
 ```
 
+#### File top-level hooks (cascade with describe-level hooks)
+
+`@beforeAll` / `@beforeEach` / `@afterEach` / `@afterAll` may also be declared **outside any `@describe`** — at file top level. File-level hooks wrap **every** test in the file (top-level `@it` and `@it` nested inside `@describe`) and cascade with describe-level hooks: file `@beforeEach` fires **before** describe `@beforeEach`, and file `@afterEach` fires **after** describe `@afterEach`. For an `@it` inside a `@describe`:
+
+```text
+file @beforeAll                                            (once per file)
+  describe @beforeAll                                      (once per describe)
+    file @beforeEach → describe @beforeEach
+      @it
+    describe @afterEach → file @afterEach                  (per @it)
+  describe @afterAll
+file @afterAll                                             (once per file)
+```
+
+Top-level `@it` (no enclosing `@describe`) skips every describe-level layer: only file `@beforeAll` / `@beforeEach` / `@afterEach` / `@afterAll` run.
+
+```ry
+from testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
+
+log = ""
+
+@beforeAll
+fn fileSetupAll():
+    log = log + "FBA;"
+
+@beforeEach
+fn fileSetupEach():
+    log = log + "FBE;"
+
+@afterEach
+fn fileTeardownEach():
+    log = log + "FAE;"
+
+@it("top-level @it sees file hooks only")
+fn t1():
+    expect(log).toEq("FBA;FBE;")
+
+@describe("inner")
+fn inner():
+    @beforeEach
+    fn descBefore():
+        log = log + "DBE;"
+
+    @it("file BE fires before describe BE")
+    fn t2():
+        # After t1: "FBA;FBE;FAE;". Then file FBE; describe DBE; body.
+        expect(log).toEq("FBA;FBE;FAE;FBE;DBE;")
+```
+
+File-level hooks are declared at most once per kind per file (mirroring the per-describe limit). All other rules in [Constraints](#constraints) apply unchanged.
+
 ### Accumulation semantics (differs from Jest)
 
 The `@describe` body executes **once**, not per-test. Variables declared inside the describe are allocated once and live across all tests in the block; `@beforeEach` mutations accumulate across `@it` invocations (the `counter == 1` then `counter == 2` example above). This is intentional and follows from Ry's scope model.
@@ -340,10 +391,9 @@ fn reset():
 ### Constraints
 
 - A hook function must have no parameters and no declared return type
-- At most one of each hook kind per describe block
+- At most one of each hook kind per describe block, and at most one of each hook kind per file at top level
 - A function cannot carry two lifecycle directives (e.g. `@beforeEach @afterEach`)
 - A lifecycle hook directive cannot coexist with `@it`, `@describe`, `@timeout`, `@skip`, `@only`, `@todo`, `@each`, or `@property` on the same function
-- Hooks declared outside a `@describe` (file top-level) are rejected
 
 ### Interaction with `@timeout`
 
@@ -1258,9 +1308,8 @@ If you do need shared mock state, reset it explicitly in `@afterEach` to avoid a
 
 ## Limitations
 
-- File top-level lifecycle hooks (outside any `@describe`) are not supported
 - Nested-describe inheritance of lifecycle hooks is not supported (each `@describe` owns its own hooks) — see [Nested @describe lifecycle](#nested-describe-lifecycle) under Feature interactions
-- A test fired by `@timeout` (i.e. the test body did not finish within the budget) skips its `@afterEach` — see [Directives reference](directives.md#timeout) for details
+- A test fired by `@timeout` (i.e. the test body did not finish within the budget) skips its `@afterEach` (this applies symmetrically to file-level `@afterEach` declared outside any `@describe`) — see [Directives reference](directives.md#timeout) for details
 
 ---
 

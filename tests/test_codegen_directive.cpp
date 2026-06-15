@@ -2180,64 +2180,121 @@ TEST_F(DirectiveTest, TimeoutLargeValueAccepted) {
 //   @beforeEach / @afterEach / @beforeAll / @afterAll
 // ============================================================
 
-// --- Rejection: declared outside @describe ---
+// --- Acceptance: declared at file top level (#1780) ---
+//
+// Before #1780 these were rejection tests for "must be declared inside an
+// @describe block". File-top-level hooks now wrap every test in the file,
+// so the same source must compile cleanly. Hook bodies for a file that
+// contains no @it / @describe are silently dropped (same semantics as a
+// describe with no direct @it).
 
-TEST_F(DirectiveTest, BeforeEachOutsideDescribeRejected) {
-    try {
-        runTestSource(withStdlibDirectiveDecls(
-            "@beforeEach\n"
-            "fn setup():\n"
-            "    expect(1).toEq(1)\n"
-        ));
-        FAIL() << "Expected error for @beforeEach outside @describe";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("must be declared inside an @describe block"),
-                  std::string::npos) << "got: " << msg;
-    }
+TEST_F(DirectiveTest, BeforeEachAcceptedAtFileTop) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@beforeEach\n"
+        "fn setup():\n"
+        "    expect(1).toEq(1)\n"
+    )));
 }
 
-TEST_F(DirectiveTest, AfterEachOutsideDescribeRejected) {
-    try {
-        runTestSource(withStdlibDirectiveDecls(
-            "@afterEach\n"
-            "fn teardown():\n"
-            "    expect(1).toEq(1)\n"
-        ));
-        FAIL() << "Expected error for @afterEach outside @describe";
-    } catch (const std::runtime_error &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("must be declared inside an @describe block"),
-                  std::string::npos) << "got: " << msg;
-    }
+TEST_F(DirectiveTest, AfterEachAcceptedAtFileTop) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@afterEach\n"
+        "fn teardown():\n"
+        "    expect(1).toEq(1)\n"
+    )));
 }
 
-TEST_F(DirectiveTest, BeforeAllOutsideDescribeRejected) {
+TEST_F(DirectiveTest, BeforeAllAcceptedAtFileTop) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@beforeAll\n"
+        "fn setupAll():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}
+
+TEST_F(DirectiveTest, AfterAllAcceptedAtFileTop) {
+    ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@afterAll\n"
+        "fn teardownAll():\n"
+        "    expect(1).toEq(1)\n"
+    )));
+}
+
+// --- Rejection: duplicate hook of the same kind at file level (#1780) ---
+
+TEST_F(DirectiveTest, DuplicateBeforeAllAtFileTopRejected) {
     try {
         runTestSource(withStdlibDirectiveDecls(
             "@beforeAll\n"
-            "fn setupAll():\n"
+            "fn firstSetup():\n"
+            "    expect(1).toEq(1)\n"
+            "@beforeAll\n"
+            "fn secondSetup():\n"
             "    expect(1).toEq(1)\n"
         ));
-        FAIL() << "Expected error for @beforeAll outside @describe";
+        FAIL() << "Expected error for duplicate file-level @beforeAll";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+        EXPECT_NE(msg.find("can be declared at most once per file"),
+                  std::string::npos) << "got: " << msg;
+        EXPECT_NE(msg.find("firstSetup"), std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, DuplicateBeforeEachAtFileTopRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@beforeEach\n"
+            "fn firstBefore():\n"
+            "    expect(1).toEq(1)\n"
+            "@beforeEach\n"
+            "fn secondBefore():\n"
+            "    expect(1).toEq(1)\n"
+        ));
+        FAIL() << "Expected error for duplicate file-level @beforeEach";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("can be declared at most once per file"),
                   std::string::npos) << "got: " << msg;
     }
 }
 
-TEST_F(DirectiveTest, AfterAllOutsideDescribeRejected) {
+// --- Rejection: file-level @beforeEach + @each @it (#1780 + #1686 reuse) ---
+
+TEST_F(DirectiveTest, FileBeforeEachWithEachItRejected) {
     try {
         runTestSource(withStdlibDirectiveDecls(
-            "@afterAll\n"
-            "fn teardownAll():\n"
+            "@beforeEach\n"
+            "fn fileSetup():\n"
             "    expect(1).toEq(1)\n"
+            "@each([(1, 1), (2, 2)])\n"
+            "@it(\"each {0} {1}\")\n"
+            "fn t(a: int, b: int):\n"
+            "    expect(a).toEq(b)\n"
         ));
-        FAIL() << "Expected error for @afterAll outside @describe";
+        FAIL() << "Expected error for file-level @beforeEach combined with @each @it";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("must be declared inside an @describe block"),
+        EXPECT_NE(msg.find("not yet supported with @each"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
+TEST_F(DirectiveTest, FileBeforeEachWithPropertyItRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@beforeEach\n"
+            "fn fileSetup():\n"
+            "    expect(1).toEq(1)\n"
+            "@property(count=10)\n"
+            "@it(\"property holds\")\n"
+            "fn t(a: int):\n"
+            "    expect(a).toEq(a)\n"
+        ));
+        FAIL() << "Expected error for file-level @beforeEach combined with @property @it";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("not yet supported with @property"),
                   std::string::npos) << "got: " << msg;
     }
 }
@@ -2701,5 +2758,99 @@ TEST_F(DirectiveTest, BeforeAllAfterItStillAccepted) {
         "    fn s():\n"
         "        counter = counter + 100\n"
     )));
+}
+
+// --- Execution: file @afterAll body actually runs after the last @it (#1780) ---
+//
+// Ry assertions inside an @it cannot observe @afterAll because it fires AFTER
+// the last test body completes. Instead capture stdout and assert the
+// sentinel printed inside @afterAll lands AFTER the "+ <test>" pass line
+// emitted by __ry_test_it_end. The summary line "1 passed" prints after
+// @afterAll (via __ry_test_summary), so the sentinel must sit between the
+// pass marker and the summary.
+TEST_F(DirectiveTest, FileAfterAllBodyActuallyRunsAfterLastIt) {
+    const std::string output = runTestSource(withStdlibDirectiveDecls(
+        "@beforeAll\n"
+        "fn fileBA():\n"
+        "    print(\"FILE_BA_SENTINEL\")\n"
+        "@afterAll\n"
+        "fn fileAA():\n"
+        "    print(\"FILE_AA_SENTINEL\")\n"
+        "@it(\"single test\")\n"
+        "fn single():\n"
+        "    expect(1).toEq(1)\n"
+    ));
+    const auto baPos = output.find("FILE_BA_SENTINEL");
+    const auto passPos = output.find("+ single test");
+    const auto aaPos = output.find("FILE_AA_SENTINEL");
+    const auto summaryPos = output.find("1 passed, 0 failed");
+    ASSERT_NE(baPos, std::string::npos) << "got: " << output;
+    ASSERT_NE(passPos, std::string::npos) << "got: " << output;
+    ASSERT_NE(aaPos, std::string::npos) << "got: " << output;
+    ASSERT_NE(summaryPos, std::string::npos) << "got: " << output;
+    EXPECT_LT(baPos, passPos) << "got: " << output;
+    EXPECT_LT(passPos, aaPos)
+        << "file @afterAll must run AFTER the last @it pass marker: " << output;
+    EXPECT_LT(aaPos, summaryPos)
+        << "file @afterAll must run BEFORE the test summary: " << output;
+}
+
+// --- Execution: full 9-step ordering across file + describe hooks (#1780) ---
+//
+// Issue #1780 specifies a 9-step execution order combining file-level and
+// describe-level hooks. Steps 1-7 are observable from inside an @it body
+// (the directive_file_lifecycle.test.ry spec covers them via accumulated
+// log strings). Steps 8 (describe @afterAll) and 9 (file @afterAll)
+// execute after the last @it body completes, so they can only be
+// verified via stdout capture. Print one sentinel per hook layer and
+// assert the substring positions in the captured output are strictly
+// monotonic across the spec's 9 steps.
+TEST_F(DirectiveTest, FullNineStepCascadeOrdering) {
+    const std::string output = runTestSource(withStdlibDirectiveDecls(
+        "@beforeAll\n"
+        "fn fileBA():\n"
+        "    print(\"S1_FBA\")\n"
+        "@beforeEach\n"
+        "fn fileBE():\n"
+        "    print(\"S3_FBE\")\n"
+        "@afterEach\n"
+        "fn fileAE():\n"
+        "    print(\"S7_FAE\")\n"
+        "@afterAll\n"
+        "fn fileAA():\n"
+        "    print(\"S9_FAA\")\n"
+        "@describe(\"d\")\n"
+        "fn d():\n"
+        "    @beforeAll\n"
+        "    fn descBA():\n"
+        "        print(\"S2_DBA\")\n"
+        "    @beforeEach\n"
+        "    fn descBE():\n"
+        "        print(\"S4_DBE\")\n"
+        "    @afterEach\n"
+        "    fn descAE():\n"
+        "        print(\"S6_DAE\")\n"
+        "    @afterAll\n"
+        "    fn descAA():\n"
+        "        print(\"S8_DAA\")\n"
+        "    @it(\"step5 body\")\n"
+        "    fn body():\n"
+        "        print(\"S5_BODY\")\n"
+        "        expect(1).toEq(1)\n"
+    ));
+
+    const char *steps[] = {
+        "S1_FBA", "S2_DBA", "S3_FBE", "S4_DBE", "S5_BODY",
+        "S6_DAE", "S7_FAE", "S8_DAA", "S9_FAA"
+    };
+    size_t prev = 0;
+    for (const char *step : steps) {
+        const auto pos = output.find(step);
+        ASSERT_NE(pos, std::string::npos)
+            << "missing step " << step << " in output:\n" << output;
+        EXPECT_GE(pos, prev)
+            << "step " << step << " out of order in output:\n" << output;
+        prev = pos;
+    }
 }
 

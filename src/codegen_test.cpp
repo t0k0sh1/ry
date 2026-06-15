@@ -405,10 +405,17 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     // the test body N times in a runtime loop; integrating @beforeEach /
     // @afterEach per-iteration would be MVP+ scope. For now reject the
     // combination at validation time so the user does not silently get
-    // "@beforeEach runs once before the @each loop" semantics.
-    const bool hasActiveHooks = !describe_hook_stack_.empty() &&
+    // "@beforeEach runs once before the @each loop" semantics. File-level
+    // hooks (#1780) participate in the same reject — if a file declares
+    // @beforeEach / @afterEach at top level, an @each / @property @it
+    // anywhere in the file (top-level or inside @describe) hits the same
+    // wall regardless of whether the enclosing describe also has hooks.
+    const bool hasDescribeHooks = !describe_hook_stack_.empty() &&
         (!describe_hook_stack_.back().beforeEach.empty() ||
          !describe_hook_stack_.back().afterEach.empty());
+    const bool hasFileHooks = !file_before_each_body_.empty() ||
+                              !file_after_each_body_.empty();
+    const bool hasActiveHooks = hasDescribeHooks || hasFileHooks;
     if (hasActiveHooks && (hasEach || hasProperty)) {
         const char *which = hasEach ? "@each" : "@property";
         codegenError(std::string("@beforeEach / @afterEach are not yet supported with ") + which +
@@ -501,48 +508,63 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     const auto &entry = overloads->back();
 
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
-    std::vector<StmtNode> *beforeEachBody =
+    // Hook cascade (#1780): file-level hooks wrap describe-level hooks
+    // around every @it. Order is file BE → describe BE → @it → describe AE
+    // → file AE on the normal path. Either layer may be absent (top-level
+    // @it has no describe layer; a file without file-level hooks has no
+    // file layer). Empty bodies collapse to nullptr so inlineBody is a
+    // no-op for absent layers.
+    std::vector<StmtNode> *fileBeforeEachBody =
+        file_before_each_body_.empty() ? nullptr : &file_before_each_body_;
+    std::vector<StmtNode> *fileAfterEachBody =
+        file_after_each_body_.empty() ? nullptr : &file_after_each_body_;
+    std::vector<StmtNode> *describeBeforeEachBody =
         (!describe_hook_stack_.empty() && !describe_hook_stack_.back().beforeEach.empty())
             ? &describe_hook_stack_.back().beforeEach
             : nullptr;
-    std::vector<StmtNode> *afterEachBody =
+    std::vector<StmtNode> *describeAfterEachBody =
         (!describe_hook_stack_.empty() && !describe_hook_stack_.back().afterEach.empty())
             ? &describe_hook_stack_.back().afterEach
             : nullptr;
     if (hasTimeout) {
-        // @beforeEach / @afterEach are inlined inside emitItWithTimeout's
+        // All four hook layers are inlined inside emitItWithTimeout's
         // normalBB between begin and end, so hook failures attribute to the
         // current @it via __ry_test_record_fail. The SIGALRM siglongjmp path
-        // (timeoutBB) intentionally skips BOTH hooks because cross-stack
+        // (timeoutBB) intentionally skips every hook because cross-stack
         // jump can leave user state inconsistent; documented as a known
-        // limitation.
-        emitItWithTimeout(timeoutMs, descVal, entry, beforeEachBody, afterEachBody);
+        // limitation that applies symmetrically to file-level @afterEach.
+        emitItWithTimeout(timeoutMs, descVal, entry,
+                          fileBeforeEachBody, describeBeforeEachBody,
+                          describeAfterEachBody, fileAfterEachBody);
         return;
     }
-    // Inline @beforeEach / user fn / @afterEach INSIDE the it_begin/it_end
-    // window so any expect failure inside a hook is recorded against the
-    // current @it slot set by __ry_test_it_begin (#1686). @beforeEach runs
-    // BEFORE loadCapturedArgs so describe-scope variables it mutates are
-    // observed by the test through its captured copies.
+    // Inline all hook layers INSIDE the it_begin/it_end window so any
+    // expect failure inside a hook is recorded against the current @it
+    // slot set by __ry_test_it_begin (#1686). Hooks run BEFORE
+    // loadCapturedArgs so any variable they mutate is observed by the
+    // test through its captured copies.
+    auto inlineBody = [this](std::vector<StmtNode> *body) {
+        if (!body) return;
+        for (auto &stmt : *body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    };
     auto [itBeginFn, itEndFn] = getTestItFunctions();
     builder_.CreateCall(itBeginFn, {descVal});
-    if (beforeEachBody) {
-        for (auto &stmt : *beforeEachBody)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    }
+    inlineBody(fileBeforeEachBody);
+    inlineBody(describeBeforeEachBody);
     auto capturedArgs = loadCapturedArgs(entry, "@it");
     builder_.CreateCall(entry.func, capturedArgs);
-    if (afterEachBody) {
-        for (auto &stmt : *afterEachBody)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    }
+    inlineBody(describeAfterEachBody);
+    inlineBody(fileAfterEachBody);
     builder_.CreateCall(itEndFn);
 }
 
 void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                                  const OverloadEntry &entry,
-                                 std::vector<StmtNode> *beforeEachBody,
-                                 std::vector<StmtNode> *afterEachBody) {
+                                 std::vector<StmtNode> *fileBeforeEachBody,
+                                 std::vector<StmtNode> *describeBeforeEachBody,
+                                 std::vector<StmtNode> *describeAfterEachBody,
+                                 std::vector<StmtNode> *fileAfterEachBody) {
     auto beginFn = getRuntimeFn("__ry_test_it_begin_with_timeout", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
     auto endFn = getRuntimeFn("__ry_test_it_end_with_timeout", llvm::Type::getVoidTy(*ctx_), {});
     auto timeoutFn = getRuntimeFn("__ry_test_it_timeout", llvm::Type::getVoidTy(*ctx_), {});
@@ -574,21 +596,24 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
     builder_.SetInsertPoint(normalBB);
     builder_.CreateCall(beginFn,
         {descVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(timeoutMs))});
-    // Inline @beforeEach / user fn / @afterEach INSIDE the begin/end window
-    // on the normal-completion path (#1686) so hook expect failures attribute
-    // to the current @it via __ry_test_record_fail. The timeoutBB path below
-    // intentionally skips all three — SIGALRM siglongjmp tears across the C++
-    // stack and there is no way to guarantee user-code invariants.
-    if (beforeEachBody) {
-        for (auto &stmt : *beforeEachBody)
+    // Inline the full hook cascade (file BE → describe BE → user fn →
+    // describe AE → file AE) INSIDE the begin/end window on the
+    // normal-completion path (#1686 / #1780) so hook expect failures
+    // attribute to the current @it via __ry_test_record_fail. The
+    // timeoutBB path below intentionally skips every layer — SIGALRM
+    // siglongjmp tears across the C++ stack and there is no way to
+    // guarantee user-code invariants.
+    auto inlineBody = [this](std::vector<StmtNode> *body) {
+        if (!body) return;
+        for (auto &stmt : *body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    }
+    };
+    inlineBody(fileBeforeEachBody);
+    inlineBody(describeBeforeEachBody);
     auto capturedArgs = loadCapturedArgs(entry, "@it");
     builder_.CreateCall(entry.func, capturedArgs);
-    if (afterEachBody) {
-        for (auto &stmt : *afterEachBody)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    }
+    inlineBody(describeAfterEachBody);
+    inlineBody(fileAfterEachBody);
     builder_.CreateCall(endFn);
     emitBranchUncond(afterBB);
 
