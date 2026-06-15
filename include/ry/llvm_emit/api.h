@@ -167,8 +167,8 @@ typedef enum {
 // Atomic RMW binop selector — Ry-concept-free generic LLVM `atomicrmw`
 // operations. Added for #2190 (weak ARC capability migration); designed for
 // future extension (XOR/AND/OR can be added without reshuffling). Numbers
-// must match RY_ATOMIC_BINOP_* in abi/ops.rs; do not reorder without updating
-// both sides. An unknown binop value falls back to Add.
+// must match RY_ATOMIC_BINOP_* in crates/emit/src/abi.rs; do not reorder
+// without updating both sides. An unknown binop value falls back to Add.
 typedef enum {
     RY_ATOMIC_BINOP_ADD = 0,
     RY_ATOMIC_BINOP_SUB = 1
@@ -176,11 +176,11 @@ typedef enum {
 
 // Atomic memory ordering selector — Ry-concept-free generic LLVM
 // `AtomicOrdering`. Added for #2190 (weak ARC capability migration). Numbers
-// must match RY_ATOMIC_ORDERING_* in abi/ops.rs; do not reorder without
-// updating both sides. NotAtomic means the load is non-atomic (no fence)
-// — for atomic ops (rmw / cmpxchg) it is invalid and the emission layer
-// falls back to Monotonic. An unknown ordering value falls back to NotAtomic
-// (for loads) or Monotonic (for rmw/cmpxchg).
+// must match RY_ATOMIC_ORDERING_* in crates/emit/src/abi.rs; do not reorder
+// without updating both sides. NotAtomic means the load is non-atomic (no
+// fence) — for atomic ops (rmw / cmpxchg) it is invalid and the emission
+// layer falls back to Monotonic. An unknown ordering value falls back to
+// NotAtomic (for loads) or Monotonic (for rmw/cmpxchg).
 typedef enum {
     RY_ATOMIC_ORDERING_NOT_ATOMIC      = 0,
     RY_ATOMIC_ORDERING_MONOTONIC       = 1,
