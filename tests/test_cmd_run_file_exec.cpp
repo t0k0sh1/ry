@@ -22,7 +22,11 @@ static std::pair<std::string, int> runRyRunInDir(
     if (pipe(pipeOut) != 0) return {"", -1};
 
     pid_t pid = fork();
-    if (pid < 0) return {"", -1};
+    if (pid < 0) {
+        close(pipeOut[0]);
+        close(pipeOut[1]);
+        return {"", -1};
+    }
 
     if (pid == 0) {
         close(pipeOut[0]);
