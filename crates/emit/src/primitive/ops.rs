@@ -278,6 +278,21 @@ impl EmitCtx {
         ValueRef(LLVMBuildZExt(self.builder, val.0, dest_ty.0, name))
     }
 
+    // `trunc val to dest_ty` — truncate an integer value to a narrower integer
+    // type (`LLVMBuildTrunc`). Added for #2194 (concurrency capability
+    // migration): thread join unwraps an i64 worker-return slot to i1 for bool
+    // workers, AtomicInt CAS truncates its i64 status to i1, and AtomicBool
+    // load truncates its i64 backing slot to i1. All three sites currently
+    // emit a C++ `builder_.CreateTrunc`; this primitive is the boundary entry.
+    pub(crate) unsafe fn build_trunc(
+        &mut self,
+        val: ValueRef,
+        dest_ty: TypeRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildTrunc(self.builder, val.0, dest_ty.0, name))
+    }
+
     // `icmp <pred> lhs, rhs`.
     pub(crate) unsafe fn build_icmp(
         &mut self,

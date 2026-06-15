@@ -2113,6 +2113,11 @@ public:
     // carries no builder_.CreateZExt.
     llvm::Value *emitZExt(llvm::Value *val, llvm::Type *dest_ty, const char *name);
 
+    // trunc an integer value to a narrower integer type. Added for #2194
+    // (concurrency capability migration): thread join i64→i1 bool unwrap,
+    // AtomicInt CAS status truncate, AtomicBool load i64→i1.
+    llvm::Value *emitTrunc(llvm::Value *val, llvm::Type *dest_ty, const char *name);
+
     // Generic atomic primitives — Ry-concept-free LLVM `atomicrmw` / atomic
     // `load` / `cmpxchg` wrappers over the boundary entries
     // `ry_emit_atomic_rmw` / `_atomic_load` / `_atomic_cmpxchg`. Added for

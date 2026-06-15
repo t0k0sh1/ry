@@ -1128,6 +1128,14 @@ RyValueId ry_emit_extract_value(RyEmitCtx *ctx, RyValueId agg_id, uint32_t idx,
 RyValueId ry_emit_zext(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
                        const char *name);
 
+// Emit `trunc val to dest_ty` — truncate an integer value to the narrower
+// integer type `dest_ty` (`LLVMBuildTrunc`). NULL `name` → empty SSA name.
+// Added for #2194 (concurrency capability migration): thread join i64→i1 bool
+// unwrap, AtomicInt CAS status i64→i1 truncate, AtomicBool load i64→i1.
+// Creates no basic blocks.
+RyValueId ry_emit_trunc(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
+                        const char *name);
+
 // Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
 // return the interned i1 result. An unknown predicate yields sentinel 0.
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,
