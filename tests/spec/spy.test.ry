@@ -40,14 +40,14 @@ fn tickAndReturn(x: int) -> int:
 
 @describe("spy")
 fn spyTests():
-  @it("records calls without replacing implementation")
+  @it("should record calls without replacing implementation")
   fn recordsWithoutReplacing():
     spy("computeReal")
     result: int = computeReal(5)
     expect(result).toEq(15)
     expect(verify("computeReal")).toEq(1)
 
-  @it("counts multiple calls")
+  @it("should count multiple calls")
   fn countsMultipleCalls():
     spy("computeReal")
     computeReal(1)
@@ -55,7 +55,7 @@ fn spyTests():
     computeReal(3)
     expect(verify("computeReal")).toEq(3)
 
-  @it("preserves side effects of the real implementation")
+  @it("should preserve side effects of the real implementation")
   fn preservesSideEffects():
     sideEffectCount[0] = 0
     spy("tickAndReturn")
@@ -66,11 +66,11 @@ fn spyTests():
     expect(sideEffectCount[0]).toEq(2)
     expect(verify("tickAndReturn")).toEq(2)
 
-  @it("returns 0 for a function that was never spied")
+  @it("should return 0 for a function that was never spied")
   fn unspiedReturnsZero():
     expect(verify("computeReal")).toEq(0)
 
-  @it("auto-restores after the it block")
+  @it("should auto-restore after the it block")
   fn autoRestoresAfterItBlock():
     # The previous it block populated sideEffectCount[0]; this fresh it
     # block must see a clean registry: verify returns 0 because the spy
@@ -79,7 +79,7 @@ fn spyTests():
 
 @describe("spy + verifyCalledWith")
 fn spyVerifyCalledWithTests():
-  @it("matches int argument")
+  @it("should match int argument")
   fn matchesIntArg():
     spy("computeReal")
     computeReal(7)
@@ -89,7 +89,7 @@ fn spyVerifyCalledWithTests():
     expect(verifyCalledWith("computeReal", 8)).toEq(1)
     expect(verifyCalledWith("computeReal", 999)).toEq(0)
 
-  @it("matches str argument")
+  @it("should match str argument")
   fn matchesStrArg():
     spy("greet")
     greet("alice")
@@ -98,7 +98,7 @@ fn spyVerifyCalledWithTests():
     expect(verifyCalledWith("greet", "alice")).toEq(2)
     expect(verifyCalledWith("greet", "bob")).toEq(1)
 
-  @it("matches bool argument")
+  @it("should match bool argument")
   fn matchesBoolArg():
     spy("flagToInt")
     flagToInt(true)
@@ -107,7 +107,7 @@ fn spyVerifyCalledWithTests():
     expect(verifyCalledWith("flagToInt", true)).toEq(2)
     expect(verifyCalledWith("flagToInt", false)).toEq(1)
 
-  @it("matches float argument")
+  @it("should match float argument")
   fn matchesFloatArg():
     spy("floatDouble")
     floatDouble(1.5)
@@ -116,7 +116,7 @@ fn spyVerifyCalledWithTests():
     expect(verifyCalledWith("floatDouble", 1.5)).toEq(2)
     expect(verifyCalledWith("floatDouble", 3.0)).toEq(1)
 
-  @it("matches List<int> argument")
+  @it("should match List<int> argument")
   fn matchesListIntArg():
     spy("sumList")
     sumList([1, 2, 3])
@@ -126,14 +126,14 @@ fn spyVerifyCalledWithTests():
     expect(verifyCalledWith("sumList", [4, 5])).toEq(1)
     expect(verifyCalledWith("sumList", [9, 9])).toEq(0)
 
-  @it("matches Set<str> argument")
+  @it("should match Set<str> argument")
   fn matchesSetStrArg():
     spy("countStrSet")
     countStrSet({"a", "b"})
     countStrSet({"b", "a"})
     expect(verifyCalledWith("countStrSet", {"a", "b"})).toEq(2)
 
-  @it("matches Map<str, int> argument")
+  @it("should match Map<str, int> argument")
   fn matchesMapStrIntArg():
     spy("sumMapValues")
     m1: Map<str, int> = {"a": 1, "b": 2}
@@ -144,7 +144,7 @@ fn spyVerifyCalledWithTests():
 
 @describe("spy interop with mock and mockClear/mockReset")
 fn spyMockInteropTests():
-  @it("does not leak across it blocks (mock from a sibling it)")
+  @it("should not leak across it blocks (mock from a sibling it)")
   fn spyAfterSiblingMock():
     # Without registry isolation between it blocks, a previous mock("computeReal", ...)
     # could remain and replace the implementation under spy. The runtime auto-clears
@@ -153,7 +153,7 @@ fn spyMockInteropTests():
     expect(computeReal(4)).toEq(12)
     expect(verify("computeReal")).toEq(1)
 
-  @it("mockClear zeroes the spy call count")
+  @it("should zero the spy call count after mockClear")
   fn mockClearResetsSpyCount():
     spy("computeReal")
     computeReal(1)
@@ -164,7 +164,7 @@ fn spyMockInteropTests():
     computeReal(3)
     expect(verify("computeReal")).toEq(1)
 
-  @it("mockReset removes the spy registration entirely")
+  @it("should remove the spy registration entirely after mockReset")
   fn mockResetRemovesSpyRegistration():
     spy("computeReal")
     computeReal(5)
@@ -176,7 +176,7 @@ fn spyMockInteropTests():
     expect(computeReal(2)).toEq(6)
     expect(verify("computeReal")).toEq(0)
 
-  @it("mock takes precedence when mock and spy coexist in the same block")
+  @it("should prefer mock over spy when both coexist in the same block")
   fn mockTakesPrecedence():
     # When both mock() and spy() target the same function inside the same it
     # block, the replacement runs (real impl is bypassed) and the call is
@@ -200,7 +200,7 @@ fn callsRealComputeForSpy(x: int) -> int:
 
 @describe("spy detection inside non-CallStmt lambda positions (#1765)")
 fn spyInNonCallStmtPositionsTests():
-  @it("detects spy target inside AssignStmt rhs lambda body")
+  @it("should detect spy target inside AssignStmt rhs lambda body")
   fn detectsSpyInAssignRhsLambda():
     f = ():
       spy("realComputeForSpy")

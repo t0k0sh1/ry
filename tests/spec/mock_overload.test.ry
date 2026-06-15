@@ -15,14 +15,14 @@ fn nullary() -> int:
 
 @describe("mock overloaded fns - signature form")
 fn mockOverloadSigTests():
-  @it("mock with explicit signature dispatches by sig key")
+  @it("should dispatch by sig key when mock uses explicit signature")
   fn mockSigBasic():
     mock("addNum(int, int)", (x: int, y: int) => 999)
     expect(addNum(1, 2)).toEq(999)
     expect(addNum(1.0, 2.0)).toEq(3.0)  # float overload untouched
     mockResetAll()
 
-  @it("mock different overloads independently")
+  @it("should mock different overloads independently")
   fn mockSigIndependent():
     mock("addNum(int, int)", (x: int, y: int) => 11)
     mock("addNum(float, float)", (x: float, y: float) => 22.5)
@@ -30,14 +30,14 @@ fn mockOverloadSigTests():
     expect(addNum(1.0, 2.0)).toEq(22.5)
     mockResetAll()
 
-  @it("mock 3-arg overload by sig")
+  @it("should mock 3-arg overload by signature")
   fn mockSigArity():
     mock("addNum(int, int, int)", (x: int, y: int, z: int) => 100)
     expect(addNum(1, 2, 3)).toEq(100)
     expect(addNum(1, 2)).toEq(3)  # 2-arg untouched
     mockResetAll()
 
-  @it("mock nullary fn with empty paren sig")
+  @it("should mock nullary fn with empty paren signature")
   fn mockSigEmpty():
     mock("nullary()", () => 42)
     expect(nullary()).toEq(42)
@@ -45,7 +45,7 @@ fn mockOverloadSigTests():
 
 @describe("mock overloaded fns - aggregate verify")
 fn mockOverloadVerifyTests():
-  @it("verify(bare_name) sums calls across all overloads")
+  @it("should sum calls across all overloads via bare-name verify")
   fn verifyBareSum():
     spy("addNum(int, int)")
     spy("addNum(float, float)")
@@ -57,7 +57,7 @@ fn mockOverloadVerifyTests():
     expect(verify("addNum")).toEq(3)  # aggregate
     mockResetAll()
 
-  @it("bare spy spies all overloads")
+  @it("should spy all overloads via bare-name spy")
   fn bareSpyAll():
     spy("addNum")
     a = addNum(1, 2)
@@ -67,7 +67,7 @@ fn mockOverloadVerifyTests():
     expect(verify("addNum")).toEq(2)
     mockResetAll()
 
-  @it("mockClear(bare_name) clears all overloads")
+  @it("should clear all overloads via bare-name mockClear")
   fn bareMockClear():
     spy("addNum")
     a = addNum(1, 2)
@@ -79,7 +79,7 @@ fn mockOverloadVerifyTests():
 
 @describe("mock overloaded stdlib (@native customEmitter) fns")
 fn mockNativeCustomEmitterTests():
-  @it("mock math.digits(int) overrides 1-arg overload")
+  @it("should override 1-arg overload via mock for digits(int)")
   fn mockDigitsArity1():
     mock("digits(int)", (n: int) => [9, 9, 9])
     expect(digits(0)).toEq([9, 9, 9])
@@ -87,7 +87,7 @@ fn mockNativeCustomEmitterTests():
     expect(digits(255, 16)).toEq([15, 15])
     mockResetAll()
 
-  @it("mock math.digits(int, int) overrides 2-arg overload")
+  @it("should override 2-arg overload via mock for digits(int, int)")
   fn mockDigitsArity2():
     mock("digits(int, int)", (n: int, base: int) => [1, 2])
     expect(digits(255, 16)).toEq([1, 2])
@@ -95,14 +95,14 @@ fn mockNativeCustomEmitterTests():
     expect(digits(0)).toEq([0])
     mockResetAll()
 
-  @it("mock math.abs(int) overrides int overload only")
+  @it("should override int overload only via mock for abs(int)")
   fn mockAbsInt():
     mock("abs(int)", (x: int) => 42)
     expect(abs(-5)).toEq(42)
     expect(abs(-5.0)).toEq(5.0)  # float overload untouched
     mockResetAll()
 
-  @it("spy(bare_name) on stdlib counts both overloads")
+  @it("should count both overloads via bare-name spy on stdlib")
   fn spyDigitsBare():
     spy("digits")
     a = digits(0)
@@ -115,7 +115,7 @@ fn mockNativeCustomEmitterTests():
 
 @describe("mock overloaded stdlib (@native normal-path) fns")
 fn mockNativeNormalPathTests():
-  @it("mock math.pow(int, int) overrides int overload via normal path")
+  @it("should override int overload via normal-path mock for pow(int, int)")
   fn mockPowInt():
     mock("pow(int, int)", (x: int, y: int) => 100)
     expect(pow(2, 3)).toEq(100)

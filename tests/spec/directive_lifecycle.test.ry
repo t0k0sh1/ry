@@ -27,17 +27,17 @@ fn lifecycleExecutionOrder():
     fn teardownAll():
         log = log + "AA;"
 
-    @it("first test sees BA + BE prefix")
+    @it("should see BA + BE prefix on first @it")
     fn first():
         # Before this test ran, BA fired once and BE fired once.
         expect(log).toEq("BA;BE;")
 
-    @it("second test sees afterEach + beforeEach repeating")
+    @it("should see afterEach + beforeEach repeating on second @it")
     fn second():
         # After first: "BA;BE;AE;". Then BE for self: "BA;BE;AE;BE;".
         expect(log).toEq("BA;BE;AE;BE;")
 
-    @it("third test confirms accumulation continues")
+    @it("should confirm hook accumulation continues on third @it")
     fn third():
         # Accumulated: "BA;BE;AE;BE;AE;BE;"
         expect(log).toEq("BA;BE;AE;BE;AE;BE;")
@@ -52,11 +52,11 @@ fn counterAccumulation():
     fn s():
         counter = counter + 1
 
-    @it("counter == 1 after first beforeEach")
+    @it("should reach counter == 1 after first beforeEach")
     fn t1():
         expect(counter).toEq(1)
 
-    @it("counter == 2 after second beforeEach (accumulated)")
+    @it("should reach counter == 2 after second beforeEach (accumulated)")
     fn t2():
         # In Jest each describe-body runs per-test and counter resets to 0;
         # in Ry it runs once, so counter accumulates. This is intentional —
@@ -73,7 +73,7 @@ fn describeScopeMutation():
     fn s():
         label = "ready"
 
-    @it("@it sees @beforeEach mutation via captured var")
+    @it("should observe @beforeEach mutation in @it via captured var")
     fn t():
         expect(label).toEq("ready")
 
@@ -92,12 +92,12 @@ fn beforeAllRunsOnce():
     fn each():
         counter = counter + 1
 
-    @it("first test: setupCount == 1, counter == 1")
+    @it("should see setupCount == 1 and counter == 1 on first @it")
     fn t1():
         expect(setupCount).toEq(1)
         expect(counter).toEq(1)
 
-    @it("second test: setupCount STILL == 1, counter == 2")
+    @it("should see setupCount STILL == 1 and counter == 2 on second @it")
     fn t2():
         expect(setupCount).toEq(1)
         expect(counter).toEq(2)
@@ -112,7 +112,7 @@ fn firstDescribeIsolated():
     fn s():
         visited = visited + 100
 
-    @it("visited == 100")
+    @it("should observe visited == 100")
     fn t():
         expect(visited).toEq(100)
 
@@ -125,7 +125,7 @@ fn secondDescribeIsolated():
     fn s():
         visited = visited + 7
 
-    @it("visited == 7 (not leaked from prior describe)")
+    @it("should observe visited == 7 (not leaked from prior describe)")
     fn t():
         expect(visited).toEq(7)
 
@@ -135,7 +135,7 @@ fn secondDescribeIsolated():
 fn hookPositionIndependent():
     setupRan = false
 
-    @it("@beforeAll runs before this @it even though declared after")
+    @it("should run @beforeAll before this @it even though declared after")
     fn t():
         expect(setupRan).toEq(true)
 
@@ -158,11 +158,11 @@ fn timeoutAfterEachNormal():
         counter = counter + 10
 
     @timeout(2000)
-    @it("fast test within timeout runs both hooks")
+    @it("should run both hooks for a fast test within timeout")
     fn fast():
         expect(counter > 0).toEq(true)
 
-    @it("second test sees prior afterEach cumulative effect")
+    @it("should see prior afterEach cumulative effect on second @it")
     fn second():
         # After fast: counter = 1 (BE) + 10 (AE). Then BE for self = 12.
         expect(counter).toEq(12)
@@ -179,15 +179,15 @@ fn arcStrBeforeEach():
         # per @it; if ARC retain/release is buggy we crash under ASan.
         greeting = "hello" + ", world"
 
-    @it("first test")
+    @it("should observe a fresh greeting on first @it (ARC str re-emit)")
     fn t1():
         expect(greeting).toEq("hello, world")
 
-    @it("second test")
+    @it("should observe a fresh greeting on second @it (ARC str re-emit)")
     fn t2():
         expect(greeting).toEq("hello, world")
 
-    @it("third test")
+    @it("should observe a fresh greeting on third @it (ARC str re-emit)")
     fn t3():
         expect(greeting).toEq("hello, world")
 
@@ -203,15 +203,15 @@ fn arcListBeforeEach():
         # `items` value must run cleanly each time.
         items = [1, 2, 3]
 
-    @it("first test")
+    @it("should observe a fresh list on first @it (ARC list re-emit)")
     fn t1():
         expect(len(items)).toEq(3)
 
-    @it("second test")
+    @it("should observe a fresh list on second @it (ARC list re-emit)")
     fn t2():
         expect(len(items)).toEq(3)
 
-    @it("third test")
+    @it("should observe a fresh list on third @it (ARC list re-emit)")
     fn t3():
         expect(len(items)).toEq(3)
 
@@ -219,7 +219,7 @@ fn arcListBeforeEach():
 # ─── describe without hooks still works (existing behaviour preserved) ───
 @describe("describe with no hooks")
 fn describeNoHooks():
-    @it("plain test still works")
+    @it("should run a plain test without hooks")
     fn t():
         expect(1 + 1).toEq(2)
 
@@ -233,14 +233,14 @@ fn afterEachAccumulation():
     fn ae():
         log = log + "AE;"
 
-    @it("first test: log empty")
+    @it("should see empty log on first @it (afterEach accumulation)")
     fn t1():
         expect(log).toEq("")
 
-    @it("second test: log shows prior afterEach")
+    @it("should see prior afterEach in log on second @it")
     fn t2():
         expect(log).toEq("AE;")
 
-    @it("third test: log shows two prior afterEach runs")
+    @it("should see two prior afterEach runs in log on third @it")
     fn t3():
         expect(log).toEq("AE;AE;")
