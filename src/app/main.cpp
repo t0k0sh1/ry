@@ -43,6 +43,16 @@ namespace fs = std::filesystem;
     return rc;
 }
 
+// `.ry` suffix check used to detect deprecated `ry <file>` invocations (#1735).
+static bool looksLikeRyFile(const char *arg) {
+    if (!arg) return false;
+    static constexpr const char kRySuffix[] = ".ry";
+    constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
+    const size_t n = std::strlen(arg);
+    return n >= kRySuffixLen &&
+           std::memcmp(arg + n - kRySuffixLen, kRySuffix, kRySuffixLen) == 0;
+}
+
 // NOLINTNEXTLINE(bugprone-exception-escape): process boundary; uncaught exceptions invoke std::terminate
 int main(int argc, char *argv[]) {
     bool skip_global_lib = ry::cli::parseRyEnv(argc, argv);
@@ -108,19 +118,34 @@ int main(int argc, char *argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "run") == 0) {
         return finalizeAfterPossibleJit(
-            cmd_run(argc - 2, argv + 2, argv[0], skip_global_lib));
+            cmd_run(argc - 2, argv + 2, argv[0], skip_global_lib, emit_llvm_ir));
+    }
+
+    // Reject deprecated bare invocations (#1735). The dual-purpose `ry run`
+    // subcommand replaces these. Reject before LLVM init so we don't pay the
+    // initialization cost for paths we are about to refuse.
+    if (argc == 1) {
+        ry::cli::printMainHelp();
+        return 1;
+    }
+    if (std::strcmp(argv[1], "--") == 0) {
+        errs() << "Error: 'ry --' is no longer supported. Use 'ry run --' instead.\n";
+        return 1;
+    }
+    if (looksLikeRyFile(argv[1])) {
+        errs() << "Error: 'ry <file>' is no longer supported. Use 'ry run <file>' instead.\n";
+        return 1;
+    }
+    if (std::strcmp(argv[1], "-c") != 0 && std::strcmp(argv[1], "test") != 0) {
+        errs() << "Error: unknown command '" << argv[1] << "'\n\n";
+        ry::cli::printMainHelp();
+        return 1;
     }
 
     InitLLVM X(argc, argv);
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();
     InitializeNativeTargetAsmParser();
-
-    bool test_mode = false;
-    bool coverage_mode = false;
-    bool outline_mode = false;
-    const char *filename = nullptr;
-    std::string entry_path_storage; // lifetime holder for entry point path
 
     if (argc >= 2 && std::strcmp(argv[1], "-c") == 0) {
         // ry -c — read and execute code from stdin
@@ -139,54 +164,6 @@ int main(int argc, char *argv[]) {
             errs() << "Error: " << e.what() << "\n";
             return finalizeAfterPossibleJit(1);
         }
-    } else if (argc >= 2 && std::strcmp(argv[1], "--") == 0) {
-        // ry -- [args...] — run entry point with arguments
-        entry_path_storage = ry::cli::resolveEntryPoint(true);
-        if (entry_path_storage.empty()) return 1;
-        filename = entry_path_storage.c_str();
-        __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
-    } else if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
-        // Unknown subcommand detection: if the argument is not an existing file,
-        // try resolving a bare filename against package.toml [paths], else error.
-        std::string arg1 = argv[1];
-        if (fs::exists(arg1)) {
-            const fs::path arg_path(arg1);
-            if (!arg_path.has_parent_path() &&
-                arg_path.extension() == ".ry" &&
-                fs::is_regular_file(arg_path)) {
-                errs() << "Error: ambiguous script path '" << arg1
-                       << "'. Use './" << arg1 << "' or an absolute path.\n";
-                return 1;
-            }
-            entry_path_storage.clear();
-            filename = argv[1];
-        } else {
-            // Explicit relative/absolute *.ry path that does not exist — file error, not unknown command.
-            const fs::path arg_path(arg1);
-            if (arg_path.has_parent_path()) {
-                static constexpr const char kRySuffix[] = ".ry";
-                constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
-                if (arg1.size() >= kRySuffixLen &&
-                    arg1.compare(arg1.size() - kRySuffixLen, kRySuffixLen, kRySuffix) == 0) {
-                    errs() << "Error: no such file: " << arg1 << "\n";
-                    return 1;
-                }
-            }
-            std::string resolved;
-            std::string resolve_err;
-            if (ry::cli::tryResolveBareRyFile(arg1, resolved, resolve_err)) {
-                entry_path_storage = std::move(resolved);
-                filename = entry_path_storage.c_str();
-            } else if (!resolve_err.empty()) {
-                errs() << resolve_err;
-                return 1;
-            } else {
-                errs() << "Error: unknown command '" << arg1 << "'\n\n";
-                ry::cli::printMainHelp();
-                return 1;
-            }
-        }
-        __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
         bool parallel = false;
@@ -295,12 +272,23 @@ int main(int argc, char *argv[]) {
                 return finalizeAfterPossibleJit(0);
             }
             // ry test <file.ry> — single file test (parallel flag ignored)
-            test_mode = true;
-            coverage_mode = coverage;
-            outline_mode = outline;
-            entry_path_storage = target_str;
-            filename = entry_path_storage.c_str();
             __ry_args_init(0, nullptr);
+            try {
+                ry::CoverageState cs;
+                if (coverage) ry::resetCoverageState(cs);
+                int rc = ry::runRyFile(target_str, /*test_mode=*/true,
+                                       argv[0], skip_global_lib,
+                                       coverage, outline,
+                                       coverage ? &cs : nullptr, emit_llvm_ir);
+                if (coverage) ry::emitCoverageReport(cs);
+                return finalizeAfterPossibleJit(rc);
+            } catch (const DiagnosticError &e) {
+                errs() << e.what();
+                return finalizeAfterPossibleJit(1);
+            } catch (const std::exception &e) {
+                errs() << "Error: " << e.what() << "\n";
+                return finalizeAfterPossibleJit(1);
+            }
         } else {
             // ry test [-p] [-w] — discover from project root
             auto root = findProjectRoot();
@@ -321,29 +309,10 @@ int main(int argc, char *argv[]) {
             return finalizeAfterPossibleJit(
                 ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel, coverage, outline));
         }
-    } else if (argc == 1) {
-        entry_path_storage = ry::cli::resolveEntryPoint(false);
-        if (entry_path_storage.empty()) {
-            ry::cli::printMainHelp();
-            return 1;
-        }
-        filename = entry_path_storage.c_str();
-        __ry_args_init(0, nullptr);
     }
 
-    try {
-        ry::CoverageState cs;
-        if (coverage_mode) ry::resetCoverageState(cs);
-        int rc = ry::runRyFile(filename, test_mode, argv[0], skip_global_lib,
-                               coverage_mode, outline_mode, coverage_mode ? &cs : nullptr,
-                               emit_llvm_ir);
-        if (coverage_mode) ry::emitCoverageReport(cs);
-        return finalizeAfterPossibleJit(rc);
-    } catch (const DiagnosticError &e) {
-        errs() << e.what();
-        return finalizeAfterPossibleJit(1);
-    } catch (const std::exception &e) {
-        errs() << "Error: " << e.what() << "\n";
-        return finalizeAfterPossibleJit(1);
-    }
+    // Unreachable: the deprecation block above already returns for argc == 1,
+    // `ry --`, `ry <file.ry>`, and unknown subcommands; only `ry -c` / `ry test`
+    // reach this point and both branches above return inside their bodies.
+    return 1;
 }

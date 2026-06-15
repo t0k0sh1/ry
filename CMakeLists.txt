@@ -465,8 +465,8 @@ add_executable(ry_tests
     tests/test_stdin.cpp
     tests/test_input_builtin.cpp
     tests/test_read_line_builtin.cpp
-    tests/test_entry_point.cpp
     tests/test_cmd_run_file_exec.cpp
+    tests/test_legacy_invocation_rejected.cpp
     tests/test_help.cpp
     tests/test_trace.cpp
     tests/test_codegen_arc.cpp

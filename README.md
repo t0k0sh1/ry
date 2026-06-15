@@ -136,14 +136,13 @@ cmake --preset default && cmake --build build
 ## Usage
 
 ```bash
-ry <file.ry>              # Run a Ry script
-echo '<code>' | ry -c      # Run code from stdin
-ry test [options] [path]   # Run tests (*.test.ry)
-ry init                    # Initialize a project in current directory
-ry new <name>              # Create a new project
-ry run [<script-name>]     # Run a project script
-ry fmt [options] [path]    # Format source files
-ry self-update             # Update ry itself
+echo '<code>' | ry -c                 # Run code from stdin
+ry test [options] [path]              # Run tests (*.test.ry)
+ry init                               # Initialize a project in current directory
+ry new <name>                         # Create a new project
+ry run [<name>|<file.ry>|-- [args]]   # Run a project script, Ry file, or entry point
+ry fmt [options] [path]               # Format source files
+ry self-update                        # Update ry itself
 ```
 
 The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
@@ -163,8 +162,8 @@ Run `ry <command> --help` for detailed options.
 For internal execution analysis, Ry also supports a structured trace mode:
 
 ```bash
-ry --trace app/main.ry
-ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
+ry --trace run app/main.ry
+ry --trace-out=/tmp/ry-trace.jsonl run app/main.ry
 ry test --trace tests/spec
 ```
 

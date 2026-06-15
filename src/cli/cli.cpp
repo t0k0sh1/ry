@@ -125,8 +125,6 @@ bool tryResolveBareRyFile(const std::string &arg, std::string &out_path, std::st
 void printMainHelp() {
     llvm::outs() << "ry " << RY_VERSION << "\n\n";
     llvm::outs() << "Usage:\n";
-    llvm::outs() << "  ry                                   Run entry point from package.toml\n";
-    llvm::outs() << "  ry <file.ry> [args...]               Run a Ry script\n";
     llvm::outs() << "  echo '<code>' | ry -c                Run code from stdin\n";
     llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
     llvm::outs() << "  ry init                              Initialize a project\n";

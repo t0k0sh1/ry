@@ -49,7 +49,10 @@ static RunResult runRy(std::vector<const char *> args) {
         close(STDIN_FILENO);
         setenv("RY_ENV", "internal", 1);
 
-        std::vector<const char *> argv{"ry"};
+        // argv[0] uses the full RY_BINARY_PATH (not bare "ry") so Linux glibc's
+        // fs::canonical(parent_path(argv[0])) resolves the exe-adjacent stdlib
+        // correctly (.claude/rules/tests-cpp-conventions.md).
+        std::vector<const char *> argv{RY_BINARY_PATH};
         argv.insert(argv.end(), args.begin(), args.end());
         argv.push_back(nullptr);
 
@@ -120,7 +123,7 @@ TEST_F(DeprecatedWarningsTest, DeprecatedFunctionEmitsWarningToStderr) {
         "fn oldApi() -> int:\n"
         "    return 1\n"
         "print(oldApi())\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_EQ(r.out, "1\n");
     EXPECT_NE(r.err.find("warning: 'oldApi' is deprecated"), std::string::npos)
@@ -137,7 +140,7 @@ TEST_F(DeprecatedWarningsTest, DeprecatedFunctionWarningDeduplicated) {
         "print(oldApi())\n"
         "print(oldApi())\n"
         "print(oldApi())\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_EQ(r.out, "1\n1\n1\n1\n1\n");
     EXPECT_EQ(countOccurrences(r.err, "warning: 'oldApi' is deprecated"), 1u)
@@ -149,7 +152,7 @@ TEST_F(DeprecatedWarningsTest, NonDeprecatedFunctionNoWarning) {
         "fn freshApi() -> int:\n"
         "    return 1\n"
         "print(freshApi())\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_EQ(r.out, "1\n");
     EXPECT_EQ(r.err.find("deprecated"), std::string::npos)
@@ -162,7 +165,7 @@ TEST_F(DeprecatedWarningsTest, EmitLlvmIrPathEmitsDeprecationWarning) {
         "fn oldApi() -> int:\n"
         "    return 1\n"
         "print(oldApi())\n");
-    auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
+    auto r = runRy({"--emit-llvm-ir", "run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.out.find("ModuleID"), std::string::npos);
     EXPECT_NE(r.err.find("warning: 'oldApi' is deprecated"), std::string::npos)

@@ -307,16 +307,16 @@ For other modes, `.env.<env>` is loaded first (if it exists), then `.env`. Envir
 
 ```bash
 # Short form (recommended)
-RY_ENV=dev ./build/ry app.ry
+RY_ENV=dev ./build/ry run app.ry
 
 # Long form (backward compatible)
-RY_ENV=development ./build/ry app.ry
+RY_ENV=development ./build/ry run app.ry
 
 # CLI flag
 ./build/ry --env=dev test
 
 # prod mode: .env is NOT loaded
-RY_ENV=prod ./build/ry app.ry
+RY_ENV=prod ./build/ry run app.ry
 
 # Additional isolation when developing Ry itself
 RY_ENV=internal ./build/ry test

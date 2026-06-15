@@ -33,9 +33,12 @@ static RunResult runRy(std::initializer_list<const char *> args) {
         close(STDIN_FILENO);
         setenv("RY_ENV", "internal", 1);
 
-        // Build argv: "ry" + args + nullptr
+        // Build argv: RY_BINARY_PATH (path AND argv[0]) + args + nullptr.
+        // argv[0] uses the full RY_BINARY_PATH (not bare "ry") so Linux glibc's
+        // fs::canonical(parent_path(argv[0])) resolves the exe-adjacent stdlib
+        // correctly (.claude/rules/tests-cpp-conventions.md).
         std::vector<const char *> argv;
-        argv.push_back("ry");
+        argv.push_back(RY_BINARY_PATH);
         for (auto a : args) argv.push_back(a);
         argv.push_back(nullptr);
 
@@ -72,12 +75,14 @@ TEST(HelpOption, MainHelpWithDashH) {
     auto r = runRy({"-h"});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.out.find("Usage:"), std::string::npos);
-    EXPECT_NE(r.out.find("ry <file.ry>"), std::string::npos);
+    EXPECT_NE(r.out.find("ry run"), std::string::npos);
     EXPECT_NE(r.out.find("ry test"), std::string::npos);
     EXPECT_NE(r.out.find("ry init"), std::string::npos);
     EXPECT_NE(r.out.find("ry new"), std::string::npos);
     EXPECT_NE(r.out.find("ry fmt"), std::string::npos);
     EXPECT_NE(r.out.find("ry self-update"), std::string::npos);
+    // Deprecated invocations (#1735) should not appear in help.
+    EXPECT_EQ(r.out.find("ry <file.ry>"), std::string::npos);
 }
 
 TEST(HelpOption, MainHelpWithDoubleDashHelp) {

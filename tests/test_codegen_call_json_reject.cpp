@@ -130,7 +130,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsListPointer) {
         "from json import load\n"
         "xs: List<int> = [1, 2, 3]\n"
         "r = load[Map<str, int>](xs)\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
     EXPECT_NE(r.err.find("load[T]() requires a str or File argument"),
               std::string::npos)
@@ -142,7 +142,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsMapPointer) {
         "from json import load\n"
         "m: Map<str, int> = {\"a\": 1}\n"
         "r = load[List<int>](m)\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
     EXPECT_NE(r.err.find("load[T]() requires a str or File argument"),
               std::string::npos)
@@ -154,7 +154,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsSetPointer) {
         "from json import load\n"
         "s: Set<int> = {1, 2, 3}\n"
         "r = load[Map<str, int>](s)\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
     EXPECT_NE(r.err.find("load[T]() requires a str or File argument"),
               std::string::npos)
@@ -171,7 +171,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadAcceptsStrArgument) {
         "    print(\"ok\")\n"
         "  Err(_):\n"
         "    print(\"err\")\n");
-    auto r = runRy({p.string().c_str()});
+    auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
     EXPECT_EQ(r.out, "ok\n") << "stderr: " << r.err;
 }
