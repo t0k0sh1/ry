@@ -1,4 +1,8 @@
 #include "ry/project/project_config.hpp"
+#include "ry/cli/cli.hpp"
+#include "ry/jit/jit_runner.hpp"
+#include "ry/args_runtime.hpp"
+#include "ry/diagnostic/diagnostic.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -13,6 +17,9 @@
 #include <sys/wait.h>
 #endif
 #include <unordered_map>
+#include <llvm/Support/InitLLVM.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
 
 
 namespace ry {
@@ -303,7 +310,7 @@ static void printScriptList(std::ostream &out,
     }
 }
 
-int cmd_run(int argc, char *argv[]) {
+int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib) {
     auto root = findProjectRoot();
     if (!root) {
         std::cerr << "Error: package.toml not found. Run 'ry init' first.\n";
@@ -330,30 +337,92 @@ int cmd_run(int argc, char *argv[]) {
         return 0;
     }
 
-    std::string script_name = argv[0];
-    auto it = config.scripts.find(script_name);
-    if (it == config.scripts.end()) {
-        std::cerr << "Error: unknown script '" << script_name << "'\n";
-        if (!config.scripts.empty()) {
-            std::cerr << "\nAvailable scripts:\n";
-            printScriptList(std::cerr, config.scripts, false);
+    const std::string first_arg = argv[0];
+
+    auto runFile = [&](const std::string &filename, int args_argc, char **args_argv) -> int {
+        llvm::InitLLVM llvm_x(argc, argv);
+        llvm::InitializeNativeTarget();
+        llvm::InitializeNativeTargetAsmPrinter();
+        llvm::InitializeNativeTargetAsmParser();
+        __ry_args_init(args_argc, args_argv);
+        try {
+            return runRyFile(filename, false, argv0, skip_global_lib, false, false);
+        } catch (const DiagnosticError &e) {
+            llvm::errs() << e.what();
+            return 1;
+        } catch (const std::exception &e) {
+            llvm::errs() << "Error: " << e.what() << "\n";
+            return 1;
+        }
+    };
+
+    if (first_arg == "--") {
+        std::string entry = cli::resolveEntryPoint(true);
+        if (entry.empty()) return 1;
+        return runFile(entry, argc - 1, argc > 1 ? argv + 1 : nullptr);
+    }
+
+    constexpr const char kRySuffix[] = ".ry";
+    constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
+    const bool has_ry_ext =
+        first_arg.size() >= kRySuffixLen &&
+        first_arg.compare(first_arg.size() - kRySuffixLen, kRySuffixLen, kRySuffix) == 0;
+    if (has_ry_ext) {
+        if (fs::exists(first_arg)) {
+            return runFile(first_arg, argc - 1, argc > 1 ? argv + 1 : nullptr);
+        }
+        const fs::path arg_path(first_arg);
+        if (arg_path.has_parent_path()) {
+            std::cerr << "Error: no such file: " << first_arg << "\n";
+            return 1;
+        }
+        std::string resolved;
+        std::string resolve_err;
+        if (cli::tryResolveBareRyFile(first_arg, resolved, resolve_err)) {
+            return runFile(resolved, argc - 1, argc > 1 ? argv + 1 : nullptr);
+        }
+        if (!resolve_err.empty()) {
+            std::cerr << resolve_err;
+        } else {
+            std::cerr << "Error: no such file: " << first_arg << "\n";
         }
         return 1;
     }
 
-    int status = std::system(it->second.c_str()); // NOLINT(cert-env33-c) -- intentional: ry run executes user-defined scripts
-    if (status == -1) {
-        std::cerr << "Error: failed to execute command\n";
-        return 1;
-    }
+    auto it = config.scripts.find(first_arg);
+    if (it != config.scripts.end()) {
+        int status = std::system(it->second.c_str()); // NOLINT(cert-env33-c) -- intentional: ry run executes user-defined scripts
+        if (status == -1) {
+            std::cerr << "Error: failed to execute command\n";
+            return 1;
+        }
 #ifdef _WIN32
-    return status;
+        return status;
 #else
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        }
+        return 1;
+#endif
+    }
+
+    const std::string bare_with_ext = first_arg + ".ry";
+    std::string resolved;
+    std::string resolve_err;
+    if (cli::tryResolveBareRyFile(bare_with_ext, resolved, resolve_err)) {
+        return runFile(resolved, argc - 1, argc > 1 ? argv + 1 : nullptr);
+    }
+
+    if (!resolve_err.empty()) {
+        std::cerr << resolve_err;
+    } else {
+        std::cerr << "Error: unknown command '" << first_arg << "'\n";
+    }
+    if (!config.scripts.empty()) {
+        std::cerr << "\nAvailable scripts:\n";
+        printScriptList(std::cerr, config.scripts, false);
     }
     return 1;
-#endif
 }
 
 } // namespace ry

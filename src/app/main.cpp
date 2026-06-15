@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
         return cmd_fmt(argc - 2, argv + 2);
     }
     if (argc >= 2 && std::strcmp(argv[1], "run") == 0) {
-        return cmd_run(argc - 2, argv + 2);
+        return finalizeAfterPossibleJit(
+            cmd_run(argc - 2, argv + 2, argv[0], skip_global_lib));
     }
 
     InitLLVM X(argc, argv);
