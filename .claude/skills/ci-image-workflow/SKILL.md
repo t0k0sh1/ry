@@ -222,12 +222,34 @@ docker build \
 
 ## Pitfalls
 
-- **No apt anywhere**. The central property of the images is that no
-  Linux job ever invokes `apt-get`. If you find yourself adding
-  `apt-get install` to a Dockerfile or workflow, you are violating
-  the property the images were built to provide. Pre-build from
-  source or pull a release binary in the appropriate Dockerfile
-  stage instead.
+- **No apt anywhere** — including Debian's own apt. The central
+  property of the images is that no Linux job ever invokes `apt-get`,
+  in Dockerfiles or in workflow steps. If you find yourself adding
+  `apt-get install`, you are violating the property the images were
+  built to provide. Pre-build from source or pull a release binary in
+  the appropriate Dockerfile stage instead. The policy is **distro-
+  agnostic**: the base images are Debian (`gcc:14-trixie` and
+  `gcc:14-bookworm`), not Ubuntu, so #1505's original Ubuntu mirror
+  outage did not directly hit image builds — but Debian mirrors can
+  also fail, and a partial unban was re-evaluated in #1506 and
+  rejected because:
+  (a) `gcc:14-bookworm`'s `bookworm-updates` / `bookworm-security`
+  apt repositories already return GPG signature errors out of the box,
+  so `apt-get update` is non-functional in `ci-glibc-old.Dockerfile`
+  without keyring fixes — partial unban would break release CI image
+  builds today; (b) `cppcheck` advanced from `2.16.0` (source-baked)
+  to trixie-shipped `2.17.1`, with unknown impact on the
+  `normalCheckLevelMaxBranches` suppression in
+  `.claude/rules/ci-workflows.md` ("cppcheck 2.16 raises
+  `normalCheckLevelMaxBranches` to a hard exit") — asymmetric lint
+  risk for a 12-line stage; (c) `snapshot.debian.org` does not state
+  reproducible builds as a design goal nor a long-term retention
+  policy — apt version float would silently degrade scratch-rebuild
+  reproducibility; (d) the realistic apt-eligible delta is only
+  `cmake` + `ninja` (~18 Dockerfile lines) and not enough to justify
+  the policy-boundary maintenance cost. Re-open the question only if
+  the bookworm GPG situation is resolved upstream **and** the
+  `cppcheck` suppression is decoupled from a specific minor version.
 - **Forgetting to rebuild before merging**. The path filter on `push`
   to `main` covers post-merge auto-rebuild, but a PR that bumps a
   tarball URL will fail CI until the rebuild succeeds. Always
