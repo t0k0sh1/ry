@@ -358,6 +358,32 @@ pub unsafe extern "C" fn ry_emit_zext(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `trunc val to dest_ty` — truncate `val` to the narrower integer type
+/// `dest_ty` (`LLVMBuildTrunc`). NULL ctx / NULL dest_ty / unresolved val → 0.
+/// NULL `name` → empty. Added for #2194 (concurrency capability migration):
+/// thread join i64→i1 bool unwrap, AtomicInt CAS status truncate, AtomicBool
+/// load i64→i1. The NULL-type guard fires before resolve_value, mirroring
+/// `ry_emit_zext`.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_trunc(
+    ctx: *mut RyEmitCtx,
+    val_id: RyValueId,
+    dest_ty: RyTypeRef,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if dest_ty.is_null() {
+        return 0;
+    }
+    let Some(val) = resolve_value(c, val_id) else {
+        return 0;
+    };
+    let v = c.build_trunc(val, TypeRef(as_type(dest_ty)), name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `icmp <predicate> lhs, rhs`. NULL ctx / unknown predicate / NULL operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_icmp(
