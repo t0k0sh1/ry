@@ -49,8 +49,11 @@ static TraceRunResult runRy(const std::vector<std::string> &args,
         if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(126);
         setenv("RY_ENV", "internal", 1);
 
+        // argv[0] uses the full RY_BINARY_PATH (not bare "ry") so Linux glibc's
+        // fs::canonical(parent_path(argv[0])) resolves the exe-adjacent stdlib
+        // correctly (.claude/rules/tests-cpp-conventions.md).
         std::vector<char *> argv;
-        argv.push_back(const_cast<char *>("ry"));
+        argv.push_back(const_cast<char *>(RY_BINARY_PATH));
         for (const auto &arg : args)
             argv.push_back(const_cast<char *>(arg.c_str()));
         argv.push_back(nullptr);
@@ -135,7 +138,7 @@ TEST_F(TraceModeTest, TraceGoesToStderrAndProgramOutputStaysOnStdout) {
         "\n"
         "print(pick(1))\n");
 
-    auto result = runRy({"--trace", script.string()});
+    auto result = runRy({"--trace", "run", script.string()});
     EXPECT_EQ(result.exit_code, 0);
     EXPECT_EQ(result.out, "1\n");
     EXPECT_NE(result.err.find("\"event\":\"session.start\""), std::string::npos);
@@ -154,7 +157,7 @@ TEST_F(TraceModeTest, TraceCanBeRedirectedToFile) {
     auto script = writeFile("trace_file.ry", "print(\"ok\")\n");
     fs::path tracePath = tmp_dir_ / "trace.jsonl";
 
-    auto result = runRy({"--trace", "--trace-out=" + tracePath.string(), script.string()});
+    auto result = runRy({"--trace", "--trace-out=" + tracePath.string(), "run", script.string()});
     EXPECT_EQ(result.exit_code, 0);
     EXPECT_EQ(result.out, "ok\n");
     EXPECT_TRUE(result.err.empty());

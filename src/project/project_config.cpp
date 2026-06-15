@@ -310,7 +310,8 @@ static void printScriptList(std::ostream &out,
     }
 }
 
-int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib) {
+int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib,
+            bool emit_llvm_ir) {
     auto root = findProjectRoot();
     if (!root) {
         std::cerr << "Error: package.toml not found. Run 'ry init' first.\n";
@@ -346,7 +347,8 @@ int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib) {
         llvm::InitializeNativeTargetAsmParser();
         __ry_args_init(args_argc, args_argv);
         try {
-            return runRyFile(filename, false, argv0, skip_global_lib, false, false);
+            return runRyFile(filename, false, argv0, skip_global_lib, false, false, nullptr,
+                             emit_llvm_ir);
         } catch (const DiagnosticError &e) {
             llvm::errs() << e.what();
             return 1;

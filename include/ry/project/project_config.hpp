@@ -46,6 +46,7 @@ bool inSamePackage(const std::string &file_a, const std::string &file_b);
 
 int cmd_init();
 int cmd_new(int argc, char *argv[]);
-int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib);
+int cmd_run(int argc, char *argv[], const char *argv0, bool skip_global_lib,
+            bool emit_llvm_ir = false);
 
 } // namespace ry

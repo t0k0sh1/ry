@@ -3,7 +3,6 @@
 ## CLI Overview
 
 ```bash
-ry <file.ry> [args...]              # Run a Ry script
 echo '<code>' | ry -c               # Run code from stdin
 ry test [options] [<file> | <dir>]  # Run tests
 ry init                             # Initialize a project
@@ -21,27 +20,6 @@ ry self-update [options]            # Update ry itself
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
 | `--env=<env>` | Set environment. Valid values: `prod`/`production`, `dev`/`development`, `internal`, `test`, `staging`. Overrides the `RY_ENV` environment variable. See [Module Reference — RY_ENV](modules.md#ry_env) for details. |
-
-### Entry Point Execution
-
-When no file argument is given, `ry` looks for a `package.toml` in the current directory (or parent directories) and runs the file specified by the `entry` field:
-
-```bash
-ry                        # runs entry file (e.g. src/main.ry)
-ry -- arg1 arg2           # runs entry file with arguments
-```
-
-If no `package.toml` is found or no `entry` field is set, `ry` prints help and exits.
-
-### Bare filename
-
-If the first argument is a **single path component** whose name ends with `.ry` (for example `main.ry`) and no file with that name exists in the current working directory, `ry` searches the nearest `package.toml` project in order: **first** the project root directory (the directory containing `package.toml`), **then** each directory listed under `[paths]` (keys sorted alphabetically; keys starting with `_` are reserved and ignored for this search, except `_dev_stdlib` which is handled separately). The **first** existing regular file wins (for example `foo.ry` next to `package.toml` is chosen over `src/foo.ry` when both exist). If none match, `ry` reports that the file does not exist and lists the paths that were tried. Tokens without a `.ry` suffix are not resolved this way (so mistyped subcommands still show “unknown command”).
-
-If the argument is a **single path component** *and* a file with that name exists in the current working directory, `ry` rejects it as ambiguous and exits with status 1 (e.g. `Error: ambiguous script path 'foo.ry'. Use './foo.ry' or an absolute path.`). Prefix the path with `./` or use an absolute path to indicate that the literal file in the current directory is intended; this also makes relative imports inside the script (such as `from .sub import ...`) resolve correctly.
-
-If the argument is a **path with more than one component** (for example `src/foo.ry` or `./foo.ry`) and that path does not exist, `ry` reports **no such file** instead of treating it as an unknown subcommand.
-
-The same rules apply to `ry test <file.ry>` when `<file.ry>` is a basename and does not exist relative to the current directory.
 
 ### Stdin Execution
 
@@ -125,13 +103,19 @@ ry run main.ry foo bar      # Run main.ry with positional arguments foo, bar
 
 For `ry run <name> [args...]`, the first positional argument is resolved in this order:
 
-1. **`<name>` is `--`** — runs the project entry point (`package.toml` `entry`) and passes the remaining arguments to `args()`.
-2. **`<name>` ends with `.ry`** — treated as a Ry file. If `<name>` contains a directory component or already exists, runs it directly; otherwise resolves it as a bare filename through `[paths]` (same algorithm as `ry <file.ry>` — see "Bare filename" above).
+1. **`<name>` is `--`** — runs the project entry point (`package.toml` `entry`) and passes the remaining arguments to `args()`. `ry run` with no arguments instead lists the available `[scripts]`.
+2. **`<name>` ends with `.ry`** — treated as a Ry file. If `<name>` contains a directory component or already exists, runs it directly; otherwise resolves it as a bare filename through `[paths]` (see "Bare filename resolution" below).
 3. **`<name>` matches a `[scripts]` key** — runs the script via the system shell (`std::system()`). The exit code is propagated.
 4. **`<name>` has no `.ry` extension and no script match** — falls back to resolving `<name>.ry` through `[paths]`.
 5. **Nothing matches** — exits with status 1, prints `Error: no such file: <name>.ry` with the searched paths, and lists the available scripts (if any) to help disambiguation.
 
 Scripts always take precedence over bare-name file resolution when both exist for the same name. To bypass scripts and run a file unambiguously, append `.ry` (e.g. `ry run build.ry` runs `build.ry` even when `[scripts].build` is defined).
+
+### Bare filename resolution
+
+When the first argument to `ry run` (or `ry test`) is a **single path component** whose name ends with `.ry` (for example `main.ry`) and no file with that name exists relative to the current directory, the nearest `package.toml` project is searched in order: **first** the project root directory (the directory containing `package.toml`), **then** each directory listed under `[paths]` (keys sorted alphabetically; keys starting with `_` are reserved and ignored, except `_dev_stdlib` which is handled separately). The **first** existing regular file wins (for example `foo.ry` next to `package.toml` is chosen over `src/foo.ry` when both exist). If none match, the file is reported as missing and the searched paths are listed. Tokens without a `.ry` suffix are not resolved this way.
+
+If the argument is a **path with more than one component** (for example `src/foo.ry` or `./foo.ry`) and that path does not exist, `ry run` reports **no such file** instead of falling through to the script-name path.
 
 ### Behavior
 
@@ -288,7 +272,7 @@ clean = "rm -rf build"
 | Key | Description |
 |------|------|
 | `src` | Source code directory |
-| (other keys) | Additional project-relative directories. Values must not be absolute and must not contain `..`. Together with `src`, these directories are used to resolve **bare filenames** for `ry <file>` and `ry test <file>` (see **Bare filename** above). |
+| (other keys) | Additional project-relative directories. Values must not be absolute and must not contain `..`. Together with `src`, these directories are used to resolve **bare filenames** for `ry run <file>` and `ry test <file>` (see **Bare filename resolution** above). |
 | `_dev_stdlib` | Optional; development override for the standard library location (see tooling docs). Not used for bare-filename resolution. |
 
 ### `[scripts]` Section

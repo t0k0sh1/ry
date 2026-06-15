@@ -1282,7 +1282,7 @@ For behavioral correctness ("does this produce the right answer?"), use `ry test
 ### `ry --emit-llvm-ir` contract
 
 ```bash
-ry --emit-llvm-ir <file.ry>       # Emit unoptimized IR for a .ry file
+ry --emit-llvm-ir run <file.ry>   # Emit unoptimized IR for a .ry file
 ry --emit-llvm-ir -c '<source>'   # Emit IR for inline source
 ```
 
@@ -1327,7 +1327,7 @@ fn myFunc(x: int) -> int:
 ctest --test-dir build -L filecheck --output-on-failure
 
 # Run a single golden manually
-./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
+./build/ry --emit-llvm-ir run tests/filecheck/function_call.ry \
   | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
 
 # Install FileCheck (macOS)

@@ -62,7 +62,7 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
         // (unlike macOS), breaking stdlib resolution under RY_ENV=internal where
         // the global ~/.ry/share fallback is skipped. See PR #1869 / issue
         // discussion.
-        execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
+        execl(RY_BINARY_PATH, RY_BINARY_PATH, "run", tmp.c_str(), nullptr);
         _exit(127);
     }
 

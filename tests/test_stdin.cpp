@@ -111,7 +111,7 @@ TEST(StdinExecution, FileExecutionStillWorks) {
         dup2(pipeOut[1], STDERR_FILENO);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
+        execl(RY_BINARY_PATH, RY_BINARY_PATH, "run", tmp.c_str(), nullptr);
         _exit(127);
     }
 
