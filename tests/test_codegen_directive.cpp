@@ -2280,6 +2280,25 @@ TEST_F(DirectiveTest, FileBeforeEachWithEachItRejected) {
     }
 }
 
+TEST_F(DirectiveTest, FileBeforeEachWithPropertyItRejected) {
+    try {
+        runTestSource(withStdlibDirectiveDecls(
+            "@beforeEach\n"
+            "fn fileSetup():\n"
+            "    expect(1).toEq(1)\n"
+            "@property(count=10)\n"
+            "@it(\"property holds\")\n"
+            "fn t(a: int):\n"
+            "    expect(a).toEq(a)\n"
+        ));
+        FAIL() << "Expected error for file-level @beforeEach combined with @property @it";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("not yet supported with @property"),
+                  std::string::npos) << "got: " << msg;
+    }
+}
+
 // --- Rejection: parameters ---
 
 TEST_F(DirectiveTest, BeforeEachWithParameterRejected) {
