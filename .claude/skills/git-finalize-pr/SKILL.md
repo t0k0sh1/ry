@@ -1,7 +1,7 @@
 ---
 name: git-finalize-pr
 description: User-invoked slash command that finalizes an already-pushed PR by addressing review comments, verifying CI, running pre-commit checks, merging, and cleaning up. Never invoke autonomously, from another skill, or merely because a PR is ready.
-allowed-tools: Bash(gh:*), Bash(git branch:*), Read, Edit
+allowed-tools: Bash(gh:*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git push:*), Bash(git log:*), Bash(git branch:*), Read, Edit
 metadata:
   short-description: Review → CI → merge in one pass
 ---
@@ -13,14 +13,17 @@ metadata:
 - Run only when the user directly invokes `/git-finalize-pr`.
 - Never invoke this skill autonomously or from another skill.
 - Never propose this skill, present it as an option, include it in a plan, or list it as a next step.
+- Do not invoke or suggest `/git-push` from within this skill — the Step 5-7 actions are inlined; delegation is prohibited per #2176.
 
-Finalize an already-pushed pull request: address review comments, follow up unresolved threads, verify CI, run the pre-commit checklist, and merge.
+> **Sync with `/git-create-pr`**: Steps 5-7 below mirror the *actions* of `.claude/skills/git-create-pr/SKILL.md` Steps 2-4 (Commit / Rebase / Push). Intentional differences: finalize has no branch-ensure (it always runs on a published PR branch), stages only the files touched by Step 3's auto-apply (specific `git add`, not all changes), and uses a fixed commit subject. Keep the rebase/push mechanics in sync at the action level — not byte-for-byte.
+
+Finalize an already-pushed pull request: address review comments, follow up unresolved threads, verify CI, run the pre-commit checklist, publish any auto-applied review fixes inline, and merge.
 
 ## One-pass policy
 
 This skill runs straight through. On any blocker it reports and stops — fix → push → CI wait → re-fix loops are never started automatically. Invoking this skill is the merge consent; no additional "merge しますか？" prompt is shown.
 
-Priority order: (1) CI failures are caught first (Step 2) and stop the flow immediately so investigation takes precedence; (2) review comments are addressed next (Step 3); (3) CI completion is verified strictly at the merge gate (Step 6). Step 1 is a structural-only pre-check that stops on conflicts; transient states like `BLOCKED` (CI pending) warn and proceed so Step 2 and Step 3 run in parallel with CI. When Step 3 produces changes that require publication, Step 5 stops before the merge gate.
+Priority order: (1) CI failures are caught first (Step 2) and stop the flow immediately so investigation takes precedence; (2) review comments are addressed next (Step 3); (3) CI completion is verified strictly at the merge gate (Step 8). Step 1 is a structural-only pre-check that stops on conflicts; transient states like `BLOCKED` (CI pending) warn and proceed so Step 2 and Step 3 run in parallel with CI. When Step 3 applies review fixes, they are committed, rebased, and pushed inline (Steps 5-7) before the merge gate; the force-push re-triggers CI, so Step 8 then stops on `BLOCKED`/`UNSTABLE` and returns control until checks settle.
 
 ## Repository
 
@@ -40,6 +43,18 @@ If no PR number is supplied, use the PR from Context. If none exists, stop:
 
 > No PR found. Run this skill on a branch with an associated PR, or pass a PR number.
 
+## Behavior Contract
+
+| State | Action |
+|---|---|
+| Step 3 reply-only; working tree clean; nothing ahead of `@{u}` | Skip Step 5-7 → Step 8 |
+| Step 3 applied Edits (review fixes carried over) | Step 5 (commit touched files) → Step 6 → Step 7 → Step 8 |
+| Step 3 reply-only but pre-existing commits ahead of `@{u}` | Skip Step 5 → Step 6 → Step 7 → Step 8 |
+| After Step 7 push: `mergeStateStatus` ∈ {`BLOCKED`, `UNSTABLE`, `UNKNOWN`} | Step 8 STOPs and returns control to the user |
+| Step 8: `MERGEABLE` + `CLEAN`/`HAS_HOOKS` + no unresolved threads | `gh pr merge --merge --delete-branch` |
+
+Rule: **commit only when Step 3 edited files; rebase + push only when something needs pushing; merge gate always re-checks.**
+
 ## Steps
 
 ### Step 1: Pre-check
@@ -51,7 +66,7 @@ From Context (or `gh pr view <PR> --json state,mergeable,mergeStateStatus,headRe
 - `mergeable == CONFLICTING` **or** `mergeStateStatus == DIRTY` → stop:
   > PR #\<PR\> has merge conflicts (mergeable: `<mergeable>`, mergeStateStatus: `<mergeStateStatus>`). Resolve conflicts and rerun.
 - `mergeStateStatus` ∉ {`CLEAN`, `HAS_HOOKS`} (e.g. `BLOCKED`, `BEHIND`, `UNSTABLE`, `UNKNOWN`, `DRAFT`) → warn and proceed:
-  > PR #\<PR\>: mergeStateStatus=`<mergeStateStatus>` (transient). Proceeding to Step 2 (CI failure check) and Step 3 (review handling); the strict merge gate is re-checked at Step 6.
+  > PR #\<PR\>: mergeStateStatus=`<mergeStateStatus>` (transient). Proceeding to Step 2 (CI failure check) and Step 3 (review handling); the strict merge gate is re-checked at Step 8.
 
 ### Step 2: Check CI for failures
 
@@ -61,7 +76,7 @@ gh pr checks <PR> --json name,bucket,state,link
 
 - Any `bucket == "fail"` → list each failed job (`name` / `state` / `link`) and stop:
   > CI failure(s) detected on PR #\<PR\> (above). Fix PR-caused failures and rerun. For pre-existing failures, triage via `/triage-side-finding` first.
-- Otherwise (all `pass` and/or `pending`) → proceed to Step 3. Pending checks do not block here; the strict completion gate is enforced at Step 6.
+- Otherwise (all `pass` and/or `pending`) → proceed to Step 3. Pending checks do not block here; the strict completion gate is enforced at Step 8.
 
 Do not auto-rerun, auto-fix, or loop.
 
@@ -89,17 +104,50 @@ CodeRabbit `<summary>🧹 Nitpick comments</summary>` blocks inside review summa
 
 If there are no review comments and no unresolved threads, proceed to Step 4 without action.
 
+While auto-applying, maintain an explicit list of files touched via `Edit`. Step 5 stages that exact list (not `git status` output) so any pre-existing dirty files outside Step 3's scope are not silently swept into the review-fix commit.
+
 ### Step 4: Pre-commit checklist
 
 Invoke `/pre-commit-checklist`. If it reports outstanding items, stop:
 
 > Pre-commit checklist reported outstanding items (above). Address them, then rerun.
 
-### Step 5: Verify branch publication
+### Step 5: Commit
 
-If Step 3 left working-tree changes or local commits that are not on the remote, stop and report that the PR cannot be finalized until the branch is clean and up to date. Do not invoke or suggest `/git-push`.
+- **Working-tree guard (always runs, before the skip):** If the working tree contains changes outside Step 3's touched-file list, stop:
+  > Unexpected working-tree changes found before commit (files outside Step 3's auto-apply list). Address the unexpected state and rerun.
+  When Step 3 touched no files, the list is empty and any dirty state trips this guard.
+- **Skip the remainder when** Step 3 applied no `Edit` calls (no review-fix changes carried over from Step 3).
+- Stage only the explicit list of files Step 3 touched via `Edit`:
+  ```bash
+  git add <file1> <file2> ...   # never git add -A or git add .
+  ```
+- Create a single commit with a fixed subject:
+  ```bash
+  git commit -m "fix: address review comment from PR #<PR>"
+  ```
 
-### Step 6: Merge
+### Step 6: Rebase onto `origin/main`
+
+- **Skip when** working tree clean **and** upstream set **and** no commits ahead of `@{u}`.
+- `git fetch origin`
+- `git rebase origin/main`
+- **Do not re-run `git fetch` between rebase and push** — it weakens the `--force-with-lease` guard in Step 7.
+- On conflict:
+  - `git diff --name-only --diff-filter=U` to list conflicting files
+  - `Read` + `Edit` to resolve
+  - `git add <file>` per resolved file → `git rebase --continue`
+  - If you cannot resolve: STOP and report to the user (do **not** auto-`git rebase --abort`)
+
+### Step 7: Push
+
+- **Skip when** working tree clean **and** upstream set **and** no commits ahead of `@{u}`.
+- `git push --force-with-lease`
+- Force push is required because rebase rewrites SHAs. `--force-with-lease` (no argument) rejects the push if `origin/<branch>` advanced since the last `git fetch`.
+
+After pushing, CI re-runs. Step 8 re-checks `mergeStateStatus`; if it is `BLOCKED`/`UNSTABLE`/`UNKNOWN`, Step 8 STOPs and returns control to the user. Do not wait for CI to complete — one-pass policy.
+
+### Step 8: Merge
 
 Re-verify status:
 
@@ -125,7 +173,7 @@ Merge:
 gh pr merge <PR> --merge --delete-branch
 ```
 
-### Step 7: Linked issue cleanup
+### Step 9: Linked issue cleanup
 
 Identify the linked issue number `<n>` from PR body (`Closes #<n>` / `Fixes #<n>` / `Refs #<n>`) or branch name. If none can be determined, skip and note it in the report.
 
@@ -140,7 +188,7 @@ GitHub's `Closes #xx` keyword auto-closes the issue when the PR merges into the 
 
 Execute autonomously immediately after merge — do not wait for user confirmation.
 
-### Step 8: Report
+### Step 10: Report
 
 ```text
 PR #<PR> "<title>" merged.
