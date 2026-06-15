@@ -24,14 +24,18 @@ extern "C" {
     void __ry_test_it_end();
     void __ry_test_it_skip(const char *name);
     void __ry_test_it_todo(const char *name);
-    // Per-test timeout (#1688). begin starts a setitimer(ITIMER_REAL, ms)
-    // and arms the per-test jmpbuf; end disarms the timer and prints
-    // PASS/FAIL; timeout is the continuation reached via siglongjmp from
-    // the SIGALRM handler — it prints "(timeout after Nms)" and increments
-    // the failure counter, then the caller continues with the next test.
+    // Per-test timeout (#1688, #1781). begin starts a setitimer(ITIMER_REAL,
+    // ms) and arms the per-test jmpbuf for the body phase. After the body
+    // phase (#1781) codegen calls disarm_timer + arm_timer(ms) to reset the
+    // SIGALRM timer around the @afterEach phase. end_with_timeout(body_to,
+    // ae_to) is reached after both phases — it disarms the timer, clears
+    // mocks, and prints the per-test outcome (PASS / FAIL / timeout /
+    // secondary @afterEach timeout) according to the two phase flags.
     void __ry_test_it_begin_with_timeout(const char *name, int64_t ms);
-    void __ry_test_it_end_with_timeout();
-    void __ry_test_it_timeout();
+    void __ry_test_disarm_timer();
+    void __ry_test_arm_timer(int64_t ms);
+    void __ry_test_it_end_with_timeout(bool body_timed_out,
+                                       bool after_each_timed_out);
     void *__ry_test_get_timeout_jmpbuf();
     void __ry_test_expect_fail(int line, const char *actual, const char *expected);
     void __ry_test_fail(int line, const char *msg);

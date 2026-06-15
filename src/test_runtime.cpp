@@ -653,21 +653,68 @@ void __ry_test_it_begin_with_timeout(const char *name, int64_t ms) {
     setitimer(ITIMER_REAL, &itv, nullptr);
 }
 
-void __ry_test_it_end_with_timeout() {
-    // Order: clear active flag FIRST, then disable timer. If a SIGALRM
-    // fires between these two steps, the handler sees active=0 and falls
-    // through to `_exit(124)` (equivalent to the legacy global-timeout
-    // path — same failure mode as the alarm()-based code we already
-    // shipped). True atomicity (sigprocmask(SIG_BLOCK, {SIGALRM})) is
-    // available if we later observe spurious end-path timeouts in the
-    // wild; the simpler ordering suffices for typical ms-scale tests.
+// Phase boundary helpers used by `emitItWithTimeout` (#1781): the codegen
+// uses two sigsetjmp landing pads (body + @afterEach) so the SIGALRM timer
+// must be disarmed at the end of each phase's normal path and re-armed
+// for the next phase. Order is always (active=0 → setitimer(0)) for
+// disarm and (active=1 → setitimer(ms)) for arm; the in-between race
+// is the same one __ry_test_it_end_with_timeout already accepts (see
+// note in that fn).
+void __ry_test_disarm_timer() {
+    g_per_test_timeout_active = 0;
+    struct itimerval itv = {};
+    setitimer(ITIMER_REAL, &itv, nullptr);
+}
+
+void __ry_test_arm_timer(int64_t ms) {
+    g_per_test_timeout_active = 1;
+    struct itimerval itv = {};
+    itv.it_value.tv_sec = static_cast<time_t>(ms / 1000);
+    itv.it_value.tv_usec = static_cast<suseconds_t>((ms % 1000) * 1000);
+    setitimer(ITIMER_REAL, &itv, nullptr);
+}
+
+// Finalize a per-test @timeout invocation. Called after BOTH phases (body
+// + @afterEach) have completed, normally or via siglongjmp. The two flags
+// reflect which phase fired its sigsetjmp's "timeout return" branch in
+// the generated IR; the runtime here folds them into the per-test
+// outcome line (#1781).
+//
+// Order: clear active flag FIRST, then disable timer. If a SIGALRM
+// fires between these two steps, the handler sees active=0 and falls
+// through to `_exit(124)` (equivalent to the legacy global-timeout
+// path — same failure mode as the alarm()-based code we already
+// shipped). True atomicity (sigprocmask(SIG_BLOCK, {SIGALRM})) is
+// available if we later observe spurious end-path timeouts in the
+// wild; the simpler ordering suffices for typical ms-scale tests.
+//
+// Mock clearing happens here (once) — NOT mid-path — so @afterEach can
+// still observe / manipulate mock state set up by @beforeEach.
+void __ry_test_it_end_with_timeout(bool body_timed_out,
+                                   bool after_each_timed_out) {
     g_per_test_timeout_active = 0;
     struct itimerval itv = {};
     setitimer(ITIMER_REAL, &itv, nullptr);
 
     __ry_mock_clear_all();
     const auto indent = currentIndent();
-    if (g_current_it_failed) {
+    const long long ms_ll = static_cast<long long>(g_per_test_timeout_ms);
+
+    if (body_timed_out) {
+        // Body timed out (with or without an additional @afterEach timeout).
+        std::printf("%s\033[31m- %s (timeout after %lldms)\033[0m\n",
+                    indent.c_str(), g_per_test_timeout_name, ms_ll);
+        if (after_each_timed_out) {
+            std::printf("%s\033[31m  @afterEach (timeout after %lldms)\033[0m\n",
+                        indent.c_str(), ms_ll);
+        }
+        ++g_failed;
+    } else if (after_each_timed_out) {
+        // Body completed in time but @afterEach itself blew the budget.
+        std::printf("%s\033[31m- %s (@afterEach timeout after %lldms)\033[0m\n",
+                    indent.c_str(), g_per_test_timeout_name, ms_ll);
+        ++g_failed;
+    } else if (g_current_it_failed) {
         std::printf("%s\033[31m- %s\033[0m\n", indent.c_str(), g_current_it.c_str());
         ++g_failed;
     } else {
@@ -675,28 +722,6 @@ void __ry_test_it_end_with_timeout() {
         ++g_passed;
     }
     std::fflush(stdout);
-    g_current_it.clear();
-}
-
-// Continuation reached via siglongjmp from the SIGALRM handler in
-// jit_runner.cpp. Prints "(timeout after Nms)" + increments g_failed,
-// then returns so __ry_main__ continues with the next @it. Notes:
-//   - mockClearAll() restores mocks to a known baseline; ARC-managed
-//     locals leaked by the longjmp through the user test body are NOT
-//     recovered (documented in docs/reference/directives.md as known
-//     limitation).
-//   - setitimer(zero) is technically redundant (the one-shot already
-//     fired) but defensively clears any pending residue.
-void __ry_test_it_timeout() {
-    struct itimerval itv = {};
-    setitimer(ITIMER_REAL, &itv, nullptr);
-    __ry_mock_clear_all();
-    const auto indent = currentIndent();
-    std::printf("%s\033[31m- %s (timeout after %lldms)\033[0m\n",
-                indent.c_str(), g_per_test_timeout_name,
-                static_cast<long long>(g_per_test_timeout_ms));
-    std::fflush(stdout);
-    ++g_failed;
     g_current_it.clear();
     g_current_it_failed = false;
 }

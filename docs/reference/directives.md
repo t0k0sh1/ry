@@ -610,29 +610,41 @@ affects test selection only and is orthogonal to `@timeout`.
 
 **Implementation:** The timer is delivered via `setitimer(ITIMER_REAL, ms)`
 + `SIGALRM`; the signal handler routes back into the test runner via
-`siglongjmp`, so a hung test does NOT take down the test process.
+`siglongjmp`, so a hung test does NOT take down the test process. A test
+with `@timeout(N)` is structured around **two** independent `sigsetjmp`
+landing pads — one for the body (file `@beforeEach` → describe
+`@beforeEach` → test body) and one for `@afterEach` (describe `@afterEach`
+→ file `@afterEach`) — so each phase gets its own fresh `N`-ms budget
+and a hung `@afterEach` cannot block subsequent tests.
 
 **Known limitation (ARC):** when `@timeout` fires mid-test, the runtime
 unwinds via `siglongjmp` and **skips ARC release** for objects allocated
-inside the test body. The leaked memory is reclaimed when the test process
-exits and is not observable from subsequent tests, but ASan / leak
-detectors may report it. This is an accepted trade-off — calling C++
-destructors from a signal-driven longjmp would be undefined behavior.
+inside the body whose phase fired (test body for a body timeout,
+`@afterEach` body for an `@afterEach` timeout). The over-retained
+objects are leaked, not reclaimed by destructors — this is a leak, NOT
+a use-after-free: subsequent tests cannot observe the leaked memory,
+but ASan / leak detectors may report it. The leak is reclaimed at
+process exit. This is an accepted trade-off — calling C++ destructors
+from a signal-driven longjmp would be undefined behavior.
 
 **Known limitation (TSan on Linux):** `@timeout` is not exercised under
 the Linux ThreadSanitizer CI gate. Linux libtsan's `siglongjmp`
 interceptor deadlocks when invoked from the SIGALRM handler that
 delivers the timeout, so the subprocess-driven regression tests
 (`tests/test_spec_timeout.cpp`) are skipped under TSan via `GTEST_SKIP`.
-Functional coverage (timeout fires, fail counted, next test runs) is
-preserved on the default / ASan+UBSan / filecheck / macOS-TSan builds.
-Promoting `@timeout` to TSan-required is gated on either an upstream
-libtsan fix or a redesign that avoids `siglongjmp` from a signal
-handler.
+Functional coverage (timeout fires, fail counted, next test runs,
+`@afterEach` after timeout, hung `@afterEach`) is preserved on the
+default / ASan+UBSan / filecheck / macOS-TSan builds. Promoting
+`@timeout` to TSan-required is gated on either an upstream libtsan
+fix or a redesign that avoids `siglongjmp` from a signal handler.
 
-**Composition with `@afterEach`:** when `@timeout` fires mid-test,
-the runtime unwinds via `siglongjmp` past the inlined `@afterEach`
-body, so cleanup runs **only on normal completion**. See `@afterEach`
+**Composition with `@afterEach`:** when `@timeout` fires mid-test
+(body phase), the runtime unwinds the body via `siglongjmp`, then
+**runs `@afterEach` under its own fresh `N`-ms budget** (#1781). If
+`@afterEach` itself does not complete within that budget, a secondary
+failure line `@afterEach (timeout after Nms)` is emitted alongside the
+body's timeout line and the test runner proceeds to the next `@it`. The
+worst-case wall-clock per test is therefore `2N`. See `@afterEach`
 below.
 
 ### `@beforeEach`
@@ -690,8 +702,10 @@ Jest).
 
 ### `@afterEach`
 
-Runs after every `@it` inside the enclosing `@describe` that
-completes **normally**. Used for per-test cleanup.
+Runs after every `@it` inside the enclosing `@describe`. Used for
+per-test cleanup. Runs even when the test body fails, times out, or
+when `@beforeEach` mid-runs — see _Composition with `@timeout`_ and
+_Composition with failing assertions_ below.
 
 **Defined as:** Declared in `share/std/testing/testing.ry`.
 
@@ -719,12 +733,20 @@ fn cleanupTests():
 top level, with no parameters and no declared return type. Same
 constraints as `@beforeEach`.
 
-**Composition with `@timeout`:** when `@timeout` fires for a test,
-the runtime unwinds via `siglongjmp` and the test's `@afterEach`
-body is **skipped**. `@afterEach` runs only when the body completes
-within the timeout budget. Tests that need a cleanup guarantee even
-on timeout must arrange it through external means (e.g. a parent
-process / fixture in the test harness).
+**Composition with `@timeout`:** `@afterEach` runs even after a body
+`@timeout(N)` fires (#1781). The codegen wraps `@afterEach` in its own
+`sigsetjmp` landing pad with a fresh `N`-ms `setitimer` budget, so a
+body timeout siglongjmps out of the body, lands in the `@afterEach`
+phase, and cleanup proceeds. If `@afterEach` itself does not complete
+within its `N`-ms budget, a secondary failure line
+`@afterEach (timeout after Nms)` is printed alongside the body's
+outcome line and execution moves on to the next `@it` instead of
+hanging the process. Because the body / `@beforeEach` may be partially
+complete when `@afterEach` runs in the timeout path, `@afterEach`
+should be written to tolerate **partially set-up state** (e.g. guard
+on whether a handle is non-nil before closing it). See also the
+`@timeout` ARC limitation above — objects allocated inside an
+`@afterEach` body that itself times out are leaked, not reclaimed.
 
 **Composition with failing assertions:** when an `expect` fails, the
 test is marked failed but execution within the test body stops at

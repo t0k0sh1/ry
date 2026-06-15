@@ -565,10 +565,24 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
                                  std::vector<StmtNode> *describeBeforeEachBody,
                                  std::vector<StmtNode> *describeAfterEachBody,
                                  std::vector<StmtNode> *fileAfterEachBody) {
-    auto beginFn = getRuntimeFn("__ry_test_it_begin_with_timeout", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
-    auto endFn = getRuntimeFn("__ry_test_it_end_with_timeout", llvm::Type::getVoidTy(*ctx_), {});
-    auto timeoutFn = getRuntimeFn("__ry_test_it_timeout", llvm::Type::getVoidTy(*ctx_), {});
-    auto getJmpbufFn = getRuntimeFn("__ry_test_get_timeout_jmpbuf", ptrTy_, {});
+    // Two-phase sigsetjmp structure (#1781): the body phase (file/describe
+    // @beforeEach + test body) gets one landing pad and the @afterEach
+    // phase gets a second one, reusing the same `g_per_test_timeout_jmpbuf`
+    // global (each sigsetjmp call overwrites the prior state). On either
+    // phase's timeout-fired branch we record a flag and fall through to
+    // the next phase, so @afterEach always runs (even after a body
+    // timeout) and a hung @afterEach surfaces as a secondary failure
+    // rather than blocking subsequent tests.
+    auto beginFn = getRuntimeFn("__ry_test_it_begin_with_timeout",
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
+    auto endFn = getRuntimeFn("__ry_test_it_end_with_timeout",
+        llvm::Type::getVoidTy(*ctx_), {i1Ty_, i1Ty_});
+    auto disarmFn = getRuntimeFn("__ry_test_disarm_timer",
+        llvm::Type::getVoidTy(*ctx_), {});
+    auto armFn = getRuntimeFn("__ry_test_arm_timer",
+        llvm::Type::getVoidTy(*ctx_), {i64Ty_});
+    auto getJmpbufFn = getRuntimeFn("__ry_test_get_timeout_jmpbuf",
+        ptrTy_, {});
 
     // glibc declares `sigsetjmp` as a macro that expands to `__sigsetjmp`;
     // the symbol exposed by libc is the latter. macOS / musl / BSD expose
@@ -581,44 +595,114 @@ void CodeGen::emitItWithTimeout(int64_t timeoutMs, llvm::Value *descVal,
     const char *kSigsetjmpSym = "sigsetjmp";
 #endif
     auto sigsetjmpFn = getRuntimeFn(kSigsetjmpSym, i32Ty_, {ptrTy_, i32Ty_});
+    // Mark sigsetjmp as ReturnsTwice so LLVM does NOT promote the
+    // bodyTO / aeTO allocas across the sigsetjmp call sites. Without this
+    // attribute mem2reg may decide the second-write (timeout branch) is
+    // unreachable and drop our flag updates.
+    if (auto *fn = llvm::dyn_cast<llvm::Function>(
+            sigsetjmpFn.getCallee()->stripPointerCasts())) {
+        fn->addFnAttr(llvm::Attribute::ReturnsTwice);
+    }
 
-    llvm::Value *jmpbuf = builder_.CreateCall(getJmpbufFn, {}, "it.jmpbuf");
-    llvm::Value *retVal = builder_.CreateCall(
-        sigsetjmpFn, {jmpbuf, llvm::ConstantInt::get(i32Ty_, 1)}, "it.sigsetjmp");
-    llvm::Value *isNormal = builder_.CreateICmpEQ(
-        retVal, llvm::ConstantInt::get(i32Ty_, 0), "it.timeout.is_normal");
+    // Allocate the two phase flags in the entry block so their storage is
+    // stable across both sigsetjmp landing pads. Inserting at the current
+    // BB would create per-iteration allocas inside any enclosing loop /
+    // describe body. The IRBuilder InsertPointGuard restores the caller's
+    // insert point on scope exit so the subsequent stores land back in
+    // the original BB.
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    llvm::Value *bodyToAlloca;
+    llvm::Value *aeToAlloca;
+    {
+        llvm::IRBuilder<>::InsertPointGuard guard(builder_);
+        builder_.SetInsertPoint(&fn->getEntryBlock(),
+                                 fn->getEntryBlock().getFirstInsertionPt());
+        bodyToAlloca = builder_.CreateAlloca(
+            i1Ty_, nullptr, "it.timeout.body_to");
+        aeToAlloca = builder_.CreateAlloca(
+            i1Ty_, nullptr, "it.timeout.ae_to");
+    }
 
-    llvm::BasicBlock *normalBB = createBBInFn("it.timeout.normal", fn_);
-    llvm::BasicBlock *timeoutBB = createBBInFn("it.timeout.fired", fn_);
-    llvm::BasicBlock *afterBB = createBBInFn("it.timeout.after", fn_);
-    emitBranchCond(isNormal, normalBB, timeoutBB);
+    llvm::Value *zeroI32 = llvm::ConstantInt::get(i32Ty_, 0);
+    llvm::Value *oneI32  = llvm::ConstantInt::get(i32Ty_, 1);
+    llvm::Value *falseI1 = llvm::ConstantInt::get(i1Ty_, 0);
+    llvm::Value *trueI1  = llvm::ConstantInt::get(i1Ty_, 1);
+    llvm::Value *msVal   = llvm::ConstantInt::get(i64Ty_,
+        static_cast<uint64_t>(timeoutMs));
 
-    builder_.SetInsertPoint(normalBB);
-    builder_.CreateCall(beginFn,
-        {descVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(timeoutMs))});
-    // Inline the full hook cascade (file BE → describe BE → user fn →
-    // describe AE → file AE) INSIDE the begin/end window on the
-    // normal-completion path (#1686 / #1780) so hook expect failures
-    // attribute to the current @it via __ry_test_record_fail. The
-    // timeoutBB path below intentionally skips every layer — SIGALRM
-    // siglongjmp tears across the C++ stack and there is no way to
-    // guarantee user-code invariants.
+    builder_.CreateStore(falseI1, bodyToAlloca);
+    builder_.CreateStore(falseI1, aeToAlloca);
+
+    // === Phase 1: body (file BE + describe BE + test body) ============
+    llvm::Value *jmpbuf = builder_.CreateCall(
+        getJmpbufFn, {}, "it.jmpbuf");
+    llvm::Value *bodyRet = builder_.CreateCall(
+        sigsetjmpFn, {jmpbuf, oneI32}, "it.sigsetjmp.body");
+    llvm::Value *bodyIsNormal = builder_.CreateICmpEQ(
+        bodyRet, zeroI32, "it.body.is_normal");
+
+    llvm::BasicBlock *bodyNormalBB  = createBBInFn("it.body.normal", fn);
+    llvm::BasicBlock *bodyTimeoutBB = createBBInFn("it.body.timeout", fn);
+    llvm::BasicBlock *rearmBB       = createBBInFn("it.rearm", fn);
+    emitBranchCond(bodyIsNormal, bodyNormalBB, bodyTimeoutBB);
+
     auto inlineBody = [this](std::vector<StmtNode> *body) {
         if (!body) return;
         for (auto &stmt : *body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
     };
+
+    builder_.SetInsertPoint(bodyNormalBB);
+    // begin_with_timeout records `g_per_test_timeout_name` / `_ms` and
+    // arms the SIGALRM timer; it must run AFTER sigsetjmp so the landing
+    // pad is ready when the timer fires.
+    builder_.CreateCall(beginFn, {descVal, msVal});
     inlineBody(fileBeforeEachBody);
     inlineBody(describeBeforeEachBody);
     auto capturedArgs = loadCapturedArgs(entry, "@it");
     builder_.CreateCall(entry.func, capturedArgs);
+    // Disarm the body timer before transitioning to the @afterEach phase
+    // so a stray SIGALRM cannot longjmp back into the body sigsetjmp.
+    builder_.CreateCall(disarmFn, {});
+    emitBranchUncond(rearmBB);
+
+    builder_.SetInsertPoint(bodyTimeoutBB);
+    // Handler already cleared `g_per_test_timeout_active` + the timer
+    // before siglongjmp, so no disarm call needed here.
+    builder_.CreateStore(trueI1, bodyToAlloca);
+    emitBranchUncond(rearmBB);
+
+    // === Phase 2: @afterEach (describe AE + file AE) ==================
+    builder_.SetInsertPoint(rearmBB);
+    llvm::Value *aeRet = builder_.CreateCall(
+        sigsetjmpFn, {jmpbuf, oneI32}, "it.sigsetjmp.ae");
+    llvm::Value *aeIsNormal = builder_.CreateICmpEQ(
+        aeRet, zeroI32, "it.ae.is_normal");
+
+    llvm::BasicBlock *aeNormalBB  = createBBInFn("it.ae.normal", fn);
+    llvm::BasicBlock *aeTimeoutBB = createBBInFn("it.ae.timeout", fn);
+    llvm::BasicBlock *endBB       = createBBInFn("it.timeout.end", fn);
+    llvm::BasicBlock *afterBB     = createBBInFn("it.timeout.after", fn);
+    emitBranchCond(aeIsNormal, aeNormalBB, aeTimeoutBB);
+
+    builder_.SetInsertPoint(aeNormalBB);
+    builder_.CreateCall(armFn, {msVal});
     inlineBody(describeAfterEachBody);
     inlineBody(fileAfterEachBody);
-    builder_.CreateCall(endFn);
-    emitBranchUncond(afterBB);
+    builder_.CreateCall(disarmFn, {});
+    emitBranchUncond(endBB);
 
-    builder_.SetInsertPoint(timeoutBB);
-    builder_.CreateCall(timeoutFn);
+    builder_.SetInsertPoint(aeTimeoutBB);
+    builder_.CreateStore(trueI1, aeToAlloca);
+    emitBranchUncond(endBB);
+
+    // === Finalize =====================================================
+    builder_.SetInsertPoint(endBB);
+    llvm::Value *bodyTO = builder_.CreateLoad(
+        i1Ty_, bodyToAlloca, "it.body_to");
+    llvm::Value *aeTO = builder_.CreateLoad(
+        i1Ty_, aeToAlloca, "it.ae_to");
+    builder_.CreateCall(endFn, {bodyTO, aeTO});
     emitBranchUncond(afterBB);
 
     builder_.SetInsertPoint(afterBB);
