@@ -1565,28 +1565,9 @@ void CodeGen::emitNativeMockReturnValueOnceCall(
 
 // ===== Test: mockReturnValueOnce — per-call value-return queue (#1681) =====
 //
-// Local helper: strip "Option<" or "Result<" prefix and trailing '>', return
-// the nth comma-separated type argument (paren-aware). Mirrors the static
-// helper in codegen_match.cpp but lives here to avoid leaking a private TU
-// symbol. Used to recover the Ok / Err / Some inner type names for retain /
-// release dispatch on tagged-union return types.
-static std::string vretExtractGenericArg(const std::string &typeStr,
-                                          const std::string &prefix,
-                                          size_t argIdx) {
-    if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
-        if (argIdx != 0) return {};
-        return ry::util::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
-    }
-    if (typeStr.size() <= prefix.size() ||
-        typeStr.compare(0, prefix.size(), prefix) != 0 ||
-        typeStr.back() != '>')
-        return {};
-    const std::string inner = typeStr.substr(prefix.size(),
-                                              typeStr.size() - prefix.size() - 1);
-    const auto parts = CodeGen::splitTypeArgs(inner);
-    if (argIdx >= parts.size()) return {};
-    return ry::util::trimTypeNameSpaces(parts[argIdx]);
-}
+// (Previously had a static `vretExtractGenericArg` helper here that
+// mirrored an identical clone in codegen_match.cpp; both were
+// consolidated into ry::util::extractGenericTypeArg by #1821.)
 
 void CodeGen::retainValueReturnResult(llvm::Value *val,
                                        llvm::Type *retTy,
@@ -1616,9 +1597,9 @@ void CodeGen::retainValueReturnResult(llvm::Value *val,
                      || (!resolved.empty() && resolved.back() == '?');
         if (!isResult && !isOption) return;
 
-        std::string okName  = isResult ? vretExtractGenericArg(resolved, "Result<", 0)
-                                       : vretExtractGenericArg(resolved, "Option<", 0);
-        std::string errName = isResult ? vretExtractGenericArg(resolved, "Result<", 1) : "";
+        std::string okName  = isResult ? ry::util::extractGenericTypeArg(resolved, "Result<", 0)
+                                       : ry::util::extractGenericTypeArg(resolved, "Option<", 0);
+        std::string errName = isResult ? ry::util::extractGenericTypeArg(resolved, "Result<", 1) : "";
 
         auto *tag = builder_.CreateExtractValue(val, {0}, "vret.retain.tag");
         auto *isOk = builder_.CreateICmpEQ(tag,
@@ -1689,9 +1670,9 @@ void CodeGen::releaseValueReturnResult(llvm::Value *val,
                      || (!resolved.empty() && resolved.back() == '?');
         if (!isResult && !isOption) return;
 
-        std::string okName  = isResult ? vretExtractGenericArg(resolved, "Result<", 0)
-                                       : vretExtractGenericArg(resolved, "Option<", 0);
-        std::string errName = isResult ? vretExtractGenericArg(resolved, "Result<", 1) : "";
+        std::string okName  = isResult ? ry::util::extractGenericTypeArg(resolved, "Result<", 0)
+                                       : ry::util::extractGenericTypeArg(resolved, "Option<", 0);
+        std::string errName = isResult ? ry::util::extractGenericTypeArg(resolved, "Result<", 1) : "";
 
         auto *tag = builder_.CreateExtractValue(val, {0}, "vret.rel.tag");
         auto *isOk = builder_.CreateICmpEQ(tag,

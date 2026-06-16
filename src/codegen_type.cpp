@@ -407,24 +407,7 @@ std::string CodeGen::substituteTypeParamsInName(const std::string &typeName) {
 }
 
 std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
-    std::vector<std::string> typeArgs;
-    std::string curr;
-    int angleBrackets = 0;
-    int parens = 0;
-    for (char c : argsStr) {
-        if (c == '<') angleBrackets++;
-        else if (c == '>') angleBrackets--;
-        else if (c == '(') parens++;
-        else if (c == ')') parens--;
-        else if (c == ',' && angleBrackets == 0 && parens == 0) {
-            typeArgs.push_back(curr);
-            curr.clear();
-            continue;
-        }
-        curr += c;
-    }
-    if (!curr.empty()) typeArgs.push_back(curr);
-    return typeArgs;
+    return ry::util::splitTypeArgs(argsStr);
 }
 
 std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
@@ -447,15 +430,7 @@ llvm::Type *CodeGen::getThreadResultType(llvm::Value *threadVal) {
 }
 
 size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
-    if (openParen >= s.size() || s[openParen] != '(')
-        return std::string::npos;
-    int depth = 1;
-    for (size_t i = openParen + 1; i < s.size(); ++i) {
-        if (s[i] == '(') ++depth;
-        else if (s[i] == ')' && --depth == 0)
-            return i;
-    }
-    return std::string::npos;
+    return ry::util::findMatchingCloseParen(s, openParen);
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
@@ -556,46 +531,19 @@ std::string CodeGen::resolveTypeAlias(const std::string &typeName) {
 }
 
 bool CodeGen::isIntLiteralType(const std::string &typeName) {
-    if (typeName.empty()) return false;
-    size_t start = (typeName[0] == '-') ? 1 : 0;
-    if (start >= typeName.size()) return false;
-    for (size_t i = start; i < typeName.size(); ++i) {
-        if (!std::isdigit(typeName[i])) return false;
-    }
-    return true;
+    return ry::util::isIntLiteralType(typeName);
 }
 
 bool CodeGen::isStrLiteralType(const std::string &typeName) {
-    if (typeName.size() < 2 || typeName.front() != '"' || typeName.back() != '"')
-        return false;
-    // Ensure it's a single quoted string, not a union like "N" | "S"
-    // Check there's exactly one opening and one closing quote
-    size_t quoteCount = 0;
-    for (char c : typeName)
-        if (c == '"') quoteCount++;
-    return quoteCount == 2;
+    return ry::util::isStrLiteralType(typeName);
 }
 
 bool CodeGen::isRangeType(const std::string &typeName) {
-    auto pos = typeName.find("..");
-    if (pos == std::string::npos || pos == 0 || pos == typeName.size() - 2)
-        return false;
-    std::string lo = typeName.substr(0, pos);
-    std::string hi = typeName.substr(pos + 2);
-    return isIntLiteralType(lo) && isIntLiteralType(hi);
+    return ry::util::isRangeType(typeName);
 }
 
 bool CodeGen::isLiteralUnionType(const std::string &typeName) {
-    if (typeName.find(" | ") == std::string::npos) return false;
-    auto components = parseUnionComponents(typeName);
-    if (components.empty()) return false;
-    bool allInt = true, allStr = true;
-    for (auto &c : components) {
-        if (allInt && !isIntLiteralType(c)) allInt = false;
-        if (allStr && !isStrLiteralType(c)) allStr = false;
-        if (!allInt && !allStr) return false;
-    }
-    return allInt || allStr;
+    return ry::util::isLiteralUnionType(typeName);
 }
 
 std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::string &typeName) {

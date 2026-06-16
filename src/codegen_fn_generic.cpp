@@ -251,84 +251,8 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
 }
 
 // ===== Helpers for structural type-argument unification =====
-
-// Trim ASCII whitespace from both ends. Used by the type-name string
-// splitters below which consume output of `TypeNode::toString()` and
-// `inferExprTypeName` — both produce human-readable strings with
-// optional spaces after commas.
-static std::string trimWs(const std::string &s) {
-    size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-    return s.substr(a, b - a);
-}
-
-// Split `body` on top-level commas, honoring nesting of <, >, (, ),
-// [, ], and the lexer-compound tokens `>>` / `>>>` (which can appear
-// when `toString()` emits nested generics).
-static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
-    std::vector<std::string> out;
-    out.reserve(static_cast<size_t>(std::count(body.begin(), body.end(), ',')) + 1);
-    int depth = 0;
-    size_t start = 0;
-    for (size_t i = 0; i < body.size(); ++i) {
-        char c = body[i];
-        if (c == '<' || c == '(' || c == '[') depth++;
-        else if (c == '>' || c == ')' || c == ']') {
-            // Clamp: malformed input with unmatched closers should not
-            // drop `depth` below zero and start splitting mid-group.
-            if (depth > 0) depth--;
-        }
-        else if (c == ',' && depth == 0) {
-            out.push_back(trimWs(body.substr(start, i - start)));
-            start = i + 1;
-        }
-    }
-    out.push_back(trimWs(body.substr(start)));
-    return out;
-}
-
-static bool splitTupleTypeName(const std::string &s,
-                                std::vector<std::string> &elements) {
-    std::string t = trimWs(s);
-    if (t.size() < 2 || t.front() != '(' || t.back() != ')') return false;
-    std::string body = t.substr(1, t.size() - 2);
-    // Single-element tuples spell as "(x,)" — drop the empty trailing slice.
-    elements = splitTopLevelCommas(body);
-    if (!elements.empty() && elements.back().empty())
-        elements.pop_back();
-    return true;
-}
-
-static bool splitFunctionTypeName(const std::string &s,
-                                   std::vector<std::string> &params,
-                                   std::string &returnType) {
-    std::string t = trimWs(s);
-    if (t.rfind("fn(", 0) != 0)
-        return false;
-    const std::string prefix = "fn(";
-    int depth = 1;
-    size_t i = prefix.size();
-    for (; i < t.size() && depth > 0; ++i) {
-        if (t[i] == '(') depth++;
-        else if (t[i] == ')') depth--;
-        if (depth == 0) break;
-    }
-    if (depth != 0) return false;
-    std::string body = t.substr(prefix.size(), i - prefix.size());
-    params = splitTopLevelCommas(body);
-    if (params.size() == 1 && params[0].empty()) params.clear();
-    size_t j = i + 1;
-    while (j < t.size() && std::isspace(static_cast<unsigned char>(t[j]))) ++j;
-    if (j < t.size() && t[j] == '-' && j + 1 < t.size() && t[j + 1] == '>') {
-        j += 2;
-        while (j < t.size() && std::isspace(static_cast<unsigned char>(t[j]))) ++j;
-        returnType = trimWs(t.substr(j));
-    } else {
-        returnType.clear();
-    }
-    return true;
-}
+// splitTopLevelCommas / splitTupleTypeName / splitFunctionTypeName were
+// moved into ry::util in #1821. Callers below use the public API.
 
 void CodeGen::mergeInferredBinding(
     std::unordered_map<std::string, std::string> &inferred,
@@ -383,7 +307,7 @@ bool CodeGen::unifyTypeParam(
             return any;
         } else if constexpr (std::is_same_v<T, TupleType>) {
             std::vector<std::string> elems;
-            if (!splitTupleTypeName(argTypeName, elems)) return false;
+            if (!ry::util::splitTupleTypeName(argTypeName, elems)) return false;
             if (elems.size() != v.elements.size()) return false;
             bool any = false;
             for (size_t k = 0; k < v.elements.size(); ++k)
@@ -394,7 +318,7 @@ bool CodeGen::unifyTypeParam(
         } else if constexpr (std::is_same_v<T, FnType>) {
             std::vector<std::string> fparams;
             std::string fret;
-            if (!splitFunctionTypeName(argTypeName, fparams, fret))
+            if (!ry::util::splitFunctionTypeName(argTypeName, fparams, fret))
                 return false;
             if (fparams.size() != v.param_types.size()) return false;
             bool any = false;
@@ -409,9 +333,10 @@ bool CodeGen::unifyTypeParam(
             return any;
         } else if constexpr (std::is_same_v<T, OptionalType>) {
             // Accept either `"T?"` or the equivalent `"Option<T>"` spelling.
-            std::string t = trimWs(argTypeName);
+            std::string t = ry::util::trimTypeNameWhitespace(argTypeName);
             if (!t.empty() && t.back() == '?') {
-                return unifyTypeParam(*v.inner, trimWs(t.substr(0, t.size() - 1)),
+                return unifyTypeParam(*v.inner,
+                                      ry::util::trimTypeNameWhitespace(t.substr(0, t.size() - 1)),
                                       typeParamSet, inferred, fnName);
             }
             std::string head;
@@ -480,7 +405,7 @@ static bool argMatchesParam(CodeGen &cg,
             return true;
         } else if constexpr (std::is_same_v<T, TupleType>) {
             std::vector<std::string> elems;
-            if (!splitTupleTypeName(argTypeName, elems)) return false;
+            if (!ry::util::splitTupleTypeName(argTypeName, elems)) return false;
             if (elems.size() != v.elements.size()) return false;
             for (size_t k = 0; k < v.elements.size(); ++k)
                 if (!argMatchesParam(cg, *v.elements[k], elems[k], typeParamSet))
@@ -489,7 +414,7 @@ static bool argMatchesParam(CodeGen &cg,
         } else if constexpr (std::is_same_v<T, FnType>) {
             std::vector<std::string> fparams;
             std::string fret;
-            if (!splitFunctionTypeName(argTypeName, fparams, fret))
+            if (!ry::util::splitFunctionTypeName(argTypeName, fparams, fret))
                 return false;
             if (fparams.size() != v.param_types.size()) return false;
             for (size_t k = 0; k < v.param_types.size(); ++k)
@@ -500,10 +425,10 @@ static bool argMatchesParam(CodeGen &cg,
                     return false;
             return true;
         } else if constexpr (std::is_same_v<T, OptionalType>) {
-            std::string t = trimWs(argTypeName);
+            std::string t = ry::util::trimTypeNameWhitespace(argTypeName);
             if (!t.empty() && t.back() == '?') {
                 return argMatchesParam(cg, *v.inner,
-                                       trimWs(t.substr(0, t.size() - 1)),
+                                       ry::util::trimTypeNameWhitespace(t.substr(0, t.size() - 1)),
                                        typeParamSet);
             }
             std::string head;
