@@ -60,29 +60,12 @@ struct NFAFragment {
 
 class NFABuilder {
 public:
-    NFABuilder() = default;
-    ~NFABuilder() {
-        for (auto *s : states_) delete s;
-    }
-    NFABuilder(NFABuilder &&other) noexcept : states_(std::move(other.states_)) {
-        other.states_.clear();
-    }
-    NFABuilder &operator=(NFABuilder &&other) noexcept {
-        if (this != &other) {
-            for (auto *s : states_) delete s;
-            states_ = std::move(other.states_);
-            other.states_.clear();
-        }
-        return *this;
-    }
-    NFABuilder(const NFABuilder &) = delete;
-    NFABuilder &operator=(const NFABuilder &) = delete;
-
     NFAState *newState(NFAState::Kind kind) {
-        auto *s = new NFAState();
-        s->kind = kind;
-        states_.push_back(s);
-        return s;
+        auto state = std::make_unique<NFAState>();
+        state->kind = kind;
+        auto *raw = state.get();
+        states_.push_back(std::move(state));
+        return raw;
     }
 
     // Thompson's construction
@@ -242,7 +225,7 @@ public:
     }
 
 private:
-    std::vector<NFAState *> states_;
+    std::vector<std::unique_ptr<NFAState>> states_;
 };
 
 // ============================================================
