@@ -57,12 +57,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                     builder_.SetInsertPoint(mergeBB);
                     return namePhi;
                 }
-                llvm::Value *namePtr = builder_.CreateGEP(
+                llvm::Value *namePtr = emitArrayGEP(
                     llvm::ArrayType::get(ptrTy_, einfo.variantCount),
-                    einfo.nameArray,
-                    {llvm::ConstantInt::get(i64Ty_, 0), val},
-                    "enum_name_ptr");
-                return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+                    einfo.nameArray, val, "enum_name_ptr");
+                return emitLoad(ptrTy_, namePtr, "enum_name");
             }
 
             // ADT enum: delegate to a per-type helper function that is
@@ -74,7 +72,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             // switch body, so codegen terminates.  See
             // `getOrCreateADTToStringFn` below (#1238).
             llvm::Function *adtFn = getOrCreateADTToStringFn(evMeta->enum_value_type);
-            return builder_.CreateCall(adtFn, {val}, "vts.adt.call");
+            return emitCallIndirect(adtFn->getFunctionType(), adtFn, {val}, "vts.adt.call");
         }
     }
 
@@ -170,7 +168,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             auto spf = getSprintPrintf();
             emitSprintBegin();
 
-            llvm::Value *hasValue = builder_.CreateExtractValue(val, 0, "vts.opt.has");
+            llvm::Value *hasValue = emitExtractValue(val, 0, "vts.opt.has");
             llvm::BasicBlock *someBB = createBB("vts.opt.some");
             llvm::BasicBlock *noneBB = createBB("vts.opt.none");
             llvm::BasicBlock *endBB  = createBB("vts.opt.end");
@@ -182,7 +180,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             emitBranchUncond(endBB);
 
             builder_.SetInsertPoint(someBB);
-            llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "vts.opt.val");
+            llvm::Value *innerVal = emitExtractValue(val, 1, "vts.opt.val");
             propagateMeta(val, innerVal);
             builder_.CreateCall(spf, {cachedGlobalString("Some(", ".vts_some_pre")});
             llvm::Value *innerStr = valueToString(innerVal, inCollection);
@@ -198,7 +196,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             auto spf = getSprintPrintf();
             emitSprintBegin();
 
-            llvm::Value *isOk = builder_.CreateExtractValue(val, 0, "vts.res.is_ok");
+            llvm::Value *isOk = emitExtractValue(val, 0, "vts.res.is_ok");
             llvm::BasicBlock *okBB  = createBB("vts.res.ok");
             llvm::BasicBlock *errBB = createBB("vts.res.err");
             llvm::BasicBlock *endBB = createBB("vts.res.end");
@@ -206,7 +204,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             emitBranchCond(isOk, okBB, errBB);
 
             builder_.SetInsertPoint(okBB);
-            llvm::Value *okVal = builder_.CreateExtractValue(val, 1, "vts.res.ok_val");
+            llvm::Value *okVal = emitExtractValue(val, 1, "vts.res.ok_val");
             propagateMeta(val, okVal);
             builder_.CreateCall(spf, {cachedGlobalString("Ok(", ".vts_ok_pre")});
             llvm::Value *okStr = valueToString(okVal, inCollection);
@@ -215,7 +213,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             emitBranchUncond(endBB);
 
             builder_.SetInsertPoint(errBB);
-            llvm::Value *errVal = builder_.CreateExtractValue(val, 2, "vts.res.err_val");
+            llvm::Value *errVal = emitExtractValue(val, 2, "vts.res.err_val");
             propagateMeta(val, errVal);
             builder_.CreateCall(spf, {cachedGlobalString("Err(", ".vts_err_pre")});
             llvm::Value *errStr = valueToString(errVal, inCollection);
@@ -324,35 +322,34 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::BasicBlock *bodyBB = createBB("vts_set.body");
             llvm::BasicBlock *endBB  = createBB("vts_set.end");
 
-            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_set_i");
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::Value *iVar = emitAlloca(i64Ty_, "vts_set_i");
+            emitStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(condBB);
-            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-            emitBranchCond(builder_.CreateICmpSLT(iVal, sf.len), bodyBB, endBB);
+            llvm::Value *iVal = emitLoad(i64Ty_, iVar, "i");
+            emitBranchCond(emitICmpSLT(iVal, sf.len, ""), bodyBB, endBB);
 
             builder_.SetInsertPoint(bodyBB);
-            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::Value *iCur = emitLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_set.comma");
             llvm::BasicBlock *elemBB  = createBB("vts_set.elem");
-            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, elemBB);
+            emitBranchCond(emitICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), ""), commaBB, elemBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_set_comma")});
             emitBranchUncond(elemBB);
 
             builder_.SetInsertPoint(elemBB);
-            llvm::Value *elemPtr = builder_.CreateGEP(setElemTy, sf.elems, {iCur}, "vts_set_elem_ptr");
-            llvm::Value *elem = builder_.CreateLoad(setElemTy, elemPtr, "vts_set_elem");
+            llvm::Value *elemPtr = emitGEP(setElemTy, sf.elems, iCur, "vts_set_elem_ptr");
+            llvm::Value *elem = emitLoad(setElemTy, elemPtr, "vts_set_elem");
             propagateElemMeta(val, elem,
                               &ValueMetadata::set_elem_type_name,
                               &ValueMetadata::set_elem_fn_type_info);
             llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_set_s"), elemStr});
 
-            builder_.CreateStore(
-                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            emitStore(emitAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), ""), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(endBB);
@@ -375,40 +372,39 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::BasicBlock *bodyBB = createBB("vts_map.body");
             llvm::BasicBlock *endBB  = createBB("vts_map.end");
 
-            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_map_i");
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::Value *iVar = emitAlloca(i64Ty_, "vts_map_i");
+            emitStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(condBB);
-            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-            emitBranchCond(builder_.CreateICmpSLT(iVal, mf.len), bodyBB, endBB);
+            llvm::Value *iVal = emitLoad(i64Ty_, iVar, "i");
+            emitBranchCond(emitICmpSLT(iVal, mf.len, ""), bodyBB, endBB);
 
             builder_.SetInsertPoint(bodyBB);
-            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::Value *iCur = emitLoad(i64Ty_, iVar, "i_cur");
             llvm::BasicBlock *commaBB = createBB("vts_map.comma");
             llvm::BasicBlock *kvBB    = createBB("vts_map.kv");
-            emitBranchCond(builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)), commaBB, kvBB);
+            emitBranchCond(emitICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), ""), commaBB, kvBB);
 
             builder_.SetInsertPoint(commaBB);
             builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_map_comma")});
             emitBranchUncond(kvBB);
 
             builder_.SetInsertPoint(kvBB);
-            llvm::Value *keyPtr = builder_.CreateGEP(mapKeyTy, mf.keys, {iCur}, "vts_map_key_ptr");
-            llvm::Value *keyVal = builder_.CreateLoad(mapKeyTy, keyPtr, "vts_map_key");
+            llvm::Value *keyPtr = emitGEP(mapKeyTy, mf.keys, iCur, "vts_map_key_ptr");
+            llvm::Value *keyVal = emitLoad(mapKeyTy, keyPtr, "vts_map_key");
             llvm::Value *keyStr = valueToString(keyVal, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s: ", ".vts_map_kv_fmt"), keyStr});
 
-            llvm::Value *valPtr = builder_.CreateGEP(mapValTy, mf.vals, {iCur}, "vts_map_val_ptr");
-            llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "vts_map_val");
+            llvm::Value *valPtr = emitGEP(mapValTy, mf.vals, iCur, "vts_map_val_ptr");
+            llvm::Value *valVal = emitLoad(mapValTy, valPtr, "vts_map_val");
             propagateElemMeta(val, valVal,
                               &ValueMetadata::map_value_type_name,
                               &ValueMetadata::map_value_fn_type_info);
             llvm::Value *valStr = valueToString(valVal, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_map_v_s"), valStr});
 
-            builder_.CreateStore(
-                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            emitStore(emitAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), ""), iVar);
             emitBranchUncond(condBB);
 
             builder_.SetInsertPoint(endBB);
@@ -583,7 +579,7 @@ llvm::Value *CodeGen::recordToString(llvm::Value *val) {
     if (fit) {
         for (auto &entry : *fit) {
             if (entry.paramTypes.size() == 1 && entry.paramTypes[0] == structTy) {
-                return builder_.CreateCall(entry.func, {val}, "user_to_str");
+                return emitCallIndirect(entry.func->getFunctionType(), entry.func, {val}, "user_to_str");
             }
         }
     }
@@ -605,9 +601,9 @@ llvm::Value *CodeGen::recordToString(llvm::Value *val) {
         if (i > 0)
             addLiteral(", ", ".sts_sep");
         addLiteral(info.fields[i].name + ": ", ".sts_fname");
-        llvm::Value *field = builder_.CreateExtractValue(val, i, info.fields[i].name);
+        llvm::Value *field = emitExtractValue(val, i, info.fields[i].name.c_str());
         llvm::Value *fieldStr = valueToString(field, true);
-        parts.push_back({fieldStr, builder_.CreateCall(strlenFn, {fieldStr}, "sts_len")});
+        parts.push_back({fieldStr, emitCallIndirect(strlenFn.getFunctionType(), strlenFn.getCallee(), {fieldStr}, "sts_len")});
     }
 
     addLiteral(")", ".sts_suffix");
@@ -659,19 +655,24 @@ llvm::Value *CodeGen::concatStringParts(
     auto makeUninitFn = getRuntimeFn("__ry_string_make_uninit", ptrTy_, {i64Ty_});
 
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
+    std::string totalName = prefix + "_total";
     for (auto &p : parts)
-        totalLen = builder_.CreateAdd(totalLen, p.second, prefix + "_total");
+        totalLen = emitAdd(totalLen, p.second, totalName.c_str());
 
     // __ry_string_make_uninit allocates STRING_HEADER_SIZE + totalLen + 1 bytes,
     // sets byte_len = totalLen and writes '\0' at buf[totalLen].  No explicit NUL
     // write or +1 to bufSize needed.
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, prefix + "_buf");
+    std::string bufName = prefix + "_buf";
+    llvm::Value *buf = emitCallIndirect(makeUninitFn.getFunctionType(), makeUninitFn.getCallee(), {totalLen}, bufName.c_str());
     llvm::Value *off = llvm::ConstantInt::get(i64Ty_, 0);
+    std::string dstName = prefix + "_dst";
+    std::string offName = prefix + "_off";
+    auto *memcpyFnTy = memcpyFn.getFunctionType();
+    auto *memcpyCallee = memcpyFn.getCallee();
     for (auto &p : parts) {
-        llvm::Value *dst = builder_.CreateGEP(
-            builder_.getInt8Ty(), buf, {off}, prefix + "_dst");
-        builder_.CreateCall(memcpyFn, {dst, p.first, p.second});
-        off = builder_.CreateAdd(off, p.second, prefix + "_off");
+        llvm::Value *dst = emitGEP(builder_.getInt8Ty(), buf, off, dstName.c_str());
+        emitCallIndirect(memcpyFnTy, memcpyCallee, {dst, p.first, p.second}, "");
+        off = emitAdd(off, p.second, offName.c_str());
     }
     // NUL at buf[totalLen] already written by __ry_string_make_uninit
     arc_str_owned_values_.insert(buf);
@@ -735,17 +736,15 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
     auto spf = getSprintPrintf();
     emitSprintBegin();
 
-    llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.adt.tag");
-    llvm::Value *namePtr = builder_.CreateGEP(
+    llvm::Value *tag = emitExtractValue(val, 0, "vts.adt.tag");
+    llvm::Value *namePtr = emitArrayGEP(
         llvm::ArrayType::get(ptrTy_, einfo.variantCount),
-        einfo.nameArray,
-        {llvm::ConstantInt::get(i64Ty_, 0), tag},
-        "vts.adt.name_ptr");
-    llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "vts.adt.name");
+        einfo.nameArray, tag, "vts.adt.name_ptr");
+    llvm::Value *nameStr = emitLoad(ptrTy_, namePtr, "vts.adt.name");
 
-    llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "vts.adt.tmp");
-    builder_.CreateStore(val, adtAlloca);
-    llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "vts.adt.payload");
+    llvm::Value *adtAlloca = emitAlloca(einfo.adtType, "vts.adt.tmp");
+    emitStore(val, adtAlloca);
+    llvm::Value *payloadPtr = emitStructGEP(einfo.adtType, adtAlloca, 1, "vts.adt.payload");
 
     bool anyFields = false;
     for (auto &[vn, vf] : einfo.variantFields)
@@ -754,11 +753,11 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
     if (anyFields) {
         llvm::BasicBlock *endBB = createBBInFn("vts.adt.end", fn);
         llvm::BasicBlock *defaultBB = createBBInFn("vts.adt.default", fn);
-        auto *switchInst = builder_.CreateSwitch(tag, defaultBB, static_cast<unsigned>(einfo.variantCount));
+        auto *switchInst = createSwitch(tag, defaultBB, static_cast<unsigned>(einfo.variantCount));
 
         for (auto &[vname, vtag] : einfo.variants) {
             llvm::BasicBlock *caseBB = createBBInFn(("vts.adt." + vname).c_str(), fn);
-            switchInst->addCase(
+            switchAddCase(switchInst,
                 llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vtag))), caseBB);
             builder_.SetInsertPoint(caseBB);
 
@@ -773,11 +772,12 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
                     llvm::Type *fieldTy = fit->second.fieldTypes[fi];
                     uint64_t align = dl.getABITypeAlign(fieldTy).value();
                     offset = (offset + align - 1) / align * align;
-                    llvm::Value *fieldPtr = builder_.CreateGEP(
+                    std::string fieldName = "vts.adt.field." + std::to_string(fi);
+                    llvm::Value *fieldPtr = emitGEP(
                         llvm::Type::getInt8Ty(*ctx_), payloadPtr,
-                        {llvm::ConstantInt::get(i64Ty_, offset)},
-                        "vts.adt.field." + std::to_string(fi));
-                    llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "vts.adt.fval");
+                        llvm::ConstantInt::get(i64Ty_, offset),
+                        fieldName.c_str());
+                    llvm::Value *fieldVal = emitLoad(fieldTy, fieldPtr, "vts.adt.fval");
 
                     // Propagate full type metadata (low-level signedness,
                     // List/Map/Set element types, enum spec, Option/Result
@@ -822,7 +822,7 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
     }
 
     llvm::Value *result = emitSprintEnd("vts.adt.str");
-    builder_.CreateRet(result);
+    emitRet(result);
 
     // Restore code-generation context.
     fn_ = savedFn;
