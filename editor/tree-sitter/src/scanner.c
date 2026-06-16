@@ -338,6 +338,7 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
     return false;
   }
 
+
   /* Mark the virtual token boundary at the first non-blank content (or EOF).
    * INDENT/DEDENT/NEWLINE produce zero-width tokens at this position. */
   lexer->mark_end(lexer);

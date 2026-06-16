@@ -354,7 +354,8 @@ Token Lexer::readToken() {
         }
         // Regex literal: `/` starts a regex when NOT preceded by a value-producing token
         if (prev_kind_ != TokenKind::Number && prev_kind_ != TokenKind::Float &&
-            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::FStringEnd &&
+            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::BlockString &&
+            prev_kind_ != TokenKind::FStringEnd &&
             prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::RParen &&
             prev_kind_ != TokenKind::RBracket && prev_kind_ != TokenKind::RBrace &&
             prev_kind_ != TokenKind::True && prev_kind_ != TokenKind::False &&
@@ -482,6 +483,7 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_])) &&
             prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::Number &&
             prev_kind_ != TokenKind::Float && prev_kind_ != TokenKind::String &&
+            prev_kind_ != TokenKind::BlockString &&
             prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
             prev_kind_ != TokenKind::RBrace && prev_kind_ != TokenKind::True &&
             prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
@@ -555,6 +557,102 @@ Token Lexer::readToken() {
         ++pos_; ++col_;
         ++pos_; ++col_;
         return readFStringSegment(true);
+    }
+
+    // Block string: """..."""
+    // Detected before the regular '"' branch so that """ is not consumed as
+    // an opening "" followed by a stray ". The block string lexer spans
+    // multiple lines, processes escape sequences identically to a regular
+    // string, and normalizes indentation per the closing delimiter.
+    if (c == '"' && pos_ + 2 < src_.size() &&
+        src_[pos_ + 1] == '"' && src_[pos_ + 2] == '"') {
+        pos_ += 3; col_ += 3;
+        std::string raw;
+        while (pos_ < src_.size()) {
+            // Closing """ ?
+            if (src_[pos_] == '"' && pos_ + 2 < src_.size() &&
+                src_[pos_ + 1] == '"' && src_[pos_ + 2] == '"') {
+                break;
+            }
+            if (src_[pos_] == '\\') {
+                ++pos_; ++col_;
+                if (pos_ >= src_.size())
+                    throw std::runtime_error("line " + std::to_string(line_) +
+                                             ": unterminated escape sequence");
+                switch (src_[pos_]) {
+                    case 'n':  raw += '\n'; break;
+                    case 'r':  raw += '\r'; break;
+                    case 't':  raw += '\t'; break;
+                    case '\\': raw += '\\'; break;
+                    case '"':  raw += '"';  break;
+                    case '0':  raw += '\0'; break;
+                    default:
+                        throw std::runtime_error("line " + std::to_string(line_) +
+                                                 ": unknown escape sequence '\\" +
+                                                 std::string(1, src_[pos_]) + "'");
+                }
+                ++pos_; ++col_;
+            } else if (src_[pos_] == '\r') {
+                raw += '\n';
+                ++pos_;
+                if (pos_ < src_.size() && src_[pos_] == '\n') ++pos_;
+                ++line_;
+                col_ = 1;
+            } else if (src_[pos_] == '\n') {
+                raw += '\n';
+                ++pos_;
+                ++line_;
+                col_ = 1;
+            } else {
+                raw += src_[pos_];
+                ++pos_; ++col_;
+            }
+        }
+        if (pos_ >= src_.size())
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unterminated block string literal");
+
+        // Determine baseline indent from trailing run of spaces on the
+        // closing line. If the closing """ is not preceded by a newline
+        // (mid-line closing), baseline stays 0 and no leading-space strip
+        // is applied to any content line.
+        int baseline = 0;
+        {
+            size_t s = raw.size();
+            while (s > 0 && raw[s - 1] == ' ') --s;
+            if (s == 0 || raw[s - 1] == '\n') {
+                baseline = static_cast<int>(raw.size() - s);
+                raw.resize(s);
+            }
+        }
+
+        size_t startIdx = 0;
+        if (startIdx < raw.size() && raw[startIdx] == '\n') ++startIdx;
+        size_t endIdx = raw.size();
+        if (endIdx > startIdx && raw[endIdx - 1] == '\n') --endIdx;
+
+        std::string normalized;
+        bool firstLine = true;
+        size_t i = startIdx;
+        for (;;) {
+            size_t lineEnd = i;
+            while (lineEnd < endIdx && raw[lineEnd] != '\n') ++lineEnd;
+            if (!firstLine) normalized += '\n';
+            firstLine = false;
+            size_t ls = i;
+            int stripped = 0;
+            while (ls < lineEnd && stripped < baseline && raw[ls] == ' ') {
+                ++ls;
+                ++stripped;
+            }
+            normalized.append(raw, ls, lineEnd - ls);
+            if (lineEnd >= endIdx) break;
+            i = lineEnd + 1;
+        }
+
+        pos_ += 3; col_ += 3;
+        at_line_start_ = false;
+        return {TokenKind::BlockString, std::move(normalized), line_, startCol};
     }
 
     if (c == '"') {

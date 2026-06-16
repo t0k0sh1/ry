@@ -360,6 +360,38 @@ TEST(ParserTest, LetStringWithTypeAnnotation) {
     EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "world");
 }
 
+TEST(ParserTest, LetBlockStringLiteral) {
+    Program prog = parseStr("s = \"\"\"hello\"\"\"");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "s");
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
+    const auto &se = std::get<StringExpr>(s.value->data);
+    EXPECT_EQ(se.value, "hello");
+    EXPECT_TRUE(se.is_block);
+}
+
+TEST(ParserTest, RegularStringStaysRegular) {
+    Program prog = parseStr("s = \"hello\"");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
+    const auto &se = std::get<StringExpr>(s.value->data);
+    EXPECT_EQ(se.value, "hello");
+    EXPECT_FALSE(se.is_block);
+}
+
+TEST(ParserTest, LetBlockStringMultiline) {
+    // Issue's exact example: indentation normalization
+    Program prog = parseStr("s = \"\"\"\n  a\n    b\n  c\n  \"\"\"");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
+    const auto &se = std::get<StringExpr>(s.value->data);
+    EXPECT_EQ(se.value, "a\n  b\nc");
+    EXPECT_TRUE(se.is_block);
+}
+
 TEST(ParserTest, TypeAnnotationMissingEqualsThrows) {
     EXPECT_THROW(parseStr("x: int 42"), std::runtime_error);
 }

@@ -7,12 +7,13 @@
 (comment) @comment
 
 ; ---------- Literals ----------
-(integer_literal) @number
-(float_literal)   @number.float
-(string_literal)  @string
-(regex_literal)   @string.regexp
-(boolean_literal) @boolean
-(none_literal)    @constant.builtin
+(integer_literal)      @number
+(float_literal)        @number.float
+(string_literal)       @string
+(block_string_literal) @string
+(regex_literal)        @string.regexp
+(boolean_literal)      @boolean
+(none_literal)         @constant.builtin
 
 ; F-string interpolation: outer quotes/braces are part of the literal,
 ; inner expressions are expressions and inherit their own captures.

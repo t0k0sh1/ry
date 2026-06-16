@@ -150,7 +150,7 @@ struct TypeParam {
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
-struct StringExpr   { std::string value; };
+struct StringExpr   { std::string value; bool is_block = false; };
 struct RegexExpr    { std::string pattern; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;

@@ -992,6 +992,7 @@ export default grammar({
     _literal: $ => choice(
       $.integer_literal,
       $.float_literal,
+      $.block_string_literal,
       $.string_literal,
       $.regex_literal,
       $.boolean_literal,
@@ -1040,6 +1041,31 @@ export default grammar({
      * scanner emits `_regex_literal` only when the parser state is
      * compatible with starting an expression. */
     regex_literal: $ => $._regex_literal,
+
+    /* ------- Block string -------
+     * Triple-quoted `"""..."""`. May span multiple lines: the body
+     * accepts any character except an unescaped `"""` close. Modeled
+     * as an internal `token(seq(...))` so longest-match preserves
+     * `"""hello"""` against `string_literal`'s `""` (the empty-string
+     * prefix only consumes 2 chars; the block string token consumes the
+     * full literal). No external scanner is needed — the regex spans
+     * newlines because we never restrict the body to `[^\n]`.
+     *
+     * Escape handling: `\X` consumes both chars (the runtime lexer
+     * validates / decodes the escape semantics). `"` and `""` inside the
+     * body are content; the body alternative `"[^"]/"|"[^\\"]"` recognizes
+     * an isolated `"` or `""` and disallows the third — which terminates
+     * the literal. */
+    block_string_literal: $ => token(seq(
+      '"""',
+      repeat(choice(
+        /[^"\\]/,
+        /\\./,
+        /"[^"]/,
+        /""[^"]/,
+      )),
+      '"""',
+    )),
 
     /* ------- f-string -------
      * The lexer (lexer.hpp / lexer.cpp readFStringSegment) emits three
