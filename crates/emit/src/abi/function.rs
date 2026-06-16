@@ -63,6 +63,24 @@ pub unsafe extern "C" fn ry_emit_create_function(
     )
 }
 
+/// Add the `nounwind` attribute (LLVM `NoUnwind`) to `fn_handle`. Mirrors C++
+/// `llvm::Function::setDoesNotThrow()`. NULL ctx / fn_handle → no-op. Added
+/// for pilot G (#2196): the GC visitor thunk generator marks the per-type
+/// `__ry_gc_visit_<TypeName>` functions as nothrow.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_function_set_nounwind(
+    ctx: *mut RyEmitCtx,
+    fn_handle: RyFunctionRef,
+) {
+    let Some(c) = checked_cx(ctx) else {
+        return;
+    };
+    if fn_handle.is_null() {
+        return;
+    }
+    c.function_set_nounwind(FunctionRef(as_function(fn_handle)));
+}
+
 /// Read the `idx`-th parameter value of `fn_handle` and return the interned
 /// result. NULL ctx / fn_handle, or `idx` out of `LLVMCountParams(fn_handle)`
 /// range, → 0. The range guard lives in `get_param` (core layer) because

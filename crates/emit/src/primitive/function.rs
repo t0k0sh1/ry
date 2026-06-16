@@ -43,6 +43,21 @@ impl EmitCtx {
         FunctionRef(f)
     }
 
+    // Add the `nounwind` (LLVM `NoUnwind`) attribute to `func`. Mirrors the
+    // C++ `llvm::Function::setDoesNotThrow` used by the GC visitor thunk
+    // generator (`codegen_arc_gc.cpp`). The C ABI for this is a 3-call
+    // sequence: look up the enum-attribute kind id by name, build the enum
+    // attribute, and attach it at the function index (`LLVMAttributeFunctionIndex`
+    // is `~0u` per the C header). Added for pilot G (#2196).
+    pub(crate) unsafe fn function_set_nounwind(&mut self, func: FunctionRef) {
+        const NAME: &[u8] = b"nounwind";
+        let kind = LLVMGetEnumAttributeKindForName(NAME.as_ptr() as *const c_char, NAME.len());
+        let attr = LLVMCreateEnumAttribute(self.context, kind, 0);
+        // LLVMAttributeFunctionIndex from llvm-c/Types.h: (LLVMAttributeIndex)~0U.
+        const FUNCTION_INDEX: c_uint = !0u32;
+        LLVMAddAttributeAtIndex(func.0, FUNCTION_INDEX, attr);
+    }
+
     // Read the `idx`-th parameter value of `func` (`LLVMGetParam`). Returns the
     // raw param value; the abi boundary interns it. `None` when `idx` is out of
     // range for `func`'s parameter count — `LLVMGetParam` itself does raw

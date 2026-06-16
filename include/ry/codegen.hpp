@@ -145,6 +145,17 @@ public:
     // Cycle collector — static analysis & visit function generation
     std::unordered_set<std::string> potentially_cyclic_types_;
     std::unordered_map<std::string, llvm::Function*> gc_visit_functions_;
+
+    // Test-only knob (pilot G #2196): forces compile() to walk
+    // potentially_cyclic_types_ and synthesize each visitor thunk so
+    // tests/test_codegen_gc_visit.cpp can assert byte-exact IR for the
+    // emission path that is currently unreachable from any user Ry program.
+    // Production code never sets this — leave default false.
+    bool force_emit_cyclic_visitors_for_test_ = false;
+    void setForceEmitCyclicVisitorsForTest(bool v) {
+        force_emit_cyclic_visitors_for_test_ = v;
+    }
+
     void collectTypeGraphFromStmt(
         const StmtNode &stmt,
         std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
@@ -2102,6 +2113,10 @@ public:
                             llvm::Value *else_v, const char *name);
     llvm::Value *emitConstInt(llvm::Type *ty, uint64_t value,
                               bool sign_extend = false);
+    // Materialize a typed null constant (LLVMConstNull); for ptr types this is
+    // the typed null pointer used in null-guard `icmp eq` comparisons. Added
+    // for pilot G (#2196): the GC visitor thunk null-guard.
+    llvm::Value *emitConstNull(llvm::Type *ty);
     // extractvalue on an aggregate VALUE (distinct from emitStructGEP's
     // pointer-addressed field GEP). Added for #2099 so the filter / map iterator
     // next-fn can destructure the source Option in-register without
@@ -2157,6 +2172,10 @@ public:
     llvm::Function *emitCreateFunction(llvm::FunctionType *fn_ty,
                                        llvm::GlobalValue::LinkageTypes linkage,
                                        const char *name);
+    // Add the `nounwind` attribute (`Function::setDoesNotThrow` equivalent).
+    // Added for pilot G (#2196): GC visitor thunk generator marks thunks
+    // nothrow.
+    void emitFunctionSetNounwind(llvm::Function *fn);
     llvm::Value *emitGetParam(llvm::Function *fn, uint32_t idx);
     llvm::Value *emitStructGEP(llvm::Type *struct_ty, llvm::Value *ptr,
                                uint32_t field_idx, const char *name);

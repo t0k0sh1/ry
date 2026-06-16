@@ -1168,6 +1168,13 @@ RyValueId ry_emit_select(RyEmitCtx *ctx, RyValueId cond_id, RyValueId then_id,
 RyValueId ry_emit_const_int(RyEmitCtx *ctx, RyTypeRef ty, uint64_t value,
                             int sign_extend);
 
+// Materialize a null constant (LLVMConstNull). For pointer types this is the
+// typed null pointer (`ConstantPointerNull::get` equivalent) used in null-guard
+// `icmp eq` comparisons; works for any type. Added for pilot G (#2196): the GC
+// visitor thunk null-guard reads `fieldVal == null` on the per-field ARC
+// pointer. Emits no instruction; the result is interned for handle threading.
+RyValueId ry_emit_const_null(RyEmitCtx *ctx, RyTypeRef ty);
+
 // ===========================================================================
 // #2098 — function definition + indirect call ([C] = (ii) boundary move).
 //
@@ -1205,6 +1212,12 @@ typedef enum {
 // no basic blocks.
 RyFunctionRef ry_emit_create_function(RyEmitCtx *ctx, const char *name,
                                       RyFuncTypeRef fn_ty, int linkage);
+
+// Add the `nounwind` attribute to `fn_handle` (LLVM `NoUnwind`; mirrors C++
+// `llvm::Function::setDoesNotThrow`). NULL ctx / fn_handle → no-op. Added for
+// pilot G (#2196): the GC visitor thunk generator marks the per-type
+// `__ry_gc_visit_<TypeName>` functions nothrow.
+void ry_emit_function_set_nounwind(RyEmitCtx *ctx, RyFunctionRef fn_handle);
 
 // Read the `idx`-th parameter value of `fn`; return the interned result.
 // NULL ctx / fn → 0.

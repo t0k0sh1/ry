@@ -402,4 +402,15 @@ impl EmitCtx {
     ) -> ValueRef {
         ValueRef(LLVMConstInt(ty.0, value, sign_extend as i32))
     }
+
+    // Materialize a null constant of any type via `LLVMConstNull(ty)`. For
+    // pointer types this is `ConstantPointerNull::get(ty)` — the typed null
+    // pointer used in null-guard `icmp eq` comparisons. Added for pilot G
+    // (#2196): the GC visitor thunk null-guard reads `fieldVal == null` and
+    // currently emits `ConstantPointerNull::get` inline; this primitive is the
+    // boundary entry. Like `const_int`, no instruction is emitted but the
+    // result is interned for cross-boundary handle threading.
+    pub(crate) unsafe fn const_null(&mut self, ty: TypeRef) -> ValueRef {
+        ValueRef(LLVMConstNull(ty.0))
+    }
 }

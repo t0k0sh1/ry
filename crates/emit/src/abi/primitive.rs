@@ -558,3 +558,18 @@ pub unsafe extern "C" fn ry_emit_const_int(
     let v = c.const_int(TypeRef(as_type(ty)), value, sign_extend != 0);
     intern(c, to_ry_value(v.0))
 }
+
+/// Materialize `LLVMConstNull(ty)` and return the interned constant. For
+/// pointer types this is the typed null pointer used in null-guard `icmp eq`
+/// comparisons (pilot G #2196). NULL ctx / type → 0.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_const_null(ctx: *mut RyEmitCtx, ty: RyTypeRef) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if ty.is_null() {
+        return 0;
+    }
+    let v = c.const_null(TypeRef(as_type(ty)));
+    intern(c, to_ry_value(v.0))
+}
