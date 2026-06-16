@@ -320,10 +320,23 @@ llvm::Value *CodeGen::emitConstNull(llvm::Type *ty) {
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
+llvm::Value *CodeGen::emitUndef(llvm::Type *ty) {
+    RyValueId id = ry_emit_undef(emit_ctx_, ry::llvm_emit::asRyType(ty));
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
 llvm::Value *CodeGen::emitExtractValue(llvm::Value *agg, unsigned idx,
                                        const char *name) {
     RyValueId aggId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(agg));
     RyValueId id = ry_emit_extract_value(emit_ctx_, aggId, idx, name);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
+}
+
+llvm::Value *CodeGen::emitInsertValue(llvm::Value *agg, llvm::Value *val,
+                                      unsigned idx, const char *name) {
+    RyValueId aggId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(agg));
+    RyValueId valId = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    RyValueId id = ry_emit_insert_value(emit_ctx_, aggId, valId, idx, name);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 

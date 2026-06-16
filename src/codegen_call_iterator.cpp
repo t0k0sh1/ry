@@ -57,8 +57,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             std::string fnName = "__iter_" + kind + "_next." + std::to_string(iterator_fn_counter_++);
             llvm::StructType *optTy = getOptionType(elemTy);
             llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-            llvm::Function *nextFn = llvm::Function::Create(
-                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+            llvm::Function *nextFn = emitCreateFunction(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName.c_str());
 
             {
                 FnScope guard(*this);
@@ -67,27 +67,31 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 llvm::BasicBlock *entry = createBBInFn("entry", nextFn);
                 builder_.SetInsertPoint(entry);
 
-                llvm::Value *statePtr = nextFn->getArg(0);
-                llvm::Value *data = builder_.CreateLoad(ptrTy_,
-                    builder_.CreateStructGEP(stateTy, statePtr, 0), "data");
-                llvm::Value *len = builder_.CreateLoad(i64Ty_,
-                    builder_.CreateStructGEP(stateTy, statePtr, 1), "len");
-                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 2, "idx_field");
-                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+                // #2186 (A/A2 follow-on): the next-fn body is built entirely
+                // through the emission boundary — emitGetParam / emitStructGEP /
+                // emitLoad / emitICmpSLT / emitGEP / emitConstInt / emitAdd /
+                // emitStore / emitRet — so it carries no IRBuilder<>::Create*.
+                llvm::Value *statePtr = emitGetParam(nextFn, 0);
+                llvm::Value *data = emitLoad(ptrTy_,
+                    emitStructGEP(stateTy, statePtr, 0, ""), "data");
+                llvm::Value *len = emitLoad(i64Ty_,
+                    emitStructGEP(stateTy, statePtr, 1, ""), "len");
+                llvm::Value *idxField = emitStructGEP(stateTy, statePtr, 2, "idx_field");
+                llvm::Value *idx = emitLoad(i64Ty_, idxField, "idx");
 
                 llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
                 llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
-                emitBranchCond(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+                emitBranchCond(emitICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
-                llvm::Value *elem = builder_.CreateLoad(elemTy,
-                    builder_.CreateGEP(elemTy, data, {idx}, "elem_ptr"), "elem");
-                builder_.CreateStore(
-                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
-                builder_.CreateRet(buildSomeValue(elem, optTy));
+                llvm::Value *elem = emitLoad(elemTy,
+                    emitGEP(elemTy, data, idx, "elem_ptr"), "elem");
+                emitStore(
+                    emitAdd(idx, emitConstInt(i64Ty_, 1), "next_idx"), idxField);
+                emitRet(buildSomeValue(elem, optTy));
 
                 builder_.SetInsertPoint(noneBB);
-                builder_.CreateRet(buildNoneValue(optTy));
+                emitRet(buildNoneValue(optTy));
                 popScope();
             }
 
@@ -128,8 +132,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             std::string fnName = "__iter_map_next." + std::to_string(iterator_fn_counter_++);
             llvm::StructType *optTy = getOptionType(tupleTy);
             llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-            llvm::Function *nextFn = llvm::Function::Create(
-                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+            llvm::Function *nextFn = emitCreateFunction(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName.c_str());
 
             {
                 FnScope guard(*this);
@@ -138,34 +142,38 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 llvm::BasicBlock *entry = createBBInFn("entry", nextFn);
                 builder_.SetInsertPoint(entry);
 
-                llvm::Value *statePtr = nextFn->getArg(0);
-                llvm::Value *keys = builder_.CreateLoad(ptrTy_,
-                    builder_.CreateStructGEP(stateTy, statePtr, 0), "keys");
-                llvm::Value *vals = builder_.CreateLoad(ptrTy_,
-                    builder_.CreateStructGEP(stateTy, statePtr, 1), "vals");
-                llvm::Value *len = builder_.CreateLoad(i64Ty_,
-                    builder_.CreateStructGEP(stateTy, statePtr, 2), "len");
-                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 3, "idx_field");
-                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+                // #2186 (A/A2 follow-on): same boundary-routed next-fn body as
+                // the List/Set dense iter above. The {key, val} tuple-build adds
+                // emitUndef + emitInsertValue (#2186 primitives, the symmetric
+                // partner of #2099's emitExtractValue).
+                llvm::Value *statePtr = emitGetParam(nextFn, 0);
+                llvm::Value *keys = emitLoad(ptrTy_,
+                    emitStructGEP(stateTy, statePtr, 0, ""), "keys");
+                llvm::Value *vals = emitLoad(ptrTy_,
+                    emitStructGEP(stateTy, statePtr, 1, ""), "vals");
+                llvm::Value *len = emitLoad(i64Ty_,
+                    emitStructGEP(stateTy, statePtr, 2, ""), "len");
+                llvm::Value *idxField = emitStructGEP(stateTy, statePtr, 3, "idx_field");
+                llvm::Value *idx = emitLoad(i64Ty_, idxField, "idx");
 
                 llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
                 llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
-                emitBranchCond(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+                emitBranchCond(emitICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
 
                 builder_.SetInsertPoint(someBB);
-                llvm::Value *key = builder_.CreateLoad(keyTy,
-                    builder_.CreateGEP(keyTy, keys, {idx}, "key_ptr"), "key");
-                llvm::Value *val = builder_.CreateLoad(valTy,
-                    builder_.CreateGEP(valTy, vals, {idx}, "val_ptr"), "val");
-                llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
-                tuple = builder_.CreateInsertValue(tuple, key, 0, "tuple_k");
-                tuple = builder_.CreateInsertValue(tuple, val, 1, "tuple_kv");
-                builder_.CreateStore(
-                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
-                builder_.CreateRet(buildSomeValue(tuple, optTy));
+                llvm::Value *key = emitLoad(keyTy,
+                    emitGEP(keyTy, keys, idx, "key_ptr"), "key");
+                llvm::Value *val = emitLoad(valTy,
+                    emitGEP(valTy, vals, idx, "val_ptr"), "val");
+                llvm::Value *tuple = emitUndef(tupleTy);
+                tuple = emitInsertValue(tuple, key, 0, "tuple_k");
+                tuple = emitInsertValue(tuple, val, 1, "tuple_kv");
+                emitStore(
+                    emitAdd(idx, emitConstInt(i64Ty_, 1), "next_idx"), idxField);
+                emitRet(buildSomeValue(tuple, optTy));
 
                 builder_.SetInsertPoint(noneBB);
-                builder_.CreateRet(buildNoneValue(optTy));
+                emitRet(buildNoneValue(optTy));
                 popScope();
             }
 
@@ -313,8 +321,9 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         std::string fnName = "__iter_filter_next." + std::to_string(iterator_fn_counter_++);
         llvm::StructType *optTy = getOptionType(elemTy);
         llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-        llvm::Function *filterNextFn = llvm::Function::Create(
-            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+        // #2186: same emitCreateFunction surface as map / take.
+        llvm::Function *filterNextFn = emitCreateFunction(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName.c_str());
 
         {
             FnScope guard(*this);
@@ -402,8 +411,9 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         llvm::StructType *srcOptTy = getOptionType(elemTy);
         llvm::StructType *outOptTy = getOptionType(outElemTy);
         llvm::FunctionType *nextFnTy = llvm::FunctionType::get(outOptTy, {ptrTy_}, false);
-        llvm::Function *mapNextFn = llvm::Function::Create(
-            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+        // #2186: same emitCreateFunction surface as filter / take.
+        llvm::Function *mapNextFn = emitCreateFunction(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName.c_str());
 
         {
             FnScope guard(*this);

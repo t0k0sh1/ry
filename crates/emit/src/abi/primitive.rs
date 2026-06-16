@@ -333,6 +333,29 @@ pub unsafe extern "C" fn ry_emit_extract_value(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `insertvalue agg, val, idx` — write `val` into aggregate field `idx`,
+/// returning a new aggregate (`LLVMBuildInsertValue`). The symmetric partner of
+/// `ry_emit_extract_value`. NULL ctx / unresolved agg / unresolved val → 0.
+/// NULL `name` → empty. Added for #2186 (dense iterator sweep): Map iterator
+/// next-fn builds the `{key, val}` tuple via `undef → insertvalue 0 → insertvalue 1`.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_insert_value(
+    ctx: *mut RyEmitCtx,
+    agg_id: RyValueId,
+    val_id: RyValueId,
+    idx: u32,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(agg), Some(val)) = (resolve_value(c, agg_id), resolve_value(c, val_id)) else {
+        return 0;
+    };
+    let v = c.build_insert_value(agg, val, idx, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `zext val to dest_ty` — zero-extend `val` to the wider integer type
 /// `dest_ty` (`LLVMBuildZExt`). NULL ctx / NULL dest_ty / unresolved val → 0.
 /// NULL `name` → empty. Added for #2101 (hash-table lookup capability: the
@@ -571,5 +594,21 @@ pub unsafe extern "C" fn ry_emit_const_null(ctx: *mut RyEmitCtx, ty: RyTypeRef) 
         return 0;
     }
     let v = c.const_null(TypeRef(as_type(ty)));
+    intern(c, to_ry_value(v.0))
+}
+
+/// Materialize `LLVMGetUndef(ty)` and return the interned undef value. Used as
+/// the initial aggregate before `ry_emit_insert_value` fills each field. NULL ctx
+/// / type → 0. Added for #2186 (dense iterator sweep): Map iterator next-fn
+/// seeds its `{key, val}` tuple from undef.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_undef(ctx: *mut RyEmitCtx, ty: RyTypeRef) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    if ty.is_null() {
+        return 0;
+    }
+    let v = c.build_undef(TypeRef(as_type(ty)));
     intern(c, to_ry_value(v.0))
 }

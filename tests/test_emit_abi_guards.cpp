@@ -892,6 +892,41 @@ TEST_F(EmitAbiGuardTest, ExtractValueUnresolvedAggReturnsZero) {
 }
 
 // =============================================================================
+// #2186 — insertvalue / undef primitive guards (dense iterator sweep). Same
+// checked_cx / resolve_value / NULL-type contract as the #2098 / #2099 entries
+// above; the bit-exact Map iterator migration exercises the happy path.
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, InsertValueNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_insert_value(nullptr, /*agg_id=*/0, /*val_id=*/0,
+                                   /*idx=*/0, "x"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, InsertValueUnresolvedAggReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // agg_id 0 resolves to None — the dual-resolve reject fires before any
+    // builder use.
+    EXPECT_EQ(ry_emit_insert_value(ctx, /*agg_id=*/0, /*val_id=*/0,
+                                   /*idx=*/0, "x"),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, UndefNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_undef(nullptr, /*ty=*/nullptr), 0u);
+}
+
+TEST_F(EmitAbiGuardTest, UndefNullTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // NULL type guard fires before LLVMGetUndef. Mirrors ry_emit_const_null.
+    EXPECT_EQ(ry_emit_undef(ctx, /*ty=*/nullptr), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// =============================================================================
 // #2100 — switch construction + array-element GEP primitive guards
 // ([B] = (ii) boundary move). create_switch returns the opaque RySwitchRef (NULL
 // sentinel, like create_basic_block); switch_add_case is void (no-op on bad

@@ -1121,6 +1121,14 @@ RyValueId ry_emit_array_gep(RyEmitCtx *ctx, RyTypeRef array_ty,
 RyValueId ry_emit_extract_value(RyEmitCtx *ctx, RyValueId agg_id, uint32_t idx,
                                 const char *name);
 
+// Emit `insertvalue agg, val, idx` — write `val` into aggregate field `idx`,
+// returning a new aggregate (`LLVMBuildInsertValue`). The symmetric partner of
+// ry_emit_extract_value. NULL `name` → empty SSA name. Added for #2186 (dense
+// iterator sweep): the Map iterator next-fn builds the `{key, val}` tuple via
+// `undef → insertvalue 0 → insertvalue 1`. Creates no basic blocks.
+RyValueId ry_emit_insert_value(RyEmitCtx *ctx, RyValueId agg_id, RyValueId val_id,
+                               uint32_t idx, const char *name);
+
 // Emit `zext val to dest_ty` — zero-extend an integer value to the wider
 // integer type `dest_ty` (`LLVMBuildZExt`). NULL `name` → empty SSA name.
 // Added for #2101 (hash-table lookup capability: the conditional i1→i64 key
@@ -1174,6 +1182,13 @@ RyValueId ry_emit_const_int(RyEmitCtx *ctx, RyTypeRef ty, uint64_t value,
 // visitor thunk null-guard reads `fieldVal == null` on the per-field ARC
 // pointer. Emits no instruction; the result is interned for handle threading.
 RyValueId ry_emit_const_null(RyEmitCtx *ctx, RyTypeRef ty);
+
+// Materialize an undef value (LLVMGetUndef). Used as the initial aggregate
+// before `ry_emit_insert_value` fills each field — the canonical
+// `undef → insertvalue 0 → insertvalue 1 → …` build pattern. Added for #2186
+// (dense iterator sweep): Map iterator next-fn seeds its `{key, val}` tuple from
+// undef. Emits no instruction; the result is interned for handle threading.
+RyValueId ry_emit_undef(RyEmitCtx *ctx, RyTypeRef ty);
 
 // ===========================================================================
 // #2098 — function definition + indirect call ([C] = (ii) boundary move).

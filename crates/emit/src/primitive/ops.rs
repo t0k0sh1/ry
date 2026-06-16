@@ -264,6 +264,21 @@ impl EmitCtx {
         ValueRef(LLVMBuildExtractValue(self.builder, agg.0, idx, name))
     }
 
+    // `insertvalue agg, val, idx` — write `val` into aggregate field `idx`,
+    // returning a new aggregate value (`LLVMBuildInsertValue`). The symmetric
+    // partner of `build_extract_value`. Added for #2186 (dense iterator sweep):
+    // the Map iterator next-fn builds a `{key, val}` tuple via
+    // `undef → insertvalue 0 → insertvalue 1` before returning the Option payload.
+    pub(crate) unsafe fn build_insert_value(
+        &mut self,
+        agg: ValueRef,
+        val: ValueRef,
+        idx: u32,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildInsertValue(self.builder, agg.0, val.0, idx, name))
+    }
+
     // `zext val to dest_ty` — zero-extend an integer value to a wider integer
     // type (`LLVMBuildZExt`). Added for #2101 (hash-table lookup capability):
     // emitHashTableLookup conditionally widens an i1 key to the i64 hash-arg
@@ -412,5 +427,15 @@ impl EmitCtx {
     // result is interned for cross-boundary handle threading.
     pub(crate) unsafe fn const_null(&mut self, ty: TypeRef) -> ValueRef {
         ValueRef(LLVMConstNull(ty.0))
+    }
+
+    // Materialize an undef value of any type via `LLVMGetUndef(ty)`. Used as the
+    // initial aggregate before `build_insert_value` fills each field — the
+    // canonical `undef → insertvalue 0 → insertvalue 1 → …` build pattern. Added
+    // for #2186 (dense iterator sweep): the Map iterator next-fn seeds its
+    // `{key, val}` tuple from undef. Like `const_null`, no instruction is emitted
+    // but the result is interned for cross-boundary handle threading.
+    pub(crate) unsafe fn build_undef(&mut self, ty: TypeRef) -> ValueRef {
+        ValueRef(LLVMGetUndef(ty.0))
     }
 }
