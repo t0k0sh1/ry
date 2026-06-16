@@ -414,7 +414,7 @@ identifier_or_qualified ::= IDENT { '::' IDENT }
  * ===================================================================*/
 
 literal          ::= INTEGER | FLOAT
-                   | STRING | REGEX_LITERAL
+                   | STRING | BLOCK_STRING | REGEX_LITERAL
                    | boolean_literal | none_literal
 /* `Unit` is a type name only; the singleton unit value cannot be written
  * directly in source. It appears via `primitive_type`, never as `literal`. */
@@ -466,6 +466,16 @@ float_suffix     ::= 'f32' | 'f64'
 STRING           ::= '"' { string_char } '"'
 string_char      ::= ( any_char_except_quote_backslash_newline | escape_seq )
 escape_seq       ::= '\\' ( 'n' | 't' | 'r' | '0' | '\\' | '"' | "'" | 'x' hex_digit hex_digit )
+
+/* Block string literal: triple-quoted, may span multiple lines.
+   Indentation normalization (strip baseline from each line, drop incidental
+   leading/trailing newlines) is applied by the lexer; the result is stored
+   as a regular string value. Escape processing matches STRING. Any `"` or
+   `""` inside the body is content; only `"""` terminates the literal.
+   Baseline indent is counted in space characters; mixing tabs with the
+   baseline indent is unsupported. */
+BLOCK_STRING     ::= '"""' { block_string_char } '"""'
+block_string_char ::= ( any_char_except_triple_quote | escape_seq )
 
 /* f-string segments — three lexer states */
 FSTRING_START    ::= 'f"' { string_char } '{'              // up to first interpolation

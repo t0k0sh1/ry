@@ -156,6 +156,62 @@ std::string Formatter::escapeString(const std::string &s) {
     return result;
 }
 
+// Escape a block string body for re-emission inside """...""". Differs from
+// escapeString: '\n' and '\t' are emitted raw (allowed inside block strings),
+// and only a `"` that starts a triple-quote run is escaped to avoid prematurely
+// closing the literal.
+std::string Formatter::escapeBlockString(const std::string &s) {
+    std::string result;
+    for (size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        switch (c) {
+            case '\\': result += "\\\\"; break;
+            case '\0': result += "\\0"; break;
+            case '\r': result += "\\r"; break;
+            case '"':
+                if (i + 2 < s.size() && s[i + 1] == '"' && s[i + 2] == '"') {
+                    result += "\\\"";
+                } else {
+                    result += '"';
+                }
+                break;
+            default: result += c; break;
+        }
+    }
+    return result;
+}
+
+// Format a StringExpr value as a triple-quoted block string. Same-line form
+// when the value has no embedded newline; otherwise a multiline form where
+// each content line and the closing """ are indented to baseline =
+// (indent_level_ + 1) * indent_width_. This baseline matches what the lexer
+// will strip when re-parsed, so the round-trip is idempotent.
+std::string Formatter::formatBlockString(const std::string &value) {
+    if (value.find('\n') == std::string::npos) {
+        return "\"\"\"" + escapeBlockString(value) + "\"\"\"";
+    }
+    std::string baseline(
+        static_cast<size_t>(indent_level_ + 1) *
+            static_cast<size_t>(indent_width_),
+        ' ');
+    std::string out = "\"\"\"\n";
+    size_t i = 0;
+    while (i < value.size()) {
+        size_t lineEnd = i;
+        while (lineEnd < value.size() && value[lineEnd] != '\n') ++lineEnd;
+        // Blank lines: emit a bare newline rather than `baseline` + newline,
+        // so re-lex preserves the blank line without inserting whitespace.
+        if (lineEnd > i) {
+            out += baseline;
+            out += escapeBlockString(value.substr(i, lineEnd - i));
+        }
+        out += '\n';
+        i = (lineEnd < value.size()) ? lineEnd + 1 : lineEnd;
+    }
+    out += baseline + "\"\"\"";
+    return out;
+}
+
 std::string Formatter::formatFloat(double v) {
     // Use std::to_chars with fixed format for round-trip safe output
     // without scientific notation
@@ -269,6 +325,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         } else if constexpr (std::is_same_v<T, BoolExpr>) {
             return v.value ? "true" : "false";
         } else if constexpr (std::is_same_v<T, StringExpr>) {
+            if (v.is_block) return formatBlockString(v.value);
             return "\"" + escapeString(v.value) + "\"";
         } else if constexpr (std::is_same_v<T, RegexExpr>) {
             // Lexer stores regex backslashes verbatim (so `escapeString` would

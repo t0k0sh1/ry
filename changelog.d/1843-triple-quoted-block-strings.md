@@ -1,0 +1,3 @@
+### Added
+
+- Triple-quoted block string literals `"""..."""` for multiline text such as Markdown-flavored documentation. The lexer normalizes incidental leading/trailing newlines, strips the baseline indentation matching the closing delimiter, preserves intentional blank lines, and decodes the same escape sequences as regular strings (`\n`, `\t`, `\r`, `\\`, `\"`, `\0`). Block strings evaluate to the same `str` runtime value as the equivalent regular string, so they interoperate transparently with all string APIs. The formatter preserves the triple-quoted form on round-trip; regular `"..."` strings keep their single-quoted form. (#1843)

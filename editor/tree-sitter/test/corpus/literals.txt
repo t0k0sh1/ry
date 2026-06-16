@@ -38,6 +38,34 @@ s = "hello"
     right: (string_literal)))
 
 ==================
+block string literal same-line
+==================
+
+s = """hello"""
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (block_string_literal)))
+
+==================
+block string literal multiline
+==================
+
+s = """
+  hello
+  """
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (block_string_literal)))
+
+==================
 boolean literals
 ==================
 

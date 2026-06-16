@@ -521,6 +521,13 @@ ExprPtr Parser::parsePrimary() {
         node->loc = locFromToken(t);
         return node;
     }
+    if (t.kind == TokenKind::BlockString) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = StringExpr{t.value, /*is_block=*/true};
+        node->loc = locFromToken(t);
+        return node;
+    }
     if (t.kind == TokenKind::RegexLiteral) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();

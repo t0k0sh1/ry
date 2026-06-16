@@ -93,6 +93,8 @@ private:
     void emitTypeParams(const std::vector<TypeParam> &params);
     std::string formatPattern(const Pattern &pat);
     std::string escapeString(const std::string &s);
+    std::string escapeBlockString(const std::string &s);
+    std::string formatBlockString(const std::string &value);
     std::string formatFloat(double v);
     std::string formatNamedArgs(const std::vector<NamedArg> &named, bool has_positionals);
 

@@ -681,6 +681,131 @@ TEST(LexerTest, RawStringTokens) {
     }
 }
 
+// ===== Block string tokens =====
+
+TEST(LexerTest, BlockStringTokens) {
+    // SameLineSimple: """hello""" → "hello"
+    {
+        auto toks = tokenize("\"\"\"hello\"\"\"");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "hello");
+    }
+    // EmptySameLine: """""" → ""
+    {
+        auto toks = tokenize("\"\"\"\"\"\"");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "");
+    }
+    // LeadingNewlineDrop: """\nhello\n""" → "hello"
+    {
+        auto toks = tokenize("\"\"\"\nhello\n\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "hello");
+    }
+    // IssueExactExample: """\n  a\n    b\n  c\n  """ → "a\n  b\nc"
+    {
+        auto toks = tokenize("\"\"\"\n  a\n    b\n  c\n  \"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "a\n  b\nc");
+    }
+    // BlankLinePreservation: """\n  a\n\n  b\n  """ → "a\n\nb"
+    {
+        auto toks = tokenize("\"\"\"\n  a\n\n  b\n  \"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "a\n\nb");
+    }
+    // EscapeSequenceDecoded: """\n\\n\n""" → "\n" (literal \n escape → newline byte)
+    {
+        auto toks = tokenize("\"\"\"\n\\n\n\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "\n");
+    }
+    // EscapeBackslash: """\\""" → "\\"
+    {
+        auto toks = tokenize("\"\"\"\\\\\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "\\");
+    }
+    // EmbeddedSingleQuote: """a"b""" → a"b
+    {
+        auto toks = tokenize("\"\"\"a\"b\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "a\"b");
+    }
+    // EmbeddedDoubleQuote: """a""b""" → a""b
+    {
+        auto toks = tokenize("\"\"\"a\"\"b\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "a\"\"b");
+    }
+    // EscapedTripleQuote: lets us embed """ inside the block
+    {
+        auto toks = tokenize("\"\"\"a\\\"\"\"b\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "a\"\"\"b");
+    }
+    // UnterminatedThrows
+    {
+        EXPECT_THROW(tokenize("\"\"\"hello"), std::runtime_error);
+    }
+    // UnterminatedAcrossNewlinesThrows
+    {
+        EXPECT_THROW(tokenize("\"\"\"hello\nworld"), std::runtime_error);
+    }
+    // UnknownEscapeThrows
+    {
+        EXPECT_THROW(tokenize("\"\"\"\\q\"\"\""), std::runtime_error);
+    }
+    // BlockStringInExpression: assignment context
+    {
+        auto toks = tokenize("s = \"\"\"hi\"\"\"");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+        EXPECT_EQ(toks[2].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[2].value, "hi");
+        EXPECT_EQ(toks[3].kind, TokenKind::Eof);
+    }
+    // IndentStateRegression: block string inside an indented block must not
+    // disturb the surrounding indent. After the block string ends with its
+    // closing """, the next line at the same indent must stay in the if block.
+    // Source layout (indent 4):
+    //   if true:
+    //       s = """
+    //   multi
+    //       """
+    //       print(s)
+    {
+        auto toks = tokenize("if true:\n    s = \"\"\"\nmulti\n    \"\"\"\n    print(s)\n");
+        // We don't enumerate every token but assert there is no spurious
+        // Dedent emitted before `print(s)` — the print sits in the if body.
+        // Walk tokens and find the BlockString followed by Newline then `print`
+        // without any intervening Dedent.
+        size_t bs = 0;
+        for (; bs < toks.size(); ++bs) {
+            if (toks[bs].kind == TokenKind::BlockString) break;
+        }
+        ASSERT_LT(bs, toks.size());
+        EXPECT_EQ(toks[bs].value, "multi");
+        // Expect: BlockString, Newline, Ident("print"), ...
+        // No Dedent between BlockString and the next Newline / Ident.
+        ASSERT_LT(bs + 2, toks.size());
+        EXPECT_EQ(toks[bs + 1].kind, TokenKind::Newline);
+        EXPECT_EQ(toks[bs + 2].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[bs + 2].value, "print");
+    }
+}
+
 // ===== ++/-- tokens =====
 
 TEST(LexerTest, IncrDecrTokens) {

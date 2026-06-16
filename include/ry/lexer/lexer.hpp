@@ -116,6 +116,8 @@ enum class TokenKind {
     RegexLiteral,   // /pattern/
     // --- resource management ---
     Using,          // using
+    // --- block string literal ---
+    BlockString,    // """..."""
 };
 
 struct Token {

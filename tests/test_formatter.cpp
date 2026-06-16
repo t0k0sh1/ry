@@ -28,6 +28,94 @@ TEST(Formatter, LiteralFormatting) {
     EXPECT_EQ(fmt("x = none\n"), "x = none\n");
 }
 
+// ===== Block String Literal Formatting (#1843) =====
+
+TEST(Formatter, BlockStringLiteralFormatting) {
+    // Same-line round-trip preserves """...""" form
+    EXPECT_EQ(fmt("s = \"\"\"hello\"\"\"\n"), "s = \"\"\"hello\"\"\"\n");
+
+    // Empty block string
+    EXPECT_EQ(fmt("s = \"\"\"\"\"\"\n"), "s = \"\"\"\"\"\"\n");
+
+    // Multiline block string – issue exact example. Top-level indent_level=0
+    // produces 2-space baseline for content and closing """.
+    {
+        const std::string input =
+            "s = \"\"\"\n"
+            "  a\n"
+            "    b\n"
+            "  c\n"
+            "  \"\"\"\n";
+        const std::string expected =
+            "s = \"\"\"\n"
+            "  a\n"
+            "    b\n"
+            "  c\n"
+            "  \"\"\"\n";
+        EXPECT_EQ(fmt(input), expected);
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(fmt(input), reason)) << reason;
+    }
+
+    // Blank line preservation
+    {
+        const std::string input =
+            "s = \"\"\"\n"
+            "  a\n"
+            "\n"
+            "  b\n"
+            "  \"\"\"\n";
+        // After lexing: value = "a\n\nb". Formatter emits blank line raw.
+        const std::string expected =
+            "s = \"\"\"\n"
+            "  a\n"
+            "\n"
+            "  b\n"
+            "  \"\"\"\n";
+        EXPECT_EQ(fmt(input), expected);
+    }
+
+    // Regular string stays "..." (regression guard for the is_block branch)
+    EXPECT_EQ(fmt("s = \"hello\"\n"), "s = \"hello\"\n");
+    EXPECT_EQ(fmt("s = \"a\\nb\"\n"), "s = \"a\\nb\"\n");
+
+    // Embedded triple-quote in value: escape the leading " to avoid premature close
+    // Source has """a\"""b""", value is `a"""b`. Formatter must re-emit with the escape.
+    {
+        const std::string input = "s = \"\"\"a\\\"\"\"b\"\"\"\n";
+        const std::string out = fmt(input);
+        // value contains a"""b — formatter same-line form
+        EXPECT_EQ(out, "s = \"\"\"a\\\"\"\"b\"\"\"\n");
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
+    }
+
+    // Indent-aware multiline output: a block string inside a function body
+    // (indent_level_ = 1) must use a baseline of 4 spaces for content and the
+    // closing """, not 2. This exercises the `(indent_level_ + 1) *
+    // indent_width_` math at depth ≥ 1 — the spec tests cover the *value* at
+    // depth but never the *formatted output*, which has a different shape.
+    {
+        const std::string input =
+            "fn doc() -> str:\n"
+            "  return \"\"\"\n"
+            "    a\n"
+            "      b\n"
+            "    c\n"
+            "    \"\"\"\n";
+        const std::string expected =
+            "fn doc() -> str:\n"
+            "  return \"\"\"\n"
+            "    a\n"
+            "      b\n"
+            "    c\n"
+            "    \"\"\"\n";
+        EXPECT_EQ(fmt(input), expected);
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(fmt(input), reason)) << reason;
+    }
+}
+
 // ===== Regex Literal Formatting (#2113) =====
 
 TEST(Formatter, RegexLiteralFormatting) {

@@ -1,0 +1,89 @@
+from testing import it, describe, expect
+
+@describe("block string literal syntax")
+fn blockStringSyntaxTests():
+  @it("evaluates same-line form like a regular string")
+  fn shouldEvaluateSameLineForm():
+    s = """hello"""
+    expect(s).toEq("hello")
+  @it("treats empty same-line form as empty string")
+  fn shouldTreatEmptySameLineAsEmpty():
+    s = """"""
+    expect(s).toEq("")
+  @it("drops the incidental leading newline after the opening delimiter")
+  fn shouldDropLeadingNewline():
+    s = """
+hello"""
+    expect(s).toEq("hello")
+  @it("drops the incidental trailing newline before the closing delimiter")
+  fn shouldDropTrailingNewline():
+    s = """hello
+"""
+    expect(s).toEq("hello")
+  @it("normalizes the issue's exact indentation example")
+  fn shouldNormalizeIssueExample():
+    s = """
+      a
+        b
+      c
+      """
+    expect(s).toEq("a\n  b\nc")
+  @it("preserves intentional blank lines")
+  fn shouldPreserveBlankLines():
+    s = """
+      a
+
+      b
+      """
+    expect(s).toEq("a\n\nb")
+  @it("decodes escape sequences inside the block")
+  fn shouldDecodeEscapeSequences():
+    s = """a\tb"""
+    expect(s).toEq("a\tb")
+  @it("decodes backslash escapes inside the block")
+  fn shouldDecodeBackslash():
+    s = """\\"""
+    expect(s).toEq("\\")
+  @it("allows embedded single and double quotes")
+  fn shouldAllowEmbeddedQuotes():
+    s = """a"b""c"""
+    expect(s).toEq("a\"b\"\"c")
+  @it("equals the value of an equivalent regular string")
+  fn shouldEqualRegularString():
+    a = """hello"""
+    b = "hello"
+    expect(a).toEq(b)
+  @it("supports markdown-like content literally")
+  fn shouldSupportMarkdown():
+    s = """
+      # Heading
+
+      - bullet one
+      - bullet two
+
+      Some `code` here.
+      """
+    expect(s).toEq("# Heading\n\n- bullet one\n- bullet two\n\nSome `code` here.")
+
+@describe("block string in indented contexts")
+fn blockStringIndentedContextTests():
+  @it("does not break the surrounding indented block")
+  fn shouldNotBreakSurroundingBlock():
+    n = 0
+    if true:
+      s = """
+multi
+      """
+      # This statement must still belong to the if-body. If the lexer
+      # mishandled at_line_start_ after the block string, n would not
+      # be assigned and the assertion below would catch it.
+      n = len(s)
+    expect(n).toEq(5)
+  @it("works inside nested function bodies")
+  fn shouldWorkInsideFunctionBody():
+    fn doc() -> str:
+      return """
+        first line
+        second line
+        """
+    expect(doc()).toEq("first line\nsecond line")
