@@ -192,6 +192,9 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
     std::vector<std::thread> threads;
     threads.reserve(num_workers);
 
+    std::fprintf(stderr, "Running %zu test files with %zu workers...\n",
+                 num_files, num_workers);
+
     auto wall_start = std::chrono::steady_clock::now();
     for (size_t i = 0; i < num_workers; ++i)
         threads.emplace_back(worker);
@@ -217,13 +220,19 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
     return total_failed > 0 ? 1 : 0;
 }
 
+unsigned computeDefaultWorkers(unsigned hw_concurrency) {
+    // hw == 0 (取得失敗) と hw == 1 はどちらも 1 を返す。
+    // 減算より前にガードしないと unsigned underflow で巨大値になる。
+    if (hw_concurrency <= 1) return 1u;
+    return hw_concurrency - 1u;
+}
+
 int computeParallelism(int requested_workers, std::size_t test_file_count) {
     unsigned base;
     if (requested_workers > 0) {
         base = static_cast<unsigned>(requested_workers);
     } else {
-        unsigned hw = std::thread::hardware_concurrency();
-        base = (hw > 0) ? hw : 1u;
+        base = computeDefaultWorkers(std::thread::hardware_concurrency());
     }
     if (static_cast<std::size_t>(base) > test_file_count) {
         base = static_cast<unsigned>(test_file_count);

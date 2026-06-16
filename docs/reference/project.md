@@ -176,7 +176,7 @@ Discovers and runs test files (`*.test.ry`). See [Testing](testing.md) for full 
 ry test                        # Auto-discover and run all *.test.ry files
 ry test tests/spec             # Run all tests under a directory
 ry test test_file.ry           # Run a specific test file
-ry test -p                     # Run tests in parallel (default workers = CPU count)
+ry test -p                     # Run tests in parallel (default workers = CPU count - 1, minimum 1)
 ry test -p 8                   # Run tests in parallel with 8 workers
 ry test -w                     # Watch mode: re-run on file change
 ry test --coverage             # Collect line coverage information
@@ -186,7 +186,7 @@ ry test --coverage             # Collect line coverage information
 
 | Option | Description |
 |---|---|
-| `-p [N]`, `--parallel [N]` | Run tests in parallel; optional positive integer N selects worker count (default: hardware concurrency). `--parallel=N` is also accepted. |
+| `-p [N]`, `--parallel [N]` | Run tests in parallel; optional positive integer N selects worker count (default: hardware concurrency - 1, minimum 1). `--parallel=N` is also accepted. |
 | `-w`, `--watch` | Watch for changes and re-run |
 | `--coverage`, `--cov` | Collect coverage information |
 | `--outline` | Print the describe/it structure without running tests |
