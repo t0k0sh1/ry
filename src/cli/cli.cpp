@@ -149,7 +149,9 @@ void printTestHelp() {
     llvm::outs() << "Usage: ry test [options] [<file.ry> | <dir>]\n\n";
     llvm::outs() << "Run test files (*.test.ry).\n\n";
     llvm::outs() << "Options:\n";
-    llvm::outs() << "  -p, --parallel       Run tests in parallel\n";
+    llvm::outs() << "  -p [N], --parallel [N]\n";
+    llvm::outs() << "                       Run tests in parallel; optional positive integer N\n";
+    llvm::outs() << "                       selects the worker count (default: hardware concurrency)\n";
     llvm::outs() << "  -w, --watch          Watch for changes and re-run\n";
     llvm::outs() << "  --coverage, --cov    Collect coverage information\n";
     llvm::outs() << "  --outline            Print describe/it structure without running tests\n";

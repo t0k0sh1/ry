@@ -468,6 +468,8 @@ add_executable(ry_tests
     tests/test_cmd_run_file_exec.cpp
     tests/test_legacy_invocation_rejected.cpp
     tests/test_help.cpp
+    tests/test_parallel_cli.cpp
+    tests/test_test_runner.cpp
     tests/test_trace.cpp
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp

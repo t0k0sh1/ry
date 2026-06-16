@@ -1,0 +1,3 @@
+### Changed
+
+- `ry test -p` / `ry test --parallel` now accepts an optional positive worker count. Bare `-p` / `--parallel` defaults to `std::thread::hardware_concurrency()`; `-p N`, `--parallel N`, and `--parallel=N` select N workers. The effective count is capped only by the number of discovered test files. The hard-coded four-worker cap that previously suppressed the LLVM/JIT teardown SIGABRT family (#1187 / #1895 / #2172) has been removed; the crash family remains parallelism-dependent — reduce `-p N` or drop `-p` as the first triage step under intermittent SIGABRT. Invalid worker-count inputs (zero, negative, malformed, missing value) are rejected with a clear diagnostic. (#2177)

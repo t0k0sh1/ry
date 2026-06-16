@@ -217,9 +217,26 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
     return total_failed > 0 ? 1 : 0;
 }
 
+int computeParallelism(int requested_workers, std::size_t test_file_count) {
+    unsigned base;
+    if (requested_workers > 0) {
+        base = static_cast<unsigned>(requested_workers);
+    } else {
+        unsigned hw = std::thread::hardware_concurrency();
+        base = (hw > 0) ? hw : 1u;
+    }
+    if (static_cast<std::size_t>(base) > test_file_count) {
+        base = static_cast<unsigned>(test_file_count);
+    }
+    int parallelism = static_cast<int>(base);
+    if (parallelism < 1) parallelism = 1;
+    return parallelism;
+}
+
 int runTestFiles(const std::vector<std::string> &test_files,
                  const char *argv0, bool skip_global_lib,
-                 bool parallel, bool coverage, bool outline) {
+                 bool parallel, bool coverage, bool outline,
+                 int parallel_workers) {
     if (outline || !parallel || test_files.size() <= 1) {
         return runTestFilesSequential(test_files, argv0, skip_global_lib, coverage, outline);
     }
@@ -228,24 +245,20 @@ int runTestFiles(const std::vector<std::string> &test_files,
         llvm::errs() << "Warning: cannot resolve executable path, falling back to sequential\n";
         return runTestFilesSequential(test_files, argv0, skip_global_lib, coverage, false);
     }
-    unsigned hw = std::thread::hardware_concurrency();
-    // Multiple concurrent LLVM O2/JITLink subprocesses amplify the known
-    // glibc heap-corruption family (#1187/#1895/#2172). Four workers retain
-    // most of the speedup without the recurrent 8-worker SIGABRTs.
-    int parallelism = static_cast<int>(std::min({hw, 4u, static_cast<unsigned>(test_files.size())}));
-    if (parallelism < 1) parallelism = 1;
+    int parallelism = computeParallelism(parallel_workers, test_files.size());
     return runTestFilesParallel(test_files, exe_path, parallelism);
 }
 
 int discoverAndRunTests(const std::string &dir, const char *argv0,
                         bool skip_global_lib, bool parallel,
-                        bool coverage, bool outline) {
+                        bool coverage, bool outline, int parallel_workers) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         llvm::errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0, skip_global_lib, parallel, coverage, outline);
+    return runTestFiles(test_files, argv0, skip_global_lib, parallel, coverage, outline,
+                        parallel_workers);
 }
 
 } // namespace ry

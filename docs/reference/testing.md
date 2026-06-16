@@ -10,7 +10,9 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 ry test              # Auto-discover and run all *.test.ry files in the project
 ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
-ry test -p           # Run all tests in parallel (-p or --parallel)
+ry test -p           # Run all tests in parallel (-p or --parallel; default workers = CPU count)
+ry test -p 8         # Run tests in parallel with 8 workers
+ry test --parallel=4 # Equivalent to `ry test --parallel 4`
 ry test -p tests/    # Run tests in a directory in parallel
 ry test -w           # Watch mode: re-run tests on file change (-w or --watch)
 ry test -w -p        # Watch mode with parallel execution
