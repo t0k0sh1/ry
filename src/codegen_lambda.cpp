@@ -1409,9 +1409,9 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     auto *ucTy = getUniformClosureTy();
 
     auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    auto *dtorFn = llvm::Function::Create(
-        dtorTy, llvm::Function::InternalLinkage, "__ry_arc_dtor_uniform_closure", mod_.get());
-    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+    auto *dtorFn = emitCreateFunction(dtorTy, llvm::Function::InternalLinkage,
+                                      "__ry_arc_dtor_uniform_closure");
+    emitFunctionSetNounwind(dtorFn);
 
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
@@ -1419,15 +1419,14 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     auto *entryBB = createBBInFn("entry", dtorFn);
     builder_.SetInsertPoint(entryBB);
 
-    auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env, env_dtor}
-    auto *envField = builder_.CreateStructGEP(ucTy, dataPtr, 1, "uc_dtor.env_field");
-    auto *envVal = builder_.CreateLoad(ptrTy_, envField, "uc_dtor.env");
-    auto *envDtorField = builder_.CreateStructGEP(ucTy, dataPtr, 2, "uc_dtor.env_dtor_field");
-    auto *envDtorVal = builder_.CreateLoad(ptrTy_, envDtorField, "uc_dtor.env_dtor");
+    auto *dataPtr = emitGetParam(dtorFn, 0); // points to {thunk, env, env_dtor}
+    auto *envField = emitStructGEP(ucTy, dataPtr, 1, "uc_dtor.env_field");
+    auto *envVal = emitLoad(ptrTy_, envField, "uc_dtor.env");
+    auto *envDtorField = emitStructGEP(ucTy, dataPtr, 2, "uc_dtor.env_dtor_field");
+    auto *envDtorVal = emitLoad(ptrTy_, envDtorField, "uc_dtor.env_dtor");
 
-    // If env is non-null, release it with its destructor
-    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-    auto *isEnvNull = builder_.CreateICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
+    auto *nullPtr = emitConstNull(ptrTy_);
+    auto *isEnvNull = emitICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
     auto *releaseBB = createBBInFn("uc_dtor.release", dtorFn);
     auto *doneBB = createBBInFn("uc_dtor.done", dtorFn);
     emitBranchCond(isEnvNull, doneBB, releaseBB);
@@ -1435,36 +1434,32 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     builder_.SetInsertPoint(releaseBB);
     auto *hdr = emitArcGetHeaderFromData(envVal);
 
-    // Decrement strong count; if zero, call env_dtor (if non-null) and free
-    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, hdr, 0, "uc_dtor.strong_ptr");
-    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "uc_dtor.strong");
-    auto *dec = builder_.CreateSub(cur, llvm::ConstantInt::get(i64Ty_, 1), "uc_dtor.dec");
-    builder_.CreateStore(dec, strongPtr);
-    auto *isDead = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "uc_dtor.dead");
+    auto *strongPtr = emitStructGEP(arcHeaderTy_, hdr, 0, "uc_dtor.strong_ptr");
+    auto *cur = emitLoad(i64Ty_, strongPtr, "uc_dtor.strong");
+    auto *dec = emitSub(cur, emitConstInt(i64Ty_, 1), "uc_dtor.dec");
+    emitStore(dec, strongPtr);
+    auto *isDead = emitICmpEQ(dec, emitConstInt(i64Ty_, 0), "uc_dtor.dead");
 
     auto *freeBB = createBBInFn("uc_dtor.free", dtorFn);
     emitBranchCond(isDead, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
-    // Call env_dtor(envVal) if non-null to release captured ARC values
-    auto *isDtorNull = builder_.CreateICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
+    auto *isDtorNull = emitICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
     auto *callDtorBB = createBBInFn("uc_dtor.call_dtor", dtorFn);
     auto *afterDtorBB = createBBInFn("uc_dtor.after_dtor", dtorFn);
     emitBranchCond(isDtorNull, afterDtorBB, callDtorBB);
 
     builder_.SetInsertPoint(callDtorBB);
-    auto *envDtorFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    builder_.CreateCall(envDtorFnTy, envDtorVal, {envVal});
+    emitCallIndirect(dtorTy, envDtorVal, {envVal}, "");
     emitBranchUncond(afterDtorBB);
 
     builder_.SetInsertPoint(afterDtorBB);
-    auto freeFn = mod_->getOrInsertFunction("free",
-        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false));
-    builder_.CreateCall(freeFn, {hdr});
+    auto freeFn = getStdlibFree();
+    emitCallIndirect(freeFn.getFunctionType(), freeFn.getCallee(), {hdr}, "");
     emitBranchUncond(doneBB);
 
     builder_.SetInsertPoint(doneBB);
-    builder_.CreateRetVoid();
+    emitRet(nullptr);
 
     if (savedBB)
         builder_.SetInsertPoint(savedBB, savedPt);
