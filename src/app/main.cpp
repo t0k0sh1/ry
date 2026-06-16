@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
         bool parallel = false;
-        int parallel_workers = 0; // 0 = use std::thread::hardware_concurrency()
+        int parallel_workers = 0; // 0 = computeDefaultWorkers(hardware_concurrency()) (= hw - 1, min 1)
         bool watch = false;
         bool coverage = false;
         bool outline = false;
