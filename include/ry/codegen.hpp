@@ -2117,12 +2117,22 @@ public:
     // the typed null pointer used in null-guard `icmp eq` comparisons. Added
     // for pilot G (#2196): the GC visitor thunk null-guard.
     llvm::Value *emitConstNull(llvm::Type *ty);
+    // Materialize an undef value of any type (LLVMGetUndef); the seed of the
+    // canonical `undef → insertvalue 0 → insertvalue 1 → …` aggregate-build
+    // pattern. Added for #2186 (dense iterator sweep): Map iterator next-fn
+    // seeds its `{key, val}` tuple from undef.
+    llvm::Value *emitUndef(llvm::Type *ty);
     // extractvalue on an aggregate VALUE (distinct from emitStructGEP's
     // pointer-addressed field GEP). Added for #2099 so the filter / map iterator
     // next-fn can destructure the source Option in-register without
     // builder_.CreateExtractValue.
     llvm::Value *emitExtractValue(llvm::Value *agg, unsigned idx,
                                   const char *name);
+    // insertvalue on an aggregate VALUE — the symmetric partner of
+    // emitExtractValue. Added for #2186 (dense iterator sweep): Map iterator
+    // next-fn builds the `{key, val}` tuple via undef + two insertvalues.
+    llvm::Value *emitInsertValue(llvm::Value *agg, llvm::Value *val, unsigned idx,
+                                 const char *name);
     // zext an integer value to a wider integer type. Added for #2101 (hash-table
     // lookup capability) so emitHashTableLookup's conditional i1→i64 key widening
     // carries no builder_.CreateZExt.
