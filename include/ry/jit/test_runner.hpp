@@ -14,7 +14,7 @@ std::vector<std::string> findTestFiles(const std::string &root_dir);
 unsigned computeDefaultWorkers(unsigned hw_concurrency);
 
 // Returns the effective worker count for parallel test execution.
-// requested_workers == 0 means "use computeDefaultWorkers(hardware_concurrency())"
+// requested_workers <= 0 means "use computeDefaultWorkers(hardware_concurrency())"
 // (i.e. hw - 1, minimum 1). The result is clamped to test_file_count
 // (when non-zero) and floored at 1.
 int computeParallelism(int requested_workers, std::size_t test_file_count);
