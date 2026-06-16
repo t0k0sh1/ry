@@ -157,9 +157,12 @@ std::string Formatter::escapeString(const std::string &s) {
 }
 
 // Escape a block string body for re-emission inside """...""". Differs from
-// escapeString: '\n' and '\t' are emitted raw (allowed inside block strings),
-// and only a `"` that starts a triple-quote run is escaped to avoid prematurely
-// closing the literal.
+// escapeString: '\n' and '\t' are emitted raw (allowed inside block strings).
+// A `"` is escaped when either (a) it starts a triple-quote run within the
+// content, or (b) it sits in the last two positions of the body — without
+// (b), trailing `"` or `""` would merge with the closing `"""` delimiter on
+// round-trip and close the literal early (e.g. content `a""` would otherwise
+// format as `"""a"""""""`, which the lexer re-reads as content `a`).
 std::string Formatter::escapeBlockString(const std::string &s) {
     std::string result;
     for (size_t i = 0; i < s.size(); ++i) {
@@ -169,7 +172,8 @@ std::string Formatter::escapeBlockString(const std::string &s) {
             case '\0': result += "\\0"; break;
             case '\r': result += "\\r"; break;
             case '"':
-                if (i + 2 < s.size() && s[i + 1] == '"' && s[i + 2] == '"') {
+                if ((i + 2 < s.size() && s[i + 1] == '"' && s[i + 2] == '"') ||
+                    i + 3 > s.size()) {
                     result += "\\\"";
                 } else {
                     result += '"';

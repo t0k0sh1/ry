@@ -354,7 +354,8 @@ Token Lexer::readToken() {
         }
         // Regex literal: `/` starts a regex when NOT preceded by a value-producing token
         if (prev_kind_ != TokenKind::Number && prev_kind_ != TokenKind::Float &&
-            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::FStringEnd &&
+            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::BlockString &&
+            prev_kind_ != TokenKind::FStringEnd &&
             prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::RParen &&
             prev_kind_ != TokenKind::RBracket && prev_kind_ != TokenKind::RBrace &&
             prev_kind_ != TokenKind::True && prev_kind_ != TokenKind::False &&
@@ -482,6 +483,7 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_])) &&
             prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::Number &&
             prev_kind_ != TokenKind::Float && prev_kind_ != TokenKind::String &&
+            prev_kind_ != TokenKind::BlockString &&
             prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
             prev_kind_ != TokenKind::RBrace && prev_kind_ != TokenKind::True &&
             prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&

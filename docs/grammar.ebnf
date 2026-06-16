@@ -472,10 +472,12 @@ escape_seq       ::= '\\' ( 'n' | 't' | 'r' | '0' | '\\' | '"' | "'" | 'x' hex_d
    leading/trailing newlines) is applied by the lexer; the result is stored
    as a regular string value. Escape processing matches STRING. Any `"` or
    `""` inside the body is content; only `"""` terminates the literal.
+   Newlines are valid body characters (this is the key distinction from
+   STRING, which uses `any_char_except_quote_backslash_newline`).
    Baseline indent is counted in space characters; mixing tabs with the
    baseline indent is unsupported. */
 BLOCK_STRING     ::= '"""' { block_string_char } '"""'
-block_string_char ::= ( any_char_except_triple_quote | escape_seq )
+block_string_char ::= ( any_char_including_newline_except_triple_quote | escape_seq )
 
 /* f-string segments — three lexer states */
 FSTRING_START    ::= 'f"' { string_char } '{'              // up to first interpolation

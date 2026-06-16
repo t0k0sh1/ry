@@ -804,6 +804,35 @@ TEST(LexerTest, BlockStringTokens) {
         EXPECT_EQ(toks[bs + 2].kind, TokenKind::Ident);
         EXPECT_EQ(toks[bs + 2].value, "print");
     }
+    // PrevKindRegressionSlash: `/` after a block string must lex as division,
+    // not as the start of a regex literal. The disambiguation guard for `/`
+    // must include TokenKind::BlockString alongside TokenKind::String.
+    {
+        auto toks = tokenize("x = \"\"\"a\"\"\" / 2");
+        // Token sequence: Ident("x"), Equals, BlockString("a"), Slash, Number("2"), Eof
+        ASSERT_EQ(toks.size(), 6u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+        EXPECT_EQ(toks[2].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[2].value, "a");
+        EXPECT_EQ(toks[3].kind, TokenKind::Slash);
+        EXPECT_EQ(toks[4].kind, TokenKind::Number);
+        EXPECT_EQ(toks[4].value, "2");
+        EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+    }
+    // PrevKindRegressionDotDigit: `.<digit>` after a block string must NOT
+    // re-enter leading-dot float scanning (which would happen if the
+    // disambiguation guard ignored BlockString and treated the prior token
+    // as not value-producing). We expect Dot + Number instead of a Float.
+    {
+        auto toks = tokenize("x = \"\"\"a\"\"\".0");
+        // Token sequence: Ident, Equals, BlockString, Dot, Number, Eof
+        ASSERT_EQ(toks.size(), 6u);
+        EXPECT_EQ(toks[2].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[3].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[4].kind, TokenKind::Number);
+        EXPECT_EQ(toks[4].value, "0");
+    }
 }
 
 // ===== ++/-- tokens =====

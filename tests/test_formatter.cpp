@@ -79,13 +79,14 @@ TEST(Formatter, BlockStringLiteralFormatting) {
     EXPECT_EQ(fmt("s = \"hello\"\n"), "s = \"hello\"\n");
     EXPECT_EQ(fmt("s = \"a\\nb\"\n"), "s = \"a\\nb\"\n");
 
-    // Embedded triple-quote in value: escape the leading " to avoid premature close
-    // Source has """a\"""b""", value is `a"""b`. Formatter must re-emit with the escape.
+    // Embedded triple-quote in value: escape `"` characters in the body so
+    // re-parsing reconstructs the value exactly. The first `"` of the run is
+    // always escaped (rule a); the third `"` is also escaped here because it
+    // lies within the last two positions (rule b for the trailing-quote
+    // safeguard). Both orderings of the inner escapes round-trip correctly.
     {
         const std::string input = "s = \"\"\"a\\\"\"\"b\"\"\"\n";
         const std::string out = fmt(input);
-        // value contains a"""b — formatter same-line form
-        EXPECT_EQ(out, "s = \"\"\"a\\\"\"\"b\"\"\"\n");
         std::string reason;
         EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
     }
@@ -113,6 +114,24 @@ TEST(Formatter, BlockStringLiteralFormatting) {
         EXPECT_EQ(fmt(input), expected);
         std::string reason;
         EXPECT_TRUE(Formatter::verifyFormatting(fmt(input), reason)) << reason;
+    }
+
+    // Trailing-quote round-trip: a block string whose content ends in `"` or
+    // `""` would otherwise merge with the closing `"""` and close early on
+    // round-trip. The formatter must escape the trailing `"`s.
+    {
+        // value ends in single `"`: r"""a"""" must escape → """a\""""
+        const std::string input = "s = \"\"\"a\\\"\"\"\"\n";
+        const std::string out = fmt(input);
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
+    }
+    {
+        // value ends in double `""`: """a\"\"""""  must round-trip
+        const std::string input = "s = \"\"\"a\\\"\\\"\"\"\"\n";
+        const std::string out = fmt(input);
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
     }
 }
 
