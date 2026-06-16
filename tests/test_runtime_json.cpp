@@ -7,6 +7,7 @@
 #include "ry/runtime/native/http/http_types.hpp"
 #include "ry/ry_layout.hpp"
 #include <gtest/gtest.h>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -225,4 +226,129 @@ TEST(JsonStringifyAny, EncodesNulInsideString) {
     ASSERT_NE(s, nullptr);
     EXPECT_STREQ(s, "\"a\\u0000b\"");
     freeStringSlot(const_cast<char *>(s));
+}
+
+// ---- Unified stringify ABI (#1890) ----
+//
+// __ry_json_stringify_any_ex / _safe_ex are the codegen-facing entry
+// points after #1890. The four name-encoded variants (`_sorted`, `_safe`,
+// `_sorted_safe`) remain for direct C++ callers but are no longer reached
+// from generated IR. The cross-validation tests below confirm the unified
+// symbols produce identical output to their name-encoded predecessors.
+
+extern "C" {
+const char *__ry_json_stringify_any_sorted(const RyAny *v, int64_t indent);
+const char *__ry_json_stringify_any_safe(const RyAny *v, int64_t indent);
+const char *__ry_json_stringify_any_sorted_safe(const RyAny *v, int64_t indent);
+}
+
+TEST(JsonStringifyAnyEx, SortKeys0MatchesBaseSymbol) {
+    RyAny v = anyFromInt(7);
+    const char *a = __ry_json_stringify_any_ex(&v, -1, 0);
+    const char *b = __ry_json_stringify_any(&v, -1);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_STREQ(a, b);
+    EXPECT_STREQ(a, "7");
+    freeStringSlot(const_cast<char *>(a));
+    freeStringSlot(const_cast<char *>(b));
+}
+
+TEST(JsonStringifyAnyEx, SortKeys0PreservesInsertionOrder) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"c\": 3, \"a\": 1, \"b\": 2}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *s = __ry_json_stringify_any_ex(&m, -1, 0);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "{\"c\":3,\"a\":1,\"b\":2}");
+    freeStringSlot(const_cast<char *>(s));
+    releaseAny(m);
+}
+
+TEST(JsonStringifyAnyEx, SortKeys1SortsMapKeys) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"c\": 3, \"a\": 1, \"b\": 2}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *s = __ry_json_stringify_any_ex(&m, -1, 1);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "{\"a\":1,\"b\":2,\"c\":3}");
+    freeStringSlot(const_cast<char *>(s));
+    releaseAny(m);
+}
+
+TEST(JsonStringifyAnyEx, SortKeys1MatchesSortedSymbol) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"c\": 3, \"a\": 1, \"b\": 2}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *a = __ry_json_stringify_any_ex(&m, -1, 1);
+    const char *b = __ry_json_stringify_any_sorted(&m, -1);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_STREQ(a, b);
+    freeStringSlot(const_cast<char *>(a));
+    freeStringSlot(const_cast<char *>(b));
+    releaseAny(m);
+}
+
+TEST(JsonStringifyAnyEx, SortKeys1WithIndentMatchesSortedSymbol) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"c\": 3, \"a\": 1}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *a = __ry_json_stringify_any_ex(&m, 2, 1);
+    const char *b = __ry_json_stringify_any_sorted(&m, 2);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_STREQ(a, b);
+    freeStringSlot(const_cast<char *>(a));
+    freeStringSlot(const_cast<char *>(b));
+    releaseAny(m);
+}
+
+TEST(JsonStringifyAnySafeEx, SortKeys0OkMatchesSafeSymbol) {
+    RyAny v = anyFromInt(42);
+    const char *a = __ry_json_stringify_any_safe_ex(&v, -1, 0);
+    const char *b = __ry_json_stringify_any_safe(&v, -1);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_STREQ(a, b);
+    EXPECT_STREQ(a, "42");
+    freeStringSlot(const_cast<char *>(a));
+    freeStringSlot(const_cast<char *>(b));
+}
+
+TEST(JsonStringifyAnySafeEx, SortKeys1OkSortsKeys) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"z\": 1, \"a\": 2}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *s = __ry_json_stringify_any_safe_ex(&m, -1, 1);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "{\"a\":2,\"z\":1}");
+    freeStringSlot(const_cast<char *>(s));
+    releaseAny(m);
+}
+
+TEST(JsonStringifyAnySafeEx, ErrOnNaNRegardlessOfSortKeys) {
+    RyAny v = anyFromFloat(std::nan(""));
+    EXPECT_EQ(__ry_json_stringify_any_safe_ex(&v, -1, 0), nullptr);
+    EXPECT_EQ(__ry_json_stringify_any_safe_ex(&v, -1, 1), nullptr);
+}
+
+TEST(JsonStringifyAnySafeEx, SortKeys1MatchesSortedSafeSymbol) {
+    RyAny m{};
+    int64_t status = __ry_json_parse_to_any(
+        ms("{\"c\": 3, \"a\": 1, \"b\": 2}"), &m);
+    ASSERT_EQ(status, 0);
+    const char *a = __ry_json_stringify_any_safe_ex(&m, -1, 1);
+    const char *b = __ry_json_stringify_any_sorted_safe(&m, -1);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_STREQ(a, b);
+    freeStringSlot(const_cast<char *>(a));
+    freeStringSlot(const_cast<char *>(b));
+    releaseAny(m);
 }

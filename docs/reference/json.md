@@ -3,7 +3,7 @@
 JSON parsing and serialization. All functions require explicit import from `json`.
 
 ```ry
-from json import load, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
+from json import load, stringify, stringifySafe, dump
 ```
 
 ## Overview
@@ -30,14 +30,8 @@ stringification in a single step.
 |----------|-----------|-------------|
 | `load[T]` | `(str) -> Result<T, Error>` | Parses a JSON string then coerces to `T` (see "Supported `T` in `load[T]`" below). |
 | `load[T]` | `(File) -> Result<T, Error>` | Reads from an open `File` handle, parses, then coerces. Same `T` set as `load[T](str)`. |
-| `stringify` | `(any) -> str` | Serializes an `any` value to compact JSON text. |
-| `stringify` | `(any, int) -> str` | Pretty-prints with `indent` spaces. `indent < 0` falls back to compact form. |
-| `stringifySafe` | `(any) -> Result<str, Error>` | Like `stringify`, but unsupported inputs (non-finite float, typed collection wrapped as `any`, `Set` / record / enum) return `Err(Error)` instead of panicking. |
-| `stringifySafe` | `(any, int) -> Result<str, Error>` | Pretty-printing variant of `stringifySafe`. `indent < 0` falls back to compact form. |
-| `stringifySorted` | `(any) -> str` | Like `stringify`, but `Map<str, any>` entries (including nested ones) are emitted in byte-lexicographic key order so the output is reproducible across runs. Panic semantics match `stringify`. |
-| `stringifySorted` | `(any, int) -> str` | Pretty-printing variant of `stringifySorted`. `indent < 0` falls back to compact form. |
-| `stringifySortedSafe` | `(any) -> Result<str, Error>` | Combines `stringifySafe` and `stringifySorted`: sorted-key output, unsupported inputs surface as `Err(Error)`. |
-| `stringifySortedSafe` | `(any, int) -> Result<str, Error>` | Pretty-printing variant of `stringifySortedSafe`. `indent < 0` falls back to compact form. |
+| `stringify` | `(any[, indent: int][, sortKeys=bool]) -> str` | Serializes an `any` value to JSON. `indent ≥ 0` enables pretty-printing with that many spaces (`indent < 0` falls back to compact form). Named argument `sortKeys=true` (default `false`) emits `Map<str, any>` entries in byte-lexicographic key order. |
+| `stringifySafe` | `(any[, indent: int][, sortKeys=bool]) -> Result<str, Error>` | Like `stringify`, but unsupported inputs (non-finite float, typed collection wrapped as `any`, `Set` / record / enum) return `Err(Error)` instead of panicking. Same positional / named arguments. |
 | `dump` | `(File, any) -> Result<Unit, Error>` | Stringifies `value` compactly and writes to `f`. Equivalent to `io.writeText(f, stringify(value))?`. |
 | `dump` | `(File, any, int) -> Result<Unit, Error>` | Pretty-prints with `indent` spaces and writes to `f`. `indent < 0` falls back to compact form. |
 
@@ -175,23 +169,23 @@ case stringifySafe(m, 2):
   Err(e): print(e.message)
 ```
 
-### `stringifySorted` for reproducible output
+### Sorted output via the `sortKeys` named argument
 
 `stringify` walks `Map<str, any>` in insertion order, which is
-deterministic but depends on how the map was built. `stringifySorted`
-emits keys in byte-lexicographic order (matching Python's
-`json.dumps(sort_keys=True)` for valid UTF-8). Nested maps are sorted
-recursively.
+deterministic but depends on how the map was built. Pass the named
+argument `sortKeys=true` (default `false`) to emit keys in
+byte-lexicographic order (matching Python's `json.dumps(sort_keys=True)`
+for valid UTF-8). Nested maps are sorted recursively.
 
 ```ry
-from json import stringifySorted
+from json import stringify
 
 m: Map<str, any> = {}
 m["c"] = 3
 m["a"] = 1
 m["b"] = 2
-print(stringifySorted(m))           # {"a":1,"b":2,"c":3}
-print(stringifySorted(m, 2))
+print(stringify(m, sortKeys=true))           # {"a":1,"b":2,"c":3}
+print(stringify(m, 2, sortKeys=true))
 # {
 #   "a": 1,
 #   "b": 2,
@@ -199,17 +193,16 @@ print(stringifySorted(m, 2))
 # }
 ```
 
-`stringifySortedSafe` combines both behaviors: sorted output, with
-`Err(Error)` instead of panicking on unsupported inputs.
+Combine with `stringifySafe` for error recovery on unsupported inputs:
 
 ```ry
-from json import stringifySortedSafe
+from json import stringifySafe
 from math import INF
 
 m: Map<str, any> = {}
 m["b"] = 2
 m["a"] = INF
-case stringifySortedSafe(m):
+case stringifySafe(m, sortKeys=true):
   Ok(s): print(s)
   Err(e): print(e.message)
   # stringify: non-finite float cannot be encoded as JSON
@@ -282,20 +275,18 @@ case open("out.json", "w"):
   null) do not contribute to the depth count.
 - `stringify` traverses `Map<str, any>` in **insertion order**. JSON
   itself does not specify object-key ordering, but the encoder is
-  deterministic. Use `stringifySorted` (or `stringifySortedSafe`) when
-  output must be reproducible across runs that build the same logical
-  map via different insertion sequences (snapshot tests, config diffs,
-  content-addressed hashing).
-- `stringify` and `stringifySorted` panic (`exit(1)` with a diagnostic
-  to stderr) when they encounter tags JSON cannot represent:
-  non-finite floats (`NaN`, `±Infinity`), `Set<...>`, records, enums,
-  or maps keyed by anything other than `str`. The return type
-  `-> str` has no `Result` channel, so panic is the only failure mode.
-  Use `stringifySafe` / `stringifySortedSafe` (which return
+  deterministic. Pass `sortKeys=true` when output must be reproducible
+  across runs that build the same logical map via different insertion
+  sequences (snapshot tests, config diffs, content-addressed hashing).
+- `stringify` panics (`exit(1)` with a diagnostic to stderr) when it
+  encounters tags JSON cannot represent: non-finite floats (`NaN`,
+  `±Infinity`), `Set<...>`, records, enums, or maps keyed by anything
+  other than `str`. The return type `-> str` has no `Result` channel,
+  so panic is the only failure mode. Use `stringifySafe` (which returns
   `Result<str, Error>`) when the caller needs to recover instead of
   abort, or convert unsupported values to representable forms before
-  calling the panicking variants.
-- **Runtime error — `stringify(value: any)` / `stringifySorted(value: any)` on typed collections**: the
+  calling the panicking variant.
+- **Runtime error — `stringify(value: any)` on typed collections**: the
   encoder walks the inner `List` / `Map` buffer assuming a uniform `any`
   element stride (16 bytes). `wrapInAny` preserves the original
   collection header pointer, so passing an `any` constructed from a
@@ -303,7 +294,7 @@ case open("out.json", "w"):
   read past valid storage. The runtime detects this case via a
   side-table populated at wrap time and panics with a deterministic
   diagnostic instead (or returns `Err(Error{message})` with the same
-  text under `stringifySafe` / `stringifySortedSafe`):
+  text under `stringifySafe`):
 
   ```text
   stringify: any holds typed collection 'List<int>' — use List<any> / Map<str, any> / Set<any> instead
@@ -369,6 +360,19 @@ case open("out.json", "w"):
   yet cover the reassignment path (`xs = v` after `xs`
   is already declared) or function-boundary `any` passes with
   mismatched element strides — prefer `load[T]` for those cases too.
+- **v0.0.29 breaking change (#1890)**: `stringifySorted` and
+  `stringifySortedSafe` were removed and replaced by a `sortKeys: bool`
+  named argument on `stringify` / `stringifySafe`. Migration:
+
+  | Before (v0.0.28 and earlier) | After (v0.0.29) |
+  |---|---|
+  | `stringifySorted(v)` | `stringify(v, sortKeys=true)` |
+  | `stringifySorted(v, 2)` | `stringify(v, 2, sortKeys=true)` |
+  | `stringifySortedSafe(v)` | `stringifySafe(v, sortKeys=true)` |
+  | `stringifySortedSafe(v, 2)` | `stringifySafe(v, 2, sortKeys=true)` |
+
+  The `indent` positional argument still precedes `sortKeys`.
+  `sortKeys=false` is the explicit default.
 
 ## Error message format
 

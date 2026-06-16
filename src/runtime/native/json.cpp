@@ -776,6 +776,41 @@ const char *__ry_json_stringify_any_sorted_safe(const RyAny *value,
     return makeString(out.data(), out.size());
 }
 
+// Unified stringify with runtime sort_keys flag (#1890). Replaces the
+// four name-encoded variants above on the codegen side; the older symbols
+// remain to keep direct C++ tests (`test_runtime_json*.cpp`) untouched.
+// sort_keys: 0 = insertion order (equivalent to __ry_json_stringify_any),
+// non-zero = byte-lexicographic key order (equivalent to *_sorted).
+const char *__ry_json_stringify_any_ex(const RyAny *value,
+                                        int64_t indent_or_neg1,
+                                        uint8_t sort_keys) {
+    std::string out;
+    bool pretty = indent_or_neg1 >= 0;
+    size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
+    (void)stringify_any(value, out, indent, 0, pretty,
+                         /*sort_keys=*/sort_keys != 0,
+                         /*error_out=*/nullptr);
+    return makeString(out.data(), out.size());
+}
+
+// Result-mode counterpart of __ry_json_stringify_any_ex (#1890). NULL on
+// failure with __ry_set_last_error populated — same nullable-ptr contract
+// as __ry_json_stringify_any_safe so codegen can wrap via wrapPtrAsResult.
+const char *__ry_json_stringify_any_safe_ex(const RyAny *value,
+                                             int64_t indent_or_neg1,
+                                             uint8_t sort_keys) {
+    std::string out;
+    bool pretty = indent_or_neg1 >= 0;
+    size_t indent = pretty ? static_cast<size_t>(indent_or_neg1) : 0;
+    std::string err;
+    if (!stringify_any(value, out, indent, 0, pretty,
+                        /*sort_keys=*/sort_keys != 0, &err)) {
+        __ry_set_last_error(err.c_str());
+        return nullptr;
+    }
+    return makeString(out.data(), out.size());
+}
+
 // File handle overloads (#1854). Mirror __ry_json_parse_to_any's status-return
 // contract (0 ok / non-zero err) so the codegen-side reuses emitResultBranch /
 // buildErrorFromRuntime / wrapStatusAsResult — no new IR patterns needed.

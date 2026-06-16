@@ -7,11 +7,13 @@ namespace ry {
 
 // ===== JSON custom emitters (#1698: any-based API; #1887: typed-only load) =====
 
-// Helper for stringify / stringifySafe / stringifySorted / stringifySortedSafe.
-// `runtimeFn`: the C entry point to call. `wrapResult`: whether to wrap the
-// nullable-ptr return in Result<str, Error> via wrapPtrAsResult (Safe variants
-// only). The non-Safe variants pass `wrapResult=false` and return the raw
-// `char*` (ARC string), matching the existing `stringify` contract.
+// Helper for stringify / stringifySafe. Both accept an optional named arg
+// `sortKeys: bool` (default false) that selects byte-lexicographic Map<str,
+// any> key ordering — folded in from the former stringifySorted /
+// stringifySortedSafe variants per #1890. `runtimeFn`: the unified C entry
+// point (__ry_json_stringify_any_ex / __ry_json_stringify_any_safe_ex).
+// `wrapResult`: whether to wrap the nullable-ptr return in Result<str, Error>
+// via wrapPtrAsResult (Safe variants only).
 static llvm::Value *emitJsonStringifyImpl(CodeGen &cg, const CallExpr &e,
                                            const char *runtimeFn,
                                            const char *callName,
@@ -34,38 +36,42 @@ static llvm::Value *emitJsonStringifyImpl(CodeGen &cg, const CallExpr &e,
         if (indent->getType() != cg.i64Ty_)
             cg.codegenError(std::string(e.callee) + "() indent must be an int");
     }
-    llvm::Type *paramTys[] = {cg.ptrTy_, cg.i64Ty_};
+
+    // Named argument: sortKeys (bool, default false).
+    llvm::Value *sortKeysI8 = nullptr;
+    for (const auto &na : e.named_args) {
+        if (na.name != "sortKeys")
+            cg.codegenError("unknown named argument '" + na.name +
+                            "' for " + std::string(e.callee) + "()");
+        llvm::Value *v = cg.emitExpr(*na.value);
+        if (v->getType() != cg.i1Ty_)
+            cg.codegenError(std::string(e.callee) +
+                            "() 'sortKeys' must be bool");
+        sortKeysI8 = cg.builder_.CreateZExt(v, cg.i8Ty_, "sort_keys_i8");
+    }
+    if (!sortKeysI8)
+        sortKeysI8 = llvm::ConstantInt::get(cg.i8Ty_, 0);
+
+    llvm::Type *paramTys[] = {cg.ptrTy_, cg.i64Ty_, cg.i8Ty_};
     auto *fnTy = llvm::FunctionType::get(cg.ptrTy_, paramTys, false);
     auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
-    llvm::Value *ptr = cg.builder_.CreateCall(fn, {slot, indent}, callName);
+    llvm::Value *ptr =
+        cg.builder_.CreateCall(fn, {slot, indent, sortKeysI8}, callName);
     if (!wrapResult) return ptr;
     return cg.wrapPtrAsResult(ptr);
 }
 
-// stringify(value: any) -> str
-// stringify(value: any, indent: int) -> str
+// stringify(value: any[, indent: int][, sortKeys=bool]) -> str
 static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
-    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any",
-                                  "json_stringify_any", /*wrapResult=*/false);
-}
-
-// stringifySafe(value: any[, indent: int]) -> Result<str, Error>   (#1853)
-static llvm::Value *emitJsonStringifySafe(CodeGen &cg, const CallExpr &e) {
-    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_safe",
-                                  "json_stringify_any_safe", /*wrapResult=*/true);
-}
-
-// stringifySorted(value: any[, indent: int]) -> str                 (#1853)
-static llvm::Value *emitJsonStringifySorted(CodeGen &cg, const CallExpr &e) {
-    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_sorted",
-                                  "json_stringify_any_sorted",
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_ex",
+                                  "json_stringify_any_ex",
                                   /*wrapResult=*/false);
 }
 
-// stringifySortedSafe(value: any[, indent: int]) -> Result<str, Error> (#1853)
-static llvm::Value *emitJsonStringifySortedSafe(CodeGen &cg, const CallExpr &e) {
-    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_sorted_safe",
-                                  "json_stringify_any_sorted_safe",
+// stringifySafe(value: any[, indent: int][, sortKeys=bool]) -> Result<str, Error>
+static llvm::Value *emitJsonStringifySafe(CodeGen &cg, const CallExpr &e) {
+    return emitJsonStringifyImpl(cg, e, "__ry_json_stringify_any_safe_ex",
+                                  "json_stringify_any_safe_ex",
                                   /*wrapResult=*/true);
 }
 
@@ -180,11 +186,9 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     // `load[T]` is intercepted by `dispatchJson` via suffix match against
     // `e.callee` (which is mangled to `load<T>` by the parser), so it has no
     // entry in this table.
-    {"stringify",           nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
-    {"stringifySafe",       nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySafe},
-    {"stringifySorted",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySorted},
-    {"stringifySortedSafe", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySortedSafe},
-    {"dump",                nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
+    {"stringify",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
+    {"stringifySafe", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySafe},
+    {"dump",          nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)
