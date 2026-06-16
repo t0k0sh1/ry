@@ -1,6 +1,6 @@
 from testing import it, describe, expect, fail
 
-from json import load, stringify, stringifySafe, stringifySorted, stringifySortedSafe, dump
+from json import load, stringify, stringifySafe, dump
 from str import contains, repeat, byteLen
 from io import open, close, writeText, readText
 from math import NAN, INF
@@ -1105,13 +1105,13 @@ fn jsonStringifySafeUnsupportedTests():
       Err(e):
         expect(e.message).toContain("record")
 
-@describe("json stringifySorted — sorts Map keys")
-fn jsonStringifySortedTests():
+@describe("json stringify — sortKeys named argument")
+fn jsonStringifySortKeysTests():
   @it("should sort top-level Map keys by byte order")
   fn shouldSortTopLevelKeys():
     case load[Map<str, any>]("{\"c\":1,\"a\":2,\"b\":3}"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("{\"a\":2,\"b\":3,\"c\":1}")
+        expect(stringify(v, sortKeys=true)).toEq("{\"a\":2,\"b\":3,\"c\":1}")
       Err(e):
         fail("load failed: " + e.message)
 
@@ -1119,7 +1119,7 @@ fn jsonStringifySortedTests():
   fn shouldSortNestedKeys():
     case load[Map<str, any>]("{\"z\":{\"y\":1,\"x\":2},\"a\":1}"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("{\"a\":1,\"z\":{\"x\":2,\"y\":1}}")
+        expect(stringify(v, sortKeys=true)).toEq("{\"a\":1,\"z\":{\"x\":2,\"y\":1}}")
       Err(e):
         fail("load failed: " + e.message)
 
@@ -1127,7 +1127,7 @@ fn jsonStringifySortedTests():
   fn shouldSortInsideListElements():
     case load[List<any>]("[{\"b\":1,\"a\":2},{\"d\":3,\"c\":4}]"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("[{\"a\":2,\"b\":1},{\"c\":4,\"d\":3}]")
+        expect(stringify(v, sortKeys=true)).toEq("[{\"a\":2,\"b\":1},{\"c\":4,\"d\":3}]")
       Err(e):
         fail("load failed: " + e.message)
 
@@ -1135,7 +1135,7 @@ fn jsonStringifySortedTests():
   fn shouldSortUnderIndent():
     case load[Map<str, any>]("{\"b\":1,\"a\":2}"):
       Ok(v):
-        expect(stringifySorted(v, 2)).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
+        expect(stringify(v, 2, sortKeys=true)).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
       Err(e):
         fail("load failed: " + e.message)
 
@@ -1143,7 +1143,7 @@ fn jsonStringifySortedTests():
   fn shouldEmptyMap():
     case load[Map<str, any>]("{}"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("{}")
+        expect(stringify(v, sortKeys=true)).toEq("{}")
       Err(e):
         fail("load failed: " + e.message)
 
@@ -1151,54 +1151,81 @@ fn jsonStringifySortedTests():
   fn shouldPreserveListOrder():
     case load[List<any>]("[3,1,2]"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("[3,1,2]")
+        expect(stringify(v, sortKeys=true)).toEq("[3,1,2]")
       Err(e):
         fail("load failed: " + e.message)
 
   @it("should match stringify for primitives (no Map to sort)")
   fn shouldMatchStringifyForPrimitives():
     v: any = 42
-    expect(stringifySorted(v)).toEq("42")
+    expect(stringify(v, sortKeys=true)).toEq("42")
 
   @it("should sort keys that share a NUL-containing prefix")
   fn shouldSortKeysWithNul():
     # NUL byte sorts before regular ASCII; "k\0a" < "k\0b".
     case load[Map<str, any>]("{\"k\\u0000b\":1,\"k\\u0000a\":2}"):
       Ok(v):
-        expect(stringifySorted(v)).toEq("{\"k\\u0000a\":2,\"k\\u0000b\":1}")
+        expect(stringify(v, sortKeys=true)).toEq("{\"k\\u0000a\":2,\"k\\u0000b\":1}")
       Err(e):
         fail("load failed: " + e.message)
 
-@describe("json stringifySortedSafe — combines Safe and Sorted")
-fn jsonStringifySortedSafeTests():
-  @it("should Ok with sorted output for normal input")
-  fn shouldSortedSafeOk():
+  @it("should match unsorted output when sortKeys=false (explicit default)")
+  fn shouldRespectExplicitDefault():
+    case load[Map<str, any>]("{\"c\":1,\"a\":2,\"b\":3}"):
+      Ok(v):
+        expect(stringify(v, sortKeys=false)).toEq(stringify(v))
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should accept a runtime bool for sortKeys")
+  fn shouldAcceptRuntimeBoolSortKeys():
+    sk: bool = true
     case load[Map<str, any>]("{\"c\":1,\"a\":2}"):
       Ok(v):
-        case stringifySortedSafe(v):
+        expect(stringify(v, sortKeys=sk)).toEq("{\"a\":2,\"c\":1}")
+      Err(e):
+        fail("load failed: " + e.message)
+
+@describe("json stringifySafe — sortKeys named argument")
+fn jsonStringifySafeSortKeysTests():
+  @it("should Ok with sorted output for normal input")
+  fn shouldSafeSortedOk():
+    case load[Map<str, any>]("{\"c\":1,\"a\":2}"):
+      Ok(v):
+        case stringifySafe(v, sortKeys=true):
           Ok(s): expect(s).toEq("{\"a\":2,\"c\":1}")
-          Err(e): fail("stringifySortedSafe failed: " + e.message)
+          Err(e): fail("stringifySafe sortKeys=true failed: " + e.message)
       Err(e):
         fail("load failed: " + e.message)
 
   @it("should Err on NaN buried in an out-of-order Map")
-  fn shouldSortedSafeErrOnNaN():
+  fn shouldSafeSortedErrOnNaN():
     bad: any = NAN
     good: any = 1
     m: Map<str, any> = {"c": bad, "a": good}
     v: any = m
-    case stringifySortedSafe(v):
+    case stringifySafe(v, sortKeys=true):
       Ok(_): fail("expected Err for NaN inside sorted map")
       Err(e):
         expect(e.message).toContain("non-finite")
 
   @it("should Ok with indent and sorted keys")
-  fn shouldSortedSafeIndent():
+  fn shouldSafeSortedIndent():
     case load[Map<str, any>]("{\"b\":1,\"a\":2}"):
       Ok(v):
-        case stringifySortedSafe(v, 2):
+        case stringifySafe(v, 2, sortKeys=true):
           Ok(s): expect(s).toEq("{\n  \"a\": 2,\n  \"b\": 1\n}")
-          Err(e): fail("stringifySortedSafe indent failed: " + e.message)
+          Err(e): fail("stringifySafe sortKeys=true indent failed: " + e.message)
+      Err(e):
+        fail("load failed: " + e.message)
+
+  @it("should accept sortKeys=false as the explicit default")
+  fn shouldSafeAcceptExplicitDefault():
+    case load[Map<str, any>]("{\"c\":1,\"a\":2}"):
+      Ok(v):
+        case stringifySafe(v, sortKeys=false):
+          Ok(s): expect(s).toEq("{\"c\":1,\"a\":2}")
+          Err(e): fail("stringifySafe sortKeys=false failed: " + e.message)
       Err(e):
         fail("load failed: " + e.message)
 

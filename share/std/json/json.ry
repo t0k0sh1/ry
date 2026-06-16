@@ -48,6 +48,15 @@
 # collections / Set / Record / Enum / non-`str` Map keys is inherited by
 # `dump` unchanged.
 
+# `stringify` / `stringifySafe` both accept an optional named argument
+# `sortKeys: bool` (default `false`). When `sortKeys=true`, every
+# `Map<str, any>` (including those nested inside lists or other maps)
+# is emitted in byte-lexicographic key order — reproducible across
+# runs regardless of insertion order. The former `stringifySorted` /
+# `stringifySortedSafe` functions (added in #1853) were folded into
+# this named argument in v0.0.29 (#1890) and removed as a breaking
+# change. Migration: `stringifySorted(v)` → `stringify(v, sortKeys=true)`,
+# `stringifySortedSafe(v, 2)` → `stringifySafe(v, 2, sortKeys=true)`.
 @public
 @native("json")
 fn stringify(value: any) -> str
@@ -68,28 +77,6 @@ fn stringifySafe(value: any) -> Result<str, Error>
 @public
 @native("json")
 fn stringifySafe(value: any, indent: int) -> Result<str, Error>
-
-# Sorted-key variant of `stringify` (#1853). `Map<str, any>` entries
-# (including those nested inside lists / other maps) are emitted in
-# byte-lexicographic key order so the result is reproducible across
-# runs regardless of insertion order. Trap behavior on unsupported
-# inputs matches the existing `stringify` — use `stringifySortedSafe`
-# for the Result-returning equivalent.
-@public
-@native("json")
-fn stringifySorted(value: any) -> str
-
-@public
-@native("json")
-fn stringifySorted(value: any, indent: int) -> str
-
-@public
-@native("json")
-fn stringifySortedSafe(value: any) -> Result<str, Error>
-
-@public
-@native("json")
-fn stringifySortedSafe(value: any, indent: int) -> Result<str, Error>
 
 @public
 @native("json")

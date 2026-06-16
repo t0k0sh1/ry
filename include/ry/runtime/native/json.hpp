@@ -31,6 +31,18 @@ int64_t __ry_json_parse_to_any(const char *text, RyAny *out);
 // behaviour via spec tests if you depend on it.
 const char *__ry_json_stringify_any(const RyAny *value, int64_t indent_or_neg1);
 
+// Unified stringify with runtime sort_keys flag (#1890). Codegen routes
+// `json.stringify(v, [indent], sortKeys=bool)` through this symbol; the
+// per-name variants above (`_sorted`, `_safe`, `_sorted_safe`) remain to
+// keep direct C++ test callers untouched but are no longer reached from
+// generated IR. sort_keys: 0 = insertion order, non-zero = byte-lex order.
+const char *__ry_json_stringify_any_ex(const RyAny *value,
+                                        int64_t indent_or_neg1,
+                                        uint8_t sort_keys);
+const char *__ry_json_stringify_any_safe_ex(const RyAny *value,
+                                             int64_t indent_or_neg1,
+                                             uint8_t sort_keys);
+
 // Recursively releases a RyAny value produced by `__ry_json_parse_to_any`.
 // Codegen-emitted Ry code uses `emitAnyReleaseVar` instead and never calls
 // this directly. C++ test / fuzz consumers that build a RyAny from C call
