@@ -8,10 +8,13 @@
 #include "ry/cli/file_watcher.hpp"
 #include "ry/trace/trace.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <unistd.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/TargetSelect.h>
@@ -167,15 +170,67 @@ int main(int argc, char *argv[]) {
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
         bool parallel = false;
+        int parallel_workers = 0; // 0 = use std::thread::hardware_concurrency()
         bool watch = false;
         bool coverage = false;
         bool outline = false;
         std::string test_trace_out = trace_out;
         const char *target = nullptr;
+        // Returns true if `s` looks like a worker-count attempt (leading digit, or
+        // leading '-' followed by a digit). When this returns true the caller
+        // commits to parsing `s` as a positive integer and reports a diagnostic
+        // on any failure — so a malformed value never silently slides into the
+        // target slot.
+        auto looksLikeCountAttempt = [](const char *s) -> bool {
+            if (!s || !*s) return false;
+            if (*s >= '0' && *s <= '9') return true;
+            if (*s == '-' && s[1] >= '0' && s[1] <= '9') return true;
+            return false;
+        };
+        // Parses a positive worker count. Accepts only fully consumed decimal
+        // input in (0, INT_MAX]. Emits its own diagnostic and returns false on
+        // any failure (including overflow, zero, negative, trailing junk).
+        auto parseWorkerCount = [](const char *s, const char *flag_label,
+                                    int &out) -> bool {
+            char *end = nullptr;
+            errno = 0;
+            long val = std::strtol(s, &end, 10);
+            if (errno == ERANGE || !end || *end != '\0' || val <= 0 ||
+                val > std::numeric_limits<int>::max()) {
+                errs() << "Error: " << flag_label
+                       << " worker count must be a positive integer, got '"
+                       << s << "'\n";
+                return false;
+            }
+            out = static_cast<int>(val);
+            return true;
+        };
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
                 std::strcmp(argv[i], "--parallel") == 0) {
                 parallel = true;
+                // Optional spaced count: `-p N` / `--parallel N`. If the next
+                // argv looks like a count attempt (digit, or `-` then digit),
+                // commit to parsing it; otherwise leave it for the next loop
+                // iteration (it might be another flag or the target).
+                if (i + 1 < argc && looksLikeCountAttempt(argv[i + 1])) {
+                    int n = 0;
+                    if (!parseWorkerCount(argv[i + 1], "--parallel", n))
+                        return 1;
+                    parallel_workers = n;
+                    ++i;
+                }
+            } else if (std::strncmp(argv[i], "--parallel=", 11) == 0) {
+                parallel = true;
+                const char *val_str = argv[i] + 11;
+                if (*val_str == '\0') {
+                    errs() << "Error: --parallel= requires a positive integer "
+                              "(e.g. --parallel=8)\n";
+                    return 1;
+                }
+                int n = 0;
+                if (!parseWorkerCount(val_str, "--parallel", n)) return 1;
+                parallel_workers = n;
             } else if (std::strcmp(argv[i], "-w") == 0 ||
                        std::strcmp(argv[i], "--watch") == 0) {
                 watch = true;
@@ -232,13 +287,16 @@ int main(int argc, char *argv[]) {
                 if (watch) {
                     const char *a0 = argv[0];
                     bool sgl = skip_global_lib;
-                    ry::watchAndRunTests(target_str, [target_str, a0, sgl, parallel, coverage, outline]() {
-                        ry::discoverAndRunTests(target_str, a0, sgl, parallel, coverage, outline);
-                    });
+                    ry::watchAndRunTests(target_str,
+                        [target_str, a0, sgl, parallel, coverage, outline, parallel_workers]() {
+                            ry::discoverAndRunTests(target_str, a0, sgl, parallel,
+                                                    coverage, outline, parallel_workers);
+                        });
                     return finalizeAfterPossibleJit(0);
                 }
                 return finalizeAfterPossibleJit(
-                    ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel, coverage, outline));
+                    ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel,
+                                            coverage, outline, parallel_workers));
             }
             if (!path_exists) {
                 std::string resolved;
@@ -301,13 +359,16 @@ int main(int argc, char *argv[]) {
                 const char *a0 = argv[0];
                 bool sgl = skip_global_lib;
                 // NOLINTNEXTLINE(bugprone-exception-escape): watcher lambda; exceptions terminate the process
-                ry::watchAndRunTests(root_dir, [root_dir, a0, sgl, parallel, coverage, outline]() {
-                    ry::discoverAndRunTests(root_dir, a0, sgl, parallel, coverage, outline);
-                });
+                ry::watchAndRunTests(root_dir,
+                    [root_dir, a0, sgl, parallel, coverage, outline, parallel_workers]() {
+                        ry::discoverAndRunTests(root_dir, a0, sgl, parallel,
+                                                coverage, outline, parallel_workers);
+                    });
                 return finalizeAfterPossibleJit(0);
             }
             return finalizeAfterPossibleJit(
-                ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel, coverage, outline));
+                ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel,
+                                        coverage, outline, parallel_workers));
         }
     }
 
