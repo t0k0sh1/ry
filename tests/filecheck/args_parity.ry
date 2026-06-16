@@ -1,0 +1,35 @@
+# FileCheck golden: args() builtin IR (#2192 — stdlib op follow-on sweep,
+# emitBuiltinQuery args() branch migration to the Rust emit cdylib). Pins
+# the argc widening (sext i32→i64, the lone new primitive ry_emit_sext),
+# the list-data malloc, and the per-i copy loop so the migrated path stays
+# bit-exact with the C++ baseline.
+#
+# `args()` takes no Ry-level operands (argc comes from runtime via
+# __ry_args_count), so the coverage gate relies on `argc64` / `args_data_size`
+# / `ai_cur32` / `args_elem_ptr` markers being present in the baseline — a
+# botched port that drops the loop body would pass an empty diff without
+# them.
+#
+# CHECK-LABEL: define ptr @doArgs()
+# CHECK:         %argc = call i32 @__ry_args_count()
+# CHECK:         %argc64 = sext i32 %argc to i64
+# CHECK:         %args_data_size = mul i64 %argc64, 8
+# CHECK:         %args_data = call ptr @malloc(i64 %args_data_size)
+# CHECK:         %args_i = alloca i64
+# CHECK:       args.cond:
+# CHECK:         %ai = load i64, ptr %args_i
+# CHECK:         %args_cond = icmp slt i64 %ai, %argc64
+# CHECK:       args.body:
+# CHECK:         %ai_cur = load i64, ptr %args_i
+# CHECK:         %ai_cur32 = trunc i64 %ai_cur to i32
+# CHECK:         %arg_str = call ptr @__ry_args_get(i32 %ai_cur32)
+# CHECK:         %args_elem_ptr = getelementptr ptr, ptr %args_data, i64 %ai_cur
+# CHECK:         store ptr %arg_str, ptr %args_elem_ptr
+# CHECK:         %ai_next = add i64 %ai_cur, 1
+
+fn doArgs() -> List<str>:
+    return args()
+
+fn main():
+    a = doArgs()
+    print(a.len())

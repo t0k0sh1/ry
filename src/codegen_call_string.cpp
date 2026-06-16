@@ -235,10 +235,10 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
             int64_t sv = ciStart->getSExtValue();
             int64_t ev = ciEnd->getSExtValue();
             if (sv >= 0 && ev >= 0 && ev >= sv) {
-                auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_,
-                                             {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-                auto *r = builder_.CreateCall(substrFn, {s, emitStringByteLen(s), start, end},
-                                              "substring");
+                llvm::Value *r = emitRuntimeCallDirect("__ry_utf8_substring", ptrTy_,
+                                                       {ptrTy_, i64Ty_, i64Ty_, i64Ty_},
+                                                       {s, emitStringByteLen(s), start, end},
+                                                       "substring");
                 arc_str_owned_values_.insert(r);
                 return r;
             }
@@ -250,27 +250,29 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     // wrapBase must be the UTF-8 codepoint count, not the byte length — multi-byte
     // strings like "あいうえお" (5 chars / 15 bytes) otherwise wrap against the wrong base.
     llvm::Value *byteLen = emitStringByteLen(s);
-    auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
-    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s, byteLen}, "substr_charlen");
+    llvm::Value *charLen = emitRuntimeCallDirect("__ry_utf8_len_n", i64Ty_,
+                                                 {ptrTy_, i64Ty_}, {s, byteLen},
+                                                 "substr_charlen");
 
     llvm::Value *startWrapped = emitNegativeIndexWrap(start, charLen, "substr_start");
     llvm::Value *endWrapped = emitNegativeIndexWrap(end, charLen, "substr_end");
 
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *zero = emitConstInt(i64Ty_, 0);
 
-    llvm::Value *clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSLT(startWrapped, zero), zero, startWrapped, "substr_cstart");
+    llvm::Value *clampedStart = emitSelect(
+        emitICmpSLT(startWrapped, zero, ""), zero, startWrapped, "substr_cstart");
 
-    llvm::Value *clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(endWrapped, zero), zero, endWrapped, "substr_cend");
+    llvm::Value *clampedEnd = emitSelect(
+        emitICmpSLT(endWrapped, zero, ""), zero, endWrapped, "substr_cend");
 
     // Ensure end >= start
-    clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
+    clampedEnd = emitSelect(
+        emitICmpSLT(clampedEnd, clampedStart, ""), clampedStart, clampedEnd, "substr_cend2");
 
-    auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-    auto *r = builder_.CreateCall(substrFn, {s, byteLen, clampedStart, clampedEnd},
-                                  "substring");
+    llvm::Value *r = emitRuntimeCallDirect("__ry_utf8_substring", ptrTy_,
+                                           {ptrTy_, i64Ty_, i64Ty_, i64Ty_},
+                                           {s, byteLen, clampedStart, clampedEnd},
+                                           "substring");
     arc_str_owned_values_.insert(r);
     return r;
 }
@@ -330,10 +332,10 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *sLen   = emitStringByteLen(s);
     llvm::Value *oldLen = emitStringByteLen(oldStr);
     llvm::Value *newLen = emitStringByteLen(newStr);
-    auto replaceFn = getRuntimeFn("__ry_str_replace", ptrTy_,
-                                  {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_});
-    auto *r = builder_.CreateCall(replaceFn, {s, sLen, oldStr, oldLen, newStr, newLen},
-                                  "replace_result");
+    llvm::Value *r = emitRuntimeCallDirect("__ry_str_replace", ptrTy_,
+                                           {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_},
+                                           {s, sLen, oldStr, oldLen, newStr, newLen},
+                                           "replace_result");
     arc_str_owned_values_.insert(r);
     return r;
 }
@@ -741,8 +743,8 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
     // Empty delimiter: split into individual characters (UTF-8 aware)
     llvm::Value *delimLen = emitStringByteLen(delim);
-    llvm::Value *isEmptyDelim = builder_.CreateICmpEQ(
-        delimLen, llvm::ConstantInt::get(i64Ty_, 0), "split_empty_delim");
+    llvm::Value *isEmptyDelim = emitICmpEQ(
+        delimLen, emitConstInt(i64Ty_, 0), "split_empty_delim");
 
     llvm::BasicBlock *emptyDelimBB = createBB("split.empty_delim");
     llvm::BasicBlock *normalBB = createBB("split.normal");
@@ -752,16 +754,17 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
     // --- Empty delimiter path: call __ry_split_chars runtime ---
     builder_.SetInsertPoint(emptyDelimBB);
-    auto splitCharsFn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_, i64Ty_});
-    llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s, emitStringByteLen(s)},
-                                                   "split_chars");
+    llvm::Value *charsResult = emitRuntimeCallDirect("__ry_split_chars", ptrTy_,
+                                                     {ptrTy_, i64Ty_}, {s, emitStringByteLen(s)},
+                                                     "split_chars");
     emitBranchUncond(doneBB);
 
     // --- Normal delimiter path: NUL-safe runtime helper (#1051) ---
     builder_.SetInsertPoint(normalBB);
-    auto splitFn = getRuntimeFn("__ry_str_split", ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
-    llvm::Value *normalResult = builder_.CreateCall(
-        splitFn, {s, emitStringByteLen(s), delim, delimLen}, "split_normal");
+    llvm::Value *normalResult = emitRuntimeCallDirect("__ry_str_split", ptrTy_,
+                                                      {ptrTy_, i64Ty_, ptrTy_, i64Ty_},
+                                                      {s, emitStringByteLen(s), delim, delimLen},
+                                                      "split_normal");
     emitBranchUncond(doneBB);
 
     // --- Merge point ---

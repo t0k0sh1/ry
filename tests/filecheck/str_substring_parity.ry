@@ -1,0 +1,44 @@
+# FileCheck golden: substr(s, start, end) slow-path IR (#2192 — stdlib
+# op follow-on sweep, emitStrOp_substring slow-path migration to the
+# Rust emit cdylib). Pins the UTF-8 char-count load, the three
+# clamp Select arms (`substr_cstart`, `substr_cend`, `substr_cend2`),
+# and the runtime call so the migrated path stays bit-exact with the
+# C++ baseline.
+#
+# Two probes cover the two distinct emitRuntimeCallDirect call sites:
+#
+# 1. **Slow path** (`doSubstr(s, a, b)` with non-constant indices) — clamps
+#    via emitNegativeIndexWrap + 3 emitSelect, then a
+#    `__ry_utf8_substring(s, byteLen, clampedStart, clampedEnd)` call.
+#    A botched port to the slow-path clamp scaffold gets caught here.
+#
+# 2. **Fast path** (`doSubstrFast(s)` with literal indices 0/5) — bypasses
+#    all clamping and calls `__ry_utf8_substring(s, byteLen, 0, 5)`
+#    directly. This is a SEPARATE emitRuntimeCallDirect site with a
+#    different arg list (end=raw `end` literal vs slow path's `clampedEnd`
+#    SSA); an arg-order typo on the fast path would not be caught by the
+#    slow-path probe alone.
+#
+# --- slow path ---
+# CHECK-LABEL: define ptr @doSubstr(ptr %s, i64 %a, i64 %b)
+# CHECK:         %substr_charlen = call i64 @__ry_utf8_len_n(ptr {{%[a-z0-9]+}}, i64 {{.*}})
+# CHECK:         %substr_cstart = select i1 {{.*}}, i64 0, i64 %substr_start{{.*}}
+# CHECK:         %substr_cend = select i1 {{.*}}, i64 0, i64 %substr_end{{.*}}
+# CHECK:         %substr_cend2 = select i1 {{.*}}, i64 %substr_cstart, i64 %substr_cend
+# CHECK:         %substring = call ptr @__ry_utf8_substring(ptr {{%[a-z0-9]+}}, i64 {{.*}}, i64 %substr_cstart, i64 %substr_cend2)
+#
+# --- fast path (no clamp scaffold, literal 0/5 indices) ---
+# CHECK-LABEL: define ptr @doSubstrFast(ptr %s)
+# CHECK-NOT:     %substr_cstart
+# CHECK-NOT:     %substr_charlen
+# CHECK:         %substring = call ptr @__ry_utf8_substring(ptr {{%[a-z0-9]+}}, i64 {{.*}}, i64 0, i64 5)
+
+fn doSubstr(s: str, a: int, b: int) -> str:
+    return substr(s, a, b)
+
+fn doSubstrFast(s: str) -> str:
+    return substr(s, 0, 5)
+
+fn main():
+    print(doSubstr("hello world", 0, 5))
+    print(doSubstrFast("hello world"))

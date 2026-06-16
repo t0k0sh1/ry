@@ -308,6 +308,20 @@ impl EmitCtx {
         ValueRef(LLVMBuildTrunc(self.builder, val.0, dest_ty.0, name))
     }
 
+    // `sext val to dest_ty` — sign-extend an integer value to a wider integer
+    // type (`LLVMBuildSExt`). Symmetric partner of `build_zext` (#2101). Added
+    // for #2192 (stdlib op follow-on sweep): `args()`'s argc widening from i32
+    // (the `__ry_args_count` return type) to i64 emits a `builder_.CreateSExt`
+    // today; this primitive is the boundary entry.
+    pub(crate) unsafe fn build_sext(
+        &mut self,
+        val: ValueRef,
+        dest_ty: TypeRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildSExt(self.builder, val.0, dest_ty.0, name))
+    }
+
     // `icmp <pred> lhs, rhs`.
     pub(crate) unsafe fn build_icmp(
         &mut self,

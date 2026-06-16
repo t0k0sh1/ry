@@ -1,0 +1,27 @@
+# FileCheck golden: env(key) / env(key, default) builtin IR (#2192 —
+# stdlib op follow-on sweep, emitBuiltinQuery env() branch migration to
+# the Rust emit cdylib). Covers both arities so the 2-arg Select path is
+# exercised (1-arg wrapPtrAsOption is composite-helper-driven and
+# already boundary-migrated).
+#
+# Uses `str` function args (non-constant operands) so the key / default
+# never constant-fold and the `env_result` / `env_null` / `env_val`
+# markers reach IR.
+#
+# CHECK-LABEL: define {{.*}} @doEnv1(ptr %k)
+# CHECK:         %env_result = call ptr @__ry_env_get(ptr {{%[a-z0-9]+}})
+# CHECK:         %env_null = icmp eq ptr %env_result, null
+#
+# CHECK-LABEL: define ptr @doEnv2(ptr %k, ptr %d)
+# CHECK:         %env_result = call ptr @__ry_env_get(ptr {{%[a-z0-9]+}})
+# CHECK:         %env_null = icmp eq ptr %env_result, null
+# CHECK:         %env_val = select i1 %env_null, ptr {{%[a-z0-9]+}}, ptr %env_result
+
+fn doEnv1(k: str) -> Option<str>:
+    return env(k)
+
+fn doEnv2(k: str, d: str) -> str:
+    return env(k, d)
+
+fn main():
+    print(doEnv2("PATH", "missing"))

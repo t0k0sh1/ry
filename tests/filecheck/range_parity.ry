@@ -1,0 +1,61 @@
+# FileCheck golden: range(start, end, step) builtin IR (#2192 — stdlib op
+# follow-on sweep, emitBuiltinQuery range() branch migration to the Rust
+# emit cdylib). Pins both step-sign count arms, the step==0 runtime-error
+# guard, the data malloc, and the per-i fill loop so the migrated path
+# stays bit-exact with the C++ baseline.
+#
+# Uses 3 function args (non-constant operands) so all of
+# `diff_pos`/`step_m1`/`num_pos`/`count_pos`/`pos_gt0`/`count_pos_c` and
+# the `neg_step`/`diff_neg`/`negstep_m1`/`num_neg`/`count_neg`/`neg_gt0`/
+# `count_neg_c` markers reach IR. With integer literals the compile-time
+# fold would silently strip the entire arithmetic scaffold and a botched
+# port would pass an empty diff (#2092 coverage trap; reinforced by #2102
+# on `neg_step`'s LLVMBuildNeg replacement).
+#
+# `CreateNeg(step, "neg_step")` is the one site the migration rewrites as
+# `emitSub(emitConstInt(0, i64Ty_), step, "neg_step")` rather than adding
+# a new `ry_emit_neg` primitive — `LLVMBuildNeg` is definitionally
+# `sub i64 0, %step` so the textual IR stays byte-identical. Pinning the
+# `%neg_step = sub i64 0, %step` line catches a future LLVM flag drift
+# (e.g. `sub nsw`).
+#
+# CHECK-LABEL: define ptr @doRange(i64 %a, i64 %b, i64 %c)
+# CHECK:         %step_zero = icmp eq i64 {{.*}}, 0
+# CHECK:         br i1 %step_zero
+# CHECK:       range.step_err:
+# CHECK:         call void @_Exit(i32 1)
+# CHECK:         unreachable
+# CHECK:       range.step_ok:
+# CHECK:         %step_pos = icmp sgt i64 {{.*}}, 0
+# CHECK:         %diff_pos = sub i64 {{.*}}, {{.*}}
+# CHECK:         %step_m1 = sub i64 {{.*}}, 1
+# CHECK:         %num_pos = add i64 %diff_pos, %step_m1
+# CHECK:         %count_pos = sdiv i64 %num_pos, {{.*}}
+# CHECK:         %pos_gt0 = icmp sgt i64 %count_pos, 0
+# CHECK:         %count_pos_c = select i1 %pos_gt0, i64 %count_pos, i64 0
+# CHECK:         %neg_step = sub i64 0, {{.*}}
+# CHECK:         %diff_neg = sub i64 {{.*}}, {{.*}}
+# CHECK:         %negstep_m1 = sub i64 %neg_step, 1
+# CHECK:         %num_neg = add i64 %diff_neg, %negstep_m1
+# CHECK:         %count_neg = sdiv i64 %num_neg, %neg_step
+# CHECK:         %neg_gt0 = icmp sgt i64 %count_neg, 0
+# CHECK:         %count_neg_c = select i1 %neg_gt0, i64 %count_neg, i64 0
+# CHECK:         %range_count = select i1 %step_pos, i64 %count_pos_c, i64 %count_neg_c
+# CHECK:         %range_data_size = mul i64 %range_count, 8
+# CHECK:         %range_data = call ptr @malloc(i64 %range_data_size)
+# CHECK:       range.cond:
+# CHECK:         %ri = load i64, ptr %range_i
+# CHECK:         %range_cond = icmp slt i64 %ri, %range_count
+# CHECK:       range.body:
+# CHECK:         %range_offset = mul i64 %ri_cur, {{.*}}
+# CHECK:         %range_val = add i64 {{.*}}, %range_offset
+# CHECK:         %range_elem_ptr = getelementptr i64, ptr %range_data, i64 %ri_cur
+# CHECK:         store i64 %range_val, ptr %range_elem_ptr
+# CHECK:         %ri_next = add i64 %ri_cur, 1
+
+fn doRange(a: int, b: int, c: int) -> List<int>:
+    return range(a, b, c)
+
+fn main():
+    xs = doRange(0, 10, 2)
+    print(xs.len())

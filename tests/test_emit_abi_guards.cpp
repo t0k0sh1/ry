@@ -1100,6 +1100,39 @@ TEST_F(EmitAbiGuardTest, ZExtUnresolvableValReturnsZero) {
 }
 
 // =============================================================================
+// #2192 — sext primitive guard (stdlib op follow-on sweep, [C] = (ii) boundary
+// move). Symmetric partner of the #2101 zext guards above. args() widens i32
+// argc to i64 via emitSExt; happy path covered by the args migration's
+// coverage gate (`argc64` marker in the baseline IR).
+// =============================================================================
+
+TEST_F(EmitAbiGuardTest, SExtNullCtxReturnsZero) {
+    EXPECT_EQ(ry_emit_sext(nullptr, /*val_id=*/0,
+                           asRyType(llvm::Type::getInt64Ty(llctx_)), "x"),
+              0u);
+}
+
+TEST_F(EmitAbiGuardTest, SExtNullDestTypeReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A resolvable val isolates the NULL-dest_ty guard (it fires before the
+    // resolve_value check).
+    RyValueId id = internDummy(ctx);
+    EXPECT_EQ(ry_emit_sext(ctx, id, /*dest_ty=*/nullptr, "x"), 0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, SExtUnresolvableValReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    // A valid dest_ty passes the type guard; val_id 0 then resolves to NULL.
+    EXPECT_EQ(ry_emit_sext(ctx, /*val_id=*/0,
+                           asRyType(llvm::Type::getInt64Ty(llctx_)), "x"),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// =============================================================================
 // #2102 — LLVM intrinsic call guard ([D] = (ii) boundary move). Same shape as
 // ry_emit_call_indirect's three guards (ctx-NULL / NULL array with count > 0 /
 // resolve_value -> None), plus a per-element NULL-type check on the overload
