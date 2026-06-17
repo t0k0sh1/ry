@@ -169,7 +169,10 @@ TEST_F(TraceModeTest, TraceCanBeRedirectedToFile) {
     EXPECT_NE(trace.find("\"event\":\"exec.end\""), std::string::npos);
 }
 
-TEST_F(TraceModeTest, TraceWithParallelTestsFallsBackToSequential) {
+// #2234: multi-file `--trace` is no longer aggregated across subprocesses;
+// the runner warns and disables it. The pre-#2234 "falls back to sequential"
+// path is gone — every multi-file invocation goes through subprocess fan-out.
+TEST_F(TraceModeTest, TraceWithMultiFileTestsEmitsWarningAndDisables) {
     fs::create_directories(tmp_dir_ / "tests");
     std::ofstream manifestFile(tmp_dir_ / "package.toml");
     manifestFile << "[project]\nname = \"trace\"\nversion = \"0.1.0\"\nentry = \"main.ry\"\n";
@@ -185,6 +188,11 @@ TEST_F(TraceModeTest, TraceWithParallelTestsFallsBackToSequential) {
 
     auto result = runRy({"test", "--parallel", "--trace", "tests"}, tmp_dir_.string());
     EXPECT_EQ(result.exit_code, 0);
-    EXPECT_NE(result.err.find("falling back to sequential"), std::string::npos);
-    EXPECT_NE(result.err.find("\"event\":\"exec.start\""), std::string::npos);
+    EXPECT_NE(result.err.find("Warning: --trace is not supported with multi-file"),
+              std::string::npos);
+    // The per-file subprocess argv carries no `--trace`, so the child never
+    // calls configureTrace and exec.start is never emitted by the child.
+    // The parent emitted session.start before disabling but produces no
+    // exec.start of its own (no JIT runs in the parent on this path).
+    EXPECT_EQ(result.err.find("\"event\":\"exec.start\""), std::string::npos);
 }

@@ -10,19 +10,21 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 ry test              # Auto-discover and run all *.test.ry files in the project
 ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
-ry test -p           # Run all tests in parallel (-p or --parallel; default workers = CPU count - 1, minimum 1)
-ry test -p 8         # Run tests in parallel with 8 workers
+ry test -p           # -p alone: default workers = CPU count - 1 (minimum 1)
+ry test -p 8         # -p N: run tests with N workers
 ry test --parallel=4 # Equivalent to `ry test --parallel 4`
-ry test -p tests/    # Run tests in a directory in parallel
+ry test -p tests/    # Run tests in a directory with the default worker count
 ry test -w           # Watch mode: re-run tests on file change (-w or --watch)
-ry test -w -p        # Watch mode with parallel execution
+ry test -w -p        # Watch mode with the default worker count
 ry test -w tests/    # Watch a specific directory
-ry test --coverage   # Run all tests with line coverage summary
+ry test --coverage   # Run a single test file with line coverage summary
 ry test --cov        # Short alias for --coverage
-ry test --outline    # Print describe/it structure without running tests
+ry test --outline    # Print describe/it structure for a single file (no test bodies run)
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
+
+Each discovered test file runs in its own child process (`posix_spawn` fan-out); `-p` controls only the worker count, not whether subprocesses are used. `-p` absent uses 1 worker (one subprocess at a time); `-p` alone uses the default count (CPU - 1, minimum 1); `-p N` uses N. The in-process loop was removed because it accumulated LLVM ORC / JIT teardown leak suppressions across files until heap consolidation failed (`std::bad_alloc`); per-file isolation is now the only execution model.
 
 ### Auto-Discovery Mode
 
@@ -949,7 +951,7 @@ Test Coverage Summary:
 ```
 
 - Only user code is reported; standard library files are excluded
-- `--coverage` with `--parallel` falls back to sequential execution
+- `--coverage` is **single-file only**. On a directory target or auto-discovery (`ry test`), the runner prints a warning and disables coverage — per-file subprocesses cannot aggregate coverage state across the parent. Use `ry test --coverage path/to/file.test.ry` instead.
 
 ---
 
@@ -973,7 +975,7 @@ describe verify
   it should count zero calls
 ```
 
-- Works with individual files, directories, and `-p` (all test files)
+- **Single-file only.** On a directory target or auto-discovery (`ry test --outline`), the runner prints a warning and disables outline — the per-file subprocess argv does not carry `--outline` today. Use `ry test --outline path/to/file.test.ry` instead.
 - `@each` parameterized tests show the format template with an `(@each)` suffix
 - `@property` tests show the label with a `(@property)` suffix
 
