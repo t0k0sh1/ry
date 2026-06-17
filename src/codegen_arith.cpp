@@ -59,10 +59,9 @@ llvm::Value *CodeGen::emitCheckedArithmetic(const std::string &callee,
     else if (op == "sub") id = isUnsigned ? llvm::Intrinsic::usub_with_overflow : llvm::Intrinsic::ssub_with_overflow;
     else id = isUnsigned ? llvm::Intrinsic::umul_with_overflow : llvm::Intrinsic::smul_with_overflow;
 
-    llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), id, {lhs->getType()});
-    llvm::Value *result = builder_.CreateCall(intrinsic, {lhs, rhs}, "checked");
-    llvm::Value *value = builder_.CreateExtractValue(result, 0, "checked_val");
-    llvm::Value *overflow = builder_.CreateExtractValue(result, 1, "overflow");
+    llvm::Value *result = emitIntrinsicCall(id, {lhs->getType()}, {lhs, rhs}, "checked");
+    llvm::Value *value = emitExtractValue(result, 0, "checked_val");
+    llvm::Value *overflow = emitExtractValue(result, 1, "overflow");
 
     // Build Result<T, Error>
     llvm::StructType *resTy = getResultType(lhs->getType(), errorTy_);
@@ -89,34 +88,31 @@ llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
         if (op == "add") id = isUnsigned ? llvm::Intrinsic::uadd_sat : llvm::Intrinsic::sadd_sat;
         else id = isUnsigned ? llvm::Intrinsic::usub_sat : llvm::Intrinsic::ssub_sat;
 
-        llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), id, {lhs->getType()});
-        result = builder_.CreateCall(intrinsic, {lhs, rhs}, "sat");
+        result = emitIntrinsicCall(id, {lhs->getType()}, {lhs, rhs}, "sat");
     } else {
         // No LLVM intrinsic for saturating mul — use overflow detection + clamp
         llvm::Intrinsic::ID ovId = isUnsigned ? llvm::Intrinsic::umul_with_overflow
                                                : llvm::Intrinsic::smul_with_overflow;
-        llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), ovId, {lhs->getType()});
-        llvm::Value *mulResult = builder_.CreateCall(intrinsic, {lhs, rhs}, "satmul");
-        llvm::Value *value = builder_.CreateExtractValue(mulResult, 0, "satmul_val");
-        llvm::Value *overflow = builder_.CreateExtractValue(mulResult, 1, "satmul_ov");
+        llvm::Value *mulResult = emitIntrinsicCall(ovId, {lhs->getType()}, {lhs, rhs}, "satmul");
+        llvm::Value *value = emitExtractValue(mulResult, 0, "satmul_val");
+        llvm::Value *overflow = emitExtractValue(mulResult, 1, "satmul_ov");
 
         llvm::Type *ty = lhs->getType();
         unsigned bits = ty->getIntegerBitWidth();
 
         if (isUnsigned) {
             // Unsigned: clamp to UINT_MAX
-            llvm::Value *maxVal = llvm::ConstantInt::get(ty, llvm::APInt::getMaxValue(bits));
-            result = builder_.CreateSelect(overflow, maxVal, value, "satmul_res");
+            llvm::Value *maxVal = emitConstInt(ty, llvm::APInt::getMaxValue(bits).getZExtValue());
+            result = emitSelect(overflow, maxVal, value, "satmul_res");
         } else {
             // Signed: clamp to INT_MAX or INT_MIN based on sign of operands.
             // XOR of operands has MSB=1 iff signs differ → product would be negative.
-            llvm::Value *xorVal = builder_.CreateXor(lhs, rhs, "sign_xor");
-            llvm::Value *isNeg = builder_.CreateICmpSLT(xorVal,
-                llvm::ConstantInt::get(ty, 0), "sign_neg");
-            llvm::Value *minVal = llvm::ConstantInt::get(ty, llvm::APInt::getSignedMinValue(bits));
-            llvm::Value *maxVal = llvm::ConstantInt::get(ty, llvm::APInt::getSignedMaxValue(bits));
-            llvm::Value *clampVal = builder_.CreateSelect(isNeg, minVal, maxVal, "satmul_clamp");
-            result = builder_.CreateSelect(overflow, clampVal, value, "satmul_res");
+            llvm::Value *xorVal = emitXor(lhs, rhs, "sign_xor");
+            llvm::Value *isNeg = emitICmpSLT(xorVal, emitConstInt(ty, 0), "sign_neg");
+            llvm::Value *minVal = emitConstInt(ty, llvm::APInt::getSignedMinValue(bits).getZExtValue());
+            llvm::Value *maxVal = emitConstInt(ty, llvm::APInt::getSignedMaxValue(bits).getZExtValue());
+            llvm::Value *clampVal = emitSelect(isNeg, minVal, maxVal, "satmul_clamp");
+            result = emitSelect(overflow, clampVal, value, "satmul_res");
         }
     }
 
