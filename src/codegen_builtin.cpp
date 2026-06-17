@@ -367,8 +367,9 @@ CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
 
 llvm::Value *CodeGen::coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
                                      llvm::Type *hashArgTy, const llvm::Twine &prefix) {
+    // i1→i64 widening for Set<bool> / Map<bool, V>; only firing case.
     if (keyTy != hashArgTy && keyTy->isIntegerTy() && hashArgTy->isIntegerTy())
-        return builder_.CreateZExt(key, hashArgTy, prefix + "_hash_zext");
+        return emitZExt(key, hashArgTy, (prefix + "_hash_zext").str().c_str());
     return key;
 }
 
@@ -578,7 +579,9 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
     builder_.CreateStore(bucketsPtr, bpPtr);
 }
 
-// Helper: insert key into bucket + check load factor and rehash if needed
+// Helper: insert key into bucket + check load factor and rehash if needed.
+// UAF order: load old_buckets AFTER the rehash call; free(old_buckets) BEFORE
+// store new_buckets. See boundary doc #2193 for the (ii) primitives sweep.
 void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                               unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
@@ -592,53 +595,53 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *hashKey = coerceHashKey(key, keyTy, hfi.hashArgTy, "hash_key");
 
     // Compute hash
-    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
-    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
-    llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, "hash_val");
+    llvm::Type *voidTy = llvm::Type::getVoidTy(*ctx_);
+    llvm::Value *hashVal = emitRuntimeCallDirect(hfi.hashFnName.c_str(), i64Ty_,
+                                                  {hfi.hashArgTy}, {hashKey}, "hash_val");
 
     // Insert into buckets
-    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "buckets");
-    llvm::Value *bcField = builder_.CreateStructGEP(headerTy, headerPtr, bucketCountIdx, "bc_field");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "bmask");
+    llvm::Value *bucketsField = emitStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
+    llvm::Value *bucketsPtr = emitLoad(ptrTy_, bucketsField, "buckets");
+    llvm::Value *bcField = emitStructGEP(headerTy, headerPtr, bucketCountIdx, "bc_field");
+    llvm::Value *bucketCount = emitLoad(i64Ty_, bcField, "bc");
+    llvm::Value *bucketMask = emitSub(bucketCount, emitConstInt(i64Ty_, 1), "bmask");
 
-    llvm::FunctionCallee insertFn = getRuntimeFn("__ry_ht_insert", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-    builder_.CreateCall(insertFn, {bucketsPtr, bucketMask, hashVal, denseIndex});
+    emitRuntimeCallDirect("__ry_ht_insert", voidTy,
+                          {ptrTy_, i64Ty_, i64Ty_, i64Ty_},
+                          {bucketsPtr, bucketMask, hashVal, denseIndex}, "");
 
     // Check load factor: len * 4 > bucketCount * 3 (i.e. len/bucketCount > 75%)
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, headerPtr, lenIdx, "len_for_rehash");
-    llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "len_rehash");
-    llvm::Value *len4 = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, 4), "len4");
-    llvm::Value *bc3 = builder_.CreateMul(bucketCount, llvm::ConstantInt::get(i64Ty_, 3), "bc3");
-    llvm::Value *needRehash = builder_.CreateICmpSGT(len4, bc3, "need_rehash");
+    llvm::Value *lenPtr = emitStructGEP(headerTy, headerPtr, lenIdx, "len_for_rehash");
+    llvm::Value *len = emitLoad(i64Ty_, lenPtr, "len_rehash");
+    llvm::Value *len4 = emitMul(len, emitConstInt(i64Ty_, 4), "len4");
+    llvm::Value *bc3 = emitMul(bucketCount, emitConstInt(i64Ty_, 3), "bc3");
+    llvm::Value *needRehash = emitICmpSGT(len4, bc3, "need_rehash");
 
     llvm::BasicBlock *rehashBB = createBB("rehash");
     llvm::BasicBlock *doneRehashBB = createBB("rehash.done");
     emitBranchCond(needRehash, rehashBB, doneRehashBB);
 
     builder_.SetInsertPoint(rehashBB);
-    // newBucketCount = bucketCount * 2
-    llvm::Value *bcCur = builder_.CreateLoad(i64Ty_, bcField, "bc_cur");
-    llvm::Value *newBc = builder_.CreateMul(bcCur, llvm::ConstantInt::get(i64Ty_, 2), "new_bc");
+    llvm::Value *bcCur = emitLoad(i64Ty_, bcField, "bc_cur");
+    llvm::Value *newBc = emitMul(bcCur, emitConstInt(i64Ty_, 2), "new_bc");
 
     // Get keys/elems pointer (field index 2 for both map and set)
-    llvm::Value *keysField = builder_.CreateStructGEP(headerTy, headerPtr, 2, "keys_for_rehash");
-    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysField, "keys_rehash");
-    llvm::Value *lenForRehash = builder_.CreateLoad(i64Ty_, lenPtr, "len_for_rehash2");
+    llvm::Value *keysField = emitStructGEP(headerTy, headerPtr, 2, "keys_for_rehash");
+    llvm::Value *keysPtr = emitLoad(ptrTy_, keysField, "keys_rehash");
+    llvm::Value *lenForRehash = emitLoad(i64Ty_, lenPtr, "len_for_rehash2");
 
-    llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(hfi.rehashFnName, rehashTy);
-    llvm::Value *newBuckets = builder_.CreateCall(rehashFn, {keysPtr, lenForRehash, newBc}, "new_buckets");
+    llvm::Value *newBuckets = emitRuntimeCallDirect(hfi.rehashFnName.c_str(), ptrTy_,
+                                                     {ptrTy_, i64Ty_, i64Ty_},
+                                                     {keysPtr, lenForRehash, newBc},
+                                                     "new_buckets");
 
-    // Free old buckets
-    auto freeFn = getStdlibFree();
-    llvm::Value *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsField, "old_buckets");
-    builder_.CreateCall(freeFn, {oldBuckets});
+    // Free old buckets (load after rehash, free before store new_buckets — UAF guard).
+    llvm::Value *oldBuckets = emitLoad(ptrTy_, bucketsField, "old_buckets");
+    emitRuntimeCallDirect("free", voidTy, {ptrTy_}, {oldBuckets}, "");
 
     // Store new buckets and count
-    builder_.CreateStore(newBuckets, bucketsField);
-    builder_.CreateStore(newBc, bcField);
+    emitStore(newBuckets, bucketsField);
+    emitStore(newBc, bcField);
 
     emitBranchUncond(doneRehashBB);
     builder_.SetInsertPoint(doneRehashBB);

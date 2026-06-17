@@ -1,0 +1,28 @@
+# FileCheck golden: Set<float>.add bucket-insert + rehash dispatch via
+# `__ry_hash_f64` / `__ry_ht_rehash_f64` (#2193, third hash-fn variant).
+# Non-constant operand avoids #2092 fold.
+#
+# CHECK-LABEL: define i64 @addFloat(
+# CHECK:         %hash_val = call i64 @__ry_hash_f64(double
+# CHECK:         %bp_field = getelementptr {{.*}}, i32 0, i32 4
+# CHECK:         %buckets = load ptr, ptr %bp_field
+# CHECK:         %bc_field = getelementptr {{.*}}, i32 0, i32 3
+# CHECK:         %bc = load i64, ptr %bc_field
+# CHECK:         %bmask = sub i64 %bc, 1
+# CHECK:         call void @__ry_ht_insert(ptr %buckets, i64 %bmask, i64 %hash_val,
+# CHECK:         %need_rehash = icmp sgt i64
+# CHECK:         br i1 %need_rehash, label %rehash, label %rehash.done
+# CHECK:       rehash:
+# CHECK:         %new_buckets = call ptr @__ry_ht_rehash_f64(ptr
+# CHECK:         %old_buckets = load ptr, ptr %bp_field
+# CHECK:         call void @free(ptr %old_buckets)
+# CHECK:         store ptr %new_buckets, ptr %bp_field
+# CHECK:       rehash.done:
+
+fn addFloat(s: Set<float>, x: float) -> int:
+    add(s, x)
+    return s.len()
+
+fn main():
+    s: Set<float> = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0}
+    print(addFloat(s, 14.0))
