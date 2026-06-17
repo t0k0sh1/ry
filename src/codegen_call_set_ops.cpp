@@ -87,6 +87,23 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
 llvm::Value *CodeGen::emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
                                         llvm::Type *elemTy) {
     const std::string elemName = getSetElemName(set1);
+    // #2226: ARC retain gate. Set ops previously emitted no element retain at
+    // all — both flat ARC (List/Map/Set element) and tuple inner-field ARC
+    // (e.g. Set<(int, List<int>)>) were leaked/UAF'd against the destructor's
+    // recursive release. tuple StructType is not ptrTy_, so the flat flag is
+    // mutually exclusive. resolveTypeAlias before the shape check (#1670).
+    const std::string resolvedElemName = elemName.empty() ? std::string{}
+        : resolveTypeAlias(elemName);
+    llvm::StructType *tupleTy =
+        (resolvedElemName.size() >= 2 && resolvedElemName.front() == '(' &&
+         resolvedElemName.back() == ')')
+            ? llvm::dyn_cast<llvm::StructType>(elemTy) : nullptr;
+    const bool elemIsTuple = tupleTy != nullptr;
+    CollectionKind elemArcKind = CollectionKind::List;
+    const bool elemIsArc = !elemIsTuple && !resolvedElemName.empty() &&
+        fieldTypeIsArcManaged(resolvedElemName, &elemArcKind) &&
+        elemArcKind != CollectionKind::Str;
+
     // Create new set with all elements from set1, then add elements from set2
     auto sf1 = loadSetHeader(set1, "u1");
     auto sf2 = loadSetHeader(set2, "u2");
@@ -105,6 +122,14 @@ llvm::Value *CodeGen::emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
     auto memcpyFn = getStdlibMemcpy();
     llvm::Value *copy1Size = builder_.CreateMul(sf1.len, llvm::ConstantInt::get(i64Ty_, elemSize), "u_copy1_size");
     builder_.CreateCall(memcpyFn, {newData, sf1.elems, copy1Size});
+    // #2226: retain ARC / tuple inner-ARC elements after memcpy so the source
+    // set's destructor and the union result's destructor each see their own
+    // strong reference (mirrors emitMapMergeCore L1117 + the appended pattern).
+    if (elemIsArc)
+        emitCowRetainArcElements(newData, sf1.len, "u_elem1", elemArcKind);
+    if (elemIsTuple)
+        emitTupleElemRetainLoop(newData, sf1.len, "u_elem1_telem",
+                                  resolvedElemName, tupleTy);
 
     // Init header with len1
     storeSetHeaderFields(newHeader, sf1.len, maxLen, newData);
@@ -162,6 +187,9 @@ llvm::Value *CodeGen::emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
         builder_.SetInsertPoint(addBB);
         llvm::Value *curLen = emitLoad(i64Ty_, lenPtr, "u_cur_len");
         llvm::Value *storePtr = emitGEP(elemTy, newData, curLen, "u_store_ptr");
+        // #2226: retain new ARC / tuple inner-ARC element before storing.
+        if (elemIsArc) retainArcValue(ev);
+        if (elemIsTuple) emitTupleComponentRetain(ev, resolvedElemName);
         emitStore(ev, storePtr);
         emitBucketInsertAndRehashCheck(newHeader, setHeaderTy_, kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, ev, elemTy, curLen);
         emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
@@ -203,6 +231,19 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("intersection() requires two sets with the same element type");
         const std::string elemName = getSetElemName(set1);
+        // #2226: ARC retain gate (see emitSetUnionCore for rationale).
+        const std::string resolvedElemName = elemName.empty() ? std::string{}
+            : resolveTypeAlias(elemName);
+        llvm::StructType *tupleTy =
+            (resolvedElemName.size() >= 2 && resolvedElemName.front() == '(' &&
+             resolvedElemName.back() == ')')
+                ? llvm::dyn_cast<llvm::StructType>(elemTy) : nullptr;
+        const bool elemIsTuple = tupleTy != nullptr;
+        CollectionKind elemArcKind = CollectionKind::List;
+        const bool elemIsArc = !elemIsTuple && !resolvedElemName.empty() &&
+            fieldTypeIsArcManaged(resolvedElemName, &elemArcKind) &&
+            elemArcKind != CollectionKind::Str;
+
         auto sf = loadSetHeader(set1, "is");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -242,6 +283,9 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         builder_.SetInsertPoint(addBB);
         llvm::Value *curLen = emitLoad(i64Ty_, lenPtr, "is_cur_len");
         llvm::Value *storePtr = emitGEP(elemTy, newData, curLen, "is_store_ptr");
+        // #2226: retain new ARC / tuple inner-ARC element before storing.
+        if (elemIsArc) retainArcValue(ev);
+        if (elemIsTuple) emitTupleComponentRetain(ev, resolvedElemName);
         emitStore(ev, storePtr);
         emitBucketInsertAndRehashCheck(newHeader, setHeaderTy_, kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, ev, elemTy, curLen);
         emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
@@ -270,6 +314,19 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("difference() requires two sets with the same element type");
         const std::string elemName = getSetElemName(set1);
+        // #2226: ARC retain gate (see emitSetUnionCore for rationale).
+        const std::string resolvedElemName = elemName.empty() ? std::string{}
+            : resolveTypeAlias(elemName);
+        llvm::StructType *tupleTy =
+            (resolvedElemName.size() >= 2 && resolvedElemName.front() == '(' &&
+             resolvedElemName.back() == ')')
+                ? llvm::dyn_cast<llvm::StructType>(elemTy) : nullptr;
+        const bool elemIsTuple = tupleTy != nullptr;
+        CollectionKind elemArcKind = CollectionKind::List;
+        const bool elemIsArc = !elemIsTuple && !resolvedElemName.empty() &&
+            fieldTypeIsArcManaged(resolvedElemName, &elemArcKind) &&
+            elemArcKind != CollectionKind::Str;
+
         auto sf = loadSetHeader(set1, "df");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -309,6 +366,9 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         builder_.SetInsertPoint(addBB);
         llvm::Value *curLen = emitLoad(i64Ty_, lenPtr, "df_cur_len");
         llvm::Value *storePtr = emitGEP(elemTy, newData, curLen, "df_store_ptr");
+        // #2226: retain new ARC / tuple inner-ARC element before storing.
+        if (elemIsArc) retainArcValue(ev);
+        if (elemIsTuple) emitTupleComponentRetain(ev, resolvedElemName);
         emitStore(ev, storePtr);
         emitBucketInsertAndRehashCheck(newHeader, setHeaderTy_, kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, ev, elemTy, curLen);
         emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
@@ -337,6 +397,19 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("symmetricDifference() requires two sets with the same element type");
         const std::string elemName = getSetElemName(set1);
+        // #2226: ARC retain gate (see emitSetUnionCore for rationale).
+        const std::string resolvedElemName = elemName.empty() ? std::string{}
+            : resolveTypeAlias(elemName);
+        llvm::StructType *tupleTy =
+            (resolvedElemName.size() >= 2 && resolvedElemName.front() == '(' &&
+             resolvedElemName.back() == ')')
+                ? llvm::dyn_cast<llvm::StructType>(elemTy) : nullptr;
+        const bool elemIsTuple = tupleTy != nullptr;
+        CollectionKind elemArcKind = CollectionKind::List;
+        const bool elemIsArc = !elemIsTuple && !resolvedElemName.empty() &&
+            fieldTypeIsArcManaged(resolvedElemName, &elemArcKind) &&
+            elemArcKind != CollectionKind::Str;
+
         auto sf1 = loadSetHeader(set1, "sd1");
         auto sf2 = loadSetHeader(set2, "sd2");
 
@@ -378,6 +451,11 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
             builder_.SetInsertPoint(aBB);
             llvm::Value *curLen = emitLoad(i64Ty_, lenPtr, (prefix + "_cl").c_str());
             llvm::Value *sp = emitGEP(elemTy, newData, curLen, (prefix + "_sp").c_str());
+            // #2226: retain new ARC / tuple inner-ARC element before storing.
+            // The lambda is invoked twice (sf1→set2, sf2→set1); the [&] capture
+            // makes the flags from the enclosing scope apply in both passes.
+            if (elemIsArc) retainArcValue(eVal);
+            if (elemIsTuple) emitTupleComponentRetain(eVal, resolvedElemName);
             emitStore(eVal, sp);
             emitBucketInsertAndRehashCheck(newHeader, setHeaderTy_, kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, eVal, elemTy, curLen);
             emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
