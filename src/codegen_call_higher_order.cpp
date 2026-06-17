@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_reduce.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
+#include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 
 
 
@@ -545,7 +546,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
                 llvm::Value *v = emitExpr(*e.args[i]);
                 if (v->getType() != ty)
                     codegenError("sum() requires all arguments to have the same type");
-                acc = codegen::emission::emitReduceSumStep(*this, acc, v, ty);
+                RyValueId sumAccId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(acc));
+                RyValueId sumVId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v));
+                RyValueId sumResultId = ry_emit_reduce_sum_step(
+                    emit_ctx_, sumAccId, sumVId, ry::llvm_emit::asRyType(ty));
+                acc = ry::llvm_emit::asLlvmValue(
+                    ry_emit_resolve(emit_ctx_, sumResultId));
             }
             return acc;
         }
@@ -562,8 +570,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         // List-sum loop emitted by the Rust emission layer (#2092). The Rust op
         // loads the list header (interleaved, matching loadListHeader) and runs
         // the sum.cond/body/end accumulate loop; only type-gating stays here.
-        return codegen::emission::emitReduceSumList(*this, listVal, elemTy,
-                                                    listHeaderTy_);
+        RyValueId sumListId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(listVal));
+        RyValueId sumListResultId = ry_emit_reduce_sum_list(
+            emit_ctx_, sumListId, ry::llvm_emit::asRyType(elemTy),
+            ry::llvm_emit::asRyType(listHeaderTy_));
+        return ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, sumListResultId));
     }
 
     // ===== min(list) / max(list) =====
@@ -588,7 +601,15 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
                 llvm::Value *v = emitExpr(*e.args[i]);
                 if (v->getType() != ty)
                     codegenError(e.callee + "() requires all arguments to have the same type");
-                best = codegen::emission::emitReduceMinmaxStep(*this, best, v, ty, isMax);
+                RyValueId mmBestId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(best));
+                RyValueId mmVId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(v));
+                RyValueId mmResultId = ry_emit_reduce_minmax_step(
+                    emit_ctx_, mmBestId, mmVId, ry::llvm_emit::asRyType(ty),
+                    isMax ? 1 : 0);
+                best = ry::llvm_emit::asLlvmValue(
+                    ry_emit_resolve(emit_ctx_, mmResultId));
             }
             return best;
         }
@@ -619,8 +640,15 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         // an ARC string global, out of scope for this ARC-free batch. The builder
         // is positioned at mm.ok, where the Rust op emits mm_first + the
         // mm.cond/body/update/next/end loop and returns mm_result.
-        return codegen::emission::emitReduceMinmaxListLoop(*this, srcData, srcLen,
-                                                           elemTy, isMax);
+        RyValueId mmListDataId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(srcData));
+        RyValueId mmListLenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(srcLen));
+        RyValueId mmListResultId = ry_emit_reduce_minmax_list_loop(
+            emit_ctx_, mmListDataId, mmListLenId,
+            ry::llvm_emit::asRyType(elemTy), isMax ? 1 : 0);
+        return ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, mmListResultId));
     }
 
 

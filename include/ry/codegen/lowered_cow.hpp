@@ -49,23 +49,3 @@ lowered::CowEnsureUniqueOp lowerCowEnsureUnique(
     bool key_is_str, llvm::Value *destructor_callee);
 
 } // namespace ry::codegen::lowering
-
-namespace ry::codegen::emission {
-
-// Emit the CoW uniqueness check via the libemit boundary
-// (`ry_emit_cow_ensure_unique`). Returns the PHI joining the original
-// dataPtr (skip-CoW path) with the freshly-cloned dataPtr (copy path);
-// downstream callers feed this into `propagateMeta` / `propagateMetaWide`.
-//
-// Preconditions:
-//   - The builder must be positioned within a function, because the helper
-//     creates basic blocks whose parent is derived from the builder's insert
-//     block.
-//   - The caller has inserted `"gc"` into `cg.used_native_libraries_`
-//     because the internal `ry_emit_arc_release` emits __ry_gc_track /
-//     __ry_gc_untrack calls (CodeGen-side bookkeeping not visible to the
-//     boundary).
-llvm::Value *emitCowEnsureUnique(CodeGen &cg,
-                                 const lowered::CowEnsureUniqueOp &op);
-
-} // namespace ry::codegen::emission
