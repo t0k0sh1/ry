@@ -2143,6 +2143,11 @@ public:
     // AtomicInt CAS status truncate, AtomicBool load i64→i1.
     llvm::Value *emitTrunc(llvm::Value *val, llvm::Type *dest_ty, const char *name);
 
+    // sext an integer value to a wider integer type. Symmetric partner of
+    // emitZExt. Added for #2192 (stdlib op follow-on sweep): args() widens the
+    // i32 result of __ry_args_count to i64 for the list-length store.
+    llvm::Value *emitSExt(llvm::Value *val, llvm::Type *dest_ty, const char *name);
+
     // Generic atomic primitives — Ry-concept-free LLVM `atomicrmw` / atomic
     // `load` / `cmpxchg` wrappers over the boundary entries
     // `ry_emit_atomic_rmw` / `_atomic_load` / `_atomic_cmpxchg`. Added for

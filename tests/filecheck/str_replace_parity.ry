@@ -1,0 +1,21 @@
+# FileCheck golden: replace(s, old, new) plain-str IR (#2192 — stdlib
+# op follow-on sweep, emitStrOp_replace plain branch migration to the
+# Rust emit cdylib). Covers the non-regex branch: three emitStringByteLen
+# loads + the single __ry_str_replace runtime call. The regex sub-path
+# stays C++-side (variadic emitRuntimeError carve-out, #2097).
+#
+# Uses three `str` function args so each byte-length load and the
+# runtime call reach IR with non-constant operands.
+#
+# CHECK-LABEL: define ptr @doReplace(ptr %s, ptr %o, ptr %n)
+# CHECK:         %str_bytelen_ptr = getelementptr i8, ptr {{%[a-z0-9]+}}, i64 -8
+# CHECK:         %str_bytelen = load i64, ptr %str_bytelen_ptr
+# CHECK:         %str_bytelen_ptr{{.*}} = getelementptr i8, ptr {{%[a-z0-9]+}}, i64 -8
+# CHECK:         %str_bytelen_ptr{{.*}} = getelementptr i8, ptr {{%[a-z0-9]+}}, i64 -8
+# CHECK:         %replace_result = call ptr @__ry_str_replace(ptr {{%[a-z0-9]+}}, i64 %str_bytelen, ptr {{%[a-z0-9]+}}, i64 {{.*}}, ptr {{%[a-z0-9]+}}, i64 {{.*}})
+
+fn doReplace(s: str, o: str, n: str) -> str:
+    return replace(s, o, n)
+
+fn main():
+    print(doReplace("hello world", "world", "ry"))

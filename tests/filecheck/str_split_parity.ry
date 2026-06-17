@@ -1,0 +1,27 @@
+# FileCheck golden: split(s, d) plain-delim IR (#2192 — stdlib op
+# follow-on sweep, emitStrOp_split branch migration to the Rust emit
+# cdylib). Covers the non-regex branches: empty-delimiter sub-path
+# (__ry_split_chars) and normal-delimiter sub-path (__ry_str_split), plus
+# the merge PHI. The regex sub-path stays C++-side (variadic
+# emitRuntimeError carve-out, #2097).
+#
+# Uses two `str` function args so the delimiter never folds and both
+# arms of the `split_empty_delim` branch reach IR — with literal arms a
+# constant-fold could drop one path silently (#2092).
+#
+# CHECK-LABEL: define ptr @doSplit(ptr %s, ptr %d)
+# CHECK:         %split_empty_delim = icmp eq i64 {{.*}}, 0
+# CHECK:         br i1 %split_empty_delim
+# CHECK:       split.empty_delim:
+# CHECK:         %split_chars = call ptr @__ry_split_chars(ptr {{%[a-z0-9]+}}, i64 {{.*}})
+# CHECK:       split.normal:
+# CHECK:         %split_normal = call ptr @__ry_str_split(ptr {{%[a-z0-9]+}}, i64 {{.*}}, ptr {{%[a-z0-9]+}}, i64 {{.*}})
+# CHECK:       split.done:
+# CHECK:         %split_result = phi ptr [ %split_chars, %split.empty_delim ], [ %split_normal, %split.normal ]
+
+fn doSplit(s: str, d: str) -> List<str>:
+    return split(s, d)
+
+fn main():
+    xs = doSplit("a,b,c", ",")
+    print(xs.len())

@@ -1144,6 +1144,14 @@ RyValueId ry_emit_zext(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
 RyValueId ry_emit_trunc(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
                         const char *name);
 
+// Emit `sext val to dest_ty` — sign-extend an integer value to the wider
+// integer type `dest_ty` (`LLVMBuildSExt`). Symmetric partner of
+// `ry_emit_zext`. NULL `name` → empty SSA name. Added for #2192 (stdlib op
+// follow-on sweep): `args()` widens the i32 result of `__ry_args_count` to
+// i64 for the list-length store. Creates no basic blocks.
+RyValueId ry_emit_sext(RyEmitCtx *ctx, RyValueId val_id, RyTypeRef dest_ty,
+                       const char *name);
+
 // Emit `icmp <predicate> lhs, rhs` where `predicate` is a RyICmpPred value;
 // return the interned i1 result. An unknown predicate yields sentinel 0.
 RyValueId ry_emit_icmp(RyEmitCtx *ctx, int predicate, RyValueId lhs_id,

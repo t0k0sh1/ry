@@ -1,0 +1,43 @@
+# FileCheck golden: input(prompt) builtin IR (#2192 — stdlib op follow-on
+# sweep, emitBuiltinQuery input() branch migration to the Rust emit
+# cdylib). Pins the outAlloca/null-init, the runtime call, the status
+# branch, and the Some/None Result<Option<str>, Error> wrap so the
+# migrated path stays bit-exact with the C++ baseline.
+#
+# Covers BOTH overloads with a probe each so the two distinct
+# emitRuntimeCallDirect call sites (`__ry_io_input_prompt` for 1-arg,
+# `__ry_io_read_line` for 0-arg) are each exercised. They have different
+# arg lists ({prompt, outAlloca} vs {outAlloca}), so a per-site typo on
+# arg order or symbol name would not be caught by a single-overload probe.
+#
+# --- 1-arg path ---
+# CHECK-LABEL: define {{.*}} @doInputPrompt(ptr %p)
+# CHECK:         %inp_out = alloca ptr
+# CHECK:         store ptr null, ptr %inp_out
+# CHECK:         %inp_status = call i64 @__ry_io_input_prompt(ptr {{.*}}, ptr %inp_out)
+# CHECK:         %inp_iserr = icmp slt i64 %inp_status, 0
+# CHECK:         %inp_line = load ptr, ptr %inp_out
+#
+# --- 0-arg path ---
+# CHECK-LABEL: define {{.*}} @doInputNoArgs()
+# CHECK:         %inp_out = alloca ptr
+# CHECK:         store ptr null, ptr %inp_out
+# CHECK:         %inp_status = call i64 @__ry_io_read_line(ptr %inp_out)
+# CHECK:         %inp_iserr = icmp slt i64 %inp_status, 0
+# CHECK:         %inp_line = load ptr, ptr %inp_out
+
+fn doInputPrompt(p: str) -> Result<Option<str>, Error>:
+    return input(p)
+
+fn doInputNoArgs() -> Result<Option<str>, Error>:
+    return input()
+
+fn main():
+    r = doInputPrompt("? ")
+    case r:
+      Ok(_): print("ok")
+      Err(_): print("err")
+    r2 = doInputNoArgs()
+    case r2:
+      Ok(_): print("ok2")
+      Err(_): print("err2")

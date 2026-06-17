@@ -337,8 +337,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
         if (headerTy) {
-            llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
-            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
+            llvm::Value *lenPtr = emitStructGEP(headerTy, val, 0, "");
+            llvm::Value *len = emitLoad(i64Ty_, lenPtr, "ie_len");
+            return emitICmpEQ(len, emitConstInt(i64Ty_, 0), "isEmpty");
         }
         // String (#831, #1022, #1069): read byte_len from the StringHeader instead of
         // peeking the first data byte — embedded NUL bytes are valid string content
@@ -346,7 +347,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         // string. emitStringByteLen is also O(1) (a single i64 load from handle - 8).
         if (val->getType() == ptrTy_) {
             llvm::Value *len = emitStringByteLen(val);
-            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
+            return emitICmpEQ(len, emitConstInt(i64Ty_, 0), "isEmpty");
         }
         codegenError("isEmpty() requires a collection (list, map, set) or str");
     }
@@ -517,28 +518,25 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             codegenError("args() takes no arguments");
 
         // Call __ry_args_count()
-        llvm::FunctionCallee countFn = getRuntimeFn("__ry_args_count", i32Ty_, {});
-        llvm::Value *count32 = builder_.CreateCall(countFn, {}, "argc");
-        llvm::Value *count = builder_.CreateSExt(count32, i64Ty_, "argc64");
+        llvm::Value *count32 = emitRuntimeCallDirect("__ry_args_count", i32Ty_, {}, {}, "argc");
+        llvm::Value *count = emitSExt(count32, i64Ty_, "argc64");
 
         // Allocate list header
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array (ptr per element)
         uint64_t elemSize = dl.getTypeAllocSize(ptrTy_);
-        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "args_data_size");
-        llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "args_data");
+        llvm::Value *dataSize = emitMul(count, emitConstInt(i64Ty_, elemSize), "args_data_size");
+        llvm::Value *dataPtr = emitRuntimeCallDirect("malloc", ptrTy_, {i64Ty_}, {dataSize}, "args_data");
 
-        // Loop: for i in 0..count, get arg pointer
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "args_i");
-        builder_.CreateStore(zero, iVar);
-
-        // __ry_args_get function type
-        llvm::FunctionCallee getFn = getRuntimeFn("__ry_args_get", ptrTy_, {i32Ty_});
+        // Loop: for i in 0..count, get arg pointer. Capture zero/one once so
+        // each `emitConstInt` boundary trip runs once rather than per use
+        // (mirrors range()'s pattern).
+        llvm::Value *zero = emitConstInt(i64Ty_, 0);
+        llvm::Value *one = emitConstInt(i64Ty_, 1);
+        llvm::Value *iVar = emitAlloca(i64Ty_, "args_i");
+        emitStore(zero, iVar);
 
         llvm::BasicBlock *condBB = createBB("args.cond");
         llvm::BasicBlock *bodyBB = createBB("args.body");
@@ -547,18 +545,18 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
-        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ai");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "args_cond");
+        llvm::Value *iVal = emitLoad(i64Ty_, iVar, "ai");
+        llvm::Value *cond = emitICmpSLT(iVal, count, "args_cond");
         emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ai_cur");
-        llvm::Value *iCur32 = builder_.CreateTrunc(iCur, i32Ty_, "ai_cur32");
-        llvm::Value *argStr = builder_.CreateCall(getFn, {iCur32}, "arg_str");
-        llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {iCur}, "args_elem_ptr");
-        builder_.CreateStore(argStr, elemPtr);
-        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ai_next");
-        builder_.CreateStore(iNext, iVar);
+        llvm::Value *iCur = emitLoad(i64Ty_, iVar, "ai_cur");
+        llvm::Value *iCur32 = emitTrunc(iCur, i32Ty_, "ai_cur32");
+        llvm::Value *argStr = emitRuntimeCallDirect("__ry_args_get", ptrTy_, {i32Ty_}, {iCur32}, "arg_str");
+        llvm::Value *elemPtr = emitGEP(ptrTy_, dataPtr, iCur, "args_elem_ptr");
+        emitStore(argStr, elemPtr);
+        llvm::Value *iNext = emitAdd(iCur, one, "ai_next");
+        emitStore(iNext, iVar);
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);
@@ -605,30 +603,28 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // @native("io"), so library registration must happen here.
         used_native_libraries_.insert("io");
 
-        llvm::Value *outAlloca = builder_.CreateAlloca(ptrTy_, nullptr, "inp_out");
-        builder_.CreateStore(
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
-            outAlloca);
+        llvm::Value *outAlloca = emitAlloca(ptrTy_, "inp_out");
+        emitStore(emitConstNull(ptrTy_), outAlloca);
 
         llvm::Value *status;
         if (e.args.size() == 1) {
             llvm::Value *prompt = emitExpr(*e.args[0]);
             if (prompt->getType() != ptrTy_)
                 codegenError("input() prompt must be str");
-            auto fn = getRuntimeFn("__ry_io_input_prompt", i64Ty_, {ptrTy_, ptrTy_});
-            status = builder_.CreateCall(fn, {prompt, outAlloca}, "inp_status");
+            status = emitRuntimeCallDirect("__ry_io_input_prompt", i64Ty_,
+                                           {ptrTy_, ptrTy_}, {prompt, outAlloca},
+                                           "inp_status");
         } else {
-            auto fn = getRuntimeFn("__ry_io_read_line", i64Ty_, {ptrTy_});
-            status = builder_.CreateCall(fn, {outAlloca}, "inp_status");
+            status = emitRuntimeCallDirect("__ry_io_read_line", i64Ty_,
+                                           {ptrTy_}, {outAlloca}, "inp_status");
         }
 
-        llvm::Value *isErr = builder_.CreateICmpSLT(
-            status, llvm::ConstantInt::get(i64Ty_, 0), "inp_iserr");
+        llvm::Value *isErr = emitICmpSLT(status, emitConstInt(i64Ty_, 0), "inp_iserr");
         llvm::StructType *optTy = getOptionType(ptrTy_);
         llvm::StructType *resTy = getResultType(optTy, errorTy_);
         return emitResultBranch(isErr, resTy,
             [&]() -> llvm::Value * {
-                llvm::Value *linePtr = builder_.CreateLoad(ptrTy_, outAlloca, "inp_line");
+                llvm::Value *linePtr = emitLoad(ptrTy_, outAlloca, "inp_line");
                 return buildOkValue(wrapPtrAsOption(linePtr, "input"), resTy);
             },
             [&]() -> llvm::Value * {
@@ -645,11 +641,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
         // __ry_env_get wraps getenv() result in a StringHeader-managed handle
         // so that byte_len / length / etc. work correctly on the returned str.
-        auto envGetFn = getRuntimeFn("__ry_env_get", ptrTy_, {ptrTy_});
-        llvm::Value *result = builder_.CreateCall(envGetFn, {key}, "env_result");
-        llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(
-                llvm::cast<llvm::PointerType>(ptrTy_)), "env_null");
+        llvm::Value *result = emitRuntimeCallDirect("__ry_env_get", ptrTy_,
+                                                    {ptrTy_}, {key}, "env_result");
+        llvm::Value *isNull = emitICmpEQ(result, emitConstNull(ptrTy_), "env_null");
 
         if (e.args.size() == 1) {
             return wrapPtrAsOption(result, "env");
@@ -657,7 +651,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Value *def = emitExpr(*e.args[1]);
             if (def->getType() != ptrTy_)
                 codegenError("env() default must be str");
-            return builder_.CreateSelect(isNull, def, result, "env_val");
+            return emitSelect(isNull, def, result, "env_val");
         }
     }
 
@@ -754,8 +748,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         }
 
         llvm::Value *start, *end, *step;
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+        llvm::Value *zero = emitConstInt(i64Ty_, 0);
+        llvm::Value *one = emitConstInt(i64Ty_, 1);
 
         if (e.args.size() == 1) {
             start = zero;
@@ -773,7 +767,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
         // Runtime check: step == 0 → error
         if (e.args.size() == 3) {
-            llvm::Value *stepZero = builder_.CreateICmpEQ(step, zero, "step_zero");
+            llvm::Value *stepZero = emitICmpEQ(step, zero, "step_zero");
             llvm::BasicBlock *errBB = createBB("range.step_err");
             llvm::BasicBlock *okBB = createBB("range.step_ok");
             emitBranchCond(stepZero, errBB, okBB);
@@ -785,38 +779,42 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Compute count based on step sign
         // step > 0: count = max(0, (end - start + step - 1) / step)
         // step < 0: count = max(0, (start - end + (-step) - 1) / (-step))
-        llvm::Value *stepPos = builder_.CreateICmpSGT(step, zero, "step_pos");
+        llvm::Value *stepPos = emitICmpSGT(step, zero, "step_pos");
 
         // Positive step case
-        llvm::Value *diffPos = builder_.CreateSub(end, start, "diff_pos");
-        llvm::Value *numPos = builder_.CreateAdd(diffPos, builder_.CreateSub(step, one, "step_m1"), "num_pos");
-        llvm::Value *countPos = builder_.CreateSDiv(numPos, step, "count_pos");
-        llvm::Value *countPosClamped = builder_.CreateSelect(
-            builder_.CreateICmpSGT(countPos, zero, "pos_gt0"), countPos, zero, "count_pos_c");
+        llvm::Value *diffPos = emitSub(end, start, "diff_pos");
+        llvm::Value *numPos = emitAdd(diffPos, emitSub(step, one, "step_m1"), "num_pos");
+        llvm::Value *countPos = emitSDiv(numPos, step, "count_pos");
+        llvm::Value *countPosClamped = emitSelect(
+            emitICmpSGT(countPos, zero, "pos_gt0"), countPos, zero, "count_pos_c");
 
-        // Negative step case
-        llvm::Value *negStep = builder_.CreateNeg(step, "neg_step");
-        llvm::Value *diffNeg = builder_.CreateSub(start, end, "diff_neg");
-        llvm::Value *numNeg = builder_.CreateAdd(diffNeg, builder_.CreateSub(negStep, one, "negstep_m1"), "num_neg");
-        llvm::Value *countNeg = builder_.CreateSDiv(numNeg, negStep, "count_neg");
-        llvm::Value *countNegClamped = builder_.CreateSelect(
-            builder_.CreateICmpSGT(countNeg, zero, "neg_gt0"), countNeg, zero, "count_neg_c");
+        // Negative step case. CreateNeg(x) is definitionally CreateSub(0, x) in
+        // LLVM (see llvm::BinaryOperator::CreateNeg); using emitSub keeps the
+        // textual IR `sub i64 0, %step` byte-identical with the C++ baseline
+        // without introducing a dedicated ry_emit_neg primitive (the remaining
+        // CreateNeg sites in codegen_call.cpp:1139 / codegen_expr.cpp:325 are
+        // out of scope for #2192).
+        llvm::Value *negStep = emitSub(zero, step, "neg_step");
+        llvm::Value *diffNeg = emitSub(start, end, "diff_neg");
+        llvm::Value *numNeg = emitAdd(diffNeg, emitSub(negStep, one, "negstep_m1"), "num_neg");
+        llvm::Value *countNeg = emitSDiv(numNeg, negStep, "count_neg");
+        llvm::Value *countNegClamped = emitSelect(
+            emitICmpSGT(countNeg, zero, "neg_gt0"), countNeg, zero, "count_neg_c");
 
-        llvm::Value *count = builder_.CreateSelect(stepPos, countPosClamped, countNegClamped, "range_count");
+        llvm::Value *count = emitSelect(stepPos, countPosClamped, countNegClamped, "range_count");
 
         // Allocate list header
-        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array
         uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
-        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "range_data_size");
-        llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
+        llvm::Value *dataSize = emitMul(count, emitConstInt(i64Ty_, elemSize), "range_data_size");
+        llvm::Value *dataPtr = emitRuntimeCallDirect("malloc", ptrTy_, {i64Ty_}, {dataSize}, "range_data");
 
         // Fill data with start, start+step, start+2*step, ... using a loop
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
-        builder_.CreateStore(zero, iVar);
+        llvm::Value *iVar = emitAlloca(i64Ty_, "range_i");
+        emitStore(zero, iVar);
 
         llvm::BasicBlock *condBB = createBB("range.cond");
         llvm::BasicBlock *bodyBB = createBB("range.body");
@@ -825,18 +823,18 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(condBB);
-        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ri");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "range_cond");
+        llvm::Value *iVal = emitLoad(i64Ty_, iVar, "ri");
+        llvm::Value *cond = emitICmpSLT(iVal, count, "range_cond");
         emitBranchCond(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ri_cur");
-        llvm::Value *offset = builder_.CreateMul(iCur, step, "range_offset");
-        llvm::Value *val = builder_.CreateAdd(start, offset, "range_val");
-        llvm::Value *elemPtr = builder_.CreateGEP(i64Ty_, dataPtr, {iCur}, "range_elem_ptr");
-        builder_.CreateStore(val, elemPtr);
-        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ri_next");
-        builder_.CreateStore(iNext, iVar);
+        llvm::Value *iCur = emitLoad(i64Ty_, iVar, "ri_cur");
+        llvm::Value *offset = emitMul(iCur, step, "range_offset");
+        llvm::Value *val = emitAdd(start, offset, "range_val");
+        llvm::Value *elemPtr = emitGEP(i64Ty_, dataPtr, iCur, "range_elem_ptr");
+        emitStore(val, elemPtr);
+        llvm::Value *iNext = emitAdd(iCur, one, "ri_next");
+        emitStore(iNext, iVar);
         emitBranchUncond(condBB);
 
         builder_.SetInsertPoint(endBB);

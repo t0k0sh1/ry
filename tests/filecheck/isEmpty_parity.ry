@@ -1,0 +1,28 @@
+# FileCheck golden: isEmpty(list/map/set/str) IR (#2192 — stdlib op
+# follow-on sweep, emitBuiltinQuery isEmpty() branch migration to the
+# Rust emit cdylib). Covers both branches: collection (StructGEP+Load+
+# ICmpEQ on header field 0) and string (emitStringByteLen+ICmpEQ).
+#
+# Uses container function args so the StructGEP+Load is not folded out
+# (`ie_len` and the `isEmpty` ICmp markers must reach IR for each branch).
+#
+# --- list branch ---
+# CHECK-LABEL: define i1 @doIsEmptyList(ptr %xs)
+# CHECK:         %ie_len = load i64, ptr {{%[0-9a-z]+}}
+# CHECK:         %isEmpty = icmp eq i64 %ie_len, 0
+#
+# --- str branch ---
+# CHECK-LABEL: define i1 @doIsEmptyStr(ptr %s)
+# CHECK:         %str_bytelen_ptr = getelementptr i8, ptr {{%[a-z0-9]+}}, i64 -8
+# CHECK:         %str_bytelen = load i64, ptr %str_bytelen_ptr
+# CHECK:         %isEmpty = icmp eq i64 %str_bytelen, 0
+
+fn doIsEmptyList(xs: List<int>) -> bool:
+    return isEmpty(xs)
+
+fn doIsEmptyStr(s: str) -> bool:
+    return isEmpty(s)
+
+fn main():
+    print(doIsEmptyList([1, 2, 3]))
+    print(doIsEmptyStr("hi"))
