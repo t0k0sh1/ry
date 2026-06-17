@@ -24,9 +24,8 @@ static llvm::Value *emitJsonStringifyImpl(CodeGen &cg, const CallExpr &e,
     if (val->getType() != cg.anyTy_)
         val = cg.wrapInAny(val);
 
-    llvm::AllocaInst *slot =
-        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_any_in");
-    cg.builder_.CreateStore(val, slot);
+    llvm::Value *slot = cg.emitAlloca(cg.anyTy_, "json_any_in");
+    cg.emitStore(val, slot);
 
     llvm::Value *indent;
     if (e.args.size() == 1) {
@@ -52,9 +51,7 @@ static llvm::Value *emitJsonStringifyImpl(CodeGen &cg, const CallExpr &e,
     if (!sortKeysI8)
         sortKeysI8 = llvm::ConstantInt::get(cg.i8Ty_, 0);
 
-    llvm::Type *paramTys[] = {cg.ptrTy_, cg.i64Ty_, cg.i8Ty_};
-    auto *fnTy = llvm::FunctionType::get(cg.ptrTy_, paramTys, false);
-    auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
+    auto fn = cg.getRuntimeFn(runtimeFn, cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_, cg.i8Ty_});
     llvm::Value *ptr =
         cg.builder_.CreateCall(fn, {slot, indent, sortKeysI8}, callName);
     if (!wrapResult) return ptr;
@@ -107,21 +104,17 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
     llvm::Type *targetTy = cg.resolveType(typeArg);
     llvm::StructType *resTy = cg.getResultType(targetTy, cg.errorTy_);
 
-    llvm::AllocaInst *outSlot =
-        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_load_out");
-    llvm::Type *paramTys[] = {cg.ptrTy_, cg.ptrTy_};
-    auto *fnTy = llvm::FunctionType::get(cg.i64Ty_, paramTys, false);
-    auto fn = cg.mod_->getOrInsertFunction(runtimeFn, fnTy);
+    llvm::Value *outSlot = cg.emitAlloca(cg.anyTy_, "json_load_out");
+    auto fn = cg.getRuntimeFn(runtimeFn, cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *status =
         cg.builder_.CreateCall(fn, {arg0, outSlot}, "json_load_status");
-    llvm::Value *isParseErr = cg.builder_.CreateICmpNE(
+    llvm::Value *isParseErr = cg.emitICmpNE(
         status, llvm::ConstantInt::get(cg.i64Ty_, 0), "json_load_parse_err");
 
     llvm::Value *result = cg.emitResultBranch(
         isParseErr, resTy,
         [&]() -> llvm::Value * {
-            llvm::Value *anyVal = cg.builder_.CreateLoad(
-                cg.anyTy_, outSlot, "json_load_any");
+            llvm::Value *anyVal = cg.emitLoad(cg.anyTy_, outSlot, "json_load_any");
             return cg.tryUnwrapFromAny(anyVal, targetTy, typeArg);
         },
         [&]() -> llvm::Value * {
@@ -155,9 +148,8 @@ static llvm::Value *emitJsonDumpFile(CodeGen &cg, const CallExpr &e) {
     if (val->getType() != cg.anyTy_)
         val = cg.wrapInAny(val);
 
-    llvm::AllocaInst *slot =
-        cg.builder_.CreateAlloca(cg.anyTy_, nullptr, "json_dump_in");
-    cg.builder_.CreateStore(val, slot);
+    llvm::Value *slot = cg.emitAlloca(cg.anyTy_, "json_dump_in");
+    cg.emitStore(val, slot);
 
     llvm::Value *indent;
     if (e.args.size() == 2) {

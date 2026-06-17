@@ -466,12 +466,12 @@ static llvm::Value *emitNetTcpListen(CodeGen &cg, const CallExpr &e) {
     llvm::Value *backlog = cg.emitExpr(*e.args[1]);
     auto fn = cg.getRuntimeFn("__ry_listen", cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {listener, backlog}, "listen_status");
-    llvm::Value *isErr = cg.builder_.CreateICmpNE(status,
+    llvm::Value *isErr = cg.emitICmpNE(status,
         llvm::ConstantInt::get(cg.i64Ty_, 0), "listen_err");
     llvm::StructType *resTy = cg.getResultType(cg.i8Ty_, cg.errorTy_);
     llvm::Value *okVal = cg.buildOkValue(llvm::ConstantInt::get(cg.i8Ty_, 0), resTy);
     llvm::Value *errVal = cg.buildErrValue(cg.buildStaticError("listen failed", ".listen_err_msg"), resTy);
-    return cg.builder_.CreateSelect(isErr, errVal, okVal, "listen_result");
+    return cg.emitSelect(isErr, errVal, okVal, "listen_result");
 }
 
 static llvm::Value *emitNetAccept(CodeGen &cg, const CallExpr &e) {
