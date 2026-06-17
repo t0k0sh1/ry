@@ -1,0 +1,28 @@
+# FileCheck golden: Set<str>.add bucket-insert + rehash dispatch via
+# `__ry_hash_str` / `__ry_ht_rehash_str` (#2193, Set<int> sibling).
+# Non-constant operand (function parameter Set + str) avoids #2092 fold.
+#
+# CHECK-LABEL: define i64 @addStr(
+# CHECK:         %hash_val = call i64 @__ry_hash_str(ptr
+# CHECK:         %bp_field = getelementptr {{.*}}, i32 0, i32 4
+# CHECK:         %buckets = load ptr, ptr %bp_field
+# CHECK:         %bc_field = getelementptr {{.*}}, i32 0, i32 3
+# CHECK:         %bc = load i64, ptr %bc_field
+# CHECK:         %bmask = sub i64 %bc, 1
+# CHECK:         call void @__ry_ht_insert(ptr %buckets, i64 %bmask, i64 %hash_val,
+# CHECK:         %need_rehash = icmp sgt i64
+# CHECK:         br i1 %need_rehash, label %rehash, label %rehash.done
+# CHECK:       rehash:
+# CHECK:         %new_buckets = call ptr @__ry_ht_rehash_str(ptr
+# CHECK:         %old_buckets = load ptr, ptr %bp_field
+# CHECK:         call void @free(ptr %old_buckets)
+# CHECK:         store ptr %new_buckets, ptr %bp_field
+# CHECK:       rehash.done:
+
+fn addStr(s: Set<str>, x: str) -> int:
+    add(s, x)
+    return s.len()
+
+fn main():
+    s: Set<str> = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m"}
+    print(addStr(s, "n"))

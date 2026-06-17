@@ -1,0 +1,55 @@
+# FileCheck golden: Set<int>.add bucket-insert + rehash scaffold (#2193 —
+# emitBucketInsertAndRehashCheck / coerceHashKey migration to existing
+# generic primitives, the #2101 hash-lookup follow-on).
+#
+# Coverage requirement (#2092 / #2101 multi-cell):
+#  - Uses function-parameter operands (no constant fold)
+#  - Forces a rehash path by adding to a 13-element Set<int> literal whose
+#    initial bucketCount = 16; after the add `len*4 = 56 > bc*3 = 48`,
+#    so `need_rehash = true` and the rehash BB executes.
+#
+# Pins:
+#  - hash compute via `__ry_hash_i64` (Set<int> hash fn)
+#  - `__ry_ht_insert` void call
+#  - load-factor check icmp (`need_rehash`)
+#  - rehash-BB scaffold (`rehash` / `rehash.done`)
+#  - rehash dispatch via `__ry_ht_rehash_i64`
+#  - critical instruction order: `old_buckets` load AFTER the rehash call,
+#    `free(old_buckets)` BEFORE `store new_buckets` (UAF guard)
+#  - Set bucketsPtrIdx=4 / bucketCountIdx=3 / lenIdx=0 (kSetLayout)
+#
+# CHECK-LABEL: define i64 @addInt(
+# CHECK:         %hash_val = call i64 @__ry_hash_i64(i64
+# CHECK:         %bp_field = getelementptr {{.*}}, i32 0, i32 4
+# CHECK:         %buckets = load ptr, ptr %bp_field
+# CHECK:         %bc_field = getelementptr {{.*}}, i32 0, i32 3
+# CHECK:         %bc = load i64, ptr %bc_field
+# CHECK:         %bmask = sub i64 %bc, 1
+# CHECK:         call void @__ry_ht_insert(ptr %buckets, i64 %bmask, i64 %hash_val,
+# CHECK:         %len_for_rehash = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         %len_rehash = load i64, ptr %len_for_rehash
+# CHECK:         %len4 = mul i64 %len_rehash, 4
+# CHECK:         %bc3 = mul i64 %bc, 3
+# CHECK:         %need_rehash = icmp sgt i64 %len4, %bc3
+# CHECK:         br i1 %need_rehash, label %rehash, label %rehash.done
+# CHECK:       rehash:
+# CHECK:         %bc_cur = load i64, ptr %bc_field
+# CHECK:         %new_bc = mul i64 %bc_cur, 2
+# CHECK:         %keys_for_rehash = getelementptr {{.*}}, i32 0, i32 2
+# CHECK:         %keys_rehash = load ptr, ptr %keys_for_rehash
+# CHECK:         %len_for_rehash2 = load i64, ptr %len_for_rehash
+# CHECK:         %new_buckets = call ptr @__ry_ht_rehash_i64(ptr %keys_rehash,
+# CHECK:         %old_buckets = load ptr, ptr %bp_field
+# CHECK:         call void @free(ptr %old_buckets)
+# CHECK:         store ptr %new_buckets, ptr %bp_field
+# CHECK:         store i64 %new_bc, ptr %bc_field
+# CHECK:         br label %rehash.done
+# CHECK:       rehash.done:
+
+fn addInt(s: Set<int>, x: int) -> int:
+    add(s, x)
+    return s.len()
+
+fn main():
+    s: Set<int> = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+    print(addInt(s, 14))

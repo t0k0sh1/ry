@@ -1,0 +1,55 @@
+# FileCheck golden: `merge()` 2-pass malloc + memcpy + rehash loop scaffold
+# (#2193 — emitMapMergeCore migration). Pins the named-StructGEP indices
+# kMapLayout={lenIdx=0, keysIdx=2, valsIdx=3, bucketCountIdx=4,
+# bucketsPtrIdx=5}, the two loop BBs (`mg.rh.*` for re-hash of map1,
+# `mg.add.*` for merge of map2), the exists/insert branch (`mg.update` /
+# `mg.insert`), and the malloc/memcpy chain. Non-constant operands
+# (function-parameter Maps) avoid #2092 fold; the merged Map has both
+# entries from a 13-element map1 and adds 1 from map2, forcing the rehash
+# call inside the inner `emitBucketInsertAndRehashCheck`.
+#
+# CHECK-LABEL: define i64 @mergeMaps(
+# CHECK:         %mg_max_cap = add i64
+# CHECK:         %mg_ks = mul i64 %mg_max_cap, 8
+# CHECK:         %mg_keys = call ptr @malloc(i64 %mg_ks)
+# CHECK:         %mg_vs = mul i64 %mg_max_cap, 8
+# CHECK:         %mg_vals = call ptr @malloc(i64 %mg_vs)
+# CHECK:         %mg_ck1 = mul i64
+# CHECK:         call ptr @memcpy(ptr %mg_keys, ptr
+# CHECK:         %mg_cv1 = mul i64
+# CHECK:         call ptr @memcpy(ptr %mg_vals, ptr
+# CHECK:         %mg_len_ptr = getelementptr {{.*}}, i32 0, i32 0
+# CHECK:         br label %mg.rh.cond
+# CHECK:       mg.rh.cond:
+# CHECK:         %mg_ri = load i64, ptr %mg_rh_i
+# CHECK:         br i1 {{.*}}, label %mg.rh.body, label %mg.rh.end
+# CHECK:       mg.rh.body:
+# CHECK:         %mg_rh_kp = getelementptr ptr, ptr %mg_keys, i64 %mg_ri
+# CHECK:         %mg_rh_kv = load ptr, ptr %mg_rh_kp
+# CHECK:       mg.rh.end:
+# CHECK:         br label %mg.add.cond
+# CHECK:       mg.add.cond:
+# CHECK:         %mg_ci = load i64, ptr %mg_i2
+# CHECK:         br i1 {{.*}}, label %mg.add.body, label %mg.add.end
+# CHECK:       mg.add.body:
+# CHECK:         %mg_kp2 = getelementptr ptr, ptr
+# CHECK:         %mg_kv2 = load ptr, ptr %mg_kp2
+# CHECK:         %mg_vp2 = getelementptr i64, ptr
+# CHECK:         %mg_vv2 = load i64, ptr %mg_vp2
+# CHECK:         %mg_exists = icmp sge i64
+# CHECK:         br i1 %mg_exists, label %mg.update, label %mg.insert
+# CHECK:       mg.add.end:
+# CHECK:       mg.update:
+# CHECK:       mg.insert:
+# CHECK:         %mg_cur_len = load i64, ptr %mg_len_ptr
+# CHECK:       mg.next:
+# CHECK:         br label %mg.add.cond
+
+fn mergeMaps(a: Map<str, int>, b: Map<str, int>) -> int:
+    c: Map<str, int> = merge(a, b)
+    return c.len()
+
+fn main():
+    a: Map<str, int> = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8, "i": 9, "j": 10, "k": 11, "l": 12, "m": 13}
+    b: Map<str, int> = {"n": 14}
+    print(mergeMaps(a, b))

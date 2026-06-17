@@ -1077,12 +1077,12 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
                                         llvm::Type *keyTy, llvm::Type *valTy) {
+    // (ii) primitives sweep — see boundary doc #2193. C++-stay carve-outs:
+    // loadMapHeader, emitMapKeyLookup, propagateTypeMeta / setTypeMeta /
+    // propagateMeta, ARC helpers, emitBucketInit / storeMapHeaderFields.
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t keySize = dl.getTypeAllocSize(keyTy);
     uint64_t valSize = dl.getTypeAllocSize(valTy);
-
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
 
     const ValueMetadata *map1Meta = getMeta(map1);
     const std::string keyName = map1Meta ? map1Meta->map_key_type_name : std::string{};
@@ -1101,18 +1101,22 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
     auto mf2 = loadMapHeader(map2, "mg2");
 
     // Allocate new map with capacity = len1 + len2
-    llvm::Value *maxCap = builder_.CreateAdd(mf1.len, mf2.len, "mg_max_cap");
+    llvm::Value *maxCap = emitAdd(mf1.len, mf2.len, "mg_max_cap");
     llvm::Value *newHeader = emitArcAllocCollectionHeader(mapHeaderTy_);
-    llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
-    llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
-    llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
-    llvm::Value *newVals = builder_.CreateCall(mallocFn, {newValsSize}, "mg_vals");
+    llvm::Value *newKeysSize = emitMul(maxCap, emitConstInt(i64Ty_, keySize), "mg_ks");
+    llvm::Value *newKeys = emitRuntimeCallDirect("malloc", ptrTy_, {i64Ty_},
+                                                  {newKeysSize}, "mg_keys");
+    llvm::Value *newValsSize = emitMul(maxCap, emitConstInt(i64Ty_, valSize), "mg_vs");
+    llvm::Value *newVals = emitRuntimeCallDirect("malloc", ptrTy_, {i64Ty_},
+                                                  {newValsSize}, "mg_vals");
 
     // Copy all of map1
-    llvm::Value *copy1KeySize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ck1");
-    builder_.CreateCall(memcpyFn, {newKeys, mf1.keys, copy1KeySize});
-    llvm::Value *copy1ValSize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, valSize), "mg_cv1");
-    builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
+    llvm::Value *copy1KeySize = emitMul(mf1.len, emitConstInt(i64Ty_, keySize), "mg_ck1");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {newKeys, mf1.keys, copy1KeySize}, "");
+    llvm::Value *copy1ValSize = emitMul(mf1.len, emitConstInt(i64Ty_, valSize), "mg_cv1");
+    emitRuntimeCallDirect("memcpy", ptrTy_, {ptrTy_, ptrTy_, i64Ty_},
+                          {newVals, mf1.vals, copy1ValSize}, "");
 
     // Retain memcpy'd ARC-managed keys/values (#1242). Same defect class as
     // slice/take (#1204/#1235): memcpy duplicates pointers without bumping
