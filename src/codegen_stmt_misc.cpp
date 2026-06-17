@@ -1,6 +1,5 @@
 #include "ry/codegen.hpp"
 #include "ry/builtin_names.hpp"
-#include "ry/codegen/lowered_bounds_check.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
@@ -427,19 +426,14 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                 codegenError("cannot determine list element type for chained field assignment");
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 0, "len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
-            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-                    *this, indexVal, length, codegen::lowered::BoundsKind::List,
-                    ".idx_chain_err")) {
-                RyValueId idxId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
-                RyValueId lenId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            if (!tryFoldBoundsCheck(indexVal, length)) {
+                RyValueId idxId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(indexVal));
+                RyValueId lenId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(length));
                 RyValueId bcResultId = ry_emit_bounds_check(
-                    emit_ctx_, idxId, lenId,
-                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                        ? RY_BOUNDS_LIST
-                        : RY_BOUNDS_ARRAY,
-                    bcOp->error_spec.global_name.c_str(), "idx_chain");
+                    emit_ctx_, idxId, lenId, RY_BOUNDS_LIST,
+                    ".idx_chain_err", "idx_chain");
                 indexVal = ry::llvm_emit::asLlvmValue(
                     ry_emit_resolve(emit_ctx_, bcResultId));
             }
@@ -1094,19 +1088,15 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-                    *this, key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                    codegen::lowered::BoundsKind::Array, ".arr_assign_err")) {
-                RyValueId idxId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
-                RyValueId lenId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            llvm::Value *arrLen = llvm::ConstantInt::get(i64Ty_, arrSize);
+            if (!tryFoldBoundsCheck(key, arrLen)) {
+                RyValueId idxId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(key));
+                RyValueId lenId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(arrLen));
                 RyValueId bcResultId = ry_emit_bounds_check(
-                    emit_ctx_, idxId, lenId,
-                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                        ? RY_BOUNDS_LIST
-                        : RY_BOUNDS_ARRAY,
-                    bcOp->error_spec.global_name.c_str(), "arr_assign");
+                    emit_ctx_, idxId, lenId, RY_BOUNDS_ARRAY,
+                    ".arr_assign_err", "arr_assign");
                 key = ry::llvm_emit::asLlvmValue(
                     ry_emit_resolve(emit_ctx_, bcResultId));
             }
@@ -1345,18 +1335,14 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
-    if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-            *this, key, length, codegen::lowered::BoundsKind::List, ".idx_assign_err")) {
+    if (!tryFoldBoundsCheck(key, length)) {
         RyValueId idxId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(key));
         RyValueId lenId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(length));
         RyValueId bcResultId = ry_emit_bounds_check(
-            emit_ctx_, idxId, lenId,
-            bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                ? RY_BOUNDS_LIST
-                : RY_BOUNDS_ARRAY,
-            bcOp->error_spec.global_name.c_str(), "idx_assign");
+            emit_ctx_, idxId, lenId, RY_BOUNDS_LIST,
+            ".idx_assign_err", "idx_assign");
         key =
             ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, bcResultId));
     }

@@ -112,8 +112,8 @@ public:
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
     // Owns the LLVM IR emission boundary context (#1949). Initialized in the
-    // constructor, destroyed by ~CodeGen. Reached by shim implementations of
-    // getRuntimeFn / buildErrorFromRuntime / emitBoundsCheck.
+    // constructor, destroyed by ~CodeGen. Passed to every `ry_emit_*` boundary
+    // call from `src/codegen_*.cpp`.
     ::RyEmitCtx *emit_ctx_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
     llvm::FunctionType *fnTy_ptr_to_ptr_;
@@ -317,6 +317,26 @@ public:
 
     // ======== Copy-on-Write & Destructors ========
     enum class CollectionKind { List, Map, Set, Str };
+
+    // `any` wrap/unwrap operation kinds. Numeric values are written into
+    // `Ry{AnyWrap,AnyUnwrap,AnyTryUnwrap}Desc::kind` via `static_cast<int>`,
+    // so the boundary in `crates/emit/src/composite/any.rs` reads the same
+    // discriminants. Do not reorder.
+    enum class AnyWrapKind : int {
+        NonBox = 0,
+        RecordBox = 1,
+        EnumBox = 2,
+    };
+    enum class AnyUnwrapKind : int {
+        Standard = 0,
+        F64Promote = 1,
+        Record = 2,
+    };
+    enum class AnyTryUnwrapKind : int {
+        Standard = 0,
+        F64Promote = 1,
+    };
+
     llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind,
                                                           const std::string &elemSig = "",
                                                           const std::string &valSig = "");
@@ -1462,6 +1482,17 @@ public:
     // ======== Statement Emission ========
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
     [[noreturn]] void codegenError(const std::string &msg);
+
+    // Constant-fold a bounds check when both `idx` and `len` are
+    // `llvm::ConstantInt`. Applies Python-style negative-index wrap and rejects
+    // out-of-range indices via `codegenError`. On the fold path `idx` is
+    // rewritten in place to a normalized i64 constant and `true` is returned
+    // (caller skips `ry_emit_bounds_check`). On the runtime path (either
+    // operand non-constant) returns `false` so the caller emits the boundary
+    // call itself. See .claude/rules/codegen-llvm-ir-conventions.md
+    // ("Lowering constant-fold and emission must agree on integer
+    // interpretation") for the i1 ZExt rule preserved here.
+    bool tryFoldBoundsCheck(llvm::Value *&idx, llvm::Value *len);
 
     [[noreturn]] void codegenErrorNoMatchingOverload(
         const SourceLocation &loc,

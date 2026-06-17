@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_result_branch.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
@@ -470,12 +469,11 @@ RyValueId resultBranchTrampolineErr(void *user) {
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
                                         llvm::function_ref<llvm::Value*()> buildOk,
                                         llvm::function_ref<llvm::Value*()> buildErr) {
-    auto op = codegen::lowering::lowerResultBranch(*this, isErr, resTy);
     ResultBranchTrampolineCtx tctx{buildOk, buildErr, emit_ctx_};
     RyValueId isErrId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.is_err));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(isErr));
     RyValueId resultId = ry_emit_result_branch(
-        emit_ctx_, isErrId, ry::llvm_emit::asRyType(op.res_ty),
+        emit_ctx_, isErrId, ry::llvm_emit::asRyType(resTy),
         &resultBranchTrampolineOk, &resultBranchTrampolineErr, &tctx);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
 }

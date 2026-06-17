@@ -777,6 +777,31 @@ void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
     codegenError(current_loc_, msg);
 }
 
+bool CodeGen::tryFoldBoundsCheck(llvm::Value *&idx, llvm::Value *len) {
+    auto *ci = llvm::dyn_cast<llvm::ConstantInt>(idx);
+    if (!ci) return false;
+    auto *cs = llvm::dyn_cast<llvm::ConstantInt>(len);
+    if (!cs) return false;
+
+    // i1 は emission 側で ZExt → i64 されるので fold も zext 相当に揃える
+    int64_t original = (ci->getBitWidth() == 1)
+                           ? static_cast<int64_t>(ci->getZExtValue())
+                           : ci->getSExtValue();
+    int64_t sz = static_cast<int64_t>(cs->getZExtValue());
+    int64_t i = original;
+    if (i < 0) i += sz;
+    if (i < 0 || i >= sz) {
+        std::string msg = "index ";
+        msg += std::to_string(original);
+        msg += " out of bounds (size ";
+        msg += std::to_string(sz);
+        msg += ")";
+        codegenError(msg);
+    }
+    idx = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i));
+    return true;
+}
+
 std::string CodeGen::formatOverloadDiagnostic(
     const std::string &verb,
     const std::string &callee,

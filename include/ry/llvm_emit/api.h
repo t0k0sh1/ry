@@ -147,8 +147,8 @@ typedef struct RyBasicBlockOpaque *RyBasicBlockRef; // llvm::BasicBlock *
 // an opaque handle (NOT interned), mirroring RyBasicBlockRef / RyFunctionRef.
 typedef struct RySwitchOpaque *RySwitchRef;
 
-// Bounds-check kind selector. Numbers chosen to match the order in
-// `lowered::BoundsKind`; do not reorder without updating both sides.
+// Bounds-check kind selector. Numbers are stable across the C/Rust boundary;
+// do not reorder. C++ callers pass this directly to `ry_emit_bounds_check`.
 typedef enum {
     RY_BOUNDS_LIST = 0,
     RY_BOUNDS_ARRAY = 1
@@ -664,8 +664,7 @@ RyValueId ry_emit_reduce_minmax_step(RyEmitCtx *ctx, RyValueId best_id,
 // Descriptor for ry_emit_cow_ensure_unique. CodeGen collects all metadata
 // (kind, element sizes, retain flags, destructor) and flattens it to this
 // plain-int / handle struct so the boundary stays C-only and LLVM types do not
-// cross the boundary. `lowered::CowEnsureUniqueOp` (`include/ry/codegen/
-// lowered_cow.hpp`) is the C++-side mirror.
+// cross the boundary.
 typedef struct {
     // Current ARC-backed dataPtr (handle to llvm::Value*). The op derives
     // headerPtr internally as `data_ptr - ARC_HEADER_SIZE`.

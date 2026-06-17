@@ -1,6 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_bounds_check.hpp"
-#include "ry/codegen/lowered_cow.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
@@ -154,27 +152,21 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
     llvm::Value *destructorVal =
         destructor ? llvm::cast<llvm::Value>(destructor.getCallee()) : nullptr;
 
-    auto op = codegen::lowering::lowerCowEnsureUnique(
-        *this, dataPtr, slotPtr, kindCode, atomic, elemSize, keySize, valSize,
-        doElemRetain, elemArcKind == CollectionKind::Str,
-        doKeyRetain, keyArcKind == CollectionKind::Str,
-        destructorVal);
-
     RyCowEnsureUniqueDesc desc{};
     desc.data_ptr_id =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.data_ptr));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(dataPtr));
     desc.slot_ptr_id =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.slot_ptr));
-    desc.kind = op.kind;
-    desc.atomic = op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC;
-    desc.elem_size = op.elem_size;
-    desc.key_size = op.key_size;
-    desc.val_size = op.val_size;
-    desc.do_elem_retain = op.do_elem_retain ? 1 : 0;
-    desc.elem_is_str = op.elem_is_str ? 1 : 0;
-    desc.do_key_retain = op.do_key_retain ? 1 : 0;
-    desc.key_is_str = op.key_is_str ? 1 : 0;
-    desc.destructor_callee = ry::llvm_emit::asRyValue(op.destructor_callee);
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(slotPtr));
+    desc.kind = kindCode;
+    desc.atomic = atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC;
+    desc.elem_size = elemSize;
+    desc.key_size = keySize;
+    desc.val_size = valSize;
+    desc.do_elem_retain = doElemRetain ? 1 : 0;
+    desc.elem_is_str = (elemArcKind == CollectionKind::Str) ? 1 : 0;
+    desc.do_key_retain = doKeyRetain ? 1 : 0;
+    desc.key_is_str = (keyArcKind == CollectionKind::Str) ? 1 : 0;
+    desc.destructor_callee = ry::llvm_emit::asRyValue(destructorVal);
 
     RyValueId newDataId = ry_emit_cow_ensure_unique(emit_ctx_, &desc);
     auto *phi =
@@ -282,19 +274,14 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(
                 listHeaderTy_, parent, 0, "pcow_len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "pcow_length");
-            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-                    *this, indexVal, length, codegen::lowered::BoundsKind::List,
-                    ".pcow_list_err")) {
-                RyValueId idxId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
-                RyValueId lenId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            if (!tryFoldBoundsCheck(indexVal, length)) {
+                RyValueId idxId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(indexVal));
+                RyValueId lenId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(length));
                 RyValueId bcResultId = ry_emit_bounds_check(
-                    emit_ctx_, idxId, lenId,
-                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                        ? RY_BOUNDS_LIST
-                        : RY_BOUNDS_ARRAY,
-                    bcOp->error_spec.global_name.c_str(), "pcow_list");
+                    emit_ctx_, idxId, lenId, RY_BOUNDS_LIST,
+                    ".pcow_list_err", "pcow_list");
                 indexVal = ry::llvm_emit::asLlvmValue(
                     ry_emit_resolve(emit_ctx_, bcResultId));
             }

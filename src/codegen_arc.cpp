@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_arc.hpp"
 #include "ry/llvm_emit/api.h" // RY_ATOMIC_BINOP_* / RY_ATOMIC_ORDERING_* (#2190)
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
@@ -122,11 +121,10 @@ llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
 }
 
 void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
-    auto op = codegen::lowering::lowerArcRetain(*this, headerPtr, atomic);
     RyValueId headerId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.header_ptr));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(headerPtr));
     ry_emit_arc_retain(emit_ctx_, headerId,
-                       op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC);
+                       atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC);
 }
 
 void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
@@ -138,14 +136,12 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
     llvm::Value *dtorCallee = destructor
         ? llvm::cast<llvm::Value>(destructor.getCallee())
         : nullptr;
-    auto op = codegen::lowering::lowerArcRelease(
-        *this, headerPtr, atomic, dtorCallee, gcVisitFn);
     RyValueId headerId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.header_ptr));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(headerPtr));
     ry_emit_arc_release(emit_ctx_, headerId,
-                        op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC,
-                        ry::llvm_emit::asRyValue(op.destructor_callee),
-                        ry::llvm_emit::asRyValue(op.gc_visit_fn));
+                        atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC,
+                        ry::llvm_emit::asRyValue(dtorCallee),
+                        ry::llvm_emit::asRyValue(gcVisitFn));
 }
 
 bool CodeGen::isArcAtomic(llvm::Value *val) const {

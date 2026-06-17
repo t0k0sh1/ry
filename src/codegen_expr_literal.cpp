@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_bounds_check.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 
@@ -927,19 +926,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-                    *this, index, llvm::ConstantInt::get(i64Ty_, arrSize),
-                    codegen::lowered::BoundsKind::Array, ".arr_idx_err")) {
-                RyValueId idxId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
-                RyValueId lenId =
-                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            llvm::Value *arrLen = llvm::ConstantInt::get(i64Ty_, arrSize);
+            if (!tryFoldBoundsCheck(index, arrLen)) {
+                RyValueId idxId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(index));
+                RyValueId lenId = ry_emit_intern(
+                    emit_ctx_, ry::llvm_emit::asRyValue(arrLen));
                 RyValueId bcResultId = ry_emit_bounds_check(
-                    emit_ctx_, idxId, lenId,
-                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                        ? RY_BOUNDS_LIST
-                        : RY_BOUNDS_ARRAY,
-                    bcOp->error_spec.global_name.c_str(), "arr");
+                    emit_ctx_, idxId, lenId, RY_BOUNDS_ARRAY,
+                    ".arr_idx_err", "arr");
                 index = ry::llvm_emit::asLlvmValue(
                     ry_emit_resolve(emit_ctx_, bcResultId));
             }
@@ -1073,7 +1068,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // #2124: reject non-int indices for List (covers both xs[i] and xs[i]?;
     // sibling guard in emitCollOp_get rejects bool/float on the get() side).
     // Without this, `xs[true]` was silently i1→i64 zext'd; `xs[1.5]` would
-    // reach emitNegativeIndexWrap / lowerBoundsCheck / GEP with f64 and
+    // reach emitNegativeIndexWrap / tryFoldBoundsCheck / GEP with f64 and
     // either misbehave or fail LLVM verify.
     if (index->getType() != i64Ty_)
         codegenError("list index must be int");
@@ -1175,18 +1170,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         return phi;
     }
 
-    if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-            *this, index, length, codegen::lowered::BoundsKind::List, ".idx_err")) {
+    if (!tryFoldBoundsCheck(index, length)) {
         RyValueId idxId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(index));
         RyValueId lenId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(length));
         RyValueId bcResultId = ry_emit_bounds_check(
-            emit_ctx_, idxId, lenId,
-            bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
-                ? RY_BOUNDS_LIST
-                : RY_BOUNDS_ARRAY,
-            bcOp->error_spec.global_name.c_str(), "index");
+            emit_ctx_, idxId, lenId, RY_BOUNDS_LIST,
+            ".idx_err", "index");
         index =
             ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, bcResultId));
     }
