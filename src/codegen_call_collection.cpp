@@ -1128,54 +1128,55 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
 
     // Set up header
     storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
-    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
+    llvm::Value *lenPtr = emitStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
 
     // Init hash buckets
     emitBucketInit(newHeader, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 16);
 
+    // #2188 ([4a] = outer loop scaffold migration; insert+rehash deferred to #2193).
     // Re-hash map1 keys into new map's buckets
     {
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_rh_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::Value *iVar = emitAlloca(i64Ty_, "mg_rh_i");
+        emitStore(emitConstInt(i64Ty_, 0), iVar);
         llvm::BasicBlock *rCondBB = createBB("mg.rh.cond");
         llvm::BasicBlock *rBodyBB = createBB("mg.rh.body");
         llvm::BasicBlock *rEndBB = createBB("mg.rh.end");
         emitBranchUncond(rCondBB);
         builder_.SetInsertPoint(rCondBB);
-        llvm::Value *ri = builder_.CreateLoad(i64Ty_, iVar, "mg_ri");
-        emitBranchCond(builder_.CreateICmpSLT(ri, mf1.len), rBodyBB, rEndBB);
+        llvm::Value *ri = emitLoad(i64Ty_, iVar, "mg_ri");
+        emitBranchCond(emitICmpSLT(ri, mf1.len, ""), rBodyBB, rEndBB);
         builder_.SetInsertPoint(rBodyBB);
-        llvm::Value *kp = builder_.CreateGEP(keyTy, newKeys, {ri}, "mg_rh_kp");
-        llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_rh_kv");
+        llvm::Value *kp = emitGEP(keyTy, newKeys, ri, "mg_rh_kp");
+        llvm::Value *kv = emitLoad(keyTy, kp, "mg_rh_kv");
         if (!keyName.empty()) propagateTypeMeta(keyName, kv);
         emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, ri);
-        builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        emitStore(emitAdd(ri, emitConstInt(i64Ty_, 1), ""), iVar);
         emitBranchUncond(rCondBB);
         builder_.SetInsertPoint(rEndBB);
     }
 
     // Add/update entries from map2 (rhs-wins on key collision)
     {
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_i2");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::Value *iVar = emitAlloca(i64Ty_, "mg_i2");
+        emitStore(emitConstInt(i64Ty_, 0), iVar);
         llvm::BasicBlock *condBB = createBB("mg.add.cond");
         llvm::BasicBlock *bodyBB = createBB("mg.add.body");
         llvm::BasicBlock *endBB = createBB("mg.add.end");
         emitBranchUncond(condBB);
         builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mg_ci");
-        emitBranchCond(builder_.CreateICmpSLT(i, mf2.len), bodyBB, endBB);
+        llvm::Value *i = emitLoad(i64Ty_, iVar, "mg_ci");
+        emitBranchCond(emitICmpSLT(i, mf2.len, ""), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *kp = builder_.CreateGEP(keyTy, mf2.keys, {i}, "mg_kp2");
-        llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_kv2");
+        llvm::Value *kp = emitGEP(keyTy, mf2.keys, i, "mg_kp2");
+        llvm::Value *kv = emitLoad(keyTy, kp, "mg_kv2");
         if (!keyName.empty()) propagateTypeMeta(keyName, kv);
-        llvm::Value *vp = builder_.CreateGEP(valTy, mf2.vals, {i}, "mg_vp2");
-        llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
+        llvm::Value *vp = emitGEP(valTy, mf2.vals, i, "mg_vp2");
+        llvm::Value *vv = emitLoad(valTy, vp, "mg_vv2");
 
         // Check if key exists in new map
         llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy, keyName);
-        llvm::Value *exists = builder_.CreateICmpSGE(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "mg_exists");
+        llvm::Value *exists = emitICmpSGE(lookupIdx, emitConstInt(i64Ty_, 0), "mg_exists");
 
         llvm::BasicBlock *updateBB = createBB("mg.update");
         llvm::BasicBlock *insertBB = createBB("mg.insert");
@@ -1184,36 +1185,39 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
 
         // Update existing key's value
         builder_.SetInsertPoint(updateBB);
-        llvm::Value *curVals = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals");
-        llvm::Value *updPtr = builder_.CreateGEP(valTy, curVals, {lookupIdx}, "mg_upd_ptr");
+        llvm::Value *curValsField = emitStructGEP(mapHeaderTy_, newHeader, 3, "");
+        llvm::Value *curVals = emitLoad(ptrTy_, curValsField, "mg_cur_vals");
+        llvm::Value *updPtr = emitGEP(valTy, curVals, lookupIdx, "mg_upd_ptr");
         // Release the old ARC-managed value before overwriting (#1242 leak).
         if (mgValIsArc) {
-            llvm::Value *oldVal = builder_.CreateLoad(valTy, updPtr, "mg_upd_old");
+            llvm::Value *oldVal = emitLoad(valTy, updPtr, "mg_upd_old");
             llvm::Value *oldHdr = (mgValArcKind == CollectionKind::Str)
                 ? emitStrGetHeaderFromData(oldVal) : emitArcGetHeaderFromData(oldVal);
             emitArcRelease(oldHdr, false, nullptr, nullptr);
             retainArcValue(vv);
         }
-        builder_.CreateStore(vv, updPtr);
+        emitStore(vv, updPtr);
         emitBranchUncond(nextBB);
 
         // Insert new key-value pair
         builder_.SetInsertPoint(insertBB);
-        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "mg_cur_len");
-        llvm::Value *curKeys = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2), "mg_cur_keys");
-        llvm::Value *newKeyPtr = builder_.CreateGEP(keyTy, curKeys, {curLen}, "mg_new_kp");
+        llvm::Value *curLen = emitLoad(i64Ty_, lenPtr, "mg_cur_len");
+        llvm::Value *curKeysField = emitStructGEP(mapHeaderTy_, newHeader, 2, "");
+        llvm::Value *curKeys = emitLoad(ptrTy_, curKeysField, "mg_cur_keys");
+        llvm::Value *newKeyPtr = emitGEP(keyTy, curKeys, curLen, "mg_new_kp");
         if (mgKeyIsArc) retainArcValue(kv);
-        builder_.CreateStore(kv, newKeyPtr);
-        llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
-        llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
+        emitStore(kv, newKeyPtr);
+        llvm::Value *curVals2Field = emitStructGEP(mapHeaderTy_, newHeader, 3, "");
+        llvm::Value *curVals2 = emitLoad(ptrTy_, curVals2Field, "mg_cur_vals2");
+        llvm::Value *newValPtr = emitGEP(valTy, curVals2, curLen, "mg_new_vp");
         if (mgValIsArc) retainArcValue(vv);
-        builder_.CreateStore(vv, newValPtr);
-        builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
+        emitStore(vv, newValPtr);
+        emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
         emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, curLen);
         emitBranchUncond(nextBB);
 
         builder_.SetInsertPoint(nextBB);
-        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        emitStore(emitAdd(i, emitConstInt(i64Ty_, 1), ""), iVar);
         emitBranchUncond(condBB);
         builder_.SetInsertPoint(endBB);
     }

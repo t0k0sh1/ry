@@ -67,8 +67,10 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
             codegenError("contains() element type mismatch");
         std::string cElemName = getSetElemName(s);
         validateSetElemType(cElemName, elem, "contains()");
+        // #2188 ([4a] = i1 result cross via emitICmpSGE on both Set/Map branches
+        // below; lookup itself already #2101).
         llvm::Value *idx = emitSetElementLookup(s, elem, setElemTy, cElemName);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_contains");
+        return emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "set_contains");
     }
 
     if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
@@ -78,7 +80,7 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
         if (key->getType() != mapKeyTy)
             codegenError("contains() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(s, key, mapKeyTy);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_contains");
+        return emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "map_contains");
     }
 
     llvm::Value *sub = emitExpr(*e.args[1]);
