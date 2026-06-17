@@ -1097,6 +1097,24 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         fieldTypeIsArcManaged(valName, &mgValArcKind) &&
         mgValArcKind != CollectionKind::Str;
 
+    // #2226: tuple keys/vals are inline StructType, not ptrTy_, so the
+    // mg*IsArc gates above never fire. Local dispatch via tuple sig +
+    // resolveTypeAlias (#1670 follow-up) handles them in parallel.
+    const std::string resolvedKeyName = keyName.empty() ? std::string{}
+        : resolveTypeAlias(keyName);
+    const std::string resolvedValName = valName.empty() ? std::string{}
+        : resolveTypeAlias(valName);
+    llvm::StructType *keyTupleTy =
+        (resolvedKeyName.size() >= 2 && resolvedKeyName.front() == '(' &&
+         resolvedKeyName.back() == ')')
+            ? llvm::dyn_cast<llvm::StructType>(keyTy) : nullptr;
+    llvm::StructType *valTupleTy =
+        (resolvedValName.size() >= 2 && resolvedValName.front() == '(' &&
+         resolvedValName.back() == ')')
+            ? llvm::dyn_cast<llvm::StructType>(valTy) : nullptr;
+    const bool mgKeyIsTuple = keyTupleTy != nullptr;
+    const bool mgValIsTuple = valTupleTy != nullptr;
+
     auto mf1 = loadMapHeader(map1, "mg1");
     auto mf2 = loadMapHeader(map2, "mg2");
 
@@ -1128,6 +1146,17 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
     }
     if (mgValIsArc) {
         emitCowRetainArcElements(newVals, mf1.len, "mg_v1", mgValArcKind);
+    }
+    // #2226: tuple keys/vals — memcpy duplicates the inline struct, but its
+    // inner ARC pointer fields are unretained; emitTupleElemRetainLoop scans
+    // the array and retains each ARC field per slot (mirrors #1667 appended).
+    if (mgKeyIsTuple) {
+        emitTupleElemRetainLoop(newKeys, mf1.len, "mg_k1_telem",
+                                  resolvedKeyName, keyTupleTy);
+    }
+    if (mgValIsTuple) {
+        emitTupleElemRetainLoop(newVals, mf1.len, "mg_v1_telem",
+                                  resolvedValName, valTupleTy);
     }
 
     // Set up header
@@ -1200,6 +1229,16 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
             emitArcRelease(oldHdr, false, nullptr, nullptr);
             retainArcValue(vv);
         }
+        // #2226: tuple-typed val on update — retain the new tuple's ARC
+        // components first (self-assignment safety, #1670 ordering), then
+        // release the old slot's components via emitTupleElemReleaseSlot.
+        // emitTupleComponentRetain on the aggregate sig recurses into each
+        // ptr field internally (no need to splitTupleSig at the call site).
+        if (mgValIsTuple) {
+            emitTupleComponentRetain(vv, resolvedValName);
+            emitTupleElemReleaseSlot(updPtr, "mg_upd_old_telem",
+                                       resolvedValName, valTupleTy);
+        }
         emitStore(vv, updPtr);
         emitBranchUncond(nextBB);
 
@@ -1210,11 +1249,15 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         llvm::Value *curKeys = emitLoad(ptrTy_, curKeysField, "mg_cur_keys");
         llvm::Value *newKeyPtr = emitGEP(keyTy, curKeys, curLen, "mg_new_kp");
         if (mgKeyIsArc) retainArcValue(kv);
+        // #2226: tuple-typed key on insert — per-component retain.
+        if (mgKeyIsTuple) emitTupleComponentRetain(kv, resolvedKeyName);
         emitStore(kv, newKeyPtr);
         llvm::Value *curVals2Field = emitStructGEP(mapHeaderTy_, newHeader, 3, "");
         llvm::Value *curVals2 = emitLoad(ptrTy_, curVals2Field, "mg_cur_vals2");
         llvm::Value *newValPtr = emitGEP(valTy, curVals2, curLen, "mg_new_vp");
         if (mgValIsArc) retainArcValue(vv);
+        // #2226: tuple-typed val on insert — per-component retain.
+        if (mgValIsTuple) emitTupleComponentRetain(vv, resolvedValName);
         emitStore(vv, newValPtr);
         emitStore(emitAdd(curLen, emitConstInt(i64Ty_, 1), ""), lenPtr);
         emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, curLen);

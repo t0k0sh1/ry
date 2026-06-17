@@ -1,0 +1,165 @@
+from testing import it, describe, expect
+
+from runtime_internal import arcLiveCount
+
+# Issue #2226: ARC tuple inner-field retain gap in Map merge (update/insert) and
+# Set ops construction (union/intersection/difference/symmetricDifference).
+#
+# emitMapMergeCore's mgKeyIsArc / mgValIsArc gate uses `keyTy == ptrTy_`, which
+# is false for tuple StructType — so the memcpy-after retain, update-branch
+# release+retain, and insert-branch retain all skip tuple-typed entries. Set ops
+# 4 functions had no element retain at all (flat ARC or tuple).
+#
+# Without the fix, the merge / set-op result and the source share tuple inner
+# List/Map/Set elements unretained; dropping the source then reading the result
+# is UAF (ASan-detectable; the result's tuple inner List buffer is freed).
+#
+# Same defect class as #1666 / #1667 (enumerate/zip/items tuple ARC) and #1670
+# (List<(K, V)> slot overwrite). Fix mirrors the appended retain pattern:
+# emitTupleElemRetainLoop for buffer-wide retain after memcpy, splitTupleSig +
+# ExtractValue + emitTupleComponentRetain for per-element retain on insert,
+# emitTupleElemReleaseSlot for the update-branch old-slot release.
+#
+# Detector strategy: this test uses arcLiveCount() delta + len() and relies on
+# ASan/`/pre-commit-checklist` to flag the UAF on inner tuple-List buffers.
+# Direct `merged[k].1[i]` reads are blocked by an orthogonal metadata
+# propagation gap in Map lookup / Set iter → tuple field access (the str
+# index-branch error), which is out of scope for #2226.
+
+@describe("ARC tuple retain in Map merge (#2226)")
+fn arcMapMergeTupleFix2226Tests():
+
+  @it("Map<int,(int,List<int>)> merge insert: arcLiveCount delta O(1) over N")
+  fn mapMergeTupleInsertLiveCountSymmetry():
+    # Disjoint keys → insert branch on every map2 entry. Without the tuple
+    # retain on the insert branch (and the m1 memcpy-after retain), inner
+    # Lists leak per iteration and delta grows ~O(N).
+    base1: Map<int, (int, List<int>)> = {1: (100, [10, 20])}
+    base2: Map<int, (int, List<int>)> = {2: (200, [30, 40])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      merged = merge(base1, base2)
+      expect(len(merged)).toEq(2)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(1)
+    expect(len(base2)).toEq(1)
+
+  @it("Map<int,(int,List<int>)> merge update: arcLiveCount delta O(1) over N")
+  fn mapMergeTupleUpdateLiveCountSymmetry():
+    # Shared key 1 → merge takes the update branch every iteration. Without
+    # the tuple retain on the update branch's new value (and the
+    # emitTupleElemReleaseSlot for the memcpy'd m1 tuple), inner Lists leak
+    # ~O(N) per iteration.
+    base1: Map<int, (int, List<int>)> = {1: (10, [1, 2, 3])}
+    base2: Map<int, (int, List<int>)> = {1: (90, [9, 8, 7])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      merged = merge(base1, base2)
+      # rhs-wins: result has 1 key (key 1, value from base2).
+      expect(len(merged)).toEq(1)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(1)
+    expect(len(base2)).toEq(1)
+
+  @it("Map<int,(int,List<int>)> merge: drop sources, result survives (UAF gate)")
+  fn mapMergeTupleDropSourceUAFGate():
+    # ASan-clean detector: drop sources after merge, churn allocator, then
+    # inspect the merged map. Without the tuple retain, the inner Lists were
+    # freed when m1/m2 were rebound; reading len(merged) or attempting any
+    # destructor walk over merged would touch freed memory.
+    m1: Map<int, (int, List<int>)> = {1: (100, [10, 20, 30])}
+    m2: Map<int, (int, List<int>)> = {2: (200, [40, 50])}
+    merged = merge(m1, m2)
+    m1 = {99: (0, [0])}
+    m2 = {99: (0, [0])}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i * 2, i * 3, i * 4, i * 5]
+      i = i + 1
+    expect(len(merged)).toEq(2)
+
+@describe("ARC tuple retain in Set ops (#2226)")
+fn arcSetOpsTupleFix2226Tests():
+
+  @it("union(Set<(int,List<int>)>, ...): arcLiveCount delta O(1) over N")
+  fn setUnionTupleLiveCountSymmetry():
+    base1: Set<(int, List<int>)> = {(10, [1, 2, 3]), (20, [4, 5])}
+    base2: Set<(int, List<int>)> = {(30, [6, 7, 8])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      u = union(base1, base2)
+      expect(len(u)).toEq(3)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(2)
+    expect(len(base2)).toEq(1)
+
+  @it("intersection(Set<(int,List<int>)>, ...): arcLiveCount delta O(1) over N")
+  fn setIntersectionTupleLiveCountSymmetry():
+    base1: Set<(int, List<int>)> = {(10, [1, 2, 3]), (20, [4, 5])}
+    base2: Set<(int, List<int>)> = {(20, [4, 5]), (90, [9, 9])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      inter = intersection(base1, base2)
+      expect(len(inter)).toEq(1)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(2)
+    expect(len(base2)).toEq(2)
+
+  @it("difference(Set<(int,List<int>)>, ...): arcLiveCount delta O(1) over N")
+  fn setDifferenceTupleLiveCountSymmetry():
+    base1: Set<(int, List<int>)> = {(10, [1, 2, 3]), (20, [4, 5])}
+    base2: Set<(int, List<int>)> = {(20, [4, 5])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      diff = difference(base1, base2)
+      expect(len(diff)).toEq(1)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(2)
+    expect(len(base2)).toEq(1)
+
+  @it("symmetricDifference(Set<(int,List<int>)>, ...): arcLiveCount delta O(1)")
+  fn setSymmDiffTupleLiveCountSymmetry():
+    # symmDiff calls emitSetDiffLoop twice (sf1→set2, sf2→set1) — both
+    # invocations' add branches must retain the tuple component.
+    base1: Set<(int, List<int>)> = {(10, [1, 2, 3]), (20, [4, 5])}
+    base2: Set<(int, List<int>)> = {(20, [4, 5]), (30, [6, 7])}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      sd = symmetricDifference(base1, base2)
+      expect(len(sd)).toEq(2)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(2)
+    expect(len(base2)).toEq(2)
+
+  @it("union(Set<(int,List<int>)>, ...): drop sources, result survives (UAF gate)")
+  fn setUnionTupleDropSourceUAFGate():
+    s1: Set<(int, List<int>)> = {(10, [1, 2, 3]), (20, [4, 5])}
+    s2: Set<(int, List<int>)> = {(30, [6, 7, 8])}
+    u = union(s1, s2)
+    s1 = {(0, [0])}
+    s2 = {(0, [0])}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i * 2, i * 3, i * 4, i * 5]
+      i = i + 1
+    expect(len(u)).toEq(3)
