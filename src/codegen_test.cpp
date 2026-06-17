@@ -496,18 +496,39 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!s->params.empty())
         codegenError("@it: fn '" + s->name + "' has parameters but no @each or @property directive");
 
-    // Strip @it / @only / @timeout (no runtime effect once dispatch is decided)
-    // and emit the function normally, then emit it_begin/call/it_end (or the
-    // timeout-aware variant when @timeout is present).
-    stripDirectives(s->directives, {"it", "only", "timeout"});
-    emitStmt(s);
+    const auto &entry = emitItFn(s, {"it", "only", "timeout"}, "@it");
+    llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    emitItDriverFragment(descVal, entry, timeoutMs);
+}
 
+// Strip the given test-specific directives, emit the @it body as an
+// ordinary fn through the standard fn codegen path, and look up the
+// resulting OverloadEntry. Shared between basic / @timeout / @each /
+// @property paths (#2235). The returned reference is valid as long as
+// no further function registration intervenes before the caller emits
+// its driver fragment.
+const CodeGen::OverloadEntry &CodeGen::emitItFn(
+    std::unique_ptr<FnStmt> &s,
+    std::initializer_list<const char *> stripList,
+    const char *directiveLabel) {
+    stripDirectives(s->directives, stripList);
+    emitStmt(s);
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
-        codegenError("@it: internal error — fn '" + s->name + "' not found after emit");
-    const auto &entry = overloads->back();
+        codegenError(std::string(directiveLabel) +
+                     ": internal error — fn '" + s->name + "' not found after emit");
+    return overloads->back();
+}
 
-    llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+// Phase 2 of the basic / @timeout @it path (#2235): synthesize the
+// driver fragment that wraps the user fn in the test runtime cascade.
+// Hook layers are resolved from class members at the current emit point
+// (file_before_each_body_ / file_after_each_body_ / describe_hook_stack_).
+// timeoutMs == 0 selects the normal in-place inline cascade; > 0 routes
+// through emitItWithTimeout for the sigsetjmp two-pad variant.
+void CodeGen::emitItDriverFragment(llvm::Value *descVal,
+                                    const OverloadEntry &entry,
+                                    int64_t timeoutMs) {
     // Hook cascade (#1780): file-level hooks wrap describe-level hooks
     // around every @it. Order is file BE → describe BE → @it → describe AE
     // → file AE on the normal path. Either layer may be absent (top-level
@@ -526,7 +547,7 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
         (!describe_hook_stack_.empty() && !describe_hook_stack_.back().afterEach.empty())
             ? &describe_hook_stack_.back().afterEach
             : nullptr;
-    if (hasTimeout) {
+    if (timeoutMs > 0) {
         // All four hook layers are inlined inside emitItWithTimeout's
         // normalBB between begin and end, so hook failures attribute to the
         // current @it via __ry_test_record_fail. The SIGALRM siglongjmp path
@@ -734,13 +755,7 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@each: tuple arity (" + std::to_string(numFields) +
                      ") doesn't match function parameter count (" + std::to_string(s->params.size()) + ")");
 
-    stripDirectives(s->directives, {"it", "each", "only"});
-    emitStmt(s);
-
-    auto *overloads = findFunction(s->name);
-    if (!overloads || overloads->empty())
-        codegenError("@each @it: internal error — fn '" + s->name + "' not found after emit");
-    const auto &entry = overloads->back();
+    const auto &entry = emitItFn(s, {"it", "each", "only"}, "@each @it");
     auto capturedVals = loadCapturedArgs(entry, "@each @it");
     emitEachItLoop(listPtr, elemTy, numFields, fmtStr, entry.func,
                    std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
@@ -775,13 +790,7 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
         paramNames.push_back(p.name);
     }
 
-    stripDirectives(s->directives, {"it", "property", "only"});
-    emitStmt(s);
-
-    auto *overloads = findFunction(s->name);
-    if (!overloads || overloads->empty())
-        codegenError("@property @it: internal error — fn '" + s->name + "' not found after emit");
-    const auto &entry = overloads->back();
+    const auto &entry = emitItFn(s, {"it", "property", "only"}, "@property @it");
     auto capturedVals = loadCapturedArgs(entry, "@property @it");
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
     emitPropertyItLoop(entry.func, descVal, paramTypes, paramNames, count,
@@ -944,6 +953,19 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
+    const auto &entry = emitDescribeFn(s);
+    emitDescribeDriverFragment(descVal, entry);
+}
+
+// Phase 1 of @describe normal-mode path (#2235): pre-scan and consume
+// lifecycle hooks from s->body, splice @beforeAll/@afterAll into the
+// describe-local body around the first/last @it, push the
+// @beforeEach/@afterEach hook frame onto describe_hook_stack_, strip
+// the @describe directive, emit the describe fn through the ordinary fn
+// codegen path, pop the hook frame, and look up the resulting
+// OverloadEntry. The returned reference is valid in the caller's scope
+// until additional function registrations intervene.
+const CodeGen::OverloadEntry &CodeGen::emitDescribeFn(std::unique_ptr<FnStmt> &s) {
     // ----- Pre-scan: extract lifecycle hooks from s->body -----
     //
     // Walk linearly; for each FnStmt carrying a hook directive, validate,
@@ -957,33 +979,22 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     std::vector<StmtNode> afterEachBody;
     std::string beforeAllName, afterAllName, beforeEachName, afterEachName;
 
-    auto extractHook = [&](std::unique_ptr<FnStmt> &fn, const char *hookName,
-                           std::vector<StmtNode> &dest, std::string &destName) {
-        if (!destName.empty())
-            codegenError(std::string("@") + hookName + " can be declared at most once per @describe block (fn '" +
-                         destName + "' already declared)");
-        validateLifecycleHookFnShape(fn, hookName);
-        validateLifecycleHookBody(fn->body, hookName);
-        destName = fn->name;
-        dest = std::move(fn->body);
-    };
-
     for (auto it = s->body.begin(); it != s->body.end(); ) {
         auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&*it);
         if (!fnPtr) { ++it; continue; }
         auto &fn = *fnPtr;
         bool consumed = false;
         if (hasDirective(fn->directives, "beforeEach")) {
-            extractHook(fn, "beforeEach", beforeEachBody, beforeEachName);
+            extractLifecycleHook(fn, "beforeEach", "@describe block", beforeEachBody, beforeEachName);
             consumed = true;
         } else if (hasDirective(fn->directives, "afterEach")) {
-            extractHook(fn, "afterEach", afterEachBody, afterEachName);
+            extractLifecycleHook(fn, "afterEach", "@describe block", afterEachBody, afterEachName);
             consumed = true;
         } else if (hasDirective(fn->directives, "beforeAll")) {
-            extractHook(fn, "beforeAll", beforeAllBody, beforeAllName);
+            extractLifecycleHook(fn, "beforeAll", "@describe block", beforeAllBody, beforeAllName);
             consumed = true;
         } else if (hasDirective(fn->directives, "afterAll")) {
-            extractHook(fn, "afterAll", afterAllBody, afterAllName);
+            extractLifecycleHook(fn, "afterAll", "@describe block", afterAllBody, afterAllName);
             consumed = true;
         }
         if (consumed) it = s->body.erase(it);
@@ -1049,9 +1060,17 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
         codegenError("@describe: internal error — fn '" + s->name + "' not found after emit");
-    const auto &entry = overloads->back();
-    auto capturedArgs = loadCapturedArgs(entry, "@describe");
+    return overloads->back();
+}
 
+// Phase 2 of @describe normal-mode path (#2235): emit the
+// describe_begin → call describe_fn → describe_end driver fragment at
+// builder_'s current position. The describe fn body is already emitted
+// (with the in-place @it driver fragments inside) by emitDescribeFn;
+// this fragment only wraps the call in the describe_begin / _end pair.
+void CodeGen::emitDescribeDriverFragment(llvm::Value *descVal,
+                                         const OverloadEntry &entry) {
+    auto capturedArgs = loadCapturedArgs(entry, "@describe");
     auto [descBeginFn, descEndFn] = getTestDescribeFunctions();
     builder_.CreateCall(descBeginFn, {descVal});
     builder_.CreateCall(entry.func, capturedArgs);
