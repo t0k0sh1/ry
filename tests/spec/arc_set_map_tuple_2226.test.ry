@@ -85,6 +85,38 @@ fn arcMapMergeTupleFix2226Tests():
       i = i + 1
     expect(len(merged)).toEq(2)
 
+  @it("Map<(int,List<int>),int> merge tuple key: arcLiveCount delta O(1) over N")
+  fn mapMergeTupleKeyLiveCountSymmetry():
+    # Covers the mgKeyIsTuple retain path on memcpy of m1 keys and on the
+    # insert branch for m2 keys. The other tests use int keys, so without
+    # this case the tuple-key retain code stays unexercised.
+    base1: Map<(int, List<int>), int> = {(1, [10, 20]): 100}
+    base2: Map<(int, List<int>), int> = {(2, [30]): 200}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      merged = merge(base1, base2)
+      expect(len(merged)).toEq(2)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(1)
+    expect(len(base2)).toEq(1)
+
+  @it("Map<(int,List<int>),int> merge tuple key: drop sources, result survives (UAF gate)")
+  fn mapMergeTupleKeyDropSourceUAFGate():
+    m1: Map<(int, List<int>), int> = {(1, [10, 20, 30]): 100}
+    m2: Map<(int, List<int>), int> = {(2, [40, 50]): 200}
+    merged = merge(m1, m2)
+    m1 = {(99, [0]): 0}
+    m2 = {(99, [0]): 0}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i * 2, i * 3, i * 4, i * 5]
+      i = i + 1
+    expect(len(merged)).toEq(2)
+
 @describe("ARC tuple retain in Set ops (#2226)")
 fn arcSetOpsTupleFix2226Tests():
 
@@ -157,6 +189,60 @@ fn arcSetOpsTupleFix2226Tests():
     u = union(s1, s2)
     s1 = {(0, [0])}
     s2 = {(0, [0])}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i * 2, i * 3, i * 4, i * 5]
+      i = i + 1
+    expect(len(u)).toEq(3)
+
+@describe("ARC flat retain in Set ops (#2226)")
+fn arcSetOpsFlatFix2226Tests():
+
+  # The four set-op functions were missing flat ARC retain entirely, not just
+  # tuple retain. arc_release_on_rebind.test.ry's Set<List<int>> test (#1242)
+  # only exercises rebind; set ops with source-drop were never covered. These
+  # detectors lock the flat retain path down.
+
+  @it("union(Set<List<int>>, ...): arcLiveCount delta O(1) over N")
+  fn setUnionFlatLiveCountSymmetry():
+    base1: Set<List<int>> = {[1, 2, 3], [4, 5]}
+    base2: Set<List<int>> = {[6, 7]}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      u = union(base1, base2)
+      expect(len(u)).toEq(3)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+    expect(len(base1)).toEq(2)
+    expect(len(base2)).toEq(1)
+
+  @it("intersection/difference/symmetricDifference Set<List<int>>: arcLiveCount delta O(1)")
+  fn setIntDiffSymmDiffFlatLiveCountSymmetry():
+    base1: Set<List<int>> = {[1, 2, 3], [4, 5]}
+    base2: Set<List<int>> = {[6, 7]}
+    before = arcLiveCount()
+    i = 0
+    while i < 16:
+      inter = intersection(base1, base2)
+      diff = difference(base1, base2)
+      sd = symmetricDifference(base1, base2)
+      expect(len(inter)).toEq(0)
+      expect(len(diff)).toEq(2)
+      expect(len(sd)).toEq(3)
+      i = i + 1
+    delta = arcLiveCount() - before
+    expect(delta < 10).toEq(true)
+
+  @it("union(Set<List<int>>, ...): drop sources, result survives (UAF gate)")
+  fn setUnionFlatDropSourceUAFGate():
+    s1: Set<List<int>> = {[1, 2, 3], [4, 5]}
+    s2: Set<List<int>> = {[6, 7, 8]}
+    u = union(s1, s2)
+    s1 = {[0]}
+    s2 = {[0]}
     j: List<int> = [0]
     i = 0
     while i < 64:
