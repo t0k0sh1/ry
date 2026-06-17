@@ -275,6 +275,12 @@ llvm::Value *CodeGen::emitOr(llvm::Value *lhs, llvm::Value *rhs, const char *nam
     return ry::llvm_emit::asLlvmValue(
         ry_emit_resolve(emit_ctx_, ry_emit_or(emit_ctx_, l, r, name)));
 }
+llvm::Value *CodeGen::emitXor(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
+    RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
+    RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));
+    return ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, ry_emit_xor(emit_ctx_, l, r, name)));
+}
 llvm::Value *CodeGen::emitAdd(llvm::Value *lhs, llvm::Value *rhs, const char *name) {
     RyValueId l = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lhs));
     RyValueId r = ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rhs));

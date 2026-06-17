@@ -359,6 +359,16 @@ impl EmitCtx {
         ValueRef(LLVMBuildOr(self.builder, lhs.0, rhs.0, name))
     }
 
+    // `xor lhs, rhs`.
+    pub(crate) unsafe fn build_xor(
+        &mut self,
+        lhs: ValueRef,
+        rhs: ValueRef,
+        name: *const c_char,
+    ) -> ValueRef {
+        ValueRef(LLVMBuildXor(self.builder, lhs.0, rhs.0, name))
+    }
+
     // `add lhs, rhs`.
     pub(crate) unsafe fn build_add(
         &mut self,

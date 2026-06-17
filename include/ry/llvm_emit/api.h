@@ -1165,6 +1165,10 @@ RyValueId ry_emit_and(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                       const char *name);
 RyValueId ry_emit_or(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                      const char *name);
+// `xor` added for #2189 (saturating-mul migration): the sign_xor of operands
+// determines the clamp direction (INT_MIN vs INT_MAX) on signed overflow.
+RyValueId ry_emit_xor(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
+                      const char *name);
 RyValueId ry_emit_add(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,
                       const char *name);
 RyValueId ry_emit_sub(RyEmitCtx *ctx, RyValueId lhs_id, RyValueId rhs_id,

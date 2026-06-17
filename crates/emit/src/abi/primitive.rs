@@ -491,6 +491,24 @@ pub unsafe extern "C" fn ry_emit_or(
     intern(c, to_ry_value(v.0))
 }
 
+/// Emit `xor lhs, rhs`. NULL ctx / operand → 0.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_xor(
+    ctx: *mut RyEmitCtx,
+    lhs_id: RyValueId,
+    rhs_id: RyValueId,
+    name: *const c_char,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let (Some(lhs), Some(rhs)) = (resolve_value(c, lhs_id), resolve_value(c, rhs_id)) else {
+        return 0;
+    };
+    let v = c.build_xor(lhs, rhs, name_or_empty(name));
+    intern(c, to_ry_value(v.0))
+}
+
 /// Emit `add lhs, rhs`. NULL ctx / operand → 0.
 #[no_mangle]
 pub unsafe extern "C" fn ry_emit_add(

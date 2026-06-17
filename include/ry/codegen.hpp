@@ -2102,6 +2102,7 @@ public:
     llvm::Value *emitICmpULE(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitAnd(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitOr(llvm::Value *lhs, llvm::Value *rhs, const char *name);
+    llvm::Value *emitXor(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitAdd(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     llvm::Value *emitSub(llvm::Value *lhs, llvm::Value *rhs, const char *name);
     // mul / sdiv added for #2096 (string-build op migration): str * n /
