@@ -1018,7 +1018,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (key->getType() != keyTy)
             codegenError("hasKey() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "hasKey");
+        // #2188 ([4a] = i1 result cross via emitICmpSGE; lookup already #2101).
+        return emitICmpSGE(idx, emitConstInt(i64Ty_, 0), "hasKey");
     }
 
     // checked/saturating/wrapping arithmetic dispatch
