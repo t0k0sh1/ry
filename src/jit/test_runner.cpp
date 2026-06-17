@@ -1,7 +1,5 @@
 #include "ry/jit/test_runner.hpp"
-#include "ry/jit/jit_runner.hpp"
 #include "ry/cli/self_update.hpp"
-#include "ry/diagnostic/diagnostic.hpp"
 #ifdef __APPLE__
 #include <crt_externs.h>
 #define RY_ENVIRON (*_NSGetEnviron())
@@ -53,34 +51,6 @@ std::vector<std::string> findTestFiles(const std::string &root_dir) {
     }
     std::sort(files.begin(), files.end());
     return files;
-}
-
-static int runTestFilesSequential(const std::vector<std::string> &test_files,
-                                  const char *argv0, bool skip_global_lib,
-                                  bool coverage, bool outline) {
-    CoverageState cs;
-    if (coverage) resetCoverageState(cs);
-    int total_failed = 0;
-    for (const auto &tf : test_files) {
-        try {
-            int failed = runRyFile(tf, /*test_mode=*/true, argv0, skip_global_lib,
-                                   coverage, outline, coverage ? &cs : nullptr);
-            total_failed += failed;
-        } catch (const DiagnosticError &e) {
-            llvm::errs() << e.what();
-            ++total_failed;
-        } catch (const std::exception &e) {
-            llvm::errs() << "Error in " << tf << ": " << e.what() << "\n";
-            ++total_failed;
-        }
-    }
-    int total_files = static_cast<int>(test_files.size());
-    if (!outline && total_files > 1) {
-        std::printf("\n%d test files executed, %d total failures\n",
-                    total_files, total_failed);
-    }
-    if (coverage) emitCoverageReport(cs);
-    return total_failed > 0 ? 1 : 0;
 }
 
 struct TestFileResult {
@@ -155,8 +125,14 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
     return result;
 }
 
-static int runTestFilesParallel(const std::vector<std::string> &test_files,
-                                const std::string &exe_path, int parallelism) {
+// Subprocess fan-out: each test file runs in its own child process so the
+// JIT teardown 6-step suppression (KNOWLEDGE.md "LLVM ORC JIT intermittent
+// teardown crash") holds (1 source = 1 process). Parent JIT-free; only
+// posix_spawn / pipe-read / waitpid. Worker count = 1 still goes through
+// this path so the dispatcher is uniform (#2234).
+static int runTestFilesSubprocessFanOut(const std::vector<std::string> &test_files,
+                                        const std::string &exe_path,
+                                        int parallelism) {
     size_t num_files = test_files.size();
     std::vector<TestFileResult> results(num_files);
 
@@ -192,8 +168,9 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
     std::vector<std::thread> threads;
     threads.reserve(num_workers);
 
-    std::fprintf(stderr, "Running %zu test files with %zu workers...\n",
-                 num_files, num_workers);
+    const char *worker_label = num_workers == 1 ? "worker" : "workers";
+    std::fprintf(stderr, "Running %zu test files with %zu %s...\n",
+                 num_files, num_workers, worker_label);
 
     auto wall_start = std::chrono::steady_clock::now();
     for (size_t i = 0; i < num_workers; ++i)
@@ -215,8 +192,8 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
         std::fputs(r.output.c_str(), stdout);
     }
 
-    std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu workers)\n",
-                num_files, total_failed, wall_elapsed, num_workers);
+    std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu %s)\n",
+                num_files, total_failed, wall_elapsed, num_workers, worker_label);
     return total_failed > 0 ? 1 : 0;
 }
 
@@ -242,32 +219,37 @@ int computeParallelism(int requested_workers, std::size_t test_file_count) {
     return parallelism;
 }
 
+// All multi-file paths go through subprocess fan-out (#2234). The in-process
+// runRyFile loop is gone — even worker=1 spawns one subprocess per file. This
+// is what makes the 6-step JIT teardown suppression hold (1 source = 1 process):
+// the parent never JITs and child exits via _exit, so leaks are reclaimed by
+// the OS instead of accumulating across files (KNOWLEDGE.md "LLVM ORC JIT
+// intermittent teardown crash").
+//
+// `--coverage` / `--trace` / `--outline` must be disabled (with a warning) at
+// the call site before reaching here when the target is multi-file —
+// runTestFileSubprocess argv is `{exe, "test", filepath}` only and the child
+// has no way to honor those flags.
 int runTestFiles(const std::vector<std::string> &test_files,
-                 const char *argv0, bool skip_global_lib,
-                 bool parallel, bool coverage, bool outline,
                  int parallel_workers) {
-    if (outline || !parallel || test_files.size() <= 1) {
-        return runTestFilesSequential(test_files, argv0, skip_global_lib, coverage, outline);
-    }
     std::string exe_path = ry::self_update::detail::get_executable_path();
     if (exe_path.empty()) {
-        llvm::errs() << "Warning: cannot resolve executable path, falling back to sequential\n";
-        return runTestFilesSequential(test_files, argv0, skip_global_lib, coverage, false);
+        llvm::errs()
+            << "Error: cannot resolve executable path for subprocess test runner\n";
+        return 1;
     }
     int parallelism = computeParallelism(parallel_workers, test_files.size());
-    return runTestFilesParallel(test_files, exe_path, parallelism);
+    return runTestFilesSubprocessFanOut(test_files, exe_path, parallelism);
 }
 
-int discoverAndRunTests(const std::string &dir, const char *argv0,
-                        bool skip_global_lib, bool parallel,
-                        bool coverage, bool outline, int parallel_workers) {
+int discoverAndRunTests(const std::string &dir,
+                        int parallel_workers) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         llvm::errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0, skip_global_lib, parallel, coverage, outline,
-                        parallel_workers);
+    return runTestFiles(test_files, parallel_workers);
 }
 
 } // namespace ry

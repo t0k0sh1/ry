@@ -169,8 +169,15 @@ int main(int argc, char *argv[]) {
         }
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
-        bool parallel = false;
-        int parallel_workers = 0; // 0 = computeDefaultWorkers(hardware_concurrency()) (= hw - 1, min 1)
+        //
+        // -p semantics (#2234): `-p` controls only the worker count.
+        //   `-p` absent       → 1 worker (uniform with the no-`-p` default)
+        //   `-p` alone        → computeDefaultWorkers(hw_concurrency) = hw-1 (min 1)
+        //   `-p N`            → N
+        // All three cases go through subprocess fan-out; the in-process
+        // sequential loop is gone (each child is "1 source = 1 process").
+        bool parallel_flag_seen = false;
+        int parallel_workers = 0; // semantics finalised after the parse loop
         bool watch = false;
         bool coverage = false;
         bool outline = false;
@@ -208,7 +215,7 @@ int main(int argc, char *argv[]) {
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
                 std::strcmp(argv[i], "--parallel") == 0) {
-                parallel = true;
+                parallel_flag_seen = true;
                 // Optional spaced count: `-p N` / `--parallel N`. If the next
                 // argv looks like a count attempt (digit, or `-` then digit),
                 // commit to parsing it; otherwise leave it for the next loop
@@ -221,7 +228,7 @@ int main(int argc, char *argv[]) {
                     ++i;
                 }
             } else if (std::strncmp(argv[i], "--parallel=", 11) == 0) {
-                parallel = true;
+                parallel_flag_seen = true;
                 const char *val_str = argv[i] + 11;
                 if (*val_str == '\0') {
                     errs() << "Error: --parallel= requires a positive integer "
@@ -256,14 +263,44 @@ int main(int argc, char *argv[]) {
                 sessionStarted = true;
             }
         }
-        if (coverage && parallel) {
-            errs() << "Warning: --coverage is not supported with --parallel, falling back to sequential\n";
-            parallel = false;
+        // -p semantics finalisation (#2234): `-p` absent → 1 worker (uniform with
+        // the no-`-p` default sequential semantics). `-p` alone keeps parallel_workers
+        // at 0, which computeParallelism interprets as "computeDefaultWorkers".
+        if (!parallel_flag_seen) {
+            parallel_workers = 1;
         }
-        if (trace_enabled && parallel) {
-            errs() << "Warning: --trace is not supported with --parallel, falling back to sequential\n";
-            parallel = false;
-        }
+
+        // Helper to disable per-file flags that cannot cross subprocess
+        // boundaries cleanly (#2234). Applied only on multi-file paths
+        // (directory target / no target → project root); the single-file
+        // direct path keeps coverage / trace / outline fully functional.
+        // Worker count is left untouched: throttling to 1 worker buys nothing
+        // once the underlying feature is off, and would silently penalise
+        // `ry test -p N --coverage` (~Nx slowdown for no functional gain).
+        auto warnAndDisableMultiFileFlags = [&]() {
+            if (coverage) {
+                errs() << "Warning: --coverage is not supported with multi-file "
+                          "test execution; coverage is only available for "
+                          "single-file runs (e.g. `ry test foo.test.ry "
+                          "--coverage`). Disabling.\n";
+                coverage = false;
+            }
+            if (trace_enabled) {
+                errs() << "Warning: --trace is not supported with multi-file "
+                          "test execution; trace is only available for "
+                          "single-file runs (e.g. `ry test foo.test.ry "
+                          "--trace`). Disabling.\n";
+                trace_enabled = false;
+                ry::configureTrace(false, "");
+            }
+            if (outline) {
+                errs() << "Warning: --outline is not supported with multi-file "
+                          "test execution; outline is only available for "
+                          "single-file runs (e.g. `ry test foo.test.ry "
+                          "--outline`). Disabling.\n";
+                outline = false;
+            }
+        };
 
         if (target) {
             std::string target_str = target;
@@ -284,19 +321,16 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             if (path_is_directory) {
+                warnAndDisableMultiFileFlags();
                 if (watch) {
-                    const char *a0 = argv[0];
-                    bool sgl = skip_global_lib;
                     ry::watchAndRunTests(target_str,
-                        [target_str, a0, sgl, parallel, coverage, outline, parallel_workers]() {
-                            ry::discoverAndRunTests(target_str, a0, sgl, parallel,
-                                                    coverage, outline, parallel_workers);
+                        [target_str, parallel_workers]() {
+                            ry::discoverAndRunTests(target_str, parallel_workers);
                         });
                     return finalizeAfterPossibleJit(0);
                 }
                 return finalizeAfterPossibleJit(
-                    ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel,
-                                            coverage, outline, parallel_workers));
+                    ry::discoverAndRunTests(target_str, parallel_workers));
             }
             if (!path_exists) {
                 std::string resolved;
@@ -354,21 +388,18 @@ int main(int argc, char *argv[]) {
                 errs() << "Error: package.toml not found. Run 'ry init' first.\n";
                 return 1;
             }
+            warnAndDisableMultiFileFlags();
             if (watch) {
                 const std::string &root_dir = *root;
-                const char *a0 = argv[0];
-                bool sgl = skip_global_lib;
                 // NOLINTNEXTLINE(bugprone-exception-escape): watcher lambda; exceptions terminate the process
                 ry::watchAndRunTests(root_dir,
-                    [root_dir, a0, sgl, parallel, coverage, outline, parallel_workers]() {
-                        ry::discoverAndRunTests(root_dir, a0, sgl, parallel,
-                                                coverage, outline, parallel_workers);
+                    [root_dir, parallel_workers]() {
+                        ry::discoverAndRunTests(root_dir, parallel_workers);
                     });
                 return finalizeAfterPossibleJit(0);
             }
             return finalizeAfterPossibleJit(
-                ry::discoverAndRunTests(*root, argv[0], skip_global_lib, parallel,
-                                        coverage, outline, parallel_workers));
+                ry::discoverAndRunTests(*root, parallel_workers));
         }
     }
 

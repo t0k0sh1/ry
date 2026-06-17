@@ -19,14 +19,22 @@ unsigned computeDefaultWorkers(unsigned hw_concurrency);
 // (when non-zero) and floored at 1.
 int computeParallelism(int requested_workers, std::size_t test_file_count);
 
+// Subprocess fan-out dispatcher (#2234). Spawns one child process per test
+// file via posix_spawn — even at worker=1 — so the parent never JITs and
+// each child exits via _exit, matching the "1 source = 1 process" invariant
+// the 6-step JIT teardown suppression depends on.
+//
+// `parallel_workers` controls only the worker count:
+//   0 → computeDefaultWorkers(hardware_concurrency()) = hw-1 (min 1)
+//   N → N (clamped to test_file_count, floored at 1)
+//
+// `--coverage` / `--trace` / `--outline` are NOT forwarded to the child
+// (runTestFileSubprocess argv is `{exe, "test", filepath}` only); the call
+// site disables them with a warning when the target is multi-file.
 int runTestFiles(const std::vector<std::string> &test_files,
-                 const char *argv0, bool skip_global_lib,
-                 bool parallel, bool coverage = false, bool outline = false,
                  int parallel_workers = 0);
 
-int discoverAndRunTests(const std::string &dir, const char *argv0,
-                        bool skip_global_lib, bool parallel,
-                        bool coverage = false, bool outline = false,
+int discoverAndRunTests(const std::string &dir,
                         int parallel_workers = 0);
 
 } // namespace ry
