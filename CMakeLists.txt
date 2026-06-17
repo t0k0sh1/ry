@@ -182,22 +182,12 @@ add_library(ry_lib STATIC
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
     src/codegen_lowering_bounds_check.cpp
-    src/codegen_emission_bounds_check.cpp
     src/codegen_lowering_result_branch.cpp
-    src/codegen_emission_result_branch.cpp
     src/codegen_lowering_option_wrap.cpp
-    src/codegen_emission_option_wrap.cpp
     src/codegen_lowering_arc.cpp
-    src/codegen_emission_arc.cpp
-    src/codegen_lowering_runtime_call.cpp
-    src/codegen_emission_runtime_call.cpp
     src/codegen_lowering_collection_mutate.cpp
-    src/codegen_emission_collection_mutate.cpp
     src/codegen_lowering_cow.cpp
-    src/codegen_emission_cow.cpp
     src/codegen_lowering_any.cpp
-    src/codegen_emission_any.cpp
-    src/codegen_emission_reduce.cpp
     src/runtime/core/error.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp

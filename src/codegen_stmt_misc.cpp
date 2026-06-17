@@ -1,6 +1,8 @@
 #include "ry/codegen.hpp"
 #include "ry/builtin_names.hpp"
 #include "ry/codegen/lowered_bounds_check.hpp"
+#include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 
 
@@ -427,8 +429,20 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
             if (auto bcOp = codegen::lowering::lowerBoundsCheck(
                     *this, indexVal, length, codegen::lowered::BoundsKind::List,
-                    ".idx_chain_err"))
-                indexVal = codegen::emission::emitBoundsCheck(*this, *bcOp, "idx_chain");
+                    ".idx_chain_err")) {
+                RyValueId idxId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+                RyValueId lenId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+                RyValueId bcResultId = ry_emit_bounds_check(
+                    emit_ctx_, idxId, lenId,
+                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
+                        ? RY_BOUNDS_LIST
+                        : RY_BOUNDS_ARRAY,
+                    bcOp->error_spec.global_name.c_str(), "idx_chain");
+                indexVal = ry::llvm_emit::asLlvmValue(
+                    ry_emit_resolve(emit_ctx_, bcResultId));
+            }
             llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 2, "data_ptr");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
             elemSlot = builder_.CreateGEP(elemTy, dataPtr, {indexVal}, "list_elem_ptr");
@@ -1082,8 +1096,20 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
             if (auto bcOp = codegen::lowering::lowerBoundsCheck(
                     *this, key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                    codegen::lowered::BoundsKind::Array, ".arr_assign_err"))
-                key = codegen::emission::emitBoundsCheck(*this, *bcOp, "arr_assign");
+                    codegen::lowered::BoundsKind::Array, ".arr_assign_err")) {
+                RyValueId idxId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+                RyValueId lenId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+                RyValueId bcResultId = ry_emit_bounds_check(
+                    emit_ctx_, idxId, lenId,
+                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
+                        ? RY_BOUNDS_LIST
+                        : RY_BOUNDS_ARRAY,
+                    bcOp->error_spec.global_name.c_str(), "arr_assign");
+                key = ry::llvm_emit::asLlvmValue(
+                    ry_emit_resolve(emit_ctx_, bcResultId));
+            }
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
@@ -1320,8 +1346,20 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
     if (auto bcOp = codegen::lowering::lowerBoundsCheck(
-            *this, key, length, codegen::lowered::BoundsKind::List, ".idx_assign_err"))
-        key = codegen::emission::emitBoundsCheck(*this, *bcOp, "idx_assign");
+            *this, key, length, codegen::lowered::BoundsKind::List, ".idx_assign_err")) {
+        RyValueId idxId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+        RyValueId lenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+        RyValueId bcResultId = ry_emit_bounds_check(
+            emit_ctx_, idxId, lenId,
+            bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
+                ? RY_BOUNDS_LIST
+                : RY_BOUNDS_ARRAY,
+            bcOp->error_spec.global_name.c_str(), "idx_assign");
+        key =
+            ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, bcResultId));
+    }
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");

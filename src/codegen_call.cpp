@@ -189,8 +189,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
         // Copy generation delegated to the llvm_emit boundary (#2093); mapLen
         // (alloc == copy) and keysData feed the malloc + memcpy.
-        llvm::Value *newData = codegen::emission::emitListCopyFull(
-            *this, keysData, mapLen, elemSize, RY_LISTCOPY_KEYS);
+        RyValueId keysSrcId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(keysData));
+        RyValueId keysLenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(mapLen));
+        RyValueId keysNewDataId = ry_emit_list_copy_full(
+            emit_ctx_, keysSrcId, keysLenId, elemSize, RY_LISTCOPY_KEYS);
+        llvm::Value *newData = ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, keysNewDataId));
 
         // memcpy duplicates raw pointers without bumping refcounts. Once
         // propagateTypeMeta below stamps list_elem_type_name on the result,
@@ -234,8 +240,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
         // Copy generation delegated to the llvm_emit boundary (#2093); mapLen
         // (alloc == copy) and valsData feed the malloc + memcpy.
-        llvm::Value *newData = codegen::emission::emitListCopyFull(
-            *this, valsData, mapLen, elemSize, RY_LISTCOPY_VALUES);
+        RyValueId valsSrcId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(valsData));
+        RyValueId valsLenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(mapLen));
+        RyValueId valsNewDataId = ry_emit_list_copy_full(
+            emit_ctx_, valsSrcId, valsLenId, elemSize, RY_LISTCOPY_VALUES);
+        llvm::Value *newData = ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, valsNewDataId));
 
         // memcpy of an ARC-managed value buffer must be paired with retain;
         // see keys() above for the rationale (#1204 / #1242).

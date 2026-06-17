@@ -364,7 +364,14 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto op = codegen::lowering::lowerCollectionAppend(
             *this, listPtr, val, listHeaderTy_, elemTy, elemSize);
-        codegen::emission::emitCollectionAppend(*this, op);
+        RyValueId listId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+        RyValueId valId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
+        ry_emit_collection_append(emit_ctx_, listId, valId,
+                                  ry::llvm_emit::asRyType(op.list_header_ty),
+                                  ry::llvm_emit::asRyType(op.elem_ty),
+                                  op.elem_size);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -397,8 +404,16 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         // Copy generation (malloc + memcpy of the old range) is delegated to the
         // llvm_emit boundary (#2093). newLen/lf.len/lf.data are loaded above and
         // reused after; the appended-element store + ARC retains stay below.
-        llvm::Value *newData = codegen::emission::emitListAppendedCopy(
-            *this, newLen, lf.len, lf.data, elemSize);
+        RyValueId apdNewLenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newLen));
+        RyValueId apdOldLenId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.len));
+        RyValueId apdSrcId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+        RyValueId apdNewDataId = ry_emit_list_appended(
+            emit_ctx_, apdNewLenId, apdOldLenId, apdSrcId, elemSize);
+        llvm::Value *newData = ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, apdNewDataId));
 
         // The new list co-owns the memcpy'd range AND the appended value
         // with the source.  After #1242 the destructor recursively releases
@@ -532,9 +547,22 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     auto op = codegen::lowering::lowerListSlice(*this, listPtr, startVal,
                                                 endExclVal, listHeaderTy_,
                                                 elemTy, elemSize);
-    auto result = codegen::emission::emitListSlice(*this, op);
-    llvm::Value *count = result.count;
-    llvm::Value *newData = result.new_data;
+    RyValueId sliceListId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+    RyValueId sliceStartId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.start));
+    RyValueId sliceEndId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.end_excl));
+    RyValueId sliceCountId = 0;
+    RyValueId sliceNewDataId = 0;
+    ry_emit_list_slice(emit_ctx_, sliceListId, sliceStartId, sliceEndId,
+                       ry::llvm_emit::asRyType(op.list_header_ty),
+                       ry::llvm_emit::asRyType(op.elem_ty), op.elem_size,
+                       &sliceCountId, &sliceNewDataId);
+    llvm::Value *count =
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, sliceCountId));
+    llvm::Value *newData = ry::llvm_emit::asLlvmValue(
+        ry_emit_resolve(emit_ctx_, sliceNewDataId));
 
     llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
@@ -602,8 +630,14 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         // Copy generation delegated to the llvm_emit boundary (#2093); clampedN
         // (alloc == copy) and lf.data feed the malloc + memcpy.
-        llvm::Value *newData = codegen::emission::emitListCopyFull(
-            *this, lf.data, clampedN, elemSize, RY_LISTCOPY_TAKE);
+        RyValueId tkSrcId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+        RyValueId tkCountId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(clampedN));
+        RyValueId tkNewDataId = ry_emit_list_copy_full(
+            emit_ctx_, tkSrcId, tkCountId, elemSize, RY_LISTCOPY_TAKE);
+        llvm::Value *newData = ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, tkNewDataId));
 
         // Reference-typed elements share ownership with the source list.
         // memcpy duplicates raw pointers without bumping refcounts; without
@@ -687,7 +721,16 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto op = codegen::lowering::lowerCollectionInsert(
             *this, listPtr, idx, val, listHeaderTy_, elemTy, elemSize);
-        codegen::emission::emitCollectionInsert(*this, op);
+        RyValueId insListId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+        RyValueId insIdxId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.idx));
+        RyValueId insValId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
+        ry_emit_collection_insert(emit_ctx_, insListId, insIdxId, insValId,
+                                  ry::llvm_emit::asRyType(op.list_header_ty),
+                                  ry::llvm_emit::asRyType(op.elem_ty),
+                                  op.elem_size);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -710,7 +753,16 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto op = codegen::lowering::lowerCollectionRemoveAt(
             *this, listPtr, idx, listHeaderTy_, elemTy, elemSize);
-        return codegen::emission::emitCollectionRemoveAt(*this, op);
+        RyValueId rmListId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+        RyValueId rmIdxId =
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.idx));
+        RyValueId rmRemovedId = ry_emit_collection_remove_at(
+            emit_ctx_, rmListId, rmIdxId,
+            ry::llvm_emit::asRyType(op.list_header_ty),
+            ry::llvm_emit::asRyType(op.elem_ty), op.elem_size);
+        return ry::llvm_emit::asLlvmValue(
+            ry_emit_resolve(emit_ctx_, rmRemovedId));
     }
     return nullptr;
 }

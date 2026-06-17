@@ -1,5 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_collection_mutate.hpp"
+#include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include <climits>
@@ -2103,8 +2105,21 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     // Copy generation (malloc + the two memcpys + the mid-buffer GEP) delegated
     // to the llvm_emit boundary (#2093). lf/rf lengths+data and newLen are loaded
     // above and reused by the retain loop / metadata propagation below.
-    llvm::Value *newData = codegen::emission::emitListConcatCopy(
-        *this, lf.len, lf.data, rf.len, rf.data, newLen, elemTy, elemSize);
+    RyValueId catLhsLenId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.len));
+    RyValueId catLhsDataId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(lf.data));
+    RyValueId catRhsLenId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rf.len));
+    RyValueId catRhsDataId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(rf.data));
+    RyValueId catNewLenId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(newLen));
+    RyValueId catNewDataId = ry_emit_list_concat(
+        emit_ctx_, catLhsLenId, catLhsDataId, catRhsLenId, catRhsDataId,
+        catNewLenId, ry::llvm_emit::asRyType(elemTy), elemSize);
+    llvm::Value *newData =
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, catNewDataId));
 
     // Reference-typed elements share ownership with the source lists. memcpy
     // duplicates raw pointers without bumping refcounts; without retention,

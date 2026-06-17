@@ -437,16 +437,47 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 
 // ===== Shared Result-wrapping helpers =====
 
-// Thin shim over emission::emitResultBranch. The actual three-BB + PHI IR
-// construction lives in the llvm_emit boundary layer (ry_emit_result_branch);
-// this method exists only to bridge the function_ref-style call sites
-// (wrapPtrAsResult, emitResultBranchWithMeta, http nest paths, etc.)
-// without churning every caller.
+namespace {
+
+// Trampoline glue between the C++-side `llvm::function_ref<>` shape used by
+// callers (e.g. wrapPtrAsResult) and the C-side function-pointer + user_ctx
+// shape consumed by ry_emit_result_branch. The boundary keeps both ok and err
+// builders self-contained; this struct simply lets one trampoline invocation
+// look up which closure to call.
+struct ResultBranchTrampolineCtx {
+    llvm::function_ref<llvm::Value *()> build_ok;
+    llvm::function_ref<llvm::Value *()> build_err;
+    RyEmitCtx *emit_ctx;
+};
+
+RyValueId resultBranchTrampolineOk(void *user) {
+    auto *t = static_cast<ResultBranchTrampolineCtx *>(user);
+    llvm::Value *v = t->build_ok();
+    return ry_emit_intern(t->emit_ctx, ry::llvm_emit::asRyValue(v));
+}
+
+RyValueId resultBranchTrampolineErr(void *user) {
+    auto *t = static_cast<ResultBranchTrampolineCtx *>(user);
+    llvm::Value *v = t->build_err();
+    return ry_emit_intern(t->emit_ctx, ry::llvm_emit::asRyValue(v));
+}
+
+} // namespace
+
+// Thin shim that bridges the function_ref-style call sites (wrapPtrAsResult,
+// emitResultBranchWithMeta, http nest paths, etc.) to ry_emit_result_branch.
+// The actual three-BB + PHI IR construction lives behind the boundary.
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
                                         llvm::function_ref<llvm::Value*()> buildOk,
                                         llvm::function_ref<llvm::Value*()> buildErr) {
     auto op = codegen::lowering::lowerResultBranch(*this, isErr, resTy);
-    return codegen::emission::emitResultBranch(*this, op, buildOk, buildErr);
+    ResultBranchTrampolineCtx tctx{buildOk, buildErr, emit_ctx_};
+    RyValueId isErrId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.is_err));
+    RyValueId resultId = ry_emit_result_branch(
+        emit_ctx_, isErrId, ry::llvm_emit::asRyType(op.res_ty),
+        &resultBranchTrampolineOk, &resultBranchTrampolineErr, &tctx);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
 }
 
 llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {

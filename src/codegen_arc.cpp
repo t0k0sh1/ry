@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_arc.hpp"
 #include "ry/llvm_emit/api.h" // RY_ATOMIC_BINOP_* / RY_ATOMIC_ORDERING_* (#2190)
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 #include <cstdint>
@@ -121,27 +122,30 @@ llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
 }
 
 void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
-    // Stage 2-C (#1968): IR construction moved to llvm_emit boundary
-    // (ry_emit_arc_retain). This shim is the codegen-side bridge —
-    // lower → emit (passthrough lowering).
     auto op = codegen::lowering::lowerArcRetain(*this, headerPtr, atomic);
-    codegen::emission::emitArcRetain(*this, op);
+    RyValueId headerId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.header_ptr));
+    ry_emit_arc_retain(emit_ctx_, headerId,
+                       op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC);
 }
 
 void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
                               llvm::FunctionCallee destructor,
                               llvm::Function *gcVisitFn) {
-    // Stage 2-C (#1968): IR construction moved to llvm_emit boundary
-    // (ry_emit_arc_release). The lowering layer extracts the C-fnptr
-    // Value* from FunctionCallee so the LLVM-typed pair does not need
-    // to cross the boundary. used_native_libraries_.insert("gc") is now
-    // emitted by codegen_emission_arc.cpp.
+    // ry_emit_arc_release emits __ry_gc_track / __ry_gc_untrack calls; the
+    // runtime requires libry_gc to be registered.
+    used_native_libraries_.insert("gc");
     llvm::Value *dtorCallee = destructor
         ? llvm::cast<llvm::Value>(destructor.getCallee())
         : nullptr;
     auto op = codegen::lowering::lowerArcRelease(
         *this, headerPtr, atomic, dtorCallee, gcVisitFn);
-    codegen::emission::emitArcRelease(*this, op);
+    RyValueId headerId =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.header_ptr));
+    ry_emit_arc_release(emit_ctx_, headerId,
+                        op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC,
+                        ry::llvm_emit::asRyValue(op.destructor_callee),
+                        ry::llvm_emit::asRyValue(op.gc_visit_fn));
 }
 
 bool CodeGen::isArcAtomic(llvm::Value *val) const {

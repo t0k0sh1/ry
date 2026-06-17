@@ -1,6 +1,8 @@
 #include "ry/codegen.hpp"
 #include "ry/codegen/lowered_bounds_check.hpp"
 #include "ry/codegen/lowered_cow.hpp"
+#include "ry/llvm_emit/api.h"
+#include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 
@@ -86,6 +88,10 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
     if (!slotPtr)
         return dataPtr;
 
+    // ry_emit_cow_ensure_unique internally calls ry_emit_arc_release which
+    // emits __ry_gc_track / __ry_gc_untrack; libry_gc must be registered.
+    used_native_libraries_.insert("gc");
+
     // Element-retention decision uses metadata stamped on the *old*
     // container — the cloned buffer the boundary returns does not carry
     // metadata. str elements always need retention because their
@@ -154,7 +160,25 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         doKeyRetain, keyArcKind == CollectionKind::Str,
         destructorVal);
 
-    auto *phi = codegen::emission::emitCowEnsureUnique(*this, op);
+    RyCowEnsureUniqueDesc desc{};
+    desc.data_ptr_id =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.data_ptr));
+    desc.slot_ptr_id =
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.slot_ptr));
+    desc.kind = op.kind;
+    desc.atomic = op.atomic ? RY_ARC_ATOMIC : RY_ARC_NONATOMIC;
+    desc.elem_size = op.elem_size;
+    desc.key_size = op.key_size;
+    desc.val_size = op.val_size;
+    desc.do_elem_retain = op.do_elem_retain ? 1 : 0;
+    desc.elem_is_str = op.elem_is_str ? 1 : 0;
+    desc.do_key_retain = op.do_key_retain ? 1 : 0;
+    desc.key_is_str = op.key_is_str ? 1 : 0;
+    desc.destructor_callee = ry::llvm_emit::asRyValue(op.destructor_callee);
+
+    RyValueId newDataId = ry_emit_cow_ensure_unique(emit_ctx_, &desc);
+    auto *phi =
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, newDataId));
 
     // Propagate metadata so downstream type queries on the PHI result work.
     // When the slot is an alloca we use propagateMeta keyed on the alloca;
@@ -260,8 +284,20 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "pcow_length");
             if (auto bcOp = codegen::lowering::lowerBoundsCheck(
                     *this, indexVal, length, codegen::lowered::BoundsKind::List,
-                    ".pcow_list_err"))
-                indexVal = codegen::emission::emitBoundsCheck(*this, *bcOp, "pcow_list");
+                    ".pcow_list_err")) {
+                RyValueId idxId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->idx));
+                RyValueId lenId =
+                    ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(bcOp->len));
+                RyValueId bcResultId = ry_emit_bounds_check(
+                    emit_ctx_, idxId, lenId,
+                    bcOp->error_spec.kind == codegen::lowered::BoundsKind::List
+                        ? RY_BOUNDS_LIST
+                        : RY_BOUNDS_ARRAY,
+                    bcOp->error_spec.global_name.c_str(), "pcow_list");
+                indexVal = ry::llvm_emit::asLlvmValue(
+                    ry_emit_resolve(emit_ctx_, bcResultId));
+            }
             llvm::Value *dataField = builder_.CreateStructGEP(
                 listHeaderTy_, parent, 2, "pcow_data_field");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pcow_data");
