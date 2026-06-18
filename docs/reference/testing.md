@@ -19,7 +19,7 @@ ry test -w -p        # Watch mode with the default worker count
 ry test -w tests/    # Watch a specific directory
 ry test --coverage   # Run a single test file with line coverage summary
 ry test --cov        # Short alias for --coverage
-ry test --outline    # Print describe/it structure for a single file (no test bodies run)
+ry test --outline    # Print describe/it structure for all discovered files (no test bodies run)
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
@@ -975,7 +975,7 @@ describe verify
   it should count zero calls
 ```
 
-- **Single-file only.** On a directory target or auto-discovery (`ry test --outline`), the runner prints a warning and disables outline — the per-file subprocess argv does not carry `--outline` today. Use `ry test --outline path/to/file.test.ry` instead.
+- Works for single-file, directory, and auto-discovery targets. On multi-file runs each per-file subprocess receives `--outline` in its argv and the parent flushes their stdout in sorted-file order — the fan-out runner suppresses its own summary / progress lines in outline mode so the aggregated output is per-file outline only.
 - `@each` parameterized tests show the format template with an `(@each)` suffix
 - `@property` tests show the label with a `(@property)` suffix
 

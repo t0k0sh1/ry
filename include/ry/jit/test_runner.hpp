@@ -28,13 +28,23 @@ int computeParallelism(int requested_workers, std::size_t test_file_count);
 //   0 → computeDefaultWorkers(hardware_concurrency()) = hw-1 (min 1)
 //   N → N (clamped to test_file_count, floored at 1)
 //
-// `--coverage` / `--trace` / `--outline` are NOT forwarded to the child
-// (runTestFileSubprocess argv is `{exe, "test", filepath}` only); the call
-// site disables them with a warning when the target is multi-file.
+// `outline` is forwarded to each child via argv `--outline` (#2236); the
+// parent additionally suppresses its own fan-out summary / progress lines
+// so the aggregated stdout is per-file outline only — content-equivalent to
+// the pre-#2234 sequential-loop output (per-file outline preserved; child
+// stdout+stderr are pipe-merged at the parent rather than the old separate
+// stdout/stderr streams).
+//
+// `--coverage` / `--trace` are NOT forwarded: coverage requires
+// cross-process aggregation; trace risks clobbering the shared output file
+// across concurrent subprocesses. The call site disables them with a
+// warning when the target is multi-file.
 int runTestFiles(const std::vector<std::string> &test_files,
-                 int parallel_workers = 0);
+                 int parallel_workers,
+                 bool outline);
 
 int discoverAndRunTests(const std::string &dir,
-                        int parallel_workers = 0);
+                        int parallel_workers,
+                        bool outline);
 
 } // namespace ry
