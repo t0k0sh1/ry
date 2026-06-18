@@ -42,7 +42,9 @@ using namespace ry::llvm_emit;
 namespace {
 
 // Non-null callback so the ctx-NULL guard (not the callback guard) is the
-// trigger in the ResultBranchNullCtx test.
+// trigger in the ResultBranchNullCtx test. The returned 0 also exercises the
+// callback-returns-0 guard in ResultBranchCallbackReturningZeroReturnsZero
+// when a valid is_err_id is supplied.
 RyValueId dummyBuildValue(void * /*user_ctx*/) { return 0; }
 
 class EmitAbiGuardTest : public ::testing::Test {
@@ -143,6 +145,49 @@ TEST_F(EmitAbiGuardTest, ResultBranchNullCallbacksReturnsZero) {
     ASSERT_NE(ctx, nullptr);
     EXPECT_EQ(ry_emit_result_branch(ctx, /*is_err_id=*/0, asRyType(resultTy_),
                                     /*build_ok=*/nullptr, /*build_err=*/nullptr,
+                                    /*user_ctx=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+// --- #2251 result_branch resolve guards: an is_err_id that resolves to NULL
+//     (sentinel 0 / out-of-range id) and a callback that returns 0 must each
+//     produce sentinel 0 from the entry point, mirroring the resolve_value +
+//     `let Some(...) else { return 0; }` discipline that every other abi entry
+//     point already follows (bounds.rs:48, arc.rs:48, any.rs:93, cow.rs:67,
+//     reduce.rs:37). Before #2251 these paths fed NULL to `LLVMBuildCondBr` /
+//     PHI incoming and only failed downstream (assertion / verify reject); the
+//     fix returns 0 before any malformed IR escapes. Both tests set a real
+//     insert block so the resolve guard — not the `insert_bb.is_null()` guard
+//     in `composite::result::emit_result_branch` — is the gate. ---
+
+TEST_F(EmitAbiGuardTest, ResultBranchUnresolvedIsErrIdReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    builder_->SetInsertPoint(makeBB());
+    EXPECT_EQ(ry_emit_result_branch(ctx, /*is_err_id=*/0, asRyType(resultTy_),
+                                    &dummyBuildValue, &dummyBuildValue,
+                                    /*user_ctx=*/nullptr),
+              0u);
+    ry_emit_ctx_destroy(ctx);
+}
+
+TEST_F(EmitAbiGuardTest, ResultBranchCallbackReturningZeroReturnsZero) {
+    RyEmitCtx *ctx = makeCtx();
+    ASSERT_NE(ctx, nullptr);
+    builder_->SetInsertPoint(makeBB());
+    // Intern a valid i1 so the is_err resolve guard does not fire; the only
+    // remaining gate is the callback-returns-0 guard inside the do_ok / do_err
+    // closures.
+    llvm::Value *isErrVal = llvm::ConstantInt::get(llvm::Type::getInt1Ty(llctx_), 0);
+    RyValueId isErrId = ry_emit_intern(ctx, asRyValue(isErrVal));
+    // EXPECT (not ASSERT) so a broken intern still runs the destroy below — a
+    // failed intern would also make the EXPECT_EQ pass for the wrong reason (the
+    // is_err resolve guard would fire instead of the closure resolve guard), so
+    // the EXPECT_NE failure is what flags the precondition break.
+    EXPECT_NE(isErrId, 0u);
+    EXPECT_EQ(ry_emit_result_branch(ctx, isErrId, asRyType(resultTy_),
+                                    &dummyBuildValue, &dummyBuildValue,
                                     /*user_ctx=*/nullptr),
               0u);
     ry_emit_ctx_destroy(ctx);
