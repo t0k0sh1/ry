@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
+#include <llvm/IR/Operator.h>
 
 
 namespace ry {
@@ -194,6 +195,18 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // must be metadata-gated" (#1266 / #2246). Require positive str evidence.
     bool doStrRetain = !isCollection && isStringValue(val);
     if (doStrRetain) {
+        // `cachedGlobalString` returns a ConstantExpr GEP into a StringHeader-
+        // prefixed global (see `buildArcGlobal` in `src/codegen.cpp`), not the
+        // GlobalVariable itself, so an `isa<GlobalVariable>(val)` check alone
+        // misses literal-backed str handles. Walk one GEP level to the root.
+        auto hasGlobalStringOrigin = [&] {
+            if (llvm::isa<llvm::GlobalVariable>(val)) return true;
+            if (auto *gep = llvm::dyn_cast<llvm::GEPOperator>(val)) {
+                return llvm::isa<llvm::GlobalVariable>(
+                    gep->getPointerOperand()->stripPointerCasts());
+            }
+            return false;
+        };
         auto loadedFromStrAlloca = [&] {
             auto *load = llvm::dyn_cast<llvm::LoadInst>(val);
             if (!load) return false;
@@ -202,7 +215,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
             return alloca && arc_str_managed_vars_.count(alloca) > 0;
         };
         doStrRetain = arc_str_owned_values_.count(val) > 0 ||
-                      llvm::isa<llvm::GlobalVariable>(val) ||
+                      hasGlobalStringOrigin() ||
                       loadedFromStrAlloca() ||
                       (meta && meta->str_elem);
     }
