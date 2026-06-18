@@ -1609,6 +1609,15 @@ public:
     void emitStmt(std::unique_ptr<FnStmt> &s);
     void emitStmt(std::unique_ptr<UsingStmt> &s);
     void forwardDeclareFunctions(Program &prog);
+    void collectAndSpliceFileLifecycleHooks(Program &prog);
+    // Shared between file-level (collectAndSpliceFileLifecycleHooks) and
+    // describe-level (emitDescribeFn) hook pre-scan loops (#2235). Rejects
+    // a second hook of the same name in the same scope, validates shape +
+    // body, and moves the body into `dest`. `scopeLabel` is interpolated
+    // into the duplicate-declaration error ("file" / "@describe block").
+    void extractLifecycleHook(std::unique_ptr<FnStmt> &fn, const char *hookName,
+                              const char *scopeLabel,
+                              std::vector<StmtNode> &dest, std::string &destName);
     llvm::Function *declareFunction(
         const std::string &name,
         std::vector<llvm::Type*> &paramTypes,
@@ -1642,6 +1651,17 @@ public:
     void markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig);
     llvm::SmallVector<llvm::Value*, 4> loadCapturedArgs(const OverloadEntry &entry, const std::string &directive);
     void emitItDirective(std::unique_ptr<FnStmt> &s);
+    // Shared fn-emission phase for @it (basic / @timeout / @each /
+    // @property) (#2235): strip the given directives, emit the body as
+    // an ordinary fn, and return its OverloadEntry. emitItDriverFragment
+    // is the basic / @timeout driver synthesis (it_begin → hook cascade
+    // → call → hook cascade → it_end, or sigsetjmp variant on timeout).
+    const OverloadEntry &emitItFn(std::unique_ptr<FnStmt> &s,
+                                   std::initializer_list<const char *> stripList,
+                                   const char *directiveLabel);
+    void emitItDriverFragment(llvm::Value *descVal,
+                              const OverloadEntry &entry,
+                              int64_t timeoutMs);
     void emitEachItDirective(std::unique_ptr<FnStmt> &s);
     void emitPropertyItDirective(std::unique_ptr<FnStmt> &s);
     // Per-test @timeout(ms) directive (#1688, #1781). Emits two sigsetjmp
@@ -1664,6 +1684,12 @@ public:
                            std::vector<StmtNode> *describeAfterEachBody,
                            std::vector<StmtNode> *fileAfterEachBody);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
+    // Phases of @describe normal-mode emission (#2235): fn emission
+    // (hook splice + emit) and driver fragment synthesis
+    // (describe_begin/call/end). Outline mode bypasses both.
+    const OverloadEntry &emitDescribeFn(std::unique_ptr<FnStmt> &s);
+    void emitDescribeDriverFragment(llvm::Value *descVal,
+                                    const OverloadEntry &entry);
 
     // Lifecycle hooks (#1686): @beforeEach / @afterEach / @beforeAll /
     // @afterAll. Pre-scanned and AST-rewritten inside emitDescribeDirective —

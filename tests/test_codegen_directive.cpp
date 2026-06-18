@@ -2854,3 +2854,61 @@ TEST_F(DirectiveTest, FullNineStepCascadeOrdering) {
     }
 }
 
+// --- Regression guards for #2235 (refactor: emit @it as ordinary fns
+// + synthesize sequential driver main) ---
+//
+// The refactor splits emitItDirective / emitDescribeDirective into "fn
+// emission" and "driver fragment synthesis" phases, and extracts the
+// file-level lifecycle hook pre-scan into a helper. These two tests pin
+// the in-place driver fragment ordering invariant: source order between
+// top-level non-fn statements and @describe groups must be preserved,
+// and describe-level @beforeEach must observably run before the @it body.
+//
+// Both tests pass against pre-refactor code and must continue to pass
+// across every intermediate cycle. If either regresses, the driver
+// fragment was reordered relative to top-level emission or the hook
+// inline sequence was broken.
+
+// Mirrors any.test.ry:1149 — a module-level binding declared BETWEEN
+// two top-level @describe blocks must be initialized before the second
+// @describe's @it body observes it.
+TEST_F(DirectiveTest, InterleavedBindingBetweenDescribesPreservesOrder) {
+    const std::string output = runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"first block\")\n"
+        "fn firstBlock():\n"
+        "    @it(\"dummy\")\n"
+        "    fn dummy():\n"
+        "        expect(1).toEq(1)\n"
+        "sharedVal: int = 42\n"
+        "@describe(\"second block uses sharedVal\")\n"
+        "fn secondBlock():\n"
+        "    @it(\"should see sharedVal = 42\")\n"
+        "    fn checkShared():\n"
+        "        expect(sharedVal).toEq(42)\n"
+    ));
+    EXPECT_NE(output.find("2 passed, 0 failed"), std::string::npos)
+        << "interleaved binding must be initialized before the second @describe runs: "
+        << output;
+}
+
+// Mirrors the describe-level @beforeEach inline-ordering invariant.
+// The hook body must execute before the @it body observes captured state.
+// If emitItDriverFragment is extracted incorrectly (e.g. begin/end emitted
+// before the @beforeEach inline), this regresses to "0 passed, 1 failed".
+TEST_F(DirectiveTest, DescribeBeforeEachRunsBeforeItBody) {
+    const std::string output = runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"hook ordering\")\n"
+        "fn d():\n"
+        "    counter = 0\n"
+        "    @beforeEach\n"
+        "    fn setup():\n"
+        "        counter = counter + 1\n"
+        "    @it(\"sees counter incremented by beforeEach\")\n"
+        "    fn checkCounter():\n"
+        "        expect(counter).toEq(1)\n"
+    ));
+    EXPECT_NE(output.find("1 passed, 0 failed"), std::string::npos)
+        << "describe-level @beforeEach must observably run before the @it body: "
+        << output;
+}
+

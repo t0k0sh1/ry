@@ -1457,86 +1457,8 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
         }
     }
 
-    // File-top-level lifecycle hook pre-scan (#1780). Mirrors the in-describe
-    // extract loop in emitDescribeDirective: walk prog linearly, validate
-    // each @beforeAll/@beforeEach/@afterEach/@afterAll FnStmt, steal its
-    // body, and erase the FnStmt so the defense-in-depth handlers
-    // (emitBeforeEachDirective et al. in src/codegen_test.cpp) are never
-    // reached for file-level hooks. @beforeEach/@afterEach bodies live on
-    // CodeGen until emitItDirective inlines them; @beforeAll/@afterAll
-    // bodies are spliced back into prog around the first/last test anchor.
-    std::vector<StmtNode> fileBeforeAllBody, fileAfterAllBody;
-    std::string fileBeforeAllName, fileAfterAllName,
-                fileBeforeEachName, fileAfterEachName;
     if (test_mode_) {
-        auto extractFileHook = [&](std::unique_ptr<FnStmt> &fn, const char *hookName,
-                                   std::vector<StmtNode> &dest, std::string &destName) {
-            if (!destName.empty())
-                codegenError(std::string("@") + hookName +
-                    " can be declared at most once per file (fn '" +
-                    destName + "' already declared)");
-            validateLifecycleHookFnShape(fn, hookName);
-            validateLifecycleHookBody(fn->body, hookName);
-            destName = fn->name;
-            dest = std::move(fn->body);
-        };
-
-        for (auto it = prog.begin(); it != prog.end(); ) {
-            auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&*it);
-            if (!fnPtr) { ++it; continue; }
-            auto &fn = *fnPtr;
-            bool consumed = false;
-            if (hasDirective(fn->directives, "beforeEach")) {
-                extractFileHook(fn, "beforeEach", file_before_each_body_, fileBeforeEachName);
-                consumed = true;
-            } else if (hasDirective(fn->directives, "afterEach")) {
-                extractFileHook(fn, "afterEach", file_after_each_body_, fileAfterEachName);
-                consumed = true;
-            } else if (hasDirective(fn->directives, "beforeAll")) {
-                extractFileHook(fn, "beforeAll", fileBeforeAllBody, fileBeforeAllName);
-                consumed = true;
-            } else if (hasDirective(fn->directives, "afterAll")) {
-                extractFileHook(fn, "afterAll", fileAfterAllBody, fileAfterAllName);
-                consumed = true;
-            }
-            if (consumed) it = prog.erase(it);
-            else          ++it;
-        }
-
-        // Splice @beforeAll body before the first test anchor (@it OR
-        // @describe at file top level) and @afterAll body after the last
-        // such anchor. Mixed @it / @describe layouts are supported because
-        // file-level hooks must wrap every test in the file regardless of
-        // whether it lives at top level or inside a @describe. No anchor
-        // means the file contains no tests; bodies are silently dropped to
-        // match the in-describe behaviour (see emitDescribeDirective's
-        // "If the describe contains no direct @it" comment).
-        auto isFileTestStmt = [](const StmtNode &stmt) {
-            const auto *fnp = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
-            if (!fnp) return false;
-            return hasDirective((*fnp)->directives, "it") ||
-                   hasDirective((*fnp)->directives, "describe");
-        };
-        size_t firstTestIdx = prog.size();
-        size_t lastTestIdx = 0;
-        bool sawTest = false;
-        for (size_t i = 0; i < prog.size(); ++i) {
-            if (isFileTestStmt(prog[i])) {
-                if (!sawTest) { firstTestIdx = i; sawTest = true; }
-                lastTestIdx = i;
-            }
-        }
-        if (sawTest && !fileBeforeAllBody.empty()) {
-            prog.insert(prog.begin() + static_cast<std::ptrdiff_t>(firstTestIdx),
-                        std::make_move_iterator(fileBeforeAllBody.begin()),
-                        std::make_move_iterator(fileBeforeAllBody.end()));
-            lastTestIdx += fileBeforeAllBody.size();
-        }
-        if (sawTest && !fileAfterAllBody.empty()) {
-            prog.insert(prog.begin() + static_cast<std::ptrdiff_t>(lastTestIdx + 1),
-                        std::make_move_iterator(fileAfterAllBody.begin()),
-                        std::make_move_iterator(fileAfterAllBody.end()));
-        }
+        collectAndSpliceFileLifecycleHooks(prog);
     }
 
     runCyclicTypeAnalysis(typeGraph, allTypes);
@@ -1584,6 +1506,95 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
         codegenError("IR verify error: " + err);
 
     return llvm::orc::ThreadSafeModule(std::move(mod_), std::move(ctx_));
+}
+
+// Shared between file-level and describe-level hook pre-scan (#2235).
+// Mirrors the per-scope at-most-once enforcement plus shape/body
+// validation, then transfers the hook fn's body into the destination
+// slot. Caller still owns erasing the consumed FnStmt from its container.
+void CodeGen::extractLifecycleHook(std::unique_ptr<FnStmt> &fn, const char *hookName,
+                                    const char *scopeLabel,
+                                    std::vector<StmtNode> &dest, std::string &destName) {
+    if (!destName.empty())
+        codegenError(std::string("@") + hookName +
+            " can be declared at most once per " + scopeLabel + " (fn '" +
+            destName + "' already declared)");
+    validateLifecycleHookFnShape(fn, hookName);
+    validateLifecycleHookBody(fn->body, hookName);
+    destName = fn->name;
+    dest = std::move(fn->body);
+}
+
+// File-top-level lifecycle hook pre-scan (#1780, extracted #2235).
+// Mirrors the in-describe extract loop in emitDescribeFn: walk prog
+// linearly, validate each @beforeAll/@beforeEach/@afterEach/@afterAll
+// FnStmt, steal its body, and erase the FnStmt so the defense-in-depth
+// handlers (emitBeforeEachDirective et al. in src/codegen_test.cpp) are
+// never reached for file-level hooks. @beforeEach/@afterEach bodies
+// live on CodeGen until emitItDriverFragment inlines them;
+// @beforeAll/@afterAll bodies are spliced back into prog around the
+// first/last test anchor.
+void CodeGen::collectAndSpliceFileLifecycleHooks(Program &prog) {
+    std::vector<StmtNode> fileBeforeAllBody, fileAfterAllBody;
+    std::string fileBeforeAllName, fileAfterAllName,
+                fileBeforeEachName, fileAfterEachName;
+
+    for (auto it = prog.begin(); it != prog.end(); ) {
+        auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&*it);
+        if (!fnPtr) { ++it; continue; }
+        auto &fn = *fnPtr;
+        bool consumed = false;
+        if (hasDirective(fn->directives, "beforeEach")) {
+            extractLifecycleHook(fn, "beforeEach", "file", file_before_each_body_, fileBeforeEachName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "afterEach")) {
+            extractLifecycleHook(fn, "afterEach", "file", file_after_each_body_, fileAfterEachName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "beforeAll")) {
+            extractLifecycleHook(fn, "beforeAll", "file", fileBeforeAllBody, fileBeforeAllName);
+            consumed = true;
+        } else if (hasDirective(fn->directives, "afterAll")) {
+            extractLifecycleHook(fn, "afterAll", "file", fileAfterAllBody, fileAfterAllName);
+            consumed = true;
+        }
+        if (consumed) it = prog.erase(it);
+        else          ++it;
+    }
+
+    // Splice @beforeAll body before the first test anchor (@it OR
+    // @describe at file top level) and @afterAll body after the last
+    // such anchor. Mixed @it / @describe layouts are supported because
+    // file-level hooks must wrap every test in the file regardless of
+    // whether it lives at top level or inside a @describe. No anchor
+    // means the file contains no tests; bodies are silently dropped to
+    // match the in-describe behaviour (see emitDescribeFn's
+    // "If the describe contains no direct @it" comment).
+    auto isFileTestStmt = [](const StmtNode &stmt) {
+        const auto *fnp = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
+        if (!fnp) return false;
+        return hasDirective((*fnp)->directives, "it") ||
+               hasDirective((*fnp)->directives, "describe");
+    };
+    size_t firstTestIdx = prog.size();
+    size_t lastTestIdx = 0;
+    bool sawTest = false;
+    for (size_t i = 0; i < prog.size(); ++i) {
+        if (isFileTestStmt(prog[i])) {
+            if (!sawTest) { firstTestIdx = i; sawTest = true; }
+            lastTestIdx = i;
+        }
+    }
+    if (sawTest && !fileBeforeAllBody.empty()) {
+        prog.insert(prog.begin() + static_cast<std::ptrdiff_t>(firstTestIdx),
+                    std::make_move_iterator(fileBeforeAllBody.begin()),
+                    std::make_move_iterator(fileBeforeAllBody.end()));
+        lastTestIdx += fileBeforeAllBody.size();
+    }
+    if (sawTest && !fileAfterAllBody.empty()) {
+        prog.insert(prog.begin() + static_cast<std::ptrdiff_t>(lastTestIdx + 1),
+                    std::make_move_iterator(fileAfterAllBody.begin()),
+                    std::make_move_iterator(fileAfterAllBody.end()));
+    }
 }
 
 llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *ty) {
