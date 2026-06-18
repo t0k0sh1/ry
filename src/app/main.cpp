@@ -273,7 +273,11 @@ int main(int argc, char *argv[]) {
         // Helper to disable per-file flags that cannot cross subprocess
         // boundaries cleanly (#2234). Applied only on multi-file paths
         // (directory target / no target → project root); the single-file
-        // direct path keeps coverage / trace / outline fully functional.
+        // direct path keeps all flags fully functional.
+        // `--outline` is now forwarded to each child subprocess (#2236) and
+        // is therefore NOT disabled here. `--coverage` requires cross-process
+        // aggregation; `--trace` would have multiple subprocesses clobber the
+        // same trace-out file — both remain single-file only.
         // Worker count is left untouched: throttling to 1 worker buys nothing
         // once the underlying feature is off, and would silently penalise
         // `ry test -p N --coverage` (~Nx slowdown for no functional gain).
@@ -292,13 +296,6 @@ int main(int argc, char *argv[]) {
                           "--trace`). Disabling.\n";
                 trace_enabled = false;
                 ry::configureTrace(false, "");
-            }
-            if (outline) {
-                errs() << "Warning: --outline is not supported with multi-file "
-                          "test execution; outline is only available for "
-                          "single-file runs (e.g. `ry test foo.test.ry "
-                          "--outline`). Disabling.\n";
-                outline = false;
             }
         };
 
@@ -324,13 +321,13 @@ int main(int argc, char *argv[]) {
                 warnAndDisableMultiFileFlags();
                 if (watch) {
                     ry::watchAndRunTests(target_str,
-                        [target_str, parallel_workers]() {
-                            ry::discoverAndRunTests(target_str, parallel_workers);
+                        [target_str, parallel_workers, outline]() {
+                            ry::discoverAndRunTests(target_str, parallel_workers, outline);
                         });
                     return finalizeAfterPossibleJit(0);
                 }
                 return finalizeAfterPossibleJit(
-                    ry::discoverAndRunTests(target_str, parallel_workers));
+                    ry::discoverAndRunTests(target_str, parallel_workers, outline));
             }
             if (!path_exists) {
                 std::string resolved;
@@ -393,13 +390,13 @@ int main(int argc, char *argv[]) {
                 const std::string &root_dir = *root;
                 // NOLINTNEXTLINE(bugprone-exception-escape): watcher lambda; exceptions terminate the process
                 ry::watchAndRunTests(root_dir,
-                    [root_dir, parallel_workers]() {
-                        ry::discoverAndRunTests(root_dir, parallel_workers);
+                    [root_dir, parallel_workers, outline]() {
+                        ry::discoverAndRunTests(root_dir, parallel_workers, outline);
                     });
                 return finalizeAfterPossibleJit(0);
             }
             return finalizeAfterPossibleJit(
-                ry::discoverAndRunTests(*root, parallel_workers));
+                ry::discoverAndRunTests(*root, parallel_workers, outline));
         }
     }
 

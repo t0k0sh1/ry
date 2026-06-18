@@ -61,8 +61,11 @@ struct TestFileResult {
 
 // Run a single test file in a subprocess, capturing stdout+stderr.
 // Uses posix_spawn instead of fork to be safe from multi-threaded contexts.
+// When `outline` is true, `--outline` is inserted into the child argv so the
+// child's CodeGen produces outline output (#2236).
 static TestFileResult runTestFileSubprocess(const std::string &filepath,
-                                            const std::string &exe_path) {
+                                            const std::string &exe_path,
+                                            bool outline) {
     TestFileResult result;
     result.filepath = filepath;
     result.exit_code = -1;
@@ -87,7 +90,14 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
         return result;
     }
 
-    const char *argv[] = {exe_path.c_str(), "test", filepath.c_str(), nullptr};
+    // argv は stack のみで構築する。#2236 で heap 経由の std::vector に倒した
+    // ところ collection_meta_propagation.test.ry の並列実行下 flake (#1895)
+    // が ~8% から ~31% に跳ね、KNOWLEDGE.md「Subprocess-runner perturbation
+    // note」記載のとおり stack-only が必須条件になった。
+    const char *argv[5] = {exe_path.c_str(), "test", nullptr, nullptr, nullptr};
+    int slot = 2;
+    if (outline) argv[slot++] = "--outline";
+    argv[slot] = filepath.c_str();
     pid_t pid;
     int err = posix_spawn(&pid, exe_path.c_str(), &actions, nullptr,
                           const_cast<char *const *>(argv), RY_ENVIRON);
@@ -132,7 +142,8 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
 // this path so the dispatcher is uniform (#2234).
 static int runTestFilesSubprocessFanOut(const std::vector<std::string> &test_files,
                                         const std::string &exe_path,
-                                        int parallelism) {
+                                        int parallelism,
+                                        bool outline) {
     size_t num_files = test_files.size();
     std::vector<TestFileResult> results(num_files);
 
@@ -154,12 +165,14 @@ static int runTestFilesSubprocessFanOut(const std::vector<std::string> &test_fil
                 idx = work_queue.front();
                 work_queue.pop_front();
             }
-            results[idx] = runTestFileSubprocess(test_files[idx], exe_path);
+            results[idx] = runTestFileSubprocess(test_files[idx], exe_path, outline);
             {
                 std::lock_guard<std::mutex> lock(progress_mutex);
                 ++completed;
-                std::fprintf(stderr, "\r\033[K[%d/%zu] Running tests...",
-                             completed, num_files);
+                if (!outline) {
+                    std::fprintf(stderr, "\r\033[K[%d/%zu] Running tests...",
+                                 completed, num_files);
+                }
             }
         }
     };
@@ -168,32 +181,43 @@ static int runTestFilesSubprocessFanOut(const std::vector<std::string> &test_fil
     std::vector<std::thread> threads;
     threads.reserve(num_workers);
 
+    // Outline モードでは fan-out summary / progress 行をすべて suppress し、
+    // 出力は per-file outline のみに揃える(pre-#2234 sequential 経路の
+    // `if (!outline && total_files > 1)` を踏襲、#2236)。wall clock も outline 時
+    // は採取しない(2 回の clock_gettime + FP 計算が無駄になるため)。
     const char *worker_label = num_workers == 1 ? "worker" : "workers";
-    std::fprintf(stderr, "Running %zu test files with %zu %s...\n",
-                 num_files, num_workers, worker_label);
+    std::chrono::steady_clock::time_point wall_start{};
+    if (!outline) {
+        std::fprintf(stderr, "Running %zu test files with %zu %s...\n",
+                     num_files, num_workers, worker_label);
+        wall_start = std::chrono::steady_clock::now();
+    }
 
-    auto wall_start = std::chrono::steady_clock::now();
     for (size_t i = 0; i < num_workers; ++i)
         threads.emplace_back(worker);
     for (auto &t : threads)
         t.join();
-    auto wall_end = std::chrono::steady_clock::now();
-    double wall_elapsed = std::chrono::duration<double>(wall_end - wall_start).count();
 
-    std::fprintf(stderr, "\r\033[K");
+    if (!outline) std::fprintf(stderr, "\r\033[K");
 
     int total_failed = 0;
     for (const auto &r : results) {
         if (r.exit_code != 0) {
-            std::printf("\n\033[31m[FAIL exit=%d] %s\033[0m\n",
-                        r.exit_code, r.filepath.c_str());
+            if (!outline) {
+                std::printf("\n\033[31m[FAIL exit=%d] %s\033[0m\n",
+                            r.exit_code, r.filepath.c_str());
+            }
             ++total_failed;
         }
         std::fputs(r.output.c_str(), stdout);
     }
 
-    std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu %s)\n",
-                num_files, total_failed, wall_elapsed, num_workers, worker_label);
+    if (!outline) {
+        double wall_elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - wall_start).count();
+        std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu %s)\n",
+                    num_files, total_failed, wall_elapsed, num_workers, worker_label);
+    }
     return total_failed > 0 ? 1 : 0;
 }
 
@@ -226,12 +250,19 @@ int computeParallelism(int requested_workers, std::size_t test_file_count) {
 // the OS instead of accumulating across files (KNOWLEDGE.md "LLVM ORC JIT
 // intermittent teardown crash").
 //
-// `--coverage` / `--trace` / `--outline` must be disabled (with a warning) at
-// the call site before reaching here when the target is multi-file —
-// runTestFileSubprocess argv is `{exe, "test", filepath}` only and the child
-// has no way to honor those flags.
+// `--coverage` / `--trace` must be disabled (with a warning) at the call site
+// before reaching here when the target is multi-file — coverage requires
+// cross-process aggregation and trace risks clobbering the shared trace-out
+// file across concurrent subprocesses. `--outline` is now forwarded via argv
+// (#2236): each child subprocess receives `{exe, "test", "--outline",
+// filepath}` when outline=true, and the parent additionally suppresses its
+// own fan-out summary / progress lines so the aggregated stdout is per-file
+// outline only — content-equivalent to the pre-#2234 sequential-loop output
+// (per-file outline preserved; child stdout+stderr are pipe-merged at the
+// parent rather than the old separate stdout/stderr streams).
 int runTestFiles(const std::vector<std::string> &test_files,
-                 int parallel_workers) {
+                 int parallel_workers,
+                 bool outline) {
     std::string exe_path = ry::self_update::detail::get_executable_path();
     if (exe_path.empty()) {
         llvm::errs()
@@ -239,17 +270,18 @@ int runTestFiles(const std::vector<std::string> &test_files,
         return 1;
     }
     int parallelism = computeParallelism(parallel_workers, test_files.size());
-    return runTestFilesSubprocessFanOut(test_files, exe_path, parallelism);
+    return runTestFilesSubprocessFanOut(test_files, exe_path, parallelism, outline);
 }
 
 int discoverAndRunTests(const std::string &dir,
-                        int parallel_workers) {
+                        int parallel_workers,
+                        bool outline) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         llvm::errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, parallel_workers);
+    return runTestFiles(test_files, parallel_workers, outline);
 }
 
 } // namespace ry

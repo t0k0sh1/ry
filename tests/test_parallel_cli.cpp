@@ -142,8 +142,11 @@ TEST(ParallelCLI, NonDigitNonCountArgTreatedAsTarget) {
 // --- #2234: subprocess fan-out 一本化の検知テスト ---
 //
 // 新仕様: `ry test <dir>` は -p の有無に関係なく subprocess fan-out 経路に入る。
-// multi-file 時の --coverage / --trace / --outline は警告 + disable (cross-subprocess
-// 集計は scope 外; #2236 で outline が部分対応予定)。
+// multi-file 時の --coverage / --trace は警告 + disable (cross-process 集計 /
+// 共有 trace-out file の clobbering が subprocess 経由では成立しないため;
+// 単一 file run で引き続き利用可)。--outline は #2236 で各子 subprocess の
+// argv に forward され、親側で fan-out summary / progress 行を suppress する
+// ことで multi-file でも動作する。
 //
 // fixture は package.toml なしの tmpdir + 2 個の minimal .test.ry。
 // `runRy({"test", tmpdir})` で path_is_directory == true 分岐に入る。
@@ -226,12 +229,34 @@ TEST_F(TestRunnerFanOut, TraceMultiFileEmitsWarningAndDisables) {
         << r.err;
 }
 
-// --outline multi-file で警告 + disable (silent regression 防止)
-TEST_F(TestRunnerFanOut, OutlineMultiFileEmitsWarningAndDisables) {
+// #2236: multi-file --outline が subprocess argv に forward され、
+// 各ファイルの outline が stdout に出力されること。
+// pre-#2234 と同じく fan-out summary / progress 行は outline 時 suppress。
+TEST_F(TestRunnerFanOut, OutlineMultiFileForwardsToSubprocesses) {
     auto r = runRy({"test", "--outline", dir_.c_str()});
     EXPECT_EQ(r.exit_code, 0) << "stdout=" << r.out << "\nstderr=" << r.err;
-    EXPECT_NE(r.err.find("Warning: --outline is not supported with multi-file"),
+
+    // 旧 warning は出ないこと
+    EXPECT_EQ(r.err.find("Warning: --outline is not supported with multi-file"),
               std::string::npos)
-        << "Multi-file --outline should warn and disable until #2236 threads "
-           "--outline through to subprocesses.\nstderr=" << r.err;
+        << "Post-#2236: multi-file --outline should not warn.\nstderr=" << r.err;
+
+    // fixture (a.test.ry / b.test.ry) は @describe を持たないので、
+    // outline format は codegen_test.cpp の @it 早期 return path: "it %s\n"。
+    EXPECT_NE(r.out.find("it a passes"), std::string::npos)
+        << "Outline for a.test.ry expected in stdout.\nstdout=" << r.out;
+    EXPECT_NE(r.out.find("it b passes"), std::string::npos)
+        << "Outline for b.test.ry expected in stdout.\nstdout=" << r.out;
+
+    // AC#2「pre-#2234 と diff ゼロ」: fan-out summary / progress 行は
+    // outline モードでは suppress されること。
+    EXPECT_EQ(r.out.find("test files executed"), std::string::npos)
+        << "Outline mode should suppress fan-out summary in stdout.\nstdout="
+        << r.out;
+    EXPECT_EQ(r.err.find("Running 2 test files with"), std::string::npos)
+        << "Outline mode should suppress fan-out 'Running N test files' line.\n"
+           "stderr=" << r.err;
+    EXPECT_EQ(r.err.find("Running tests..."), std::string::npos)
+        << "Outline mode should suppress progress 'Running tests...' line.\n"
+           "stderr=" << r.err;
 }
