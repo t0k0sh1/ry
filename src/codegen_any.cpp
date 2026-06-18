@@ -41,7 +41,39 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
 }
 
 bool CodeGen::isStringValue(llvm::Value *val) {
-    return val->getType() == ptrTy_ && !isNonStrPointer(val);
+    // Positive-evidence predicate (#2248): true only when one of four
+    // independent channels confirms `val` is a StringHeader-backed str data
+    // pointer. Used to drive the `-24` retain dispatch in `wrapInAny`; any
+    // other type-discrimination caller should use the loose `isStrLike`.
+    //
+    // Channels:
+    //   1. `arc_str_owned_values_` — fresh str temps from `makeString` /
+    //      `__ry_string_make_uninit` / concat / `emitStrGetDataPtr`.
+    //   2. `LoadInst` whose pointer operand is in `arc_str_managed_vars_` —
+    //      i.e. a load from a tracked str alloca (decl, pattern bind, etc).
+    //   3. Immortal literal global from `cachedGlobalString`. The helper
+    //      returns a `ConstantExpr GEP` into the StringHeader-prefixed global,
+    //      so a bare `isa<GlobalVariable>` is insufficient — walk one GEP
+    //      level to the root.
+    //   4. Container-element str stamped by the List/Map/Set indexer
+    //      (`meta->str_elem`).
+    if (val->getType() != ptrTy_) return false;
+    if (arc_str_owned_values_.count(val) > 0) return true;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(
+                load->getPointerOperand())) {
+            if (arc_str_managed_vars_.count(alloca) > 0) return true;
+        }
+    }
+    if (llvm::isa<llvm::GlobalVariable>(val)) return true;
+    if (auto *gep = llvm::dyn_cast<llvm::GEPOperator>(val)) {
+        if (llvm::isa<llvm::GlobalVariable>(
+                gep->getPointerOperand()->stripPointerCasts())) {
+            return true;
+        }
+    }
+    auto *meta = getMeta(val);
+    return meta && meta->str_elem;
 }
 
 bool CodeGen::isStrLike(llvm::Value *val) {
@@ -192,37 +224,13 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
         }
     }
 
-    // `isStringValue` is a negative-evidence predicate, so container-element
-    // fresh loads (metadata-less `ptrTy_` from `filter`/`slice`/`map` bodies)
-    // would route to the StringHeader `-24` retain — see
-    // `.claude/rules/codegen-arc-cow.md` "tryRetainArcSource LoadInst cases
-    // must be metadata-gated" (#1266 / #2246). Require positive str evidence.
+    // #2248: `isStringValue` is now a positive-evidence predicate, so the
+    // container-element fresh-load trap (metadata-less `ptrTy_` from
+    // `filter` / `slice` / `map` bodies routing to the StringHeader `-24`
+    // retain — #1266 / #1799 / #2246) is structurally precluded. The four
+    // evidence channels live in `isStringValue`'s body; this site is just
+    // the one place that drives the str arm of the wrap.
     bool doStrRetain = !isCollection && isStringValue(val);
-    if (doStrRetain) {
-        // `cachedGlobalString` returns a ConstantExpr GEP into a StringHeader-
-        // prefixed global (see `buildArcGlobal` in `src/codegen.cpp`), not the
-        // GlobalVariable itself, so an `isa<GlobalVariable>(val)` check alone
-        // misses literal-backed str handles. Walk one GEP level to the root.
-        auto hasGlobalStringOrigin = [&] {
-            if (llvm::isa<llvm::GlobalVariable>(val)) return true;
-            if (auto *gep = llvm::dyn_cast<llvm::GEPOperator>(val)) {
-                return llvm::isa<llvm::GlobalVariable>(
-                    gep->getPointerOperand()->stripPointerCasts());
-            }
-            return false;
-        };
-        auto loadedFromStrAlloca = [&] {
-            auto *load = llvm::dyn_cast<llvm::LoadInst>(val);
-            if (!load) return false;
-            auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(
-                load->getPointerOperand());
-            return alloca && arc_str_managed_vars_.count(alloca) > 0;
-        };
-        doStrRetain = arc_str_owned_values_.count(val) > 0 ||
-                      hasGlobalStringOrigin() ||
-                      loadedFromStrAlloca() ||
-                      (meta && meta->str_elem);
-    }
 
     RyAnyWrapDesc wrapDesc{};
     wrapDesc.kind = static_cast<int>(AnyWrapKind::NonBox);
