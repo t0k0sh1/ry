@@ -3,12 +3,15 @@
 //! `impl EmitCtx` method building an `Error` aggregate from a runtime error
 //! function. The Result ok/err branch + phi (`emit_result_branch`) is a free
 //! function — NOT a `&mut self` method — taking the ok/err value builders as
-//! `&mut dyn FnMut() -> ValueRef` closures plus the decomposed `builder` /
-//! `context` Copy handles. Holding no `&mut EmitCtx` borrow (the closures, not
+//! `&mut dyn FnMut() -> Option<ValueRef>` closures plus the decomposed `builder`
+//! / `context` Copy handles. Holding no `&mut EmitCtx` borrow (the closures, not
 //! core, own all `EmitCtx` access), it invokes the re-entrant builders without
 //! aliasing the `cx(ctx)` borrow that those builders form on re-entry: #2069
 //! resolves the #2060 split, where a `&mut self` method would have aliased that
-//! borrow across the extern call (UB under Stacked/Tree Borrows). The C++ path
+//! borrow across the extern call (UB under Stacked/Tree Borrows). The closures'
+//! `Option` return propagates a NULL `resolve_value` (callback-returned id 0 /
+//! out-of-range / interned NULL) up to a `ValueRef(null_mut())` from the free
+//! function, which the abi shell interns to sentinel 0 (#2251). The C++ path
 //! enters through the `abi::result` externs, which validate inputs, resolve the
 //! type handle, build the two closures (callback + intern/resolve), and intern
 //! the result.
@@ -66,15 +69,23 @@ impl EmitCtx {
 // so the abi closures may re-enter the emitter via `cx(ctx)` while a builder
 // runs without aliasing a live receiver borrow across the extern call (#2069 /
 // #2060). The parent function for the new BBs is derived from the builder, not a
-// cached function field, per the builder-derived parent rule (#1968): a NULL
-// insert block yields a NULL `ValueRef` (the abi shell interns it to 0).
+// cached function field, per the builder-derived parent rule (#1968).
+//
+// Failure channels both yield `ValueRef(null_mut())` (the abi shell interns it
+// to sentinel 0): (a) a NULL insert block before any IR is emitted, and (b) a
+// `None` from `build_ok` / `build_err`, which means the abi closure's
+// `resolve_value` on the callback-returned id resolved to NULL (sentinel 0 /
+// out-of-range / interned NULL). The closure-failure case escapes after the
+// BBs are appended and the cond-br is wired, leaving the partially-built scaffold
+// in place — the abi shell returns 0 and the C++ caller, on seeing 0, abandons
+// the module rather than running LLVM verify on it (#2251).
 pub(crate) unsafe fn emit_result_branch(
     builder: LLVMBuilderRef,
     context: LLVMContextRef,
     is_err: ValueRef,
     res_ty: TypeRef,
-    build_ok: &mut dyn FnMut() -> ValueRef,
-    build_err: &mut dyn FnMut() -> ValueRef,
+    build_ok: &mut dyn FnMut() -> Option<ValueRef>,
+    build_err: &mut dyn FnMut() -> Option<ValueRef>,
 ) -> ValueRef {
     let b = builder;
     let is_err = is_err.0;
@@ -91,14 +102,20 @@ pub(crate) unsafe fn emit_result_branch(
     LLVMBuildCondBr(b, is_err, err_bb, ok_bb);
 
     LLVMPositionBuilderAtEnd(b, ok_bb);
-    let ok_val = build_ok().0;
+    let ok_val = match build_ok() {
+        Some(v) => v.0,
+        None => return ValueRef(std::ptr::null_mut()),
+    };
     LLVMBuildBr(b, merge_bb);
     // Re-capture the incoming block: the builder may have advanced through
     // additional BBs (load-bearing).
     let ok_in = LLVMGetInsertBlock(b);
 
     LLVMPositionBuilderAtEnd(b, err_bb);
-    let err_val = build_err().0;
+    let err_val = match build_err() {
+        Some(v) => v.0,
+        None => return ValueRef(std::ptr::null_mut()),
+    };
     LLVMBuildBr(b, merge_bb);
     let err_in = LLVMGetInsertBlock(b);
 

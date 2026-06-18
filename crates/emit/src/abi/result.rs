@@ -1,17 +1,22 @@
 //! abi::result — C boundary for Result emission. Both entry points are thin
 //! shells over `core`: `ry_emit_build_error_from_runtime` resolves the type
 //! handle and interns the aggregate; `ry_emit_result_branch` validates inputs,
-//! resolves `is_err`, wraps each C builder callback (`RyBuildValueFn`) into a
-//! `FnMut() -> ValueRef` closure that re-enters the emitter and resolves the
-//! returned id, then delegates the IR emission to `composite::result::emit_result_branch` and
-//! interns the phi. The closure invocation + intern/resolve juggling is the only
-//! abi-side work; the LLVM IR (BB scaffold + cond-br + phi) lives in `core`,
-//! which holds no `&mut EmitCtx` borrow so the re-entrant `with_ctx(ctx, …)`
-//! borrow in each closure does not alias a live receiver across the extern call
-//! (#2069 resolves the #2060 split; #2081 confined the raw reify behind
-//! `with_ctx`, making the no-borrow-across-callback contract structural rather
-//! than dependent on argument evaluation order). The builder-derived parent rule
-//! applies in `core` (#1968 / #1969).
+//! resolves `is_err` via `resolve_value` (returning sentinel 0 on a NULL
+//! resolution before any IR is built), wraps each C builder callback
+//! (`RyBuildValueFn`) into a `FnMut() -> Option<ValueRef>` closure that re-enters
+//! the emitter and resolves the returned id via `resolve_value` (propagating
+//! `None` up through `composite::result::emit_result_branch` to the abi shell's
+//! `intern(NULL) → 0`), then delegates the IR emission to that core free function
+//! and interns the phi. Every resolve site uses `resolve_value` to mirror the
+//! defensive guard pattern shared by `bounds.rs:48`, `arc.rs:48`, `any.rs:93`,
+//! `cow.rs:67`, `reduce.rs:37`, and the rest of the abi (#2251). The closure
+//! invocation + intern/resolve juggling is the only abi-side work; the LLVM IR
+//! (BB scaffold + cond-br + phi) lives in `core`, which holds no `&mut EmitCtx`
+//! borrow so the re-entrant `with_ctx(ctx, …)` borrow in each closure does not
+//! alias a live receiver across the extern call (#2069 resolves the #2060 split;
+//! #2081 confined the raw reify behind `with_ctx`, making the no-borrow-across-
+//! callback contract structural rather than dependent on argument evaluation
+//! order). The builder-derived parent rule applies in `core` (#1968 / #1969).
 
 use std::ffi::{c_char, c_void};
 
@@ -76,8 +81,13 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     // The explicit `unsafe` block covers the `with_ctx` closure body too (an
     // `unsafe fn`'s implicit body-unsafe does NOT reach into nested closures, but
     // a lexical `unsafe {}` block does), so the closure needs no inner `unsafe` —
-    // matching the do_ok / do_err blocks below.
-    let is_err = unsafe { ValueRef(as_value(with_ctx(ctx, |c| resolve(c, is_err_id)))) };
+    // matching the do_ok / do_err blocks below. `resolve_value → None` (sentinel
+    // 0 / out-of-range / interned NULL) maps to the entry point's sentinel 0
+    // before any IR is built, mirroring the abi-wide defensive guard pattern
+    // (#2251).
+    let Some(is_err) = (unsafe { with_ctx(ctx, |c| resolve_value(c, is_err_id)) }) else {
+        return 0;
+    };
     // Wrap each re-entrant C builder into a closure: call the callback (which
     // re-enters the emitter and emits the arm's value IR), THEN resolve the
     // returned id in a fresh `with_ctx`. The two-step is now STRUCTURAL — the C
@@ -88,17 +98,20 @@ pub unsafe extern "C" fn ry_emit_result_branch(
     // across the callback. `with_ctx` makes the ordering a borrow-scope guarantee
     // instead of an evaluation-order subtlety.) `composite::result::emit_result_branch` itself
     // holds no EmitCtx borrow, so each closure's transient `with_ctx` is the only
-    // live receiver borrow at callback time (#2081 / #2069).
-    let mut do_ok = move || -> ValueRef {
+    // live receiver borrow at callback time (#2081 / #2069). Each closure
+    // returns `Option<ValueRef>` so a callback-returned id that resolves to NULL
+    // propagates up to `composite::result::emit_result_branch`, which returns
+    // `ValueRef(null_mut())` for the abi shell's `intern(NULL) → 0` (#2251).
+    let mut do_ok = move || -> Option<ValueRef> {
         unsafe {
             let ok_id = build_ok(user_ctx);
-            with_ctx(ctx, |c| ValueRef(as_value(resolve(c, ok_id))))
+            with_ctx(ctx, |c| resolve_value(c, ok_id))
         }
     };
-    let mut do_err = move || -> ValueRef {
+    let mut do_err = move || -> Option<ValueRef> {
         unsafe {
             let err_id = build_err(user_ctx);
-            with_ctx(ctx, |c| ValueRef(as_value(resolve(c, err_id))))
+            with_ctx(ctx, |c| resolve_value(c, err_id))
         }
     };
     let phi = emit_result_branch(
