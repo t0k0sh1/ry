@@ -127,9 +127,12 @@ pub const RY_COW_SET: c_int = 2;
 // Call-site selector for ry_emit_list_copy_full (keys / values / take, #2093).
 // MUST match the RyListCopyKind enum in api.h. abi/collection.rs maps these to
 // the core `ListCopyKind` (which picks the per-call-site SSA name pair).
+// Numeric values are pinned by the `const _: () = assert!` line below, paired
+// with the C-side `static_assert` in tests/test_abi_layout.cpp (#2250).
 pub const RY_LISTCOPY_KEYS: c_int = 0;
 pub const RY_LISTCOPY_VALUES: c_int = 1;
 pub const RY_LISTCOPY_TAKE: c_int = 2;
+const _: () = assert!(RY_LISTCOPY_KEYS == 0 && RY_LISTCOPY_VALUES == 1 && RY_LISTCOPY_TAKE == 2);
 
 // Integer-comparison predicate selector for ry_emit_icmp (#2072). MUST match the
 // RyICmpPred enum in api.h. abi/primitive.rs maps these to the core `IcmpPred`.
@@ -149,25 +152,38 @@ pub const RY_ICMP_UGE: c_int = 9;
 
 // Function linkage selector for ry_emit_create_function (#2098). MUST match the
 // RyLinkage enum in api.h. abi/function.rs maps these to the core LLVMLinkage.
+// Pinned mechanically on both sides (#2250).
 pub const RY_LINKAGE_EXTERNAL: c_int = 0;
 pub const RY_LINKAGE_INTERNAL: c_int = 1;
 pub const RY_LINKAGE_PRIVATE: c_int = 2;
+const _: () =
+    assert!(RY_LINKAGE_EXTERNAL == 0 && RY_LINKAGE_INTERNAL == 1 && RY_LINKAGE_PRIVATE == 2);
 
 // Atomic RMW binop selector for ry_emit_atomic_rmw (#2190). MUST match the
 // RyAtomicBinOp enum in api.h. abi/primitive.rs maps these to the core
-// `AtomicBinOp`.
+// `AtomicBinOp`. Pinned mechanically on both sides (#2250).
 pub const RY_ATOMIC_BINOP_ADD: c_int = 0;
 pub const RY_ATOMIC_BINOP_SUB: c_int = 1;
+const _: () = assert!(RY_ATOMIC_BINOP_ADD == 0 && RY_ATOMIC_BINOP_SUB == 1);
 
 // Atomic memory ordering selector for ry_emit_atomic_rmw / _atomic_load /
 // _atomic_cmpxchg (#2190). MUST match the RyAtomicOrdering enum in api.h.
-// abi/primitive.rs maps these to the core `AtomicOrdering`.
+// abi/primitive.rs maps these to the core `AtomicOrdering`. Pinned
+// mechanically on both sides (#2250).
 pub const RY_ATOMIC_ORDERING_NOT_ATOMIC: c_int = 0;
 pub const RY_ATOMIC_ORDERING_MONOTONIC: c_int = 1;
 pub const RY_ATOMIC_ORDERING_ACQUIRE: c_int = 2;
 pub const RY_ATOMIC_ORDERING_RELEASE: c_int = 3;
 pub const RY_ATOMIC_ORDERING_ACQUIRE_RELEASE: c_int = 4;
 pub const RY_ATOMIC_ORDERING_SEQ_CST: c_int = 5;
+const _: () = assert!(
+    RY_ATOMIC_ORDERING_NOT_ATOMIC == 0
+        && RY_ATOMIC_ORDERING_MONOTONIC == 1
+        && RY_ATOMIC_ORDERING_ACQUIRE == 2
+        && RY_ATOMIC_ORDERING_RELEASE == 3
+        && RY_ATOMIC_ORDERING_ACQUIRE_RELEASE == 4
+        && RY_ATOMIC_ORDERING_SEQ_CST == 5
+);
 
 // Callback for ok/err value builders consumed by ry_emit_result_branch.
 // Wrapped in Option<...> so the FFI representation is a nullable
