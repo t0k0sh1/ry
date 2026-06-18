@@ -268,7 +268,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
         if (t == i64Ty_) elemName = "int";
         else if (t == f64Ty_) elemName = "float";
         else if (t == i1Ty_ || t == i8Ty_) elemName = "bool";
-        else if (t == ptrTy_ && isStringValue(vals[i])) elemName = "str";
+        else if (t == ptrTy_ && isStrLike(vals[i])) elemName = "str";
         else elemName = buildTypeNameFromMeta(vals[i]);
         if (elemName.empty()) { allNamesKnown = false; break; }
         if (i > 0) tupleSig += ", ";
@@ -385,7 +385,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     // skips it. Side-table lookup via isStrHandle fills the gap (#1354).
     // anyElemIsStrLike mirrors the Map/Set path — immortal literal globals from
     // cachedGlobalString are excluded from arc_str_owned_values_, so isStrHandle
-    // misses them. isStringValue covers any ptr-backed value without other
+    // misses them. isStrLike covers any ptr-backed value without other
     // metadata, which is the correct stamp signal for list_elem_type_name = "str"
     // (consumed by verifyCalledWith arg recording, etc.).
     bool anyElemIsStr = false;
@@ -395,7 +395,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         const bool elemIsStr =
             elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
         anyElemIsStr = anyElemIsStr || elemIsStr;
-        if (elemTy == ptrTy_ && isStringValue(vals[static_cast<size_t>(i)]))
+        if (elemTy == ptrTy_ && isStrLike(vals[static_cast<size_t>(i)]))
             anyElemIsStrLike = true;
         llvm::Value *elemPtr = builder_.CreateGEP(
             elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "elem_ptr");
@@ -599,9 +599,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
             valTy == ptrTy_ && isStrHandle(valVals[static_cast<size_t>(i)]);
         anyKeyIsStr = anyKeyIsStr || keyIsStr;
         anyValIsStr = anyValIsStr || valIsStr;
-        if (keyTy == ptrTy_ && isStringValue(keyVals[static_cast<size_t>(i)]))
+        if (keyTy == ptrTy_ && isStrLike(keyVals[static_cast<size_t>(i)]))
             anyKeyIsStrLike = true;
-        if (valTy == ptrTy_ && isStringValue(valVals[static_cast<size_t>(i)]))
+        if (valTy == ptrTy_ && isStrLike(valVals[static_cast<size_t>(i)]))
             anyValIsStrLike = true;
 
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
@@ -769,7 +769,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     // post-loop set_elem_type_name = "str" stamp fires for plain literals
     // like {"a", "b"} (#1704). isStrHandle excludes immortal globals from
     // cachedGlobalString, so callers downstream (verifyCalledWith record
-    // path) need a wider signal — isStringValue rules out known-non-str
+    // path) need a wider signal — isStrLike rules out known-non-str
     // pointers (collections, resources, closures) by inspecting metadata.
     bool anyElemIsStrLike = false;
 
@@ -791,7 +791,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         const bool elemIsStr =
             elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
         anyElemIsStr = anyElemIsStr || elemIsStr;
-        if (elemTy == ptrTy_ && isStringValue(vals[static_cast<size_t>(i)]))
+        if (elemTy == ptrTy_ && isStrLike(vals[static_cast<size_t>(i)]))
             anyElemIsStrLike = true;
         if (setElemNeedsRetain || elemIsStr)
             retainArcValue(vals[static_cast<size_t>(i)]);
@@ -865,7 +865,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
             if (e->try_mode)
                 codegenError("'?' index not supported for range slice");
-            if (isStringValue(objPtr))
+            if (isStrLike(objPtr))
                 codegenError("str does not support range index; use substr(s, a, b) instead");
             llvm::Type *elemTy = getListElementType(objPtr);
             if (!elemTy)
@@ -954,7 +954,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (objPtr->getType() != ptrTy_)
         codegenError("index operator requires list or map");
 
-    if (isStringValue(objPtr)) {
+    if (isStrLike(objPtr)) {
         if (e->try_mode)
             codegenError("'?' index not supported for str");
         codegenError("str does not support index access; use charAt(s, i) instead");

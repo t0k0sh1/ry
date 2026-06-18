@@ -2518,7 +2518,7 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
         } else if (argTy == i1Ty_) {
             kind = 3;
             valI64 = builder_.CreateZExt(argVal, i64Ty_, "mock_rec_b2i");
-        } else if (argTy == ptrTy_ && isStringValue(argVal)) {
+        } else if (argTy == ptrTy_ && isStrLike(argVal)) {
             kind = 4;
             valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "mock_rec_p2i");
         }
@@ -3416,7 +3416,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         } else if (argTy == i1Ty_) {
             kind = 3;
             valI64 = builder_.CreateZExt(argVal, i64Ty_, "vcw_b2i");
-        } else if (argTy == ptrTy_ && isStringValue(argVal)) {
+        } else if (argTy == ptrTy_ && isStrLike(argVal)) {
             kind = 4;
             valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "vcw_p2i");
         } else {
@@ -3473,7 +3473,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         savedExpectedVal = expectedVal;
 
         // Delegate equality to the same path used by the == operator (#737).
-        // int/float/bool use direct IR comparisons; str uses isStringValue() to
+        // int/float/bool use direct IR comparisons; str uses isStrLike() to
         // distinguish string pointers from collection pointers (both are ptrTy_).
         // Complex types (Option/Result/Record/Tuple/ADT enum/union/List/Set/Map)
         // are delegated to emitComparisonOp which handles them via SSA-value metadata.
@@ -3485,7 +3485,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
-        } else if (isStringValue(actualVal) && isStringValue(expectedVal)) {
+        } else if (isStrLike(actualVal) && isStrLike(expectedVal)) {
             auto strcmpFn = getStdlibStrcmp();
             llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
             eqResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
@@ -3598,14 +3598,14 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                     const bool isNonStrName  = !elemName.empty() && elemName != "str";
                     const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
                     const bool hasFnInfo     = meta && meta->list_elem_fn_type_info.has_value();
-                    if (isNonStrName || hasNestedList || hasFnInfo || !isStringValue(expectedVal))
+                    if (isNonStrName || hasNestedList || hasFnInfo || !isStrLike(expectedVal))
                         codegenError("line " + std::to_string(s.loc.line) +
                                      ": " + s.matcher + ": list element type must be int, float, str, or bool");
                 } else {
                     const std::string &elemName = meta ? meta->set_elem_type_name : std::string{};
                     const bool isNonStrName = !elemName.empty() && elemName != "str";
                     const bool hasFnInfo    = meta && meta->set_elem_fn_type_info.has_value();
-                    if (isNonStrName || hasFnInfo || !isStringValue(expectedVal))
+                    if (isNonStrName || hasFnInfo || !isStrLike(expectedVal))
                         codegenError("line " + std::to_string(s.loc.line) +
                                      ": " + s.matcher + ": set element type must be int, float, str, or bool");
                 }
@@ -3763,7 +3763,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             const bool isNonStrName = !elemName.empty() && elemName != "str";
             const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
             const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
-            if (isNonStrName || hasNestedList || hasFnInfo || !isStringValue(actualVal))
+            if (isNonStrName || hasNestedList || hasFnInfo || !isStrLike(actualVal))
                 codegenError("line " + std::to_string(s.loc.line) +
                     ": toBeOneOf: list element type must be int, float, str, or bool");
         }
@@ -3893,7 +3893,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     } else if (s.matcher == "toMatch") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
-        if (!isStringValue(actualVal) || !isStringValue(expectedVal))
+        if (!isStrLike(actualVal) || !isStrLike(expectedVal))
             codegenError("line " + std::to_string(s.loc.line) +
                 ": toMatch: requires str operands");
         llvm::Value *patternLen = emitStringByteLen(expectedVal);
@@ -3991,7 +3991,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Value *trueStr = cachedGlobalString("true", ".true");
             llvm::Value *falseStr = cachedGlobalString("false", ".false");
             return builder_.CreateSelect(val, trueStr, falseStr, "bool_str");
-        } else if (ty == ptrTy_ && isStringValue(val)) {
+        } else if (ty == ptrTy_ && isStrLike(val)) {
             // str pointer: return directly (already a C string)
             return val;
         } else if (isAnyType(ty)) {
@@ -4136,7 +4136,7 @@ void CodeGen::emitFailCall(CallStmt &s) {
         // The pure-codegen-intrinsic path bypasses that check, so guard
         // explicitly — otherwise non-str pointers (List/Map/closure handles)
         // would flow into `__ry_test_fail`'s `%s` format and read garbage.
-        if (!isStringValue(msgVal))
+        if (!isStrLike(msgVal))
             codegenError(s.loc, "fail() message argument must be a str");
     } else {
         msgVal = static_cast<llvm::Value *>(cachedGlobalString("", ".fail_empty_msg"));

@@ -96,7 +96,7 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
     if (cg.isFile(arg0)) {
         runtimeFn = "__ry_json_load_file";
     } else {
-        if (!cg.isStringValue(arg0))
+        if (!cg.isStrLike(arg0))
             cg.codegenError("load[T]() requires a str or File argument");
         runtimeFn = "__ry_json_parse_to_any";
     }
@@ -124,7 +124,7 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
     // `case` subject alloca propagates it to OkPattern via
     // `getMeta(subjectAlloca)->source_type_name`. Without this, the
     // OkPattern arm falls back to lossy `reverseResolveTypeName(ptrTy_) = "str"`
-    // and `xs[0]` is dispatched against `isStringValue(xs) == true`.
+    // and `xs[0]` is dispatched against `isStrLike(xs) == true`.
     cg.propagateTypeMeta("Result<" + typeArg + ", Error>", result);
     return result;
 }

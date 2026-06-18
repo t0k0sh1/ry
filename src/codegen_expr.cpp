@@ -121,7 +121,7 @@ llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
 llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
     // Separate cache prevents collision with string literals of the same
     // content — otherwise marking the pointer as RK_Regex would poison a
-    // later string literal, causing isStringValue() to return false.
+    // later string literal, causing isStrLike() to return false.
     auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
     addResourceKind(gs, rk_regex);
     return gs;
@@ -1013,8 +1013,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             codegenError("operator '" + op + "' is not supported for closure values");
     }
 
-    bool lhsIsStr = isStringValue(lhs);
-    bool rhsIsStr = isStringValue(rhs);
+    bool lhsIsStr = isStrLike(lhs);
+    bool rhsIsStr = isStrLike(rhs);
 
     // String comparison — NUL-safe via __ry_str_cmp (byte_len + memcmp)
     if (lhsIsStr && rhsIsStr) {
@@ -1114,7 +1114,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
     // Reject str operands
-    if (isStringValue(lhs) || isStringValue(rhs))
+    if (isStrLike(lhs) || isStrLike(rhs))
         codegenError("type error: bitwise operator '" + op + "' not supported for str type");
     checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
     // Low-level integer bitwise at native width (#595)
@@ -1224,8 +1224,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Auto-convert non-str to str for + operator (#393)
-    bool lhsIsStr = isStringValue(lhs);
-    bool rhsIsStr = isStringValue(rhs);
+    bool lhsIsStr = isStrLike(lhs);
+    bool rhsIsStr = isStrLike(rhs);
     auto isScalarTy = [&](llvm::Value *v) {
         return v->getType()->isIntegerTy() || v->getType()->isDoubleTy();
     };
@@ -1610,8 +1610,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         }
 
         // Try str (substring check) — #1032
-        if (isStringValue(container)) {
-            if (!isStringValue(elem)) {
+        if (isStrLike(container)) {
+            if (!isStrLike(elem)) {
                 // From #1697 onwards `wrapInAny` accepts List/Map/Set
                 // pointers, so we must request the str tag explicitly at
                 // unwrap time. `unwrapFromAny` aborts at runtime on tag
@@ -2085,7 +2085,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     // Return the raw data pointer. The caller (codegen_stmt.cpp) has the inner
     // type name from the annotation and performs the correct header offset:
     // STRING_HEADER_SIZE (24) for str, ARC_HEADER_SIZE (16) for collections.
-    // We cannot use isStringValue() here because captured List/Map/Set values
+    // We cannot use isStrLike() here because captured List/Map/Set values
     // may lack collection metadata, causing false positives.
     return val;
 }
