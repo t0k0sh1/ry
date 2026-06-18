@@ -76,6 +76,45 @@ fn higherOrderElementMetadataPropagationTests():
       return m == target
     expect(all(xs, matchesTarget)).toEq(true)
 
+  @it("reduce with any-typed combiner preserves Map tag for == against target")
+  fn reduceWithAnyTypedCombinerPreservesMapTagForEqAgainstTarget():
+    xs: List<Map<str, int>> = [{"x": 1}, {"x": 1}]
+    target: any = xs[0]
+    fn same(acc: any, m: any) -> any:
+      if m == target:
+        return m
+      return acc
+    out = reduce(xs, same)
+    got = false
+    case out:
+      Some(v): got = v == target
+      None: got = false
+    expect(got).toEq(true)
+
+  @it("fold with any-typed combiner distinguishes Map vs List tag")
+  fn foldWithAnyTypedCombinerDistinguishesMapVsListTag():
+    xs: List<Map<str, int>> = [{"x": 1}]
+    probe: any = [1, 2]
+    fn step(acc: int, m: any) -> int:
+      if m == probe:
+        return acc + 1
+      return acc
+    expect(fold(xs, 0, step)).toEq(0)
+
+  @it("tap with any-typed callback preserves Map tag for == against target")
+  fn tapWithAnyTypedCallbackPreservesMapTagForEqAgainstTarget():
+    xs: List<Map<str, int>> = [{"x": 1}]
+    target: any = xs[0]
+    # Ry rejects scalar captured-var mutation in closures; observe via
+    # index-assign on a captured List slot instead.
+    flags: List<bool> = [false]
+    fn visit(m: any) -> int:
+      if m == target:
+        flags[0] = true
+      return 0
+    tap(xs, visit)
+    expect(flags[0]).toEq(true)
+
 @describe("higher-order positive correctness — issue #2247 audit cases")
 fn higherOrderPositiveCorrectnessTests():
 
