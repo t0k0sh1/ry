@@ -99,6 +99,7 @@ static_assert(sizeof(RyTypeRef) == 8 && alignof(RyTypeRef) == 8, "RyTypeRef is a
 static_assert(sizeof(RyFuncTypeRef) == 8 && alignof(RyFuncTypeRef) == 8, "RyFuncTypeRef is an 8-byte pointer");
 static_assert(sizeof(RyValueRef) == 8 && alignof(RyValueRef) == 8, "RyValueRef is an 8-byte pointer");
 static_assert(sizeof(RyBasicBlockRef) == 8 && alignof(RyBasicBlockRef) == 8, "RyBasicBlockRef is an 8-byte pointer");
+static_assert(sizeof(RySwitchRef) == 8 && alignof(RySwitchRef) == 8, "RySwitchRef is an 8-byte pointer");
 
 // === Scalar intern-handle typedefs (uint32_t) ===
 static_assert(sizeof(RyValueId) == 4 && alignof(RyValueId) == 4, "RyValueId is a 4-byte uint32_t");
@@ -155,6 +156,29 @@ TEST(AbiLayout, RyICmpPredRustMirrorMatchesCanonical) {
     EXPECT_EQ(rust.ugt, static_cast<int>(RY_ICMP_UGT));
     EXPECT_EQ(rust.uge, static_cast<int>(RY_ICMP_UGE));
 }
+
+// === RyAtomicBinOp / RyAtomicOrdering / RyLinkage / RyListCopyKind cross-language parity (#2250) ===
+// Four enums whose `api.h` definitions and Rust-side `RY_*` constants in
+// `crates/emit/src/abi.rs` were previously protected only by a prose
+// "MUST match" comment. Two paired compile-time guards pin them mechanically:
+//   1. `static_assert` below pins the C++ side — any `api.h` reorder fires.
+//   2. `const _: () = assert!(RY_X == N);` blocks immediately after each
+//      `pub const RY_X: c_int = N;` in `crates/emit/src/abi.rs` pin the
+//      Rust side — any `abi.rs` reorder fires the cargo build.
+// Same `static_assert` formatting style as `RY_ICMP_*` above, but the Rust
+// counterpart is `const _: () = assert!`, not the `ry_emit_test_*_values`
+// runtime FFI used by #2143: with both sides compile-time pinned, a runtime
+// parity test is redundant.
+static_assert(RY_ATOMIC_BINOP_ADD == 0 && RY_ATOMIC_BINOP_SUB == 1,
+              "RyAtomicBinOp literal mismatch (api.h reorder?)");
+static_assert(RY_ATOMIC_ORDERING_NOT_ATOMIC == 0 && RY_ATOMIC_ORDERING_MONOTONIC == 1 &&
+                  RY_ATOMIC_ORDERING_ACQUIRE == 2 && RY_ATOMIC_ORDERING_RELEASE == 3 &&
+                  RY_ATOMIC_ORDERING_ACQUIRE_RELEASE == 4 && RY_ATOMIC_ORDERING_SEQ_CST == 5,
+              "RyAtomicOrdering literal mismatch (api.h reorder?)");
+static_assert(RY_LINKAGE_EXTERNAL == 0 && RY_LINKAGE_INTERNAL == 1 && RY_LINKAGE_PRIVATE == 2,
+              "RyLinkage literal mismatch (api.h reorder?)");
+static_assert(RY_LISTCOPY_KEYS == 0 && RY_LISTCOPY_VALUES == 1 && RY_LISTCOPY_TAKE == 2,
+              "RyListCopyKind literal mismatch (api.h reorder?)");
 
 // A no-op runtime test so CTest shows a named green signal confirming this
 // TU (and therefore every static_assert above) compiled successfully.
