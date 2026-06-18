@@ -1,0 +1,147 @@
+from testing import it, describe, expect
+
+# Regression + detector for #2247: higher-order combinator inner loops
+# (filter / map / reduce / fold / any / all / tap) and emitCollOp_get Map
+# arm + emitMapMergeCore must propagate container element metadata onto
+# fresh `load ptr, %elem_ptr` SSA values.
+#
+# Without the propagation, `wrapInAny(filter_elem)` in `coerceCallArgs`
+# picks `Str=3` instead of the collection tag, breaking `any == any`
+# (`__ry_any_eq`) which routes on the tag — and `emitMapMergeCore`'s
+# `mg_vv2` reaches `retainArcValue` with empty metadata so the
+# fall-through emits `emitArcGetHeaderFromData(val)` (-16) on a str
+# data pointer, corrupting the adjacent StringHeader weak-count word
+# for `Map<K, str>`.
+#
+# IMPORTANT: lambdas with typed inner-collection parameters (e.g.
+# `(m: Map<str, int>) => ...`) trigger a separate, pre-existing UAF
+# where the parameter-cleanup release frees the source's inner data
+# — orthogonal to #2247 and documented in
+# `tests/spec/collection_meta_propagation.test.ry`. All callbacks
+# below either take an `any`-typed parameter (forcing wrapInAny on the
+# caller side) or use bare untyped arrow lambdas (`m => ...`).
+
+@describe("higher-order element metadata propagation (#2247)")
+fn higherOrderElementMetadataPropagationTests():
+
+  @it("filter passes elements through any-typed callback with correct tag for ==")
+  fn filterPassesElementsThroughAnyCallbackWithCorrectTagForEq():
+    xs: List<Map<str, int>> = [{"x": 42}, {"y": 7}]
+    target: any = xs[0]
+    fn matchesTarget(m: any) -> bool:
+      return m == target
+    ys = filter(xs, matchesTarget)
+    # filter_elem flows through `coerceCallArgs → wrapInAny` because the
+    # predicate's parameter is `any`. With #2247 it carries Map metadata
+    # so `wrapInAny` picks tag=Map=6; without #2247 it gets tag=Str=3
+    # and `__ry_any_eq` returns false for every element → empty result.
+    expect(len(ys)).toEq(1)
+
+  @it("filter with any-typed callback distinguishes Map and List tags")
+  fn filterWithAnyCallbackDistinguishesMapAndListTags():
+    xs: List<Map<str, int>> = [{"a": 1}]
+    listProbe: any = [1, 2, 3]
+    fn notList(m: any) -> bool:
+      return m == listProbe
+    ys = filter(xs, notList)
+    # filter_elem is a Map header; listProbe is a List header. With #2247
+    # `__ry_any_eq` compares tag=Map vs tag=List and returns false.
+    expect(len(ys)).toEq(0)
+
+  @it("map with any-typed callback preserves Map tag for == against target")
+  fn mapWithAnyCallbackPreservesMapTagForEqAgainstTarget():
+    xs: List<Map<str, int>> = [{"x": 1}, {"y": 2}]
+    target: any = xs[0]
+    fn matchesAsFlag(m: any) -> int:
+      if m == target:
+        return 1
+      return 0
+    flags = map(xs, matchesAsFlag)
+    expect(flags[0]).toEq(1)
+    expect(flags[1]).toEq(0)
+
+  @it("any combinator with any-typed predicate distinguishes Map vs List tag")
+  fn anyCombinatorWithAnyTypedPredicateDistinguishesMapVsList():
+    xs: List<Map<str, int>> = [{"x": 1}]
+    listProbe: any = [9, 9]
+    fn matchesProbe(m: any) -> bool:
+      return m == listProbe
+    expect(any(xs, matchesProbe)).toEq(false)
+
+  @it("all combinator with any-typed predicate matches all Map elements vs self target")
+  fn allCombinatorWithAnyTypedPredicateMatchesAllMapElementsVsSelfTarget():
+    xs: List<Map<str, int>> = [{"x": 1}]
+    target: any = xs[0]
+    fn matchesTarget(m: any) -> bool:
+      return m == target
+    expect(all(xs, matchesTarget)).toEq(true)
+
+@describe("higher-order positive correctness — issue #2247 audit cases")
+fn higherOrderPositiveCorrectnessTests():
+
+  @it("filter of List<Map<str,int>> with always-true preserves elements (issue minimum repro)")
+  fn filterListMapStrIntAlwaysTruePreservesElements():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"a": 3}]
+    ys = filter(xs, m => true)
+    expect(ys[2]["a"]).toEq(3)
+    expect(ys[0]["a"]).toEq(1)
+    expect(ys[1]["b"]).toEq(2)
+
+  @it("filter of List<List<int>> with always-true preserves nested elements")
+  fn filterListListIntAlwaysTruePreservesNested():
+    xss: List<List<int>> = [[1, 2], [3, 4]]
+    ys = filter(xss, x => true)
+    expect(ys[0][1]).toEq(2)
+    expect(ys[1][0]).toEq(3)
+
+  @it("map of List<int> via identity transform preserves values")
+  fn mapListIntIdentityPreservesValues():
+    xs: List<int> = [10, 20]
+    ys = map(xs, n => n)
+    expect(ys[0]).toEq(10)
+    expect(ys[1]).toEq(20)
+
+  @it("get(Map<str, str>, key, default) returns str values without corruption")
+  fn getMapStrStrDefaultReturnsStrValuesWithoutCorruption():
+    m: Map<str, str> = {"k": "hello"}
+    v = get(m, "k", "default")
+    expect(v).toEq("hello")
+    v2 = get(m, "missing", "fallback")
+    expect(v2).toEq("fallback")
+
+  @it("Map<int,str> merge preserves str values without heap corruption (latent vv bug)")
+  fn mapIntStrMergePreservesStrValuesWithoutHeapCorruption():
+    # emitMapMergeCore L1250: without #2247, `mg_vv2` is metadata-less and
+    # retainArcValue(vv) emits emitArcGetHeaderFromData (-16) on a str data
+    # pointer, corrupting StringHeader weak_count (offset -16 from data).
+    m1: Map<int, str> = {1: "a", 2: "b"}
+    m2: Map<int, str> = {2: "BB", 3: "c"}
+    merged = m1 + m2
+    expect(merged[1]).toEq("a")
+    expect(merged[2]).toEq("BB")
+    expect(merged[3]).toEq("c")
+
+  @it("Map<str,str> merge with insert path preserves str keys and values")
+  fn mapStrStrMergeWithInsertPathPreservesStrKeysAndValues():
+    m1: Map<str, str> = {"k1": "v1"}
+    m2: Map<str, str> = {"k2": "v2", "k3": "v3"}
+    merged = m1 + m2
+    expect(merged["k1"]).toEq("v1")
+    expect(merged["k2"]).toEq("v2")
+    expect(merged["k3"]).toEq("v3")
+
+  @it("get(Map<str, Map<str, int>>, key) preserves nested Map value")
+  fn getMapStrMapStrIntPreservesNestedMapValue():
+    m: Map<str, Map<str, int>> = {"o": {"i": 42}}
+    gotI = false
+    case get(m, "o"):
+      Some(inner): gotI = inner["i"] == 42
+      None: gotI = false
+    expect(gotI).toEq(true)
+
+  @it("get(Map<str, List<int>>, key, default) returns inner List with index access")
+  fn getMapStrListIntDefaultReturnsInnerListWithIndexAccess():
+    m: Map<str, List<int>> = {"xs": [10, 20, 30]}
+    fallback: List<int> = []
+    xs = get(m, "xs", fallback)
+    expect(xs[1]).toEq(20)

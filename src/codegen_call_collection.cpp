@@ -928,6 +928,32 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         if (!valTy)
             return nullptr;
 
+        // #2247: snapshot Map value metadata BEFORE the foundBB body so the
+        // loaded `get*_val` SSA carries its source-level type name and
+        // closure info — mirrors the List branch's `stampLoadedElem`
+        // lambda (codegen_call_collection.cpp around L1027). Without this
+        // the Some payload (or the 3-arg PHI result) has no metadata,
+        // downstream `inner[key]` / dispatch routes through
+        // `isStringValue` and rejects with "str does not support index
+        // access" (`Map<str, Map<...>>` etc.).
+        std::string mapValTypeName;
+        std::optional<FnTypeInfo> mapValFnTypeInfo;
+        if (auto *recvMeta = getMeta(recv)) {
+            mapValTypeName = recvMeta->map_value_type_name;
+            mapValFnTypeInfo = recvMeta->map_value_fn_type_info;
+        }
+
+        auto stampLoadedMapValue = [&](llvm::Value *val) {
+            if (val->getType() != ptrTy_)
+                return;
+            if (!mapValTypeName.empty() && mapValTypeName != "str")
+                propagateTypeMeta(mapValTypeName, val);
+            if (mapValFnTypeInfo)
+                getOrCreateMeta(val).fn_type_info = *mapValFnTypeInfo;
+            if (mapValTypeName == "str")
+                getOrCreateMeta(val).str_elem = true;
+        };
+
         // get(map, key) -- 2-arg -> Option<V>
         if (e.args.size() == 2) {
             llvm::Value *key = emitExpr(*e.args[1]);
@@ -951,6 +977,9 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get2_vals");
             llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get2_val_ptr");
             llvm::Value *foundVal = emitLoad(valTy, valPtr, "get2_val");
+            // #2247: stamp Map value metadata onto the freshly loaded value
+            // before buildSomeValue boxes it for the Option result.
+            stampLoadedMapValue(foundVal);
             llvm::Value *someVal = buildSomeValue(foundVal, optTy);
             emitBranchUncond(mergeBB);
             llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
@@ -964,6 +993,10 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
             llvm::PHINode *phi = createPhi(optTy, {}, "get2_result");
             phi->addIncoming(someVal, foundEndBB);
             phi->addIncoming(noneVal, notFoundEndBB);
+            // #2247: propagate metadata from the Some-incoming through the
+            // PHI so the Option<V> result carries the inner value's source-
+            // level name (mirrors emitCollOp_get List branch at L1114).
+            propagateMeta(someVal, phi);
             return phi;
         }
 
@@ -987,6 +1020,9 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         llvm::Value *valsPtr = emitLoad(ptrTy_, valsPtrField, "get_vals");
         llvm::Value *valPtr = emitGEP(valTy, valsPtr, idx, "get_val_ptr");
         llvm::Value *foundVal = emitLoad(valTy, valPtr, "get_val");
+        // #2247: stamp Map value metadata onto the freshly loaded value
+        // before it flows into the 3-arg PHI merged with the default arm.
+        stampLoadedMapValue(foundVal);
         llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
         emitBranchUncond(mergeBB);
 
@@ -1001,6 +1037,10 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         llvm::PHINode *phi = createPhi(valTy, {}, "get_result");
         phi->addIncoming(foundVal, foundEndBB);
         phi->addIncoming(defaultVal, notFoundEndBB);
+        // #2247: propagate metadata from the found-incoming through the PHI
+        // so the value carries the Map value's source-level name (mirrors
+        // the 2-arg arm above and the List branch at L1114).
+        propagateMeta(foundVal, phi);
         return phi;
     }
 

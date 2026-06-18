@@ -29,6 +29,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (info.paramTypes.size() != 1 || info.returnType != i1Ty_)
             codegenError("filter() predicate must take 1 argument and return bool");
 
+        // #2247: snapshot container element name; see codegen-type-and-metadata.md.
+        std::string filterElemSnap;
+        if (auto *meta = getMeta(listVal))
+            filterElemSnap = meta->list_elem_type_name;
+
         // Read source list
         auto lf = loadListHeader(listVal, "filter_src");
 
@@ -76,6 +81,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "fi_cur");
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "filter_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "filter_elem");
+        // #2247: stamp container element metadata onto the fresh load before
+        // it crosses the predicate boundary (`coerceCallArgs` + `wrapInAny`).
+        if (elem->getType() == ptrTy_ && !filterElemSnap.empty() && filterElemSnap != "str")
+            propagateTypeMeta(filterElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "filter_pred");
         emitBranchCond(pred, storeBB, nextBB);
 
@@ -156,6 +165,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         llvm::Type *outElemTy = info.returnType;
 
+        // #2247: snapshot source element name before loop emission.
+        std::string mapElemSnap;
+        if (auto *meta = getMeta(listVal))
+            mapElemSnap = meta->list_elem_type_name;
+
         // Read source list
         auto lf = loadListHeader(listVal, "map_src");
 
@@ -199,6 +213,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "mi_cur");
         llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "map_src_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "map_src_elem");
+        // #2247: stamp container element metadata before transform dispatch.
+        if (srcElem->getType() == ptrTy_ && !mapElemSnap.empty() && mapElemSnap != "str")
+            propagateTypeMeta(mapElemSnap, srcElem);
         llvm::Value *mapped = emitLambdaCall(lambdaVal, info, {srcElem}, "map_result");
         llvm::Value *dstElemPtr = builder_.CreateGEP(outElemTy, newData, {iCur}, "map_dst_elem_ptr");
         builder_.CreateStore(mapped, dstElemPtr);
@@ -324,6 +341,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
             codegenError("reduce() requires a function");
         auto info = *fnInfo;
 
+        // #2247: snapshot container element name before the loop body and
+        // before the `wrapInAny(firstElem)` coercion below so seed and per-
+        // iteration loads carry the correct collection metadata.
+        std::string reduceElemSnap;
+        if (auto *meta = getMeta(listVal))
+            reduceElemSnap = meta->list_elem_type_name;
+
         llvm::StructType *optTy = getOptionType(info.returnType);
         auto lf = loadListHeader(listVal, "reduce");
         llvm::Value *srcLen = lf.len;
@@ -344,6 +368,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         // Seed accumulator with element[0]; the loop below starts at i=1.
         builder_.SetInsertPoint(okBB);
         llvm::Value *firstElem = builder_.CreateLoad(elemTy, srcData, "reduce_first");
+        // #2247: stamp BEFORE wrapInAny; order matters (see rule entry).
+        if (firstElem->getType() == ptrTy_ && !reduceElemSnap.empty() && reduceElemSnap != "str")
+            propagateTypeMeta(reduceElemSnap, firstElem);
         // Untyped lambda makes info.returnType = anyTy_ (16B) while first is a
         // raw primitive (e.g. i64, 8B). Coerce via wrapInAny so the full 16B
         // Any slot is initialised before the loop and before wrapping as Some.
@@ -364,6 +391,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "reduce_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "reduce_elem");
+        // #2247: stamp container element metadata before combiner dispatch.
+        if (elem->getType() == ptrTy_ && !reduceElemSnap.empty() && reduceElemSnap != "str")
+            propagateTypeMeta(reduceElemSnap, elem);
         llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "reduce_acc_val");
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "reduce_call");
         builder_.CreateStore(result, accVar);
@@ -405,6 +435,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (info.returnType != initVal->getType())
             codegenError("fold() initial value type must match function return type");
 
+        // #2247: snapshot container element name for loop body.
+        std::string foldElemSnap;
+        if (auto *meta = getMeta(listVal))
+            foldElemSnap = meta->list_elem_type_name;
+
         auto lf = loadListHeader(listVal, "fold");
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
@@ -424,6 +459,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "fold_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "fold_elem");
+        // #2247: stamp container element metadata before combiner dispatch.
+        if (elem->getType() == ptrTy_ && !foldElemSnap.empty() && foldElemSnap != "str")
+            propagateTypeMeta(foldElemSnap, elem);
         llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "fold_acc_val");
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "fold_call");
         builder_.CreateStore(result, accVar);
@@ -449,6 +487,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (info.returnType != i1Ty_)
             codegenError("any() predicate must return bool");
 
+        // #2247: snapshot container element name for loop body.
+        std::string anyElemSnap;
+        if (auto *meta = getMeta(listVal))
+            anyElemSnap = meta->list_elem_type_name;
+
         auto lf = loadListHeader(listVal, "any");
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
@@ -468,6 +511,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "any_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "any_elem");
+        // #2247: stamp container element metadata before predicate dispatch.
+        if (elem->getType() == ptrTy_ && !anyElemSnap.empty() && anyElemSnap != "str")
+            propagateTypeMeta(anyElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "any_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         llvm::BasicBlock *foundBB = createBB("any.found");
@@ -495,6 +541,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (info.returnType != i1Ty_)
             codegenError("all() predicate must return bool");
 
+        // #2247: snapshot container element name for loop body.
+        std::string allElemSnap;
+        if (auto *meta = getMeta(listVal))
+            allElemSnap = meta->list_elem_type_name;
+
         auto lf = loadListHeader(listVal, "all");
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
@@ -514,6 +565,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "all_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "all_elem");
+        // #2247: stamp container element metadata before predicate dispatch.
+        if (elem->getType() == ptrTy_ && !allElemSnap.empty() && allElemSnap != "str")
+            propagateTypeMeta(allElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "all_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         llvm::BasicBlock *failBB = createBB("all.fail");
@@ -671,6 +725,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (info.paramTypes.size() != 1)
             codegenError("tap() function must take exactly 1 argument");
 
+        // #2247: snapshot container element name for loop body.
+        std::string tapElemSnap;
+        if (auto *meta = getMeta(listVal))
+            tapElemSnap = meta->list_elem_type_name;
+
         // Read source list
         auto lf = loadListHeader(listVal, "tap_src");
 
@@ -693,6 +752,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
         llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "tap_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
+        // #2247: stamp container element metadata before side-effect dispatch.
+        if (srcElem->getType() == ptrTy_ && !tapElemSnap.empty() && tapElemSnap != "str")
+            propagateTypeMeta(tapElemSnap, srcElem);
         emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
         builder_.CreateStore(iNext, iVar);
