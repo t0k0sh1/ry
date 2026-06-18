@@ -191,7 +191,7 @@ jobs:
       - name: Test (C++)
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
-        run: ./build/ry test -p
+        run: ./build/ry test
       - name: Bundle distribution (Linux)
         # Exercise the #2005 packaging path on every PR/push: release.yml is
         # tag-driven and cannot be dry-run, so the bundling + rpath rewrite is
@@ -366,7 +366,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ./build-asan/ry test -p
+        run: ./build-asan/ry test
 
   tsan:
     runs-on: ubuntu-24.04
@@ -432,7 +432,7 @@ jobs:
         continue-on-error: true
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ./build-tsan/ry test -p
+        run: ./build-tsan/ry test
 
   macos-smoke-rust:
     # macOS build/link smoke for the emit Rust cdylib.

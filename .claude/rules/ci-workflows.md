@@ -680,3 +680,37 @@ CI. This is the "new tool added to image" path in
 (`/pre-commit-checklist`). Lint policy is declared in
 `[workspace.lints]` (root `Cargo.toml`); FFI carve-outs stay as
 crate-level `#![allow(...)]` in `lib.rs`.
+
+### Linux Ry self-test: pass no `-p`
+
+**Source**: #2237 (2026-06-18); blocker #2234 (subprocess fan-out
+unification, v0.0.29), background #2232 (design verdict)
+**Tags**: ci, github-actions, ry-test, jit-leak, isolation, worker-count
+
+**Rule**: Every Linux CI job in `.github/workflows/ci.yml` that
+invokes `ry test` must omit `-p` (currently: `test`, `asan`, `tsan`).
+The `macos-smoke-rust` job continues to pass `-p` as the local fast
+path.
+
+**Why**: After #2234, `ry test` always dispatches via per-file
+subprocess fan-out (`-p` controls only worker count, #2216). worker=1
+gives:
+
+- Interleave-free output (crash localisation is straightforward).
+- The same per-file isolation that defeats the 6-step JIT teardown
+  leak accumulation (KNOWLEDGE.md「LLVM ORC JIT intermittent
+  teardown crash」), which previously hit `bad_alloc` at ~42/181
+  spec files in the legacy in-process sequential path on Linux CI
+  (~7GB).
+
+**How to apply**:
+
+- Linux `test` / `asan` / `tsan` jobs use `./<build-dir>/ry test`
+  (no `-p`).
+- `macos-smoke-rust` keeps `./build/ry test -p` as the local fast
+  path. Do not propagate the rule there.
+
+**How to verify**:
+`grep -nE '\bry test\b' .github/workflows/ci.yml | grep -- '-p'`
+must match exactly the `macos-smoke-rust` job line — every other
+`ry test` invocation should be `-p`-free.
