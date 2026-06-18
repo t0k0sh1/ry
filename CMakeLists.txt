@@ -181,13 +181,6 @@ add_library(ry_lib STATIC
     src/codegen_metadata.cpp
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
-    src/codegen_lowering_bounds_check.cpp
-    src/codegen_lowering_result_branch.cpp
-    src/codegen_lowering_option_wrap.cpp
-    src/codegen_lowering_arc.cpp
-    src/codegen_lowering_collection_mutate.cpp
-    src/codegen_lowering_cow.cpp
-    src/codegen_lowering_any.cpp
     src/runtime/core/error.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp

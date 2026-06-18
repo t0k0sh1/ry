@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"

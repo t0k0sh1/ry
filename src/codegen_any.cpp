@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_any.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 
@@ -67,25 +66,17 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
             emitEnumBoxArcFieldsRetain(val, enumName, payloadTy);
         }
 
-        auto op = codegen::lowering::lowerAnyWrap(
-            *this, codegen::lowered::AnyWrapKind::EnumBox,
-            static_cast<int64_t>(RyAnyTag::Enum), val,
-            /*do_collection_retain=*/false, /*do_str_retain=*/false,
-            desc, layoutTy, boxDataSize, anyTy_);
         RyAnyWrapDesc wrapDesc{};
-        wrapDesc.kind = static_cast<int>(op.kind);
-        wrapDesc.target_tag = op.target_tag;
+        wrapDesc.kind = static_cast<int>(AnyWrapKind::EnumBox);
+        wrapDesc.target_tag = static_cast<int64_t>(RyAnyTag::Enum);
         wrapDesc.val_id =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
-        wrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-        wrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
         wrapDesc.descriptor_id =
-            op.descriptor ? ry_emit_intern(
-                                emit_ctx_, ry::llvm_emit::asRyValue(op.descriptor))
-                          : 0;
-        wrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
-        wrapDesc.box_data_size = op.box_data_size;
-        wrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
+            desc ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(desc))
+                 : 0;
+        wrapDesc.box_layout_ty = ry::llvm_emit::asRyType(layoutTy);
+        wrapDesc.box_data_size = boxDataSize;
+        wrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
         return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
             emit_ctx_, ry_emit_any_wrap(emit_ctx_, &wrapDesc)));
     }
@@ -121,25 +112,17 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
             emitRecordArcFieldsRetain(val, recordStructTy);
         }
 
-        auto op = codegen::lowering::lowerAnyWrap(
-            *this, codegen::lowered::AnyWrapKind::RecordBox,
-            static_cast<int64_t>(RyAnyTag::Record), val,
-            /*do_collection_retain=*/false, /*do_str_retain=*/false,
-            desc, layoutTy, boxDataSize, anyTy_);
         RyAnyWrapDesc wrapDesc{};
-        wrapDesc.kind = static_cast<int>(op.kind);
-        wrapDesc.target_tag = op.target_tag;
+        wrapDesc.kind = static_cast<int>(AnyWrapKind::RecordBox);
+        wrapDesc.target_tag = static_cast<int64_t>(RyAnyTag::Record);
         wrapDesc.val_id =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
-        wrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-        wrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
         wrapDesc.descriptor_id =
-            op.descriptor ? ry_emit_intern(
-                                emit_ctx_, ry::llvm_emit::asRyValue(op.descriptor))
-                          : 0;
-        wrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
-        wrapDesc.box_data_size = op.box_data_size;
-        wrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
+            desc ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(desc))
+                 : 0;
+        wrapDesc.box_layout_ty = ry::llvm_emit::asRyType(layoutTy);
+        wrapDesc.box_data_size = boxDataSize;
+        wrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
         return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
             emit_ctx_, ry_emit_any_wrap(emit_ctx_, &wrapDesc)));
     }
@@ -206,26 +189,14 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
 
     bool doStrRetain = !isCollection && isStringValue(val);
 
-    auto op = codegen::lowering::lowerAnyWrap(
-        *this, codegen::lowered::AnyWrapKind::NonBox, tag, val,
-        /*do_collection_retain=*/isCollection,
-        /*do_str_retain=*/doStrRetain,
-        /*descriptor=*/nullptr, /*box_layout_ty=*/nullptr,
-        /*box_data_size=*/0, anyTy_);
     RyAnyWrapDesc wrapDesc{};
-    wrapDesc.kind = static_cast<int>(op.kind);
-    wrapDesc.target_tag = op.target_tag;
+    wrapDesc.kind = static_cast<int>(AnyWrapKind::NonBox);
+    wrapDesc.target_tag = tag;
     wrapDesc.val_id =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
-    wrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-    wrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
-    wrapDesc.descriptor_id =
-        op.descriptor ? ry_emit_intern(emit_ctx_,
-                                       ry::llvm_emit::asRyValue(op.descriptor))
-                      : 0;
-    wrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
-    wrapDesc.box_data_size = op.box_data_size;
-    wrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
+    wrapDesc.do_collection_retain = isCollection ? 1 : 0;
+    wrapDesc.do_str_retain = doStrRetain ? 1 : 0;
+    wrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
         emit_ctx_, ry_emit_any_wrap(emit_ctx_, &wrapDesc)));
 }
@@ -335,34 +306,25 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
             "runtime error: any record type mismatch (expected " + typeName +
             ", got a different record type)\n";
 
-        auto op = codegen::lowering::lowerAnyUnwrap(
-            *this, codegen::lowered::AnyUnwrapKind::Record, anyVal, anyTy_,
-            targetTy, static_cast<int64_t>(RyAnyTag::Record),
-            /*do_collection_retain=*/false, /*do_str_retain=*/false,
-            mismatchMsg, ".any_type_err", expectedDesc, layoutTy,
-            recordStructTy, descMismatchMsg, ".any_rec_err");
         RyAnyUnwrapDesc unwrapDesc{};
-        unwrapDesc.kind = static_cast<int>(op.kind);
+        unwrapDesc.kind = static_cast<int>(AnyUnwrapKind::Record);
         unwrapDesc.any_val_id =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
-        unwrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
-        unwrapDesc.target_ty = ry::llvm_emit::asRyType(op.target_ty);
-        unwrapDesc.expected_tag = op.expected_tag;
-        unwrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-        unwrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
-        unwrapDesc.mismatch_msg = op.mismatch_msg.c_str();
-        unwrapDesc.mismatch_global_name = op.mismatch_global_name.c_str();
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(anyVal));
+        unwrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
+        unwrapDesc.target_ty = ry::llvm_emit::asRyType(targetTy);
+        unwrapDesc.expected_tag = static_cast<int64_t>(RyAnyTag::Record);
+        unwrapDesc.mismatch_msg = mismatchMsg.c_str();
+        unwrapDesc.mismatch_global_name = ".any_type_err";
         unwrapDesc.expected_desc_id =
-            op.expected_desc
+            expectedDesc
                 ? ry_emit_intern(emit_ctx_,
-                                 ry::llvm_emit::asRyValue(op.expected_desc))
+                                 ry::llvm_emit::asRyValue(expectedDesc))
                 : 0;
-        unwrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
+        unwrapDesc.box_layout_ty = ry::llvm_emit::asRyType(layoutTy);
         unwrapDesc.record_struct_ty =
-            ry::llvm_emit::asRyType(op.record_struct_ty);
-        unwrapDesc.desc_mismatch_msg = op.desc_mismatch_msg.c_str();
-        unwrapDesc.desc_mismatch_global_name =
-            op.desc_mismatch_global_name.c_str();
+            ry::llvm_emit::asRyType(recordStructTy);
+        unwrapDesc.desc_mismatch_msg = descMismatchMsg.c_str();
+        unwrapDesc.desc_mismatch_global_name = ".any_rec_err";
         llvm::Value *recordVal = ry::llvm_emit::asLlvmValue(ry_emit_resolve(
             emit_ctx_, ry_emit_any_unwrap(emit_ctx_, &unwrapDesc)));
         // The unwrapped record becomes a new alias to the boxed value. Field
@@ -375,37 +337,17 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
 
     // int→float auto-promotion: accept both Float and Int tags.
     if (targetTy == f64Ty_) {
-        auto op = codegen::lowering::lowerAnyUnwrap(
-            *this, codegen::lowered::AnyUnwrapKind::F64Promote, anyVal, anyTy_,
-            f64Ty_, /*expected_tag=*/0,
-            /*do_collection_retain=*/false, /*do_str_retain=*/false,
-            "runtime error: any type mismatch (expected float or int)\n",
-            ".any_type_err", /*expected_desc=*/nullptr,
-            /*box_layout_ty=*/nullptr, /*record_struct_ty=*/nullptr,
-            /*desc_mismatch_msg=*/std::string{},
-            /*desc_mismatch_global_name=*/std::string{});
         RyAnyUnwrapDesc unwrapDesc{};
-        unwrapDesc.kind = static_cast<int>(op.kind);
+        unwrapDesc.kind = static_cast<int>(AnyUnwrapKind::F64Promote);
         unwrapDesc.any_val_id =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
-        unwrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
-        unwrapDesc.target_ty = ry::llvm_emit::asRyType(op.target_ty);
-        unwrapDesc.expected_tag = op.expected_tag;
-        unwrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-        unwrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
-        unwrapDesc.mismatch_msg = op.mismatch_msg.c_str();
-        unwrapDesc.mismatch_global_name = op.mismatch_global_name.c_str();
-        unwrapDesc.expected_desc_id =
-            op.expected_desc
-                ? ry_emit_intern(emit_ctx_,
-                                 ry::llvm_emit::asRyValue(op.expected_desc))
-                : 0;
-        unwrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
-        unwrapDesc.record_struct_ty =
-            ry::llvm_emit::asRyType(op.record_struct_ty);
-        unwrapDesc.desc_mismatch_msg = op.desc_mismatch_msg.c_str();
-        unwrapDesc.desc_mismatch_global_name =
-            op.desc_mismatch_global_name.c_str();
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(anyVal));
+        unwrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
+        unwrapDesc.target_ty = ry::llvm_emit::asRyType(f64Ty_);
+        unwrapDesc.mismatch_msg =
+            "runtime error: any type mismatch (expected float or int)\n";
+        unwrapDesc.mismatch_global_name = ".any_type_err";
+        unwrapDesc.desc_mismatch_msg = "";
+        unwrapDesc.desc_mismatch_global_name = "";
         return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
             emit_ctx_, ry_emit_any_unwrap(emit_ctx_, &unwrapDesc)));
     }
@@ -446,38 +388,19 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
     std::string mismatchMsg =
         "runtime error: any type mismatch (expected " + typeName + ")\n";
 
-    auto op = codegen::lowering::lowerAnyUnwrap(
-        *this, codegen::lowered::AnyUnwrapKind::Standard, anyVal, anyTy_,
-        targetTy, expectedTag,
-        /*do_collection_retain=*/isCollectionUnwrap,
-        /*do_str_retain=*/isStrUnwrap,
-        mismatchMsg, ".any_type_err",
-        /*expected_desc=*/nullptr, /*box_layout_ty=*/nullptr,
-        /*record_struct_ty=*/nullptr,
-        /*desc_mismatch_msg=*/std::string{},
-        /*desc_mismatch_global_name=*/std::string{});
     RyAnyUnwrapDesc unwrapDesc{};
-    unwrapDesc.kind = static_cast<int>(op.kind);
+    unwrapDesc.kind = static_cast<int>(AnyUnwrapKind::Standard);
     unwrapDesc.any_val_id =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
-    unwrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
-    unwrapDesc.target_ty = ry::llvm_emit::asRyType(op.target_ty);
-    unwrapDesc.expected_tag = op.expected_tag;
-    unwrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-    unwrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
-    unwrapDesc.mismatch_msg = op.mismatch_msg.c_str();
-    unwrapDesc.mismatch_global_name = op.mismatch_global_name.c_str();
-    unwrapDesc.expected_desc_id =
-        op.expected_desc
-            ? ry_emit_intern(emit_ctx_,
-                             ry::llvm_emit::asRyValue(op.expected_desc))
-            : 0;
-    unwrapDesc.box_layout_ty = ry::llvm_emit::asRyType(op.box_layout_ty);
-    unwrapDesc.record_struct_ty =
-        ry::llvm_emit::asRyType(op.record_struct_ty);
-    unwrapDesc.desc_mismatch_msg = op.desc_mismatch_msg.c_str();
-    unwrapDesc.desc_mismatch_global_name =
-        op.desc_mismatch_global_name.c_str();
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(anyVal));
+    unwrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
+    unwrapDesc.target_ty = ry::llvm_emit::asRyType(targetTy);
+    unwrapDesc.expected_tag = expectedTag;
+    unwrapDesc.do_collection_retain = isCollectionUnwrap ? 1 : 0;
+    unwrapDesc.do_str_retain = isStrUnwrap ? 1 : 0;
+    unwrapDesc.mismatch_msg = mismatchMsg.c_str();
+    unwrapDesc.mismatch_global_name = ".any_type_err";
+    unwrapDesc.desc_mismatch_msg = "";
+    unwrapDesc.desc_mismatch_global_name = "";
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
         emit_ctx_, ry_emit_any_unwrap(emit_ctx_, &unwrapDesc)));
 }
@@ -607,26 +530,17 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         std::string msg =
             "load[" + typeForMsg + "]: expected float or int";
         llvm::Value *errMsgStr = cachedGlobalString(msg);
-        auto op = codegen::lowering::lowerAnyTryUnwrap(
-            *this, codegen::lowered::AnyTryUnwrapKind::F64Promote, anyVal,
-            anyTy_, resTy, errorTy_, f64Ty_, /*expected_tag=*/0,
-            /*do_collection_retain=*/false, /*do_str_retain=*/false,
-            errMsgStr);
         RyAnyTryUnwrapDesc tryUnwrapDesc{};
-        tryUnwrapDesc.kind = static_cast<int>(op.kind);
+        tryUnwrapDesc.kind = static_cast<int>(AnyTryUnwrapKind::F64Promote);
         tryUnwrapDesc.any_val_id =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
-        tryUnwrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
-        tryUnwrapDesc.res_ty = ry::llvm_emit::asRyType(op.res_ty);
-        tryUnwrapDesc.error_ty = ry::llvm_emit::asRyType(op.error_ty);
-        tryUnwrapDesc.target_ty = ry::llvm_emit::asRyType(op.target_ty);
-        tryUnwrapDesc.expected_tag = op.expected_tag;
-        tryUnwrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-        tryUnwrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(anyVal));
+        tryUnwrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
+        tryUnwrapDesc.res_ty = ry::llvm_emit::asRyType(resTy);
+        tryUnwrapDesc.error_ty = ry::llvm_emit::asRyType(errorTy_);
+        tryUnwrapDesc.target_ty = ry::llvm_emit::asRyType(f64Ty_);
         tryUnwrapDesc.err_msg_str_id =
-            op.err_msg_str
-                ? ry_emit_intern(emit_ctx_,
-                                 ry::llvm_emit::asRyValue(op.err_msg_str))
+            errMsgStr
+                ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(errMsgStr))
                 : 0;
         return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
             emit_ctx_, ry_emit_any_try_unwrap(emit_ctx_, &tryUnwrapDesc)));
@@ -666,26 +580,20 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     std::string msg = "load[" + typeForMsg + "]: expected " + typeForMsg;
     llvm::Value *errMsgStr = cachedGlobalString(msg);
 
-    auto op = codegen::lowering::lowerAnyTryUnwrap(
-        *this, codegen::lowered::AnyTryUnwrapKind::Standard, anyVal, anyTy_,
-        resTy, errorTy_, targetTy, expectedTag,
-        /*do_collection_retain=*/isCollectionUnwrap,
-        /*do_str_retain=*/isStrUnwrap, errMsgStr);
     RyAnyTryUnwrapDesc tryUnwrapDesc{};
-    tryUnwrapDesc.kind = static_cast<int>(op.kind);
+    tryUnwrapDesc.kind = static_cast<int>(AnyTryUnwrapKind::Standard);
     tryUnwrapDesc.any_val_id =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.any_val));
-    tryUnwrapDesc.any_ty = ry::llvm_emit::asRyType(op.any_ty);
-    tryUnwrapDesc.res_ty = ry::llvm_emit::asRyType(op.res_ty);
-    tryUnwrapDesc.error_ty = ry::llvm_emit::asRyType(op.error_ty);
-    tryUnwrapDesc.target_ty = ry::llvm_emit::asRyType(op.target_ty);
-    tryUnwrapDesc.expected_tag = op.expected_tag;
-    tryUnwrapDesc.do_collection_retain = op.do_collection_retain ? 1 : 0;
-    tryUnwrapDesc.do_str_retain = op.do_str_retain ? 1 : 0;
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(anyVal));
+    tryUnwrapDesc.any_ty = ry::llvm_emit::asRyType(anyTy_);
+    tryUnwrapDesc.res_ty = ry::llvm_emit::asRyType(resTy);
+    tryUnwrapDesc.error_ty = ry::llvm_emit::asRyType(errorTy_);
+    tryUnwrapDesc.target_ty = ry::llvm_emit::asRyType(targetTy);
+    tryUnwrapDesc.expected_tag = expectedTag;
+    tryUnwrapDesc.do_collection_retain = isCollectionUnwrap ? 1 : 0;
+    tryUnwrapDesc.do_str_retain = isStrUnwrap ? 1 : 0;
     tryUnwrapDesc.err_msg_str_id =
-        op.err_msg_str
-            ? ry_emit_intern(emit_ctx_,
-                             ry::llvm_emit::asRyValue(op.err_msg_str))
+        errMsgStr
+            ? ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(errMsgStr))
             : 0;
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(
         emit_ctx_, ry_emit_any_try_unwrap(emit_ctx_, &tryUnwrapDesc)));

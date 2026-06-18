@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h" // RY_LISTCOPY_KEYS / _VALUES / ry_emit_list_enumerate (#2095)

@@ -7,7 +7,6 @@ paths:
   - "src/codegen_test.cpp"
   - "src/codegen_call_user.cpp"
   - "src/codegen_call_collection.cpp"
-  - "src/codegen_lowering_*.cpp"
   - "src/codegen_emission_*.cpp"
   - "src/jit/jit_runner.cpp"
   - "src/app/main.cpp"
@@ -58,9 +57,9 @@ When a collection helper's pointer-element branch uses `strcmp` (or any C-string
 
 `emitRuntimeError` emits `fprintf(stderr, ...)` → `exit(1)` → `unreachable` and does NOT switch to a fresh dead block. If the caller continues emitting IR in the same block, those instructions land after `unreachable` and LLVM verify rejects them. Treat `emitRuntimeError` like `CreateRet` / `CreateBr`: split into err / ok BBs before the call, set insert point to `errBB`, emit error, then set insert point to `okBB` for the happy path. Canonical examples: `emitIntZeroDivGuard`, `?` operator path in `emitExprVariant(ErrorPropagateExpr)`.
 
-### Lowering constant-fold and emission must agree on integer interpretation (i1 sext vs zext)
+### Compile-time fold and boundary emission must agree on integer interpretation (i1 sext vs zext)
 
-When a lowered op (`include/ry/codegen/lowered_*.hpp`) splits into a compile-time constant-fold branch (lowering side) and a runtime IR-construction branch (emission side), both must interpret each ConstantInt operand the same way. If emission ZExt-extends `i1 → i64` (so `true` becomes `1`), the lowering fold must read `i1` operands with `getZExtValue()` — switching to `getSExtValue()` only for widths > 1. `getSExtValue()` on `i1` returns `-1` for `true`, which silently wraps to `len - 1` in fold but emits `1` at runtime, breaking the bit-exact extract that the lowering/emission split is supposed to preserve. Canonical example: `lowerBoundsCheck` (`src/codegen_lowering_bounds_check.cpp`) keeps `getSExtValue()` for wider widths and switches to `getZExtValue()` when `getBitWidth() == 1`, mirroring `emission::emitBoundsCheck`'s `CreateZExt(idx, i64Ty_)`. Apply the same rule to any future `lowering::lower<Op>` that constant-folds two ConstantInt operands.
+When a CodeGen helper splits into a compile-time constant-fold branch and a runtime IR-construction branch (the latter typically a `ry_emit_*` boundary call), both must interpret each ConstantInt operand the same way. If the boundary ZExt-extends `i1 → i64` (so `true` becomes `1`), the fold must read `i1` operands with `getZExtValue()` — switching to `getSExtValue()` only for widths > 1. `getSExtValue()` on `i1` returns `-1` for `true`, which silently wraps to `len - 1` in fold but emits `1` at runtime, breaking the bit-exact extract that the fold/boundary split is supposed to preserve. Canonical example: `CodeGen::tryFoldBoundsCheck` (`src/codegen.cpp`) keeps `getSExtValue()` for wider widths and switches to `getZExtValue()` when `getBitWidth() == 1`, mirroring `ry_emit_bounds_check`'s `CreateZExt(idx, i64Ty_)`. Apply the same rule to any future `CodeGen::tryFold*` member that constant-folds two ConstantInt operands.
 
 ### ARC weak_count: a non-atomic read paired with atomic RMW writes is a TSan race even on the release path
 

@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_option_wrap.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
@@ -498,21 +497,17 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
 }
 
 llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
-    auto op = codegen::lowering::lowerOptionWrap(
-        *this, /*inner=*/nullptr, llvm::cast<llvm::StructType>(optionTy),
-        /*is_some=*/false);
     RyValueId resultId = ry_emit_option_wrap_none(
-        emit_ctx_, ry::llvm_emit::asRyType(op.opt_ty));
+        emit_ctx_, ry::llvm_emit::asRyType(llvm::cast<llvm::StructType>(optionTy)));
     return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
 }
 
 llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
-    auto op = codegen::lowering::lowerOptionWrap(
-        *this, inner, llvm::cast<llvm::StructType>(optionTy), /*is_some=*/true);
     RyValueId innerId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.inner));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(inner));
     RyValueId resultId = ry_emit_option_wrap_some(
-        emit_ctx_, innerId, ry::llvm_emit::asRyType(op.opt_ty));
+        emit_ctx_, innerId,
+        ry::llvm_emit::asRyType(llvm::cast<llvm::StructType>(optionTy)));
     llvm::Value *val =
         ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, resultId));
     propagateMeta(inner, val);

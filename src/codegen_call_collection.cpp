@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/codegen/lowered_collection_mutate.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h" // RY_LISTCOPY_TAKE / ry_emit_list_remove (#2095)
 #include "ry/llvm_emit/cast_helpers.hpp" // asRyValue / asRyType / asLlvmValue (#2095)
@@ -362,16 +361,14 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto op = codegen::lowering::lowerCollectionAppend(
-            *this, listPtr, val, listHeaderTy_, elemTy, elemSize);
         RyValueId listId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(listPtr));
         RyValueId valId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
         ry_emit_collection_append(emit_ctx_, listId, valId,
-                                  ry::llvm_emit::asRyType(op.list_header_ty),
-                                  ry::llvm_emit::asRyType(op.elem_ty),
-                                  op.elem_size);
+                                  ry::llvm_emit::asRyType(listHeaderTy_),
+                                  ry::llvm_emit::asRyType(elemTy),
+                                  elemSize);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -544,20 +541,17 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     // boundary returns (count, new_data); header allocation, metadata propagation
     // and per-element ARC retain stay on the codegen side because they need
     // ValueMetadata that does not cross the boundary.
-    auto op = codegen::lowering::lowerListSlice(*this, listPtr, startVal,
-                                                endExclVal, listHeaderTy_,
-                                                elemTy, elemSize);
     RyValueId sliceListId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(listPtr));
     RyValueId sliceStartId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.start));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(startVal));
     RyValueId sliceEndId =
-        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.end_excl));
+        ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(endExclVal));
     RyValueId sliceCountId = 0;
     RyValueId sliceNewDataId = 0;
     ry_emit_list_slice(emit_ctx_, sliceListId, sliceStartId, sliceEndId,
-                       ry::llvm_emit::asRyType(op.list_header_ty),
-                       ry::llvm_emit::asRyType(op.elem_ty), op.elem_size,
+                       ry::llvm_emit::asRyType(listHeaderTy_),
+                       ry::llvm_emit::asRyType(elemTy), elemSize,
                        &sliceCountId, &sliceNewDataId);
     llvm::Value *count =
         ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, sliceCountId));
@@ -719,18 +713,16 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto op = codegen::lowering::lowerCollectionInsert(
-            *this, listPtr, idx, val, listHeaderTy_, elemTy, elemSize);
         RyValueId insListId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(listPtr));
         RyValueId insIdxId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.idx));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(idx));
         RyValueId insValId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.val));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(val));
         ry_emit_collection_insert(emit_ctx_, insListId, insIdxId, insValId,
-                                  ry::llvm_emit::asRyType(op.list_header_ty),
-                                  ry::llvm_emit::asRyType(op.elem_ty),
-                                  op.elem_size);
+                                  ry::llvm_emit::asRyType(listHeaderTy_),
+                                  ry::llvm_emit::asRyType(elemTy),
+                                  elemSize);
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -751,16 +743,14 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto op = codegen::lowering::lowerCollectionRemoveAt(
-            *this, listPtr, idx, listHeaderTy_, elemTy, elemSize);
         RyValueId rmListId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.list_ptr));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(listPtr));
         RyValueId rmIdxId =
-            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(op.idx));
+            ry_emit_intern(emit_ctx_, ry::llvm_emit::asRyValue(idx));
         RyValueId rmRemovedId = ry_emit_collection_remove_at(
             emit_ctx_, rmListId, rmIdxId,
-            ry::llvm_emit::asRyType(op.list_header_ty),
-            ry::llvm_emit::asRyType(op.elem_ty), op.elem_size);
+            ry::llvm_emit::asRyType(listHeaderTy_),
+            ry::llvm_emit::asRyType(elemTy), elemSize);
         return ry::llvm_emit::asLlvmValue(
             ry_emit_resolve(emit_ctx_, rmRemovedId));
     }
