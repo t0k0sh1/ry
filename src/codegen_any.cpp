@@ -44,6 +44,10 @@ bool CodeGen::isStringValue(llvm::Value *val) {
     return val->getType() == ptrTy_ && !isNonStrPointer(val);
 }
 
+bool CodeGen::isStrLike(llvm::Value *val) {
+    return val->getType() == ptrTy_ && !isNonStrPointer(val);
+}
+
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // Enum types (simple, ADT, `Option<T>`, `Result<V,E>`) share the
     // record-style heap-box layout (#1798): `[ ArcHeader | descriptor ptr |
