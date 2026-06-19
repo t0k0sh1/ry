@@ -1,0 +1,140 @@
+from testing import it, describe, expect
+
+# Regression + detector for #2261: iter() の dense iterator next-fn と
+# Map iterator next-fn の elem load 直後に container element type
+# metadata が伝搬されていないため、`for m in iter(xs)` の loop var が
+# 要素型に解決されず str に倒れて silent wrong result / 誤 type error
+# を起こす。#2247 (PR #2253) が higher-order combinator の直接 List
+# 経路で導入した同種 propagation を、iterator header 経路 (`iter()` /
+# `filter(iter(...))` / `map(iter(...))` / `take(iter(...))` /
+# `toList(iter(...))`) にも対称的に流す必要がある。
+#
+# 修正方針: `ValueMetadata` に `iterator_elem_type_name` (string) を
+# 追加し、producer (iter / filter / map / take) が header に stamp、
+# consumer (for_in / toList) が読み取って loop var / 結果 List に
+# `propagateTypeMeta` する。`emitDenseIterator` next-fn body 内で
+# stamp する選択肢は cross-function で `Value*` が分かれるため無効。
+
+@describe("iter() nested-element metadata propagation (#2261)")
+fn iterNestedElementMetadataPropagationTests():
+
+  @it("Set<Map<str,int>> iter: len(m) sees Map header, not str")
+  fn setOfMapIterLenSeesMapHeaderNotStr():
+    # Silent wrong result repro A. Without #2261, `len(m)` reads
+    # offset-0 of a StringHeader and returns 0 for every iteration.
+    xs: Set<Map<str, int>> = {{"a": 1}, {"b": 2}}
+    seenOne = 0
+    for m in iter(xs):
+      if len(m) == 1:
+        seenOne = seenOne + 1
+    expect(seenOne).toEq(2)
+
+  @it("List<Map<str,int>> iter: m[key] resolves Map indexer")
+  fn listOfMapIterIndexerResolvesMap():
+    # Compile-time error repro B-1. Without #2261, the indexer dispatch
+    # sees `m` as str and rejects with `str does not support index access`.
+    xs: List<Map<str, int>> = [{"a": 10}, {"a": 20}]
+    sum = 0
+    for m in iter(xs):
+      sum = sum + m["a"]
+    expect(sum).toEq(30)
+
+  @it("List<List<int>> iter: inner[0] resolves nested List indexer")
+  fn listOfListIterInnerIndexResolvesList():
+    # Compile-time error repro B-2.
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    sum = 0
+    for inner in iter(xs):
+      sum = sum + inner[0]
+    expect(sum).toEq(4)
+
+  @it("Map<str, List<int>> iter: tuple destructure preserves value type")
+  fn mapWithListValueIterTupleDestructurePreservesValueType():
+    # Compile-time error repro B-3. The `(K, V)` tuple sig must split
+    # so that `v` keeps List<int> metadata, not str.
+    m: Map<str, List<int>> = {"xs": [1, 2, 3]}
+    total = 0
+    for k, v in iter(m):
+      total = total + v[0]
+    expect(total).toEq(1)
+
+  @it("toList(iter(xs)) propagates list_elem_type_name to result")
+  fn toListIterPropagatesListElemTypeNameToResult():
+    # Result List header must carry the inner Map type so that
+    # `ys[0]["b"]` resolves Map indexer.
+    xs: List<Map<str, int>> = [{"b": 7}]
+    ys = toList(iter(xs))
+    expect(ys[0]["b"]).toEq(7)
+
+  # repro B-4 (`map(iter(xs), m => m)` identity chain) is scope-out: the
+  # identity lambda's `info.returnTypeName` is empty AND `info.returnType`
+  # is `anyTy_` (not `ptrTy_`), so the iterator map's identity-fallback
+  # guard (`outElemTy == elemTy == ptrTy_`) cannot kick in. The fix
+  # requires lambda return-type inference that propagates from the param
+  # binding through the identity body, which is a separate concern from
+  # iterator metadata propagation — tracked as a follow-up issue.
+
+  @it("indirect iter binding: it = iter(xs); for m in it: preserves elem type")
+  fn indirectIterBindingPreservesElemType():
+    # propagateMeta must copy iterator_elem_type_name through the
+    # variable binding so the for-loop downstream resolves Map.
+    xs: List<Map<str, int>> = [{"c": 8}]
+    it = iter(xs)
+    found = 0
+    for m in it:
+      found = m["c"]
+    expect(found).toEq(8)
+
+  @it("filter(iter(xs), pred) preserves Map element type for downstream indexer")
+  fn filterIterPreservesMapElemTypeForDownstreamIndexer():
+    # iterator combinator filter must copy iterator_elem_type_name to
+    # the new IteratorHeader so consumers still resolve Map indexer.
+    xs: List<Map<str, int>> = [{"x": 1}, {"x": 2}, {"x": 3}]
+    keepAll = (m: any) => true
+    sum = 0
+    for m in filter(iter(xs), keepAll):
+      sum = sum + m["x"]
+    expect(sum).toEq(6)
+
+  @it("take(iter(xs), n) preserves Map element type for downstream indexer")
+  fn takeIterPreservesMapElemTypeForDownstreamIndexer():
+    xs: List<Map<str, int>> = [{"x": 5}, {"x": 6}, {"x": 7}]
+    sum = 0
+    for m in take(iter(xs), 2):
+      sum = sum + m["x"]
+    expect(sum).toEq(11)
+
+  # str element path coverage: the new iterator_elem_type_name channel
+  # carries "str" through to consumers, which then routes through
+  # `propagateTypeMeta("str", loopVar)` — the same call shape that the
+  # direct `for elem in strList:` path uses. The dedicated `str_elem`
+  # side-channel (codegen-arc-cow rule "List literal with str: side-table
+  # retain + `*_type_name = "str"` stamp") is what gates `-24` ARC
+  # offset selection; ARC safety hinges on the loop var also being
+  # registered there, mirroring the direct-iter path. ASan is the
+  # canonical detector for `-24`/`-16` confusion, so these cases must
+  # be exercised under the sanitizer matrix.
+
+  @it("List<str> iter: for-in loop concatenates correctly")
+  fn listOfStrIterForInLoopConcatenatesCorrectly():
+    xs: List<str> = ["a", "b", "c"]
+    out = ""
+    for s in iter(xs):
+      out = out + s
+    expect(out).toEq("abc")
+
+  @it("toList(iter(List<str>)) preserves str element type for indexer")
+  fn toListIterListOfStrPreservesStrElemType():
+    xs: List<str> = ["x", "y"]
+    ys = toList(iter(xs))
+    expect(ys[0]).toEq("x")
+    expect(ys[1]).toEq("y")
+    expect(len(ys)).toEq(2)
+
+  @it("Map<str, str> iter: tuple destructure concatenates both sides")
+  fn mapOfStrStrIterTupleDestructureBothSides():
+    m: Map<str, str> = {"k1": "v1"}
+    out = ""
+    for k, v in iter(m):
+      out = out + k + "=" + v
+    expect(out).toEq("k1=v1")

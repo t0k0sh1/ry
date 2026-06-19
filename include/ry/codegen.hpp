@@ -1300,6 +1300,9 @@ public:
         std::string map_value_type_name;    // Ry type name for map values
         std::string list_elem_type_name;    // Ry type name for list elements (e.g. "Map<str, int>")
         std::string set_elem_type_name;     // Ry type name for set elements (e.g. "List<int>")
+        // Ry element type name for iterators (e.g. "Map<str, int>", "(K, V)").
+        // See codegen-type-and-metadata.md "Iterator-header element metadata". (#2261)
+        std::string iterator_elem_type_name;
         std::string union_value_type;       // normalized union type name
         std::string enum_value_type;        // enum type name
         // Lossless full Ry type name (e.g. "Result<List<int>, str>",
