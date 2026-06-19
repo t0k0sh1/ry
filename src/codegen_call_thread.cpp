@@ -112,13 +112,45 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
 
 // ===== Thread custom emitters =====
 
+// Reject worker return types that don't fit the 8-byte ThreadHandle slot.
+// MVP (#828): only Unit / int / float / bool are supported. void passes
+// through (Unit worker); other shapes (any / ARC / sum types) would either
+// silently corrupt the slot or trip an sret ABI mismatch.
+static void rejectIfUnsupportedThreadReturn(CodeGen &cg, llvm::Type *retTy) {
+    if (!retTy->isVoidTy() &&
+        retTy != cg.i64Ty_ &&
+        retTy != cg.f64Ty_ &&
+        retTy != cg.i1Ty_) {
+        cg.codegenError(
+            "threadSpawn() MVP (#828) supports only () -> Unit, int, float, "
+            "or bool return types; ARC-managed types (str, List, Map, Set, "
+            "records) are tracked in #877, sum types (Option, Result, enum) "
+            "are tracked in #878");
+    }
+}
+
+// Write the worker's return value into the ThreadHandle's 8-byte result slot.
+// i1 is widened to i64 so the full slot is initialised; threadJoin reads back
+// as i64 and truncates to i1. No-op for void workers (Unit).
+static void emitStoreThreadResult(CodeGen &cg, llvm::Value *retVal,
+                                  llvm::Type *workerRetTy,
+                                  llvm::Value *resultRaw) {
+    if (workerRetTy->isVoidTy())
+        return;
+    llvm::Value *toStore = retVal;
+    if (workerRetTy == cg.i1Ty_)
+        toStore = cg.emitZExt(retVal, cg.i64Ty_, "thread_ret_bool_ext");
+    cg.emitStore(toStore, resultRaw);
+}
+
 static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
 
     llvm::Value *envPtr = nullptr;
     llvm::Function *thunk = nullptr;
-    // MVP scope for #828: inline lambda may return int/float/bool/Unit.
-    // Variable-reference worker is always treated as Unit (follow-up issue).
+    // MVP scope (#828): supported worker return types are Unit / int / float
+    // / bool. The set is enforced uniformly via rejectIfUnsupportedThreadReturn
+    // across inline-lambda and variable-reference workers.
     llvm::Type *workerRetTy = nullptr;
     int64_t resultSize = 0;
 
@@ -149,17 +181,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         //     are rejected early so the user gets the MVP error without
         //     walking the body first.
         if (lam.expr_body && lam.return_type) {
-            llvm::Type *annotated = cg.resolveType(lam.return_type->toString());
-            if (annotated && !annotated->isVoidTy() &&
-                annotated != cg.i64Ty_ &&
-                annotated != cg.f64Ty_ &&
-                annotated != cg.i1Ty_) {
-                cg.codegenError(
-                    "threadSpawn() MVP (#828) supports only () -> Unit, int, float, "
-                    "or bool return types; ARC-managed types (str, List, Map, Set, "
-                    "records) are tracked in #877, sum types (Option, Result, enum) "
-                    "are tracked in #878");
-            }
+            if (llvm::Type *annotated = cg.resolveType(lam.return_type->toString()))
+                rejectIfUnsupportedThreadReturn(cg, annotated);
         }
 
         auto referencedVars = collectReferencedVars(lam);
@@ -240,23 +263,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 // for several callable shapes (see codegen_lambda.cpp:578),
                 // which would silently mis-tag bool/float callbacks.
                 workerRetTy = val->getType();
-                if (!workerRetTy->isVoidTy()) {
-                    if (workerRetTy != cg.i64Ty_ &&
-                        workerRetTy != cg.f64Ty_ &&
-                        workerRetTy != cg.i1Ty_) {
-                        cg.codegenError(
-                            "threadSpawn() MVP (#828) supports only () -> Unit, int, float, "
-                            "or bool return types; ARC-managed types (str, List, Map, Set, "
-                            "records) are tracked in #877, sum types (Option, Result, enum) "
-                            "are tracked in #878");
-                    }
-                    llvm::Value *toStore = val;
-                    // Widen i1 → i64 so the full 8-byte slot is initialized;
-                    // the join side reads back as i64 and truncates to i1.
-                    if (workerRetTy == cg.i1Ty_)
-                        toStore = cg.emitZExt(val, cg.i64Ty_, "thread_ret_bool_ext");
-                    cg.emitStore(toStore, resultRaw);
-                }
+                rejectIfUnsupportedThreadReturn(cg, workerRetTy);
+                emitStoreThreadResult(cg, val, workerRetTy, resultRaw);
             } else {
                 // Block-bodied inline lambda: always Unit (the non-Unit
                 // annotation case was rejected above).
@@ -288,16 +296,24 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         }
 
     } else {
-        // Case 2: variable reference (named function or variable holding fn() -> Unit)
-        // MVP: always treated as Unit (resultSize remains 0). Supporting
-        // non-Unit return types via variable-reference worker is a follow-up
-        // issue because it requires writing the wrapped fn's return into the
-        // ThreadHandle slot from a trampoline.
+        // Case 2: variable reference (named function or variable holding a
+        // fn value). Both the capturing and non-capturing sub-branches surface
+        // the worker's return value through the thread result slot, matching
+        // Case 1's ABI; supported return types match Case 1's MVP set.
         llvm::Value *fnVal = cg.emitExpr(*e.args[0]);
         const llvm::DataLayout &dl = cg.mod_->getDataLayout();
 
         auto *fnInfoPtr = cg.lookupFnTypeInfo(fnVal);
         bool hasCaps = fnInfoPtr && !fnInfoPtr->capturedVars.empty();
+
+        // Derive the worker's return type from FnTypeInfo. Named fns and
+        // function references carry a statically-known return type via
+        // codegen_expr.cpp's getOrCreateMeta() population. Fall back to Unit
+        // when type info is unavailable (e.g. opaque function pointers).
+        workerRetTy = (fnInfoPtr && fnInfoPtr->returnType)
+            ? fnInfoPtr->returnType
+            : llvm::Type::getVoidTy(*cg.ctx_);
+        rejectIfUnsupportedThreadReturn(cg, workerRetTy);
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_}, false);
@@ -339,10 +355,13 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 llvm::BasicBlock *entryBB = cg.createBBInFn("entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
-                // Thunk signature is now (env, result_buf); result_buf is
-                // unused for variable-reference workers (Unit only in MVP).
+                // Thunk signature is (env, result_buf). For non-Unit workers
+                // we write the return value into result_buf; Unit workers
+                // leave it untouched.
                 llvm::Value *envRaw = cg.emitGetParam(thunk, 0);
                 envRaw->setName("env_raw");
+                llvm::Value *resultRaw = cg.emitGetParam(thunk, 1);
+                resultRaw->setName("result_raw");
 
                 llvm::Value *loadedFnPtr = cg.emitLoad(
                     cg.ptrTy_,
@@ -362,8 +381,9 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 }
 
                 llvm::FunctionType *callTy = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(*cg.ctx_), allParamTypes, false);
-                cg.emitCallIndirect(callTy, loadedFnPtr, callArgs, "");
+                    workerRetTy, allParamTypes, false);
+                llvm::Value *callRet = cg.emitCallIndirect(callTy, loadedFnPtr, callArgs, "");
+                emitStoreThreadResult(cg, callRet, workerRetTy, resultRaw);
                 cg.emitRet(nullptr);
             }
         } else {
@@ -382,20 +402,31 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 llvm::BasicBlock *entryBB = cg.createBBInFn("entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
-                // Thunk signature is now (env, result_buf); result_buf unused.
+                // Thunk signature is (env, result_buf). For non-Unit workers
+                // we write the worker's return value into result_buf so the
+                // matching threadJoin can unwrap it; Unit workers leave
+                // result_buf untouched.
                 llvm::Value *envRaw = cg.emitGetParam(thunk, 0);
                 envRaw->setName("env_raw");
+                llvm::Value *resultRaw = cg.emitGetParam(thunk, 1);
+                resultRaw->setName("result_raw");
 
                 llvm::Value *fnPtrField = cg.emitStructGEP(
                     envTy, envRaw, 0, "tramp.fn_ptr");
                 llvm::Value *loadedFn = cg.emitLoad(cg.ptrTy_, fnPtrField, "tramp.fn");
 
+                // Build the indirect call type from the worker's actual
+                // return type so non-void returns land in a register
+                // (sret-shaped returns have already been rejected by
+                // rejectIfUnsupportedThreadReturn above).
                 llvm::FunctionType *callTy = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(*cg.ctx_), {}, false);
-                cg.emitCallIndirect(callTy, loadedFn, {}, "");
+                    workerRetTy, {}, false);
+                llvm::Value *callRet = cg.emitCallIndirect(callTy, loadedFn, {}, "");
+                emitStoreThreadResult(cg, callRet, workerRetTy, resultRaw);
                 cg.emitRet(nullptr);
             }
         }
+        resultSize = workerRetTy->isVoidTy() ? 0 : 8;
     }
 
     // Call __ry_thread_spawn(thunk, env, result_size).
