@@ -11,19 +11,40 @@
 
 namespace fs = std::filesystem;
 
-// #2248 regression guard. After rewriting `isStringValue` to a
-// positive-evidence predicate, exercise a combinator + map-index +
-// `str(int)` + str concat chain that funnels values through every
-// evidence channel (`arc_str_owned_values_` via concat / `str()` result,
-// `arc_str_managed_vars_` load via `k = keys[i]`, `GlobalVariable` GEP
-// via literal `"="`, `str_elem` via `Map<str, _>` value extraction).
-// A regression that flips any channel to false-negative would either
-// fail the `+` dispatch (compile error) or leak / UAF the wrapped value
-// at scope exit; a false-positive would route a non-str ptr through the
-// `-24` retain and corrupt the adjacent heap block — symptomatic on the
-// 100-iter subprocess loop the same way #2246 was. See also
-// `tests/test_regression_2246_str_metadata_gate.cpp` for the original
-// shape that motivated `wrapInAny`'s evidence gate.
+// #2248 smoke + heap-corruption guard.
+//
+// **What this test verifies in the default build**: that the wrapInAny
+// str-retain path stays compositionally correct for the four scenarios
+// the #2248 rewrite affects — concat-then-wrap, str-var-then-wrap,
+// Map<str,str>-then-wrap, and the #2246 filter / Map<str,int> shape.
+// Failures here mean either (a) heap corruption from a wrongly-fired
+// `-24` retain (subprocess exit / mismatched output) or (b) a
+// regression in one of the upstream paths (concat result handling, str
+// var decl, Map indexer metadata) that re-introduces the source-side
+// trap shape #2247 fixed.
+//
+// **What this test does NOT verify**: under-retain UAF specifically
+// caused by `isStringValue` returning false at `wrapInAny:doStrRetain`.
+// The behavioural delta of the rewrite is a strict superset of the
+// shipped #2246 inline gate (same four channels, just hoisted), so an
+// under-retain cannot regress relative to #2246 — and empirically the
+// payload retain that `arc_any_managed_vars_` registration emits at
+// decl time (`aLoad.any.retain.*` in the IR) catches every channel the
+// wrapInAny retain would have. The real residual risk of the rewrite
+// is **over-retain → leak** on a non-str ptr that happens to match one
+// of the positive channels (e.g. the GEP-to-Global walk hitting a
+// non-str global). That is sanitizer-only territory: run under
+// `./docker/run.sh asan ry_tests` per `KNOWLEDGE.md ### ASan` /
+// `docker/README.md` for leak detection. The default macOS build
+// cannot observe it.
+//
+// The 100-iter subprocess loop catches the same heap-layout-sensitive
+// failure shape as #2246's guard — combinator / index / format chains
+// + concat-produced heap strs — across both #2247's metadata
+// propagation and the new positive predicate. See
+// `tests/test_regression_2246_str_metadata_gate.cpp` for the
+// dedicated #2246 guard and `tests/spec/higher_order_elem_metadata.test.ry`
+// for the #2247 positive-correctness pin.
 
 namespace {
 
@@ -93,14 +114,24 @@ protected:
         scriptPath_ = fs::path(RY_BINARY_PATH).parent_path() /
                       "regression_2248_positive_str_predicate.ry";
         std::ofstream(scriptPath_)
+            // Heap-str alias + drop via str var reassignment.
+            << "s: str = \"a\" + \"b\"\n"
+            << "aLoad: any = s\n"
+            << "s = \"c\" + \"d\"\n"
+            // Heap-str alias + drop via Map<str, str> value
+            // reassignment.
+            << "m: Map<str, str> = {}\n"
+            << "m[\"k\"] = \"e\" + \"f\"\n"
+            << "aMap: any = m[\"k\"]\n"
+            << "m[\"k\"] = \"g\" + \"h\"\n"
+            // #2246 / #2247 combinator + Map<str,int> indexing chain.
             << "xs: List<Map<str, int>> = [{\"a\": 1}, {\"b\": 2}, "
                "{\"a\": 3}]\n"
             << "keys: List<str> = [\"a\", \"b\", \"a\"]\n"
-            << "ys = filter(xs, m => true)\n"
-            << "i = 2\n"
-            << "k = keys[i]\n"
-            << "v = ys[i][k]\n"
-            << "out = k + \"=\" + str(v)\n"
+            << "ys = filter(xs, mm => true)\n"
+            << "out = keys[2] + \"=\" + str(ys[2][keys[2]])\n"
+            << "print(aLoad)\n"
+            << "print(aMap)\n"
             << "print(out)\n";
     }
 
@@ -122,7 +153,7 @@ TEST_F(Regression2248PositiveStrPredicate,
         if (r.exit_code != 0) {
             ++fails;
             if (sample_fail_output.empty()) sample_fail_output = r.out;
-        } else if (r.out != "a=3\n") {
+        } else if (r.out != "ab\nef\na=3\n") {
             ++mismatches;
             if (sample_mismatch_output.empty())
                 sample_mismatch_output = r.out;
@@ -130,19 +161,20 @@ TEST_F(Regression2248PositiveStrPredicate,
     }
     EXPECT_EQ(fails, 0)
         << "Regression #2248: " << fails << "/" << kIterations
-        << " process runs aborted. A false-positive in the new "
-           "isStringValue (positive-evidence) gate would route a "
-           "non-str ptr through emitStrGetHeaderFromData (-24) and "
-           "corrupt the adjacent heap block — the same failure shape "
-           "as #1266 / #1799 / #2246.\nSample failing output:\n"
+        << " process runs aborted on the heap-str alias + drop and "
+           "combinator chains. A false-positive in the new "
+           "isStringValue would route a non-str ptr through "
+           "emitStrGetHeaderFromData (-24) and corrupt the adjacent "
+           "heap block — the same failure shape as #1266 / #1799 / "
+           "#2246. Leak-side over-retain regressions are sanitizer-only "
+           "(run under docker/run.sh asan ry_tests).\nSample failing "
+           "output:\n"
         << sample_fail_output;
     EXPECT_EQ(mismatches, 0)
         << "Regression #2248: " << mismatches << "/" << kIterations
-        << " process runs produced unexpected output. A "
-           "false-negative in any of the four evidence channels "
-           "(arc_str_owned_values_ / arc_str_managed_vars_ load / "
-           "GlobalVariable / str_elem) would either fail the `+` "
-           "dispatch or leak / UAF the wrapped str at scope "
-           "exit.\nSample mismatched output:\n"
+        << " process runs produced unexpected output. Either an upstream "
+           "regression in #2247's metadata propagation or a "
+           "metadata-stamping path the rewrite indirectly broke is the "
+           "likely cause.\nSample mismatched output:\n"
         << sample_mismatch_output;
 }
