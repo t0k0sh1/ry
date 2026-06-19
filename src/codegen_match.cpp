@@ -80,7 +80,7 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
     if (lhs->getType() == ptrTy_) {
         enum class SemanticKind { Str, List, Map, Set, Other };
         auto classify = [&](llvm::Value *v) -> SemanticKind {
-            if (isStringValue(v)) return SemanticKind::Str;
+            if (isStrLike(v)) return SemanticKind::Str;
             if (getTypeMeta(TypeMeta::ListElem, v)) return SemanticKind::List;
             if (getTypeMeta(TypeMeta::MapKey, v)) return SemanticKind::Map;
             if (getTypeMeta(TypeMeta::SetElem, v)) return SemanticKind::Set;
@@ -589,7 +589,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // #1638: root cause for the typed `Result<List<int>, str>`
                 // case — the lossless `source_type_name = "Result<List<int>, str>"`
                 // lets us extract `innerSig = "str"` and rebuild only the
-                // Err side's metadata, so `isStringValue(e)` is true,
+                // Err side's metadata, so `isStrLike(e)` is true,
                 // `"got: " + e` typechecks, and `f"got: {e}"` reads a valid
                 // str representation. Falls back to the legacy
                 // `propagateMeta` bulk copy for unannotated subjects.

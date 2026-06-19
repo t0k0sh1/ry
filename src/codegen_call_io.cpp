@@ -45,7 +45,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         std::vector<llvm::Value *> raw;
         for (size_t i = 0; i < nargs; ++i) {
             raw.push_back(emitExpr(*e.args[i]));
-            if (!isStringValue(raw.back()))
+            if (!isStrLike(raw.back()))
                 codegenError(publicName + "() requires str arguments");
         }
         // Legacy API accepts (text, pattern, ...) but runtime expects
@@ -141,7 +141,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
                               llvm::ArrayRef<llvm::Type *> argTys) -> llvm::Value * {
         llvm::Value *text    = emitExpr(*e.args[0]);
         llvm::Value *pattern = emitExpr(*e.args[1]);
-        if (!isRegex(pattern) || !isStringValue(text)) return nullptr;
+        if (!isRegex(pattern) || !isStrLike(text)) return nullptr;
         llvm::Value *patternLen = emitStringByteLen(pattern);
         llvm::Value *textLen    = emitStringByteLen(text);
         auto fn = getRuntimeFn(("__ry_" + rtName).c_str(), retTy, argTys);
@@ -183,7 +183,7 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 2);
     llvm::Value *path = cg.emitExpr(*e.args[0]);
     llvm::Value *mode = cg.emitExpr(*e.args[1]);
-    if (!cg.isStringValue(path) || !cg.isStringValue(mode))
+    if (!cg.isStrLike(path) || !cg.isStrLike(mode))
         cg.codegenError("open() requires str arguments (path, mode)");
     auto fn = cg.getRuntimeFn("__ry_io_file_open", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
@@ -326,7 +326,7 @@ static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Val
 
 static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Value *fileHandle) {
     llvm::Value *s = cg.emitExpr(*e.args[1]);
-    if (!cg.isStringValue(s))
+    if (!cg.isStrLike(s))
         cg.codegenError("writeText(file, s): second argument must be str");
     auto fn = cg.getRuntimeFn("__ry_io_file_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, s}, "file_wt_status");
@@ -420,7 +420,7 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
             return emitFileWriteText(cg, e, arg0);
         // Non-File: inline str-based writeText (arg0 already emitted)
         llvm::Value *content = cg.emitExpr(*e.args[1]);
-        if (!cg.isStringValue(arg0) || !cg.isStringValue(content))
+        if (!cg.isStrLike(arg0) || !cg.isStrLike(content))
             cg.codegenError("writeText(path, content) requires str arguments");
         auto fn = cg.getRuntimeFn("__ry_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
@@ -1177,7 +1177,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<Name
     // Emit a named string argument (sep or end), requiring str type
     auto emitNamedStr = [&](const ExprNode &expr, const char *param) -> llvm::Value * {
         llvm::Value *v = emitExpr(expr);
-        if (!isStringValue(v))
+        if (!isStrLike(v))
             codegenError(std::string("print() '") + param + "' must be str");
         return v;
     };

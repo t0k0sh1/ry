@@ -370,7 +370,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Type *elemTy = getListElementType(listVal);
         // String fallback (#746, #827): enumerate over a str yields
         // `(int, str)` pairs per UTF-8 code point.
-        if (!elemTy && isStringValue(listVal)) {
+        if (!elemTy && isStrLike(listVal)) {
             listVal = emitStringToCharList(listVal, "enum_str_chars");
             elemTy = ptrTy_;
         }
@@ -440,7 +440,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         // be a str; each is desugared independently to a List<str>.
         auto stringifyIfStr = [&](llvm::Value *&val, llvm::Type *&ty,
                                    const char *name) {
-            if (!ty && isStringValue(val)) {
+            if (!ty && isStrLike(val)) {
                 val = emitStringToCharList(val, name);
                 ty = ptrTy_;
             }

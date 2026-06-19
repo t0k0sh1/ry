@@ -304,8 +304,8 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *newStr = emitExpr(*e.args[2]);
     // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
-    if (isRegex(oldStr) && isStringValue(s)) {
-        if (!isStringValue(newStr))
+    if (isRegex(oldStr) && isStrLike(s)) {
+        if (!isStrLike(newStr))
             codegenError("replace() requires str arguments");
         auto fn = getRuntimeFn("__ry_regex_replace",
                                ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_});
@@ -713,7 +713,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         : cachedGlobalString(" ", ".split_default_delim");
     // Regex overload: split(text, /pattern/) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
-    if (isRegex(delim) && isStringValue(s)) {
+    if (isRegex(delim) && isStrLike(s)) {
         auto fn = getRuntimeFn("__ry_regex_split",
                                ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_});
         llvm::Value *r = builder_.CreateCall(fn,

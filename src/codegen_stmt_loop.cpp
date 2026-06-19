@@ -345,7 +345,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     // String iteration (#746, #827): `for c in s:` desugars to iterating
     // the List<str> produced by __ry_split_chars, so each loop step yields
     // one UTF-8 code point rather than a raw byte.
-    if (!elemTy && isStringValue(iterable)) {
+    if (!elemTy && isStrLike(iterable)) {
         iterable = emitStringToCharList(iterable, "for_str_chars");
         elemTy = ptrTy_;
         headerTy = listHeaderTy_;

@@ -1120,7 +1120,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 codegenError("weak-typed variable must be initialized with a 'weak' expression");
             std::string innerName = resolveTypeAlias(weakInnerTypeName(*annot));
             // str uses StringHeader (24 bytes before the data pointer) while
-            // other ARC types use ArcHeader (16 bytes). isStringValue() cannot
+            // other ARC types use ArcHeader (16 bytes). isStrLike() cannot
             // be used here because captured List/Map/Set values may lack
             // collection metadata and would be misclassified as str.
             // Instead, use the inner type name from the annotation.

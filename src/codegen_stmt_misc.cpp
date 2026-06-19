@@ -1325,7 +1325,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     }
 
     // List index assignment
-    if (isStringValue(objPtr))
+    if (isStrLike(objPtr))
         codegenError("str does not support index assignment; strings are immutable");
     objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::List);
     llvm::Type *elemTy = getListElementType(objPtr);

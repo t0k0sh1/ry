@@ -934,7 +934,7 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
         // lambda (codegen_call_collection.cpp around L1027). Without this
         // the Some payload (or the 3-arg PHI result) has no metadata,
         // downstream `inner[key]` / dispatch routes through
-        // `isStringValue` and rejects with "str does not support index
+        // `isStrLike` and rejects with "str does not support index
         // access" (`Map<str, Map<...>>` etc.).
         std::string mapValTypeName;
         std::optional<FnTypeInfo> mapValFnTypeInfo;

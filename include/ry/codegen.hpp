@@ -2666,6 +2666,9 @@ public:
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
+    // Loose negative-evidence predicate (ptrTy_ && !isNonStrPointer). For type
+    // discrimination only — never for -24 ARC dispatch. See codegen-arc-cow.md.
+    bool isStrLike(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
     // Side-table: `any`-typed allocas that may hold a collection (List / Map
     // / Set) ARC pointer. The mapped string is the declared source-level
