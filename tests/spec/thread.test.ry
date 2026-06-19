@@ -282,6 +282,104 @@ fn threadspawnReturnValuesMvp828Tests():
       Err(e):
         fail("expected Ok but got Err: " + e.message)
 
+@describe("threadSpawn variable-reference workers (#2262)")
+fn threadspawnVariableReferenceWorkers2262Tests():
+  @it("should return int from a named-fn worker")
+  fn shouldReturnIntFromANamedFnWorker():
+    fn intWorker() -> int:
+      return 42
+    t = threadSpawn(intWorker)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(42)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return float from a named-fn worker")
+  fn shouldReturnFloatFromANamedFnWorker():
+    fn floatWorker() -> float:
+      return 3.14
+    t = threadSpawn(floatWorker)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(3.14)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return bool from a named-fn worker")
+  fn shouldReturnBoolFromANamedFnWorker():
+    fn boolWorker() -> bool:
+      return true
+    t = threadSpawn(boolWorker)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toBeTrue()
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should run a named-fn Unit worker (regression)")
+  fn shouldRunANamedFnUnitWorker():
+    flag = atomicIntNew(0)
+    fn unitWorker() -> Unit:
+      atomicIntAdd(flag, 1)
+    t = threadSpawn(unitWorker)
+    expect(threadJoin(t)).toBeOk()
+    expect(atomicIntLoad(flag)).toEq(1)
+
+  @it("should return int from a variable-bound no-capture lambda")
+  fn shouldReturnIntFromAVariableBoundNoCaptureLambda():
+    f = () => 42
+    t = threadSpawn(f)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(42)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return int from a variable-bound capturing closure")
+  fn shouldReturnIntFromAVariableBoundCapturingClosure():
+    x = 10
+    f = () => x
+    t = threadSpawn(f)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(10)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return expression of captured int from a variable-bound closure")
+  fn shouldReturnExpressionOfCapturedIntFromAVariableBoundClosure():
+    x = 7
+    f = () => x * x + 1
+    t = threadSpawn(f)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(50)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return bool from a variable-bound capturing closure")
+  fn shouldReturnBoolFromAVariableBoundCapturingClosure():
+    flag = true
+    f = () => flag
+    t = threadSpawn(f)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toBeTrue()
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
+  @it("should return float from a variable-bound capturing closure")
+  fn shouldReturnFloatFromAVariableBoundCapturingClosure():
+    pi = 3.14
+    f = () => pi
+    t = threadSpawn(f)
+    case threadJoin(t):
+      Ok(v):
+        expect(v).toEq(3.14)
+      Err(e):
+        fail("expected Ok but got Err: " + e.message)
+
 @describe("threadJoin error paths (MVP, #828)")
 fn threadjoinErrorPathsMvp828Tests():
   @it("should return Err when joining an already-joined thread")
