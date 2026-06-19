@@ -41,22 +41,8 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
 }
 
 bool CodeGen::isStringValue(llvm::Value *val) {
-    // Positive-evidence predicate (#2248): true only when one of four
-    // independent channels confirms `val` is a StringHeader-backed str data
-    // pointer. Used to drive the `-24` retain dispatch in `wrapInAny`; any
-    // other type-discrimination caller should use the loose `isStrLike`.
-    //
-    // Channels:
-    //   1. `arc_str_owned_values_` — fresh str temps from `makeString` /
-    //      `__ry_string_make_uninit` / concat / `emitStrGetDataPtr`.
-    //   2. `LoadInst` whose pointer operand is in `arc_str_managed_vars_` —
-    //      i.e. a load from a tracked str alloca (decl, pattern bind, etc).
-    //   3. Immortal literal global from `cachedGlobalString`. The helper
-    //      returns a `ConstantExpr GEP` into the StringHeader-prefixed global,
-    //      so a bare `isa<GlobalVariable>` is insufficient — walk one GEP
-    //      level to the root.
-    //   4. Container-element str stamped by the List/Map/Set indexer
-    //      (`meta->str_elem`).
+    // Positive-evidence predicate for `-24` retain dispatch (#2248).
+    // Type-discrimination callers want `isStrLike`. See codegen-arc-cow.md.
     if (val->getType() != ptrTy_) return false;
     if (arc_str_owned_values_.count(val) > 0) return true;
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
@@ -224,12 +210,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
         }
     }
 
-    // #2248: `isStringValue` is now a positive-evidence predicate, so the
-    // container-element fresh-load trap (metadata-less `ptrTy_` from
-    // `filter` / `slice` / `map` bodies routing to the StringHeader `-24`
-    // retain — #1266 / #1799 / #2246) is structurally precluded. The four
-    // evidence channels live in `isStringValue`'s body; this site is just
-    // the one place that drives the str arm of the wrap.
+    // isStringValue is positive-evidence (#2248); no inline re-check needed.
     bool doStrRetain = !isCollection && isStringValue(val);
 
     RyAnyWrapDesc wrapDesc{};

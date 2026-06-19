@@ -2666,12 +2666,8 @@ public:
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
-    // Loose negative-evidence predicate: ptrTy_ with no collection / closure /
-    // resource metadata. Use for type-discrimination (dispatch branches,
-    // argument validation, metadata stamps, diagnostics) where a false-positive
-    // is a recoverable compile error rather than a heap-corruption hazard.
-    // Never use to drive `-24` StringHeader offsets — use `isStringValue` for
-    // that. See `.claude/rules/codegen-arc-cow.md` (#2248).
+    // Loose negative-evidence predicate (ptrTy_ && !isNonStrPointer). For type
+    // discrimination only — never for -24 ARC dispatch. See codegen-arc-cow.md.
     bool isStrLike(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
     // Side-table: `any`-typed allocas that may hold a collection (List / Map

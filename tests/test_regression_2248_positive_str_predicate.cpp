@@ -11,40 +11,14 @@
 
 namespace fs = std::filesystem;
 
-// #2248 smoke + heap-corruption guard.
-//
-// **What this test verifies in the default build**: that the wrapInAny
-// str-retain path stays compositionally correct for the four scenarios
-// the #2248 rewrite affects — concat-then-wrap, str-var-then-wrap,
-// Map<str,str>-then-wrap, and the #2246 filter / Map<str,int> shape.
-// Failures here mean either (a) heap corruption from a wrongly-fired
-// `-24` retain (subprocess exit / mismatched output) or (b) a
-// regression in one of the upstream paths (concat result handling, str
-// var decl, Map indexer metadata) that re-introduces the source-side
-// trap shape #2247 fixed.
-//
-// **What this test does NOT verify**: under-retain UAF specifically
-// caused by `isStringValue` returning false at `wrapInAny:doStrRetain`.
-// The behavioural delta of the rewrite is a strict superset of the
-// shipped #2246 inline gate (same four channels, just hoisted), so an
-// under-retain cannot regress relative to #2246 — and empirically the
-// payload retain that `arc_any_managed_vars_` registration emits at
-// decl time (`aLoad.any.retain.*` in the IR) catches every channel the
-// wrapInAny retain would have. The real residual risk of the rewrite
-// is **over-retain → leak** on a non-str ptr that happens to match one
-// of the positive channels (e.g. the GEP-to-Global walk hitting a
-// non-str global). That is sanitizer-only territory: run under
-// `./docker/run.sh asan ry_tests` per `KNOWLEDGE.md ### ASan` /
-// `docker/README.md` for leak detection. The default macOS build
-// cannot observe it.
-//
-// The 100-iter subprocess loop catches the same heap-layout-sensitive
-// failure shape as #2246's guard — combinator / index / format chains
-// + concat-produced heap strs — across both #2247's metadata
-// propagation and the new positive predicate. See
-// `tests/test_regression_2246_str_metadata_gate.cpp` for the
-// dedicated #2246 guard and `tests/spec/higher_order_elem_metadata.test.ry`
-// for the #2247 positive-correctness pin.
+// #2248 smoke + heap-corruption guard. Wraps heap strs through the
+// `wrapInAny` str arm then drops the source, plus the #2246 combinator
+// / Map<str,int> shape — a false-positive in the new `isStringValue`
+// would route a non-str ptr through `-24` and surface as a non-zero
+// exit or mismatched output on the 100-iter subprocess loop.
+// Under-retain regressions are structurally impossible (the new gate
+// is a strict superset of #2246's inline gate). Over-retain leaks are
+// sanitizer-only (`./docker/run.sh asan ry_tests`).
 
 namespace {
 
