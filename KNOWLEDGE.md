@@ -277,6 +277,19 @@ regression.
 
 **Subprocess-runner perturbation note (#2236)**: changes to `src/jit/test_runner.cpp` / `include/ry/jit/test_runner.hpp` / the `main.cpp` `test`-subcommand dispatch can **modulate** the #1895 fire rate by perturbing per-spawn allocation, even when the diff never touches the JIT or the failing test's code path. Empirical example from #2236: building outline argv as `std::vector<const char *>` instead of a stack `const char *argv[]` raised the fail rate to ~31% (9/29) on macOS — far above the 5–10% documented band. Switching back to a stack array brought it down to ~8% (8/100), within the documented baseline; origin/main's 0/53 sample at the same time is within sampling noise of that baseline too (P(0/53) at p=5% ≈ 0.07). So the actionable modulation is "heap churn in the spawn path amplifies #1895"; there is no measured residual above baseline once the heap churn is eliminated. Sanitizers stay clean (ASan 208/208, TSan 208/208 in #2236) because the underlying mechanism is teardown timing, not a fresh UAF. **How to apply**: PRs that touch the test-runner subprocess dispatch should run a baseline comparison (`for i in $(seq 1 30); do ./build-rust/ry test -p; done` against origin/main) and report main vs branch fail counts in the PR description; "I didn't touch JIT, so it's unrelated" is contradicted by the modulation data when a 30-run sample lands outside the documented band. Stack-allocate the argv buffer at `runTestFileSubprocess` (don't introduce per-spawn `std::vector` / `std::string` constructions) — that is the only mitigation available short of an upstream fix.
 
+**Policy enforcement (#2238)**: the per-file process boundary this suppression structurally requires is encoded as a code-side guard rule in `.claude/rules/test-runner-isolation.md` — see the sibling entry below for the policy summary.
+
+#### Test execution isolation: per-file process is the only valid unit until the six-step suppression is removed
+
+**Source**: #2238 (formalising the #2232 design verdict on top of the #2234 subprocess fan-out unification)
+**Tags**: testing, jit, llvm, orc, isolation, design-invariant
+
+**Rule**: `ry test` の隔離単位は per-file subprocess のみ。in-process sequential loop（削除済み `runTestFilesSequential` の形）の復活、parent process 内での `runRySource` / `runRyFile` ループ、`@it` / `@describe` 粒度の並列化はすべて禁止。
+
+**Why**: the six-step ORC teardown suppression (sibling entry above) deliberately leaks `LLJIT` / `CodeGen` / `Program` AST, so process `_exit` is the only memory-reclaim path — "1 source file = 1 process" is a structural requirement, not a preference. Sub-file granularity additionally violates the `@beforeAll` / `@afterAll` lifecycle contract, which is defined per source file. Code-side enforcement and per-bullet rationale: `.claude/rules/test-runner-isolation.md`.
+
+**Workaround status**: revisitable when #742's root-cause fix or the Rust JIT migration (#1949 / #1950 / #1993) lands — re-read this entry together with the code-side rule before any in-process orchestration is reintroduced.
+
 #### LLVM 17+ source build: `compiler-rt` belongs in `LLVM_ENABLE_RUNTIMES`, not `LLVM_ENABLE_PROJECTS`
 
 **Source**: #1505 follow-up (2026-05-02)

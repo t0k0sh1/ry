@@ -684,7 +684,8 @@ crate-level `#![allow(...)]` in `lib.rs`.
 ### Linux Ry self-test: pass no `-p`
 
 **Source**: #2237 (2026-06-18); blocker #2234 (subprocess fan-out
-unification, v0.0.29), background #2232 (design verdict)
+unification, v0.0.29), background #2232 (design verdict);
+policy invariant #2238 (code-side guard)
 **Tags**: ci, github-actions, ry-test, jit-leak, isolation, worker-count
 
 **Rule**: Every Linux CI job in `.github/workflows/ci.yml` that
@@ -714,3 +715,6 @@ gives:
 `grep -nE '\bry test\b' .github/workflows/ci.yml | grep -- '-p'`
 must match exactly the `macos-smoke-rust` job line — every other
 `ry test` invocation should be `-p`-free.
+
+**See also**: `.claude/rules/test-runner-isolation.md` — the
+implementation-side guard this CI default is paired with.
