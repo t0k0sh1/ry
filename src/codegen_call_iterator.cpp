@@ -7,6 +7,15 @@ namespace ry {
 // ===== Builtin Iterator =====
 
 // Helper: allocate IteratorHeader {next_fn, state} and track element type
+//
+// `elemName` carries the source-level Ry type name for the iterator element
+// (e.g. "Map<str, int>" for List/Set iter over nested containers, or
+// "(K, V)" for Map iter where the next-fn returns a tuple). Stamped into
+// `ValueMetadata::iterator_elem_type_name` so for-in / toList consumers can
+// recover collection metadata across the next-fn boundary. Empty when the
+// source had no source-level metadata (e.g. List<int> where primitives
+// don't need a name) — leaving the field empty is intentional and safe.
+// (#2261)
 static llvm::Value *emitIteratorHeaderAlloc(
     CodeGen &cg,
     llvm::IRBuilder<> &builder, llvm::Module &mod,
@@ -14,13 +23,16 @@ static llvm::Value *emitIteratorHeaderAlloc(
     llvm::FunctionCallee mallocFn,
     llvm::Function *nextFn, llvm::Value *stateAlloc, llvm::Type *elemTy,
     std::vector<llvm::Value*> &iterMallocs,
-    const std::string &name) {
+    const std::string &name,
+    const std::string &elemName = "") {
     uint64_t headerSize = mod.getDataLayout().getTypeAllocSize(iterHeaderTy);
     llvm::Value *header = builder.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty, headerSize)}, name);
     builder.CreateStore(nextFn, builder.CreateStructGEP(iterHeaderTy, header, 0));
     builder.CreateStore(stateAlloc, builder.CreateStructGEP(iterHeaderTy, header, 1));
     cg.setTypeMeta(CodeGen::TypeMeta::IteratorElem, header, elemTy);
+    if (!elemName.empty())
+        cg.getOrCreateMeta(header).iterator_elem_type_name = elemName;
     iterMallocs.push_back(header);
     return header;
 }
@@ -48,9 +60,13 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
         // Helper lambda: generate a dense-array next function for List/Set
         // State: { ptr data, i64 length, i64 index }
+        // `elemName` carries the source-level Ry element type name snapshotted
+        // from the source container (`list_elem_type_name` for List, etc.) so
+        // the produced IteratorHeader can stamp it via #2261's channel. (#2261)
         auto emitDenseIterator = [&](llvm::Type *elemTy, llvm::StructType *collHeaderTy,
                                      unsigned dataPtrIdx, unsigned lenIdx,
-                                     const std::string &kind) -> llvm::Value* {
+                                     const std::string &kind,
+                                     const std::string &elemName) -> llvm::Value* {
             llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, i64Ty_, i64Ty_});
             uint64_t stateSize = dl.getTypeAllocSize(stateTy);
 
@@ -110,21 +126,41 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
             return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
                 i64Ty_, mallocFn, nextFn, stateAlloc, elemTy,
-                iterator_malloc_stack_.back(), "iter_header");
+                iterator_malloc_stack_.back(), "iter_header", elemName);
         };
+
+        // Snapshot source container element type names BEFORE next-fn emission.
+        // getMeta() returns a pointer into value_metadata_ which may rehash
+        // when emitDenseIterator() touches metadata for the produced header.
+        // (#2261, rule "Metadata rebuilds: every load / extract / PHI ...
+        // snapshot pattern" in codegen-type-and-metadata.md)
+        std::string listElemName, setElemName, mapKeyName, mapValName;
+        if (auto *meta = getMeta(collVal)) {
+            listElemName = meta->list_elem_type_name;
+            setElemName  = meta->set_elem_type_name;
+            mapKeyName   = meta->map_key_type_name;
+            mapValName   = meta->map_value_type_name;
+        }
 
         // Try List (data at index 2, len at index 0)
         if (llvm::Type *elemTy = getListElementType(collVal))
-            return emitDenseIterator(elemTy, listHeaderTy_, 2, 0, "list");
+            return emitDenseIterator(elemTy, listHeaderTy_, 2, 0, "list", listElemName);
 
         // Try Set (data at index 2, len at index 0)
         if (llvm::Type *setElemTy = getSetElementType(collVal))
-            return emitDenseIterator(setElemTy, setHeaderTy_, 2, 0, "set");
+            return emitDenseIterator(setElemTy, setHeaderTy_, 2, 0, "set", setElemName);
 
         // Try Map → Iterator over (K, V) tuples
         llvm::Type *keyTy = getMapKeyType(collVal);
         llvm::Type *valTy = getMapValueType(collVal);
         if (keyTy && valTy) {
+            // #2261: build "(K, V)" so the produced IteratorHeader carries a
+            // tuple sig — `splitTupleSig` inside `emitForBindingPattern`
+            // decomposes it onto per-binding loop vars (`for k, v in iter(m):`).
+            std::string mapElemName;
+            if (!mapKeyName.empty() && !mapValName.empty())
+                mapElemName = "(" + mapKeyName + ", " + mapValName + ")";
+
             llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
             llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_, i64Ty_});
             uint64_t stateSize = dl.getTypeAllocSize(stateTy);
@@ -194,7 +230,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
             return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
                 i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy,
-                iterator_malloc_stack_.back(), "iter_header");
+                iterator_malloc_stack_.back(), "iter_header", mapElemName);
         }
 
         codegenError("iter() argument must be a List, Set, or Map");
@@ -283,6 +319,15 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             if (nestedTy)
                 setTypeMeta(TypeMeta::NestedListElem, headerPtr, nestedTy);
         }
+
+        // #2261: propagate the iterator's source-level element type name onto
+        // the result List header so downstream `ys[i]` / `len(ys[i])` /
+        // method dispatch resolves the original collection type. Without
+        // this, `toList(iter(xs: List<Map<...>>))[0]["k"]` fails with
+        // `str does not support index access` because the result List
+        // header carries no `list_elem_type_name`.
+        if (auto *meta = getMeta(iterVal); meta && !meta->iterator_elem_type_name.empty())
+            getOrCreateMeta(headerPtr).list_elem_type_name = meta->iterator_elem_type_name;
 
         return headerPtr;
     }
@@ -384,9 +429,15 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
+        // #2261: filter preserves element type, so copy iterator_elem_type_name
+        // from the source iterator onto the new header.
+        std::string filterElemName;
+        if (auto *meta = getMeta(iterVal))
+            filterElemName = meta->iterator_elem_type_name;
+
         return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
             i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy,
-            iterator_malloc_stack_.back(), "filter_iter");
+            iterator_malloc_stack_.back(), "filter_iter", filterElemName);
     }
 
     // map(iter, transform) → new Iterator with transformed element type
@@ -460,9 +511,22 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
+        // #2261: map produces an element of `info.returnTypeName`. Identity
+        // lambdas (`m => m`) leave `info.returnTypeName` empty because lambda
+        // return inference cannot resolve through a param without an inferred
+        // type — fall back to the source iterator's `iterator_elem_type_name`
+        // when the LLVM type is unchanged AND ptrTy_ (so the result is the
+        // same container type). General lambda inference fix is out of scope
+        // (see plan's "scope 外 follow-up").
+        std::string mapElemName = info.returnTypeName;
+        if (mapElemName.empty() && outElemTy == elemTy && elemTy == ptrTy_) {
+            if (auto *meta = getMeta(iterVal))
+                mapElemName = meta->iterator_elem_type_name;
+        }
+
         return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
             i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy,
-            iterator_malloc_stack_.back(), "map_iter");
+            iterator_malloc_stack_.back(), "map_iter", mapElemName);
     }
 
     // take(iter, n) → new Iterator that yields at most n elements
@@ -532,9 +596,14 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
+        // #2261: take preserves element type — copy iterator_elem_type_name.
+        std::string takeElemName;
+        if (auto *meta = getMeta(iterVal))
+            takeElemName = meta->iterator_elem_type_name;
+
         return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
             i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy,
-            iterator_malloc_stack_.back(), "take_iter");
+            iterator_malloc_stack_.back(), "take_iter", takeElemName);
     }
 
     return nullptr;

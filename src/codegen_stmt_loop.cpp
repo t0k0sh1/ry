@@ -153,7 +153,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         pushScope();
 
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
-        emitForBindingPattern(s->binding, elem, iterElemTy, /*valueTypeName=*/"");
+        // #2261: read the iterator header's source-level element type name
+        // (e.g. "Map<str, int>" for List/Set iter, "(K, V)" for Map iter) so
+        // emitForBindingPattern can stamp it onto the loop var via
+        // `propagateTypeMeta`. For Map iter the TuplePattern branch's
+        // `splitTupleSig` decomposes "(K, V)" onto each per-binding loop var.
+        std::string iterElemName;
+        if (auto *meta = getMeta(iterable))
+            iterElemName = meta->iterator_elem_type_name;
+        emitForBindingPattern(s->binding, elem, iterElemTy, iterElemName);
 
         for (auto &stmt : s->body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
