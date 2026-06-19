@@ -245,3 +245,4 @@ Until then, the lowering / emission sides have a working hypothesis (this docume
 - [Codegen Terminology](codegen-terminology.md) — canonical vocabulary (codegen / lowering / lowered IR / emission; the runtime / emission boundaries; handle naming).
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the `extern "C"` boundary that the wider extraction (step 2 / #1949) will implement.
 - [Runtime Boundary](runtime-abi-boundary.md) — the orthogonal `__ry_*` boundary; codegen's `RuntimeCall` op routes through it, so the lowered IR vocabulary and the runtime boundary categorization stay aligned.
+- [Native Call Boundary](native-call-boundary.md) — the lowering-side dispatch / descriptor selection boundary that consumes the `RuntimeCall` op and decides which `__ry_*` symbol to call with what wrapping; design issue #2231 records the descriptor-vs-(ii) reconciliation.

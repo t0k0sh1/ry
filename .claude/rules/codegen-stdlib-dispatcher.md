@@ -5,6 +5,8 @@ paths:
 
 # Codegen Stdlib Dispatcher
 
+> **Future direction (recorded by #2231).** The rules in this file describe the current `NativeDispatchEntry` + `customEmitter` + hand-written-dispatcher contract. They will be retired as the descriptor-driven dispatch model described in [Native Call Boundary](../../docs/architecture/native-call-boundary.md) lands. Retirement happens in the follow-on implementation issues — until then, follow these rules verbatim.
+
 ### One dispatch-table entry per fn name handles all overloaded arities; custom emitters bypass type-checking
 
 `math_table` / `string_table` and friends are keyed by name with first-match-wins linear scan, so a second entry for the same name is dead code. For overloaded fns (`math.round`, `math.pow`), use a single entry whose `customEmitter` handles every arity / type combination. Custom emitters skip the upstream argument-type validation in `emitTableDrivenNativeCall` (the early return at the customEmitter check), so they MUST do their own type checks and emit clear `codegenError` messages — otherwise `pow(1, 2.0)` silently routes to the wrong branch. This also means the `@native` declaration in `share/std/<mod>/<mod>.ry` documents inputs but does NOT gate codegen — relaxing the effective input without touching the declaration is allowed (update docs for hygiene).

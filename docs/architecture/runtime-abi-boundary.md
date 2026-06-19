@@ -78,4 +78,5 @@ Core modules are higher migration value (memory-safety dividend) but higher impl
 - [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.
 - [Codegen Terminology](codegen-terminology.md) — canonical vocabulary (this page defines the runtime boundary).
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the orthogonal LLVM IR emission boundary on the codegen side.
+- [Native Call Boundary](native-call-boundary.md) — the codegen-side dispatch / descriptor selection boundary that decides which `__ry_*` symbol from this contract gets called; design issue #2231.
 - `.claude/rules/runtime-memory-safety.md` — runtime memory-safety rules (forbidden functions, OOM handling, NULL checks).
