@@ -400,6 +400,22 @@ TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix)
         "returns incompatible Thread result metadata across branches");
 }
 
+// #2262 regression: a named-fn variable-reference worker whose return type
+// is outside the MVP set (Unit / int / float / bool) must be rejected at
+// codegen time. The check lives in rejectIfUnsupportedThreadReturn and is
+// shared with the inline-lambda path, so this one test pins the contract
+// for the entire Case 2 (variable-reference) branch.
+TEST_F(CodeGenTest, ThreadSpawnRejectsNamedFnReturningStrAsVariableReferenceWorker) {
+    expectCompileError(
+        "@native(\"thread\")\n"
+        "fn threadSpawn(body: fn() -> any) -> Thread\n"
+        "fn strWorker() -> str:\n"
+        "  return \"x\"\n"
+        "fn doSpawn() -> Thread:\n"
+        "  return threadSpawn(strWorker)\n",
+        "threadSpawn() MVP (#828) supports only");
+}
+
 // ============================================================
 // Generic inference for container parameters (#823).
 // An empty container literal yields no information for the
