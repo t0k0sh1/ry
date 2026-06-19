@@ -11,9 +11,9 @@ The codegen stack is the `ry::codegen::*` namespace in C++ plus the Rust crate `
 | Term | Definition | Where it lives |
 | --- | --- | --- |
 | **codegen** | The whole code-generation stack: AST + sema → LLVM IR. | C++ `ry::codegen::*`, Rust crate `emit` |
-| **lowering** | Translates Ry semantics into **lowered IR** ops. Owns the per-op semantic decisions (ARC retain/release, metadata, element sizes). | `src/codegen_lowering_*.cpp`, `ry::codegen::lowering` |
-| **lowered IR** | The op vocabulary — plain-data structs naming *what* should happen, not *how* to express it in LLVM. | `include/ry/codegen/lowered_*.hpp`, `ry::codegen::lowered::XxxOp` |
-| **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | `src/codegen_emission_*.cpp`, `ry::codegen::emission`, Rust crate `emit` |
+| **lowering** | Translates Ry semantics into **lowered IR** ops. Owns the per-op semantic decisions (ARC retain/release, metadata, element sizes). | caller-side C++ in `src/codegen_*.cpp` (inline at each call site; no dedicated `lowering::` namespace or `codegen_lowering_*.cpp` file — the standalone shim layer was removed in #2229) |
+| **lowered IR** | The op vocabulary — plain-data structs naming *what* should happen, not *how* to express it in LLVM. | caller-side local values prepared inline in `src/codegen_*.cpp` then interned across the boundary (no dedicated `lowered::` namespace or `include/ry/codegen/lowered_*.hpp` header — removed in #2229) |
+| **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | Rust crate `emit` (`crates/emit/src/{composite,primitive}/*.rs`) behind the `ry_emit_*` boundary |
 | **composite emission** | Emission code that encodes a Ry ABI / layout decision — ARC retain/release, bounds check, checked FP→int, Option / Result construction, Any wrap/unwrap, collection mutations, CoW ensure-unique, reduce, and shared header struct construction. Expressed as a fixed LLVM-instruction sequence keyed on the lowered op (#2109). | `crates/emit/src/composite/**.rs` |
 | **primitive emission** | Emission code that is LLVM 1:1 with no Ry-layout knowledge — type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, the inline runtime-error exit, scalar / memory ops, function creation / indirect call / intrinsic call, control flow, and generic `__ry_*` runtime calls (#2109). | `crates/emit/src/primitive/**.rs` |
 
@@ -53,6 +53,12 @@ This page is the naming **decision** (#2022, docs-only). The physical rename is 
 - **Purge the "ABI" label** from code comments, `.claude/`, and the `api.h` header comment — using the vocabulary above. (Superseded for the emission crate by the #2057 `abi` / `ffi` / `core` module split — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) §"Layer structure (#2057)".)
 - **Keep** `std::ffi`.
 - **Do not touch**: `CHANGELOG.md` (frozen), and artifact names that contain "abi" — `runtime-abi-boundary.md`, `scripts/check-llvm-emit-abi-header.sh`, `tests/test_abi_layout.cpp`, `tests/test_emit_abi_guards.cpp`.
+
+## C++ shim layer removal (#2229)
+
+After the Rust cutover (#1993), the C++ side carried a thin shim layer that paired each `ry_emit_*` boundary call with a small set of files: `src/codegen_emission_*.cpp` (9 files), `src/codegen_lowering_*.cpp`, and `include/ry/codegen/lowered_*.hpp` headers under `ry::codegen::{emission,lowering,lowered}` namespaces. The shim translated between caller-side `llvm::Value*` and the `RyValueId` boundary handles and held per-op `lowered::XxxOp` POD structs as an internal C++ contract.
+
+#2229 removed the shim layer entirely: caller-side C++ in `src/codegen_*.cpp` (e.g. `codegen_arc.cpp`, `codegen_any.cpp`, `codegen_call_collection.cpp`) now constructs the per-op values inline and calls `ry_emit_*` directly. The `ry::codegen::{emission,lowering,lowered}` namespaces, the `codegen_emission_*.cpp` / `codegen_lowering_*.cpp` files, and the `include/ry/codegen/lowered_*.hpp` header set were all deleted. `CodeGen::*` wrapper methods (`emitArcRetain`, `emitResultBranch`, `emitCowCheckSlot`, `wrapInAny`, etc.) survive as thin direct callers of `ry_emit_*` and continue to carry the Ry-semantic side effects (`propagateMeta`, `tryRetainArcSource`, ARC retain decisions). The Stage 2-A / 2-B / 2-C narrative in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) describes the pre-#2229 shim layer as it stood during the migration.
 
 ## Related documents
 
