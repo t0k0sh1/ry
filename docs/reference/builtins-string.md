@@ -8,6 +8,39 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 >
 > **Index access:** `str` does not support `[]` index syntax. Use `charAt(s, i)` to get the character at position `i`.
 
+## Block String Literal (`"""..."""`)
+
+In addition to the single-line form (`"..."`), `str` values can also be written as **block string literals** delimited by three double-quotes (`"""..."""`). The result is an ordinary `str` value — `"""hello"""` and `"hello"` compare equal.
+
+Key properties:
+
+- A block string may span multiple lines. Inside `"""..."""`, newlines are part of the body (unlike `"..."`, which forbids raw newlines).
+- An incidental newline immediately after the opening `"""` and immediately before the closing `"""` is dropped.
+- Indentation is normalized: the smallest leading whitespace common to the content lines is treated as the baseline and stripped from every line. Intentional blank lines are preserved.
+- Standard escape sequences (`\n`, `\t`, `\\`, `\"`, `\xNN`, etc.) are decoded the same way as in `"..."`.
+- A single `"` or two consecutive `""` inside the body are content; only `"""` terminates the literal.
+- The empty form `""""""` evaluates to `""`.
+
+```ry
+# Same-line form
+s = """hello"""
+print(s)              # hello
+
+# Multi-line with indentation normalization
+doc = """
+  a
+    b
+  c
+  """
+print(doc)            # a
+                      #   b
+                      # c
+
+# Embedded quotes are content
+q = """a"b""c"""
+print(q)              # a"b""c
+```
+
 ## Function List
 
 ### Search and Check

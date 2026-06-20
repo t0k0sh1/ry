@@ -383,7 +383,7 @@ after any diverging control-flow statement is silently elided.
 Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
 
 ```ry
-# Run: ry script.ry hello world
+# Run: ry run script.ry hello world
 a = args()
 print(len(a))    # 2
 print(a[0])      # hello

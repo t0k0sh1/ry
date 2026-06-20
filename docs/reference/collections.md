@@ -692,7 +692,7 @@ print(b)          # [1, 2, 3]
 |------|------|
 | All elements must be the same type | Mixed types cause a compile error |
 | Empty list `[]` | Requires type annotation (e.g., `xs: List<int> = []`) |
-| Out-of-range access | Runtime error (exit(1)) |
+| Out-of-range access | Runtime error (process terminates with exit code 1) |
 
 ---
 
@@ -946,7 +946,7 @@ print(m3["c"])   # 3
 | All keys must be the same type | Mixed key types cause a compile error |
 | All values must be the same type | Mixed value types cause a compile error |
 | Empty map | Type annotation is required (e.g., `m: Map<str, int> = {"a": 1}`) |
-| Accessing a non-existent key | Runtime error (exit(1)) |
+| Accessing a non-existent key | Runtime error (process terminates with exit code 1) |
 | Key lookup | Hash table (O(1) average) |
 | Capacity overflow | Automatically doubles in size |
 

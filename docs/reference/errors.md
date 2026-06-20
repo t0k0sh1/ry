@@ -89,16 +89,16 @@ The table below shows the most common runtime errors; it is not exhaustive.
 | `range()` step zero | Called `range()` with a step argument of `0` (`runtime error: range() step must not be zero`) | `range(1, 10, 0)` |
 | `min()` / `max()` on empty list | Called `min()` or `max()` on an empty list (`runtime error: min() on empty list` / `runtime error: max() on empty list`) | `min([])`, `max([])` |
 
-All runtime errors terminate the process with `exit(1)`.
+All runtime errors terminate the process (exit code 1).
 
 ### Runtime Error Examples
 
 ```ry
 # List out-of-range access
 xs = [1, 2, 3]
-print(xs[10])   # Runtime error: exit(1)
+print(xs[10])   # Runtime error — process terminates
 
 # Map non-existent key access
 m = {"a": 1}
-print(m["z"])   # Runtime error: exit(1)
+print(m["z"])   # Runtime error — process terminates
 ```

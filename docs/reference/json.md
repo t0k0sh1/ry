@@ -145,7 +145,7 @@ print(stringify(m, 2))
 
 ### `stringifySafe` for recoverable encode failures
 
-`stringify` panics (`exit(1)`) when it encounters JSON-incompatible inputs
+`stringify` panics (process terminates with exit code 1) when it encounters JSON-incompatible inputs
 (non-finite floats, typed collections wrapped as `any`, `Set` / record /
 enum). `stringifySafe` returns those failures as `Err(Error)` so callers
 can recover.
@@ -278,7 +278,7 @@ case open("out.json", "w"):
   deterministic. Pass `sortKeys=true` when output must be reproducible
   across runs that build the same logical map via different insertion
   sequences (snapshot tests, config diffs, content-addressed hashing).
-- `stringify` panics (`exit(1)` with a diagnostic to stderr) when it
+- `stringify` panics (process terminates with exit code 1, with a diagnostic to stderr) when it
   encounters tags JSON cannot represent: non-finite floats (`NaN`,
   `±Infinity`), `Set<...>`, records, enums, or maps keyed by anything
   other than `str`. The return type `-> str` has no `Result` channel,
@@ -300,7 +300,7 @@ case open("out.json", "w"):
   stringify: any holds typed collection 'List<int>' — use List<any> / Map<str, any> / Set<any> instead
   ```
 
-  Followed by `exit(1)`. The recorded type name (`'List<int>'`,
+  Followed by process termination (exit code 1). The recorded type name (`'List<int>'`,
   `'Map<str, int>'`, etc.) reflects the source-level Ry type that was
   wrapped. Safe inputs are: `any` payloads parsed via
   `load[Map<str, any>]` / `load[List<any>]`, primitive `any` slots, and
