@@ -139,29 +139,15 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         }
     }
 
-    // Tuple type: "(int, float)"
+    // Tuple type: use splitTupleTypeName so nested '<>' depth is tracked (#2264).
     if (!typeName.empty() && typeName.front() == '(') {
-        // Parse element types from "(T1, T2, ...)"
-        std::string inner = typeName.substr(1, typeName.size() - 2); // strip parens
+        std::vector<std::string> parts;
+        if (!ry::util::splitTupleTypeName(typeName, parts))
+            codegenError("malformed tuple type: " + typeName);
         std::vector<llvm::Type*> elementTypes;
-        elementTypes.reserve(static_cast<size_t>(std::count(inner.begin(), inner.end(), ',')) + 1);
-        size_t depth = 0;
-        size_t start = 0;
-        for (size_t i = 0; i <= inner.size(); ++i) {
-            if (i < inner.size() && inner[i] == '(') ++depth;
-            else if (i < inner.size() && inner[i] == ')') --depth;
-            else if ((i == inner.size() || inner[i] == ',') && depth == 0) {
-                std::string elem = inner.substr(start, i - start);
-                // trim leading/trailing spaces
-                size_t s = elem.find_first_not_of(' ');
-                size_t e = elem.find_last_not_of(' ');
-                if (s != std::string::npos)
-                    elem = elem.substr(s, e - s + 1);
-                if (elem.empty()) continue; // trailing comma
-                elementTypes.push_back(resolveType(elem));
-                start = i + 1;
-            }
-        }
+        elementTypes.reserve(parts.size());
+        for (auto &elem : parts)
+            elementTypes.push_back(resolveType(elem));
         return llvm::StructType::get(*ctx_, elementTypes);
     }
 
