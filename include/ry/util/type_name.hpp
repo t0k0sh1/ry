@@ -142,6 +142,11 @@ inline bool isFunctionTypeName(const std::string &s) {
     return s.size() > 3 && s.compare(0, 3, "fn(") == 0;
 }
 
+// Recognises tuple sigs `(T1, T2, …)` produced by TupleType::toString.
+inline bool isTupleTypeName(const std::string &s) {
+    return s.size() >= 2 && s.front() == '(' && s.back() == ')';
+}
+
 // Low-level numeric type names (i8 / i16 / i32 / i64 / u8 / u16 / u32 / u64 / f32).
 // Used by codegen to distinguish native-width arithmetic from default int/float.
 bool isLowLevelTypeName(const std::string &name);

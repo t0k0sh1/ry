@@ -184,6 +184,12 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         getOrCreateMeta(val).source_type_name = "Option<" + inner + ">";
         propagateTypeMeta(inner, val);
         propagateResourceLikeMeta(resolveTypeAlias(ry::util::trimTypeNameSpaces(inner)));
+    } else if (ry::util::isTupleTypeName(resolved)) {
+        // Tuple sig: stamp source_type_name (empty-guarded so recursive
+        // calls from Result/Option/T? wrapper branches above preserve
+        // the outer name). See codegen-type-and-metadata.md. (#2273)
+        if (getOrCreateMeta(val).source_type_name.empty())
+            getOrCreateMeta(val).source_type_name = resolved;
     } else if (ry::util::isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
     } else if (ResourceKindRegistry::instance().lookupByTypeName(resolved) !=

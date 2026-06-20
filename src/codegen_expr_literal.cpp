@@ -1095,19 +1095,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
 
         // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>).
+        // Tuple sigs are stamped by propagateTypeMeta's tuple branch (#2273)
+        // via source_type_name, so FieldAccessExpr's numeric-index arm can
+        // decompose per-component metadata via splitTupleSig — no extra
+        // direct stamp needed here (the #1664 direct stamp was removed in
+        // #2273 once propagateTypeMeta covered both literal and alias forms).
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
-        // #1664: Stamp tuple sig (e.g. "(int, T)" from enumerate / zip /
-        // items) onto the loaded element via source_type_name so that
-        // FieldAccessExpr's numeric-index arm can decompose per-component
-        // metadata via splitTupleSig. propagateTypeMeta is single-value by
-        // design (see "propagateTypeMeta is single-value; callers decompose
-        // tuples"), so the decomposition must happen at the call site that
-        // owns the bound field, mirroring the for-loop destructure precedent
-        // in src/codegen_stmt_loop.cpp.
-        if (!elemTypeName.empty() && elemTypeName.size() >= 2 &&
-            elemTypeName.front() == '(' && elemTypeName.back() == ')')
-            getOrCreateMeta(elem).source_type_name = elemTypeName;
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
         // List<str>: read the list_elem_is_str side-channel set by the

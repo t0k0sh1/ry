@@ -45,18 +45,19 @@ fn tupleTypeNestedGeneric2264Tests():
 
   @it("Function return type is tuple with inner Map compiles and is callable")
   fn fnReturnTupleWithMap():
-    # .1 アクセスは独立した fn-return metadata propagation gap のため省略。
     fn build() -> (int, Map<str, int>):
       return (7, {"a": 1, "b": 2})
     r = build()
     expect(r.0).toEq(7)
+    expect(r.1["a"]).toEq(1)
+    expect(r.1["b"]).toEq(2)
 
   @it("Type alias expanding to tuple with inner Map compiles")
   fn typeAliasExpandsToTupleWithMap():
-    # alias 経由の .1 アクセスは独立した metadata gap のため省略。
     xs: List<TupleMap2264> = [(3, {"k": 1})]
     expect(len(xs)).toEq(1)
     expect(xs[0].0).toEq(3)
+    expect(xs[0].1["k"]).toEq(1)
 
   @it("List of tuple with Result at position 1 (unverified prediction in #2264)")
   fn listOfTupleResultAtPos1():
@@ -76,3 +77,27 @@ fn tupleTypeNestedGeneric2264Tests():
     for elem in xs:
       total = total + elem.0
     expect(total).toEq(3)
+
+  @it("Map<K, Tuple> lookup propagates inner Map metadata to subscript (#2273)")
+  fn mapTupleLookupPropagates():
+    m: Map<int, (int, Map<str, int>)> = {1: (10, {"a": 100, "b": 200})}
+    v = m[1]
+    expect(v.0).toEq(10)
+    expect(v.1["a"]).toEq(100)
+    expect(v.1["b"]).toEq(200)
+
+  @it("Map<K, Tuple> for-in iter binds tuple with inner Map metadata (#2273)")
+  fn mapTupleIterPropagates():
+    m: Map<int, (int, Map<str, int>)> = {1: (10, {"a": 100})}
+    total = 0
+    for k, v in m:
+      total = total + v.1["a"]
+    expect(total).toEq(100)
+
+  @it("Higher-order combinator over List<Tuple> propagates inner Map metadata (#2273)")
+  fn combinatorOverTupleListPropagates():
+    xs: List<(int, Map<str, int>)> = [(1, {"a": 1}), (2, {"b": 2})]
+    ys = filter(xs, (t: (int, Map<str, int>)) => t.0 > 0)
+    expect(len(ys)).toEq(2)
+    expect(ys[0].1["a"]).toEq(1)
+    expect(ys[1].1["b"]).toEq(2)

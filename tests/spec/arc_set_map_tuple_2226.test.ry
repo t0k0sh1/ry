@@ -22,9 +22,11 @@ from runtime_internal import arcLiveCount
 #
 # Detector strategy: this test uses arcLiveCount() delta + len() and relies on
 # ASan/`/pre-commit-checklist` to flag the UAF on inner tuple-List buffers.
-# Direct `merged[k].1[i]` reads are blocked by an orthogonal metadata
-# propagation gap in Map lookup / Set iter → tuple field access (the str
-# index-branch error), which is out of scope for #2226.
+# Direct `merged[k].1[i]` reads (Map lookup) and `for elem in s: elem.1[i]`
+# reads (Set iter) are now supported (#2273 closed the tuple field metadata
+# propagation gap by adding a tuple branch to propagateTypeMeta). These tests
+# add direct-read assertions as positive-correctness checks on top of the
+# arcLiveCount delta / len() ARC gates.
 
 @describe("ARC tuple retain in Map merge (#2226)")
 fn arcMapMergeTupleFix2226Tests():
@@ -46,6 +48,14 @@ fn arcMapMergeTupleFix2226Tests():
     expect(delta < 10).toEq(true)
     expect(len(base1)).toEq(1)
     expect(len(base2)).toEq(1)
+    # #2273: direct Map lookup → tuple field access → List subscript.
+    merged = merge(base1, base2)
+    expect(merged[1].0).toEq(100)
+    expect(merged[1].1[0]).toEq(10)
+    expect(merged[1].1[1]).toEq(20)
+    expect(merged[2].0).toEq(200)
+    expect(merged[2].1[0]).toEq(30)
+    expect(merged[2].1[1]).toEq(40)
 
   @it("Map<int,(int,List<int>)> merge update: arcLiveCount delta O(1) over N")
   fn mapMergeTupleUpdateLiveCountSymmetry():
@@ -66,6 +76,12 @@ fn arcMapMergeTupleFix2226Tests():
     expect(delta < 10).toEq(true)
     expect(len(base1)).toEq(1)
     expect(len(base2)).toEq(1)
+    # #2273: direct Map lookup verifies update branch keeps base2 value.
+    merged = merge(base1, base2)
+    expect(merged[1].0).toEq(90)
+    expect(merged[1].1[0]).toEq(9)
+    expect(merged[1].1[1]).toEq(8)
+    expect(merged[1].1[2]).toEq(7)
 
   @it("Map<int,(int,List<int>)> merge: drop sources, result survives (UAF gate)")
   fn mapMergeTupleDropSourceUAFGate():
@@ -84,6 +100,12 @@ fn arcMapMergeTupleFix2226Tests():
       j = [i, i * 2, i * 3, i * 4, i * 5]
       i = i + 1
     expect(len(merged)).toEq(2)
+    # #2273: direct Map lookup → tuple .1 → List subscript over post-drop
+    # state. Verifies the merged's inner List buffers were retained.
+    expect(merged[1].1[0]).toEq(10)
+    expect(merged[1].1[2]).toEq(30)
+    expect(merged[2].1[0]).toEq(40)
+    expect(merged[2].1[1]).toEq(50)
 
   @it("Map<(int,List<int>),int> merge tuple key: arcLiveCount delta O(1) over N")
   fn mapMergeTupleKeyLiveCountSymmetry():
@@ -134,6 +156,13 @@ fn arcSetOpsTupleFix2226Tests():
     expect(delta < 10).toEq(true)
     expect(len(base1)).toEq(2)
     expect(len(base2)).toEq(1)
+    # #2273: Set iter → tuple field access → List subscript. Sums first
+    # element of each tuple's inner List across all union elements.
+    u = union(base1, base2)
+    total = 0
+    for elem in u:
+      total = total + elem.1[0]
+    expect(total).toEq(1 + 4 + 6)
 
   @it("intersection(Set<(int,List<int>)>, ...): arcLiveCount delta O(1) over N")
   fn setIntersectionTupleLiveCountSymmetry():
