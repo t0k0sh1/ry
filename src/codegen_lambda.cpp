@@ -15,7 +15,8 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
     const std::vector<StmtNode> &body,
     const ExprPtr &expr_body,
     const std::unordered_set<std::string> &paramNames,
-    bool emitLoads) {
+    bool emitLoads,
+    bool skipModuleGlobals) {
 
     CaptureAnalysisResult result;
     std::unordered_set<std::string> found;
@@ -31,6 +32,16 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
         llvm::AllocaInst *alloca = findVar(varName);
         if (!alloca)
             return;
+        // Named-fn callers pass skipModuleGlobals=true so module-globals (#817)
+        // flow through the __ry_modvar_<name> trampoline instead of being
+        // captured by value. Lambdas keep by-value capture (see #2263 entry in
+        // codegen-fn-and-generic.md). Identity check so shadowing locals are
+        // still captured.
+        if (skipModuleGlobals) {
+            const auto *b = findModuleGlobal(varName);
+            if (b && b->original_alloca == alloca)
+                return;
+        }
         found.insert(varName);
         result.capturedNames.push_back(varName);
         llvm::Type *capType = alloca->getAllocatedType();
@@ -300,7 +311,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         paramNames.insert(p.name);
 
     // Run free-variable analysis
-    auto captures = analyzeFreeVariables(e->body, e->expr_body, paramNames);
+    auto captures = analyzeFreeVariables(e->body, e->expr_body, paramNames,
+                                         /*emitLoads=*/true,
+                                         /*skipModuleGlobals=*/false);
 
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;

@@ -457,11 +457,16 @@ void CodeGen::forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool v
         // For nested functions, run capture analysis and extend the LLVM function
         // signature with capture parameters. This must happen at forward-declaration
         // time so that sibling functions that call this function pass capture args.
-        if (fn_nesting_depth_ > 0) {
+        // !isTopLevelContext() mirrors the body-emit gate below so forward-declare
+        // and body-emit agree on the signature shape across any future caller of
+        // this helper (including top-level block scopes) — #2263.
+        if (!isTopLevelContext()) {
             std::unordered_set<std::string> paramNameSet;
             for (auto &p : s->params)
                 paramNameSet.insert(p.name);
-            auto captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+            auto captures = analyzeFreeVariables(s->body, nullptr, paramNameSet,
+                                                 /*emitLoads=*/false,
+                                                 /*skipModuleGlobals=*/true);
 
             if (!captures.capturedNames.empty()) {
                 // Build extended param types (user params + captured vars)
@@ -786,12 +791,20 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // Re-run analysis (without emitting loads) to get metadata for body emission.
     // If the LLVM function doesn't yet have capture params (e.g. forward-declared
     // before local vars were in scope), extend the signature now.
+    //
+    // !isTopLevelContext() also enables analysis at fn_nesting_depth_ == 0 when
+    // we are inside a non-trivial block scope at the top level (e.g. a `for` /
+    // `while` body has pushed an extra scope frame), so a named fn declared in
+    // such a body can capture the loop induction variable or body-local vars
+    // — mirroring lambda behavior (#2263).
     CaptureAnalysisResult captures;
-    if (fn_nesting_depth_ > 0) {
+    if (!isTopLevelContext()) {
         std::unordered_set<std::string> paramNameSet;
         for (auto &p : s->params)
             paramNameSet.insert(p.name);
-        captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+        captures = analyzeFreeVariables(s->body, nullptr, paramNameSet,
+                                        /*emitLoads=*/false,
+                                        /*skipModuleGlobals=*/true);
 
         if (!captures.capturedNames.empty()) {
             if (s->is_async)

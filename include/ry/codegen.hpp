@@ -1128,7 +1128,8 @@ public:
         const std::vector<StmtNode> &body,
         const ExprPtr &expr_body,
         const std::unordered_set<std::string> &paramNames,
-        bool emitLoads = true);
+        bool emitLoads = true,
+        bool skipModuleGlobals = false);
 
     // Alloca the captured variable, store the incoming arg into it, register
     // it in scope_stack_ / captured_vars_ / immutable_scope_stack_, and

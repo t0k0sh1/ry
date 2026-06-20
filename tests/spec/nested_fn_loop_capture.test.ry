@@ -1,0 +1,202 @@
+# Issue #2263: named fn declared inside a top-level for/while body must capture
+# loop induction variables and body-local variables, mirroring lambdas.
+#
+# The repros run at module-load time at the top level — if the bug is present,
+# the file fails to compile with "undefined variable: ..." pointing into the
+# nested fn body.
+
+from testing import it, describe, expect
+
+# ===== Top-level repros: bug A (loop induction var) for `for` =====
+
+forLoopVarFns: List<fn() -> int> = []
+for forLoopVarI in range(2):
+  fn forLoopVarCapture() -> int:
+    return forLoopVarI
+  append(forLoopVarFns, forLoopVarCapture)
+
+forLoopVarResults: List<int> = []
+for forLoopVarFn in forLoopVarFns:
+  append(forLoopVarResults, forLoopVarFn())
+
+# ===== Top-level repros: bug B (body-local var) for `for` =====
+
+forLocalFns: List<fn() -> int> = []
+for forLocalI in range(3):
+  forLocalK = forLocalI * 10
+  fn forLocalCapture() -> int:
+    return forLocalK
+  append(forLocalFns, forLocalCapture)
+
+forLocalResults: List<int> = []
+for forLocalFn in forLocalFns:
+  append(forLocalResults, forLocalFn())
+
+# ===== Top-level repros: bug A for `while` (using a fresh body-local) =====
+# Note: the counter that drives the `while` is itself a module-global. The
+# capture target here is a body-local snapshot taken at each iteration, so the
+# test verifies per-iteration value preservation through the closure.
+
+whileLoopFns: List<fn() -> int> = []
+whileLoopI: int = 0
+while whileLoopI < 2:
+  whileLoopSnap = whileLoopI
+  fn whileLoopCapture() -> int:
+    return whileLoopSnap
+  append(whileLoopFns, whileLoopCapture)
+  whileLoopI = whileLoopI + 1
+
+whileLoopResults: List<int> = []
+for whileLoopFn in whileLoopFns:
+  append(whileLoopResults, whileLoopFn())
+
+# ===== Top-level repros: bug B for `while` (body-local var) =====
+
+whileLocalFns: List<fn() -> int> = []
+whileLocalI: int = 0
+while whileLocalI < 3:
+  whileLocalK = whileLocalI * 100
+  fn whileLocalCapture() -> int:
+    return whileLocalK
+  append(whileLocalFns, whileLocalCapture)
+  whileLocalI = whileLocalI + 1
+
+whileLocalResults: List<int> = []
+for whileLocalFn in whileLocalFns:
+  append(whileLocalResults, whileLocalFn())
+
+# ===== Module-global regression: named fn writes through mutable module-global =====
+# Without the identity guard in tryCaptureVar, moduleCounter would be captured
+# by-value and the inner reassignment would fail with "cannot modify captured
+# variable", losing #817 write-through semantics. The named fn is called
+# directly (not stored as a value) to dodge an unrelated pre-existing bug
+# around top-level fn-as-value storage.
+
+moduleCounter: int = 0
+for moduleCounterI in range(3):
+  fn moduleCounterBump() -> int:
+    moduleCounter = moduleCounter + 1
+    return moduleCounter
+  moduleCounterBump()
+
+# ===== Module-global regression: @const read from inside top-level loop named fn =====
+# Mirrors the named fn write-through case: read a @const module-global from a
+# named fn declared inside a top-level `for` body and accumulate the results.
+
+@const TOP_BASE: int = 100
+constReadResults: List<int> = []
+for constReadI in range(2):
+  fn constReadCapture() -> int:
+    return TOP_BASE + constReadI
+  append(constReadResults, constReadCapture())
+
+# ===== ARC capture: List body-local survives past popScope and is released =====
+# docs/reference/functions.md "ARC-managed values (strings, lists, etc.) are
+# properly retained and released" — exercise the ARC retain into the
+# uniform-closure env, survival past the loop frame's popScope() release of the
+# original body-local, and final release via __ry_arc_dtor_uniform_closure.
+
+arcListFns: List<fn() -> int> = []
+for arcListI in range(3):
+  arcListLocal = [arcListI, arcListI + 10]
+  fn arcListCapture() -> int:
+    return arcListLocal[1]
+  append(arcListFns, arcListCapture)
+
+arcListResults: List<int> = []
+for arcListFn in arcListFns:
+  append(arcListResults, arcListFn())
+
+# ===== Lambda regression: lambda inside top-level for body still works =====
+# Lambdas keep their existing by-value capture of top-level bindings
+# (docs/reference/functions.md "Captures are by value ... cannot be reassigned").
+# This test guards against the analyzeFreeVariables parameter change breaking
+# lambda capture of @const module-globals and loop induction variables in the
+# top-level loop-body position.
+
+@const LAMBDA_BASE: int = 50
+lambdaSymResults: List<int> = []
+for lambdaSymI in range(2):
+  lambdaSymCap = () => LAMBDA_BASE + lambdaSymI
+  append(lambdaSymResults, lambdaSymCap())
+
+# ===== Pure top-level fn regression =====
+
+@const PURE_X: int = 5
+fn purelyReadX() -> int:
+  return PURE_X
+
+# ===== Tests =====
+
+@describe("named fn closure capture inside top-level for")
+fn namedFnClosureCaptureInsideTopLevelForTests():
+  @it("should capture loop induction variable (bug A)")
+  fn shouldCaptureLoopInductionVariable():
+    expect(forLoopVarResults).toEq([0, 1])
+
+  @it("should capture body-local variable (bug B)")
+  fn shouldCaptureBodyLocalVariable():
+    expect(forLocalResults).toEq([0, 10, 20])
+
+@describe("named fn closure capture inside top-level while")
+fn namedFnClosureCaptureInsideTopLevelWhileTests():
+  @it("should capture per-iteration body-local snapshot of counter (bug A)")
+  fn shouldCapturePerIterationBodyLocalSnapshotOfCounter():
+    expect(whileLoopResults).toEq([0, 1])
+
+  @it("should capture body-local in while body (bug B)")
+  fn shouldCaptureBodyLocalInWhileBody():
+    expect(whileLocalResults).toEq([0, 100, 200])
+
+@describe("named fn ARC capture inside top-level for body")
+fn namedFnArcCaptureInsideTopLevelForBodyTests():
+  @it("should retain a List body-local through the uniform-closure env")
+  fn shouldRetainAListBodyLocalThroughTheUniformClosureEnv():
+    expect(arcListResults).toEq([10, 11, 12])
+
+@describe("named fn module-global interop (#817 regression)")
+fn namedFnModuleGlobalInteropTests():
+  @it("should write-through to mutable module-global instead of by-value capture")
+  fn shouldWriteThroughToMutableModuleGlobal():
+    expect(moduleCounter).toEq(3)
+
+  @it("should read @const module-global from inside loop-body named fn")
+  fn shouldReadConstModuleGlobalFromInsideLoopBodyNamedFn():
+    expect(constReadResults).toEq([100, 101])
+
+@describe("lambda inside top-level for body (regression)")
+fn lambdaInsideTopLevelForBodyRegressionTests():
+  @it("should still capture @const module-global and loop var without breaking")
+  fn shouldStillCaptureConstModuleGlobalAndLoopVarWithoutBreaking():
+    expect(lambdaSymResults).toEq([50, 51])
+
+@describe("pure top-level named fn (no loop) regression")
+fn pureTopLevelNamedFnRegressionTests():
+  @it("should access module-global without spurious capture")
+  fn shouldAccessModuleGlobalWithoutSpuriousCapture():
+    expect(purelyReadX()).toEq(5)
+
+@describe("named fn closure capture inside outer fn for body (lock-in)")
+fn namedFnClosureCaptureInsideOuterFnForBodyTests():
+  @it("should capture loop variable when inside outer fn")
+  fn shouldCaptureLoopVariableWhenInsideOuterFn():
+    fn outer() -> int:
+      total = 0
+      for outerForI in range(3):
+        fn outerForCapture() -> int:
+          return outerForI
+        total = total + outerForCapture()
+      return total
+    expect(outer()).toEq(3)
+
+  @it("should capture body-local when inside outer fn")
+  fn shouldCaptureBodyLocalWhenInsideOuterFn():
+    fn outer() -> int:
+      total = 0
+      for outerLocI in range(3):
+        outerLocK = outerLocI + 100
+        fn outerLocCapture() -> int:
+          return outerLocK
+        total = total + outerLocCapture()
+      return total
+    expect(outer()).toEq(303)
