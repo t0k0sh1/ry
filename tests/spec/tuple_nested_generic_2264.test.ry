@@ -1,0 +1,78 @@
+from testing import it, describe, expect, fail
+
+# Issue #2264: tuple element に内部 `,` を持つ 2 引数 generic を書くと
+# codegen の tuple splitter が `<>` depth を無視して "unknown type: Map<str"
+# を出していた。issue の全 repro variants と Result-in-tuple 予測をカバー。
+
+type TupleMap2264 = (int, Map<str, int>)
+
+@describe("tuple type with nested 2-arg generic (#2264)")
+fn tupleTypeNestedGeneric2264Tests():
+
+  @it("Empty List<(int, Map<str, int>)> compiles (issue minimum repro)")
+  fn emptyListOfTupleMap():
+    xs: List<(int, Map<str, int>)> = []
+    expect(len(xs)).toEq(0)
+
+  @it("List of tuple with Map at position 1, populated literal")
+  fn listOfTupleMapAtPos1():
+    xs: List<(int, Map<str, int>)> = [(10, {"a": 1, "b": 2})]
+    expect(len(xs)).toEq(1)
+    expect(xs[0].0).toEq(10)
+    expect(xs[0].1["a"]).toEq(1)
+    expect(xs[0].1["b"]).toEq(2)
+
+  @it("List of tuple with Map at position 0")
+  fn listOfTupleMapAtPos0():
+    xs: List<(Map<str, int>, int)> = [({"x": 7, "y": 9}, 99)]
+    expect(len(xs)).toEq(1)
+    expect(xs[0].0["x"]).toEq(7)
+    expect(xs[0].0["y"]).toEq(9)
+    expect(xs[0].1).toEq(99)
+
+  @it("Set declaration of tuple with Map element type compiles")
+  fn setOfTupleMapDeclares():
+    # Map は hashable でないため要素 add は検証しない。
+    # 本テストの目的は型注釈のコンパイル成功確認。
+    s: Set<(int, Map<str, int>)> = {}
+    expect(len(s)).toEq(0)
+
+  @it("Bare tuple variable with inner Map")
+  fn bareTupleWithInnerMap():
+    t: (int, Map<str, int>) = (42, {"k": 100})
+    expect(t.0).toEq(42)
+    expect(t.1["k"]).toEq(100)
+
+  @it("Function return type is tuple with inner Map compiles and is callable")
+  fn fnReturnTupleWithMap():
+    # .1 アクセスは独立した fn-return metadata propagation gap のため省略。
+    fn build() -> (int, Map<str, int>):
+      return (7, {"a": 1, "b": 2})
+    r = build()
+    expect(r.0).toEq(7)
+
+  @it("Type alias expanding to tuple with inner Map compiles")
+  fn typeAliasExpandsToTupleWithMap():
+    # alias 経由の .1 アクセスは独立した metadata gap のため省略。
+    xs: List<TupleMap2264> = [(3, {"k": 1})]
+    expect(len(xs)).toEq(1)
+    expect(xs[0].0).toEq(3)
+
+  @it("List of tuple with Result at position 1 (unverified prediction in #2264)")
+  fn listOfTupleResultAtPos1():
+    ok: Result<str, str> = Ok("hello")
+    xs: List<(int, Result<str, str>)> = [(1, ok)]
+    expect(len(xs)).toEq(1)
+    expect(xs[0].0).toEq(1)
+    elem = xs[0]
+    case elem.1:
+      Ok(v): expect(v).toEq("hello")
+      Err(e): fail("expected Ok, got Err: " + e)
+
+  @it("Iterate over List<(int, Map<str, int>)> via for-in")
+  fn iterateListOfTupleMap():
+    xs: List<(int, Map<str, int>)> = [(1, {"a": 10}), (2, {"b": 20})]
+    total = 0
+    for elem in xs:
+      total = total + elem.0
+    expect(total).toEq(3)
