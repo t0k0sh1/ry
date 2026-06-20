@@ -824,6 +824,35 @@ TEST(RegexNul, PatternWithNul) {
 }
 
 // ============================================================
+// Multibyte char-index tests (#2265)
+// ============================================================
+
+TEST(RegexMultibyte, SearchAfterThreeByteCodepoint) {
+    // "あx": 'あ' = 3 bytes, 'x' at char index 1
+    EXPECT_EQ(rs("x", "あx"), 1);
+}
+
+TEST(RegexMultibyte, SearchAfterTwoThreeByteCodepoints) {
+    // "あいx": 'あ'(3) + 'い'(3), 'x' at char index 2
+    EXPECT_EQ(rs("x", "あいx"), 2);
+}
+
+TEST(RegexMultibyte, SearchAfterFourByteEmoji) {
+    // "🎉x": '🎉' = 4 bytes, 'x' at char index 1
+    EXPECT_EQ(rs("x", "🎉x"), 1);
+}
+
+TEST(RegexMultibyte, SearchNotFoundMultibyte) {
+    EXPECT_EQ(rs("x", "あいう"), -1);
+}
+
+TEST(RegexMultibyte, SearchWithNulAndMultibyte) {
+    // "あ\0x" raw bytes — char layout: ['あ'=0, NUL=1, 'x'=2]
+    const char text[] = {'\xe3', '\x81', '\x82', '\0', 'x'};
+    EXPECT_EQ(__ry_regex_search("x", 1, text, 5), 2);
+}
+
+// ============================================================
 // __ry_regex_is_match tests — partial (unanchored) match semantics (#1197)
 // ============================================================
 

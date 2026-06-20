@@ -54,7 +54,7 @@ These functions take a regex literal pattern and use text-first argument order f
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `isMatch` | `(str, Regex) -> bool` | Returns whether the pattern matches anywhere in the text (use `^...$` to require a full-string match) |
-| `search` | `(str, Regex) -> int` | Returns the start position of the first match (-1 if not found) |
+| `search` | `(str, Regex) -> int` | Returns the character index of the first match start (-1 if not found) |
 | `replace` | `(str, Regex, str) -> str` | Replaces all matches with a replacement string |
 | `split` | `(str, Regex) -> List<str>` | Splits text by pattern matches |
 | `findAll` | `(str, Regex) -> List<Match>` | Returns all non-overlapping matches with capture groups |
@@ -81,7 +81,7 @@ The original `regex_*` functions remain available for backward compatibility. Th
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `regexMatch` | `(text: str, pattern: str) -> bool` | Returns whether the entire text matches the pattern |
-| `regexSearch` | `(text: str, pattern: str) -> int` | Returns the start position of the first match (-1 if not found) |
+| `regexSearch` | `(text: str, pattern: str) -> int` | Returns the character index of the first match start (-1 if not found) |
 | `regexReplace` | `(text: str, pattern: str, replacement: str) -> str` | Replaces all matches with a replacement string |
 | `regexSplit` | `(text: str, pattern: str) -> List<str>` | Splits text by pattern matches |
 | `regexFindAll` | `(text: str, pattern: str) -> List<Match>` | Returns all non-overlapping matches with capture groups |

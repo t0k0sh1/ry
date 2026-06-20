@@ -4,6 +4,7 @@
 #include "ry/runtime/core/error.hpp"
 #include "ry/runtime/core/regex_internal.hpp"
 #include "ry/runtime/core/list.hpp"
+#include "ry/runtime/core/utf8.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -869,6 +870,23 @@ static std::string expandReplacement(const char *repl, size_t repLen,
 
 } // anonymous namespace
 
+// Internal: returns the NFA byte offset of the first match start, -1 if not
+// found, or kRegexSearchError on compile failure. Shared by __ry_regex_search
+// (which converts to char index before returning to Ry) and __ry_regex_is_match
+// (which only checks the sign — char-index conversion would be wasted work).
+static int64_t regex_search_byte_offset(const char *pattern, int64_t patternLen,
+                                         const char *text,    int64_t textLen) {
+    if (!pattern || !text) return -1;
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        auto result = cr.search(text, static_cast<size_t>(textLen));
+        return result.first;
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return kRegexSearchError;
+    }
+}
+
 // ============================================================
 // Public C API
 // ============================================================
@@ -889,22 +907,16 @@ int64_t __ry_regex_match(const char *pattern, int64_t patternLen,
 
 int64_t __ry_regex_search(const char *pattern, int64_t patternLen,
                            const char *text,    int64_t textLen) {
-    if (!pattern || !text) return -1;
-    try {
-        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-        auto result = cr.search(text, static_cast<size_t>(textLen));
-        return result.first;
-    } catch (const std::runtime_error &e) {
-        setLastError("%s", e.what());
-        return kRegexSearchError;
-    }
+    int64_t byteOff = regex_search_byte_offset(pattern, patternLen, text, textLen);
+    if (byteOff < 0) return byteOff;
+    return __ry_utf8_char_index_n(text, textLen, byteOff);
 }
 
 int64_t __ry_regex_is_match(const char *pattern, int64_t patternLen,
                              const char *text,    int64_t textLen) {
-    int64_t result = __ry_regex_search(pattern, patternLen, text, textLen);
-    if (result == kRegexSearchError) return kRegexMatchError;
-    return result >= 0 ? 1 : 0;
+    int64_t byteOff = regex_search_byte_offset(pattern, patternLen, text, textLen);
+    if (byteOff == kRegexSearchError) return kRegexMatchError;
+    return byteOff >= 0 ? 1 : 0;
 }
 
 const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,
