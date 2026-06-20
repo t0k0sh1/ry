@@ -346,7 +346,7 @@ Weak references are automatically released when they go out of scope. If both st
 `weak T` cannot appear as a function or lambda return type. The strong owner that keeps the referent alive is typically a local variable inside the function body; it would be released when the function returns, making the returned `weak T` immediately dangling. Bind the `weak` reference at the call site instead, where the strong owner is in scope:
 
 ```ry
-# Compile error: fn return type cannot be 'weak T'
+# Compile error: return type cannot be 'weak T'
 fn make() -> weak str:
   return weak "hi"
 

@@ -208,9 +208,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     lex_.next(); // consume ')'
 
     if (lex_.peek().kind == TokenKind::Arrow) {
-        lex_.next(); // consume '->'
+        Token arrowTok = lex_.next(); // consume '->'
         fnStmt->return_type = parseTypeName();
-        checkReturnTypeNotWeak(fnStmt->return_type, fnTok.line);
+        checkReturnTypeNotWeak(fnStmt->return_type, arrowTok.line);
     } else {
         fnStmt->return_type = nullptr;
     }
@@ -323,7 +323,7 @@ void Parser::checkReturnTypeNotWeak(const TypeNodePtr &returnType, int line) {
     // and wrapped forms are deferred (see docs/reference/types.md).
     if (std::get_if<WeakType>(&returnType->data))
         parseError(line,
-            "fn return type cannot be 'weak T': weak references are scope-local and "
+            "return type cannot be 'weak T': weak references are scope-local and "
             "cannot safely outlive the function body; use a local binding "
             "('w: weak T = weak src') inside the caller instead");
 }
