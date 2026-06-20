@@ -412,6 +412,16 @@ TEST(UtilTypeName, IsFunctionTypeNameMatchesFnPrefix) {
     EXPECT_FALSE(isFunctionTypeName("Function<int>"));
 }
 
+TEST(UtilTypeName, IsTupleTypeNameMatchesParenthesizedShape) {
+    EXPECT_TRUE(ry::util::isTupleTypeName("(int, str)"));
+    EXPECT_TRUE(ry::util::isTupleTypeName("(int, Map<str, int>)"));
+    EXPECT_TRUE(ry::util::isTupleTypeName("()"));
+    EXPECT_FALSE(ry::util::isTupleTypeName("(int"));
+    EXPECT_FALSE(ry::util::isTupleTypeName("int, str)"));
+    EXPECT_FALSE(ry::util::isTupleTypeName("fn() -> int"));
+    EXPECT_FALSE(ry::util::isTupleTypeName(""));
+}
+
 TEST(UtilTypeName, IsLowLevelTypeNameCoversIntegerAndFloatVariants) {
     EXPECT_TRUE(isLowLevelTypeName("i8"));
     EXPECT_TRUE(isLowLevelTypeName("i64"));

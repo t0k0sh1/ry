@@ -2,10 +2,26 @@
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
+#include "ry/util/type_name.hpp"
 
 
 
 namespace ry {
+
+namespace {
+// Gate for stamping container-element metadata onto a fresh load before the
+// lambda boundary. Ptr-typed elements take the original #2247 path; tuple
+// StructType elements take the #2273 extension (propagateTypeMeta's tuple
+// branch then stamps source_type_name). Other StructType cases (records,
+// anyTy_, ADT enum payloads) have no matching branch — no-op.
+bool shouldPropagateElemMeta(llvm::Value *elem, llvm::Type *ptrTy,
+                              const std::string &snap) {
+    if (snap.empty() || snap == "str") return false;
+    if (elem->getType() == ptrTy) return true;
+    return llvm::isa<llvm::StructType>(elem->getType()) &&
+           ry::util::isTupleTypeName(snap);
+}
+}  // namespace
 
 // ===== Builtin Higher-Order =====
 
@@ -83,7 +99,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "filter_elem");
         // #2247: stamp container element metadata onto the fresh load before
         // it crosses the predicate boundary (`coerceCallArgs` + `wrapInAny`).
-        if (elem->getType() == ptrTy_ && !filterElemSnap.empty() && filterElemSnap != "str")
+        if (shouldPropagateElemMeta(elem, ptrTy_, filterElemSnap))
             propagateTypeMeta(filterElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "filter_pred");
         emitBranchCond(pred, storeBB, nextBB);
@@ -214,7 +230,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "map_src_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "map_src_elem");
         // #2247: stamp container element metadata before transform dispatch.
-        if (srcElem->getType() == ptrTy_ && !mapElemSnap.empty() && mapElemSnap != "str")
+        if (shouldPropagateElemMeta(srcElem, ptrTy_, mapElemSnap))
             propagateTypeMeta(mapElemSnap, srcElem);
         llvm::Value *mapped = emitLambdaCall(lambdaVal, info, {srcElem}, "map_result");
         llvm::Value *dstElemPtr = builder_.CreateGEP(outElemTy, newData, {iCur}, "map_dst_elem_ptr");
@@ -369,7 +385,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.SetInsertPoint(okBB);
         llvm::Value *firstElem = builder_.CreateLoad(elemTy, srcData, "reduce_first");
         // #2247: stamp BEFORE wrapInAny; order matters (see rule entry).
-        if (firstElem->getType() == ptrTy_ && !reduceElemSnap.empty() && reduceElemSnap != "str")
+        if (shouldPropagateElemMeta(firstElem, ptrTy_, reduceElemSnap))
             propagateTypeMeta(reduceElemSnap, firstElem);
         // Untyped lambda makes info.returnType = anyTy_ (16B) while first is a
         // raw primitive (e.g. i64, 8B). Coerce via wrapInAny so the full 16B
@@ -392,7 +408,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "reduce_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "reduce_elem");
         // #2247: stamp container element metadata before combiner dispatch.
-        if (elem->getType() == ptrTy_ && !reduceElemSnap.empty() && reduceElemSnap != "str")
+        if (shouldPropagateElemMeta(elem, ptrTy_, reduceElemSnap))
             propagateTypeMeta(reduceElemSnap, elem);
         llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "reduce_acc_val");
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "reduce_call");
@@ -460,7 +476,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "fold_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "fold_elem");
         // #2247: stamp container element metadata before combiner dispatch.
-        if (elem->getType() == ptrTy_ && !foldElemSnap.empty() && foldElemSnap != "str")
+        if (shouldPropagateElemMeta(elem, ptrTy_, foldElemSnap))
             propagateTypeMeta(foldElemSnap, elem);
         llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "fold_acc_val");
         llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "fold_call");
@@ -512,7 +528,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "any_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "any_elem");
         // #2247: stamp container element metadata before predicate dispatch.
-        if (elem->getType() == ptrTy_ && !anyElemSnap.empty() && anyElemSnap != "str")
+        if (shouldPropagateElemMeta(elem, ptrTy_, anyElemSnap))
             propagateTypeMeta(anyElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "any_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
@@ -566,7 +582,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "all_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "all_elem");
         // #2247: stamp container element metadata before predicate dispatch.
-        if (elem->getType() == ptrTy_ && !allElemSnap.empty() && allElemSnap != "str")
+        if (shouldPropagateElemMeta(elem, ptrTy_, allElemSnap))
             propagateTypeMeta(allElemSnap, elem);
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "all_pred");
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
@@ -753,7 +769,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "tap_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
         // #2247: stamp container element metadata before side-effect dispatch.
-        if (srcElem->getType() == ptrTy_ && !tapElemSnap.empty() && tapElemSnap != "str")
+        if (shouldPropagateElemMeta(srcElem, ptrTy_, tapElemSnap))
             propagateTypeMeta(tapElemSnap, srcElem);
         emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
