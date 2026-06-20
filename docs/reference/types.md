@@ -7,7 +7,7 @@
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
 | `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
-| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap). Internally a pointer to the data portion of a `StringHeader` (`{strong_count, weak_count, byte_len, data[], '\0'}`). Supports embedded NUL bytes (#1022). |
+| `str` | ptr | `"hello"`, `""`, `"a\nb"`, `"""multi\nline"""` | String (immutable byte sequence on the heap). Internally a pointer to the data portion of a `StringHeader` (`{strong_count, weak_count, byte_len, data[], '\0'}`). Supports embedded NUL bytes (#1022). Block string literals (`"""..."""`) are documented in [builtins-string.md](builtins-string.md). |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
 | `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | A type that may or may not contain a value |
 | `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | Tuple type |

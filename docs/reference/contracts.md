@@ -1,6 +1,6 @@
 # Design by Contract (DbC)
 
-Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the process with `exit(1)`.
+Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the process with exit code 1.
 
 ---
 
@@ -111,6 +111,6 @@ a.balance = -1                  # Contract violation: invariant failed for BankA
 - `ensure` requires a variable binding (e.g., `ensure v:`) to name the return value.
 - For tuple returns, multiple bindings can be specified (e.g., `ensure q, r:`).
 - `invariant` appears at the end of a `record` definition, after all field declarations.
-- All contract violations terminate with `exit(1)` and print a diagnostic message.
+- All contract violations terminate the process (exit code 1) and print a diagnostic message.
 
 > **See also**: For error-as-value patterns using `Result<T, E>`, `Ok`, `Err`, and the `?` operator, see [Types — Result](types.md#result-type) and [Operators — `?`](operators.md).
