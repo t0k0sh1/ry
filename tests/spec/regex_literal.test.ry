@@ -198,3 +198,29 @@ fn nulByteHandlingInRegex1052Tests():
   fn regexsearchLocatesNulContainingSubPattern1052():
     # "\0b" is at index 1 in "a\0b"
     expect(regexSearch("a\0b", "\0b")).toEq(1)
+
+@describe("multibyte char index in search / regexSearch (#2265)")
+fn multibyteCharIndexInSearchRegexsearch2265Tests():
+  @it("char index after 3-byte UTF-8 codepoint (#2265)")
+  fn afterThreeByteCodepoint2265():
+    # "あx" — 'あ' is 3 bytes; 'x' is at char index 1
+    expect(search("あx", /x/)).toEq(1)
+    expect("あx".search(/x/)).toEq(1)
+  @it("char index after two 3-byte codepoints (#2265)")
+  fn afterTwoThreeByteCodepoints2265():
+    # "あいx" — 'x' is at char index 2
+    expect(search("あいx", /x/)).toEq(2)
+    expect(regexSearch("あいx", "x")).toEq(2)
+  @it("char index after 4-byte emoji codepoint (#2265)")
+  fn afterFourByteEmoji2265():
+    # "🎉x" — '🎉' is 4 bytes; 'x' is at char index 1
+    expect(search("🎉x", /x/)).toEq(1)
+    expect(regexSearch("🎉x", "x")).toEq(1)
+  @it("not-found returns -1 for multibyte subject (#2265)")
+  fn notFoundMultibyte2265():
+    expect(search("あいう", /x/)).toEq(-1)
+    expect(regexSearch("あいう", "x")).toEq(-1)
+  @it("NUL + multibyte combination (#2265)")
+  fn nulAndMultibyte2265():
+    # "あ\0x" — 'あ'(1 char) + NUL(1 char) + 'x'(1 char); x at char index 2
+    expect(regexSearch("あ\0x", "x")).toEq(2)
