@@ -102,6 +102,7 @@ private:
     StmtNode parseForStatement();
     StmtNode parseUsingStatement();
     StmtNode parseFnStatement(const std::vector<Directive> &directives, bool is_async = false);
+    void checkReturnTypeNotWeak(const TypeNodePtr &returnType, int line);
     StmtNode parseDirectiveDefStatement(const Directive *dirAnnot,
                                         std::vector<Directive> directives);
     StmtNode parseRecordStatement();

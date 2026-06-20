@@ -341,6 +341,30 @@ The upgrade operation uses a compare-and-swap (CAS) loop internally, making it s
 
 Weak references are automatically released when they go out of scope. If both strong and weak reference counts reach zero, the ARC header is freed.
 
+### Restrictions
+
+`weak T` cannot appear as a function or lambda return type. The strong owner that keeps the referent alive is typically a local variable inside the function body; it would be released when the function returns, making the returned `weak T` immediately dangling. Bind the `weak` reference at the call site instead, where the strong owner is in scope:
+
+```ry
+# Compile error: fn return type cannot be 'weak T'
+fn make() -> weak str:
+  return weak "hi"
+
+# Bind weak at the call site where the strong owner stays alive
+s = "hi"
+w: weak str = weak s
+```
+
+The same restriction applies to lambdas (`(x: str) -> weak str => x` is rejected).
+
+The check is a parser-level syntax check on the outermost return-type node, so the following deferred shapes are **not diagnosed at parse time** today:
+
+- Type aliases that hide a `weak T` (`type W = weak str; fn make() -> W: ...`).
+- Wrapped return types (`fn make() -> List<weak str>:`, `fn make() -> Option<weak str>:`, etc.).
+- Function-type annotations (`f: fn() -> weak str = ...`).
+
+These shapes compile but reproduce the same latent behavior the parser-level check exists to prevent — the returned weak reference loses its `weak T` static type on the caller side and behaves as a plain `T` (e.g. `str`-fallback), with no `case`-based auto-upgrade to `Option<T>`. The lifetime soundness is not enforced by the compiler; whether the referent is alive at access time depends on incidental ARC retains that may or may not exist.
+
 ---
 
 ## F-String (String Interpolation)

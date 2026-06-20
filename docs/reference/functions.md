@@ -88,6 +88,10 @@ fn flexible(x: any) -> any:
     return x    # can return int, float, str, etc.
 ```
 
+### Restricted Return Types
+
+`weak T` cannot appear as a function or lambda return type. The returned weak reference would point to a value whose strong owner has just gone out of scope, making it immediately dangling. See [Restrictions in types.md](types.md#restrictions) for the rationale and the workaround pattern.
+
 ---
 
 ## Nested Functions
