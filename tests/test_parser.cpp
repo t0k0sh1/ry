@@ -4966,3 +4966,42 @@ TEST(ParserTest, EnumConstructorWithGenericTypeStillWorks) {
     Program prog = parseStr("x = MyOption<int>::MySome(42)");
     ASSERT_EQ(prog.size(), 1u);
 }
+
+// #2266 — weak T return type rejected at parse time (see docs/reference/types.md Restrictions)
+
+TEST(ParserTest, WeakReturnTypeTopLevelFnRejected) {
+    EXPECT_THROW(parseStr("fn make() -> weak str:\n    return \"x\"\n"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WeakReturnTypeLambdaRejected) {
+    EXPECT_THROW(parseStr("f = (x: str) -> weak str => x\n"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WeakReturnTypeGenericFnRejected) {
+    EXPECT_THROW(parseStr("fn wrap<T>(x: T) -> weak T:\n    return x\n"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WeakReturnTypeMethodStyleFnRejected) {
+    // ry uses UFCS, so record methods are regular fns parsed by the same
+    // parseFnStatement path. The check at L212 covers them uniformly.
+    EXPECT_THROW(parseStr("fn get(self: Rec) -> weak List<int>:\n    return self.xs\n"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WeakReturnTypeNativeFnRejected) {
+    // @native fns have no body but the annotation still establishes an
+    // unsound API surface; reject consistently with declared fns.
+    EXPECT_THROW(parseStr("@native(\"core\")\nfn opaque() -> weak str\n"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WeakReturnTypeWrappedInListAccepted) {
+    // The check fires only when WeakType is the OUTERMOST node of the
+    // return type AST. Wrapped forms like `List<weak T>` are out of scope
+    // for #2266 (deferred to a follow-up issue requiring AST walk).
+    Program prog = parseStr("fn make() -> List<weak str>:\n    return []\n");
+    ASSERT_EQ(prog.size(), 1u);
+}

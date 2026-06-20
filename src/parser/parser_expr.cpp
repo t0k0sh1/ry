@@ -1146,8 +1146,9 @@ ExprPtr Parser::parseParenLambdaExpr() {
     }
 
     if (lex_.peek().kind == TokenKind::Arrow) {
-        lex_.next(); // consume '->'
+        Token arrowTok = lex_.next(); // consume '->'
         lambda->return_type = parseTypeName();
+        checkReturnTypeNotWeak(lambda->return_type, arrowTok.line);
     } else {
         lambda->return_type = nullptr;
     }

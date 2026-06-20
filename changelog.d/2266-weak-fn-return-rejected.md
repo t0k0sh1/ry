@@ -1,0 +1,3 @@
+### Fixed
+
+- `fn` および lambda の return type に `weak T` を書くことを parse 時に reject するようになった。これまでは `fn make() -> weak str:` のような宣言が通り、呼出側で型推論が `str` に倒れて weak ref semantics（`case` での auto-upgrade、`None` 化）が消失していた。根本原因は単なる metadata 伝搬問題ではなく lifetime 問題で、`return weak xs` の `xs` (唯一の strong owner) が return 直前に die するため、呼出側に届く weak ref は構造的に dangling になる。ry には borrow-checking がなく param/struct-field-source の sound pattern を区別できないため、宣言を一律 reject する方針を採用。ローカル `w: weak T = weak src` の正規パターンは引き続き使える。型 alias 経由（`type W = weak str; fn make() -> W:`）と wrapped return type (`List<weak T>` 等) は parser-only check のため検出されないが、使用時の動作は undefined であることを docs に明記。 (#2266)
