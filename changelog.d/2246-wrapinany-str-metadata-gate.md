@@ -1,3 +1,0 @@
-### Fixed
-
-- `wrapInAny` の str retain 分岐を metadata-gated にし、`filter` / `slice` / `map` などのループ内で container element の fresh load を str と誤判定して StringHeader offset `-24` で retain するヒープ破壊を解消した。 `#1799` で導入された `isStringValue(val)` (`ptrTy_ && !isNonStrPointer` の否定証拠ベース判定) は、metadata を持たない `ptrTy_` 値を str と肯定するため、Map / List / Set header の data ptr に対して `-24` で `strong_count` を inc し、隣接 allocation の末尾 8 bytes (しばしば兄弟 Map の `keys` buffer の str ptr) を破壊して `runtime error: map key not found` を引き起こしていた (KNOWLEDGE.md L49 `## map key not found` (#1888) の root cause)。本修正は `wrapInAny` の str 分岐に肯定証拠ゲート (`arc_str_owned_values_` / `arc_str_managed_vars_` membership、`GlobalVariable`、`meta->str_elem`) を追加して container element の fresh load を str dispatch から除外する。 (#2246)
