@@ -183,8 +183,25 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     {"dump",          nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
 };
 
+// Gate the dispatcher: only proceed if any json symbol is actually
+// registered in `native_fn_sigs_`. Without this, json would race with
+// the json5 dispatcher (#1855) over the `load<T>` interceptor — both
+// claim every `load<T>` call regardless of which package the user imported
+// from, and alphabetical ordering would put json first, routing
+// `from json5 import load; load[T](...)` to `__ry_json_parse_to_any`.
+// The check mirrors the package-level gate `emitTableDrivenNativeCall`
+// performs at L17.
+static bool isJsonImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    return sigs.count("json::load") || sigs.count("json::stringify")
+        || sigs.count("json::stringifySafe") || sigs.count("json::dump");
+}
+
 RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)
 static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
+    if (!isJsonImported(cg))
+        return nullptr;
+
     // Register libry_json.dylib for JIT loading.  The custom emitters reached
     // through this dispatcher bypass the sig.library-driven insert that
     // happens inside emitTableDrivenNativeCall's customEmitter branch only

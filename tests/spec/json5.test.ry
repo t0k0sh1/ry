@@ -1,0 +1,588 @@
+from testing import it, describe, expect, fail
+
+from json5 import load, stringify, stringifySafe, dump
+from str import contains, byteLen
+from io import open, close, writeText, readText
+from math import NAN, INF
+
+# ============================================================================
+# Strict-JSON parity (load — primitives / arrays / objects / errors)
+# ============================================================================
+
+@describe("json5 load — primitives")
+fn json5LoadPrimitivesTests():
+  @it("should load JSON null as Unit payload inside Map<str, any>")
+  fn shouldLoadNullAsAny():
+    case load[Map<str, any>]("{\"x\": null}"):
+      Ok(m):
+        v: any = m["x"]
+        s: str = stringify(v)
+        expect(s).toEq("null")
+      Err(e):
+        fail("load[Map<str, any>] null payload failed: " + e.message)
+
+  @it("should load true / false / int / negative int / float / str")
+  fn shouldLoadScalars():
+    case load[bool]("true"):
+      Ok(v): expect(stringify(v)).toEq("true")
+      Err(e): fail("load true failed: " + e.message)
+    case load[bool]("false"):
+      Ok(v): expect(stringify(v)).toEq("false")
+      Err(e): fail("load false failed: " + e.message)
+    case load[int]("42"):
+      Ok(v): expect(stringify(v)).toEq("42")
+      Err(e): fail("load int failed: " + e.message)
+    case load[int]("-7"):
+      Ok(v): expect(stringify(v)).toEq("-7")
+      Err(e): fail("load negative int failed: " + e.message)
+    case load[float]("3.5"):
+      Ok(v): expect(stringify(v)).toEq("3.5")
+      Err(e): fail("load float failed: " + e.message)
+    case load[str]("\"hi\""):
+      Ok(v): expect(stringify(v)).toEq("\"hi\"")
+      Err(e): fail("load str failed: " + e.message)
+
+  @it("should reject empty input")
+  fn shouldRejectEmpty():
+    case load[int](""):
+      Ok(_): fail("expected Err for empty input")
+      Err(e): expect(byteLen(e.message) > 0).toEq(true)
+
+  @it("should reject trailing content")
+  fn shouldRejectTrailingContent():
+    case load[int]("42 extra"):
+      Ok(_): fail("expected Err")
+      Err(e): expect(contains(e.message, "trailing")).toEq(true)
+
+@describe("json5 load — arrays")
+fn json5LoadArrayTests():
+  @it("should load empty array")
+  fn shouldLoadEmptyArray():
+    case load[List<any>]("[]"):
+      Ok(v): expect(stringify(v)).toEq("[]")
+      Err(e): fail("load empty array failed: " + e.message)
+
+  @it("should load array of ints")
+  fn shouldLoadArrayOfInts():
+    case load[List<any>]("[1, 2, 3]"):
+      Ok(v): expect(stringify(v)).toEq("[1,2,3]")
+      Err(e): fail("load array of ints failed: " + e.message)
+
+  @it("should load nested arrays")
+  fn shouldLoadNestedArrays():
+    case load[List<any>]("[[1,2],[3]]"):
+      Ok(v): expect(stringify(v)).toEq("[[1,2],[3]]")
+      Err(e): fail("load nested arrays failed: " + e.message)
+
+@describe("json5 load — objects")
+fn json5LoadObjectTests():
+  @it("should load empty object")
+  fn shouldLoadEmptyObject():
+    case load[Map<str, any>]("{}"):
+      Ok(v): expect(stringify(v)).toEq("{}")
+      Err(e): fail("load empty object failed: " + e.message)
+
+  @it("should load object with single key")
+  fn shouldLoadObjectSingleKey():
+    case load[Map<str, any>]("{\"a\": 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"a\":1}")
+      Err(e): fail("load object single key failed: " + e.message)
+
+  @it("should preserve insertion order on stringify")
+  fn shouldPreserveInsertionOrder():
+    case load[Map<str, any>]("{\"c\": 3, \"a\": 1, \"b\": 2}"):
+      Ok(v): expect(stringify(v)).toEq("{\"c\":3,\"a\":1,\"b\":2}")
+      Err(e): fail("load object order failed: " + e.message)
+
+# ============================================================================
+# Stringify — primitives and pretty
+# ============================================================================
+
+@describe("json5 stringify — primitives")
+fn json5StringifyPrimitivesTests():
+  @it("should stringify int / float / bool / str / null")
+  fn shouldStringifyScalars():
+    a: any = 7
+    expect(stringify(a)).toEq("7")
+    b: any = true
+    expect(stringify(b)).toEq("true")
+    c: any = "hi"
+    expect(stringify(c)).toEq("\"hi\"")
+    d: any = 3.25
+    expect(stringify(d)).toEq("3.25")
+
+@describe("json5 stringify — pretty")
+fn json5StringifyPrettyTests():
+  @it("should pretty-print array with indent=2")
+  fn shouldPrettyArray():
+    case load[List<any>]("[1,2]"):
+      Ok(v): expect(stringify(v, 2)).toEq("[\n  1,\n  2\n]")
+      Err(e): fail("load failed: " + e.message)
+
+  @it("should pretty-print object with indent=2")
+  fn shouldPrettyObject():
+    case load[Map<str, any>]("{\"a\":1}"):
+      Ok(v): expect(stringify(v, 2)).toEq("{\n  \"a\": 1\n}")
+      Err(e): fail("load failed: " + e.message)
+
+@describe("json5 stringify — sortKeys named argument")
+fn json5StringifySortKeysTests():
+  @it("should sort keys when sortKeys=true")
+  fn shouldSortKeysTrue():
+    case load[Map<str, any>]("{\"c\":3,\"a\":1,\"b\":2}"):
+      Ok(v): expect(stringify(v, sortKeys=true)).toEq("{\"a\":1,\"b\":2,\"c\":3}")
+      Err(e): fail("load failed: " + e.message)
+
+  @it("should preserve insertion order when sortKeys=false (default)")
+  fn shouldSortKeysFalse():
+    case load[Map<str, any>]("{\"c\":3,\"a\":1,\"b\":2}"):
+      Ok(v): expect(stringify(v, sortKeys=false)).toEq("{\"c\":3,\"a\":1,\"b\":2}")
+      Err(e): fail("load failed: " + e.message)
+
+# ============================================================================
+# stringifySafe — JSON5 behaves differently from json on non-finite floats
+# ============================================================================
+
+@describe("json5 stringifySafe — happy path")
+fn json5StringifySafeHappyPathTests():
+  @it("should Ok for primitives matching stringify")
+  fn shouldStringifySafeMatchPrimitives():
+    v: any = 42
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("42")
+      Err(e): fail("stringifySafe int failed: " + e.message)
+    v2: any = "hello"
+    case stringifySafe(v2):
+      Ok(s): expect(s).toEq("\"hello\"")
+      Err(e): fail("stringifySafe str failed: " + e.message)
+
+  @it("should accept indent argument")
+  fn shouldAcceptIndent():
+    case load[List<any>]("[1,2]"):
+      Ok(v):
+        case stringifySafe(v, 2):
+          Ok(s): expect(s).toEq("[\n  1,\n  2\n]")
+          Err(e): fail("stringifySafe indent failed: " + e.message)
+      Err(e): fail("load failed: " + e.message)
+
+@describe("json5 stringifySafe — non-finite floats are OK (JSON5 difference)")
+fn json5StringifySafeNonFiniteTests():
+  @it("should Ok with \"NaN\" for NaN")
+  fn shouldOkOnNaN():
+    v: any = NAN
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("NaN")
+      Err(e): fail("stringifySafe NaN unexpectedly Err: " + e.message)
+
+  @it("should Ok with \"Infinity\" for +Inf")
+  fn shouldOkOnPositiveInfinity():
+    v: any = INF
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("Infinity")
+      Err(e): fail("stringifySafe +Inf unexpectedly Err: " + e.message)
+
+  @it("should Ok with \"-Infinity\" for -Inf")
+  fn shouldOkOnNegativeInfinity():
+    v: any = -INF
+    case stringifySafe(v):
+      Ok(s): expect(s).toEq("-Infinity")
+      Err(e): fail("stringifySafe -Inf unexpectedly Err: " + e.message)
+
+@describe("json5 stringifySafe — typed collections still Err")
+fn json5StringifySafeTypedCollTests():
+  @it("should Err on typed List<int> wrapped as any")
+  fn shouldErrOnTypedListInt():
+    xs: List<int> = [1, 2, 3]
+    v: any = xs
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for typed List<int>")
+      Err(e): expect(e.message).toContain("typed collection")
+
+  @it("should Err on Set wrapped as any")
+  fn shouldErrOnSet():
+    s: Set<int> = {1, 2}
+    v: any = s
+    case stringifySafe(v):
+      Ok(_): fail("expected Err for Set")
+      Err(e): expect(e.message).toContain("Set")
+
+# ============================================================================
+# JSON5-specific feature: comments
+# ============================================================================
+
+@describe("json5 — comments")
+fn json5CommentTests():
+  @it("should accept line comment before value")
+  fn shouldAcceptLineCommentBefore():
+    case load[int]("// comment\n42"):
+      Ok(v): expect(stringify(v)).toEq("42")
+      Err(e): fail("line-comment-before failed: " + e.message)
+
+  @it("should accept line comment after value")
+  fn shouldAcceptLineCommentAfter():
+    case load[int]("42 // trailing"):
+      Ok(v): expect(stringify(v)).toEq("42")
+      Err(e): fail("line-comment-after failed: " + e.message)
+
+  @it("should accept block comment")
+  fn shouldAcceptBlockComment():
+    case load[List<any>]("/* prefix */ [1, /*mid*/ 2]"):
+      Ok(v): expect(stringify(v)).toEq("[1,2]")
+      Err(e): fail("block-comment failed: " + e.message)
+
+  @it("should accept block comment containing newline")
+  fn shouldAcceptMultilineBlockComment():
+    case load[int]("/* line1\nline2 */ 7"):
+      Ok(v): expect(stringify(v)).toEq("7")
+      Err(e): fail("multiline-block-comment failed: " + e.message)
+
+  @it("should reject unterminated block comment")
+  fn shouldRejectUnterminatedBlockComment():
+    case load[int]("/* unterminated 42"):
+      Ok(_): fail("expected Err for unterminated block comment")
+      Err(e): expect(e.message).toContain("unterminated block comment")
+
+# ============================================================================
+# JSON5-specific feature: trailing comma
+# ============================================================================
+
+@describe("json5 — trailing comma")
+fn json5TrailingCommaTests():
+  @it("should accept trailing comma in array")
+  fn shouldAcceptTrailingCommaArray():
+    case load[List<any>]("[1, 2, 3,]"):
+      Ok(v): expect(stringify(v)).toEq("[1,2,3]")
+      Err(e): fail("trailing comma array failed: " + e.message)
+
+  @it("should accept trailing comma in object")
+  fn shouldAcceptTrailingCommaObject():
+    case load[Map<str, any>]("{\"a\": 1, \"b\": 2,}"):
+      Ok(v): expect(stringify(v)).toEq("{\"a\":1,\"b\":2}")
+      Err(e): fail("trailing comma object failed: " + e.message)
+
+  @it("should accept trailing comma in nested structure")
+  fn shouldAcceptTrailingCommaNested():
+    case load[List<any>]("[[1,2,], [3,],]"):
+      Ok(v): expect(stringify(v)).toEq("[[1,2],[3]]")
+      Err(e): fail("trailing comma nested failed: " + e.message)
+
+  @it("should NOT accept leading comma in array")
+  fn shouldRejectLeadingCommaArray():
+    case load[List<any>]("[,1, 2]"):
+      Ok(_): fail("expected Err for leading comma")
+      Err(e): expect(byteLen(e.message) > 0).toEq(true)
+
+# ============================================================================
+# JSON5-specific feature: single-quoted strings
+# ============================================================================
+
+@describe("json5 — single-quoted strings")
+fn json5SingleQuoteTests():
+  @it("should accept single-quoted string value")
+  fn shouldAcceptSingleQuotedValue():
+    case load[str]("'hello'"):
+      Ok(v): expect(stringify(v)).toEq("\"hello\"")
+      Err(e): fail("single-quoted value failed: " + e.message)
+
+  @it("should accept single-quoted object key")
+  fn shouldAcceptSingleQuotedKey():
+    case load[Map<str, any>]("{'a': 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"a\":1}")
+      Err(e): fail("single-quoted key failed: " + e.message)
+
+  @it("should accept escaped single quote inside single-quoted string")
+  fn shouldAcceptEscapedSingleQuote():
+    case load[str]("'it\\'s'"):
+      Ok(v): expect(stringify(v)).toEq("\"it's\"")
+      Err(e): fail("escaped single quote failed: " + e.message)
+
+  @it("should accept double quote inside single-quoted string without escape")
+  fn shouldAcceptUnescapedDoubleInSingle():
+    case load[str]("'say \"hi\"'"):
+      Ok(v): expect(stringify(v)).toEq("\"say \\\"hi\\\"\"")
+      Err(e): fail("unescaped double-in-single failed: " + e.message)
+
+# ============================================================================
+# JSON5-specific feature: multi-line string (line continuation)
+# ============================================================================
+
+@describe("json5 — line continuation")
+fn json5MultiLineStringTests():
+  @it("should treat backslash-LF as line continuation (no output)")
+  fn shouldAcceptLineContinuationLF():
+    case load[str]("'foo\\\nbar'"):
+      Ok(v): expect(stringify(v)).toEq("\"foobar\"")
+      Err(e): fail("LF line continuation failed: " + e.message)
+
+  @it("should reject raw LF inside string (without line continuation)")
+  fn shouldRejectRawLF():
+    case load[str]("'foo\nbar'"):
+      Ok(_): fail("expected Err for raw LF in string")
+      Err(e): expect(byteLen(e.message) > 0).toEq(true)
+
+# ============================================================================
+# JSON5-specific feature: unquoted object keys
+# ============================================================================
+
+@describe("json5 — unquoted object keys")
+fn json5UnquotedKeyTests():
+  @it("should accept unquoted ASCII identifier key")
+  fn shouldAcceptIdentifierKey():
+    case load[Map<str, any>]("{x: 1, y: 2}"):
+      Ok(v): expect(stringify(v)).toEq("{\"x\":1,\"y\":2}")
+      Err(e): fail("unquoted ident key failed: " + e.message)
+
+  @it("should accept underscore-prefixed key")
+  fn shouldAcceptUnderscoreKey():
+    case load[Map<str, any>]("{_foo: 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"_foo\":1}")
+      Err(e): fail("underscore key failed: " + e.message)
+
+  @it("should accept dollar-prefixed key")
+  fn shouldAcceptDollarKey():
+    case load[Map<str, any>]("{$ref: 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"$ref\":1}")
+      Err(e): fail("dollar key failed: " + e.message)
+
+  @it("should accept key with digits after first character")
+  fn shouldAcceptKeyWithDigits():
+    case load[Map<str, any>]("{x1: 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"x1\":1}")
+      Err(e): fail("digit-in-key failed: " + e.message)
+
+  @it("should reject digit-prefixed key")
+  fn shouldRejectDigitPrefixedKey():
+    case load[Map<str, any>]("{1abc: 2}"):
+      Ok(_): fail("expected Err for digit-prefixed key")
+      Err(e): expect(byteLen(e.message) > 0).toEq(true)
+
+# ============================================================================
+# JSON5-specific feature: hex literals
+# ============================================================================
+
+@describe("json5 — hex literals")
+fn json5HexLiteralTests():
+  @it("should accept lowercase hex literal")
+  fn shouldAcceptLowercaseHex():
+    case load[int]("0xff"):
+      Ok(v): expect(stringify(v)).toEq("255")
+      Err(e): fail("lowercase hex failed: " + e.message)
+
+  @it("should accept uppercase hex literal")
+  fn shouldAcceptUppercaseHex():
+    case load[int]("0xFF"):
+      Ok(v): expect(stringify(v)).toEq("255")
+      Err(e): fail("uppercase hex failed: " + e.message)
+
+  @it("should accept large hex literal")
+  fn shouldAcceptLargeHex():
+    case load[int]("0xDEADBEEF"):
+      Ok(v): expect(stringify(v)).toEq("3735928559")
+      Err(e): fail("large hex failed: " + e.message)
+
+  @it("should accept negative hex literal")
+  fn shouldAcceptNegativeHex():
+    case load[int]("-0xFF"):
+      Ok(v): expect(stringify(v)).toEq("-255")
+      Err(e): fail("negative hex failed: " + e.message)
+
+  @it("should reject hex literal with no digits")
+  fn shouldRejectEmptyHex():
+    case load[int]("0x"):
+      Ok(_): fail("expected Err for 0x with no digits")
+      Err(e): expect(e.message).toContain("hex")
+
+# ============================================================================
+# JSON5-specific feature: leading / trailing decimal points
+# ============================================================================
+
+@describe("json5 — leading / trailing decimal points")
+fn json5DecimalPointTests():
+  @it("should accept leading decimal point (.5)")
+  fn shouldAcceptLeadingDot():
+    case load[float](".5"):
+      Ok(v): expect(stringify(v)).toEq("0.5")
+      Err(e): fail("leading dot failed: " + e.message)
+
+  @it("should accept trailing decimal point (5.)")
+  fn shouldAcceptTrailingDot():
+    case load[float]("5."):
+      Ok(v): expect(stringify(v)).toEq("5")
+      Err(e): fail("trailing dot failed: " + e.message)
+
+  @it("should accept signed leading decimal point (-.5)")
+  fn shouldAcceptSignedLeadingDot():
+    case load[float]("-.5"):
+      Ok(v): expect(stringify(v)).toEq("-0.5")
+      Err(e): fail("signed leading dot failed: " + e.message)
+
+# ============================================================================
+# JSON5-specific feature: IEEE 754 special values
+# ============================================================================
+
+@describe("json5 — Infinity and NaN literals")
+fn json5SpecialFloatTests():
+  @it("should accept Infinity literal")
+  fn shouldAcceptInfinity():
+    case load[float]("Infinity"):
+      Ok(v): expect(stringify(v)).toEq("Infinity")
+      Err(e): fail("Infinity literal failed: " + e.message)
+
+  @it("should accept -Infinity literal")
+  fn shouldAcceptNegativeInfinity():
+    case load[float]("-Infinity"):
+      Ok(v): expect(stringify(v)).toEq("-Infinity")
+      Err(e): fail("-Infinity literal failed: " + e.message)
+
+  @it("should accept NaN literal")
+  fn shouldAcceptNaN():
+    case load[float]("NaN"):
+      Ok(v): expect(stringify(v)).toEq("NaN")
+      Err(e): fail("NaN literal failed: " + e.message)
+
+  @it("should round-trip Infinity through stringify and load")
+  fn shouldRoundTripInfinity():
+    v: any = INF
+    s: str = stringify(v)
+    expect(s).toEq("Infinity")
+    case load[float](s):
+      Ok(_): 0
+      Err(e): fail("round-trip Infinity failed: " + e.message)
+
+# ============================================================================
+# JSON5-specific feature: explicit positive sign
+# ============================================================================
+
+@describe("json5 — positive sign")
+fn json5PositiveSignTests():
+  @it("should accept +int")
+  fn shouldAcceptPositiveInt():
+    case load[int]("+5"):
+      Ok(v): expect(stringify(v)).toEq("5")
+      Err(e): fail("+5 failed: " + e.message)
+
+  @it("should accept +float")
+  fn shouldAcceptPositiveFloat():
+    case load[float]("+1.5"):
+      Ok(v): expect(stringify(v)).toEq("1.5")
+      Err(e): fail("+1.5 failed: " + e.message)
+
+  @it("should accept +Infinity")
+  fn shouldAcceptPositiveInfinity():
+    case load[float]("+Infinity"):
+      Ok(v): expect(stringify(v)).toEq("Infinity")
+      Err(e): fail("+Infinity failed: " + e.message)
+
+# ============================================================================
+# Asymmetry: json rejects, json5 accepts (the core motivation for #1855)
+# ============================================================================
+
+@describe("json5 — accepts inputs that strict json would reject")
+fn json5AsymmetryTests():
+  @it("should load object with trailing comma and unquoted keys")
+  fn shouldLoadConfigStyleObject():
+    src: str = "{\n  // tool config\n  name: 'ry',\n  port: 0xFF,\n  ratio: .5,\n}"
+    case load[Map<str, any>](src):
+      Ok(v):
+        s: str = stringify(v, sortKeys=true)
+        expect(s).toEq("{\"name\":\"ry\",\"port\":255,\"ratio\":0.5}")
+      Err(e):
+        fail("config-style object failed: " + e.message)
+
+  @it("should load Infinity that json would reject")
+  fn shouldLoadInfinityVsJson():
+    case load[float]("Infinity"):
+      Ok(v):
+        # NaN is non-equal to itself; Infinity is +Inf
+        s: str = stringify(v)
+        expect(s).toEq("Infinity")
+      Err(e):
+        fail("Infinity load failed: " + e.message)
+
+# ============================================================================
+# File handle overloads
+# ============================================================================
+
+@describe("json5 file overloads")
+fn json5FileOverloadsTests():
+  @it("should round-trip load[T](File) and dump(File, value)")
+  fn shouldRoundTripFile():
+    path: str = "/tmp/ry_json5_spec_roundtrip.json5"
+    val: any = 42
+    # write
+    case open(path, "w"):
+      Ok(f):
+        case dump(f, val):
+          Ok(_): 0
+          Err(e): fail("dump failed: " + e.message)
+        close(f)
+      Err(e):
+        fail("open write failed: " + e.message)
+    # read back via load[T](File)
+    case open(path, "r"):
+      Ok(f):
+        case load[int](f):
+          Ok(n): expect(n).toEq(42)
+          Err(e): fail("load[int](File) failed: " + e.message)
+        close(f)
+      Err(e):
+        fail("open read failed: " + e.message)
+
+# ============================================================================
+# Error position formatting (parity with json)
+# ============================================================================
+
+@describe("json5 — error position formatting")
+fn json5ErrorPositionTests():
+  @it("should include line / column / offset in error message")
+  fn shouldFormatPosition():
+    case load[int]("\n\n  ?"):
+      Ok(_): fail("expected Err for bad token")
+      Err(e):
+        expect(e.message).toContain("line 3")
+        expect(e.message).toContain("column 3")
+        expect(e.message).toContain("offset 4")
+
+# ============================================================================
+# Allocate-then-fail leak regression (#1855 scan-build path)
+# ============================================================================
+#
+# The original scan-build run flagged a "Potential memory leak" on the str
+# handle allocated inside `parse_string` when a subsequent parse failure
+# rejected the document. These cases exercise the exact allocate-then-fail
+# path: a string value is fully parsed (allocating a Ry str handle) and then
+# the parser detects trailing content / unterminated comment / depth limit
+# and must release the handle via `releaseOwnedAny`. Run under ASan/LSan to
+# verify the cleanup paths are correct.
+
+@describe("json5 — allocation cleanup on post-parse failure")
+fn json5AllocationCleanupTests():
+  @it("should release allocated str when trailing content follows a string")
+  fn shouldReleaseStrOnTrailing():
+    case load[str]("'hi' extra"):
+      Ok(_): fail("expected Err for trailing content")
+      Err(e): expect(e.message).toContain("trailing")
+
+  @it("should release allocated str when trailing block comment is unterminated")
+  fn shouldReleaseStrOnUnterminatedBlockComment():
+    case load[str]("'hi' /* unterminated"):
+      Ok(_): fail("expected Err for unterminated block comment")
+      Err(e): expect(e.message).toContain("unterminated block comment")
+
+  @it("should release allocated str when trailing content is another string")
+  fn shouldReleaseStrOnTrailingString():
+    case load[str]("'hi' 'extra'"):
+      Ok(_): fail("expected Err for trailing string")
+      Err(e): expect(e.message).toContain("trailing")
+
+  @it("should release allocated list when trailing content follows an array")
+  fn shouldReleaseListOnTrailing():
+    case load[List<any>]("[1, 'a'] extra"):
+      Ok(_): fail("expected Err for trailing content")
+      Err(e): expect(e.message).toContain("trailing")
+
+  @it("should release allocated object when trailing content follows an object")
+  fn shouldReleaseObjectOnTrailing():
+    case load[Map<str, any>]("{a: 'hi'} extra"):
+      Ok(_): fail("expected Err for trailing content")
+      Err(e): expect(e.message).toContain("trailing")

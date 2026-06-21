@@ -160,6 +160,7 @@ add_library(ry_lib STATIC
     src/runtime/core/parallel.cpp
     src/runtime/core/print.cpp
     src/codegen_call_json.cpp
+    src/codegen_call_json5.cpp
     src/formatter.cpp
     src/formatter_stmt.cpp
     src/cli/file_watcher.cpp
@@ -287,6 +288,7 @@ add_ry_native_lib(testing    src/runtime/native/testing.cpp)
 # (macOS) or -rdynamic (Linux).
 add_ry_native_lib(io         src/runtime/native/io.cpp)
 add_ry_native_lib(json       src/runtime/native/json.cpp)
+add_ry_native_lib(json5      src/runtime/native/json5.cpp)
 add_ry_native_lib(net        src/runtime/native/net.cpp)
 
 add_ry_native_lib(thread     src/runtime/native/thread.cpp)
@@ -380,7 +382,7 @@ corrosion_import_crate(
 set_target_properties(ry_base64 PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
+set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # Linker-arg form of RY_NATIVE_LIBS. corrosion's IMPORTED CMake target
 # (`ry_base64`) is a UTILITY/INTERFACE-style target — CMake refuses both the
@@ -396,7 +398,7 @@ set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing r
 # corrosion (cargo build) guarantee the file exists before this is linked.
 set(RY_NATIVE_LIBS_LINK
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_base64${CMAKE_SHARED_LIBRARY_SUFFIX}"
-    ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
+    ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 # Native shared libraries are NOT linked here — the JIT loads them on-demand
@@ -476,6 +478,8 @@ add_executable(ry_tests
     tests/test_dotenv.cpp
     tests/test_runtime_json.cpp
     tests/test_runtime_json_any_panic.cpp
+    tests/test_runtime_json5.cpp
+    tests/test_runtime_json5_any_panic.cpp
     tests/test_runtime_any.cpp
     tests/test_runtime_print.cpp
     tests/test_runtime_string.cpp
@@ -499,6 +503,7 @@ add_executable(ry_tests
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
     tests/test_codegen_call_json_reject.cpp
+    tests/test_codegen_call_json5_reject.cpp
     tests/test_spec_timeout.cpp
     tests/test_runtime_io_file.cpp
     tests/test_util_type_name.cpp
@@ -585,6 +590,10 @@ if(ENABLE_FUZZER)
     # __ry_json_dump_file (#1854) reference __ry_io_file_read_all /
     # __ry_io_file_write_text from runtime_io.cpp.
     add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime/native/json.cpp src/runtime/native/io.cpp)
+    # fuzz_json5 mirrors fuzz_json (#1855). json5's parser embeds io references
+    # via __ry_json5_load_file / __ry_json5_dump_file just like json, so the
+    # same source-embedding pattern is required.
+    add_ry_fuzz_target(fuzz_json5 tests/fuzz/fuzz_json5.cpp src/runtime/native/json5.cpp src/runtime/native/io.cpp)
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
     # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
     # not ry_lib) so the File handle symbols are available without dlopen.

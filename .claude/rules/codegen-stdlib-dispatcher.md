@@ -45,6 +45,37 @@ When a bare builtin (in `builtins_` map or `emitBuiltinCore` inline branch) call
 - Skip this rule only for modules that genuinely have no `libry_<mod>.dylib` (purely inline codegen, like `math`). For those modules, the bare-`@native` form is correct per `/stdlib-module-add` and inserting the library would cause a "native library not found" runtime error.
 - Add at least one regression test per inline / custom-emitter entry point using **partial single-symbol imports**: `from <mod> import <one-fn>` with no other imports from the same module. One file per partial import (combining them in one file lets the first dispatch register the library and masks the bug for the rest). Mirror `tests/spec/io_partial_import_open.test.ry` and `tests/spec/io_partial_import_writetext.test.ry`.
 
+### Dispatchers that intercept generic callees must gate on per-package sig registration to avoid cross-package races
+
+**Source**: #1855 (2026-06-21, fix — json5 addition surfaced latent json race)
+**Tags**: stdlib, dispatch, generic-callee, sig-registration, race, json, json5, isXxxImported
+
+**Context**: `dispatchJson` historically intercepted every `load<T>(...)` call at the top by inspecting `e.callee` (`load<...>` prefix match) and routing to `emitJsonLoad`. With a single dispatcher this worked — `json::load` is the only candidate. After #1855 added `dispatchJson5` with the same `load<T>` interceptor (both declare `@native fn load<T>(...)` in their `.ry` files), both dispatchers raced for every `load<T>` call. The `StdlibRegistry` lazy sort (`src/stdlib_registry.cpp:30`) is stable, priority-then-insertion, so equal-priority dispatchers iterate in registration order — `dispatchJson` typically wins and routes `from json5 import load; load[Map<...>]("{a:1}")` through `__ry_json_parse_to_any`, which rejects JSON5 syntax (`expected string key at line 1, column 2`).
+
+**Rule**: Any dispatcher whose top-level intercept matches a **generic callee** (e.g. `load<T>`, `cast<T>`, `into<T>`) — i.e. any name that another package can plausibly export under the same identifier — MUST gate the intercept on whether the package's sig actually registered. Mirror `emitTableDrivenNativeCall:17`'s check pattern: read `cg.getNativeFnSigs()` and return `nullptr` early when none of the package's `"<pkg>::<name>"` keys are present. Apply the gate BEFORE `cg.used_native_libraries_.insert("<mod>")` so unused-package dispatchers don't pollute `used_native_libraries_` either.
+
+```cpp
+static bool isJson5Imported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    return sigs.count("json5::load") || sigs.count("json5::stringify")
+        || sigs.count("json5::stringifySafe") || sigs.count("json5::dump");
+}
+
+static llvm::Value *dispatchJson5(CodeGen &cg, const CallExpr &e) {
+    if (!isJson5Imported(cg))
+        return nullptr;
+    cg.used_native_libraries_.insert("json5");
+    // ... load<T> intercept, then table dispatch ...
+}
+```
+
+**Why gate on sigs vs `qualified_module`**: `qualified_module` is only populated for `<mod>.fn(...)` calls. Unqualified calls after `from <mod> import fn` carry no per-call package info, so the dispatcher cannot tell which `<mod>` to claim from the call alone. `native_fn_sigs_` is populated as a side effect of `@native` declaration processing (`src/codegen_fn.cpp:676`), so a module imported via `from <mod> import fn` reliably populates `"<mod>::fn"` keys before any call site is codegen'd. Only the dispatchers whose package was actually imported claim the symbol.
+
+**How to apply**:
+- For any dispatcher intercepting a name that could plausibly belong to another package (`load<T>`, `parse<T>`, `from<T>`, `into<T>`, etc.), add the per-package sig-presence gate at the top.
+- The gate's helper should check every public function name your dispatcher could possibly claim — listing all of them is fine because they share the same "is this package imported?" semantics. Concretely: list the bare names from `share/std/<mod>/<mod>.ry`'s `@public @native` declarations.
+- For dispatchers that only emit type-keyed exact-match logic via `emitTableDrivenNativeCall` (no top-level generic intercept), the gate is optional — `emitTableDrivenNativeCall:17` already does the sig check before claiming. The `used_native_libraries_.insert` waste is the only downside; the correctness rule "insert at the top" still holds for those dispatchers.
+
 ### Descriptor-migrated stdlib dispatcher stubs must `return nullptr` without invoking emitGenericNativeCall — routing causes 3× argument re-emission
 
 **Source**: #2285 (2026-06-21, refactor — base64 descriptor migration; advisor catch)

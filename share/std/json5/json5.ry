@@ -1,0 +1,82 @@
+# JSON5 parsing and serialization (any-based API, #1855)
+#
+# `json5` mirrors the `json` module's 8-function surface but accepts the
+# JSON5 spec extensions (https://json5.org) at parse time:
+#
+#   - Line comments (`// ...`) and block comments (`/* ... */`)
+#   - Trailing commas in arrays and objects
+#   - Single-quoted strings in addition to double-quoted
+#   - Multi-line strings via `\<newline>` line continuation
+#   - Unquoted object keys (ASCII IdentifierName: [a-zA-Z_$][a-zA-Z0-9_$]*)
+#   - Hex integer literals (`0xABCDEF`)
+#   - Leading and trailing decimal points (`.5`, `5.`)
+#   - IEEE 754 special values: `Infinity`, `-Infinity`, `NaN`
+#   - Explicit positive sign on numbers (`+5`, `+3.14`)
+#
+# `stringify` emits strict-JSON-compatible output by default (double-quoted
+# keys, double-quoted strings, no trailing commas) — every byte produced is
+# also valid input to the `json` module, so `json.load[T](json5.stringify(v))`
+# round-trips for any value that strict-JSON can represent. The one
+# behavioral difference from `json.stringify` is non-finite floats:
+#
+#   - `json5.stringify(NaN)`  → "NaN"
+#   - `json5.stringify(Inf)`  → "Infinity"
+#   - `json5.stringify(-Inf)` → "-Infinity"
+#   - `json5.stringifySafe(NaN)` → Ok("NaN")  (NOT Err — JSON5 permits these)
+#
+# The typed-collection side-table guard, Set / Record / Enum rejection,
+# and non-`str` Map key rejection from `json.stringify` are inherited
+# verbatim — those values have no JSON5 representation either.
+#
+# `load[T]` accepts the same T set as `json.load[T]`: primitive
+# (int / float / str / bool), homogeneous container, List<any> /
+# Map<str, any>, user-defined records (flat and nested), typed
+# collections of records, and Option<T>. Tag / structure mismatches
+# surface as `Err(Error{message})` with a `load[T]: ...` prefix.
+# Unsupported sources (`T = any`) are rejected at the call site.
+#
+# File handle overloads (`load[T](File)`, `dump(File, ...)`) mirror
+# the `json` semantics — `load` reads via `io.readAll`, `dump` writes
+# via `io.writeText`. io errors propagate through the returned
+# `Result` as `Error.message`.
+
+@public
+@native("json5")
+fn stringify(value: any) -> str
+
+@public
+@native("json5")
+fn stringify(value: any, indent: int) -> str
+
+# Result-returning variant of `stringify`. Unsupported inputs (typed
+# collection wrapped as `any`, Set / Record / Enum / non-`str` Map
+# keys) surface as `Err(Error)`. Non-finite floats are NOT errors in
+# json5 — `stringifySafe(NaN)` returns `Ok("NaN")`.
+@public
+@native("json5")
+fn stringifySafe(value: any) -> Result<str, Error>
+
+@public
+@native("json5")
+fn stringifySafe(value: any, indent: int) -> Result<str, Error>
+
+@public
+@native("json5")
+fn dump(f: File, value: any) -> Result<Unit, Error>
+
+@public
+@native("json5")
+fn dump(f: File, value: any, indent: int) -> Result<Unit, Error>
+
+# Typed deserialization. Each call site monomorphizes per T and the
+# json5 dispatcher intercepts `load[T](...)` to route through the
+# `tryUnwrapFromAny` coerce path. `T = any` is intentionally not
+# supported; use `load[Map<str, any>]` or `load[List<any>]` for the
+# JSON-shape-typed equivalents.
+@public
+@native("json5")
+fn load<T>(text: str) -> Result<T, Error>
+
+@public
+@native("json5")
+fn load<T>(f: File) -> Result<T, Error>
