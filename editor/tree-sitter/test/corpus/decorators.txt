@@ -151,3 +151,69 @@ fn outer():
           (identifier))
         body: (function_body
           (return_statement))))))
+
+==================
+three-stack decorator on @native fn declaration
+==================
+
+@public
+@native
+@inline
+fn helper(x: int) -> int
+
+---
+
+(source_file
+  (decorator
+    name: (identifier))
+  (decorator
+    name: (identifier))
+  (decorator
+    name: (identifier))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))))
+
+==================
+multi-arg decorator combined with plain decorator on fn
+==================
+
+@todo
+@each([(1, 2)])
+fn cs(a: int, b: int):
+  return
+
+---
+
+(source_file
+  (decorator
+    name: (identifier))
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (list_literal
+          (tuple_literal
+            (integer_literal)
+            (integer_literal))))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type)))
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    body: (function_body
+      (return_statement))))

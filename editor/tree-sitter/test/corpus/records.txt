@@ -1,0 +1,107 @@
+==================
+basic record with two integer fields
+==================
+
+record Point:
+  x: int
+  y: int
+
+---
+
+(source_file
+  (record_declaration
+    name: (identifier)
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))))
+
+==================
+record with multiple typed fields
+==================
+
+record User:
+  name: str
+  age: int
+  active: bool
+
+---
+
+(source_file
+  (record_declaration
+    name: (identifier)
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))))
+
+==================
+record with @public field decorator
+==================
+
+record Account:
+  @public
+  balance: int
+  owner: str
+
+---
+
+(source_file
+  (record_declaration
+    name: (identifier)
+    (record_field
+      (decorator
+        name: (identifier))
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))))
+
+==================
+record with invariant clause
+==================
+
+record Pos:
+  x: int
+  y: int
+  invariant:
+    x > 0
+    y > 0
+
+---
+
+(source_file
+  (record_declaration
+    name: (identifier)
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))
+    (record_invariant
+      (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal))
+      (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (integer_literal)))))

@@ -117,11 +117,10 @@ test name
 (<expected s-expression>)
 ```
 
-Coverage scope: exercises grammar surface area that the in-tree spec
-files in `tests/spec/` already parse cleanly (i.e. **not** the gaps
-listed in `expected-fail.txt`). Treat the corpus as a regression seed:
-when the grammar is improved to close an `expected-fail.txt` entry, add
-a corpus entry that locks in the new shape in the same PR.
+Treat the corpus as a regression seed: when the grammar improves to
+close an `expected-fail.txt` entry, add a corpus entry that locks in
+the new shape in the same PR. The matrix below details the per-rule
+scope.
 
 To regenerate an expected S-expression after an intentional shape
 change:
@@ -130,21 +129,74 @@ change:
 tree-sitter parse <snippet>.ry | sed -E 's/ \[[0-9]+, [0-9]+\] - \[[0-9]+, [0-9]+\]//g'
 ```
 
+### Coverage matrix
+
+Every top-level rule in `grammar.js` is exercised by at least one corpus
+entry, or is explicitly marked as covered by the smoke fixture only.
+
+| Top-level rule | Corpus file |
+|---|---|
+| `function_declaration` | `functions.txt`, `decorators.txt` |
+| `record_declaration`, `record_invariant` | `records.txt` |
+| `enum_declaration`, `variant_payload` (named / unnamed) | `enums.txt` |
+| `type_alias_declaration` | `type_aliases.txt` |
+| `import_statement`, `qualified_import_statement` | `imports.txt` |
+| `if_statement`, `while_statement`, `for_statement` | `control_flow.txt` |
+| `case_match_statement`, `case_cond_statement`, `case_arm` (or-pattern / guard / tuple / binding-only) | `case_match.txt` |
+| `using_statement` | `statements.txt` |
+| `typed_binding_statement` (top-level + in-function) | `statements.txt` |
+| `compound_assignment` (`+=`, `-=`, `*=`) | `statements.txt` |
+| `expect_statement` | `statements.txt` |
+| `assignment_statement`, `return_statement`, `break_statement`, `continue_statement`, `expression_statement` | `control_flow.txt`, `literals.txt`, `expressions.txt` |
+| `f_string` | `f_strings.txt` |
+| `regex_literal` | `regex.txt` |
+| `_indent` / `_dedent` / `_newline` edge cases | `indent.txt` |
+| `lambda_expression` | `lambdas.txt` |
+| literals (`integer_literal`, `float_literal`, `string_literal`, `block_string_literal`, `boolean_literal`, `none_literal`, `list_literal`, `map_literal`, `set_literal`, `tuple_literal`) | `literals.txt` |
+| `binary_expression`, `unary_expression`, `call_expression`, `index_expression`, `field_access` | `expressions.txt` |
+| **smoke-only** (corpus 化不能 / 既知 grammar gap) | `directive_def_declaration` (※1), `tuple_destructure_statement`, top-level `@<decorator> NAME: T = ...` (`expected-fail.txt` 該当) |
+
+Scope of the matrix is the rules that can appear as a direct child of
+`source_file` (declarations, top-level statements, imports). The
+following rules surface only inside another corpus entry's expression
+or type and are validated indirectly when that parent entry is parsed:
+
+- `cast_expression`, `unwrap_expression`, `update_expression`,
+  `if_expression` — expression-interior; appear inside `_expression`
+  but never at top level.
+- `weak_type` — type-interior; only meaningful inside `_primary_type`.
+- `contract_clause` — appears only inside `function_body` after the
+  introducing `:`. Indirectly exercised via `functions.txt` if a
+  contract is ever added there.
+- `operator_name` — surfaces only inside `function_declaration` to
+  declare an operator overload; the existing `expected-fail.txt`
+  "operator-overload" bucket covers this in the smoke layer.
+
+Adding dedicated corpus entries for the interior rules above is a
+worthwhile follow-up, but they are not within the Acceptance #2 scope
+("each *top-level* rule").
+
+※1 `directive_def_declaration` は grammar.js 側で body 必須に書かれているのに対し、`share/std/core/directive.ry` の実例は body-less で内部 `(ERROR ...)` を残すため AST shape が安定せず corpus ロック不可。grammar 側 rule 整合は別 issue 候補。
+
 ## Smoke-check (corpus regression test)
 
 ```bash
-./check.sh                # auto-builds ry.so if missing, then checks 176 spec files
+./check.sh                # auto-builds ry.so if missing, then checks spec files
 ./check.sh --no-build     # use the existing ry.so as-is
+./check.sh --no-corpus    # skip the `tree-sitter test` phase (smoke only)
 ./check.sh --verbose      # also list expected-fail entries that still fail (SKIP)
 ```
 
-`check.sh` runs `tree-sitter parse` against every `tests/spec/**/*.test.ry`
-and reports any file that surfaces an `ERROR` or `MISSING` node. Files
-listed in `expected-fail.txt` are tolerated — they document grammar gaps
-that have not yet been closed and are organised into named buckets
-(tuple member access, generic bounds, lambda-block bodies, numeric
-literal forms, …). Anything outside that list is treated as a grammar
-regression: the script prints `FAIL: <path>` and exits non-zero.
+`check.sh` is a two-phase pipeline: it first runs `tree-sitter parse`
+against every `tests/spec/**/*.test.ry` (the smoke phase) and, if that
+passes, runs `tree-sitter test` against `test/corpus/*.txt` (the corpus
+phase). The smoke phase reports any file that surfaces an `ERROR` or
+`MISSING` node. Files listed in `expected-fail.txt` are tolerated —
+they document grammar gaps that have not yet been closed and are
+organised into named buckets (tuple member access, generic bounds,
+lambda-block bodies, numeric literal forms, …). Anything outside that
+list is treated as a grammar regression: the script prints `FAIL:
+<path>` and exits non-zero, short-circuiting the corpus phase.
 
 If a previously failing file now parses cleanly (e.g. after a grammar
 improvement), `check.sh` prints `WARN: <path> now passes; remove from
@@ -248,10 +300,13 @@ eyeball the syntax highlighting and confirm no regressions.
 > Running `tree-sitter parse <file>.ry` against existing
 > `tests/spec/*.test.ry` will surface ERROR nodes today: the in-tree
 > grammar does not yet cover the full Ry surface. The known-gap files
-> are listed in `expected-fail.txt` and the Phase 1 corpus smoke-check
+> are listed in `expected-fail.txt` and the Phase 1 smoke-check
 > (`./check.sh`, see above) treats them as silent SKIPs. The Phase 2
 > hand-curated `tree-sitter test` corpus with S-expression assertions
-> lives at `test/corpus/*.txt` (see [Corpus tests](#corpus-tests-tree-sitter-test) above; #1633).
+> lives at `test/corpus/*.txt` (see
+> [Corpus tests](#corpus-tests-tree-sitter-test) above; seeded by
+> #1633 and completed in #1618 with the coverage matrix and
+> `./check.sh` integration).
 
 The pre-commit version of this loop lives in
 [`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md).

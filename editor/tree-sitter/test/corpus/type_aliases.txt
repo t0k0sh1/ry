@@ -1,0 +1,113 @@
+==================
+type alias to primitive type
+==================
+
+type Distance = int
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (primitive_type))))
+
+==================
+type alias to union type
+==================
+
+type Val = int | str
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (primitive_type)
+      (primitive_type))))
+
+==================
+type alias to tuple type
+==================
+
+type Pair = (int, str)
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (tuple_type
+        (union_type
+          (primitive_type))
+        (union_type
+          (primitive_type))))))
+
+==================
+type alias to option type
+==================
+
+type Opt = int?
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (option_type
+        (primitive_type)))))
+
+==================
+type alias to array type with fixed size
+==================
+
+type Buf = int[8]
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (array_type
+        (primitive_type)
+        (integer_literal)))))
+
+==================
+type alias to function type
+==================
+
+type Cb = fn(int) -> int
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (function_type
+        (union_type
+          (primitive_type))
+        (union_type
+          (primitive_type))))))
+
+==================
+type alias to generic named type
+==================
+
+type IntList = List<int>
+
+---
+
+(source_file
+  (type_alias_declaration
+    name: (identifier)
+    type: (union_type
+      (named_type
+        (identifier)
+        (type_arguments
+          (union_type
+            (primitive_type)))))))
