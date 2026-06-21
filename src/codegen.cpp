@@ -1312,6 +1312,9 @@ static void collectTestTargetsFromExpr(const ExprPtr &expr,
             collectTestTargetsFromExpr(e->condition, mocked, spied);
             collectTestTargetsFromStmts(e->then_body, mocked, spied);
             collectTestTargetsFromStmts(e->else_body, mocked, spied);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
+            collectTestTargetsFromStmts(e->body, mocked, spied);
+            if (e->tail) collectTestTargetsFromExpr(e->tail, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             collectTestTargetsFromExpr(e->start, mocked, spied);
             collectTestTargetsFromExpr(e->end, mocked, spied);

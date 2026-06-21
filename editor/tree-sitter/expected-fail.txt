@@ -104,3 +104,10 @@ tests/spec/mock.test.ry
 # are isolated into their own spec file so existing editor coverage of
 # expr_stmt.test.ry (and other spec files) is not degraded.
 tests/spec/expr_stmt_multiline_ufcs.test.ry
+
+# #1702 (2026-06-21): `try:` block expression. The compiler-side grammar +
+# AST + codegen for the effect-block construct landed in v0.0.30, but the
+# tree-sitter grammar.js was not extended in the same PR — `try` is a new
+# hard keyword and the expression-block construct needs a dedicated rule.
+# Tracked as a follow-up tree-sitter grammar update.
+tests/spec/try_block.test.ry

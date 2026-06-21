@@ -822,6 +822,56 @@ TEST(FormatterTest, OptionPropagateAfterSafeIndexAdjacency) {
     EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
 }
 
+// ===== TryBlockExpr round-trip (#1702) =====
+//
+// Per .claude/rules/codegen-llvm-ir-conventions.md #2113 "formatExprInner
+// dispatch miss" rule: each new ExprNode variant must come with at least one
+// direct round-trip test, because verifyFormatting's text-idempotency check
+// has documented blind spots that can let a missing dispatch arm ship.
+
+TEST(FormatterTest, TryBlockExprInlineRoundTrip) {
+    // Inline form: `try: <expr>` — empty body, single-line tail.
+    auto src = "fn f() -> Result<int, Error>:\n"
+               "  return try: Ok(1)?\n";
+    auto formatted = fmt(src);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+    EXPECT_NE(formatted.find("try: Ok(1)?"), std::string::npos)
+        << "expected inline `try: <expr>` form, got: " << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);  // idempotent
+}
+
+TEST(FormatterTest, TryBlockExprBlockFormRoundTrip) {
+    // Block form: body stmts + tail expression indented under `try:`.
+    auto src = "fn f() -> Result<int, Error>:\n"
+               "  return try:\n"
+               "    x = Ok(1)\n"
+               "    y = x?\n"
+               "    y + 1\n";
+    auto formatted = fmt(src);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+    EXPECT_EQ(fmt(formatted), formatted);
+}
+
+TEST(FormatterTest, TryBlockExprMultiLineTailRoundTrip) {
+    // Regression: tail expression that itself formats over multiple lines
+    // (here, a `case` block) must carry the right relative indent under
+    // `try:`. Without indent_level_ being raised around formatExpr(*v->tail),
+    // the continuation lines of the case block were emitted at the surrounding
+    // indent and the formatted output failed to re-parse.
+    auto src = "fn f() -> Result<int, Error>:\n"
+               "  return try:\n"
+               "    r: Result<int, Error> = Ok(1)\n"
+               "    case r:\n"
+               "      Ok(v): v\n"
+               "      Err(_): -1\n";
+    auto formatted = fmt(src);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+    EXPECT_EQ(fmt(formatted), formatted);
+}
+
 TEST(FormatterTest, OptionPropagateAfterPropagateAdjacency) {
     // #2114: nested ErrorPropagateExpr (no IndexExpr involved) — same fusion risk.
     // This case forces the general fix over an IndexExpr-only check.

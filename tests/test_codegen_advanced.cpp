@@ -1565,6 +1565,48 @@ TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     EXPECT_EQ(runSource(src), "fail\n");
 }
 
+// ===== try: block (#1702) compile-error regressions =====
+
+TEST_F(CodeGenTest, TryBlockRejectsMissingContext) {
+    // `try:` outside a Result/Option fn and without a let-annotation cannot
+    // resolve the discriminant — must be an actionable error pointing at the
+    // two supported context forms.
+    std::string src = "x = try: 1\nprint(x)";
+    expectCompileError(src, "'try:' block requires type context");
+}
+
+TEST_F(CodeGenTest, TryBlockRejectsOptionPropagationInResultContext) {
+    std::string src =
+        "fn f() -> Result<int, Error>:\n"
+        "    return try:\n"
+        "        v: Option<int> = Some(5)\n"
+        "        a = v?\n"
+        "        a + 1\n"
+        "print(f())";
+    expectCompileError(src, "mixing Result and Option propagation is not allowed");
+}
+
+TEST_F(CodeGenTest, TryBlockRejectsResultPropagationInOptionContext) {
+    std::string src =
+        "fn f() -> Option<int>:\n"
+        "    return try:\n"
+        "        r: Result<int, Error> = Ok(5)\n"
+        "        a = r?\n"
+        "        a + 1\n"
+        "print(f())";
+    expectCompileError(src, "mixing Result and Option propagation is not allowed");
+}
+
+TEST_F(CodeGenTest, TryBlockRejectsTailTypeMismatch) {
+    // Tail type str does not match Result<int, Error>'s Ok type int.
+    std::string src =
+        "fn f() -> Result<int, Error>:\n"
+        "    return try:\n"
+        "        \"hello\"\n"
+        "print(f())";
+    expectCompileError(src, "'try:' block tail expression type does not match");
+}
+
 // ===== Generic record bounds (#297) =====
 
 TEST_F(CodeGenTest, GenericRecordBound) {

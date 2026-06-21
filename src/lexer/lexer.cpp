@@ -64,6 +64,7 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"async",     TokenKind::Async},
     {"await",     TokenKind::Await},
     {"using",     TokenKind::Using},
+    {"try",       TokenKind::Try},
 };
 
 Token Lexer::next() {

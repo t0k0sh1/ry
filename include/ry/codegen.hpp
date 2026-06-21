@@ -623,6 +623,27 @@ public:
     };
     std::vector<std::vector<IteratorReleaseHook>> iterator_release_hooks_;
 
+    // ======== Effect-block scope stack (#1702 `try:`) ========
+    // Stack of enclosing `try:` blocks. `?` checks for non-empty stack: when
+    // present, branches to the innermost block's `err_merge_bb` instead of
+    // doing a fn-level early return. `scope_depth` is the value of
+    // `scope_stack_.size()` at the `try:` entry — used to cleanup nested
+    // scopes (e.g. `using`) on err-escape.
+    struct TryScope {
+        llvm::BasicBlock *err_merge_bb;
+        size_t scope_depth;
+        llvm::PHINode *err_phi;           // raw E (Result) or nullptr (Option)
+        bool is_option;
+    };
+    std::vector<TryScope> try_scope_stack_;
+
+    // Type-context hint for an immediately-nested `try:` block expression.
+    // Set by emitStmt(AssignStmt) when the LHS annotation is Result<T,E> or
+    // Option<T> and the RHS root is a TryBlockExpr. Read by
+    // emitExprVariant(TryBlockExpr) in preference to `fn_->getReturnType()`,
+    // so `let x: Result<T,E> = try: ...` works at module-global level too.
+    llvm::Type *try_block_ctx_ = nullptr;
+
     // ======== Module-level bindings (#817) ========
     // Top-level `let` and `@const` declarations are stored as alloca in
     // __ry_main__'s entry block (unchanged). To make them accessible from any
@@ -1954,6 +1975,7 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<CaseExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<IfExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<IfBlockExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<TryBlockExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
