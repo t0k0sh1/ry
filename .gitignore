@@ -58,6 +58,9 @@ build-scan-docker/
 
 .DS_Store
 
+# Eval / training run logs (#1731)
+.ry-eval/
+
 # Cargo build output (workspace target dir). Cargo.lock at the workspace
 # root IS committed so binary builds are reproducible (#1950).
 target/
