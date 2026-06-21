@@ -1531,19 +1531,17 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
 
     std::vector<std::string> segments = splitDotPath(*this, pathStr, "setPath");
 
-    // RHS value: must be `any` or wrap-eligible scalar / collection.
+    // RHS value: must be `any` or wrap-eligible (`wrapInAny` covers
+    // primitives, str, collections, records, and enums via metadata- /
+    // type-driven dispatch; it codegenErrors on fn-pointers / resources).
     // Track whether the value was already an `any` (borrowed payload, needs
     // retain on store) versus freshly wrapped via `wrapInAny` (which already
     // emits the retain itself — a second retain at the store site would
     // leak by one refcount per setPath call).
     llvm::Value *value = emitExpr(*e.args[2]);
     const bool valueWasAny = isAnyType(value->getType());
-    if (!valueWasAny) {
-        if (value->getType() == ptrTy_ || canAnyHoldType(value->getType()))
-            value = wrapInAny(value);
-        else
-            codegenError("setPath() value type cannot be stored in `any`");
-    }
+    if (!valueWasAny)
+        value = wrapInAny(value);
 
     // Top-level COW (matches the IndexAssignStmt Map case).
     recv = emitCowCheck(recv, recvAlloca, CollectionKind::Map);
