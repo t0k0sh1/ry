@@ -156,6 +156,18 @@ bool isLowLevelTypeName(const std::string &name);
 std::string deriveRuntimeFnName(const std::string &package,
                                 const std::string &fn_name);
 
+// Convert a camelCase identifier to snake_case. Every uppercase letter
+// (other than the first character) becomes "_" + lowercase; the first
+// character is just lowercased without a leading underscore. There is
+// no special handling for runs of uppercase — `encodeURLSafe` becomes
+// `encode_u_r_l_safe`, which is fine for all current callers (base64
+// uses only single-capital boundaries like `Url`/`Bytes`). Used by
+// emitGenericNativeCall to derive snake_case runtime symbols for
+// packages registered with `snake_case_symbols=true`.
+// Examples: "encode" → "encode", "encodeUrlSafe" →
+// "encode_url_safe", "encodeBytesUrlSafe" → "encode_bytes_url_safe".
+std::string camelToSnakeCase(const std::string &name);
+
 // Build the registry key for native_fn_sigs_. The format must stay in
 // sync with how CodeGen's native_fn_sigs_ map indexes signatures.
 inline std::string nativeSigKey(const std::string &package,

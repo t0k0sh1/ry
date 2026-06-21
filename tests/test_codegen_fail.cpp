@@ -760,13 +760,16 @@ TEST_F(CodeGenTest, NoneWithArgsIsRejected) {
 
 // ============================================================
 // base64.encodeBytes / encodeBytesUrlSafe reject non-u8 list
-// at compile time via requireListU8Arg gate (#1130)
+// at compile time via requireListU8Arg gate (#1130). Post-#2285
+// the @native declaration is the source of truth, so the
+// declaration must spell the actual ABI (List<u8>); the gate
+// fires when a caller passes a non-u8 list against that declaration.
 // ============================================================
 
 TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "fn encodeBytes(input: List<int>) -> str\n"
+        "fn encodeBytes(input: List<u8>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
         "print(encodeBytes(xs))\n",
         "requires List<u8>");
@@ -775,7 +778,7 @@ TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
 TEST_F(CodeGenTest, Base64EncodeBytesUrlSafeRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "fn encodeBytesUrlSafe(input: List<int>) -> str\n"
+        "fn encodeBytesUrlSafe(input: List<u8>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
         "print(encodeBytesUrlSafe(xs))\n",
         "requires List<u8>");

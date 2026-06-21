@@ -4,6 +4,7 @@
 
 namespace {
 
+using ry::util::camelToSnakeCase;
 using ry::util::deriveRuntimeFnName;
 using ry::util::isFunctionTypeName;
 using ry::util::isListTypeName;
@@ -442,6 +443,19 @@ TEST(UtilTypeName, DeriveRuntimeFnNamePrefixesUnderscores) {
 TEST(UtilTypeName, NativeSigKeyJoinsPackageAndName) {
     EXPECT_EQ(nativeSigKey("", "len"), "len");
     EXPECT_EQ(nativeSigKey("math", "sqrt"), "math::sqrt");
+}
+
+TEST(UtilTypeName, CamelToSnakeCaseHandlesBase64Names) {
+    EXPECT_EQ(camelToSnakeCase(""), "");
+    EXPECT_EQ(camelToSnakeCase("encode"), "encode");
+    EXPECT_EQ(camelToSnakeCase("encodeUrlSafe"), "encode_url_safe");
+    EXPECT_EQ(camelToSnakeCase("encodeBytesUrlSafe"),
+              "encode_bytes_url_safe");
+    EXPECT_EQ(camelToSnakeCase("decodeBytes"), "decode_bytes");
+    EXPECT_EQ(camelToSnakeCase("isAbsolute"), "is_absolute");
+    EXPECT_EQ(camelToSnakeCase("a"), "a");
+    EXPECT_EQ(camelToSnakeCase("A"), "a");
+    EXPECT_EQ(camelToSnakeCase("aB"), "a_b");
 }
 
 }  // namespace

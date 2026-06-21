@@ -284,5 +284,20 @@ std::string deriveRuntimeFnName(const std::string &package,
     return "__ry_" + package + "_" + fn_name;
 }
 
+std::string camelToSnakeCase(const std::string &name) {
+    std::string out;
+    out.reserve(name.size() + 4);
+    for (size_t i = 0; i < name.size(); ++i) {
+        char c = name[i];
+        if (c >= 'A' && c <= 'Z') {
+            if (i > 0) out.push_back('_');
+            out.push_back(static_cast<char>(c - 'A' + 'a'));
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 }  // namespace util
 }  // namespace ry
