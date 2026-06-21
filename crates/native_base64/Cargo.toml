@@ -1,0 +1,31 @@
+# Rust implementation of the @native("base64") stdlib runtime module — pilot
+# for the C++ → Rust migration of `src/runtime/native/*.cpp` (#2282).
+#
+# The cdylib is dlopen'd at JIT time: find_native_library() takes the
+# @native("base64") module name and derives `libry_<name>.{dylib,so}`
+# (src/project/paths.cpp), so the output filename MUST be
+# libry_base64.{dylib,so}. We split
+# [package].name and [lib].name to keep the package label
+# ("native_base64", future siblings: native_convert / native_path / ...)
+# separate from the runtime-facing artifact name.
+#
+# Host runtime symbols (__ry_arc_alloc_counted, __ry_arc_counter_increment,
+# the new __ry_host_make_* shims in src/runtime/core/host_shims.cpp) resolve
+# from the host `ry` process at runtime via -undefined dynamic_lookup
+# (macOS) / -rdynamic (Linux). See build.rs for the macOS link arg.
+
+[package]
+name = "native_base64"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ry_base64"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

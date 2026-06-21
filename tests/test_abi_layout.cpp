@@ -17,6 +17,8 @@
 // verification model and the canonical value table.
 
 #include "ry/llvm_emit/api.h"
+#include "ry/runtime/native/io.hpp"
+#include "ry/ry_layout.hpp"
 
 #include <cstddef>
 
@@ -179,6 +181,23 @@ static_assert(RY_LINKAGE_EXTERNAL == 0 && RY_LINKAGE_INTERNAL == 1 && RY_LINKAGE
               "RyLinkage literal mismatch (api.h reorder?)");
 static_assert(RY_LISTCOPY_KEYS == 0 && RY_LISTCOPY_VALUES == 1 && RY_LISTCOPY_TAKE == 2,
               "RyListCopyKind literal mismatch (api.h reorder?)");
+
+// === IOListHeader / StringHeader prefix cross-language parity (#2282) ===
+// The Rust `native_base64` cdylib (crates/native_base64/src/ffi.rs) reads
+// `IOListHeader::{len,cap,data}` through a `#[repr(C)]` mirror and computes
+// `byte_len` for a Ry str handle by reading `handle - STRING_BYTELEN_OFFSET`.
+// These static_asserts pin the C++ layouts/constants the mirror depends on;
+// the Rust counterparts are `const _: () = assert!(...)` blocks at the bottom
+// of `crates/native_base64/src/ffi.rs`. A reorder on either side breaks the
+// build, no "keep in sync" comment alone.
+static_assert(sizeof(ry::IOListHeader) == 24,
+              "IOListHeader must be 24 bytes (mirror crates/native_base64/src/ffi.rs)");
+static_assert(alignof(ry::IOListHeader) == 8, "IOListHeader must be 8-byte aligned");
+static_assert(offsetof(ry::IOListHeader, len) == 0,  "IOListHeader.len @ 0");
+static_assert(offsetof(ry::IOListHeader, cap) == 8,  "IOListHeader.cap @ 8");
+static_assert(offsetof(ry::IOListHeader, data) == 16, "IOListHeader.data @ 16");
+static_assert(ry::STRING_BYTELEN_OFFSET == 8,
+              "STRING_BYTELEN_OFFSET must be 8 (Rust mirror reads handle - 8)");
 
 // A no-op runtime test so CTest shows a named green signal confirming this
 // TU (and therefore every static_assert above) compiled successfully.
