@@ -25,6 +25,14 @@ if root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
 fi
 cd "$REPO_ROOT"
 
+# Paths recorded in JSONL must be repo-relative. Reject absolute and
+# parent-escaping paths up-front so a misconfigured RY_BUILD_DIR /
+# RY_LOG_DIR / positional target cannot leak into the metadata.
+is_repo_relative_path() {
+  local p="$1"
+  [[ "$p" != /* && "$p" != ../* && "$p" != */../* ]]
+}
+
 # ---- Help ------------------------------------------------------------------
 
 print_help() {
@@ -104,6 +112,10 @@ fi
 
 if [[ -n "${RY_BUILD_DIR:-}" ]]; then
   RY_BUILD_DIR="${RY_BUILD_DIR%/}"
+  if ! is_repo_relative_path "$RY_BUILD_DIR"; then
+    echo "error: RY_BUILD_DIR must be a repo-relative path (got: $RY_BUILD_DIR)" >&2
+    exit 1
+  fi
 elif [[ -x "build-rust/ry" || -x "build-rust/ry_tests" ]]; then
   RY_BUILD_DIR="build-rust"
 elif [[ -x "build/ry" || -x "build/ry_tests" ]]; then
@@ -145,7 +157,12 @@ fi
 # ---- Output layout ---------------------------------------------------------
 
 LOG_DIR_BASE="${RY_LOG_DIR:-.ry-eval/runs}"
-RUN_ID="$(date -u +%Y%m%d-%H%M%S)-$GIT_SHORT"
+if ! is_repo_relative_path "$LOG_DIR_BASE"; then
+  echo "error: RY_LOG_DIR must be a repo-relative path (got: $LOG_DIR_BASE)" >&2
+  exit 1
+fi
+RUN_NONCE="$(jq -nr 'now * 1000000 | floor')"
+RUN_ID="$(date -u +%Y%m%d-%H%M%S)-$GIT_SHORT-$RUN_NONCE"
 RUN_DIR="$LOG_DIR_BASE/$RUN_ID"
 ARTIFACTS_DIR="$RUN_DIR/artifacts"
 RUN_JSONL="$RUN_DIR/run.jsonl"
@@ -197,6 +214,10 @@ declare -a EXPANDED=()
 if [[ "$TARGET_MODE" == "files" ]]; then
   for raw in "${TARGETS[@]}"; do
     target="${raw#./}"
+    if ! is_repo_relative_path "$target"; then
+      echo "warning: target is not repo-relative, skipping: $raw" >&2
+      continue
+    fi
     if [[ -d "$target" ]]; then
       while IFS= read -r -d '' f; do
         EXPANDED+=("${f#./}")
@@ -225,9 +246,12 @@ run_one() {
   local slug="$2"
   shift 2
   local -a cmd=("$@")
+  local attempt_id
+  attempt_id="$(printf '%04d' "$((ATTEMPTED + 1))")"
+  local artifact_prefix="${attempt_id}-${slug}"
 
-  local stdout_file="$ARTIFACTS_DIR/$slug.stdout.txt"
-  local stderr_file="$ARTIFACTS_DIR/$slug.stderr.txt"
+  local stdout_file="$ARTIFACTS_DIR/$artifact_prefix.stdout.txt"
+  local stderr_file="$ARTIFACTS_DIR/$artifact_prefix.stderr.txt"
   local stdout_path="${stdout_file#"$REPO_ROOT/"}"
   local stderr_path="${stderr_file#"$REPO_ROOT/"}"
 
@@ -235,7 +259,7 @@ run_one() {
   local gtest_json_path=""
 
   if [[ "$TRACE_MODE" == "true" && "$target" != "ry_tests" ]]; then
-    local trace_file="$ARTIFACTS_DIR/$slug.trace.jsonl"
+    local trace_file="$ARTIFACTS_DIR/$artifact_prefix.trace.jsonl"
     cmd+=("--trace" "--trace-out=$trace_file")
     trace_path="${trace_file#"$REPO_ROOT/"}"
   fi

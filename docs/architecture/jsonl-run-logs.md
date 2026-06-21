@@ -49,18 +49,28 @@ exits 1 with a clear message if `jq` is missing.
 .ry-eval/runs/<run-id>/
   run.jsonl
   artifacts/
-    <slug>.stdout.txt
-    <slug>.stderr.txt
-    <slug>.trace.jsonl      # only if --trace
-    gtest.json              # only if --target=ry_tests
+    <attempt>-<slug>.stdout.txt
+    <attempt>-<slug>.stderr.txt
+    <attempt>-<slug>.trace.jsonl   # only if --trace
+    gtest.json                     # only if --target=ry_tests
 ```
 
-- `<run-id>` = `YYYYMMDD-HHMMSS-<short-sha>` (UTC). When the working
-  directory is not a git repo or git is unavailable, `<short-sha>` is
-  the literal `nogit`.
+- `<run-id>` = `YYYYMMDD-HHMMSS-<short-sha>-<microseconds>` (UTC). The
+  microsecond component is a nonce that prevents two invocations within
+  the same wall-clock second from colliding on the run directory. When
+  the working directory is not a git repo or git is unavailable,
+  `<short-sha>` is the literal `nogit`.
+- `<attempt>` is the per-run 1-based invocation counter, zero-padded to
+  four digits. It guarantees per-invocation uniqueness even if the same
+  target is passed more than once in a single run.
 - `<slug>` is derived from the target path with `/` and `.` replaced by
   `-` and the trailing `.test.ry` suffix stripped. The `ry_tests` mode
   uses the literal slug `gtest`.
+- `RY_BUILD_DIR`, `RY_LOG_DIR`, and positional `<target>` paths must be
+  repo-relative. Absolute paths or paths that escape the repo root via
+  `..` are rejected (env vars fail the run, positional targets are
+  skipped with a warning) so the privacy contract for the JSONL metadata
+  fields holds even under misconfiguration.
 - The root directory `.ry-eval/` is git-ignored.
 
 ## Record schema
