@@ -138,6 +138,8 @@ TEST_F(RyNamespaceWarningTest, UserDefinedRyFileEmitsShadowWarning) {
     EXPECT_EQ(r.out, "[10, 20, 30]\n");
     EXPECT_NE(r.err.find("warning"), std::string::npos)
         << "stderr should contain a warning: " << r.err;
+    EXPECT_NE(r.err.find("reserved"), std::string::npos)
+        << "warning should mention 'reserved': " << r.err;
 }
 
 TEST_F(RyNamespaceWarningTest, NoShadowEmitsNoWarning) {
