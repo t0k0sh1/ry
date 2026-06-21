@@ -2439,6 +2439,8 @@ public:
     llvm::Value *emitCollOp_flatten(const CallExpr &e);
     llvm::Value *emitCollOp_items(const CallExpr &e);
     llvm::Value *emitCollOp_get(const CallExpr &e);
+    llvm::Value *emitCollOp_getPath(const CallExpr &e);
+    llvm::Value *emitCollOp_setPath(const CallExpr &e);
     llvm::Value *emitCollOp_merge(const CallExpr &e);
 
     // ======== String Operations ========
@@ -2611,6 +2613,23 @@ public:
     // with non-str keys still return a runtime "not yet supported" Err.
     llvm::Value *tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                    const std::string &targetTypeName = "");
+    // L1 primitive for issue #1701 jq-style path access. Performs one hop
+    // through an `any`-held container by a str segment. Map<str, any> hops
+    // use `segmentStr` as a str key; List<any> hops use `intSegment` (parsed
+    // by the caller from a numeric segment like "0") as an int index. When
+    // `intSegment` is empty, only Map hops are accepted (List receiver →
+    // mismatch). When `tryMode` is true returns Option<any> with None on
+    // miss / tag-mismatch; when false returns any and traps via
+    // `emitRuntimeError` on miss / tag-mismatch (`pathLabel` and
+    // `segmentText` flow into the error message). The caller is responsible
+    // for retaining ARC-managed inner pointers when the returned any escapes
+    // to a new binding scope.
+    llvm::Value *emitAnyPathStep(llvm::Value *anyVal,
+                                  llvm::Value *segmentStr,
+                                  std::optional<int64_t> intSegment,
+                                  bool tryMode,
+                                  const std::string &pathLabel,
+                                  const std::string &segmentText);
     // Map<str,any> → record reconstruction sub-path (#1852). Called from
     // `tryUnwrapFromAny` when the target is a record `StructType` registered
     // in `record_types_`. Looks each field up by name via `__ry_ht_find_str`,
