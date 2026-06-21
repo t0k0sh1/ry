@@ -1,0 +1,7 @@
+{
+  // typical config
+  name: 'ry',
+  ports: [80, 443, 8080,],
+  inf: Infinity,
+  vals: {a: 1, b: 'x', c: null, d: true,},
+}

@@ -7,7 +7,7 @@
 #              (the sanctioned replacement for an ad-hoc `rm -rf build-*-docker/` —
 #               AGENTS.md §"Total ban on Claude-initiated ad-hoc deletion")
 #   preset: default | asan | tsan | fuzz
-#   cmd:    ry_tests | ry | bash | fuzz_parser | fuzz_json | fuzz_utf8 | fuzz_io_open  (omit for build-only)
+#   cmd:    ry_tests | ry | bash | fuzz_parser | fuzz_json | fuzz_json5 | fuzz_utf8 | fuzz_io_open  (omit for build-only)
 #   tool:   clang-tidy | cppcheck | scan-build | all
 #   Examples:
 #     ./docker/run.sh asan ry_tests
