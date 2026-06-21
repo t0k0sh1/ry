@@ -382,7 +382,7 @@ std::string ModuleLoader::canonicalStdlibName(const std::string &module_path) {
     // compatible with the existing `from math import` / `from testing import`
     // resolution paths.
     if (!isRyPath(module_path)) return module_path;
-    const std::string tail = module_path.substr(3);
+    std::string tail = module_path.substr(3);
     if (tail == "lang") return "std";  // ry.lang -> the prelude directory
     return tail;                       // ry.<sub> -> <sub>
 }
