@@ -89,7 +89,7 @@ no JSON5 representation either.
 ### Configuration file with comments and trailing commas
 
 ```ry
-from json5 import load
+from json5 import load, stringify
 
 src = "{\n  // tool config\n  name: 'ry',\n  port: 0xFF,\n  ratio: .5,\n}"
 case load[Map<str, any>](src):

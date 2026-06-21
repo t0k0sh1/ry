@@ -37,6 +37,14 @@ static RunResult runRy(const std::vector<const char *> &args) {
     std::vector<const char *> argv{RY_BINARY_PATH};
     argv.insert(argv.end(), args.begin(), args.end());
     argv.push_back(nullptr);
+
+    // setenv must run in the PARENT before fork — it is not async-signal-safe
+    // and would deadlock if called in the child between fork and execv. Save
+    // the previous value so the parent's env isn't permanently mutated and
+    // RY_ENV=internal doesn't leak into subsequent tests in the same process.
+    const char *prev_env = getenv("RY_ENV");
+    bool had_prev_env = prev_env != nullptr;
+    std::string saved_env = had_prev_env ? prev_env : "";
     setenv("RY_ENV", "internal", 1);
 
     pid_t pid = fork();
@@ -84,6 +92,9 @@ static RunResult runRy(const std::vector<const char *> &args) {
         wp = waitpid(pid, &status, 0);
     } while (wp == -1 && errno == EINTR);
     r.exit_code = (wp != -1 && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
+    // Restore the parent's RY_ENV so this fixture does not leak into later tests.
+    if (had_prev_env) setenv("RY_ENV", saved_env.c_str(), 1);
+    else unsetenv("RY_ENV");
     return r;
 }
 

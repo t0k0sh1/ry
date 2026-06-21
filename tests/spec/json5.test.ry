@@ -392,6 +392,18 @@ fn json5HexLiteralTests():
       Ok(_): fail("expected Err for 0x with no digits")
       Err(e): expect(e.message).toContain("hex")
 
+  @it("should reject hex literal exceeding 64 bits")
+  fn shouldRejectHexOverflow():
+    case load[int]("0x10000000000000000"):
+      Ok(_): fail("expected Err for 17-digit hex literal")
+      Err(e): expect(e.message).toContain("hex literal overflow")
+
+  @it("should accept -0x8000000000000000 as INT64_MIN without UB")
+  fn shouldAcceptHexInt64Min():
+    case load[int]("-0x8000000000000000"):
+      Ok(v): expect(stringify(v)).toEq("-9223372036854775808")
+      Err(e): fail("INT64_MIN hex failed: " + e.message)
+
 # ============================================================================
 # JSON5-specific feature: leading / trailing decimal points
 # ============================================================================

@@ -513,11 +513,29 @@ struct Json5AnyParser {
             // hex_digit_value; an alphanumeric immediately after hex is a syntax
             // error).
             if (!at_end() && is_id_part(src[pos])) return fail("invalid hex literal at ");
+            // 64-bit u64 fits in at most 16 hex digits. Anything longer would
+            // silently wrap during the shift-accumulate loop below (matches the
+            // decimal path's `strtoll` ERANGE check).
+            size_t hex_digits = pos - hex_start;
+            if (hex_digits > 16) return fail("hex literal overflow at ");
             uint64_t v = 0;
             for (size_t i = hex_start; i < pos; i++) {
                 v = (v << 4) | (uint64_t)hex_digit_value(src[i]);
             }
-            int64_t signed_v = negative ? -(int64_t)v : (int64_t)v;
+            // Negation: produce INT64_MIN for `-0x8000000000000000` (the one
+            // valid two's-complement edge case) without invoking signed
+            // overflow UB. Larger magnitudes (positive or negative) overflow
+            // int64 and are rejected.
+            int64_t signed_v;
+            if (negative) {
+                if (v > (uint64_t)INT64_MAX + 1) return fail("hex literal overflow at ");
+                signed_v = (v == (uint64_t)INT64_MAX + 1)
+                    ? INT64_MIN
+                    : -(int64_t)v;
+            } else {
+                if (v > (uint64_t)INT64_MAX) return fail("hex literal overflow at ");
+                signed_v = (int64_t)v;
+            }
             out = anyFromInt(signed_v);
             return true;
         }
