@@ -54,9 +54,38 @@ This is a third sense of the word "package" — distinct from the strict ["Packa
 
 See [Module Reference — Visibility](modules.md#visibility) for the practical visibility rules and import semantics.
 
+## ry namespace
+
+The **canonical reserved namespace** for the official standard library, introduced in v0.0.30 (#1769). All stdlib modules are addressable under the `ry.*` path: the implicit prelude is `ry.lang`, and each submodule lives under `ry.<module>` (e.g. `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`).
+
+Two import shapes resolve through this namespace:
+
+```ry
+from ry.math import sqrt, PI    # selective import
+import ry.math                  # qualified import; binds `math` (last segment)
+```
+
+The legacy `from std import` / `from std.<mod> import` / flat `from <mod> import` spellings continue to work as **compatibility aliases**; they resolve through the same physical modules under `share/std/`.
+
+A user-defined top-level `ry/` module (a local `ry/` directory or `ry.ry` file) does **not** shadow the reserved namespace — the loader resolves `ry.*` only against the stdlib search paths and emits a one-time warning advising the user to rename their local module. A future release will promote this warning to a hard error.
+
+## ry.lang
+
+The **explicit prelude module**, introduced in v0.0.30 (#1769). Every program implicitly imports `ry.lang` (the equivalent of `from ry.lang`), making `print`, `len`, `range`, `map`, `filter`, `sum`, `int(...)`, `float(...)`, `str(...)`, and similar helpers available without an explicit import.
+
+`ry.lang` is also explicitly importable:
+
+```ry
+from ry.lang import map, filter, sum
+```
+
+The set of symbols `ry.lang` exposes is the union of the files directly under `share/std/`. See [Module Reference — Canonical paths](modules.md#canonical-module-paths) for the full prelude listing.
+
 ## stdlib (`std`)
 
-The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. The stdlib provides core types, conversion helpers (`int`, `float`, `str`), built-in functions (`print`, `len`, `range`), and common utilities.
+The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. As of v0.0.30 the canonical spelling for the stdlib namespace is [`ry`](#ry-namespace) (e.g. `ry.math`), with `std` retained as a compatibility alias.
+
+The stdlib provides core types, conversion helpers (`int`, `float`, `str`), built-in functions (`print`, `len`, `range`), and common utilities.
 
 The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 

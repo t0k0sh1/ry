@@ -382,7 +382,12 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
 using Program  = std::vector<StmtNode>;
 
 struct QualifiedImportStmt {
-    std::string module_name;              // single identifier — multi-segment paths rejected at parse time
+    std::string module_name;              // bare identifier the user binds (e.g. "math" for both `import math` and `import ry.math`); used as the effective name when alias is unset and as the diagnostic module label
+    // #1769: slash-separated full path for the resolver. Empty for the legacy
+    // single-segment form (`import math`); set to e.g. "ry/math" for dotted
+    // forms allowed under the reserved `ry.*` namespace. ModuleLoader treats
+    // an empty import_path as a synonym for module_name.
+    std::string import_path;
     std::optional<std::string> alias;     // `import xxx as yyy` (#1724); parser stores user's alias if present
     bool is_stdlib = false;               // set by ModuleLoader::resolveImports — stdlib still inlines into the top-level Program; user-defined modules carry decls in `definitions` (#1730)
     // User-defined module decls extracted by ModuleLoader (#1730). Empty for

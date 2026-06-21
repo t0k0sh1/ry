@@ -1,0 +1,23 @@
+from testing import it, describe, expect
+
+# #1769: the canonical prelude is `ry.lang`. Symbols that are implicitly
+# available without any import are also explicitly importable from `ry.lang`.
+from ry.lang import map, filter, sum
+
+@describe("ry.lang explicit prelude import (#1769)")
+fn ryLangImportTests():
+  @it("from ry.lang import resolves to the same symbols as the implicit prelude")
+  fn shouldResolvePreludeSymbols():
+    xs: List<int> = [1, 2, 3, 4]
+    doubled: List<int> = map(xs, (x: int) => x * 2)
+    expect(doubled).toEq([2, 4, 6, 8])
+
+  @it("from ry.lang import filter behaves like the implicit prelude filter")
+  fn shouldResolveFilter():
+    xs: List<int> = [1, 2, 3, 4, 5]
+    evens: List<int> = filter(xs, (x: int) => x % 2 == 0)
+    expect(evens).toEq([2, 4])
+
+  @it("ry.lang and implicit prelude share identity — both expose sum")
+  fn shouldResolveSum():
+    expect(sum([1, 2, 3])).toEq(6)

@@ -558,7 +558,11 @@ StmtNode Parser::parseImportStatement() {
 
 StmtNode Parser::parseQualifiedImportStatement() {
     // Qualified import: `import <ident> [as <ident>]` (#1723, #1724)
-    // - Only single identifier accepted; `import a.b` rejected (AC6)
+    // - Single identifier accepted: `import math`
+    // - Dotted form accepted ONLY under the reserved `ry.*` namespace (#1769):
+    //   `import ry.math` binds to `math` (last segment) and resolves through
+    //   the `ry/*` loader intercept. Other dotted forms (`import a.b`) remain
+    //   rejected to preserve the existing parser invariant.
     // - `as` clause registers the alias as the effective name (Python-style:
     //   `import math as m` makes `m.sqrt(...)` valid and bare `math` undefined)
     // - Duplicate effective-name registrations rejected (alias collision or
@@ -568,12 +572,32 @@ StmtNode Parser::parseQualifiedImportStatement() {
     Token modTok = lex_.peek();
     if (modTok.kind != TokenKind::Ident)
         parseError(modTok.line, "expected module name after 'import'");
-    std::string moduleName = lex_.next().value;
+    std::string firstSegment = lex_.next().value;
 
-    if (lex_.peek().kind == TokenKind::Dot)
-        parseError(lex_.peek().line,
-            "qualified import does not support dotted module paths "
-            "('import a.b'); use 'from a.b import ...' instead");
+    std::string importPath;     // non-empty only for the dotted form
+    std::string moduleName = firstSegment;
+
+    if (lex_.peek().kind == TokenKind::Dot) {
+        if (firstSegment != "ry")
+            parseError(lex_.peek().line,
+                "qualified import does not support dotted module paths "
+                "('import a.b'); use 'from a.b import ...' instead");
+
+        importPath = firstSegment;
+        while (lex_.peek().kind == TokenKind::Dot) {
+            lex_.next(); // consume '.'
+            Token segTok = lex_.peek();
+            if (segTok.kind != TokenKind::Ident)
+                parseError(segTok.line,
+                    "expected identifier after '.' in qualified import");
+            if (segTok.value.find('-') != std::string::npos)
+                parseError(segTok.line,
+                    "hyphens are not allowed in module names; use camelCase");
+            std::string seg = lex_.next().value;
+            importPath += "/" + seg;
+            moduleName = seg; // last segment becomes the bare effective name
+        }
+    }
 
     std::optional<std::string> alias;
     if (lex_.peek().kind == TokenKind::As) {
@@ -604,6 +628,7 @@ StmtNode Parser::parseQualifiedImportStatement() {
 
     return std::make_unique<QualifiedImportStmt>(QualifiedImportStmt{
         std::move(moduleName),
+        std::move(importPath),
         std::move(alias),
         /*is_stdlib=*/false,
         /*definitions=*/{},

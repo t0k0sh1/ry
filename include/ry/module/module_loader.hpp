@@ -48,6 +48,34 @@ public:
         return imported_testing_intrinsics_;
     }
 
+    // #1769: the canonical implicit-prelude import path. `jit_runner.cpp`
+    // synthesizes `ImportStmt{kRyLangPreludePath, ...}` and the loader's
+    // `canonicalStdlibName` maps the same path to the physical stdlib name
+    // (`"std"`). Co-located so future renames touch exactly one constant.
+    static constexpr const char *kRyLangPreludePath = "ry/lang";
+
+    // #1769: returns true when `module_path` is in the reserved `ry/*`
+    // namespace (i.e. begins with `ry/` followed by at least one segment).
+    static bool isRyPath(const std::string &module_path);
+
+    // #1769: maps a `ry/*` virtual path to the bare stdlib name used by
+    // search-path resolution and the three intrinsic gating predicates
+    // (`isTestingIntrinsic` / `isCppResourceKind` / `isCppBuiltinRecord`).
+    //   "ry/lang"    -> "std"  (the prelude directory `share/std/`)
+    //   "ry/<sub>"   -> "<sub>" (e.g. "ry/math" -> "math")
+    //   anything else -> unchanged (returned as-is)
+    // The remap is a pure string operation; physical layout stays at
+    // `share/std/` (no file move). Error messages must continue to quote
+    // the caller-supplied spelling.
+    static std::string canonicalStdlibName(const std::string &module_path);
+
+    // #1769: warnings emitted during import resolution that should surface
+    // alongside codegen warnings. Currently used to flag a user-defined
+    // top-level `ry/` directory that shadows the reserved stdlib namespace.
+    const std::vector<std::string> &loaderWarnings() const {
+        return loader_warnings_;
+    }
+
 private:
     struct ResolvedPath {
         std::string path;
@@ -100,6 +128,13 @@ private:
     // Names imported from the testing module via `from testing import ...`
     // or `from testing` (wildcard). See `importedTestingIntrinsics()`.
     std::unordered_set<std::string> imported_testing_intrinsics_;
+
+    // Warnings emitted during import resolution; surfaced by `loaderWarnings()`.
+    std::vector<std::string> loader_warnings_;
+    // #1769: referrer dirs whose `ry/` shadow probe has already been performed.
+    // The probe does two filesystem stats per `ry/*` import; caching by
+    // referrer collapses N stats into one for files with multiple `ry.*` imports.
+    std::unordered_set<std::string> probed_ry_shadow_dirs_;
 
     // Cached fs::canonical — populates ec with original error on failure
     std::string cachedCanonical(const std::string &raw, std::error_code &ec);

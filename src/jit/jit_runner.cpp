@@ -157,13 +157,16 @@ int runRySource(const std::string &src, const std::string &source_name,
 
     ModuleLoader loader(search_paths, &sm);
 
-    // Implicit `from std` import (like Java's java.lang)
-    // Only insert if std can be found (graceful degradation without stdlib)
+    // #1769: implicit `from ry.lang` import (the canonical prelude — like
+    // Java's `java.lang`). The `ry/*` loader intercept always searches the
+    // stdlib search paths only, so a local `ry/` shadow cannot displace the
+    // bundled prelude (the shadow probe still records a warning).
+    // Only insert if the prelude can be found (graceful degradation without
+    // stdlib).
     try {
         Program std_prog;
-        std_prog.push_back(ImportStmt{"std", {}, {0, 0, fileId}});
-        // Resolve against stdlib search paths only (not referrer_dir)
-        // to prevent local std/ from shadowing the bundled stdlib
+        std_prog.push_back(
+            ImportStmt{ModuleLoader::kRyLangPreludePath, {}, {0, 0, fileId}});
         std_prog = loader.resolveImports(std_prog, "");
         prog.insert(prog.begin(),
             std::make_move_iterator(std_prog.begin()),
@@ -182,6 +185,12 @@ int runRySource(const std::string &src, const std::string &source_name,
                            {ry::TraceField("file", source_name),
                             ry::TraceField("detail", e.what())});
         throw;
+    }
+
+    // #1769: surface loader-level warnings (reserved-namespace shadowing, ...)
+    // alongside codegen warnings. The loader dedupes; surface as-is.
+    for (const auto &w : loader.loaderWarnings()) {
+        errs() << w << "\n";
     }
 
     // CodeGen -> ThreadSafeModule

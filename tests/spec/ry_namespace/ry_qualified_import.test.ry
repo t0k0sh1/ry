@@ -1,0 +1,24 @@
+from testing import it, describe, expect
+
+# #1769: `import ry.<mod>` is the qualified form of the canonical
+# reserved-namespace import. The bare name (`math`) is the last segment,
+# matching Python `import a.b` semantics.
+import ry.math
+
+# Alias form: rebind ry.math under a different bare name so it could coexist
+# alongside a hypothetical `import math` without parser collision.
+import ry.math as ryMath
+
+@describe("import ry.* qualified namespace (#1769)")
+fn ryQualifiedImportTests():
+  @it("import ry.math exposes the math namespace at its bare last segment")
+  fn shouldExposeLastSegment():
+    expect(math.sqrt(9.0)).toEq(3.0)
+    expect(math.PI).toBeCloseTo(3.141592653589793, 10)
+
+  @it("import ry.<mod> as <alias> binds the alias as the effective name")
+  fn shouldHonorAlias():
+    # ryMath supersedes the bare last-segment name per the Python-style alias
+    # contract documented in docs/reference/modules.md.
+    expect(ryMath.sqrt(16.0)).toEq(4.0)
+    expect(ryMath.PI).toEq(math.PI)
