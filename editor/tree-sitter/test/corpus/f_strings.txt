@@ -1,0 +1,81 @@
+==================
+empty f-string literal
+==================
+
+x = f""
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (f_string)))
+
+==================
+f-string with single interpolation
+==================
+
+x = f"{a}"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (f_string
+      (qualified_identifier
+        (identifier)))))
+
+==================
+f-string with multiple interpolations and inline text
+==================
+
+x = f"a={a} b={b}"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (f_string
+      (qualified_identifier
+        (identifier))
+      (qualified_identifier
+        (identifier)))))
+
+==================
+f-string interpolating a binary expression
+==================
+
+x = f"sum={a + b}"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (f_string
+      (binary_expression
+        left: (qualified_identifier
+          (identifier))
+        right: (qualified_identifier
+          (identifier))))))
+
+==================
+f-string passed as call argument
+==================
+
+print(f"v={x}")
+
+---
+
+(source_file
+  (expression_statement
+    (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (f_string
+            (qualified_identifier
+              (identifier))))))))

@@ -1,0 +1,105 @@
+==================
+top-level typed binding declaration
+==================
+
+PI: float = 3.14
+
+---
+
+(source_file
+  (typed_binding_statement
+    name: (identifier)
+    type: (union_type
+      (primitive_type))
+    value: (float_literal)))
+
+==================
+typed binding inside function body
+==================
+
+fn f():
+  pi: float = 3.14
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (typed_binding_statement
+        name: (identifier)
+        type: (union_type
+          (primitive_type))
+        value: (float_literal)))))
+
+==================
+using statement with scoped resource binding
+==================
+
+using x = open("f.txt"):
+  x.read()
+
+---
+
+(source_file
+  (using_statement
+    name: (identifier)
+    value: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (string_literal))))
+    body: (block
+      (expression_statement
+        (call_expression
+          function: (field_access
+            object: (qualified_identifier
+              (identifier))
+            field: (identifier)))))))
+
+==================
+compound assignment operators (+=, -=, *=)
+==================
+
+x = 1
+x += 2
+x -= 1
+x *= 3
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (integer_literal))
+  (compound_assignment
+    left: (identifier)
+    right: (integer_literal))
+  (compound_assignment
+    left: (identifier)
+    right: (integer_literal))
+  (compound_assignment
+    left: (identifier)
+    right: (integer_literal)))
+
+==================
+expect statement inside function body
+==================
+
+fn t():
+  expect(x).toEq(42)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (expect_statement
+        actual: (qualified_identifier
+          (identifier))
+        matcher: (identifier)
+        (integer_literal)))))

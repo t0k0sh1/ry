@@ -6,10 +6,14 @@
 #   - 非 expected-fail で ERROR/MISSING ノードが出る → FAIL: <path> 表示 + exit 1
 #   - expected-fail なのに parse 通る → WARN: <path> 表示 (exit は 0、エントリ削除を促す)
 #
+# smoke check が成功した後、`tree-sitter test` を実行して
+# test/corpus/*.txt 配下のハンドキュレート corpus の AST 形状一致を検証する。
+#
 # Usage:
-#   ./check.sh             # ry.so が無ければ自動で build.sh を呼ぶ
-#   ./check.sh --no-build  # ビルドをスキップして既存の ry.so で実行
-#   ./check.sh --verbose   # 期待通り fail している (SKIP) ファイルも表示する
+#   ./check.sh              # ry.so が無ければ自動で build.sh を呼ぶ
+#   ./check.sh --no-build   # ビルドをスキップして既存の ry.so で実行
+#   ./check.sh --no-corpus  # corpus テストフェーズをスキップ (smoke のみ)
+#   ./check.sh --verbose    # 期待通り fail している (SKIP) ファイルも表示する
 
 set -euo pipefail
 
@@ -21,13 +25,15 @@ SPEC_DIR="$REPO_ROOT/tests/spec"
 EXPECTED_FAIL="$SCRIPT_DIR/expected-fail.txt"
 
 DO_BUILD=1
+DO_CORPUS=1
 VERBOSE=0
 for arg in "$@"; do
   case "$arg" in
     --no-build)   DO_BUILD=0 ;;
+    --no-corpus)  DO_CORPUS=0 ;;
     -v|--verbose) VERBOSE=1 ;;
     -h|--help)
-      sed -n '3,12p' "$0"
+      awk '/^[^#]/{exit} NR>2' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -144,6 +150,15 @@ if (( ${#fail_paths[@]} > 0 )); then
   echo "  $EXPECTED_FAIL" >&2
   echo "Otherwise fix grammar.js / src/scanner.c and rebuild via ./build.sh." >&2
   exit 1
+fi
+
+if (( DO_CORPUS )); then
+  echo "==> running corpus tests (test/corpus/*.txt)"
+  if ! tree-sitter test; then
+    echo "FAIL: tree-sitter corpus test detected an AST shape regression." >&2
+    echo "Inspect the diff above; fix grammar.js or update the corpus entry." >&2
+    exit 1
+  fi
 fi
 
 echo "==> done"

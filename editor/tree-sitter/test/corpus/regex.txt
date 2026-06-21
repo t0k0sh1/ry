@@ -1,0 +1,64 @@
+==================
+regex literal in assignment
+==================
+
+x = /[a-z]+/
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (regex_literal)))
+
+==================
+regex literal containing escaped slash
+==================
+
+pat = /a\/b/
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (regex_literal)))
+
+==================
+regex literal coexisting with integer division on the previous line
+==================
+
+a = 10 / 2
+b = /x+/
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (binary_expression
+      left: (integer_literal)
+      right: (integer_literal)))
+  (assignment_statement
+    left: (identifier)
+    right: (regex_literal)))
+
+==================
+regex literal passed as call argument
+==================
+
+q = isMatch("x", /[a-z]+/)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (qualified_identifier
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (string_literal))
+        (argument
+          value: (regex_literal))))))

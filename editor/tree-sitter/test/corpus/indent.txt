@@ -1,0 +1,111 @@
+==================
+three-level nested indentation (fn / for / if)
+==================
+
+fn outer():
+  for i in range(3):
+    if i > 1:
+      print(i)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (for_statement
+        target: (identifier)
+        iter: (call_expression
+          function: (qualified_identifier
+            (identifier))
+          arguments: (argument_list
+            (argument
+              value: (integer_literal))))
+        body: (block
+          (if_statement
+            condition: (binary_expression
+              left: (qualified_identifier
+                (identifier))
+              right: (integer_literal))
+            consequence: (block
+              (expression_statement
+                (call_expression
+                  function: (qualified_identifier
+                    (identifier))
+                  arguments: (argument_list
+                    (argument
+                      value: (qualified_identifier
+                        (identifier)))))))))))))
+
+==================
+comment-only line preserved inside indented block
+==================
+
+fn outer():
+  # a comment-only line
+  x = 1
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (assignment_statement
+        left: (identifier)
+        right: (integer_literal)))))
+
+==================
+blank line preserved between statements in indented block
+==================
+
+fn outer():
+  x = 1
+
+  y = 2
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (assignment_statement
+        left: (identifier)
+        right: (integer_literal))
+      (assignment_statement
+        left: (identifier)
+        right: (integer_literal)))))
+
+==================
+nested blocks closed by EOF (two-level dedent)
+==================
+
+fn outer():
+  if x > 0:
+    print(x)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (if_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        consequence: (block
+          (expression_statement
+            (call_expression
+              function: (qualified_identifier
+                (identifier))
+              arguments: (argument_list
+                (argument
+                  value: (qualified_identifier
+                    (identifier)))))))))))

@@ -272,3 +272,134 @@ fn handle(r: Result<int, str>) -> int:
             (return_statement
               value: (unary_expression
                 operand: (integer_literal)))))))))
+
+==================
+case arm with or-pattern over integer literals
+==================
+
+res = case x:
+  1 | 2 | 3 : "small"
+  _ : "other"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (case_expression
+      (case_match_expression
+        scrutinee: (qualified_identifier
+          (identifier))
+        (case_arm
+          pattern: (or_pattern
+            (literal_pattern
+              (integer_literal))
+            (literal_pattern
+              (integer_literal))
+            (literal_pattern
+              (integer_literal)))
+          body: (expression_statement
+            (string_literal)))
+        (case_arm
+          pattern: (wildcard_pattern)
+          body: (expression_statement
+            (string_literal)))))))
+
+==================
+case arm with binding pattern and guard clause
+==================
+
+res = case x:
+  n if n > 0 : "pos"
+  _ : "zp"
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (case_expression
+      (case_match_expression
+        scrutinee: (qualified_identifier
+          (identifier))
+        (case_arm
+          pattern: (binding_pattern
+            (identifier))
+          guard: (binary_expression
+            left: (qualified_identifier
+              (identifier))
+            right: (integer_literal))
+          body: (expression_statement
+            (string_literal)))
+        (case_arm
+          pattern: (wildcard_pattern)
+          body: (expression_statement
+            (string_literal)))))))
+
+==================
+case match with tuple destructuring pattern
+==================
+
+case t:
+  (a, b):
+    sum = a + b
+  _:
+    sum = 0
+
+---
+
+(source_file
+  (case_statement
+    (case_match_statement
+      scrutinee: (qualified_identifier
+        (identifier))
+      (case_arm
+        pattern: (tuple_pattern
+          (binding_pattern
+            (identifier))
+          (binding_pattern
+            (identifier)))
+        (assignment_statement
+          left: (identifier)
+          right: (binary_expression
+            left: (qualified_identifier
+              (identifier))
+            right: (qualified_identifier
+              (identifier)))))
+      (case_arm
+        pattern: (wildcard_pattern)
+        (assignment_statement
+          left: (identifier)
+          right: (integer_literal))))))
+
+==================
+case match on Option with binding-only None arm
+==================
+
+case x:
+  Some(v):
+    return v
+  None:
+    return 0
+
+---
+
+(source_file
+  (case_statement
+    (case_match_statement
+      scrutinee: (qualified_identifier
+        (identifier))
+      (case_arm
+        pattern: (constructor_pattern
+          (qualified_identifier
+            (identifier))
+          (binding_pattern
+            (identifier)))
+        (return_statement
+          value: (qualified_identifier
+            (identifier))))
+      (case_arm
+        pattern: (binding_pattern
+          (identifier))
+        (return_statement
+          value: (integer_literal))))))

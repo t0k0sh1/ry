@@ -1,0 +1,111 @@
+==================
+simple enum with no payload variants
+==================
+
+enum Color:
+  Red
+  Green
+  Blue
+
+---
+
+(source_file
+  (enum_declaration
+    name: (identifier)
+    (enum_variant
+      name: (identifier))
+    (enum_variant
+      name: (identifier))
+    (enum_variant
+      name: (identifier))))
+
+==================
+enum with unnamed payload variants
+==================
+
+enum Shape:
+  Circle(int)
+  Rect(int, int)
+
+---
+
+(source_file
+  (enum_declaration
+    name: (identifier)
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          type: (union_type
+            (primitive_type)))))
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          type: (union_type
+            (primitive_type)))
+        (variant_field
+          type: (union_type
+            (primitive_type)))))))
+
+==================
+enum with named payload variants
+==================
+
+enum Sh:
+  Circle(r: int)
+  Sq(side: int)
+
+---
+
+(source_file
+  (enum_declaration
+    name: (identifier)
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          name: (identifier)
+          type: (union_type
+            (primitive_type)))))
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          name: (identifier)
+          type: (union_type
+            (primitive_type)))))))
+
+==================
+enum with mixed payload and payload-less variants
+==================
+
+enum Msg:
+  Ping
+  Echo(str)
+  Move(x: int, y: int)
+
+---
+
+(source_file
+  (enum_declaration
+    name: (identifier)
+    (enum_variant
+      name: (identifier))
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          type: (union_type
+            (primitive_type)))))
+    (enum_variant
+      name: (identifier)
+      (variant_payload
+        (variant_field
+          name: (identifier)
+          type: (union_type
+            (primitive_type)))
+        (variant_field
+          name: (identifier)
+          type: (union_type
+            (primitive_type)))))))
