@@ -182,6 +182,7 @@ add_library(ry_lib STATIC
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
     src/runtime/core/error.cpp
+    src/runtime/core/host_shims.cpp
     src/cli/cli.cpp
     src/jit/jit_runner.cpp
     src/jit/test_runner.cpp
@@ -271,8 +272,9 @@ function(add_ry_fuzz_target TARGET_NAME)
     target_compile_options(${TARGET_NAME} PRIVATE ${RY_WARNING_FLAGS})
 endfunction()
 
-# Self-contained packages (no cross-runtime dependencies)
-add_ry_native_lib(base64     src/runtime/native/base64.cpp)
+# Self-contained packages (no cross-runtime dependencies).
+# base64 was ported to Rust in #2282 — see the corrosion block below for the
+# native_base64 crate (output: libry_base64.{dylib,so}).
 add_ry_native_lib(path       src/runtime/native/path.cpp)
 add_ry_native_lib(convert    src/runtime/native/convert.cpp)
 add_ry_native_lib(filesystem src/runtime/native/filesystem.cpp)
@@ -362,7 +364,39 @@ if(NOT DEFINED ENV{LLVM_SYS_211_PREFIX})
     unset(_emit_llvm_prefix)
 endif()
 
+# ===== native_base64: Rust port of @native("base64") (#2282) =====
+# Package = `native_base64` (Cargo workspace member); cdylib output =
+# `libry_base64.{dylib,so}` via `[lib].name = "ry_base64"` so the JIT's
+# `find_native_library("ry_base64")` + dlopen path is unchanged. corrosion
+# v0.5.0 names the IMPORTED CMake target after `[lib].name` (the cargo
+# output artifact), so `ry_base64` is what add_dependencies /
+# target_link_libraries / set_target_properties reference — NOT the
+# package name. No LLVM dependency — corrosion_set_env_vars(LLVM_SYS_*)
+# is omitted intentionally.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/native_base64/Cargo.toml"
+    CRATES native_base64
+)
+set_target_properties(ry_base64 PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
+
+# Linker-arg form of RY_NATIVE_LIBS. corrosion's IMPORTED CMake target
+# (`ry_base64`) is a UTILITY/INTERFACE-style target — CMake refuses both the
+# `-lry_base64` automatic expansion under `-Wl,--no-as-needed` and the
+# `$<TARGET_FILE:ry_base64>` generator expression ("Target is not an
+# executable or library"). Without DT_NEEDED, `runSource`-based codegen
+# tests that bypass the stdlib loader (e.g.
+# `DirectiveTest.NativeFnLibraryGenericDispatch*`) fail with
+# "Symbols not found: [ __ry_base64_encode ]" because the JIT never
+# triggers `find_native_library` → dlopen for unknown @native libnames
+# (#2282). Spell out the absolute artifact path the cdylib lands at —
+# both add_dependencies(ry RY_NATIVE_LIBS) (build ordering) and
+# corrosion (cargo build) guarantee the file exists before this is linked.
+set(RY_NATIVE_LIBS_LINK
+    "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_base64${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 # Native shared libraries are NOT linked here — the JIT loads them on-demand
@@ -478,7 +512,7 @@ if(APPLE)
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
         emit
-        ${RY_NATIVE_LIBS}
+        ${RY_NATIVE_LIBS_LINK}
         GTest::gtest_main
         GTest::gmock
     )
@@ -486,7 +520,7 @@ else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         emit
-        -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed
+        -Wl,--no-as-needed ${RY_NATIVE_LIBS_LINK} atomic -Wl,--as-needed
         GTest::gtest_main
         GTest::gmock
     )

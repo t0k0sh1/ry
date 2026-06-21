@@ -12,6 +12,55 @@
 **Rule**: <教訓本文>
 -->
 
+### corrosion v0.5.0: IMPORTED CMake target name follows `[lib].name`, not `[package].name`
+
+**Source**: #2282 (2026-06-21 implementation)
+**Tags**: cmake, corrosion, rust, build, ffi, naming, gotcha
+
+**Context**: `crates/native_base64/Cargo.toml` (#2282 pilot) split `[package].name = "native_base64"` (workspace label) from `[lib].name = "ry_base64"` so the cdylib output is `libry_base64.{dylib,so}` (matching the JIT's `find_native_library("ry_base64")` + dlopen path) while the package label stays runtime-namespaced (`native_*` for future siblings: `native_convert` / `native_path` / `native_json` / …). The first build failed at configure with `set_target_properties Can not find target to add properties to: native_base64` — corrosion v0.5.0 names the IMPORTED CMake target after `[lib].name`, not `[package].name`.
+
+**Rule**: When a Rust workspace member uses `[package].name = "X"` + `[lib].name = "Y"`, every CMake reference (`set_target_properties`, `add_dependencies`, `target_link_libraries`, `RY_NATIVE_LIBS` entries) must use `Y` (the lib name), not `X` (the package name). `corrosion_import_crate(... CRATES X ...)` takes the package name, but the resulting IMPORTED target is `Y` because corrosion keys on the cargo artifact base name (which `[lib].name` controls when present).
+
+**Why**: corrosion's `corrosion_import_crate` creates one IMPORTED target per cargo artifact. For cdylibs the artifact name is `lib<name>.<dyext>` where `<name>` is `[lib].name` if set, otherwise `[package].name` with `-` → `_`. The IMPORTED target uses `<name>` directly so CMake `target_link_libraries Y` and linker `-lY` resolutions stay consistent with the on-disk filename.
+
+**How to apply**:
+- `emit` is **not** a precedent here — emit has `[package].name = "emit"` with no `[lib]` section, so package == lib == target == output and the distinction never surfaced. Don't infer the rule from emit's CMake block.
+- For a new `crates/native_<X>/` crate, either:
+  - Use `[package].name = "native_<X>"` + `[lib].name = "ry_<X>"` and reference `ry_<X>` in every CMake site (matches `RY_NATIVE_LIBS` convention; canonical example `crates/native_base64/Cargo.toml` + `CMakeLists.txt` post-#2282).
+  - Or use `[package].name = "ry_<X>"` only (drop the `[lib]` section) — package = lib = target = output, no naming uncertainty. Trades the `native_*` package label for full uniformity; pick this if the naming consistency isn't worth the corrosion gotcha.
+- Verify at configure time: `cmake --build <preset>` first; if `set_target_properties` fails on the package name, switch the reference to the `[lib].name` value.
+
+**Linux gotcha: corrosion IMPORTED targets are not picked up by `-l<name>` expansion**: The IMPORTED target corrosion creates is `UTILITY`/`INTERFACE`-flavored — CMake's `$<TARGET_FILE:ry_base64>` errors with "Target is not an executable or library", and `-Wl,--no-as-needed ry_base64` does NOT result in `-lry_base64` on the linker line, so the resulting binary has **no `DT_NEEDED libry_base64.so`** entry. The host process never loads the cdylib eagerly. This is invisible on macOS (the dlopen-driven path works without DT_NEEDED), but on Linux it breaks any `runSource`-based codegen test that bypasses the stdlib loader (`from base64 import …` triggers `find_native_library` → dlopen, but a bare `@native("base64") fn` decl tested via `runSource` does not). The symptom is `JIT session error: Symbols not found: [ __ry_base64_<fn> ]` from LLVM ORC during the test JIT execution.
+
+**Workaround**: pass the artifact's absolute path to `target_link_libraries` directly. Canonical (#2282):
+```cmake
+set(RY_NATIVE_LIBS_LINK
+    "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_base64${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    ry_path ry_convert …)
+```
+and use `${RY_NATIVE_LIBS_LINK}` in the `target_link_libraries(ry_tests …)` linker arg list, while keeping `${RY_NATIVE_LIBS}` (the CMake target-name list) for `add_dependencies(ry …)` so the build-order edge stays correct. `${CMAKE_SHARED_LIBRARY_PREFIX}` / `${CMAKE_SHARED_LIBRARY_SUFFIX}` make the path platform-portable (`lib*.so` / `lib*.dylib`); the file is guaranteed to exist by `add_dependencies`'s build-order edge plus corrosion's cargo build step before the link command runs.
+
+### Host-side `extern "C"` shims for header-only inline helpers called from a Rust cdylib
+
+**Source**: #2282 (2026-06-21 implementation), cross-references `.claude/rules/runtime-memory-safety.md` §「自前再構築禁止」 and the IOListHeader / makeByteList arc_alloc discipline
+**Tags**: cmake, rust, ffi, host-shim, makeString, makeByteList, arc_alloc, native-runtime, port-pattern
+
+**Context**: When porting a `src/runtime/native/<X>.cpp` module to a Rust cdylib (the #2282 base64 pilot path; same shape applies to convert / path / json / io / filesystem / net / http / thread / gc / testing next), the allocation helpers `ry::makeString` / `makeStringUninit` / `makeByteList` / `makeEmptyIOList` are header-only `inline` functions in `include/ry/runtime/{core,native}/*.hpp`. They get inlined into every C++ TU and **vanish from the cdylib's undefined-external set**, so Rust cannot resolve them via standard `-undefined dynamic_lookup` (macOS) / `-rdynamic` (Linux). `nm -m build-<preset>/lib/lib<X>.dylib | grep undefined` on the **current C++ build** before porting names the helpers that already cross the boundary — `__ry_arc_alloc_counted`, `__ry_arc_counter_increment`, `__ry_set_last_error` — and excludes the inlined ones, which is the partition.
+
+**Rule**: For each inline allocation helper a Rust cdylib needs to call, add a thin `extern "C"` wrapper to `src/runtime/core/host_shims.cpp` (added in #2282) and call it from the cdylib's `ffi.rs` via `extern "C" { fn __ry_host_<helper>(...) -> ...; }`. Naming convention: `__ry_host_<snake_case_helper_name>`. The C++ shim body is one line — just call the inline. Compiled into `ry_lib`, the symbol is exported from the host process and the cdylib resolves it via the same dlopen path as `__ry_arc_alloc_counted`. Allocation stays single-source on the C++ side — the cdylib never fabricates StringHeader / IOListHeader / ARC prefixes, matching `runtime-memory-safety.md` §「自前再構築禁止、ハンドル受領のみ」.
+
+**Read-only access does NOT need a shim**: receiving a Ry string handle and reading `byte_len` from `handle - STRING_BYTELEN_OFFSET`, or reading `len` / `data` from a received `IOListHeader*`, goes through a `#[repr(C)]` mirror in `ffi.rs` paired with compile-time layout asserts on both sides (Rust `const _: () = assert!(...)` + C++ `static_assert` in `tests/test_abi_layout.cpp`). Same parity discipline as the `RyCowEnsureUniqueDesc` pair (#1995). Extra round trips through C++ buy nothing once the layout pair is in place.
+
+**Why split by direction**: Allocation involves arc_alloc + counter increment + memcpy + null-terminator sequencing — porting it to Rust risks ARC counter / header layout drift the layout asserts can't catch (the asserts pin layout, not allocation sequencing). Read access only touches the layout, which IS pinned by the asserts. The shim absorbs the inline-vs-extern distinction without exposing allocation logic across the FFI.
+
+**Panic trap is also inline-only — handled directly in Rust, not via shim**: `ry_runtime_trap_exit()` (`fflush(stdout/stderr) + _Exit(1)`) is also `inline`. The cdylib calls `libc::fflush(NULL) + libc::_exit(1)` directly (POSIX-portable shortcut, no shim needed). Wrap every `#[no_mangle] pub unsafe extern "C" fn` body in `std::panic::catch_unwind` to keep panic-across-FFI off the table; on catch, take the same `fflush + _exit(1)` path. Canonical example: `crates/native_base64/src/lib.rs` `catch_or_exit` + `trap_exit`.
+
+**How to apply (next native module port)**:
+1. `nm -m build-<preset>/lib/lib<module>.dylib | grep undefined` against the **current C++ build** to get the resolved-from-host symbol set — those need no shim.
+2. For every host helper used in the C++ source but missing from step 1, add a `__ry_host_<helper>` shim to `src/runtime/core/host_shims.cpp` (one-line wrapper around the inline).
+3. For every header layout the cdylib reads, add a `#[repr(C)]` mirror + paired compile-time asserts (Rust + C++).
+4. After the port, re-run `nm` against the new `lib<output>.dylib` and confirm every `__ry_host_*` shim used appears as `(undefined ... dynamically looked up)`.
+
 ### `tests/spec/<name>/` directories collide with stdlib module names
 
 **Source**: #1687 (2026-05-16 implementation)
