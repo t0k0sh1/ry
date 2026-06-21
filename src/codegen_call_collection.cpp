@@ -1556,6 +1556,19 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
     llvm::AllocaInst *anyTmp = segments.size() > 1
         ? builder_.CreateAlloca(anyTy_, nullptr, "sp.any.tmp")
         : nullptr;
+    // String-concat-free intermediate error builder (avoids
+    // performance-inefficient-string-concatenation under -warnings-as-errors).
+    auto intermediateErr = [&](const std::string &seg, const char *suffix) {
+        std::string msg;
+        msg.reserve(pathStr.size() + seg.size() + 40);
+        msg += "setPath '";
+        msg += pathStr;
+        msg += "': intermediate segment '";
+        msg += seg;
+        msg += "' ";
+        msg += suffix;
+        return msg;
+    };
     llvm::Value *currentMap = recv;
     for (size_t i = 0; i + 1 < segments.size(); ++i) {
         const std::string &seg = segments[i];
@@ -1570,10 +1583,8 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
         emitBranchCond(found, hitBB, missBB);
 
         builder_.SetInsertPoint(missBB);
-        emitRuntimeError(
-            "setPath '" + pathStr + "': intermediate segment '" + seg
-                + "' not found",
-            "err.setpath.miss");
+        emitRuntimeError(intermediateErr(seg, "not found"),
+                         "err.setpath.miss");
 
         builder_.SetInsertPoint(hitBB);
         llvm::Value *valsField = builder_.CreateStructGEP(
@@ -1595,10 +1606,8 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
         emitBranchCond(isMap, tagOkBB, tagErrBB);
 
         builder_.SetInsertPoint(tagErrBB);
-        emitRuntimeError(
-            "setPath '" + pathStr + "': intermediate segment '" + seg
-                + "' is not a Map",
-            "err.setpath.tag");
+        emitRuntimeError(intermediateErr(seg, "is not a Map"),
+                         "err.setpath.tag");
 
         builder_.SetInsertPoint(tagOkBB);
         builder_.CreateStore(interAny, anyTmp);
