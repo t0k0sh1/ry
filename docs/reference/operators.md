@@ -306,10 +306,10 @@ fn copyContents(src: str, dst: str) -> Result<Unit, Error>:
                 case writeText(g, readAll(f)?):
                     Ok(_): 0
                     Err(e): return Err(e)
-        0 as u8                       # tail is the bare Unit value; codegen Ok-wraps it
+        0 as u8                       # Unit placeholder; codegen Ok-wraps it
 ```
 
-The tail expression is the *unwrapped* Ok value — codegen wraps it into `Ok(...)`. Writing `Ok(0 as u8)` as the tail would produce a doubly-wrapped `Result<Result<Unit, Error>, Error>` and fail to compile.
+The tail expression is the *unwrapped* Ok value — codegen wraps it into `Ok(...)`. `0 as u8` is the canonical Unit placeholder (see [Unit type](types.md#unit)). Writing `Ok(0 as u8)` as the tail would produce a doubly-wrapped `Result<Result<Unit, Error>, Error>` and fail to compile.
 
 ---
 

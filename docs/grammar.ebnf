@@ -343,7 +343,7 @@ case_cond_expr   ::= 'case' ':' INDENT case_cond_arm { case_cond_arm } DEDENT
  * from let-annotation or enclosing fn return type. */
 try_expr         ::= 'try' ':' try_body
 try_body         ::= conditional_expr                                      /* inline form */
-                   | NEWLINE INDENT statement* tail_expression NEWLINE DEDENT
+                   | NEWLINE INDENT { statement } expression NEWLINE DEDENT
                                                                             /* block form */
 
 /* conditional / null-coalescing */

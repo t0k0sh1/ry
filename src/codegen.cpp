@@ -609,8 +609,12 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedCapturedVars_ = std::move(cg_.captured_vars_);
     savedFnNestingDepth_ = cg_.fn_nesting_depth_;
     savedFnScopeStackSize_ = cg_.fn_scope_stack_.size();
+    savedTryScopeStack_ = std::move(cg_.try_scope_stack_);
+    savedTryBlockCtx_ = cg_.try_block_ctx_;
     cg_.fn_nesting_depth_++;
     cg_.captured_vars_.clear();
+    cg_.try_scope_stack_.clear();
+    cg_.try_block_ctx_ = nullptr;
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
@@ -653,6 +657,8 @@ CodeGen::FnScope::~FnScope() noexcept {
     cg_.current_function_name_ = std::move(savedFnName_);
     cg_.captured_vars_ = std::move(savedCapturedVars_);
     cg_.fn_nesting_depth_ = savedFnNestingDepth_;
+    cg_.try_scope_stack_ = std::move(savedTryScopeStack_);
+    cg_.try_block_ctx_ = savedTryBlockCtx_;
     // Trim fn_scope_stack_ levels added during the function body.
     // Unlike scope_stack_ (which is fully saved/restored), fn_scope_stack_
     // is kept alive across FnScope boundaries so nested functions can see

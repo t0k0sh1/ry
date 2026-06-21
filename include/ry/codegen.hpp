@@ -1502,6 +1502,11 @@ public:
         llvm::SmallPtrSet<llvm::AllocaInst*, 8> savedCapturedVars_;
         int savedFnNestingDepth_;
         size_t savedFnScopeStackSize_;
+        // #1702 — `try:` effect-block state must not leak into nested fns /
+        // lambdas, otherwise a `?` inside the nested body would CreateBr to
+        // a BasicBlock owned by the outer function (LLVM verify error).
+        std::vector<TryScope> savedTryScopeStack_;
+        llvm::Type *savedTryBlockCtx_;
     };
 
     // ======== Statement Emission ========

@@ -534,6 +534,19 @@ TEST(ParserTest, TryBlockExprRejectsEmptyBlock) {
     EXPECT_THROW(parseStr("x = try:\n"), std::runtime_error);
 }
 
+// #1702 — `try` is a hard keyword, but it must still be acceptable as a field
+// name after `.` (mirrors the `.expect()` / `.using()` precedent in
+// isFieldNameTokenKind). Without the allowlist entry, `obj.try` fails to parse.
+TEST(ParserTest, TryAcceptedAsFieldName) {
+    Program prog = parseStr("v = obj.try");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(assign.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(assign.value->data);
+    EXPECT_EQ(fa.field, "try");
+}
+
 TEST(ParserTest, IfExpressionColonRejectsMissingElseExpr) {
     EXPECT_THROW(parseStr("x = if true: 1 else:"), std::runtime_error);
 }

@@ -1975,7 +1975,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TryBlockExpr> &e) {
 
     if (!e->tail)
         codegenError("'try:' block requires a tail expression");
-    llvm::Value *tailVal = emitExpr(*e->tail);
+    // Seed the Option payload hint for the tail when the block's expected
+    // payload is itself `Option<T>` (e.g. `Result<Option<int>, Error>`), so a
+    // bare `none` / `None()` in the tail resolves to the block's inner rather
+    // than the enclosing fn's default hint. Guard scope is limited to the tail
+    // emit so non-tail intermediates are unaffected.
+    llvm::Type *expectedPayloadTy = fullResultTy->getElementType(1);
+    llvm::Type *tailOptionInner = isOptionType(expectedPayloadTy)
+        ? llvm::cast<llvm::StructType>(expectedPayloadTy)->getElementType(1)
+        : nullptr;
+    llvm::Value *tailVal;
+    {
+        OptionNoneHintGuard tailHint(*this, tailOptionInner);
+        tailVal = emitExpr(*e->tail);
+    }
     retainBlockTailIfScopeOwned(tailVal);
     popScope();
 
@@ -1984,14 +1997,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TryBlockExpr> &e) {
     // Wrap tail in Ok / Some.
     llvm::Value *okValWrapped;
     if (is_result) {
-        // Tail value type must match Result's Ok type (struct[1]).
-        llvm::Type *expectedOkTy = fullResultTy->getElementType(1);
-        if (tailVal->getType() != expectedOkTy)
+        if (tailVal->getType() != expectedPayloadTy)
             codegenError("'try:' block tail expression type does not match enclosing Result's Ok type");
         okValWrapped = buildOkValue(tailVal, fullResultTy);
     } else {
-        llvm::Type *expectedSomeTy = fullResultTy->getElementType(1);
-        if (tailVal->getType() != expectedSomeTy)
+        if (tailVal->getType() != expectedPayloadTy)
             codegenError("'try:' block tail expression type does not match enclosing Option's Some type");
         okValWrapped = buildSomeValue(tailVal, fullResultTy);
     }
