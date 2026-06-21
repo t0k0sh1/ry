@@ -8,7 +8,7 @@ metadata:
 
 # Preparing for Release
 
-Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone. See AGENTS.md "Workflow".
+Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone. See AGENTS.md "Workflow". The **Release cleanup** issue is the close-out step: it closes the Release issue, the milestone, then itself.
 
 ## Inputs
 
@@ -201,9 +201,9 @@ git push origin v<X.Y.Z>
 ### 4. Report to the user
 
 - Tag `v<X.Y.Z>` pushed; `release.yml` running: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>
-- Once `release.yml` finishes and the Release publishes, proceed to the Release cleanup issue to verify artifacts and close the milestone
+- Once `release.yml` finishes and the Release publishes, proceed to the Release cleanup issue — it verifies artifacts, then closes this Release issue, the milestone, and itself.
 
-Then **stop** — do not poll the workflow or auto-close the milestone (the human owner does both).
+Then **stop**. Leave this Release issue **open with its `wip` label**. Do not poll the workflow.
 
 ## Note
 
@@ -211,7 +211,7 @@ Then **stop** — do not poll the workflow or auto-close the milestone (the huma
 
 ## Out of scope
 
-Editing `CHANGELOG.md` (prep issue #<P>); closing the milestone (cleanup issue).
+Editing `CHANGELOG.md` (prep issue #<P>); closing this Release issue and the milestone (cleanup issue).
 EOF
 )"
 ````
@@ -220,7 +220,7 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 6: Create the Release cleanup issue
 
-**Substitution:** as Step 4 + replace `<R>` with the release issue number.
+**Substitution:** as Step 4 + replace `<R>` with the release issue number. Leave `<this-issue>` literal — the cleanup worker substitutes its own issue number at run time (the cleanup issue's number is not knowable until `gh issue create` returns).
 
 ````bash
 gh issue create \
@@ -234,9 +234,11 @@ Verify the v<X.Y.Z> release artifacts are healthy and close the milestone.
 
 ## Prerequisites
 
-- Release issue #<R> is closed (= the tag has been pushed and `release.yml` has finished)
+- The `v<X.Y.Z>` tag has been pushed and `release.yml` has finished. Release issue #<R> is still **open with its `wip` label** — closing it is Task 3 below.
 
 ## Tasks
+
+In the commands below, `<R>` is the Release issue number (from Prerequisites) and `<this-issue>` is this cleanup issue's own number — substitute both before running.
 
 ### 1. Verify release.yml run
 
@@ -257,12 +259,40 @@ gh release view v<X.Y.Z> --repo t0k0sh1/ry \
 
 Expect `isDraft=false`, `isPrerelease=false`, `publishedAt` populated.
 
-### 3. Close the milestone
+### 3. Close the Release issue
+
+```bash
+gh issue edit <R> --remove-label wip
+gh issue close <R>
+```
+
+### 4. Close the milestone
+
+Precondition: the milestone has no other open issues besides **this cleanup issue itself**.
 
 ```bash
 MS_NUM=$(gh api 'repos/t0k0sh1/ry/milestones?state=open' \
   --jq '.[] | select(.title == "v<X.Y.Z>") | .number')
+gh issue list --milestone "v<X.Y.Z>" --state open --json number,title
+```
+
+Excluding **this cleanup issue's own number** (`<this-issue>`), the list must be empty. If any other open issues remain, **ask the user** whether to:
+
+- (a) defer them to a later milestone (`gh issue edit <n> --milestone "v<NEXT>"`), or
+- (b) close them, or
+- (c) abort the cleanup.
+
+Do not proceed without explicit user direction. Once only this cleanup issue remains open in the milestone:
+
+```bash
 gh api -X PATCH "repos/t0k0sh1/ry/milestones/$MS_NUM" -f state=closed
+```
+
+### 5. Close this cleanup issue
+
+```bash
+gh issue edit <this-issue> --remove-label wip
+gh issue close <this-issue>
 ```
 
 ## Out of scope
@@ -276,4 +306,4 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 7: Report
 
-Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` after running `scripts/claim-issue.sh '#<P>'`; `#<C>` is addressed after `#<R>` closes.
+Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` after running `scripts/claim-issue.sh '#<P>'`; `#<C>` is addressed after the `v<X.Y.Z>` tag is pushed and `release.yml` finishes.
