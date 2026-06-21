@@ -604,9 +604,12 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // both resolve to `ptrTy_`; the byte-stride invariant lives in
     // TypeMeta::ListElem. Mirrors the table-driven enforcement at
     // `emitTableDrivenNativeCall:364-374` so generic-dispatch callers
-    // see the same error wording.
+    // see the same error wording. Resolve type aliases before comparing
+    // so a `type Bytes = List<u8>` declaration is still gated.
     for (size_t i = 0; i < matchedSig->params.size(); i++) {
-        if (matchedSig->params[i].typeName != "List<u8>") continue;
+        const std::string declared = resolveTypeAlias(
+            ry::util::trimTypeNameSpaces(matchedSig->params[i].typeName));
+        if (declared != "List<u8>") continue;
         llvm::Type *elemTy = getListElementType(args[i]);
         if (!elemTy || elemTy != i8Ty_)
             codegenError(e.callee + "() requires List<u8> as argument "
