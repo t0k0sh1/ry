@@ -116,6 +116,8 @@ enum class TokenKind {
     RegexLiteral,   // /pattern/
     // --- resource management ---
     Using,          // using
+    // --- effect block ---
+    Try,            // try
     // --- block string literal ---
     BlockString,    // """..."""
 };

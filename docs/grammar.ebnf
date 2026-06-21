@@ -310,6 +310,7 @@ expression       ::= conditional_expr
                    | lambda_expr
                    | if_expr
                    | case_expr
+                   | try_expr
 
 /* lambdas */
 lambda_expr      ::= '(' [ lambda_param { ',' lambda_param } ] ')' [ '->' type_expr ] '=>' lambda_body
@@ -334,6 +335,16 @@ case_expr        ::= case_match_expr
 case_match_expr  ::= 'case' expression ':' INDENT case_arm { case_arm } DEDENT
 
 case_cond_expr   ::= 'case' ':' INDENT case_cond_arm { case_cond_arm } DEDENT
+
+/* try-expression (#1702): block-as-expression that creates a propagation
+ * scope. `?` inside the body escapes to the block's merge (the block's value
+ * becomes Err/None), not the enclosing function. The tail expression is
+ * implicitly wrapped in Ok(...) / Some(...). Result/Option discriminant comes
+ * from let-annotation or enclosing fn return type. */
+try_expr         ::= 'try' ':' try_body
+try_body         ::= conditional_expr                                      /* inline form */
+                   | NEWLINE INDENT { statement } expression NEWLINE DEDENT
+                                                                            /* block form */
 
 /* conditional / null-coalescing */
 conditional_expr ::= logical_or_expr [ '??' conditional_expr ]

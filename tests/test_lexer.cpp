@@ -216,6 +216,13 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::ErrorKw);
         EXPECT_EQ(toks[0].value, "Error");
     }
+    // try (#1702 effect block)
+    {
+        auto toks = tokenize("try");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Try);
+        EXPECT_EQ(toks[0].value, "try");
+    }
 }
 
 // ===== Identifier vs keyword =====
@@ -286,6 +293,13 @@ TEST(LexerTest, IdentNotKeyword) {
         ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "result");
+    }
+    // try-prefixed identifiers are not the Try keyword (#1702)
+    for (const auto &word : {"trying", "trial", "trycatch"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+        EXPECT_EQ(toks[0].value, word) << "word: " << word;
     }
 }
 

@@ -125,6 +125,10 @@ private:
     // form fills `stmts` with intermediate statements and `value` with the tail
     // expression (the arm's value). See definition for the tail-detection rules.
     void parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value);
+    // `try: <body>` (#1702). Same expression-first speculative-parse pattern as
+    // parseCaseExprArmBody.
+    ExprPtr parseTryExpr();
+    void parseTryBlockBody(std::vector<StmtNode> &stmts, ExprPtr &tail);
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);

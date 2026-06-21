@@ -495,6 +495,58 @@ TEST(ParserTest, IfExpressionColonRejectsMissingThenExpr) {
     EXPECT_THROW(parseStr("x = if true: else: 2"), std::runtime_error);
 }
 
+// #1702 — `try:` effect-block parses as TryBlockExpr.
+TEST(ParserTest, TryBlockExprInlineForm) {
+    Program prog = parseStr("x = try: 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TryBlockExpr>>(assign.value->data));
+    const auto &tryExpr = *std::get<std::unique_ptr<TryBlockExpr>>(assign.value->data);
+    EXPECT_TRUE(tryExpr.body.empty());
+    ASSERT_TRUE(tryExpr.tail != nullptr);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(tryExpr.tail->data));
+    EXPECT_EQ(std::get<NumberExpr>(tryExpr.tail->data).value, 1);
+}
+
+TEST(ParserTest, TryBlockExprBlockForm) {
+    // Indented block: one let stmt + identifier-starting tail expression.
+    Program prog = parseStr("x = try:\n    y = 1\n    y");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TryBlockExpr>>(assign.value->data));
+    const auto &tryExpr = *std::get<std::unique_ptr<TryBlockExpr>>(assign.value->data);
+    ASSERT_EQ(tryExpr.body.size(), 1u);
+    ASSERT_TRUE(tryExpr.tail != nullptr);
+    // Tail is a bare identifier — parseCaseExprArmBody-style speculative-parse
+    // pattern accepted it as the tail expression.
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(tryExpr.tail->data));
+    EXPECT_EQ(std::get<VariableExpr>(tryExpr.tail->data).name, "y");
+}
+
+TEST(ParserTest, TryBlockExprRejectsMissingColon) {
+    EXPECT_THROW(parseStr("x = try 1"), std::runtime_error);
+}
+
+TEST(ParserTest, TryBlockExprRejectsEmptyBlock) {
+    // Indented block with nothing inside is a parse error (no tail expression).
+    EXPECT_THROW(parseStr("x = try:\n"), std::runtime_error);
+}
+
+// #1702 — `try` is a hard keyword, but it must still be acceptable as a field
+// name after `.` (mirrors the `.expect()` / `.using()` precedent in
+// isFieldNameTokenKind). Without the allowlist entry, `obj.try` fails to parse.
+TEST(ParserTest, TryAcceptedAsFieldName) {
+    Program prog = parseStr("v = obj.try");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(assign.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(assign.value->data);
+    EXPECT_EQ(fa.field, "try");
+}
+
 TEST(ParserTest, IfExpressionColonRejectsMissingElseExpr) {
     EXPECT_THROW(parseStr("x = if true: 1 else:"), std::runtime_error);
 }

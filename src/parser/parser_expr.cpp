@@ -245,6 +245,89 @@ void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) 
         lex_.next(); // consume the inner block's DEDENT
 }
 
+// Parses a `try: <body>` effect-block expression (#1702). The body uses the
+// same expression-first speculative-parse pattern as parseCaseExprArmBody so
+// identifier-starting tails (`name`, `x + 1`) are accepted without
+// parenthesisation. The `try` token is consumed by parseTryExpr; this helper
+// runs after the colon.
+ExprPtr Parser::parseTryExpr() {
+    Token tryTok = lex_.next(); // consume 'try'
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after 'try'");
+    lex_.next(); // consume ':'
+
+    auto tb = std::make_unique<TryBlockExpr>();
+    parseTryBlockBody(tb->body, tb->tail);
+    tb->loc = locFromToken(tryTok);
+
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(tb);
+    node->loc = locFromToken(tryTok);
+    return node;
+}
+
+void Parser::parseTryBlockBody(std::vector<StmtNode> &stmts, ExprPtr &tail) {
+    if (lex_.peek().kind != TokenKind::Newline) {
+        // Inline form: `try: <expr>`
+        tail = parseConditional();
+        return;
+    }
+
+    lex_.next(); // consume Newline
+    skipNewlines();
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block after ':' in try expression");
+    lex_.next(); // consume Indent
+
+    while (true) {
+        if (lex_.peek().kind == TokenKind::Dedent ||
+            lex_.peek().kind == TokenKind::Eof)
+            parseError("try block must end with an expression");
+
+        auto saved = lex_.saveState();
+        int saved_pending = chain_pending_dedents_;
+
+        ExprPtr expr;
+        bool exprParsed = false;
+        try {
+            expr = parseConditional();
+            exprParsed = true;
+        } catch (const DiagnosticError &) {
+            lex_.restoreState(saved);
+            chain_pending_dedents_ = saved_pending;
+        }
+
+        if (exprParsed) {
+            TokenKind after = lex_.peek().kind;
+            if (after == TokenKind::Newline || after == TokenKind::Dedent ||
+                after == TokenKind::Eof) {
+                if (after == TokenKind::Newline)
+                    lex_.next();
+                skipNewlines();
+                if (lex_.peek().kind == TokenKind::Dedent ||
+                    lex_.peek().kind == TokenKind::Eof) {
+                    tail = std::move(expr);
+                    break;
+                }
+            }
+            lex_.restoreState(saved);
+            chain_pending_dedents_ = saved_pending;
+        }
+
+        StmtNode stmt = parseStatement();
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+        if (lex_.peek().kind == TokenKind::Dedent ||
+            lex_.peek().kind == TokenKind::Eof)
+            parseError("try block must end with an expression");
+        stmts.push_back(std::move(stmt));
+    }
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next();
+}
+
 // Parses the expression form of `if` (issue #798):
 //   1. Single-expression form: `if <cond> => <then_val> else <else_val>`
 //   2. Colon form: `if <cond>: <then_body> else: <else_body>` — each branch
@@ -330,6 +413,8 @@ ExprPtr Parser::parseConditional() {
         return parseCaseExpr();
     if (lex_.peek().kind == TokenKind::If)
         return parseIfExpression();
+    if (lex_.peek().kind == TokenKind::Try)
+        return parseTryExpr();
     ExprPtr expr = parseNullCoalesce();
     return expr;
 }

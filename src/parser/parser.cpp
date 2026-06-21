@@ -133,6 +133,7 @@ bool Parser::isFieldNameTokenKind(TokenKind k) {
         case TokenKind::Async:
         case TokenKind::Await:
         case TokenKind::Using:
+        case TokenKind::Try:
             return true;
         default:
             return false;
