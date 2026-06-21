@@ -13,6 +13,17 @@ StdlibRegistry &StdlibRegistry::instance() {
 void StdlibRegistry::registerPackage(const StdlibPackageEntry &entry) {
     packages_.push_back(entry);
     sorted_ = false;
+    package_index_.clear();
+}
+
+const StdlibPackageEntry *StdlibRegistry::findPackage(const std::string &name) {
+    const auto &pkgs = packages();  // triggers lazy sort
+    if (package_index_.empty() && !pkgs.empty()) {
+        for (size_t i = 0; i < pkgs.size(); ++i)
+            package_index_.emplace(pkgs[i].package_name, i);
+    }
+    auto it = package_index_.find(name);
+    return it == package_index_.end() ? nullptr : &pkgs[it->second];
 }
 
 const std::vector<StdlibPackageEntry> &StdlibRegistry::packages() {

@@ -45,6 +45,53 @@ When a bare builtin (in `builtins_` map or `emitBuiltinCore` inline branch) call
 - Skip this rule only for modules that genuinely have no `libry_<mod>.dylib` (purely inline codegen, like `math`). For those modules, the bare-`@native` form is correct per `/stdlib-module-add` and inserting the library would cause a "native library not found" runtime error.
 - Add at least one regression test per inline / custom-emitter entry point using **partial single-symbol imports**: `from <mod> import <one-fn>` with no other imports from the same module. One file per partial import (combining them in one file lets the first dispatch register the library and masks the bug for the rest). Mirror `tests/spec/io_partial_import_open.test.ry` and `tests/spec/io_partial_import_writetext.test.ry`.
 
+### Descriptor-migrated stdlib dispatcher stubs must `return nullptr` without invoking emitGenericNativeCall — routing causes 3× argument re-emission
+
+**Source**: #2285 (2026-06-21, refactor — base64 descriptor migration; advisor catch)
+**Tags**: stdlib, dispatch, descriptor-migration, emitGenericNativeCall, double-emission, regression, dispatch-loop, fall-through
+
+**Rule**: When a stdlib dispatcher is reduced to a stub (because the module's table has been removed in favor of descriptor-driven dispatch — the post-#2231 migration), the stub MUST be a bare `return nullptr;`. Do NOT route to `emitGenericNativeCall` from inside the stub:
+
+```cpp
+static llvm::Value *dispatchBase64(CodeGen &, const CallExpr &) {
+    return nullptr;  // ← correct: bare stub
+}
+```
+
+The tempting "ownership" pattern is wrong:
+
+```cpp
+// ← WRONG: causes 3× side-effect evaluation on fall-through
+static llvm::Value *dispatchBase64(CodeGen &cg, const CallExpr &e) {
+    if (cg.getNativeFnSigs().count("base64::" + std::string(e.callee)))
+        return cg.emitGenericNativeCall(e);
+    return nullptr;
+}
+```
+
+**Why**: `emitGenericNativeCall` emits args (`emitExpr` into a `args` vector) BEFORE running overload resolution. When the call's actual arg types do not match any registered `@native("<pkg>")` overload, it returns nullptr — but the args have already been emitted into the builder's current block. The StdlibRegistry dispatch loop in `codegen_call_dispatch.cpp:197` then continues; line 294 calls `emitGenericNativeCall` AGAIN (re-emitting the same args), and finally `emitUserFnCall` runs (emitting the args a third time before invoking the user overload). For an arg with side effects (e.g. `print(process(mk()))` where `mk()` prints), the user observes `mk` printed three times.
+
+The cost of bare `return nullptr;` is that sibling dispatchers (`dispatchIO`, `dispatchHttp`, `dispatchJson`, `dispatchThread`, `dispatchNet`) each insert their library at the top per the "insert at the top" rule above, polluting `used_native_libraries_` with libraries that will be dlopen'd at JIT time but never called. This is wasteful (~7 extra dylib loads per base64 program) but not a correctness bug. The pollution resolves as each module migrates to descriptor-driven dispatch and drops the "insert at top" pattern.
+
+**How to apply**:
+- For every module migrated to descriptor-driven dispatch (base64 today; path / io / json / net / http / thread in subsequent PRs per `docs/architecture/native-call-boundary.md` follow-up issues), the stub dispatcher must be a bare `return nullptr;` with a comment explaining the trade-off.
+- The `GetRequiredLibrariesOnlyIncludesCalledFunctions` regression test (`tests/test_codegen_directive.cpp`) now asserts the called package IS present and a never-declared sibling (path) is NOT, instead of asserting `libs.size() == 1`. This is the load-bearing demand-driven property; the partial-migration spurious load is an accepted artifact.
+- Any future "fix" that re-introduces routing via `emitGenericNativeCall` from inside a stub MUST be paired with a test using a side-effecting arg (e.g. `fn mk() -> int: print("mk"); 42` then `print(process(mk()))` with a base64-declared `process(str)` and user overload `process(int)`) asserting `mk` printed once, not three times.
+
+### Migrated `@native` declarations become the source of truth for argument types — declaration drift no longer auto-corrected by the table
+
+**Source**: #2285 (2026-06-21, refactor — base64 descriptor migration)
+**Tags**: stdlib, dispatch, descriptor-migration, requireListU8Arg, list-u8, declaration-drift, @native, behavior-change
+
+**Rule**: Pre-#2285, `@native("base64") fn encodeBytes(input: List<int>) -> str` was silently rejected at the call site by `base64_table`'s hardcoded `requireListU8Arg = 0`, regardless of the declared parameter type. Post-#2285, descriptor-driven dispatch reads the `@native` declaration as the source of truth: the parameter type must be `List<u8>` for the generic path's requireListU8Arg check to fire. A user-declared `List<int>` param now means "I want int-list dispatch" — codegen will obediently mis-call the runtime symbol with int-stride data.
+
+**Why**: The migration goal (`docs/architecture/native-call-boundary.md`) is to elevate the `.ry` declaration to the canonical descriptor. Hand-written table overrides that contradict the declaration (the `.claude/rules/docs-reference-conventions.md` "@native declarations can silently drift from their dispatcher implementation" pattern) cannot survive the migration — the override only ever lived in `base64_table`'s C++ constants and there is no longer a table to consult.
+
+**How to apply**:
+- For migrated modules (currently base64), `@native` declarations in user code or stdlib `.ry` files MUST declare the actual runtime ABI shape. The generic path's `requireListU8Arg` check (`src/codegen_call_native.cpp:601`) fires only when `matchedSig->params[i].typeName == "List<u8>"`.
+- When writing rejection tests for misdeclared natives, set up the declaration with the *correct* shape (`List<u8>`) and pass a *wrong* argument (`[1, 2, 3]` int literal). Pre-migration tests that declared the wrong shape (`List<int>`) and relied on the table to catch it are no longer valid — update them per `tests/test_codegen_fail.cpp::Base64EncodeBytesRejectsNonU8List` (#2285).
+- For modules NOT yet migrated, the table-driven `requireListU8Arg` continues to fire regardless of declared param type. Document this asymmetry in any tests or migration audits.
+
 ### `emitPtrToResult(ptr, name, "static msg", rk_X)` discards runtime `setLastError` messages — prefer `wrapPtrAsResult(ptr) + addResourceKind`
 
 **Source**: #1847 (2026-05-22, fix)

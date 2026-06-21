@@ -4,35 +4,23 @@
 
 namespace ry {
 
-static constexpr const char *BASE64_ERR = "__ry_base64_get_last_error";
-
-static const CodeGen::NativeDispatchEntry base64_table[] = {
-    // str → str / Result<str, Error>
-    {"encode",              nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
-     nullptr, "__ry_base64_encode",               nullptr,    CodeGen::ListElemMeta::None, -1},
-    {"decode",              nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
-     nullptr, "__ry_base64_decode",               BASE64_ERR, CodeGen::ListElemMeta::None, -1},
-    {"encodeUrlSafe",       nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
-     nullptr, "__ry_base64_encode_url_safe",      nullptr,    CodeGen::ListElemMeta::None, -1},
-    {"decodeUrlSafe",       nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
-     nullptr, "__ry_base64_decode_url_safe",      BASE64_ERR, CodeGen::ListElemMeta::None, -1},
-
-    // List<u8> → str
-    {"encodeBytes",         nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
-     nullptr, "__ry_base64_encode_bytes",          nullptr,    CodeGen::ListElemMeta::None, 0},
-    {"encodeBytesUrlSafe",  nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
-     nullptr, "__ry_base64_encode_bytes_url_safe", nullptr,    CodeGen::ListElemMeta::None, 0},
-
-    // str → Result<List<u8>, Error>
-    {"decodeBytes",         nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
-     nullptr, "__ry_base64_decode_bytes",          BASE64_ERR, CodeGen::ListElemMeta::I8,  -1},
-    {"decodeBytesUrlSafe",  nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
-     nullptr, "__ry_base64_decode_bytes_url_safe", BASE64_ERR, CodeGen::ListElemMeta::I8,  -1},
-};
-
-RY_REGISTER_STDLIB_PACKAGE(base64, "share/std/base64/base64.ry", dispatchBase64)
-static llvm::Value *dispatchBase64(CodeGen &cg, const CallExpr &e) {
-    return cg.emitTableDrivenNativeCall(e, "base64", base64_table, std::size(base64_table));
+// base64 dispatch is fully descriptor-driven via emitGenericNativeCall:
+// the package is registered here only so isStdlibPackageName("base64")
+// stays true (used by the "module not imported" diagnostic in
+// codegen_call_dispatch.cpp), and so the generic path picks up the
+// snake_case_symbols flag — Ry-side `encodeUrlSafe` derives the C
+// symbol `__ry_base64_encode_url_safe`. The dispatcher returns nullptr
+// to let dispatch fall through to emitGenericNativeCall, which reads
+// `@native("base64")` declarations from share/std/base64/base64.ry as
+// the source of truth for arity, return wrapping, error channel, and
+// List<u8> argument enforcement.
+RY_REGISTER_STDLIB_PACKAGE_NAMING(base64, "share/std/base64/base64.ry", dispatchBase64, /*snake_case=*/true)
+static llvm::Value *dispatchBase64(CodeGen &, const CallExpr &) {
+    // Stub: base64 dispatch is descriptor-driven via emitGenericNativeCall.
+    // See `.claude/rules/codegen-stdlib-dispatcher.md` "Descriptor-migrated
+    // stdlib dispatcher stubs must return nullptr" — routing here would
+    // cause 3× arg re-emission on type mismatch.
+    return nullptr;
 }
 
 } // namespace ry

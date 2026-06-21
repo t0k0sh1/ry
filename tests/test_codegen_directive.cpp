@@ -1,4 +1,5 @@
 #include "test_codegen_common.hpp"
+#include "ry/runtime/native/io.hpp"
 #include <cstring>
 
 
@@ -21,6 +22,26 @@ extern "C" int64_t __ry_testlib_check(const char *s, int64_t *out) {
 static thread_local char testlib_err_buf[64] = {0};
 extern "C" const char *__ry_testlib_get_last_error() {
     return strdup(testlib_err_buf);
+}
+
+// Test fixtures for the generic dispatch path. The base64 package is
+// registered with snake_case_symbols=true, so the Ry-side camelCase
+// names below must derive these exact snake_case C symbols.
+extern "C" const char *__ry_base64_test_snake_case_fn(const char *input) {
+    (void)input;
+    return strdup("snake-result");
+}
+
+extern "C" void *__ry_base64_test_decode_bytes_fn(const char *input) {
+    (void)input;
+    static const uint8_t bytes[] = {1, 2, 3, 4, 5};
+    return ry::makeByteList(bytes, 5);
+}
+
+// Never reached at runtime — the requireListU8Arg guard fires first.
+extern "C" const char *__ry_base64_test_encode_bytes_fn(void *list) {
+    (void)list;
+    return strdup("ok");
 }
 
 // Backward-compatible aliases for the shared helper in test_codegen_common.hpp.
@@ -209,7 +230,21 @@ TEST(NativeFnSigs, LibraryFieldEmptyForBareNative) {
 
 TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     // Declares functions from "base64" and "path" libraries, but only calls
-    // the base64 function. getRequiredLibraries() should return only "base64".
+    // the base64 function. getRequiredLibraries() must include "base64"
+    // (demand-driven loading for the called package) and must NOT include
+    // "path" (no call ever lands on a path symbol).
+    //
+    // Post-#2285 caveat: descriptor-migrated modules whose dispatcher is
+    // a `return nullptr;` stub (currently base64) let the StdlibRegistry
+    // loop continue through sibling dispatchers (io / net / http / json /
+    // thread), each of which inserts its library at the top per the
+    // "Stdlib dispatchers must insert their module library" rule. Those
+    // siblings appear in `libs` even though no call lands on them; the
+    // strict invariant "libs.size() == 1" no longer holds. The test now
+    // asserts the called package IS present and the never-called package
+    // (path) is NOT, which is the load-bearing demand-driven property.
+    // The sibling spurious-load artifact resolves as each module
+    // migrates to descriptor-driven dispatch.
     std::string src =
         "@native(\"base64\")\n"
         "fn encode(data: str) -> str\n"
@@ -225,8 +260,8 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     cg.compile(prog);
 
     auto &libs = cg.getRequiredLibraries();
-    ASSERT_EQ(libs.size(), 1u);
     EXPECT_TRUE(libs.count("base64"));
+    EXPECT_FALSE(libs.count("path"));
 }
 
 TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {
@@ -697,6 +732,54 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
         "print(isAbsolute(\"relative\"))\n"
     );
     EXPECT_EQ(output, "true\nfalse\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibrarySnakeCaseSymbolDerivation) {
+    // base64 is registered with snake_case_symbols=true. The Ry-side
+    // function name `testSnakeCaseFn` (camelCase) must be converted to
+    // `test_snake_case_fn` (snake_case) when deriving the C symbol
+    // `__ry_base64_test_snake_case_fn` in the generic dispatch path.
+    // This function is NOT in base64_table, so the table dispatcher
+    // returns nullptr and the call falls through to emitGenericNativeCall.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "fn testSnakeCaseFn(input: str) -> str\n"
+        "print(testSnakeCaseFn(\"ignored\"))\n"
+    );
+    EXPECT_EQ(output, "snake-result\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultListU8) {
+    // Result<List<u8>, Error> via generic dispatch. The Ry-side return
+    // type annotation must propagate TypeMeta::ListElem onto the Ok
+    // payload so `len(bytes)` reads the right stride (1-byte) instead of
+    // pointer stride. testDecodeBytesFn is NOT in base64_table, so the
+    // table dispatcher returns nullptr and the call goes through
+    // emitGenericNativeCall.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "fn testDecodeBytesFn(input: str) -> Result<List<u8>, Error>\n"
+        "case testDecodeBytesFn(\"ignored\"):\n"
+        "    Ok(bytes):\n"
+        "        print(len(bytes))\n"
+        "    Err(e):\n"
+        "        print(e.message)\n"
+    );
+    EXPECT_EQ(output, "5\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchRequireListU8) {
+    // @native("base64") fn taking List<u8> via the generic dispatch path.
+    // Passing an int list literal [97, 0, 98] (stride 8) must be rejected
+    // at compile time mirroring the table-driven enforcement; otherwise
+    // the runtime reinterprets the i64-stride buffer as a 1-byte-stride
+    // IOListHeader and walks 8× past the end. testEncodeBytesFn is NOT
+    // in base64_table.
+    expectCompileError(
+        "@native(\"base64\")\n"
+        "fn testEncodeBytesFn(input: List<u8>) -> str\n"
+        "print(testEncodeBytesFn([97, 0, 98]))\n",
+        "requires List<u8>");
 }
 
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {

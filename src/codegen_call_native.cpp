@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 
 
 namespace ry {
@@ -449,7 +450,9 @@ namespace {
 
 // Infer the ReturnWrapping from the Ry return type name.
 // Returns {wrapping, out_param_type_name} where out_param_type_name is non-empty
-// only for ResultOutParam.
+// only for ResultOutParam. List<T> element-stride metadata for
+// `Result<List<T>, _>` is set later via propagateTypeMeta on the wrapped
+// result, so no extra return field is needed here.
 std::pair<CodeGen::ReturnWrapping, std::string>
 inferReturnWrapping(const std::string &returnType) {
     using RW = CodeGen::ReturnWrapping;
@@ -594,6 +597,27 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     used_native_libraries_.insert(matchedPackage);
 
+    // Reject list arguments whose declared param type is `List<u8>` but
+    // whose actual element stride is not i8 (e.g. bare int literals
+    // produce i64-stride lists incompatible with IOListHeader). Sig-level
+    // type match cannot catch this because `List<u8>` and `List<int>`
+    // both resolve to `ptrTy_`; the byte-stride invariant lives in
+    // TypeMeta::ListElem. Mirrors the table-driven enforcement at
+    // `emitTableDrivenNativeCall:364-374` so generic-dispatch callers
+    // see the same error wording. Resolve type aliases before comparing
+    // so a `type Bytes = List<u8>` declaration is still gated.
+    for (size_t i = 0; i < matchedSig->params.size(); i++) {
+        const std::string declared = resolveTypeAlias(
+            ry::util::trimTypeNameSpaces(matchedSig->params[i].typeName));
+        if (declared != "List<u8>") continue;
+        llvm::Type *elemTy = getListElementType(args[i]);
+        if (!elemTy || elemTy != i8Ty_)
+            codegenError(e.callee + "() requires List<u8> as argument "
+                         + std::to_string(i)
+                         + "; use [97u8, 0u8, 98u8] (explicit u8 literals) or"
+                           " toBytes(\"...\") to produce a byte list");
+    }
+
     // Apply widening coercions to matched args (no-op when all false).
     for (size_t i = 0; i < e.args.size(); i++) {
         if (needsWidening[i])
@@ -609,8 +633,14 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         }
     }
 
-    // Derive runtime function name: __ry_<module>_<fn_name>
-    std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, e.callee);
+    // Derive runtime function name: __ry_<module>_<fn_name>.
+    // Apply per-module naming convention (snake_case for legacy modules
+    // whose C runtime predates Ry's camelCase identifiers, e.g. base64).
+    const auto *pkgEntry = StdlibRegistry::instance().findPackage(matchedPackage);
+    std::string symbolName = (pkgEntry && pkgEntry->snake_case_symbols)
+        ? ry::util::camelToSnakeCase(e.callee)
+        : e.callee;
+    std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, symbolName);
 
     // Determine C-level calling convention from the Ry return type
     auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->returnTypeName);
