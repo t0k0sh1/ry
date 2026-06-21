@@ -7,6 +7,46 @@
 
 namespace ry {
 
+namespace {
+
+// Split a `getPath` / `setPath` path string on '.' at codegen time.
+// Empty path or any empty segment is a static error (matches the issue
+// #1701 grammar: every segment must be a non-empty identifier-like str).
+// `callee` flows into the diagnostic ("getPath" / "setPath").
+std::vector<std::string> splitDotPath(CodeGen &cg, const std::string &pathStr,
+                                       const char *callee) {
+    std::vector<std::string> segments;
+    std::string cur;
+    for (char c : pathStr) {
+        if (c == '.') {
+            if (cur.empty())
+                cg.codegenError(std::string(callee) + "() path has empty segment");
+            segments.push_back(std::move(cur));
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    if (cur.empty())
+        cg.codegenError(std::string(callee) + "() path has empty trailing segment");
+    segments.push_back(std::move(cur));
+    return segments;
+}
+
+// Compile-time numeric-segment parser for issue #1701 List-index dispatch.
+// Returns the segment's int form when it is a non-empty all-digits str;
+// nullopt otherwise. Shared between getPath now and setPath when its
+// List-index support lands.
+std::optional<int64_t> tryParseSegmentInt(const std::string &s) {
+    if (s.empty()) return std::nullopt;
+    for (char c : s)
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+            return std::nullopt;
+    try { return std::stoll(s); } catch (...) { return std::nullopt; }
+}
+
+} // namespace
+
 // ===== Builtin Collection =====
 
 llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e,
@@ -30,6 +70,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e,
         {"flat",      &CodeGen::emitCollOp_flatten},
         {"items",     &CodeGen::emitCollOp_items},
         {"get",       &CodeGen::emitCollOp_get},
+        {"getPath",   &CodeGen::emitCollOp_getPath},
+        {"setPath",   &CodeGen::emitCollOp_setPath},
         {"merge",     &CodeGen::emitCollOp_merge},
     };
     auto it = dispatch.find(e.callee);
@@ -1357,6 +1399,344 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
     // works correctly for complex key and value types (#961).
     propagateMeta(map1, newHeader);
     return newHeader;
+}
+
+// getPath (issue #1701): jq-style nested-Map<str, any> read access.
+//
+// `m.getPath("a.b.c")` walks each dot-separated segment through the
+// any-held Map chain via `emitAnyPathStep`. Returns Option<any> with
+// None on the first miss. Currently requires a str-literal path
+// (compile-time split); a runtime-split overload follows in a later
+// commit on this issue.
+llvm::Value *CodeGen::emitCollOp_getPath(const CallExpr &e) {
+    if (e.args.size() != 2) return nullptr;
+
+    llvm::Value *recv = emitExpr(*e.args[0]);
+    llvm::Type *keyTy = getMapKeyType(recv);
+    llvm::Type *valTy = getMapValueType(recv);
+    if (!keyTy || !valTy) return nullptr;
+    if (keyTy != ptrTy_)
+        codegenError("getPath() receiver must be Map<str, any>");
+    if (!isAnyType(valTy))
+        codegenError("getPath() receiver value type must be `any`");
+
+    // Path arg must be a str literal in this iteration. Runtime str
+    // (e.g. a variable holding the path) → follow-up.
+    const StringExpr *pathLit = std::get_if<StringExpr>(&e.args[1]->data);
+    if (!pathLit)
+        codegenError("getPath() currently requires a string literal path");
+    const std::string &pathStr = pathLit->value;
+
+    std::vector<std::string> segments = splitDotPath(*this, pathStr, "getPath");
+
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    llvm::StructType *optAnyTy = getOptionType(anyTy_);
+    auto *mergeBB = createBBInFn("getpath.merge", fn);
+    std::vector<std::pair<llvm::Value *, llvm::BasicBlock *>> phiIncomings;
+
+    // First hop: receiver is Map<str, any>, look up first segment directly
+    // (no wrapInAny so we avoid extra ARC retain on the receiver).
+    llvm::Value *firstSegStr = cachedGlobalString(segments[0]);
+    llvm::Value *firstSlot = emitHashTableLookup(
+        recv, mapHeaderTy_, kMapLayout, firstSegStr, ptrTy_);
+    llvm::Value *firstFound = builder_.CreateICmpSGE(
+        firstSlot, llvm::ConstantInt::get(i64Ty_, 0), "getpath.first.found");
+
+    auto *firstHitBB  = createBBInFn("getpath.first.hit", fn);
+    auto *firstMissBB = createBBInFn("getpath.first.miss", fn);
+    emitBranchCond(firstFound, firstHitBB, firstMissBB);
+
+    builder_.SetInsertPoint(firstMissBB);
+    llvm::Value *firstNone = buildNoneValue(optAnyTy);
+    phiIncomings.emplace_back(firstNone, builder_.GetInsertBlock());
+    emitBranchUncond(mergeBB);
+
+    builder_.SetInsertPoint(firstHitBB);
+    llvm::Value *firstValsField = builder_.CreateStructGEP(
+        mapHeaderTy_, recv, 3, "getpath.first.vals.field");
+    llvm::Value *firstValsPtr = builder_.CreateLoad(
+        ptrTy_, firstValsField, "getpath.first.vals.ptr");
+    llvm::Value *firstElemPtr = builder_.CreateGEP(
+        anyTy_, firstValsPtr, firstSlot, "getpath.first.elem.ptr");
+    llvm::Value *currentAny = builder_.CreateLoad(
+        anyTy_, firstElemPtr, "getpath.first.elem");
+
+    // The returned Option<any>'s inner payload is borrowed from the
+    // receiver Map. Downstream consumers — `?` unwrap into a let-binding
+    // (`unwrapFromAny` emits the retain) or pattern bind into an `any`
+    // local (existing var-decl path handles it) — are responsible for
+    // retaining when ownership transfers out of the receiver's lifetime.
+    if (segments.size() == 1) {
+        llvm::Value *someVal = buildSomeValue(currentAny, optAnyTy);
+        phiIncomings.emplace_back(someVal, builder_.GetInsertBlock());
+        emitBranchUncond(mergeBB);
+    } else {
+        for (size_t i = 1; i < segments.size(); ++i) {
+            const std::string &seg = segments[i];
+            llvm::Value *segStr = cachedGlobalString(seg);
+            std::optional<int64_t> intSeg = tryParseSegmentInt(seg);
+            llvm::Value *stepResult = emitAnyPathStep(
+                currentAny, segStr, intSeg, /*tryMode=*/true, pathStr, seg);
+            if (i + 1 == segments.size()) {
+                phiIncomings.emplace_back(stepResult, builder_.GetInsertBlock());
+                emitBranchUncond(mergeBB);
+            } else {
+                llvm::Value *disc = builder_.CreateExtractValue(
+                    stepResult, 0, "getpath.hop.disc");
+                auto *contBB = createBBInFn("getpath.hop.cont", fn);
+                auto *noneBB = createBBInFn("getpath.hop.none", fn);
+                emitBranchCond(disc, contBB, noneBB);
+
+                builder_.SetInsertPoint(noneBB);
+                llvm::Value *noneVal = buildNoneValue(optAnyTy);
+                phiIncomings.emplace_back(noneVal, builder_.GetInsertBlock());
+                emitBranchUncond(mergeBB);
+
+                builder_.SetInsertPoint(contBB);
+                currentAny = builder_.CreateExtractValue(
+                    stepResult, 1, "getpath.hop.some");
+            }
+        }
+    }
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = createPhi(optAnyTy, {}, "getpath.result");
+    for (auto &p : phiIncomings) phi->addIncoming(p.first, p.second);
+    return phi;
+}
+
+// setPath (issue #1701): jq-style nested Map<str, any> write.
+// `m.setPath("a.b.c", v)` walks the dot path; intermediate segments must
+// resolve to Map<str, any> at runtime (otherwise runtime error). The
+// leaf segment is inserted or updated. Top-level receiver is COW-checked;
+// intermediate Maps mutate in place (callers sharing references to a
+// nested Map see the change). Returns Unit.
+llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
+    if (e.args.size() != 3) return nullptr;
+
+    llvm::AllocaInst *recvAlloca = tryGetReceiverAlloca(*e.args[0]);
+    llvm::Value *recv = emitExpr(*e.args[0]);
+    llvm::Type *keyTy = getMapKeyType(recv);
+    llvm::Type *valTy = getMapValueType(recv);
+    if (!keyTy || !valTy) return nullptr;
+    if (keyTy != ptrTy_)
+        codegenError("setPath() receiver must be Map<str, any>");
+    if (!isAnyType(valTy))
+        codegenError("setPath() receiver value type must be `any`");
+
+    const StringExpr *pathLit = std::get_if<StringExpr>(&e.args[1]->data);
+    if (!pathLit)
+        codegenError("setPath() currently requires a string literal path");
+    const std::string &pathStr = pathLit->value;
+
+    std::vector<std::string> segments = splitDotPath(*this, pathStr, "setPath");
+
+    // RHS value: must be `any` or wrap-eligible (`wrapInAny` covers
+    // primitives, str, collections, records, and enums via metadata- /
+    // type-driven dispatch; it codegenErrors on fn-pointers / resources).
+    // Track whether the value was already an `any` (borrowed payload, needs
+    // retain on store) versus freshly wrapped via `wrapInAny` (which already
+    // emits the retain itself — a second retain at the store site would
+    // leak by one refcount per setPath call).
+    llvm::Value *value = emitExpr(*e.args[2]);
+    const bool valueWasAny = isAnyType(value->getType());
+    if (!valueWasAny)
+        value = wrapInAny(value);
+
+    // Top-level COW (matches the IndexAssignStmt Map case).
+    recv = emitCowCheck(recv, recvAlloca, CollectionKind::Map);
+
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+
+    // Walk-down through intermediates: lookup each segment, verify Map
+    // tag, advance currentMap. Hoist the `any → data ptr` scratch slot
+    // out of the loop so depth-N paths emit one alloca instead of N-1.
+    llvm::AllocaInst *anyTmp = segments.size() > 1
+        ? builder_.CreateAlloca(anyTy_, nullptr, "sp.any.tmp")
+        : nullptr;
+    // String-concat-free intermediate error builder (avoids
+    // performance-inefficient-string-concatenation under -warnings-as-errors).
+    auto intermediateErr = [&](const std::string &seg, const char *suffix) {
+        std::string msg;
+        msg.reserve(pathStr.size() + seg.size() + 40);
+        msg += "setPath '";
+        msg += pathStr;
+        msg += "': intermediate segment '";
+        msg += seg;
+        msg += "' ";
+        msg += suffix;
+        return msg;
+    };
+    llvm::Value *currentMap = recv;
+    for (size_t i = 0; i + 1 < segments.size(); ++i) {
+        const std::string &seg = segments[i];
+        llvm::Value *segStr = cachedGlobalString(seg);
+        llvm::Value *slot = emitHashTableLookup(
+            currentMap, mapHeaderTy_, kMapLayout, segStr, ptrTy_);
+        llvm::Value *found = builder_.CreateICmpSGE(
+            slot, llvm::ConstantInt::get(i64Ty_, 0), "sp.found");
+
+        auto *hitBB  = createBBInFn("sp.hit", fn);
+        auto *missBB = createBBInFn("sp.miss", fn);
+        emitBranchCond(found, hitBB, missBB);
+
+        builder_.SetInsertPoint(missBB);
+        emitRuntimeError(intermediateErr(seg, "not found"),
+                         "err.setpath.miss");
+
+        builder_.SetInsertPoint(hitBB);
+        llvm::Value *valsField = builder_.CreateStructGEP(
+            mapHeaderTy_, currentMap, 3, "sp.vals.field");
+        llvm::Value *valsPtr = builder_.CreateLoad(
+            ptrTy_, valsField, "sp.vals.ptr");
+        llvm::Value *elemPtr = builder_.CreateGEP(
+            anyTy_, valsPtr, slot, "sp.elem.ptr");
+        llvm::Value *interAny = builder_.CreateLoad(
+            anyTy_, elemPtr, "sp.elem");
+
+        llvm::Value *tag = builder_.CreateExtractValue(interAny, 0, "sp.tag");
+        llvm::Value *isMap = builder_.CreateICmpEQ(
+            tag,
+            llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Map)),
+            "sp.is_map");
+        auto *tagOkBB  = createBBInFn("sp.tag_ok", fn);
+        auto *tagErrBB = createBBInFn("sp.tag_err", fn);
+        emitBranchCond(isMap, tagOkBB, tagErrBB);
+
+        builder_.SetInsertPoint(tagErrBB);
+        emitRuntimeError(intermediateErr(seg, "is not a Map"),
+                         "err.setpath.tag");
+
+        builder_.SetInsertPoint(tagOkBB);
+        builder_.CreateStore(interAny, anyTmp);
+        llvm::Value *anyDataSlot = builder_.CreateStructGEP(
+            anyTy_, anyTmp, 1, "sp.any.data.slot");
+        currentMap = builder_.CreateLoad(
+            ptrTy_, anyDataSlot, "sp.next.map");
+    }
+
+    // Leaf insert-or-update on currentMap. Inlined Map<str, any> insert
+    // (mirrors IndexAssignStmt's Map branch but specialized for any /
+    // str-key, no compound-op).
+    const std::string &leafSeg = segments.back();
+    llvm::Value *leafKey = cachedGlobalString(leafSeg);
+    llvm::Value *leafIdx = emitMapKeyLookup(
+        currentMap, leafKey, ptrTy_);
+    llvm::Value *leafFound = builder_.CreateICmpSGE(
+        leafIdx, llvm::ConstantInt::get(i64Ty_, 0), "sp.leaf.found");
+
+    auto *updateBB = createBBInFn("sp.leaf.update", fn);
+    auto *insertBB = createBBInFn("sp.leaf.insert", fn);
+    auto *doneBB   = createBBInFn("sp.leaf.done", fn);
+    emitBranchCond(leafFound, updateBB, insertBB);
+
+    // Update arm: retain new payload, release old slot's payload, store.
+    builder_.SetInsertPoint(updateBB);
+    llvm::Value *upValsField = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 3, "sp.upd.vals.field");
+    llvm::Value *upValsPtr = builder_.CreateLoad(
+        ptrTy_, upValsField, "sp.upd.vals.ptr");
+    llvm::Value *upElemPtr = builder_.CreateGEP(
+        anyTy_, upValsPtr, leafIdx, "sp.upd.elem.ptr");
+    llvm::Value *oldAny = builder_.CreateLoad(
+        anyTy_, upElemPtr, "sp.upd.old.any");
+    // wrapInAny already retained when valueWasAny is false; only retain
+    // here when the caller passed an already-`any` (borrowed) value.
+    if (valueWasAny)
+        emitAnyRetainPayload(value, "sp.upd.new");
+    emitAnyReleasePayload(oldAny, "", "sp.upd.old");
+    builder_.CreateStore(value, upElemPtr);
+    emitBranchUncond(doneBB);
+
+    // Insert arm: grow if needed, store key & value at length, length++,
+    // hash-table bucket insert + rehash check.
+    builder_.SetInsertPoint(insertBB);
+    llvm::Value *inLenPtr = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 0, "sp.in.len.ptr");
+    llvm::Value *inLen = builder_.CreateLoad(i64Ty_, inLenPtr, "sp.in.len");
+    llvm::Value *inCapPtr = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 1, "sp.in.cap.ptr");
+    llvm::Value *inCap = builder_.CreateLoad(i64Ty_, inCapPtr, "sp.in.cap");
+    llvm::Value *needGrow = builder_.CreateICmpEQ(
+        inLen, inCap, "sp.in.need_grow");
+    auto *growBB = createBBInFn("sp.in.grow", fn);
+    auto *storeBB = createBBInFn("sp.in.store", fn);
+    emitBranchCond(needGrow, growBB, storeBB);
+
+    builder_.SetInsertPoint(growBB);
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t inKeySize = dl.getTypeAllocSize(ptrTy_);
+    uint64_t inValSize = dl.getTypeAllocSize(anyTy_);
+    llvm::Value *newCap = builder_.CreateMul(
+        inCap, llvm::ConstantInt::get(i64Ty_, 2), "sp.in.new_cap");
+    auto mallocFn = getStdlibMalloc();
+    llvm::Value *newKeySize = builder_.CreateMul(
+        newCap, llvm::ConstantInt::get(i64Ty_, inKeySize), "sp.in.new_key_sz");
+    llvm::Value *newKeysPtr = builder_.CreateCall(
+        mallocFn, {newKeySize}, "sp.in.new_keys");
+    llvm::Value *newValSize = builder_.CreateMul(
+        newCap, llvm::ConstantInt::get(i64Ty_, inValSize), "sp.in.new_val_sz");
+    llvm::Value *newValsPtr = builder_.CreateCall(
+        mallocFn, {newValSize}, "sp.in.new_vals");
+    auto memcpyFn = getStdlibMemcpy();
+    llvm::Value *kPtrField = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 2, "sp.in.k.field");
+    llvm::Value *oldKeysPtr = builder_.CreateLoad(
+        ptrTy_, kPtrField, "sp.in.old.keys");
+    llvm::Value *oldKeySize = builder_.CreateMul(
+        inLen, llvm::ConstantInt::get(i64Ty_, inKeySize), "sp.in.old.k.sz");
+    builder_.CreateCall(memcpyFn, {newKeysPtr, oldKeysPtr, oldKeySize});
+    llvm::Value *vPtrField = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 3, "sp.in.v.field");
+    llvm::Value *oldValsPtr = builder_.CreateLoad(
+        ptrTy_, vPtrField, "sp.in.old.vals");
+    llvm::Value *oldValSize = builder_.CreateMul(
+        inLen, llvm::ConstantInt::get(i64Ty_, inValSize), "sp.in.old.v.sz");
+    builder_.CreateCall(memcpyFn, {newValsPtr, oldValsPtr, oldValSize});
+    auto freeFn = getStdlibFree();
+    builder_.CreateCall(freeFn, {oldKeysPtr});
+    builder_.CreateCall(freeFn, {oldValsPtr});
+    builder_.CreateStore(newKeysPtr, kPtrField);
+    builder_.CreateStore(newValsPtr, vPtrField);
+    builder_.CreateStore(newCap, inCapPtr);
+    emitBranchUncond(storeBB);
+
+    builder_.SetInsertPoint(storeBB);
+    llvm::Value *curLen = builder_.CreateLoad(i64Ty_, inLenPtr, "sp.in.cur_len");
+    llvm::Value *keysField3 = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 2, "sp.in.keys.f3");
+    llvm::Value *curKeysPtr = builder_.CreateLoad(
+        ptrTy_, keysField3, "sp.in.cur.keys");
+    llvm::Value *newKeyPtr = builder_.CreateGEP(
+        ptrTy_, curKeysPtr, {curLen}, "sp.in.new.key.ptr");
+    // leafKey is from cachedGlobalString → ARC_IMMORTAL, retain is no-op
+    // but conventional via retainArcValue (matches IndexAssignStmt str-key path).
+    retainArcValue(leafKey);
+    builder_.CreateStore(leafKey, newKeyPtr);
+
+    llvm::Value *valsField3 = builder_.CreateStructGEP(
+        mapHeaderTy_, currentMap, 3, "sp.in.vals.f3");
+    llvm::Value *curValsPtr = builder_.CreateLoad(
+        ptrTy_, valsField3, "sp.in.cur.vals");
+    llvm::Value *newValPtr = builder_.CreateGEP(
+        anyTy_, curValsPtr, {curLen}, "sp.in.new.val.ptr");
+    if (valueWasAny)
+        emitAnyRetainPayload(value, "sp.in.new");
+    builder_.CreateStore(value, newValPtr);
+
+    llvm::Value *newLen = builder_.CreateAdd(
+        curLen, llvm::ConstantInt::get(i64Ty_, 1), "sp.in.new_len");
+    builder_.CreateStore(newLen, inLenPtr);
+
+    emitBucketInsertAndRehashCheck(
+        currentMap, mapHeaderTy_, kMapLayout.lenIdx,
+        kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx,
+        leafKey, ptrTy_, curLen);
+
+    emitBranchUncond(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    return llvm::ConstantInt::get(i64Ty_, 0);  // Unit
 }
 
 llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {

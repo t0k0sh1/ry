@@ -175,6 +175,104 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     llvm::Value *obj = emitExpr(*e->object);
     llvm::Type *objTy = obj->getType();
 
+    // Dot sugar for nested Map<str, any> access (#1701).
+    // Three dispatch shapes — all return Option<any>, so a chain
+    // `cfg.server.host` flows from Map<str, any> → Option<any> → Option<any>,
+    // with `?` at the end (ErrorPropagateExpr) unwrapping to `any`. This
+    // block MUST stay above the `StructType`/`findRecordInfoForType` gate
+    // below — Option<any> is a StructType too and would otherwise be
+    // misrouted into "unknown record type". Numeric field names (tuple
+    // numeric indexing `.0` / `.1`) bypass these branches.
+    if (e->field.empty() ||
+        !std::isdigit(static_cast<unsigned char>(e->field[0]))) {
+        // Map<str, any>.field → Option<any>: first-hop direct lookup.
+        if (objTy == ptrTy_) {
+            llvm::Type *keyTy = getMapKeyType(obj);
+            llvm::Type *valTy = getMapValueType(obj);
+            if (keyTy == ptrTy_ && valTy && isAnyType(valTy)) {
+                llvm::StructType *optAnyTy = getOptionType(anyTy_);
+                llvm::Value *segStr = cachedGlobalString(e->field);
+                llvm::Value *slot = emitHashTableLookup(
+                    obj, mapHeaderTy_, kMapLayout, segStr, ptrTy_);
+                llvm::Value *found = builder_.CreateICmpSGE(
+                    slot, llvm::ConstantInt::get(i64Ty_, 0),
+                    "fa.dot.found");
+                llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+                auto *hitBB   = createBBInFn("fa.dot.hit", fn);
+                auto *missBB  = createBBInFn("fa.dot.miss", fn);
+                auto *mergeBB = createBBInFn("fa.dot.merge", fn);
+                emitBranchCond(found, hitBB, missBB);
+
+                builder_.SetInsertPoint(hitBB);
+                llvm::Value *valsField = builder_.CreateStructGEP(
+                    mapHeaderTy_, obj, 3, "fa.dot.vals.field");
+                llvm::Value *valsPtr = builder_.CreateLoad(
+                    ptrTy_, valsField, "fa.dot.vals.ptr");
+                llvm::Value *elemPtr = builder_.CreateGEP(
+                    anyTy_, valsPtr, slot, "fa.dot.elem.ptr");
+                llvm::Value *elemAny = builder_.CreateLoad(
+                    anyTy_, elemPtr, "fa.dot.elem");
+                llvm::Value *someVal = buildSomeValue(elemAny, optAnyTy);
+                llvm::BasicBlock *hitEndBB = builder_.GetInsertBlock();
+                emitBranchUncond(mergeBB);
+
+                builder_.SetInsertPoint(missBB);
+                llvm::Value *noneVal = buildNoneValue(optAnyTy);
+                llvm::BasicBlock *missEndBB = builder_.GetInsertBlock();
+                emitBranchUncond(mergeBB);
+
+                builder_.SetInsertPoint(mergeBB);
+                llvm::PHINode *phi = createPhi(optAnyTy, {}, "fa.dot.result");
+                phi->addIncoming(someVal, hitEndBB);
+                phi->addIncoming(noneVal, missEndBB);
+                return phi;
+            }
+        }
+
+        // any.field → Option<any> via the L1 primitive. Field is an
+        // identifier (numeric forms `.0`/`.1` were filtered above), so
+        // intSegment is always nullopt for dot sugar.
+        if (objTy == anyTy_) {
+            llvm::Value *segStr = cachedGlobalString(e->field);
+            return emitAnyPathStep(
+                obj, segStr, std::nullopt, /*tryMode=*/true,
+                e->field, e->field);
+        }
+
+        // Option<any>.field → flatMap: propagate None, lookup on Some.
+        llvm::StructType *optAnyTy = getOptionType(anyTy_);
+        if (objTy == optAnyTy) {
+            llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+            llvm::Value *disc = builder_.CreateExtractValue(
+                obj, 0, "fa.opt.disc");
+            auto *someBB  = createBBInFn("fa.opt.some", fn);
+            auto *noneBB  = createBBInFn("fa.opt.none", fn);
+            auto *mergeBB = createBBInFn("fa.opt.merge", fn);
+            emitBranchCond(disc, someBB, noneBB);
+
+            builder_.SetInsertPoint(someBB);
+            llvm::Value *innerAny = builder_.CreateExtractValue(
+                obj, 1, "fa.opt.inner");
+            llvm::Value *segStr = cachedGlobalString(e->field);
+            llvm::Value *stepResult = emitAnyPathStep(
+                innerAny, segStr, std::nullopt, /*tryMode=*/true,
+                e->field, e->field);
+            llvm::BasicBlock *someEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(mergeBB);
+
+            builder_.SetInsertPoint(noneBB);
+            llvm::Value *noneVal = buildNoneValue(optAnyTy);
+            llvm::BasicBlock *noneEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = createPhi(optAnyTy, {}, "fa.opt.result");
+            phi->addIncoming(stepResult, someEndBB);
+            phi->addIncoming(noneVal, noneEndBB);
+            return phi;
+        }
+    }
+
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
         codegenError("field access on non-record type");

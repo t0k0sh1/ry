@@ -909,6 +909,64 @@ print(get(m, "a", 0))   # 1
 print(get(m, "z", 0))   # 0
 ```
 
+### getPath
+
+`getPath(map, path) -> Option<any>`. Walks `path` (dot-separated string) through a nested `Map<str, any>` and returns the leaf value as `Option<any>`. Designed for navigating JSON-like trees produced by `json.load[Map<str, any>]`.
+
+```ry
+from json import load
+
+case load[Map<str, any>]("{\"db\":{\"host\":\"localhost\",\"port\":5432}}"):
+  Ok(cfg):
+    case cfg.getPath("db.host"):
+      Some(v):
+        host: str = v
+        print(host)              # localhost
+      None: print("missing host")
+  Err(e): print("parse failed")
+```
+
+The path is a string literal at the call site (compile-time split on `.`). Returns `None` on the first missing segment or when an intermediate segment resolves to neither a `Map` nor a `List` `any`. Numeric segments (e.g. `"0"`) act as `List<any>` int indexes when the intermediate any holds a `List` and as str keys when it holds a `Map` (runtime tag dispatch). The returned `any` payload borrows from the receiver; assigning into a typed binding (`let host: str = v`) emits the standard `unwrapFromAny` retain.
+
+### Dot sugar for Map<str, any>
+
+When the receiver is `Map<str, any>` (or `any` itself, or `Option<any>`), `recv.field` desugars to a try-mode lookup that returns `Option<any>`. Chained access (`cfg.server.host`) auto-propagates `None` through every hop. Combine with the trailing `?` operator to unwrap the final value or propagate `None` out of the enclosing fn/case.
+
+```ry
+inner: Map<str, any> = {"host": "localhost"}
+cfg: Map<str, any> = {"server": inner}
+
+case cfg.server.host:
+  Some(v):
+    s: str = v
+    print(s)                     # localhost
+  None: print("missing")
+
+# Equivalent to:
+#   cfg.getPath("server.host")
+# Equivalent (when using the ? operator on Option<any> at a binding site):
+#   host: str = cfg.server.host?
+```
+
+Dispatch fires only when the receiver's static or runtime type matches `Map<str, any>` / `any` / `Option<any>`. For a `Map<str, int>` (or any non-`any` value type), `.field` falls through to the existing "field access on non-record type" error. Numeric field names (`.0`, `.1`) still resolve as tuple indexing.
+
+### setPath
+
+`setPath(map, path, value) -> Unit`. Walks `path` through the receiver and writes `value` into the leaf segment, inserting the key if missing. The top-level receiver is COW-checked (`add` / `remove` parity); intermediate `Map<str, any>` values mutate in place, so other variables that share a reference to a nested `Map` see the change.
+
+```ry
+inner: Map<str, any> = {"host": "old"}
+cfg: Map<str, any> = {"server": inner}
+cfg.setPath("server.host", "new")
+case cfg.getPath("server.host"):
+  Some(v):
+    s: str = v
+    print(s)                     # new
+  None: print("unreachable")
+```
+
+The path is a string literal at the call site. Intermediate segments must already exist and resolve to `Map<str, any>` — a missing intermediate or a non-`Map` intermediate raises a runtime error (`setPath '...': intermediate segment '...' not found` / `... is not a Map`). The leaf segment is inserted when absent and updated when present. Compound assignment (`setPath` with `+=` etc.) is not supported. `value` may be any type wrap-eligible by `any` (primitives, str, collections, records, enums).
+
 ### Merge with `+` and `+=`
 
 `+` returns a new map that combines all entries from both maps; the original maps are not modified. When keys overlap, values from the right-hand side take precedence (rhs-wins). `+=` rebinds the left-hand variable to the merged result (`m1 += m2` is equivalent to `m1 = m1 + m2`).

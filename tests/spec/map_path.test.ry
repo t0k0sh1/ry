@@ -1,0 +1,322 @@
+from testing import it, describe, expect, fail
+from json import load
+
+@describe("getPath: jq-style path access for Map<str, any>")
+fn getPathTests():
+  @describe("flat Map<str, any>")
+  fn flatTests():
+    @it("returns Some for existing top-level key (int)")
+    fn flatHitInt():
+      m: Map<str, any> = {"a": 1, "b": 2}
+      case m.getPath("a"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(1)
+        None: fail("expected Some")
+
+    @it("returns Some for existing top-level key (str)")
+    fn flatHitStr():
+      m: Map<str, any> = {"a": "hello"}
+      case m.getPath("a"):
+        Some(v):
+          s: str = v
+          expect(s).toEq("hello")
+        None: fail("expected Some")
+
+    @it("returns None for missing top-level key")
+    fn flatMiss():
+      m: Map<str, any> = {"a": 1}
+      expect(m.getPath("z")).toBeNone()
+
+    @it("returns None on empty Map")
+    fn flatEmpty():
+      m: Map<str, any> = {}
+      expect(m.getPath("a")).toBeNone()
+
+  @describe("nested Map<str, any>")
+  fn nestedTests():
+    @it("returns Some for 2-deep path")
+    fn nested2Hit():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      case cfg.getPath("server.host"):
+        Some(v):
+          s: str = v
+          expect(s).toEq("localhost")
+        None: fail("expected Some")
+
+    @it("returns Some for 3-deep path")
+    fn nested3Hit():
+      a3: Map<str, any> = {"c": 42}
+      a2: Map<str, any> = {"b": a3}
+      a1: Map<str, any> = {"a": a2}
+      case a1.getPath("a.b.c"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(42)
+        None: fail("expected Some")
+
+    @it("returns None when intermediate key missing")
+    fn nestedIntermediateMiss():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      expect(cfg.getPath("missing.host")).toBeNone()
+
+    @it("returns None when leaf key missing")
+    fn nestedLeafMiss():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      expect(cfg.getPath("server.port")).toBeNone()
+
+@describe("dot sugar: cfg.field on Map<str, any>")
+fn dotSugarTests():
+  @describe("single hop")
+  fn singleHop():
+    @it("returns Some(any) for existing top-level key")
+    fn topHit():
+      m: Map<str, any> = {"a": 42}
+      case m.a:
+        Some(v):
+          x: int = v
+          expect(x).toEq(42)
+        None: fail("expected Some")
+
+    @it("returns None for missing top-level key")
+    fn topMiss():
+      m: Map<str, any> = {"a": 42}
+      expect(m.z).toBeNone()
+
+  @describe("chained hops")
+  fn chainedHops():
+    @it("returns Some(any) for 2-deep dot chain")
+    fn chain2Hit():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      case cfg.server.host:
+        Some(v):
+          s: str = v
+          expect(s).toEq("localhost")
+        None: fail("expected Some")
+
+    @it("returns Some(any) for 3-deep dot chain")
+    fn chain3Hit():
+      a3: Map<str, any> = {"c": 99}
+      a2: Map<str, any> = {"b": a3}
+      a1: Map<str, any> = {"a": a2}
+      case a1.a.b.c:
+        Some(v):
+          x: int = v
+          expect(x).toEq(99)
+        None: fail("expected Some")
+
+    @it("returns None when intermediate key missing in chain")
+    fn chainIntermediateMiss():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      expect(cfg.missing.host).toBeNone()
+
+    @it("returns None when leaf key missing in chain")
+    fn chainLeafMiss():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      expect(cfg.server.port).toBeNone()
+
+@describe("setPath: jq-style nested Map<str, any> write")
+fn setPathTests():
+  @describe("single-segment leaf")
+  fn leafSingle():
+    @it("updates existing top-level key with int")
+    fn updateTopInt():
+      m: Map<str, any> = {"a": 1, "b": 2}
+      m.setPath("a", 99)
+      case m.getPath("a"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(99)
+        None: fail("expected Some")
+
+    @it("inserts new top-level key with str")
+    fn insertTopStr():
+      m: Map<str, any> = {"a": 1}
+      m.setPath("new", "value")
+      case m.getPath("new"):
+        Some(v):
+          s: str = v
+          expect(s).toEq("value")
+        None: fail("expected Some after insert")
+
+    @it("inserts new key on empty Map")
+    fn insertOnEmpty():
+      m: Map<str, any> = {}
+      m.setPath("k", 42)
+      case m.getPath("k"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(42)
+        None: fail("expected Some after insert on empty")
+
+  @describe("multi-segment nested write")
+  fn multiSegment():
+    @it("updates existing leaf in 2-deep path")
+    fn updateNested2():
+      inner: Map<str, any> = {"host": "old"}
+      cfg: Map<str, any> = {"server": inner}
+      cfg.setPath("server.host", "new")
+      case cfg.getPath("server.host"):
+        Some(v):
+          s: str = v
+          expect(s).toEq("new")
+        None: fail("expected Some after update")
+
+    @it("inserts new leaf in existing 2-deep path")
+    fn insertNested2():
+      inner: Map<str, any> = {"host": "localhost"}
+      cfg: Map<str, any> = {"server": inner}
+      cfg.setPath("server.port", 8080)
+      case cfg.getPath("server.port"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(8080)
+        None: fail("expected Some after insert")
+
+    @it("updates existing leaf in 3-deep path")
+    fn updateNested3():
+      a3: Map<str, any> = {"c": 1}
+      a2: Map<str, any> = {"b": a3}
+      a1: Map<str, any> = {"a": a2}
+      a1.setPath("a.b.c", 999)
+      case a1.getPath("a.b.c"):
+        Some(v):
+          x: int = v
+          expect(x).toEq(999)
+        None: fail("expected Some after update")
+
+@describe("end-to-end: json + getPath / setPath / dot sugar")
+fn endToEndTests():
+  @it("reads nested values from json.load[Map<str, any>]")
+  fn jsonLoadRead():
+    text = "{\"db\":{\"host\":\"localhost\",\"port\":5432}}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        case cfg.getPath("db.host"):
+          Some(v):
+            host: str = v
+            expect(host).toEq("localhost")
+          None: fail("getPath db.host returned None")
+        case cfg.getPath("db.port"):
+          Some(v):
+            port: int = v
+            expect(port).toEq(5432)
+          None: fail("getPath db.port returned None")
+      Err(e): fail("json.load failed")
+
+  @it("dot sugar reads same nested json structure")
+  fn jsonLoadDot():
+    text = "{\"a\":{\"b\":\"deep\"}}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        case cfg.a.b:
+          Some(v):
+            s: str = v
+            expect(s).toEq("deep")
+          None: fail("dot sugar returned None")
+      Err(e): fail("json.load failed")
+
+  @it("setPath updates value loaded from json")
+  fn jsonLoadWrite():
+    text = "{\"k\":\"old\"}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        cfg.setPath("k", "new")
+        case cfg.getPath("k"):
+          Some(v):
+            s: str = v
+            expect(s).toEq("new")
+          None: fail("getPath after setPath returned None")
+      Err(e): fail("json.load failed")
+
+@describe("getPath: List<any> int-index hop")
+fn listIndexTests():
+  @it("returns Some for first List element")
+  fn listHit0():
+    text = "{\"replicas\":[\"r1\",\"r2\",\"r3\"]}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        case cfg.getPath("replicas.0"):
+          Some(v):
+            s: str = v
+            expect(s).toEq("r1")
+          None: fail("expected Some")
+      Err(e): fail("json.load failed")
+
+  @it("returns Some for middle List element")
+  fn listHit1():
+    text = "{\"replicas\":[\"r1\",\"r2\",\"r3\"]}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        case cfg.getPath("replicas.1"):
+          Some(v):
+            s: str = v
+            expect(s).toEq("r2")
+          None: fail("expected Some")
+      Err(e): fail("json.load failed")
+
+  @it("returns None for out-of-range List index")
+  fn listOob():
+    text = "{\"replicas\":[\"r1\"]}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        expect(cfg.getPath("replicas.5")).toBeNone()
+      Err(e): fail("json.load failed")
+
+  @it("chains Map and List segments")
+  fn chainMapList():
+    text = "{\"db\":{\"hosts\":[\"localhost\",\"replica\"]}}"
+    case load[Map<str, any>](text):
+      Ok(cfg):
+        case cfg.getPath("db.hosts.0"):
+          Some(v):
+            s: str = v
+            expect(s).toEq("localhost")
+          None: fail("expected Some")
+      Err(e): fail("json.load failed")
+
+# headline `?`-operator form from the issue body. The `?` propagates
+# None out of the enclosing fn (which therefore must return Option<T>),
+# matching the use case `let host: str = cfg.server.host?`.
+fn lookupHost(cfg: Map<str, any>) -> Option<str>:
+  host: str = cfg.server.host?
+  return Some(host)
+
+fn lookupHostGetPath(cfg: Map<str, any>) -> Option<str>:
+  host: str = cfg.getPath("server.host")?
+  return Some(host)
+
+@describe("? operator unwrap for dot sugar and getPath")
+fn questionOpTests():
+  @it("dot sugar with ? returns Some when path resolves")
+  fn dotQuestionHit():
+    inner: Map<str, any> = {"host": "localhost"}
+    cfg: Map<str, any> = {"server": inner}
+    case lookupHost(cfg):
+      Some(v): expect(v).toEq("localhost")
+      None: fail("expected Some")
+
+  @it("dot sugar with ? returns None when path missing")
+  fn dotQuestionMiss():
+    cfg: Map<str, any> = {}
+    expect(lookupHost(cfg)).toBeNone()
+
+  @it("getPath with ? returns Some when path resolves")
+  fn getPathQuestionHit():
+    inner: Map<str, any> = {"host": "localhost"}
+    cfg: Map<str, any> = {"server": inner}
+    case lookupHostGetPath(cfg):
+      Some(v): expect(v).toEq("localhost")
+      None: fail("expected Some")
+
+  @it("getPath with ? returns None when path missing")
+  fn getPathQuestionMiss():
+    cfg: Map<str, any> = {}
+    expect(lookupHostGetPath(cfg)).toBeNone()
+

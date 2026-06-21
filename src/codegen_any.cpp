@@ -1976,6 +1976,164 @@ llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
     codegenError("operator '" + op + "' not supported for any type");
 }
 
+llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
+                                       llvm::Value *segmentStr,
+                                       std::optional<int64_t> intSegment,
+                                       bool tryMode,
+                                       const std::string &pathLabel,
+                                       const std::string &segmentText) {
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+    llvm::StructType *optAnyTy = tryMode ? getOptionType(anyTy_) : nullptr;
+
+    llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "pathstep.tag");
+    llvm::Value *isMap = builder_.CreateICmpEQ(
+        tag,
+        llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Map)),
+        "pathstep.is_map");
+    llvm::Value *isList = builder_.CreateICmpEQ(
+        tag,
+        llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::List)),
+        "pathstep.is_list");
+
+    auto *mapBB      = createBBInFn("pathstep.map", fn);
+    auto *listCheckBB= createBBInFn("pathstep.list_check", fn);
+    auto *listBB     = intSegment ? createBBInFn("pathstep.list", fn) : nullptr;
+    auto *mismatchBB = createBBInFn("pathstep.mismatch", fn);
+    auto *foundBB    = createBBInFn("pathstep.found", fn);
+    auto *missBB     = createBBInFn("pathstep.miss", fn);
+    auto *mergeBB    = tryMode ? createBBInFn("pathstep.merge", fn) : nullptr;
+    emitBranchCond(isMap, mapBB, listCheckBB);
+
+    // List tag check: when caller supplied an int form for the segment,
+    // route a List hop through int-index logic; otherwise mismatch.
+    builder_.SetInsertPoint(listCheckBB);
+    if (intSegment)
+        emitBranchCond(isList, listBB, mismatchBB);
+    else
+        emitBranchUncond(mismatchBB);
+
+    // Map arm.
+    builder_.SetInsertPoint(mapBB);
+    llvm::AllocaInst *anyTmp =
+        builder_.CreateAlloca(anyTy_, nullptr, "pathstep.any.tmp");
+    builder_.CreateStore(anyVal, anyTmp);
+    llvm::Value *anyDataSlot =
+        builder_.CreateStructGEP(anyTy_, anyTmp, 1, "pathstep.any.data.slot");
+    llvm::Value *mapPtr =
+        builder_.CreateLoad(ptrTy_, anyDataSlot, "pathstep.map.ptr");
+
+    llvm::Value *slot = emitHashTableLookup(
+        mapPtr, mapHeaderTy_, kMapLayout, segmentStr, ptrTy_);
+    llvm::Value *mapMiss = builder_.CreateICmpEQ(
+        slot, llvm::ConstantInt::getSigned(i64Ty_, -1), "pathstep.map.miss");
+    auto *mapHitBB = createBBInFn("pathstep.map_hit", fn);
+    emitBranchCond(mapMiss, missBB, mapHitBB);
+
+    builder_.SetInsertPoint(mapHitBB);
+    llvm::Value *valsField =
+        builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 3, "pathstep.vals.field");
+    llvm::Value *valsPtr =
+        builder_.CreateLoad(ptrTy_, valsField, "pathstep.vals.ptr");
+    llvm::Value *mapElemPtr =
+        builder_.CreateGEP(anyTy_, valsPtr, slot, "pathstep.map.elem.ptr");
+    llvm::Value *mapFoundAny =
+        builder_.CreateLoad(anyTy_, mapElemPtr, "pathstep.map.elem");
+    llvm::BasicBlock *mapFoundEndBB = builder_.GetInsertBlock();
+    emitBranchUncond(foundBB);
+
+    // List arm: bounds-check intSegment against header.len, GEP data[idx].
+    llvm::BasicBlock *listFoundEndBB = nullptr;
+    llvm::Value *listFoundAny = nullptr;
+    if (intSegment) {
+        builder_.SetInsertPoint(listBB);
+        llvm::AllocaInst *listAnyTmp =
+            builder_.CreateAlloca(anyTy_, nullptr, "pathstep.list.any.tmp");
+        builder_.CreateStore(anyVal, listAnyTmp);
+        llvm::Value *listAnyDataSlot =
+            builder_.CreateStructGEP(anyTy_, listAnyTmp, 1,
+                                      "pathstep.list.any.data.slot");
+        llvm::Value *listPtr =
+            builder_.CreateLoad(ptrTy_, listAnyDataSlot, "pathstep.list.ptr");
+
+        // List header: { len(0), cap(1), data(2) }. anyTy_ stride.
+        llvm::Value *lenField = builder_.CreateStructGEP(
+            listHeaderTy_, listPtr, 0, "pathstep.list.len.field");
+        llvm::Value *len = builder_.CreateLoad(
+            i64Ty_, lenField, "pathstep.list.len");
+        llvm::Value *idxVal = llvm::ConstantInt::getSigned(i64Ty_, *intSegment);
+        llvm::Value *wrapped = emitNegativeIndexWrap(idxVal, len, "pathstep.list");
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *neg = builder_.CreateICmpSLT(wrapped, zero, "pathstep.list.neg");
+        llvm::Value *over = builder_.CreateICmpSGE(wrapped, len, "pathstep.list.over");
+        llvm::Value *oob = builder_.CreateOr(neg, over, "pathstep.list.oob");
+        auto *listHitBB = createBBInFn("pathstep.list_hit", fn);
+        emitBranchCond(oob, missBB, listHitBB);
+
+        builder_.SetInsertPoint(listHitBB);
+        llvm::Value *dataField = builder_.CreateStructGEP(
+            listHeaderTy_, listPtr, 2, "pathstep.list.data.field");
+        llvm::Value *dataPtr = builder_.CreateLoad(
+            ptrTy_, dataField, "pathstep.list.data.ptr");
+        llvm::Value *listElemPtr = builder_.CreateGEP(
+            anyTy_, dataPtr, wrapped, "pathstep.list.elem.ptr");
+        listFoundAny = builder_.CreateLoad(
+            anyTy_, listElemPtr, "pathstep.list.elem");
+        listFoundEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(foundBB);
+    }
+
+    // Found arm: receives mapFoundAny or listFoundAny via PHI on anyTy_.
+    builder_.SetInsertPoint(foundBB);
+    llvm::PHINode *foundPhi = createPhi(anyTy_, {}, "pathstep.found.any");
+    foundPhi->addIncoming(mapFoundAny, mapFoundEndBB);
+    if (listFoundEndBB)
+        foundPhi->addIncoming(listFoundAny, listFoundEndBB);
+    llvm::Value *foundResult =
+        tryMode ? buildSomeValue(foundPhi, optAnyTy) : foundPhi;
+    llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
+    if (tryMode) emitBranchUncond(mergeBB);
+
+    // Miss arm: container hit but key/index absent.
+    builder_.SetInsertPoint(missBB);
+    llvm::Value *missResult = nullptr;
+    llvm::BasicBlock *missEndBB = nullptr;
+    if (tryMode) {
+        missResult = buildNoneValue(optAnyTy);
+        missEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(mergeBB);
+    } else {
+        std::string msg =
+            "path '" + pathLabel + "': segment '" + segmentText + "' not found";
+        emitRuntimeError(msg, "err.pathstep.miss");
+    }
+
+    // Mismatch arm: any tag is not a container the caller can index here.
+    builder_.SetInsertPoint(mismatchBB);
+    llvm::Value *mismatchResult = nullptr;
+    llvm::BasicBlock *mismatchEndBB = nullptr;
+    if (tryMode) {
+        mismatchResult = buildNoneValue(optAnyTy);
+        mismatchEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(mergeBB);
+    } else {
+        std::string msg = "path '" + pathLabel + "': segment '" + segmentText
+                          + "' applied to non-container any value";
+        emitRuntimeError(msg, "err.pathstep.mismatch");
+    }
+
+    if (!tryMode) {
+        builder_.SetInsertPoint(foundEndBB);
+        return foundResult;
+    }
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = createPhi(optAnyTy, {}, "pathstep.result");
+    phi->addIncoming(foundResult, foundEndBB);
+    phi->addIncoming(missResult, missEndBB);
+    phi->addIncoming(mismatchResult, mismatchEndBB);
+    return phi;
+}
+
 llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
     llvm::AllocaInst *opPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.op");
     builder_.CreateStore(operand, opPtr);

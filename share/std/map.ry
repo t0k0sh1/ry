@@ -30,3 +30,22 @@ fn merge(firstMap: Map<str, int>, secondMap: Map<str, int>) -> Map<str, int>
 @public
 @native
 fn remove(map: Map<str, int>, key: str) -> Unit
+
+# Nested-path access for Map<str, any> values produced by json.load
+# (issue #1701). Path is dot-separated str segments; missing intermediate
+# or leaf returns None. Numeric segments resolve to List<any> int indexes
+# when the intermediate any holds a List, or to str keys when it holds a
+# Map (runtime tag dispatch).
+@public
+@native
+fn getPath(map: Map<str, any>, path: str) -> Option<any>
+
+# Nested-path write for Map<str, any> (issue #1701). Walks dot-separated
+# str segments; each intermediate must be a Map<str, any> at runtime —
+# missing intermediates or non-Map intermediates raise a runtime error.
+# The leaf segment is inserted (if new) or updated (if existing).
+# Top-level receiver is COW-checked; intermediate Maps mutate in place,
+# so callers sharing references to a nested Map see the change.
+@public
+@native
+fn setPath(map: Map<str, any>, path: str, value: any) -> Unit
