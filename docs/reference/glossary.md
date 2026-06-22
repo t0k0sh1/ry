@@ -56,7 +56,9 @@ See [Module Reference — Visibility](modules.md#visibility) for the practical v
 
 ## ry namespace
 
-The **canonical reserved namespace** for the official standard library, introduced in v0.0.30 (#1769). All stdlib modules are addressable under the `ry.*` path: the implicit prelude is `ry.lang`, and each submodule lives under `ry.<module>` (e.g. `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`).
+The **canonical reserved namespace** for the official standard library, introduced in v0.0.30 (#1769). Documented public stdlib modules are addressable under the `ry.*` path: the implicit prelude is `ry.lang`, and each public submodule lives under `ry.<module>`.
+
+The full set of public modules accepted via `ry.*` is the 11 documented entries: `ry.lang`, `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`, `ry.regex`, `ry.testing`, `ry.base64`. Anything else under the `ry.*` prefix — including internal stdlib helpers such as `ry.builtins`, `ry.gc`, `ry.core`, `ry.runtime_internal`, and any module not on the documented list — is **rejected** with an error that lists the public modules. Bare modules that exist as compatibility aliases (e.g. `net`, `json5`) are not part of the `ry.*` surface and must be imported with their bare names.
 
 Two import shapes resolve through this namespace:
 
@@ -64,6 +66,8 @@ Two import shapes resolve through this namespace:
 from ry.math import sqrt, PI    # selective import
 import ry.math                  # qualified import; binds `math` (last segment)
 ```
+
+Bare `import ry` and `from ry import X` are **invalid** — `ry` is a reserved namespace with no top-level exports. The loader rejects both forms with an error advising `ry.<module>`.
 
 The legacy `from std import` / `from std.<mod> import` / flat `from <mod> import` spellings continue to work as **compatibility aliases**; they resolve through the same physical modules under `share/std/`.
 

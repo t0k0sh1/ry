@@ -177,3 +177,82 @@ TEST_F(RyNamespaceWarningTest, ShadowWarningDeduplicatedAcrossImports) {
     }
     EXPECT_EQ(count, 1u) << "expected exactly one warning, stderr was: " << r.err;
 }
+
+// #2297 — bare `import ry` / `from ry import X` も予約 namespace の対象。
+// shadow 警告は出すが、bare 形式は ry.<module> を要求する rejection で失敗させる。
+// 警告と rejection の双方が "reserved" を含むため、テストは distinct fragment で
+// 区別する: 警告 → "is ignored" / rejection → "use 'ry.<module>'".
+
+TEST_F(RyNamespaceWarningTest, BareImportRyEmitsWarningAndRejects) {
+    // local `ry/` shadow + bare `import ry` → shadow 警告 + bare reject を両方出す。
+    fs::create_directories(tmpDir_ / "ry");
+
+    auto p = writeScript("bare_import_ry.ry", "import ry\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "bare 'import ry' must reject, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("is ignored"), std::string::npos)
+        << "stderr should contain shadow warning ('is ignored'): " << r.err;
+    EXPECT_NE(r.err.find("use 'ry.<module>'"), std::string::npos)
+        << "stderr should contain rejection hint ('use 'ry.<module>''): " << r.err;
+}
+
+TEST_F(RyNamespaceWarningTest, BareFromRyImportEmitsWarningAndRejects) {
+    // local `ry/helper.ry` shadow + `from ry import helper` → bare 形式の reject。
+    fs::create_directories(tmpDir_ / "ry");
+    std::ofstream(tmpDir_ / "ry" / "helper.ry")
+        << "@public\nfn helper() -> int:\n    return 42\n";
+
+    auto p = writeScript("bare_from_ry.ry", "from ry import helper\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "bare 'from ry import' must reject, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("is ignored"), std::string::npos)
+        << "stderr should contain shadow warning ('is ignored'): " << r.err;
+    EXPECT_NE(r.err.find("use 'ry.<module>'"), std::string::npos)
+        << "stderr should contain rejection hint ('use 'ry.<module>''): " << r.err;
+}
+
+TEST_F(RyNamespaceWarningTest, BareImportRyWithoutShadowRejects) {
+    // shadow なしでも bare `import ry` は reject。警告は出ない。
+    auto p = writeScript("bare_no_shadow.ry", "import ry\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "bare 'import ry' must reject, stderr was: " << r.err;
+    EXPECT_EQ(r.err.find("is ignored"), std::string::npos)
+        << "no shadow → no 'is ignored' warning, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("use 'ry.<module>'"), std::string::npos)
+        << "stderr should contain rejection hint ('use 'ry.<module>''): " << r.err;
+}
+
+TEST_F(RyNamespaceWarningTest, InternalStdlibModuleRejectedWithHint) {
+    // `from ry.builtins import print` のような internal stdlib module は許可リスト外
+    // として reject される。bare `from builtins import print` は影響を受けない (今回の
+    // 対象外なのでテストもしない)。
+    auto p = writeScript("internal_module.ry",
+        "from ry.builtins import print\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "internal 'ry.builtins' must reject, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("'ry.builtins' is not a public stdlib module"),
+              std::string::npos)
+        << "error should name the module + 'not a public stdlib module': " << r.err;
+    EXPECT_NE(r.err.find("ry.lang"), std::string::npos)
+        << "error should list 'ry.lang' in available modules: " << r.err;
+    EXPECT_NE(r.err.find("ry.math"), std::string::npos)
+        << "error should list 'ry.math' in available modules: " << r.err;
+}
+
+TEST_F(RyNamespaceWarningTest, BogusRyModuleErrorUsesDotSpelling) {
+    // ユーザが書いた dot spelling (`ry.bogus`) で reject されるべき。loader 内部の
+    // slash 表現 (`ry/bogus`) が user-facing error にリークしてはいけない。
+    auto p = writeScript("bogus_ry.ry",
+        "from ry.bogus import x\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "'ry.bogus' must reject, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("'ry.bogus'"), std::string::npos)
+        << "error should mention 'ry.bogus' (dot spelling): " << r.err;
+    EXPECT_EQ(r.err.find("ry/bogus"), std::string::npos)
+        << "error must NOT use slash spelling 'ry/bogus': " << r.err;
+}

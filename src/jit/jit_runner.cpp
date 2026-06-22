@@ -175,12 +175,20 @@ int runRySource(const std::string &src, const std::string &source_name,
         // stdlib not installed — continue without it
     }
 
-    // Resolve remaining imports
+    // Resolve remaining imports. #2297: warnings accumulated up to a throw
+    // (e.g. a `ry/` shadow probe that fires immediately before a bare `import
+    // ry` rejection) must reach stderr too — flush them in every catch arm
+    // before rethrowing so "warn + reject" does not silently degrade to "reject".
+    auto flushWarnings = [&loader] {
+        for (const auto &w : loader.loaderWarnings()) errs() << w << "\n";
+    };
     try {
         prog = loader.resolveImports(prog, referrer_dir);
     } catch (const DiagnosticError &) {
+        flushWarnings();
         throw;
     } catch (const std::exception &e) {
+        flushWarnings();
         ry::emitTraceEvent("import.resolve.error", "compile", &sourceLoc,
                            {ry::TraceField("file", source_name),
                             ry::TraceField("detail", e.what())});
@@ -189,9 +197,7 @@ int runRySource(const std::string &src, const std::string &source_name,
 
     // #1769: surface loader-level warnings (reserved-namespace shadowing, ...)
     // alongside codegen warnings. The loader dedupes; surface as-is.
-    for (const auto &w : loader.loaderWarnings()) {
-        errs() << w << "\n";
-    }
+    flushWarnings();
 
     // CodeGen -> ThreadSafeModule
     //

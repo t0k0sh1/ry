@@ -6,11 +6,13 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/trace/trace.hpp"
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 
 namespace ry {
@@ -19,6 +21,58 @@ namespace fs = std::filesystem;
 using ry::TraceField;
 using ry::emitTraceDiagnostic;
 using ry::emitTraceEvent;
+
+// #2297: 公開 stdlib モジュール許可リスト。#1769 で `ry.*` の public surface
+// として列挙された 11 モジュールのみ受理し、それ以外は internal とみなして
+// reject する。`StdlibRegistry` は codegen dispatch table で「dispatcher を持つ
+// package」を列挙するもので意図が異なるため、ここで独立に policy を維持する
+// (例: `runtime_internal` は dispatch を持つが internal、逆に `lang` / `regex` /
+// `filesystem` / `testing` は dispatcher を持たないが public)。
+static constexpr std::array<std::string_view, 11> kPublicRyModules = {
+    "lang", "math", "io", "path", "filesystem", "json",
+    "http", "thread", "regex", "testing", "base64",
+};
+
+static bool isPublicRyModule(std::string_view first_segment) {
+    return std::find(kPublicRyModules.begin(), kPublicRyModules.end(),
+                     first_segment) != kPublicRyModules.end();
+}
+
+// #2297: allowlist エラー文の "available: ..." リストを `kPublicRyModules` から
+// 一度だけ組み立てる。文字列をハードコードすると set/array との drift を招くため。
+static const std::string &publicRyModulesListForError() {
+    static const std::string kList = [] {
+        std::string s;
+        bool first = true;
+        for (auto m : kPublicRyModules) {
+            if (!first) s += ", ";
+            s += "ry.";
+            s += m;
+            first = false;
+        }
+        return s;
+    }();
+    return kList;
+}
+
+// #2297: `ry/foo/bar` を user-facing `ry.foo.bar` に変換する。loader は内部
+// 表現としてスラッシュ区切りを使うが、エラーメッセージはユーザーが書いた
+// dot 表記に揃える。
+static std::string toRyDotForm(const std::string &slash_path) {
+    std::string result = slash_path;
+    std::replace(result.begin(), result.end(), '/', '.');
+    return result;
+}
+
+// #2297: user-facing パス表記の正規化。`ry/*` (予約 namespace) はドット形式に
+// 変換し、それ以外 (legacy bare `math` / 相対 `./submod` / 通常パッケージ) は
+// loader 内部表現と一致させたまま返す。エラーメッセージで `module_path` を
+// 直接埋め込んでいる箇所をこのヘルパーに通すことで、ユーザーが書いたスペリ
+// ングに揃った診断を出す。
+static std::string toUserFacingPath(const std::string &module_path) {
+    return ModuleLoader::isRyPath(module_path) ? toRyDotForm(module_path)
+                                                : module_path;
+}
 
 // Check if a statement is an exportable definition
 static bool isExportable(const StmtNode &stmt) {
@@ -224,7 +278,7 @@ static void rejectUnsupportedAlias(ExportableKind kind,
     detail += " '";
     detail += name;
     detail += "' from module '";
-    detail += import_path;
+    detail += toUserFacingPath(import_path);
     detail += "': mutable globals and directives cannot be re-bound via 'as'";
     throw std::runtime_error(makeImportError(line, detail));
 }
@@ -308,7 +362,7 @@ static void extractDefinitions(Program &source, Program &dest,
                     std::string detail = "alias not supported for testing intrinsic '";
                     detail += name;
                     detail += "' from module '";
-                    detail += import_path;
+                    detail += toUserFacingPath(import_path);
                     detail += "': intrinsics cannot be re-bound (tracked in #1725)";
                     throw std::runtime_error(makeImportError(line, detail));
                 }
@@ -337,7 +391,7 @@ static void extractDefinitions(Program &source, Program &dest,
             std::string detail = "'";
             detail += name;
             detail += "' not found in module '";
-            detail += import_path;
+            detail += toUserFacingPath(import_path);
             detail += "'";
             throw std::runtime_error(makeImportError(line, detail));
         }
@@ -345,7 +399,7 @@ static void extractDefinitions(Program &source, Program &dest,
             std::string detail = "cannot import '";
             detail += name;
             detail += "' from module '";
-            detail += import_path;
+            detail += toUserFacingPath(import_path);
             detail += "': symbol is not @public";
             throw std::runtime_error(makeImportError(line, detail));
         }
@@ -372,8 +426,13 @@ ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
 }
 
 bool ModuleLoader::isRyPath(const std::string &module_path) {
-    return module_path.size() >= 3 && module_path[0] == 'r' &&
-           module_path[1] == 'y' && module_path[2] == '/';
+    // #2297: bare "ry" (length 2) is also a reserved-namespace reference.
+    // The original predicate required `[2] == '/'` and silently let bare
+    // forms (`import ry`, `from ry import X`) fall through to user-path
+    // search, bypassing the namespace guard entirely.
+    return module_path == "ry" ||
+           (module_path.size() >= 3 && module_path[0] == 'r' &&
+            module_path[1] == 'y' && module_path[2] == '/');
 }
 
 std::string ModuleLoader::canonicalStdlibName(const std::string &module_path) {
@@ -382,6 +441,10 @@ std::string ModuleLoader::canonicalStdlibName(const std::string &module_path) {
     // compatible with the existing `from math import` / `from testing import`
     // resolution paths.
     if (!isRyPath(module_path)) return module_path;
+    // #2297: bare "ry" is rejected by `resolve()` before reaching here, but
+    // guard substr(3) defensively — gating predicates call this from
+    // outside the resolve flow and `"ry".substr(3)` would throw out_of_range.
+    if (module_path == "ry") return "";
     std::string tail = module_path.substr(3);
     if (tail == "lang") return "std";  // ry.lang -> the prelude directory
     return tail;                       // ry.<sub> -> <sub>
@@ -483,6 +546,9 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
     // is cached per-referrer so a file with many `ry.*` imports does not
     // re-stat the same directory.
     if (isRyPath(module_path)) {
+        // Shadow probe: bare "ry" 形式でも発火させる (#2297) — 一貫した警告で
+        // ユーザーに将来の予約衝突を知らせる。bare reject よりも前に push する
+        // ことで、jit_runner の catch flush 経由で stderr に出る。
         if (!referrer_dir.empty() &&
             probed_ry_shadow_dirs_.insert(referrer_dir).second) {
             std::error_code shadow_ec;
@@ -495,6 +561,35 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
                     "the local 'ry' module in '" + referrer_dir +
                     "' is ignored and will become an error in a future release");
             }
+        }
+
+        // #2297: bare `import ry` / `from ry import X` は無効 — `ry` は予約
+        // namespace で top-level export を持たないため、`ry.<module>` 形式を
+        // 要求する rejection で失敗させる。
+        if (module_path == "ry") {
+            if (ry::traceEnabled())
+                emitTraceEvent("import.resolve.error", "compile", &loc,
+                               {TraceField("module_path", module_path),
+                                TraceField("detail", "bare 'ry' rejected")});
+            throw std::runtime_error(
+                "'ry' is the reserved stdlib namespace; "
+                "use 'ry.<module>' (e.g. 'ry.lang', 'ry.math')");
+        }
+
+        // #2297: stdlib allowlist — `ry/` 接頭辞の直後の第一セグメントが #1769
+        // 列挙の 11 module のいずれでなければ reject。`ry.builtins` / `ry.gc` /
+        // `ry.core` 等の internal module を user-facing でアクセス不能にする。
+        const auto sep = module_path.find('/', 3);
+        const std::string first_segment = module_path.substr(
+            3, sep == std::string::npos ? std::string::npos : sep - 3);
+        if (!isPublicRyModule(first_segment)) {
+            if (ry::traceEnabled())
+                emitTraceEvent("import.resolve.error", "compile", &loc,
+                               {TraceField("module_path", module_path),
+                                TraceField("detail", "internal stdlib module rejected")});
+            throw std::runtime_error(
+                "'ry." + first_segment + "' is not a public stdlib module; "
+                "available: " + publicRyModulesListForError());
         }
 
         const std::string remapped = canonicalStdlibName(module_path);
@@ -513,7 +608,8 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
             emitTraceEvent("import.resolve.error", "compile", &loc,
                            {TraceField("module_path", module_path),
                             TraceField("detail", "module not found")});
-        throw std::runtime_error("module not found: " + module_path);
+        // #2297: ry/* の "module not found" はユーザーが書いた dot 表記で返す。
+        throw std::runtime_error("module not found: " + toRyDotForm(module_path));
     }
 
     // Relative import: "." or "./submod" — resolve only against referrer_dir
@@ -917,7 +1013,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                 std::string detail = "alias not supported for testing intrinsic '";
                                 detail += name;
                                 detail += "' from module '";
-                                detail += imp.module_path;
+                                detail += toUserFacingPath(imp.module_path);
                                 detail += "': intrinsics cannot be re-bound (tracked in #1725)";
                                 throw std::runtime_error(makeImportError(imp.loc.line, detail));
                             }
@@ -946,7 +1042,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                         std::string detail = "'";
                         detail += name;
                         detail += "' not found in module '";
-                        detail += imp.module_path;
+                        detail += toUserFacingPath(imp.module_path);
                         detail += "'";
                         throw std::runtime_error(makeImportError(imp.loc.line, detail));
                     }
@@ -954,7 +1050,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                         std::string detail = "cannot import '";
                         detail += name;
                         detail += "' from module '";
-                        detail += imp.module_path;
+                        detail += toUserFacingPath(imp.module_path);
                         detail += "': symbol is not @public";
                         throw std::runtime_error(makeImportError(imp.loc.line, detail));
                     }
