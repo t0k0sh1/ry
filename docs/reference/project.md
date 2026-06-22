@@ -9,6 +9,7 @@ ry init                             # Initialize a project
 ry new <project-name>               # Create a new project
 ry run [<name>|<file.ry>|-- [args]] # Run a project script or Ry source file
 ry fmt [options] [<file> | <dir>]   # Format source files
+ry docs [options]                   # Generate static HTML API documentation
 ry self-update [options]            # Update ry itself
 ```
 
@@ -236,6 +237,95 @@ To bypass the failure caused by a missing signature file (not recommended), set 
 - Requires `curl` and `tar` commands
 - If replacing the binary fails due to insufficient permissions, a message suggesting `sudo` is displayed (sudo is not invoked automatically)
 - Downloads are performed to a temporary directory first; however, if the cross-filesystem `cp` fallback is interrupted, the destination binary may be left in a partial state
+
+---
+
+## `ry docs` - Static HTML API Documentation Generator
+
+Generates static HTML and a machine-readable JSON manifest from `@doc` directives attached to declarations under `[paths].src`. The output is written to `docs/api/` by default and can be served from any static host (including GitHub Pages publishing from `/docs`).
+
+```bash
+ry docs                          # Generate HTML + docs.json into docs/api/
+ry docs --out web/api            # Write to a custom directory
+ry docs --include-private        # Include declarations without @public
+ry docs --clean                  # Remove files listed in .ry-docs-manifest
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--out <path>` | Output directory (default: `docs/api`). Relative paths are resolved against the project root. |
+| `--format <fmt>` | Output format. Only `html` is accepted in this version; any other value exits non-zero. |
+| `--emit-json` | Accepted for forward compatibility. `docs.json` is always written alongside the HTML. |
+| `--include-private` | Include declarations that do not carry `@public`. By default only `@public` declarations are documented. |
+| `--clean` | Delete files listed in `.ry-docs-manifest` under the output directory. Refuses to run when the manifest is missing. |
+
+### Output Layout
+
+```
+docs/api/
+├── index.html             # module index page
+├── modules/
+│   └── <module>.html      # one page per source file
+├── docs.json              # machine-readable manifest
+└── .ry-docs-manifest      # generated-file list for safe regeneration / --clean
+```
+
+Module names are derived from the source file path relative to `[paths].src`, with `/` replaced by `.` (for example `src/foo/bar.ry` becomes module `foo.bar`).
+
+### `docs.json`
+
+```json
+{
+  "ry_version": "0.0.30",
+  "modules": [
+    {
+      "name": "main",
+      "path": "src/main.ry",
+      "symbols": [
+        {
+          "kind": "fn",
+          "name": "greet",
+          "signature": "fn greet() -> str",
+          "doc": "Greets the world.",
+          "is_public": true,
+          "source": "src/main.ry:6"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`kind` is one of `fn`, `record`, `enum`, `typeAlias`, or `const`. `path` and `source` are project-relative.
+
+### Safety
+
+`ry docs` never overwrites hand-written files. Before writing each output file, the generator checks whether the destination already exists and is recorded in the on-disk `.ry-docs-manifest`. Untracked files trigger a refusal:
+
+```
+Error: refusing to overwrite untracked file '<path>' — was it hand-written? Use --out to pick a different directory.
+```
+
+`--clean` mirrors this guarantee in the opposite direction: it removes only the entries listed in the manifest (and empty parent directories left behind), so hand-edited files placed next to generated output are preserved. Running `--clean` without a manifest is an error.
+
+Regenerating after a source file is removed also purges the old per-module page: any tracked file not in the new generation plan is deleted.
+
+### Determinism
+
+Output is deterministic across runs given the same source tree:
+
+- Modules are listed in alphabetical order.
+- Symbols within a module are sorted by `(line number, name)`.
+- All paths in `docs.json` and HTML are project-relative.
+- No timestamps are written into any file.
+
+`ry docs --out a && ry docs --out b && diff -r a b` produces no output for a stable source tree.
+
+### Markdown in `@doc`
+
+`@doc` Markdown payloads are emitted as escaped text in the current version. Block-string payloads (`"""..."""`) preserve line breaks via `<pre>`, single-line payloads (`"..."`) render inside `<p>`. The compiler does not interpret Markdown beyond HTML escaping; richer rendering may be added in a later version without changing CLI behavior.
 
 ---
 

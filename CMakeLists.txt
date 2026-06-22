@@ -155,6 +155,7 @@ add_library(ry_lib STATIC
     src/runtime/core/sort.cpp
     src/project/project_config.cpp
     src/cli/self_update.cpp
+    src/cli/docs.cpp
     src/args_runtime.cpp
     src/project/paths.cpp
     src/runtime/core/parallel.cpp
@@ -489,6 +490,7 @@ add_executable(ry_tests
     tests/test_cmd_run_file_exec.cpp
     tests/test_legacy_invocation_rejected.cpp
     tests/test_help.cpp
+    tests/test_cmd_docs.cpp
     tests/test_parallel_cli.cpp
     tests/test_regression_2246_str_metadata_gate.cpp
     tests/test_regression_2248_positive_str_predicate.cpp
