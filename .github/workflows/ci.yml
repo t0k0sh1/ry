@@ -194,14 +194,19 @@ jobs:
         run: ./build/ry test
       - name: Test (export-run-logs JSONL schema, #2300)
         # `jq` is not in `ry-ci:llvm-21` (gcc:14-trixie base); install a
-        # prebuilt binary inline using the same wget-from-github pattern as
-        # docker/ci.Dockerfile uses for cmake/ninja. Long-term: bake `jq` into
-        # the image and drop this step's install lines.
+        # prebuilt binary inline, verified against the project's published
+        # sha256sum.txt (https://github.com/jqlang/jq/tree/master/sig) so an
+        # upstream compromise or MITM cannot poison this step. Long-term: bake
+        # `jq` into the image and drop these install lines.
         run: |
           JQ_VERSION=1.7.1
-          wget -qO /usr/local/bin/jq \
-            "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
-          chmod +x /usr/local/bin/jq
+          (
+            cd /tmp
+            wget -q "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
+            wget -q "https://raw.githubusercontent.com/jqlang/jq/master/sig/v${JQ_VERSION}/sha256sum.txt"
+            grep 'jq-linux-amd64$' sha256sum.txt | sha256sum -c -
+            install -m 0755 jq-linux-amd64 /usr/local/bin/jq
+          )
           bash tests/scripts/test-export-run-logs.sh
       - name: Bundle distribution (Linux)
         # Exercise the #2005 packaging path on every PR/push: release.yml is
