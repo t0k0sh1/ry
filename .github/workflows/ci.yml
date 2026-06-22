@@ -192,6 +192,17 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test
+      - name: Test (export-run-logs JSONL schema, #2300)
+        # `jq` is not in `ry-ci:llvm-21` (gcc:14-trixie base); install a
+        # prebuilt binary inline using the same wget-from-github pattern as
+        # docker/ci.Dockerfile uses for cmake/ninja. Long-term: bake `jq` into
+        # the image and drop this step's install lines.
+        run: |
+          JQ_VERSION=1.7.1
+          wget -qO /usr/local/bin/jq \
+            "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
+          chmod +x /usr/local/bin/jq
+          bash tests/scripts/test-export-run-logs.sh
       - name: Bundle distribution (Linux)
         # Exercise the #2005 packaging path on every PR/push: release.yml is
         # tag-driven and cannot be dry-run, so the bundling + rpath rewrite is
