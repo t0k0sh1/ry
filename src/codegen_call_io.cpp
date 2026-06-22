@@ -368,20 +368,68 @@ static const CodeGen::NativeDispatchEntry io_table[] = {
      nullptr, "__ry_str_to_bytes", nullptr, CodeGen::ListElemMeta::I8},
 };
 
+// Sig-presence gate for dispatchIO. Mirrors isJsonImported/isJson5Imported
+// (codegen-stdlib-dispatcher.md #1855) with two complementary checks:
+//
+// 1. Prefix scan over native_fn_sigs_ keys for "io::*" — the canonical form
+//    populated by `from io import ...` (ModuleLoader path) and user code
+//    declaring `@native("io") fn <name>(...)`.
+// 2. Bare-name presence check for known io fn names — the C++ test harness
+//    pattern: `runSource()` skips ModuleLoader, so inline test sources
+//    declare `@native fn writeText(...)` (no library tag) which registers
+//    under the bare key "writeText" (no "::" prefix). Without this branch
+//    the gate misses all such tests (#2299 follow-up).
+//
+// The bare-name list mirrors share/std/io/io.ry's @public @native
+// declarations and must be updated when io's surface changes. Drift risk
+// is the same maintenance discipline that #1855 already documents for
+// isJsonImported / isJson5Imported.
+static bool isIoImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    for (const auto &kv : sigs) {
+        if (kv.first.rfind("io::", 0) == 0)  // C++17 prefix-check idiom
+            return true;
+    }
+    static constexpr const char *io_known_names[] = {
+        "readLine", "readAll", "readText", "writeText", "appendText",
+        "exists", "deleteFile", "readBytes", "writeBytes",
+        "toBytes", "bytesToStr", "open", "close", "lines",
+    };
+    for (const char *name : io_known_names) {
+        if (sigs.count(name)) return true;
+    }
+    return false;
+}
+
 RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
-    // Register libry_io.dylib for JIT loading. The custom emitters and
-    // inline paths below (open / readAll(File) / readLine(File) / lines /
-    // writeText File and str/str overloads) bypass emitTableDrivenNativeCall
-    // and therefore miss the sig.library-driven insert.
-    cg.used_native_libraries_.insert("io");
+    // Gate: skip when io isn't in the program's import set, so a sibling
+    // dispatcher fall-through (e.g. base64-only program reaching dispatchIO
+    // through the StdlibRegistry loop) returns nullptr without side effects
+    // (#2299 close criterion 2).
+    if (!isIoImported(cg))
+        return nullptr;
+
+    // Per-emit insert: register libry_io.dylib only when an io dispatch
+    // actually succeeds (non-null return). The gate above passes for ANY
+    // io import; a program that imports io but never calls an io fn would
+    // otherwise pollute required_libraries when dispatchIO is reached for
+    // a non-io callee (PR #2332 CodeRabbit review). Per-emit insert covers
+    // custom-emitter paths (open / readAll(File) / readLine(File) / lines /
+    // writeText File and str/str overloads) that bypass emitTableDrivenNativeCall;
+    // table-driven fallthrough's own self-insert is idempotent
+    // (codegen-stdlib-dispatcher.md #1856).
+    auto markIo = [&](llvm::Value *v) -> llvm::Value * {
+        if (v) cg.used_native_libraries_.insert("io");
+        return v;
+    };
 
     const auto &n = e.callee;
     const auto sz = e.args.size();
 
     // open(path, mode) — new name, always File
     if (n == "open" && sz == 2)
-        return emitFileOpen(cg, e);
+        return markIo(emitFileOpen(cg, e));
 
     // readAll(f: File) — 1-arg (0-arg stdin handled by table)
     if (n == "readAll" && sz == 1) {
@@ -389,12 +437,12 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         if (!cg.isFile(arg0))
             cg.codegenError("readAll(f): argument must be a File handle; "
                             "use readAll() with no arguments to read from stdin");
-        return emitFileReadAll(cg, e, arg0);
+        return markIo(emitFileReadAll(cg, e, arg0));
     }
 
     // readLine() — 0-arg stdin reader, returns Result<Option<str>, Error>
     if (n == "readLine" && sz == 0)
-        return emitStdinReadLine(cg, e);
+        return markIo(emitStdinReadLine(cg, e));
 
     // readLine(f: File) — 1-arg
     if (n == "readLine" && sz == 1) {
@@ -402,7 +450,7 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         if (!cg.isFile(arg0))
             cg.codegenError("readLine(f): argument must be a File handle; "
                             "use readLine() with no arguments to read from stdin");
-        return emitFileReadLine(cg, e, arg0);
+        return markIo(emitFileReadLine(cg, e, arg0));
     }
 
     // lines(f: File) -> Iterator<str>
@@ -410,24 +458,24 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (!cg.isFile(arg0))
             cg.codegenError("lines(f): argument must be a File handle");
-        return emitFileLines(cg, e, arg0, rk_file);
+        return markIo(emitFileLines(cg, e, arg0, rk_file));
     }
 
     // writeText — 2-arg: check if arg0 is File or str
     if (n == "writeText" && sz == 2) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (cg.isFile(arg0))
-            return emitFileWriteText(cg, e, arg0);
+            return markIo(emitFileWriteText(cg, e, arg0));
         // Non-File: inline str-based writeText (arg0 already emitted)
         llvm::Value *content = cg.emitExpr(*e.args[1]);
         if (!cg.isStrLike(arg0) || !cg.isStrLike(content))
             cg.codegenError("writeText(path, content) requires str arguments");
         auto fn = cg.getRuntimeFn("__ry_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
-        return cg.wrapStatusAsResult(status);
+        return markIo(cg.wrapStatusAsResult(status));
     }
 
-    return cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table));
+    return markIo(cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table)));
 }
 
 // ===== Shared helper: ptr → Result<T, Error> with static error message =====
