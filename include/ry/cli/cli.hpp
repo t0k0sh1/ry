@@ -23,6 +23,7 @@ void printNewHelp();
 void printFmtHelp();
 void printRunHelp();
 void printSelfUpdateHelp();
+void printDocsHelp();
 
 // Parse --env= flag or RY_ENV env var. Returns true if skip_global_lib should be set.
 bool parseRyEnv(int &argc, char **&argv);

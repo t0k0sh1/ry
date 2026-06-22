@@ -1,4 +1,5 @@
 #include "ry/cli/cli.hpp"
+#include "ry/cli/docs.hpp"
 #include "ry/jit/jit_runner.hpp"
 #include "ry/jit/test_runner.hpp"
 #include "ry/project/project_config.hpp"
@@ -91,6 +92,7 @@ int main(int argc, char *argv[]) {
                 if (std::strcmp(argv[1], "fmt") == 0) { ry::cli::printFmtHelp(); return 0; }
                 if (std::strcmp(argv[1], "run") == 0) { ry::cli::printRunHelp(); return 0; }
                 if (std::strcmp(argv[1], "self-update") == 0) { ry::cli::printSelfUpdateHelp(); return 0; }
+                if (std::strcmp(argv[1], "docs") == 0) { ry::cli::printDocsHelp(); return 0; }
             }
         } else {
             // Main help: ry -h, ry --help, ry --env=internal -h, etc.
@@ -118,6 +120,9 @@ int main(int argc, char *argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "fmt") == 0) {
         return cmd_fmt(argc - 2, argv + 2);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "docs") == 0) {
+        return cmd_docs(argc - 2, argv + 2);
     }
     if (argc >= 2 && std::strcmp(argv[1], "run") == 0) {
         return finalizeAfterPossibleJit(

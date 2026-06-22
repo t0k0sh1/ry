@@ -142,6 +142,7 @@ ry init                               # Initialize a project in current director
 ry new <name>                         # Create a new project
 ry run [<name>|<file.ry>|-- [args]]   # Run a project script, Ry file, or entry point
 ry fmt [options] [path]               # Format source files
+ry docs [options]                     # Generate static HTML API documentation
 ry self-update                        # Update ry itself
 ```
 

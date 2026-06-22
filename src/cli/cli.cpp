@@ -25,7 +25,7 @@ bool hasHelpFlag(int argc, char *argv[], int start) {
 
 bool isKnownSubcommand(const char *arg) {
     static const char *known[] = {
-        "test", "init", "new", "fmt", "self-update", "run", nullptr
+        "test", "init", "new", "fmt", "self-update", "run", "docs", nullptr
     };
     for (const char **p = known; *p; ++p)
         if (std::strcmp(arg, *p) == 0) return true;
@@ -132,6 +132,7 @@ void printMainHelp() {
     llvm::outs() << "  ry run [<name> | <file.ry>] [args...] Run a project script or Ry file\n";
     llvm::outs() << "  ry fmt [options] [<file> | <dir>]    Format source files\n";
     llvm::outs() << "  ry self-update [options]              Update ry itself\n";
+    llvm::outs() << "  ry docs [options]                    Generate static HTML API documentation\n";
     llvm::outs() << "\n";
     llvm::outs() << "Options:\n";
     llvm::outs() << "  -c               Read and execute code from stdin\n";
@@ -197,6 +198,20 @@ void printSelfUpdateHelp() {
     llvm::outs() << "  (no args)    Update to latest stable release\n";
     llvm::outs() << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
     llvm::outs() << "  -h, --help   Show this help\n";
+}
+
+void printDocsHelp() {
+    llvm::outs() << "Usage: ry docs [options]\n\n";
+    llvm::outs() << "Generate static HTML documentation for the current project.\n";
+    llvm::outs() << "Reads @doc directives from .ry files under [paths].src and writes\n";
+    llvm::outs() << "HTML pages plus a docs.json manifest into the output directory.\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  --out <path>        Output directory (default: docs/api)\n";
+    llvm::outs() << "  --format <fmt>      Output format; only 'html' is supported\n";
+    llvm::outs() << "  --emit-json         Emit docs.json (also emitted by default)\n";
+    llvm::outs() << "  --include-private   Include declarations without @public\n";
+    llvm::outs() << "  --clean             Delete files listed in .ry-docs-manifest\n";
+    llvm::outs() << "  -h, --help          Show this help\n";
 }
 
 static void applyRyEnv(const char *value, bool &skip_global_lib) {
