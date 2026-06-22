@@ -142,6 +142,7 @@ Issue creation:
 - tree-sitter edits: `editor/tree-sitter/README.md` and `.claude/rules/tree-sitter-grammar-editing.md`; rebuild `ry.so`.
 - CI image changes: `/ci-image-workflow`.
 - Fuzzer harness changes: `/libfuzzer-harness`.
+- Test classification (contract / internal / regression): `docs/reference/test-taxonomy.md`.
 
 ## Completion
 

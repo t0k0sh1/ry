@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include <gtest/gtest.h>
 #include "ry/parser/parser.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
@@ -276,7 +280,7 @@ TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
     EXPECT_EQ(s.type_annotation->toString(),"Point");
 }
 
-// ===== type パーサーテスト =====
+// ===== [contract] type パーサーテスト =====
 
 TEST(ParserTest, TypeDefinition) {
     Program prog = parseStr("record Point:\n    x: int\n    y: int");
@@ -421,7 +425,7 @@ TEST(ParserTest, TypeAnnotationWithoutValue) {
     EXPECT_EQ(s.type_annotation->toString(),"int");
 }
 
-// ===== if / when パーサーテスト =====
+// ===== [contract] if / when パーサーテスト =====
 
 TEST(ParserTest, IfSimple) {
     Program prog = parseStr("if true:\n    print(1)");
@@ -645,7 +649,7 @@ TEST(ParserTest, IfEmptyBlockThrows) {
     EXPECT_THROW(parseStr("if true:\nprint(1)"), std::runtime_error);
 }
 
-// ===== while パーサーテスト =====
+// ===== [contract] while パーサーテスト =====
 
 TEST(ParserTest, WhileSimple) {
     Program prog = parseStr("while true:\n    print(1)");
@@ -669,7 +673,7 @@ TEST(ParserTest, WhileMissingColonThrows) {
     EXPECT_THROW(parseStr("while true\n    print(1)"), std::runtime_error);
 }
 
-// ===== using statement (#1817) =====
+// ===== [contract] using statement (#1817) =====
 
 TEST(ParserTest, UsingSimple) {
     Program prog = parseStr("using f = open(p, \"r\"):\n    readAll(f)");
@@ -698,7 +702,7 @@ TEST(ParserTest, UsingMissingColonThrows) {
                  std::runtime_error);
 }
 
-// ===== function / return / CallExpr パーサーテスト =====
+// ===== [contract] function / return / CallExpr パーサーテスト =====
 
 TEST(ParserTest, FnSimple) {
     Program prog = parseStr("fn add(a: int, b: int) -> int:\n    return a + b");
@@ -827,7 +831,7 @@ TEST(ParserTest, FnReturnOptionType) {
     EXPECT_EQ(function.return_type->toString(), "Option<int>");
 }
 
-// ===== import パーサーテスト =====
+// ===== [contract] import パーサーテスト =====
 
 TEST(ParserTest, ImportAll) {
     Program prog = parseStr("from math");
@@ -875,7 +879,7 @@ TEST(ParserTest, ImportInBlockThrows) {
     EXPECT_THROW(parseStr("if true:\n    from math import add"), std::runtime_error);
 }
 
-// ===== relative import tests =====
+// ===== [contract] relative import tests =====
 
 TEST(ParserTest, RelativeImportDot) {
     Program prog = parseStr("from . import add");
@@ -1000,7 +1004,7 @@ TEST(ParserTest, ImportFnKeywordRejectedAfterComma) {
     }
 }
 
-// ===== wildcard import rejection (#1748) =====
+// ===== [regression #1748] wildcard import rejection =====
 //
 // `*` is not accepted at any import-name position. All four sites
 // (non-braced head, braced head, non-braced post-comma, braced post-comma)
@@ -1051,7 +1055,7 @@ TEST(ParserTest, ImportWildcardBracedAfterCommaRejected) {
     }
 }
 
-// ===== alias tests (#1721) =====
+// ===== [contract] alias tests (#1721) =====
 
 TEST(ParserTest, ImportSingleAlias) {
     Program prog = parseStr("from math import add as plus");
@@ -1115,7 +1119,7 @@ TEST(ParserTest, ImportAsRequiresAliasNotKeyword) {
     EXPECT_THROW(parseStr("from math import add as fn"), std::runtime_error);
 }
 
-// ===== braced selective import tests (#1722) =====
+// ===== [contract] braced selective import tests (#1722) =====
 
 TEST(ParserTest, ImportBracedSingleItem) {
     Program prog = parseStr("from math import { add }");
@@ -1202,7 +1206,7 @@ TEST(ParserTest, ImportBracedRejectsBadAlias) {
     EXPECT_THROW(parseStr("from math import { add as 123 }"), std::runtime_error);
 }
 
-// ===== qualified import tests (#1723) =====
+// ===== [contract] qualified import tests (#1723) =====
 
 TEST(ParserTest, QualifiedImportSingleModule) {
     Program prog = parseStr("import math");
@@ -1720,7 +1724,7 @@ TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }
 
-// ===== タプル パーサーテスト =====
+// ===== [contract] タプル パーサーテスト =====
 
 TEST(ParserTest, TupleLiteral) {
     Program prog = parseStr("t = (1, 2)");
@@ -1816,7 +1820,7 @@ TEST(ParserTest, TupleSingleElementString) {
     ASSERT_TRUE(std::holds_alternative<StringExpr>(tuple.elements[0]->data));
 }
 
-// ===== Parenthesized tuple destructuring assignment (#1189) =====
+// ===== [contract] Parenthesized tuple destructuring assignment (#1189) =====
 
 TEST(ParserTest, ParenTupleDestructBasic) {
     Program prog = parseStr("(a, b) = (10, 20)");
@@ -1953,7 +1957,7 @@ TEST(ParserTest, BareTupleDestructAcceptsUnderscore) {
     EXPECT_EQ(s2.names[1], "_");
 }
 
-// ===== UFCS パーサーテスト =====
+// ===== [contract] UFCS パーサーテスト =====
 
 TEST(ParserTest, UFCSBasic) {
     // a.f(b) → CallExpr{f, [a, b]}
@@ -2535,7 +2539,7 @@ TEST(ParserTest, CallStmtLeaderErrorPropagateNowAccepted) {
     EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(ep.operand->data)->callee, "foo");
 }
 
-// ===== Map パーステスト =====
+// ===== [contract] Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {
     Program prog = parseStr("m = {\"a\": 1, \"b\": 2}");
@@ -2573,7 +2577,7 @@ TEST(ParserTest, MapTypeAnnotation) {
     EXPECT_EQ(s.type_annotation->toString(),"Map<str, int>");
 }
 
-// ===== Operator overloading =====
+// ===== [contract] Operator overloading =====
 
 TEST(ParserTest, OperatorFnBinaryPlus) {
     std::string src =
@@ -2631,7 +2635,7 @@ TEST(ParserTest, OperatorFnInvalidParamCount) {
     EXPECT_THROW(parseStr(src), std::runtime_error);
 }
 
-// ===== Operator return type constraint =====
+// ===== [contract] Operator return type constraint =====
 
 TEST(ParserTest, OperatorEqMustReturnBool) {
     EXPECT_THROW(parseStr(
@@ -2760,7 +2764,7 @@ TEST(ParserTest, OperatorAsKeywordAcceptsSpaceForm) {
     EXPECT_EQ(prog.size(), 1u);
 }
 
-// ===== Compound assignment operator tests =====
+// ===== [contract] Compound assignment operator tests =====
 
 TEST(ParserTest, CompoundAssignPreservesOp) {
     Program prog = parseStr("x += 1\n");
@@ -2838,7 +2842,7 @@ TEST(ParserTest, PlainAssignHasNoCompoundOp) {
     EXPECT_FALSE(s.compound_op.has_value());
 }
 
-// ===== Set パーサーテスト =====
+// ===== [contract] Set パーサーテスト =====
 
 TEST(ParserTest, SetLiteral) {
     Program prog = parseStr("s = {1, 2, 3}");
@@ -2881,7 +2885,7 @@ TEST(ParserTest, InOperator) {
     EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "s");
 }
 
-// ===== Enum パーサーテスト =====
+// ===== [contract] Enum パーサーテスト =====
 
 TEST(ParserTest, EnumDefinition) {
     Program prog = parseStr("enum Color:\n    Red\n    Green\n    Blue");
@@ -2919,7 +2923,7 @@ TEST(ParserTest, EnumComparison) {
     EXPECT_EQ(ea.variant_name, "Green");
 }
 
-// ===== Union 型パーサーテスト =====
+// ===== [contract] Union 型パーサーテスト =====
 
 TEST(ParserTest, LetUnionTypeAnnotation) {
     Program prog = parseStr("x: int | str = 42");
@@ -2943,7 +2947,7 @@ TEST(ParserTest, FnUnionReturn) {
     EXPECT_EQ(function.return_type->toString(), "int | str");
 }
 
-// ===== >>> パーサーテスト =====
+// ===== [contract] >>> パーサーテスト =====
 
 TEST(ParserTest, LogicalRightShift) {
     Program prog = parseStr("x = a >>> b");
@@ -2956,7 +2960,7 @@ TEST(ParserTest, LogicalRightShift) {
     EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "b");
 }
 
-// ===== not in パーサーテスト =====
+// ===== [contract] not in パーサーテスト =====
 
 TEST(ParserTest, NotInOperator) {
     Program prog = parseStr("r = x not in s");
@@ -2986,7 +2990,7 @@ TEST(ParserTest, UnionThreeTypes) {
     EXPECT_EQ(s.type_annotation->toString(),"int | float | str");
 }
 
-// ===== Contract (Design by Contract) tests =====
+// ===== [contract] Design by Contract 言語機能 (require / ensure) =====
 
 TEST(ParserTest, FnWithRequire) {
     std::string src =
@@ -3107,7 +3111,7 @@ TEST(ParserTest, EnsureTupleBinding) {
     EXPECT_EQ(function->ensure_bindings[1], "r");
 }
 
-// ===== record キーワード =====
+// ===== [contract] record キーワード =====
 
 TEST(ParserTest, RecordKeyword) {
     Program prog = parseStr("record Point:\n    x: int\n    y: int");
@@ -3118,7 +3122,7 @@ TEST(ParserTest, RecordKeyword) {
     EXPECT_EQ(ts.fields.size(), 2u);
 }
 
-// ===== type エイリアス =====
+// ===== [contract] type エイリアス =====
 
 TEST(ParserTest, TypeAlias) {
     Program prog = parseStr("type MyInt = int");
@@ -3153,7 +3157,7 @@ TEST(ParserTest, EnumAcceptsPublicDirective) {
     EXPECT_EQ(es.directives[0].name, "public");
 }
 
-// ===== for k, v in map =====
+// ===== [contract] for k, v in map =====
 
 TEST(ParserTest, ForKVParsing) {
     Program prog = parseStr("for k, v in m:\n    print(k)");
@@ -3296,7 +3300,7 @@ TEST(ParserTest, AsyncWithoutFnRejected) {
     EXPECT_THROW(parseStr("async let x = 1"), std::runtime_error);
 }
 
-// ===== .. 演算子 =====
+// ===== [contract] .. 演算子 =====
 
 TEST(ParserTest, RangeExpr) {
     Program prog = parseStr("xs = 1 .. 5");
@@ -3306,7 +3310,7 @@ TEST(ParserTest, RangeExpr) {
     ASSERT_TRUE(range != nullptr);
 }
 
-// ===== ?? 演算子 =====
+// ===== [contract] ?? 演算子 =====
 
 TEST(ParserTest, NullCoalesceExpr) {
     Program prog = parseStr("x = a ?? 0");
@@ -3317,7 +3321,7 @@ TEST(ParserTest, NullCoalesceExpr) {
     EXPECT_EQ((*bin)->op, "??");
 }
 
-// ===== none キーワード =====
+// ===== [contract] none キーワード =====
 
 TEST(ParserTest, NoneExpr) {
     Program prog = parseStr("x = none");
@@ -3326,7 +3330,7 @@ TEST(ParserTest, NoneExpr) {
     ASSERT_TRUE(std::holds_alternative<NoneExpr>(let.value->data));
 }
 
-// ===== 命名規約チェック =====
+// ===== [contract] 命名規約チェック =====
 
 TEST(ParserTest, VariableAssignmentAcceptsCamelCase) {
     // Variable names are not checked at parser level
@@ -3515,7 +3519,7 @@ TEST(ParserTest, PascalCaseEnumVariantRequired) {
     EXPECT_THROW(parseStr("enum Color:\n    red\n    Green"), std::runtime_error);
 }
 
-// ===== Explicit enum value parser tests =====
+// ===== [contract] Explicit enum value parser tests =====
 
 TEST(ParserTest, EnumExplicitValues) {
     Program prog = parseStr("enum HttpStatus:\n    Ok = 200\n    NotFound = 404\n    InternalError = 500");
@@ -3552,7 +3556,7 @@ TEST(ParserTest, EnumExplicitValueOnADTError) {
     EXPECT_THROW(parseStr("enum Bad:\n    A(int) = 1\n    B = 2"), std::runtime_error);
 }
 
-// ===== Named fields in ADT enum variants =====
+// ===== [contract] Named fields in ADT enum variants =====
 
 TEST(ParserTest, EnumNamedFields) {
     Program prog = parseStr("enum Shape:\n    Circle(radius: float)\n    Rect(width: float, height: float)\n    Point");
@@ -3679,7 +3683,7 @@ TEST(ParserTest, SnakeCaseRecordFieldRejected) {
     EXPECT_THROW(parseStr("record Point:\n    my_x: int"), std::runtime_error);
 }
 
-// ===== trailing block syntax =====
+// ===== [contract] trailing block syntax =====
 
 TEST(ParserTest, TrailingBlockNoArgs) {
     Program prog = parseStr("foo():\n    bar()");
@@ -3715,7 +3719,7 @@ TEST(ParserTest, TrailingBlockUFCS) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[1]->data));
 }
 
-// ===== @native fn tests =====
+// ===== [contract] @native fn tests =====
 
 TEST(ParserTest, NativeFnDeclaration) {
     Program prog = parseStr("@native\nfn contains(s: str, sub: str) -> bool\n");
@@ -3768,7 +3772,7 @@ TEST(ParserTest, NativeFnWithColonError) {
     }, std::runtime_error);
 }
 
-// ===== @public directive tests (#1545) =====
+// ===== [contract] @public directive tests (#1545) =====
 // Parser-level acceptance only — visibility semantics are deferred to #1544.
 
 TEST(ParserTest, PublicOnFn) {
@@ -3800,7 +3804,7 @@ TEST(ParserTest, PublicOnRecord) {
     EXPECT_EQ(ts.directives[0].name, "public");
 }
 
-// ===== @directive (DirectiveDefStmt) rejection tests (#708) =====
+// ===== [contract] @directive (DirectiveDefStmt) rejection tests (#708) =====
 
 TEST(DirectiveDefParserTest, RejectsSnakeCaseDirectiveName) {
     EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn my_directive()\n"),
@@ -3909,7 +3913,7 @@ TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithDeprecatedAfter) {
                  DiagnosticError);
 }
 
-// ===== @directive acceptance tests (#708) =====
+// ===== [contract] @directive acceptance tests (#708) =====
 
 TEST(DirectiveDefParserTest, AcceptsBasicDirectiveDef) {
     Program prog = parseStr("@directive(target=[\"function\"])\nfn it(description: str)\n");
@@ -3976,7 +3980,7 @@ TEST(DirectiveDefParserTest, AcceptsForTarget) {
     EXPECT_EQ(d.targets[0], "for");
 }
 
-// ===== @directive + @public combination tests (#1546) =====
+// ===== [contract] @directive + @public combination tests (#1546) =====
 
 TEST(DirectiveDefParserTest, AcceptsPublicBeforeDirective) {
     Program prog = parseStr("@public\n@directive(target=[\"function\"])\nfn it(description: str)\n");
@@ -4014,7 +4018,7 @@ TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithInlineAfter) {
                  DiagnosticError);
 }
 
-// ===== OR pattern binding check =====
+// ===== [contract] OR pattern binding check =====
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {
     EXPECT_THROW({
@@ -4090,7 +4094,7 @@ TEST(ParserTest, ModerateNestingSucceeds) {
     EXPECT_NO_THROW(parseStr(moderate));
 }
 
-// ===== Default arguments =====
+// ===== [contract] Default arguments =====
 
 TEST(ParserTest, DefaultArgBasic) {
     Program prog = parseStr("fn f(x: int, y: int = 10) -> int:\n    return x + y");
@@ -4200,7 +4204,7 @@ TEST(ParserTest, NestedLambdaAcceptsCamelCase) {
     EXPECT_EQ(inner.params[0].name, "myY");
 }
 
-// ===== Bare-paren-omitted single-param lambda (#1572) =====
+// ===== [contract] Bare-paren-omitted single-param lambda (#1572) =====
 
 TEST(ParserTest, BareLambdaSingleParamAccepts) {
     Program prog = parseStr("f = s => s + 1");
@@ -4290,7 +4294,7 @@ TEST(ParserTest, BareLambdaBodyDoesNotInheritAsyncContext) {
         std::runtime_error);
 }
 
-// ===== Cast expression with generic types (#490) =====
+// ===== [contract] Cast expression with generic types (#490) =====
 
 TEST(ParserTest, CastSimpleType) {
     Program prog = parseStr("x = 42 as float");
@@ -4343,7 +4347,7 @@ TEST(ParserTest, CastChained) {
     EXPECT_EQ(inner.target_type->toString(), "float");
 }
 
-// ===== case <subject> 式パーサーテスト =====
+// ===== [contract] case <subject> 式パーサーテスト =====
 
 TEST(ParserTest, CaseExprBasic) {
     Program prog = parseStr("x = case y:\n    1 : 10\n    _ : 0");
@@ -4513,7 +4517,7 @@ TEST(ParserTest, IdentifierStartingWithENotStolen) {
     EXPECT_THROW(parseStr("x = 1exp"), std::runtime_error);
 }
 
-// ===== Chained LHS assignment (#812) =====
+// ===== [regression #812] Chained LHS assignment =====
 
 TEST(ParserTest, ChainedLhsListFieldAssign) {
     // `list[i].field = v` parses as FieldAssignStmt with IndexExpr object.
@@ -4612,7 +4616,7 @@ TEST(ParserTest, ChainedLhsFieldMissingEqualsThrows) {
     EXPECT_THROW(parseStr("rec.field\n"), std::runtime_error);
 }
 
-// ===== Trailing comma tests (#832) =====
+// ===== [contract] Trailing comma tests (#832) =====
 
 TEST(ParserTest, ListTrailingComma) {
     Program prog = parseStr("x = [1, 2, 3,]");
@@ -4806,9 +4810,7 @@ TEST(ParserTest, GenericTypeArgDoubleCommaError) {
     EXPECT_THROW(parseStr("fn foo(x: List<int,,>) -> int:\n    return 0\n"), std::runtime_error);
 }
 
-// ============================================================
-// Named arguments in function calls (#747)
-// ============================================================
+// ===== [contract] Named arguments in function calls (#747) =====
 
 TEST(ParserTest, NamedArgInCallStmt) {
     Program prog = parseStr("print(\"hello\", end=\"\")\n");
@@ -4848,9 +4850,7 @@ TEST(ParserTest, DuplicateNamedArgError) {
     EXPECT_THROW(parseStr("print(end=\"\\n\", end=\"!\")\n"), std::runtime_error);
 }
 
-// ============================================================
-// Tuple patterns in case (#834)
-// ============================================================
+// ===== [contract] Tuple patterns in case (#834) =====
 
 TEST(ParserTest, TuplePatternZeroTupleRejected) {
     // '()' as a pattern is not supported
@@ -4906,7 +4906,7 @@ TEST(ParserTest, TuplePatternGroupingUnclosedError) {
     EXPECT_THROW(parseStr("case x:\n    (42:\n        print(0)\n"), std::runtime_error);
 }
 
-// ===== Record Pattern parsing =====
+// ===== [contract] Record Pattern parsing =====
 
 TEST(ParserTest, RecordPatternBasic) {
     // Point(a, b) parses to RecordPattern with two VariablePattern elements
@@ -4984,7 +4984,7 @@ TEST(ParserTest, RecordPatternTrailingComma) {
     EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
 }
 
-// ---- Array type T[N] parser tests (regression for #1259) ----
+// ===== [regression #1259] Array type T[N] parser tests =====
 
 TEST(ParserArrayType, HappyPath_SmallSize) {
     Program prog = parseStr("x: int[10] = 0");
@@ -5010,7 +5010,7 @@ TEST(ParserArrayType, RejectsUnderscoreInSize) {
     EXPECT_THROW(parseStr("x: int[1_000] = 0"), DiagnosticError);
 }
 
-// ---- Angle-bracket generic call rejection (regression for #1885) ----
+// ===== [regression #1885] Angle-bracket generic call rejection =====
 //
 // `f<T>(args)` at expression position used to be silently parsed as a
 // comparison-chain (`f < T > (args)`), causing the misleading

@@ -53,3 +53,7 @@ Use before implementation and during test review.
 2. Confirm failures indicate the intended condition.
 3. Remove redundant cases.
 4. Run the narrow test, then the required suite from `/pre-commit-checklist`.
+
+## Related
+
+- `docs/reference/test-taxonomy.md` — contract / internal / regression 分類と section header tag 規約。テスト追加時は適切な tag 配置を確認する。
