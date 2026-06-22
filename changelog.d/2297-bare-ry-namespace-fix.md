@@ -1,0 +1,3 @@
+### Fixed
+
+- `import ry` および `from ry import X` の bare 形式が予約 namespace ガードを bypass し、project-local の `ry/` ディレクトリ / `ry.ry` ファイルが silently shadow する問題を修正。bare 形式は無効として reject し、`ry.<module>` の使用を促すヒントを返す。あわせて `ry.*` 経路は #1769 で documented public とされた 11 module (`ry.lang`, `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`, `ry.regex`, `ry.testing`, `ry.base64`) のみ受理する allowlist を導入。internal modules (`ry.builtins`, `ry.gc`, `ry.core`, `ry.runtime_internal` 等) は許可リストヒント付きで reject される。bare な互換エイリアス (`from net import`, `from json5 import`) は変更なし。`ry.*` 配下のエラーメッセージは loader 内部のスラッシュ表記ではなくユーザが書いたドット表記で返す。 (#2297)
