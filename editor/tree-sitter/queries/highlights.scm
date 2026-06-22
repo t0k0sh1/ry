@@ -123,6 +123,18 @@
   (identifier) @attribute
   (#set! "priority" 105))  ; outrank the generic `(identifier) @variable` fallback (default priority 100)
 
+; #1844: highlight the @doc payload as a documentation string so editors can
+; style it distinctly from ordinary string literals. Falls back to the generic
+; (block_string_literal) @string / (string_literal) @string rules above when
+; the directive is not @doc.
+((decorator
+  name: (identifier) @_doc_name
+  (decorator_arguments
+    (decorator_argument
+      value: [(block_string_literal) (string_literal)] @string.documentation)))
+ (#eq? @_doc_name "doc")
+ (#set! "priority" 110))
+
 ; ---------- Records / Enums ----------
 (record_declaration
   name: (identifier) @type)

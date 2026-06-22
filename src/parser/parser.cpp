@@ -649,15 +649,16 @@ StmtNode Parser::parseStatement() {
         parseError(first.line, "'import' is only allowed at top level");
 
     // @directive(...) declares a new directive (#708). Must be followed by `fn`.
-    // Only @public is permitted alongside @directive so stdlib directive
-    // definitions can be marked public for the v0.0.19 visibility model. Other
-    // directives (e.g. @inline, @deprecated, @native) remain rejected so misuse
-    // surfaces with a clear message.
+    // Only @public and @doc are permitted alongside @directive: @public marks
+    // the directive as exported (v0.0.19 visibility model), @doc attaches
+    // Markdown documentation (#1844). Other directives (e.g. @inline,
+    // @deprecated, @native) remain rejected so misuse surfaces with a clear
+    // message.
     if (const Directive *dirAnnot = findDirective(directives, "directive")) {
         for (const auto &d : directives) {
-            if (d.name != "directive" && d.name != "public")
+            if (d.name != "directive" && d.name != "public" && d.name != "doc")
                 parseError(d.loc.line,
-                    "@directive can only be combined with @public");
+                    "@directive can only be combined with @public or @doc");
         }
         if (first.kind != TokenKind::Fn)
             parseError(first.line, "@directive must be followed by 'fn'");

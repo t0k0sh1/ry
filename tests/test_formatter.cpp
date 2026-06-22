@@ -728,6 +728,50 @@ TEST(FormatterTest, DirectiveDefRoundTripMultipleTargets) {
     EXPECT_EQ(Formatter::formatSource(first), first);
 }
 
+// #1844: @doc("...") with a single-line string round-trips and is idempotent.
+TEST(FormatterTest, DocDirectiveSingleLineRoundTrip) {
+    auto src = "@doc(\"Returns the absolute value of x.\")\n"
+               "fn abs(x: int) -> int:\n"
+               "  return x\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(first, reason)) << reason;
+}
+
+// #1844: @doc("""...""") with a triple-quoted block string round-trips and
+// is idempotent. The formatter routes block strings through formatBlockString
+// so the multi-line form is preserved.
+TEST(FormatterTest, DocDirectiveBlockStringRoundTrip) {
+    auto src = "@doc(\"\"\"\n"
+               "Returns the absolute value of x.\n"
+               "\n"
+               "## Examples\n"
+               "\"\"\")\n"
+               "fn abs(x: int) -> int:\n"
+               "  return x\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(first, reason)) << reason;
+}
+
+// @doc on a record and on record fields preserves placement through fmt.
+TEST(FormatterTest, DocDirectiveOnRecordRoundTrip) {
+    auto src = "@doc(\"A 2D point.\")\n"
+               "record Point:\n"
+               "  @doc(\"X coordinate.\")\n"
+               "  x: int\n"
+               "  @doc(\"Y coordinate.\")\n"
+               "  y: int\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(first, reason)) << reason;
+}
+
 // Bare-string sugar `target="function"` canonicalises to List form
 // `target=["function"]` after one format pass, then round-trips idempotently.
 TEST(FormatterTest, DirectiveDefBareStringSugarCanonicalises) {

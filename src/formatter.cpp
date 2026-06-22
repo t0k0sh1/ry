@@ -30,6 +30,10 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
     std::vector<Comment> result;
     int line = 1;
     size_t i = 0;
+    // Triple-quoted block strings (#1843) can span multiple lines and may
+    // contain '#'. Track block-string state across the outer loop so '#'
+    // inside `"""..."""` is not mistakenly recorded as a comment (#1844).
+    bool in_block_string = false;
     while (i < source.size()) {
         size_t line_start = i;
 
@@ -42,9 +46,19 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
         // Scan for '#' outside string literals
         bool in_string = false;
         char quote_char = 0;
-        bool has_code = false;
+        bool has_code = in_block_string;
         for (size_t j = 0; j < line_str.size(); ++j) {
             char c = line_str[j];
+            if (in_block_string) {
+                if (c == '\\' && j + 1 < line_str.size()) {
+                    ++j; // skip escaped char
+                } else if (c == '"' && j + 2 < line_str.size()
+                    && line_str[j + 1] == '"' && line_str[j + 2] == '"') {
+                    in_block_string = false;
+                    j += 2;
+                }
+                continue;
+            }
             if (in_string) {
                 if (c == '\\' && j + 1 < line_str.size()) {
                     ++j; // skip escaped char
@@ -53,9 +67,17 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
                 }
             } else {
                 if (c == '"') {
-                    in_string = true;
-                    quote_char = c;
-                    has_code = true;
+                    // Triple-quoted block string opens; same-line close
+                    // re-flips the state within this same character scan.
+                    if (j + 2 < line_str.size() && line_str[j + 1] == '"' && line_str[j + 2] == '"') {
+                        in_block_string = true;
+                        has_code = true;
+                        j += 2;
+                    } else {
+                        in_string = true;
+                        quote_char = c;
+                        has_code = true;
+                    }
                 } else if (c == '#') {
                     int col = static_cast<int>(j) + 1;
                     std::string text(line_str.substr(j));

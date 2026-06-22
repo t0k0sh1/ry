@@ -15,6 +15,8 @@ enum class DirectiveTarget : uint8_t {
     Field     = 1 << 2,
     Statement = 1 << 3,  // AssignStmt, CallStmt
     ForLoop   = 1 << 4,
+    Enum      = 1 << 5,
+    TypeAlias = 1 << 6,
 };
 
 inline uint8_t asTarget(DirectiveTarget t) { return static_cast<uint8_t>(t); }

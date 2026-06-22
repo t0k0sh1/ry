@@ -394,11 +394,12 @@ TEST_F(DirectiveTest, DeprecatedFunctionStillWorks) {
     ASSERT_EQ(warnings.size(), 1);
 }
 
-// 8. Multiple directives stacked (parse check)
+// 8. Multiple directives stacked (parse check). Uses two distinct
+// directives — same-directive stacking is rejected as duplicate (#1844).
 TEST_F(DirectiveTest, MultipleDirectives) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
-        "@deprecated\n"
+        "@public\n"
         "fn multi() -> int:\n"
         "    return 1\n"
         "print(multi())\n"
@@ -2993,5 +2994,207 @@ TEST_F(DirectiveTest, DescribeBeforeEachRunsBeforeItBody) {
     EXPECT_NE(output.find("1 passed, 0 failed"), std::string::npos)
         << "describe-level @beforeEach must observably run before the @it body: "
         << output;
+}
+
+// ===== @doc directive tests (#1844) =====
+
+// @doc on a function — accepts a single string positional argument and the
+// declaration compiles without effect on emitted IR (metadata-only).
+TEST_F(DirectiveTest, DocDirectiveOnFn) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"Returns the absolute value of x.\")\n"
+            "fn abs(x: int) -> int:\n"
+            "    if x < 0:\n"
+            "        return -x\n"
+            "    return x\n"
+            "print(abs(-3))\n"
+        );
+    });
+}
+
+// @doc on a record declaration and on individual record fields.
+TEST_F(DirectiveTest, DocDirectiveOnRecord) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"A 2D point.\")\n"
+            "record Point:\n"
+            "    @doc(\"X coordinate.\")\n"
+            "    x: int\n"
+            "    @doc(\"Y coordinate.\")\n"
+            "    y: int\n"
+            "p = Point(1, 2)\n"
+            "print(p.x)\n"
+        );
+    });
+}
+
+// @doc on an enum declaration.
+TEST_F(DirectiveTest, DocDirectiveOnEnum) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"A traffic light state.\")\n"
+            "enum Light:\n"
+            "    Red\n"
+            "    Yellow\n"
+            "    Green\n"
+            "l = Light::Red\n"
+        );
+    });
+}
+
+// Wrong-target builtin directive on enum — validateDirectives is wired and
+// the @native registry signature must produce a known-directive error path,
+// not the silent "validateDirectives never ran" miss.
+TEST_F(DirectiveTest, UnknownDirectiveOnEnumRejected) {
+    EXPECT_THROW({
+        runSource("@unknown\nenum E:\n    A\n");
+    }, std::runtime_error);
+}
+
+// @doc on a type alias declaration.
+TEST_F(DirectiveTest, DocDirectiveOnTypeAlias) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"A user identifier.\")\n"
+            "type UserId = int\n"
+            "uid: UserId = 42\n"
+            "print(uid)\n"
+        );
+    });
+}
+
+// Unknown directive on a type alias is rejected (sanity check that the
+// validateDirectives wiring fires on the TypeAlias path).
+TEST_F(DirectiveTest, UnknownDirectiveOnTypeAliasRejected) {
+    EXPECT_THROW({
+        runSource("@unknown\ntype T = int\n");
+    }, std::runtime_error);
+}
+
+// @doc combined with @directive fn declaration (#1844 initial scope: docs on
+// user-defined directive declarations). Currently rejected with
+// "@directive can only be combined with @public" before this cycle's fix.
+TEST_F(DirectiveTest, DocDirectiveOnDirectiveDef) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"Marks a function as parallelizable.\")\n"
+            "@directive(target=[\"function\"])\n"
+            "fn myAnnotation(name: str)\n"
+        );
+    });
+}
+
+// Argument validation on @doc fires through emitStmt(DirectiveDefStmt) too:
+// passing an integer where a string is required must error.
+TEST_F(DirectiveTest, DocDirectiveOnDirectiveDefRejectsNonStringArg) {
+    EXPECT_THROW({
+        runSource(
+            "@doc(42)\n"
+            "@directive(target=[\"function\"])\n"
+            "fn myAnnotation(name: str)\n"
+        );
+    }, std::runtime_error);
+}
+
+// @doc without an argument is rejected (1 string required).
+TEST_F(DirectiveTest, DocDirectiveMissingArgRejected) {
+    EXPECT_THROW({
+        runSource("@doc()\nfn foo() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
+
+// @doc with two string arguments is rejected (max 1 positional).
+TEST_F(DirectiveTest, DocDirectiveTooManyArgsRejected) {
+    EXPECT_THROW({
+        runSource("@doc(\"a\", \"b\")\nfn foo() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
+
+// @doc with a non-string positional arg (integer) is rejected.
+TEST_F(DirectiveTest, DocDirectiveNonStringArgRejected) {
+    EXPECT_THROW({
+        runSource("@doc(42)\nfn foo() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
+
+// Empty string is accepted (Markdown content "" is valid; the rendering
+// layer handles emptiness).
+TEST_F(DirectiveTest, DocDirectiveEmptyStringAccepted) {
+    EXPECT_NO_THROW({
+        runSource("@doc(\"\")\nfn foo() -> int:\n    return 1\n");
+    });
+}
+
+// Duplicate @doc on the same declaration is rejected (#1844 explicit
+// requirement). The rejection is implemented as a general "duplicate
+// directive" check in validateDirectives, so any builtin directive
+// duplicated on a declaration produces the same error.
+TEST_F(DirectiveTest, DuplicateDocDirectiveRejected) {
+    EXPECT_THROW({
+        runSource(
+            "@doc(\"first\")\n"
+            "@doc(\"second\")\n"
+            "fn foo() -> int:\n"
+            "    return 1\n"
+        );
+    }, std::runtime_error);
+}
+
+TEST_F(DirectiveTest, DuplicatePublicDirectiveRejected) {
+    EXPECT_THROW({
+        runSource(
+            "@public\n"
+            "@public\n"
+            "fn foo() -> int:\n"
+            "    return 1\n"
+        );
+    }, std::runtime_error);
+}
+
+// @doc on a for-loop is rejected at parse time by the builtin-registry gate.
+TEST_F(DirectiveTest, DocDirectiveOnForLoopRejected) {
+    EXPECT_THROW({
+        runSource("@doc(\"x\")\nfor i in range(3):\n    print(i)\n");
+    }, std::runtime_error);
+}
+
+// @doc on a call statement is rejected at parse time by the builtin-registry
+// gate (same path as @native on a call).
+TEST_F(DirectiveTest, DocDirectiveOnCallStmtRejected) {
+    EXPECT_THROW({
+        runSource("@doc(\"x\")\nprint(1)\n");
+    }, std::runtime_error);
+}
+
+// @doc on an enum variant is rejected: variants have no AST attachment
+// point for directives.
+TEST_F(DirectiveTest, DocDirectiveOnEnumVariantRejected) {
+    EXPECT_THROW({
+        runSource(
+            "enum E:\n"
+            "    @doc(\"first\")\n"
+            "    A\n"
+            "    B\n"
+        );
+    }, std::runtime_error);
+}
+
+// @doc accepting a triple-quoted block string (the issue's motivating form).
+TEST_F(DirectiveTest, DocDirectiveAcceptsBlockString) {
+    EXPECT_NO_THROW({
+        runSource(
+            "@doc(\"\"\"\n"
+            "Returns the square of x.\n"
+            "\n"
+            "## Examples\n"
+            "\n"
+            "    square(3)  # 9\n"
+            "\"\"\")\n"
+            "fn square(x: int) -> int:\n"
+            "    return x * x\n"
+            "print(square(3))\n"
+        );
+    });
 }
 

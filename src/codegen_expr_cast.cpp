@@ -213,6 +213,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 void CodeGen::emitStmt(TypeAliasStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("type_alias", s.name, s.loc);
+    validateDirectives(s.directives, DirectiveTarget::TypeAlias);
     if (current_namespace_target_) {
         codegenError("type alias declarations in qualified-imported user-defined modules are not yet supported; use 'from <mod> import <type>' instead");
     }
