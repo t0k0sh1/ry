@@ -375,6 +375,32 @@ TEST_F(CmdDocsTest, IncludesPrivateWithFlag) {
     EXPECT_NE(mod.find("hidden internal"), std::string::npos);
 }
 
+TEST_F(CmdDocsTest, EmitsRecordFields) {
+    writePackageToml();
+    writeFile("src/shapes.ry",
+              "@public @doc(\"A 2D point.\")\n"
+              "record Point:\n"
+              "  @doc(\"Horizontal coordinate.\")\n"
+              "  x: int\n"
+              "  @doc(\"Vertical coordinate.\")\n"
+              "  y: int\n");
+
+    auto [out, rc] = runRyDocsInDir();
+    EXPECT_EQ(rc, 0) << out;
+
+    auto mod = readFile("docs/api/modules/shapes.html");
+    EXPECT_NE(mod.find("data-kind=\"record\""), std::string::npos);
+    EXPECT_NE(mod.find("data-kind=\"field\""), std::string::npos);
+    EXPECT_NE(mod.find("data-name=\"Point.x\""), std::string::npos);
+    EXPECT_NE(mod.find("data-name=\"Point.y\""), std::string::npos);
+    EXPECT_NE(mod.find("Horizontal coordinate"), std::string::npos);
+    EXPECT_NE(mod.find("Vertical coordinate"), std::string::npos);
+
+    auto json = readFile("docs/api/docs.json");
+    EXPECT_NE(json.find("\"kind\": \"field\""), std::string::npos);
+    EXPECT_NE(json.find("\"name\": \"Point.x\""), std::string::npos);
+}
+
 TEST_F(CmdDocsTest, EmitJsonFlagIsNoOp) {
     writePackageToml();
     writeFile("src/hello.ry",

@@ -165,7 +165,25 @@ void collectFromProgram(const ry::Program &prog, DocModule &mod, bool include_pr
         if (!include_private && !sym.is_public) continue;
 
         extractDocPayload(*directives, sym.doc, sym.is_block_doc);
+        bool record_visible = sym.is_public;
         mod.symbols.push_back(std::move(sym));
+
+        if (std::holds_alternative<ry::RecordStmt>(stmt)) {
+            const auto &rec = std::get<ry::RecordStmt>(stmt);
+            for (const auto &field : rec.fields) {
+                DocSymbol fsym;
+                fsym.kind = "field";
+                fsym.name = rec.name + "." + field.name;
+                std::string fsig = field.name;
+                fsig += ": ";
+                fsig += field.type ? field.type->toString() : "?";
+                fsym.signature = std::move(fsig);
+                fsym.line = rec.loc.line;
+                fsym.is_public = record_visible;
+                extractDocPayload(field.directives, fsym.doc, fsym.is_block_doc);
+                mod.symbols.push_back(std::move(fsym));
+            }
+        }
     }
 }
 
@@ -177,10 +195,12 @@ std::string deriveModuleName(const fs::path &src_root, const fs::path &abs_file)
     return s;
 }
 
-void writeOutFile(const fs::path &path, std::string_view content) {
+bool writeOutFile(const fs::path &path, std::string_view content) {
     fs::create_directories(path.parent_path());
     std::ofstream ofs(path);
+    if (!ofs) return false;
     ofs << content;
+    return static_cast<bool>(ofs);
 }
 
 std::string readPackageToml(const fs::path &project_root) {
@@ -220,10 +240,15 @@ std::vector<std::string> readDocsManifest(const fs::path &out_abs) {
     return entries;
 }
 
-void writeDocsManifest(const fs::path &out_abs, const std::vector<std::string> &entries) {
+bool writeDocsManifest(const fs::path &out_abs, const std::vector<std::string> &entries) {
     fs::create_directories(out_abs);
     std::ofstream f(out_abs / kManifestFileName);
-    for (const auto &e : entries) f << e << "\n";
+    if (!f) return false;
+    for (const auto &e : entries) {
+        f << e << "\n";
+        if (!f) return false;
+    }
+    return true;
 }
 
 bool checkOverwriteSafe(const fs::path &out_abs,
@@ -588,18 +613,30 @@ int cmd_docs(int argc, char *argv[]) {
     }
 
     fs::create_directories(out_abs / "modules");
-    writeOutFile(out_abs / "index.html", buildIndexHtml(modules));
+
+    auto writeOrFail = [](const fs::path &p, std::string_view content) {
+        if (writeOutFile(p, content)) return true;
+        llvm::errs() << "Error: failed to write " << p.generic_string() << "\n";
+        return false;
+    };
+
+    if (!writeOrFail(out_abs / "index.html", buildIndexHtml(modules))) return 1;
     for (const auto &mod : modules) {
-        writeOutFile(out_abs / "modules" / (mod.name + ".html"), buildModuleHtml(mod));
+        const fs::path p = out_abs / "modules" / (mod.name + ".html");
+        if (!writeOrFail(p, buildModuleHtml(mod))) return 1;
     }
-    writeOutFile(out_abs / "docs.json", buildDocsJson(modules));
+    if (!writeOrFail(out_abs / "docs.json", buildDocsJson(modules))) return 1;
 
     std::unordered_set<std::string> planned_set(planned_files.begin(), planned_files.end());
     for (const auto &rel : tracked_vec) {
         if (!planned_set.count(rel)) removeEntryAndPruneParents(out_abs, rel);
     }
 
-    writeDocsManifest(out_abs, planned_files);
+    if (!writeDocsManifest(out_abs, planned_files)) {
+        llvm::errs() << "Error: failed to write "
+                     << (out_abs / kManifestFileName).generic_string() << "\n";
+        return 1;
+    }
 
     return 0;
 }

@@ -263,7 +263,7 @@ ry docs --clean                  # Remove files listed in .ry-docs-manifest
 
 ### Output Layout
 
-```
+```text
 docs/api/
 ├── index.html             # module index page
 ├── modules/
@@ -298,13 +298,13 @@ Module names are derived from the source file path relative to `[paths].src`, wi
 }
 ```
 
-`kind` is one of `fn`, `record`, `enum`, `typeAlias`, or `const`. `path` and `source` are project-relative.
+`kind` is one of `fn`, `record`, `field`, `enum`, `typeAlias`, or `const`. `path` and `source` are project-relative. Record fields are emitted alongside their parent record with the qualified name `<record>.<field>`. Enum variants are not currently emitted because the `@doc` directive cannot be attached to them.
 
 ### Safety
 
 `ry docs` never overwrites hand-written files. Before writing each output file, the generator checks whether the destination already exists and is recorded in the on-disk `.ry-docs-manifest`. Untracked files trigger a refusal:
 
-```
+```text
 Error: refusing to overwrite untracked file '<path>' — was it hand-written? Use --out to pick a different directory.
 ```
 
