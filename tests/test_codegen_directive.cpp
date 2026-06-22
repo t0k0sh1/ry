@@ -234,22 +234,21 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     // (demand-driven loading for the called package) and must NOT include
     // "path" (no call ever lands on a path symbol).
     //
-    // Transitional set after #2285 (base64 descriptor migration, #2299):
-    // descriptor-migrated dispatchers (currently base64) return nullptr,
-    // letting the StdlibRegistry loop continue through sibling dispatchers.
-    // Among those, dispatchIO unconditionally inserts "io" at its top per
-    // the "Stdlib dispatchers must insert their module library" rule
-    // (.claude/rules/codegen-stdlib-dispatcher.md L34-46), even when no
-    // io call lands on it. Other table-driven siblings (net/http/path/
-    // thread/runtime_internal) insert only on match and are silent here;
-    // json/json5 are gated by isJson*Imported and skipped.
+    // Post-#2299 close criterion 2: after dispatchIO gained a sig-presence
+    // gate (isIoImported, mirroring isJson*Imported on dispatchJson/dispatchJson5
+    // per .claude/rules/codegen-stdlib-dispatcher.md #1855), io is no longer
+    // pulled in unconditionally when sibling dispatchers fall through. The
+    // expected set is now {"base64"} — same as the original invariant before
+    // the base64 descriptor migration (#2285) introduced the transitional
+    // {"base64", "io"} state.
     //
-    // This is a bounded regression guard: the expected set is the exact
-    // current transitional content. When a new dispatcher is added or an
-    // existing dispatcher's insertion behavior changes, this assertion
-    // forces an explicit update rather than letting a sibling silently
-    // join. When all native dispatchers are descriptor-driven (#2299
-    // close criterion), collapse expected_libs to {"base64"}.
+    // The exact-set assertion remains a bounded regression guard: a new
+    // dispatcher silently joining the set, or an existing dispatcher
+    // dropping its sig-presence gate, fails this test and forces explicit
+    // review. Tracking issue #2299 stays open until close criterion 1
+    // (all native dispatchers descriptor-driven, no fall-through library
+    // insertion) is also met — that depends on per-module native Rust
+    // migration scheduled for v0.0.31+.
     std::string src =
         "@native(\"base64\")\n"
         "fn encode(data: str) -> str\n"
@@ -267,7 +266,6 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     auto &libs = cg.getRequiredLibraries();
     const std::unordered_set<std::string> expected_libs = {
         "base64",
-        "io",
     };
     EXPECT_EQ(libs, expected_libs)
         << "Required-libraries set changed. If a new dispatcher silently "

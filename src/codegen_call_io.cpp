@@ -368,12 +368,55 @@ static const CodeGen::NativeDispatchEntry io_table[] = {
      nullptr, "__ry_str_to_bytes", nullptr, CodeGen::ListElemMeta::I8},
 };
 
+// Sig-presence gate for dispatchIO. Mirrors isJsonImported/isJson5Imported
+// (codegen-stdlib-dispatcher.md #1855) with two complementary checks:
+//
+// 1. Prefix scan over native_fn_sigs_ keys for "io::*" — the canonical form
+//    populated by `from io import ...` (ModuleLoader path) and user code
+//    declaring `@native("io") fn <name>(...)`.
+// 2. Bare-name presence check for known io fn names — the C++ test harness
+//    pattern: `runSource()` skips ModuleLoader, so inline test sources
+//    declare `@native fn writeText(...)` (no library tag) which registers
+//    under the bare key "writeText" (no "::" prefix). Without this branch
+//    the gate misses all such tests (#2299 follow-up).
+//
+// The bare-name list mirrors share/std/io/io.ry's @public @native
+// declarations and must be updated when io's surface changes. Drift risk
+// is the same maintenance discipline that #1855 already documents for
+// isJsonImported / isJson5Imported.
+static bool isIoImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    for (const auto &kv : sigs) {
+        if (kv.first.rfind("io::", 0) == 0)  // C++17 prefix-check idiom
+            return true;
+    }
+    static constexpr const char *io_known_names[] = {
+        "readLine", "readAll", "readText", "writeText", "appendText",
+        "exists", "deleteFile", "readBytes", "writeBytes",
+        "toBytes", "bytesToStr", "open", "close", "lines",
+    };
+    for (const char *name : io_known_names) {
+        if (sigs.count(name)) return true;
+    }
+    return false;
+}
+
 RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
+    // Gate before any side effect (including used_native_libraries_ insert)
+    // so a program that never imports io does not pull libry_io.dylib into
+    // the JIT load set (#2299 close criterion 2). Without this gate every
+    // sibling-dispatcher fall-through (e.g. base64-only program reaching
+    // dispatchIO through the StdlibRegistry loop after dispatchBase64
+    // returns nullptr) silently adds "io" to required_libraries.
+    if (!isIoImported(cg))
+        return nullptr;
+
     // Register libry_io.dylib for JIT loading. The custom emitters and
     // inline paths below (open / readAll(File) / readLine(File) / lines /
     // writeText File and str/str overloads) bypass emitTableDrivenNativeCall
-    // and therefore miss the sig.library-driven insert.
+    // and therefore miss the sig.library-driven insert
+    // (codegen-stdlib-dispatcher.md #1856).
     cg.used_native_libraries_.insert("io");
 
     const auto &n = e.callee;
