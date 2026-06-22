@@ -292,7 +292,6 @@ bool Formatter::needsParens(const ExprNode &child, const std::string &parent_op,
         std::holds_alternative<std::unique_ptr<CaseExpr>>(child.data) ||
         std::holds_alternative<std::unique_ptr<IfExpr>>(child.data) ||
         std::holds_alternative<std::unique_ptr<IfBlockExpr>>(child.data) ||
-        std::holds_alternative<std::unique_ptr<TryBlockExpr>>(child.data) ||
         std::holds_alternative<std::unique_ptr<AwaitExpr>>(child.data))
         return true;
     return false;
@@ -522,50 +521,6 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             bool thenInline = appendBody(out, v->then_body, true);
             out += thenInline ? " else:" : "\nelse:";
             appendBody(out, v->else_body, true);
-            return out;
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
-            // #1702 — `try:` effect block (block-as-expression).
-            //
-            // Inline form: `try: <tail>` (only when body is empty AND the tail
-            // formats on a single line).
-            //
-            // Block form: emit each body statement via formatStmt at
-            // `indent_level_ + 1`, then emit the tail expression at the same
-            // level. The tail is formatted with `indent_level_` raised so that
-            // multi-line tails (case / if block) wire their own relative
-            // indent under the `try:` block correctly.
-            int saved_indent = indent_level_;
-            indent_level_ = saved_indent + 1;
-            std::string tailText = v->tail ? formatExpr(*v->tail) : "";
-            indent_level_ = saved_indent;
-
-            bool canInline = v->body.empty() &&
-                             tailText.find('\n') == std::string::npos;
-            if (canInline)
-                return "try: " + tailText;
-
-            std::string out = "try:";
-            for (const auto &st : v->body) {
-                std::string saved_out = std::move(out_);
-                out_.clear();
-                int saved_lvl = indent_level_;
-                indent_level_ += 1;
-                emitIndent();
-                formatStmt(st);
-                indent_level_ = saved_lvl;
-                std::string stmt_text = std::move(out_);
-                out_ = std::move(saved_out);
-                if (!stmt_text.empty() && stmt_text.back() == '\n')
-                    stmt_text.pop_back();
-                out += "\n" + stmt_text;
-            }
-            // Tail line: prefix the inner indent only to the first line. The
-            // tail's own formatExpr was emitted at indent_level_ + 1, so any
-            // continuation lines already carry the right relative indent.
-            std::string tailIndent(static_cast<size_t>(indent_level_ + 1) *
-                                       static_cast<size_t>(indent_width_),
-                                   ' ');
-            out += "\n" + tailIndent + tailText;
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             return formatExpr(*v->start) + ".." + formatExpr(*v->end);

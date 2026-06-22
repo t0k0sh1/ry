@@ -94,11 +94,3 @@ The stdlib provides core types, conversion helpers (`int`, `float`, `str`), buil
 The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 
 See [Module Reference — Standard Library](modules.md#standard-library-std) for the full list of stdlib sub-modules and import semantics.
-
-## try block
-
-A **`try:` block** is a block-as-expression introduced in v0.0.30 (#1702) that creates a propagation scope for the `?` operator below the function level. Inside the block, `?` escapes to the block's merge point rather than the enclosing function — the block's value becomes `Err(e)` (Result context) or `None` (Option context). The tail expression is implicitly wrapped in `Ok(...)` / `Some(...)` on the happy path.
-
-The block's Result / Option discriminant comes from either the enclosing `return` statement's function return type or a `let` LHS type annotation (e.g. `let x: Result<T, E> = try: ...`). Without context, the block fails to compile.
-
-See [`?` operator — `try:` block expression](operators.md#try-block-expression-effect-block) for the full reference, [RFC: effect-block](../rfcs/effect-block.md) for the design rationale (including why `do <Effect>:` was deferred), and [Issue #1702](https://github.com/t0k0sh1/ry/issues/1702) for the original proposal.

@@ -44,9 +44,6 @@ The table below shows the most common compile errors; it is not exhaustive.
 | Non-exhaustive match | `case` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
 | `?` on non-Result/Option type | Applied `?` to an expression that is not a `Result` or `Option` type (`'?' operator requires a Result or Option type operand`) | `x = 42` -> `x?` |
 | `?` in non-Result function | Used `?` on a `Result` in a function that does not return `Result` (`'?' on Result can only be used in a fn that returns Result`) | `fn foo() -> int:` with `bar()?` inside |
-| `try:` without type context | Used `try:` where the Result/Option discriminant cannot be resolved (`'try:' block requires type context: annotate `let x: Result<T,E> = try:` or use inside a fn returning Result/Option`) | `x = try: 1` at top level |
-| `try:` mixed Result/Option `?` | Used `?` on Result and `?` on Option inside the same `try:` block (`'?' on Result inside an Option 'try:' block — mixing Result and Option propagation is not allowed`) | `try:` block with both `r?` and `opt?` |
-| `try:` tail type mismatch | Tail expression's type doesn't match the block's context Ok/Some type (`'try:' block tail expression type does not match enclosing Result's Ok type`) | `fn f() -> Result<int, E>:` with `try: "string"` tail |
 | `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `fn log():` with `ensure v:` |
 
 ### Compile Error Examples
