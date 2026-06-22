@@ -139,12 +139,10 @@ The postfix `?` operator has two forms:
 | `Result<T, E>` | evaluates to the `Ok` inner value `v` | the enclosing function returns `Err(e)` |
 | `Option<T>` | evaluates to the `Some` inner value `v` | the enclosing function returns `None` |
 
-When used inside a function, the operand type must match the enclosing function's return type — unless the `?` appears inside a `try:` block (see below), in which case it escapes to the block instead of to the function:
+When used inside a function, the operand type must match the enclosing function's return type:
 
 - `?` on a `Result` value requires the enclosing function to return `Result`.
 - `?` on an `Option` value requires the enclosing function to return `Option`.
-
-Inside a [`try:` block](#try-block-expression-effect-block) the `?` operator escapes to the block's merge point instead of returning from the enclosing function. The block's value becomes `Err(e)` / `None` when `?` short-circuits, and the tail expression is implicitly wrapped in `Ok(...)` / `Some(...)` on the happy path. See the `try:` section below.
 
 ```ry
 fn safeDivide(a: int, b: int) -> Result<int, Error>:
@@ -229,87 +227,6 @@ y = x?      # prints "error: unexpected None" to stderr and exits with 1
 ```
 
 At the top level, a `Result`'s `Err` type must be `Error` (so its `message` field can be printed).
-
----
-
-## `try:` Block Expression (effect-block)
-
-A `try:` block is a block-as-expression that creates a propagation scope below function level. Inside the block, `?` escapes to the block's merge point instead of returning from the enclosing function — the block's value becomes `Err(e)` (Result context) or `None` (Option context). The tail expression is implicitly wrapped in `Ok(...)` / `Some(...)` on the happy path.
-
-```ry
-fn loadName(path: str) -> Result<str, Error>:
-    return try:
-        f       = io.open(path, "r")?
-        cfg     = json.load(f)?
-        name: str = cfg["name"]?
-        name        # implicitly wrapped: Ok(name)
-```
-
-### Syntax forms
-
-- **Inline form**: `try: <expr>` — single-line. `<expr>` becomes the block's tail.
-- **Block form**: `try:` then an indented block containing intermediate statements and a tail expression. The tail uses the same expression-first parse as `case:` arms (#1891), so identifier-starting tails like `name` or `x + 1` are accepted without parentheses.
-
-### Type-context resolution
-
-The Result / Option discriminant (and the `Err` type for Result) comes from one of two contexts, checked in this order:
-
-1. **`return try: ...` in a typed function**: the enclosing function's return type provides `Result<T, E>` or `Option<T>`.
-2. **`let x: Result<T, E> = try: ...` / `x: Option<T> = try: ...`**: the LHS type annotation provides the discriminant.
-
-Without either context, `try:` fails to compile with:
-
-```
-error: 'try:' block requires type context: annotate `let x: Result<T,E> = try:`
-       or use inside a fn returning Result/Option
-```
-
-Inferring the discriminant from `?` operands inside the block (no annotation, no enclosing `return`) is not supported in v0.0.30 (tracked as follow-up).
-
-### Nesting and `return`
-
-- Nested `try:` blocks: `?` always dispatches to the innermost enclosing `try:`. There is no syntax to skip to an outer scope.
-- `return` inside a `try:` body exits the enclosing function, bypassing the block's Ok-wrap. This matches Rust's `try { return X }`.
-- A `?` outside any `try:` block keeps its original semantics (function-level early return, see [Unwrap / short-circuit form](#unwrap--short-circuit-form) above).
-
-### Escape hatch — omit `?`
-
-A `fallible` expression without `?` is evaluated normally and its Result/Option value flows through the block as-is. The block continues; no escape.
-
-```ry
-fn classify(a: int, b: int) -> Result<int, Error>:
-    return try:
-        r = safeDiv(a, b)        # no ? — r is Result<int, Error>
-        case r:
-            Ok(v):  v
-            Err(_): -1
-```
-
-### Mixing Result and Option `?` in one block
-
-A single `try:` block must be uniformly Result or Option. Mixing `?` on Result with `?` on Option in the same block is a compile error:
-
-```
-error: '?' on Option inside a Result 'try:' block —
-       mixing Result and Option propagation is not allowed
-```
-
-### Composition with `using`
-
-`try:` and `using` are orthogonal and can be combined freely. `?` on a `using` initializer escapes the `try:` block, and `using` close runs as part of the scope cleanup on every exit path (Ok wrap, `?` escape, or `return`).
-
-```ry
-fn copyContents(src: str, dst: str) -> Result<Unit, Error>:
-    return try:
-        using f = open(src, "r")?:    # ? escape: try block escapes with Err
-            using g = open(dst, "w")?: # nested using; close runs on every exit
-                case writeText(g, readAll(f)?):
-                    Ok(_): 0
-                    Err(e): return Err(e)
-        0 as u8                       # Unit placeholder; codegen Ok-wraps it
-```
-
-The tail expression is the *unwrapped* Ok value — codegen wraps it into `Ok(...)`. `0 as u8` is the canonical Unit placeholder (see [Unit type](types.md#unit)). Writing `Ok(0 as u8)` as the tail would produce a doubly-wrapped `Result<Result<Unit, Error>, Error>` and fail to compile.
 
 ---
 

@@ -176,7 +176,6 @@ struct CaseCondExpr;
 struct CaseExpr;
 struct IfExpr;
 struct IfBlockExpr;
-struct TryBlockExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
@@ -202,7 +201,6 @@ struct ExprNode {
                  std::unique_ptr<CaseExpr>,
                  std::unique_ptr<IfExpr>,
                  std::unique_ptr<IfBlockExpr>,
-                 std::unique_ptr<TryBlockExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
@@ -504,17 +502,6 @@ struct IfBlockExpr {
     ExprPtr condition;
     std::vector<StmtNode> then_body;
     std::vector<StmtNode> else_body;
-    SourceLocation loc;
-};
-
-// `try: ...` — effect-block expression (#1702). The block's `?` operators
-// escape to the enclosing `try:` block instead of returning from the enclosing
-// function; the tail expression is implicitly wrapped in Ok(...) (Result
-// context) or Some(...) (Option context). Result/Option discriminant and the
-// Err type come from let-annotation or return-fn type context.
-struct TryBlockExpr {
-    std::vector<StmtNode> body;   // intermediate statements
-    ExprPtr tail;                 // tail expression (auto-wrapped in Ok / Some)
     SourceLocation loc;
 };
 

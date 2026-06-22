@@ -158,9 +158,6 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 scanExpr(*v->condition);
                 for (auto &st : v->then_body) scanStmt(st);
                 for (auto &st : v->else_body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
-                for (auto &st : v->body) scanStmt(st);
-                if (v->tail) scanExpr(*v->tail);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
                 if (v->start) scanExpr(*v->start);
                 if (v->end) scanExpr(*v->end);
@@ -694,18 +691,6 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return getOptionType(preferConcrete(innerA, innerB));
             }
             return i64Ty_;
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
-            // try: block is only usable in positions where context is available
-            // (let-annotation or fn return type). A bare lambda body whose root
-            // is a `try:` (e.g. `() => try: foo()?`) has no such context and is
-            // rejected at codegen time. Returning the tail's underlying type
-            // here keeps lambda return-type inference defined for the case
-            // where the lambda is later assigned to a Result/Option-returning
-            // fn type — the actual Ok/Some wrap is decided by codegen against
-            // the resolved context, not by this hint.
-            if (v->tail)
-                return inferExprType(*v->tail, paramTypeMap);
-            return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
             llvm::Type *thenTy = i64Ty_;
             llvm::Type *elseTy = i64Ty_;
@@ -971,13 +956,6 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 return s == "Option" || s.rfind("Option<", 0) == 0;
             };
             if (isOptName(thenName) || isOptName(elseName)) return "Option";
-            return "";
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
-            // try: block produces Result/Option from context; we cannot tell
-            // which one without context. Fall back to the tail's underlying
-            // type name — the codegen path drives the Result/Option wrap.
-            if (v->tail)
-                return inferExprTypeName(*v->tail, paramTypeMap, paramTypeNameMap);
             return "";
         } else if constexpr (std::is_same_v<T, NoneExpr>) {
             return "Option";

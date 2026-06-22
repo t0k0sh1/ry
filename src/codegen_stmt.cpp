@@ -250,24 +250,6 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (type_annotation)
         annot = type_annotation->toString();
 
-    // #1702 — let-annotation context for an immediately-nested `try:` block.
-    // `let x: Result<T,E> = try: ...` and `x: Option<T> = try: ...` propagate
-    // the Result/Option discriminant via try_block_ctx_. RAII guard restores
-    // on every return path. Gate on the RHS being a TryBlockExpr so non-try
-    // typed declarations don't pay for the extra resolveType call.
-    struct TryBlockCtxScope {
-        llvm::Type *&slot;
-        llvm::Type *saved;
-        explicit TryBlockCtxScope(llvm::Type *&s) : slot(s), saved(s) {}
-        ~TryBlockCtxScope() { slot = saved; }
-    } tryCtxScope(try_block_ctx_);
-    if (annot && std::holds_alternative<std::unique_ptr<TryBlockExpr>>(value.data)) {
-        if (llvm::Type *annotTy = tryResolveType(*annot)) {
-            if (isResultType(annotTy) || isOptionType(annotTy))
-                try_block_ctx_ = annotTy;
-        }
-    }
-
     // Handle empty set/map literal with type annotation
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!annot)

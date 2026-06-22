@@ -609,12 +609,8 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedCapturedVars_ = std::move(cg_.captured_vars_);
     savedFnNestingDepth_ = cg_.fn_nesting_depth_;
     savedFnScopeStackSize_ = cg_.fn_scope_stack_.size();
-    savedTryScopeStack_ = std::move(cg_.try_scope_stack_);
-    savedTryBlockCtx_ = cg_.try_block_ctx_;
     cg_.fn_nesting_depth_++;
     cg_.captured_vars_.clear();
-    cg_.try_scope_stack_.clear();
-    cg_.try_block_ctx_ = nullptr;
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
@@ -657,8 +653,6 @@ CodeGen::FnScope::~FnScope() noexcept {
     cg_.current_function_name_ = std::move(savedFnName_);
     cg_.captured_vars_ = std::move(savedCapturedVars_);
     cg_.fn_nesting_depth_ = savedFnNestingDepth_;
-    cg_.try_scope_stack_ = std::move(savedTryScopeStack_);
-    cg_.try_block_ctx_ = savedTryBlockCtx_;
     // Trim fn_scope_stack_ levels added during the function body.
     // Unlike scope_stack_ (which is fully saved/restored), fn_scope_stack_
     // is kept alive across FnScope boundaries so nested functions can see
@@ -1318,9 +1312,6 @@ static void collectTestTargetsFromExpr(const ExprPtr &expr,
             collectTestTargetsFromExpr(e->condition, mocked, spied);
             collectTestTargetsFromStmts(e->then_body, mocked, spied);
             collectTestTargetsFromStmts(e->else_body, mocked, spied);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TryBlockExpr>>) {
-            collectTestTargetsFromStmts(e->body, mocked, spied);
-            if (e->tail) collectTestTargetsFromExpr(e->tail, mocked, spied);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             collectTestTargetsFromExpr(e->start, mocked, spied);
             collectTestTargetsFromExpr(e->end, mocked, spied);
