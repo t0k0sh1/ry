@@ -79,18 +79,33 @@ Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z
 
 Collapses `changelog.d/*.md` fragments into `[Unreleased]` and deletes them.
 
-### 2. Rename `[Unreleased]` → `[<X.Y.Z>] - YYYY-MM-DD` (today's UTC date)
+### 2. Verify `share/std/manifest.json` matches the on-disk stdlib
+
+`share/std/manifest.json` is hand-maintained (#1390 precedent) and is the inventory ledger for the release. Drift between the manifest and the actual stdlib directory is not caught by CI, packaging, or runtime — verify here.
+
+```bash
+diff <(jq -r '.files[] | "share/std/" + .' share/std/manifest.json | sort) \
+     <(find share/std -name '*.ry' | sort)
+```
+
+- Empty diff → no action.
+- Files present on disk but missing from manifest → add to `files` array (match existing grouping: top-level flat entries, then per-module subdirectories).
+- Files in manifest but missing on disk → remove from `files` array.
+
+Include the manifest edit in the same Release prep PR.
+
+### 3. Rename `[Unreleased]` → `[<X.Y.Z>] - YYYY-MM-DD` (today's UTC date)
 
 ```diff
 -## [Unreleased]
 +## [<X.Y.Z>] - YYYY-MM-DD
 ```
 
-### 3. Insert a fresh empty `[Unreleased]` heading
+### 4. Insert a fresh empty `[Unreleased]` heading
 
 Above the new `[<X.Y.Z>]` heading, insert `## [Unreleased]` (body empty; future fragments repopulate).
 
-### 4. Update comparison links at the bottom of `CHANGELOG.md`
+### 5. Update comparison links at the bottom of `CHANGELOG.md`
 
 ```diff
 -[Unreleased]: https://github.com/t0k0sh1/ry/compare/v<PREV>...HEAD
@@ -100,7 +115,7 @@ Above the new `[<X.Y.Z>]` heading, insert `## [Unreleased]` (body empty; future 
 
 `<PREV>` = previous released version (top of the existing list).
 
-### 5. Verify `release.yml`'s container pin is fresh
+### 6. Verify `release.yml`'s container pin is fresh
 
 `release.yml` pins the Linux release container to an immutable
 `:llvm-<MAJOR>-rev<N>` tag (#1508) for byte-reproducibility across

@@ -31,13 +31,11 @@ std::filesystem::path find_native_library(const std::string &exe_path,
                                           const std::string &lib_name);
 
 struct StdlibManifest {
-    std::string version;
     std::vector<std::string> files;
 };
 
 StdlibManifest read_manifest(const std::filesystem::path &dir);
 void write_manifest(const std::filesystem::path &dir,
-                    const std::string &version,
                     const std::vector<std::string> &files);
 
 } // namespace ry

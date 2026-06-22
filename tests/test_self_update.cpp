@@ -111,7 +111,7 @@ TEST_F(InstallStdlibTest, CopiesNestedModules) {
     write_file(src_std / "http" / "http.ry", "# http module");
     write_file(src_std / "net" / "net.ry", "# net module");
 
-    bool ok = install_stdlib(src_dir.string(), "0.1.0");
+    bool ok = install_stdlib(src_dir.string());
     ASSERT_TRUE(ok);
 
     auto dest_std = dest_home / "share" / "std";
@@ -125,10 +125,9 @@ TEST_F(InstallStdlibTest, ManifestContainsRelativePaths) {
     write_file(src_std / "builtins.ry", "# builtins");
     write_file(src_std / "http" / "http.ry", "# http");
 
-    install_stdlib(src_dir.string(), "0.1.0");
+    install_stdlib(src_dir.string());
 
     auto manifest = ry::read_manifest(dest_home / "share" / "std");
-    EXPECT_EQ(manifest.version, "0.1.0");
 
     // Check that both top-level and nested files are in the manifest
     auto &files = manifest.files;
@@ -141,13 +140,13 @@ TEST_F(InstallStdlibTest, CleansUpOldNestedFiles) {
 
     // Pre-populate dest with an old nested file and manifest
     write_file(dest_std / "old_mod" / "old.ry", "# old");
-    ry::write_manifest(dest_std, "0.0.1", {"old_mod/old.ry"});
+    ry::write_manifest(dest_std, {"old_mod/old.ry"});
 
     // New archive has only builtins.ry
     auto src_std = src_dir / "share" / "std";
     write_file(src_std / "builtins.ry", "# builtins");
 
-    install_stdlib(src_dir.string(), "0.1.0");
+    install_stdlib(src_dir.string());
 
     EXPECT_TRUE(fs::exists(dest_std / "builtins.ry"));
     EXPECT_FALSE(fs::exists(dest_std / "old_mod" / "old.ry"));
@@ -158,13 +157,13 @@ TEST_F(InstallStdlibTest, CleansUpEmptyDirectories) {
 
     // Pre-populate with a nested file
     write_file(dest_std / "removed_mod" / "removed.ry", "# removed");
-    ry::write_manifest(dest_std, "0.0.1", {"removed_mod/removed.ry"});
+    ry::write_manifest(dest_std, {"removed_mod/removed.ry"});
 
     // New archive has no removed_mod
     auto src_std = src_dir / "share" / "std";
     write_file(src_std / "builtins.ry", "# builtins");
 
-    install_stdlib(src_dir.string(), "0.1.0");
+    install_stdlib(src_dir.string());
 
     EXPECT_FALSE(fs::exists(dest_std / "removed_mod"));
 }
@@ -174,13 +173,13 @@ TEST_F(InstallStdlibTest, CleansUpDeeplyNestedEmptyDirectories) {
 
     // Pre-populate with a deeply nested file (a/b/c.ry)
     write_file(dest_std / "a" / "b" / "c.ry", "# deep");
-    ry::write_manifest(dest_std, "0.0.1", {"a/b/c.ry"});
+    ry::write_manifest(dest_std, {"a/b/c.ry"});
 
     // New archive has no a/b/c.ry
     auto src_std = src_dir / "share" / "std";
     write_file(src_std / "builtins.ry", "# builtins");
 
-    install_stdlib(src_dir.string(), "0.1.0");
+    install_stdlib(src_dir.string());
 
     // Both a/b/ and a/ should be removed
     EXPECT_FALSE(fs::exists(dest_std / "a" / "b"));
@@ -194,7 +193,7 @@ TEST_F(InstallStdlibTest, OldLayoutArchiveInstallsToLibStd) {
     fs::create_directories(src_dir / "lib" / "std");
     write_file(src_dir / "lib" / "std" / "builtins.ry", "# builtins from old layout");
 
-    bool ok = install_stdlib(src_dir.string(), "0.0.7");
+    bool ok = install_stdlib(src_dir.string());
     ASSERT_TRUE(ok);
 
     // Old layout archive → install to lib/std (matching old binary expectation)
@@ -207,13 +206,13 @@ TEST_F(InstallStdlibTest, ReturnsFalseWhenNoStdlibInArchive) {
     EXPECT_TRUE(fs::is_empty(dest_std));
     fs::remove_all(src_dir / "share" / "std");
 
-    bool ok = install_stdlib(src_dir.string(), "0.1.0");
+    bool ok = install_stdlib(src_dir.string());
     EXPECT_FALSE(ok);
     EXPECT_TRUE(fs::is_empty(dest_std));
 }
 
 TEST_F(InstallStdlibTest, HandlesEmptyStdlibDirectory) {
-    bool ok = install_stdlib(src_dir.string(), "0.1.0");
+    bool ok = install_stdlib(src_dir.string());
     EXPECT_TRUE(ok);
 }
 
