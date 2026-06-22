@@ -540,8 +540,20 @@ void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
 
 void CodeGen::validateDirectives(const std::vector<Directive> &directives, DirectiveTarget current) {
     SourceLocation saved_loc = current_loc_;
-    for (const auto &d : directives) {
+    // #1844: reject duplicate directives on the same declaration. The check
+    // is name-only and applies to every directive (builtin and user-defined)
+    // — none of the directives Ry ships make sense applied twice to the same
+    // target. A linear prefix scan beats a hash set here because declarations
+    // carry 0–3 directives in practice; the set's per-call allocation would
+    // dominate the comparison cost.
+    for (size_t i = 0; i < directives.size(); ++i) {
+        const auto &d = directives[i];
         if (d.loc.isValid()) current_loc_ = d.loc;
+
+        for (size_t j = 0; j < i; ++j) {
+            if (directives[j].name == d.name)
+                codegenError("duplicate directive '@" + d.name + "' on the same declaration");
+        }
 
         try {
             auto userIt = user_directive_registry_.find(d.name);

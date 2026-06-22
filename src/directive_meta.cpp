@@ -75,6 +75,24 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
             /*positional_param_names=*/{},
             /*defaulted_params=*/{},
             /*custom_validator=*/nullptr}},
+        // @doc attaches a Markdown documentation string to a declaration
+        // (#1844). The argument is preserved on the AST as metadata; the
+        // compiler does not parse Markdown. allowed_targets is informational
+        // for builtin directives (validateDirectiveSignature ignores it);
+        // out-of-target attachment is gated elsewhere — parser registry
+        // checks reject @doc on for-loops / call statements, and enum
+        // variants have no AST attachment point.
+        {"doc", {"doc",
+            T::Function | T::Record | T::Field | T::Statement | T::Enum | T::TypeAlias,
+            /*min_pos=*/1, /*max_pos=*/1,
+            /*positional_param_names=*/{},
+            /*defaulted_params=*/{},
+            [](const std::string &, const std::vector<DirectiveArg> &args) {
+                if (const ExprNode *p = firstPositionalExpr(args)) {
+                    if (!std::get_if<StringExpr>(&p->data))
+                        throw std::runtime_error("@doc expects a string literal argument");
+                }
+            }}},
     };
     return registry;
 }
@@ -87,6 +105,8 @@ uint8_t directiveTargetMask(std::string_view name) {
     if (name == "field")     return asTarget(DirectiveTarget::Field);
     if (name == "statement") return asTarget(DirectiveTarget::Statement);
     if (name == "for")       return asTarget(DirectiveTarget::ForLoop);
+    if (name == "enum")      return asTarget(DirectiveTarget::Enum);
+    if (name == "typealias") return asTarget(DirectiveTarget::TypeAlias);
     return 0;
 }
 

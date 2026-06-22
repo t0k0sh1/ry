@@ -1,0 +1,64 @@
+from testing import it, describe, expect, fail
+
+# #1844: @doc directive — Markdown documentation metadata.
+# Verifies that @doc parses and compiles on every declaration kind in scope,
+# accepts both single-line and triple-quoted block string arguments, and is
+# inert at runtime (the documented declarations behave normally).
+
+@doc("A 2D point in space.")
+record Point:
+  @doc("Horizontal coordinate.")
+  x: int
+  @doc("Vertical coordinate.")
+  y: int
+
+@doc("""
+A traffic light state.
+
+Used to express the three legal phases of a road signal.
+""")
+enum Light:
+  Red
+  Yellow
+  Green
+
+@doc("An opaque user identifier.")
+type UserId = int
+
+@doc("""
+Returns the absolute value of `x`.
+
+## Examples
+
+    abs(-3)  # 3
+""")
+fn abs(x: int) -> int:
+  if x < 0:
+    return -x
+  return x
+
+@describe("@doc directive metadata")
+fn docDirectiveTests():
+  @it("compiles and runs documented functions normally")
+  fn shouldExecuteDocumentedFn():
+    expect(abs(-7)).toEq(7)
+    expect(abs(5)).toEq(5)
+    expect(abs(0)).toEq(0)
+  @it("compiles and constructs documented records normally")
+  fn shouldConstructDocumentedRecord():
+    p = Point(3, 4)
+    expect(p.x).toEq(3)
+    expect(p.y).toEq(4)
+  @it("compiles documented enums and lets variants be referenced")
+  fn shouldReferenceDocumentedEnumVariant():
+    l = Light::Green
+    matched = false
+    case l:
+      Light::Red: fail("unexpected Red")
+      Light::Yellow: fail("unexpected Yellow")
+      Light::Green: matched = true
+    expect(matched).toEq(true)
+  @it("compiles documented type aliases as transparent integer types")
+  fn shouldUseDocumentedTypeAlias():
+    uid: UserId = 42
+    expect(uid).toEq(42)

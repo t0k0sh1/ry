@@ -217,3 +217,74 @@ fn cs(a: int, b: int):
           (primitive_type))))
     body: (function_body
       (return_statement))))
+
+==================
+@doc decorator with single-line string argument
+==================
+
+@doc("Returns the square of x.")
+fn square(x: int) -> int:
+    return x * x
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (qualified_identifier
+            (identifier)))))))
+
+==================
+@doc decorator with triple-quoted block string argument
+==================
+
+@doc("""
+Returns the absolute value of x.
+
+## Examples
+
+    abs(-3)  # 3
+""")
+fn abs(x: int) -> int:
+    return x
+
+---
+
+(source_file
+  (decorator
+    name: (identifier)
+    (decorator_arguments
+      (decorator_argument
+        value: (block_string_literal))))
+  (function_declaration
+    name: (function_name
+      (identifier))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (primitive_type))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (qualified_identifier
+          (identifier))))))

@@ -5119,3 +5119,39 @@ TEST(ParserTest, WeakReturnTypeWrappedInListAccepted) {
     Program prog = parseStr("fn make() -> List<weak str>:\n    return []\n");
     ASSERT_EQ(prog.size(), 1u);
 }
+
+// #1844: @doc("""...""") preserves is_block on the StringExpr held in the
+// directive argument so the formatter can later re-emit triple-quoted form.
+TEST(ParserTest, DocDirectiveBlockStringArgPreservesIsBlock) {
+    Program prog = parseStr(
+        "@doc(\"\"\"\n  short description\n  \"\"\")\n"
+        "fn foo() -> int:\n"
+        "    return 1\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fnPtr = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fnPtr->directives.size(), 1u);
+    const auto &d = fnPtr->directives[0];
+    EXPECT_EQ(d.name, "doc");
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(d.args[0].value->data));
+    const auto &se = std::get<StringExpr>(d.args[0].value->data);
+    EXPECT_EQ(se.value, "short description");
+    EXPECT_TRUE(se.is_block);
+}
+
+TEST(ParserTest, DocDirectiveSingleLineStringArg) {
+    Program prog = parseStr(
+        "@doc(\"single line\")\n"
+        "fn foo() -> int:\n"
+        "    return 1\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fnPtr = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fnPtr->directives.size(), 1u);
+    const auto &d = fnPtr->directives[0];
+    ASSERT_EQ(d.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(d.args[0].value->data));
+    const auto &se = std::get<StringExpr>(d.args[0].value->data);
+    EXPECT_EQ(se.value, "single line");
+    EXPECT_FALSE(se.is_block);
+}

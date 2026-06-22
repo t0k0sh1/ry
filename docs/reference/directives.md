@@ -17,8 +17,8 @@ Directives can be applied to the following declarations:
 
 - `fn` - Function definitions (including named test functions with the `@it` / `@describe` directive)
 - `record` - Record definitions
-- `enum` - Enum definitions (currently `@public` targets enums)
-- `type` - Type alias declarations (currently `@public` targets type aliases)
+- `enum` - Enum definitions (currently `@public` and `@doc` target enums)
+- `type` - Type alias declarations (currently `@public` and `@doc` target type aliases)
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops; among built-ins, only `@parallel` targets `for`. User-defined directives declaring `target=["for"]` may also be applied to `for` statements; directives with a different target are silently ignored per the target-mismatch rule.
@@ -165,6 +165,51 @@ from mylib                   # wildcard: add is callable; helper is co-located i
 From inside the same package as `mylib/calc.ry`, both `add` and `helper` are importable regardless of `@public`.
 
 The leading `_` underscore on an identifier carries **no** visibility meaning; visibility is controlled exclusively by `@public`. See [Modules — Visibility](modules.md#visibility) for the full rules and [Glossary — Visibility scopes](glossary.md#visibility-scopes) for the underlying scope vocabulary.
+
+### `@doc`
+
+Attaches a Markdown documentation string to a declaration. The argument is preserved as metadata; the compiler does not parse Markdown itself. A documentation generator is out of scope for the current release — `@doc` exists today so the documentation lives next to the declaration and is available to future tooling.
+
+**Defined as:** Compiler built-in. Registered in `src/directive_meta.cpp`'s built-in registry; there is no `.ry` declaration for `@doc`.
+
+**Applicable to:** function (`fn` and `async fn`), record, record fields, enum, `type` alias, and `@directive` declarations. `@doc` cannot be applied to `for` loops, function-call statements, or enum variants.
+
+The directive takes exactly one positional string argument. Empty strings (`@doc("")`) are accepted. The argument may be a single-line string (`"..."`) or a triple-quoted [block string](builtins-string.md#block-string-literal-) (`"""..."""`) — block strings are the canonical form for multi-line Markdown bodies because they read naturally and preserve indentation through `ry fmt`.
+
+```ry
+@doc("Returns the absolute value of x.")
+@public
+fn abs(x: int) -> int:
+  if x < 0:
+    return -x
+  return x
+
+@doc("""
+A point in 2D space.
+
+Components use floating-point coordinates so the same record can be reused
+for both pixel and world-space geometry.
+""")
+record Point:
+  @doc("Horizontal coordinate.")
+  x: float
+  @doc("Vertical coordinate.")
+  y: float
+
+@doc("""
+Returns a stream on success, or `None` on failure.
+
+## Parameters
+
+- `host`: host name or IP address
+- `port`: TCP port
+""")
+fn tcpConnect(host: str, port: int) -> TcpStream?
+```
+
+**Convention:** Prefer Markdown sections (`## Parameters`, `## Returns`, `## Examples`) over Javadoc-style `@param` / `@return` tags. Ry signatures already carry names and types, so a separate parameter syntax would duplicate that information.
+
+**Duplicate rejection:** A declaration may carry at most one `@doc`. Stacking two `@doc` directives on the same declaration is rejected with `duplicate directive '@doc' on the same declaration`. This rule generalises to every directive — `@public @public`, `@deprecated @deprecated`, and any future duplicate is rejected the same way.
 
 ### `@native`
 

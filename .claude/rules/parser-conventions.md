@@ -378,6 +378,20 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 
 **Parser-side asymmetry — resolved by #1427**: Until #1427, `src/parser/parser.cpp:460-462` and `:718-720` rejected every user-defined directive on `for` statements (only `@parallel` allowed) and on function-call statements (only the special `@each` / `@property` on `it(...)` form allowed) at parse time, making the silent-no-op behavior unobservable at those sites. #1427 replaced both gates with a `builtinDirectiveRegistry()` membership check: only registry-tracked directives (today: `@native` only) are rejected, and user-defined directives pass through to codegen `validateDirectives()` where the silent-no-op rule applies. The `ForLoop` and `Statement` codegen wiring added defensively in #1425 is now reachable from user source. Tests `ForLoopAcceptsUserDirectiveAsSilentNoOp` / `CallStmtAcceptsUserDirectiveAsSilentNoOp` (formerly `…RejectsUserDirectiveAtParseTime`, flipped per the "Relaxing a rejection branch …" rule in `.claude/skills/test-checklist/SKILL.md`) lock in the new permissive behavior; `ForLoopRejectsBuiltinNativeDirective` / `CallStmtRejectsBuiltinNativeDirective` / `ForLoopRejectsMultipleParallel` lock in the restrictions that remain.
 
+### Built-in directive `allowed_targets` is informational; target rejection is delivered by other gates
+
+**Source**: #1844 (2026-06-22, implementation — advisor call-out)
+**Tags**: codegen, directive, builtin, allowed_targets, target-rejection, validateDirectives
+
+**Rule**: For a directive registered in `builtinDirectiveRegistry()` (`src/directive_meta.cpp`), the `allowed_targets` field is informational — `validateDirectiveSignature` reads `min_positional` / `max_positional` / `positional_param_names` / `defaulted_params` / `custom_validator`, but **does NOT consult `allowed_targets`** when the directive comes from the builtin path. `validateDirectiveArgs` (the builtin entry) is not even passed the current target. So adding `T::Enum` to a builtin's `allowed_targets` mask does not by itself reject the directive on non-Enum sites. The user-defined `@directive(target=[...])` path is different — that one IS gated by `allowed_targets` inside `validateDirectives()` (see the prior entry).
+
+**How target rejection actually fires for builtin directives**:
+- **`for` loop / call statement** — parser-time gates (`src/parser/parser.cpp` around the `For` and `LParen` dispatches) iterate `builtinDirectiveRegistry()` and reject any registry-member directive at parse time. Adding the directive to the registry auto-enables this rejection on these sites as a side effect.
+- **Enum variant** — no AST attachment point (`EnumVariant` has no `directives` field), so the directive is dropped by the parser before codegen sees it.
+- **Whatever the codegen `validateDirectives()` call sites cover** — Function / Record / Field / Statement / ForLoop / Enum / TypeAlias call sites accept the directive once it is in the registry; sites that don't call `validateDirectives()` at all (most expression positions) never see it.
+
+**How to apply**: When adding a new builtin directive, don't infer target enforcement from `allowed_targets`. Walk the call sites of `validateDirectives()` to see where it's accepted, walk the parser-time builtin-registry gates to see where it's rejected, and rely on AST attachment-point absence (e.g. enum variants) for the remaining holes. Adding new `DirectiveTarget` enum values (e.g. `Enum`, `TypeAlias` in #1844) is cosmetic for the builtin itself — it only matters for `directiveTargetMask()` round-trip and for any future user-defined directive that wants to declare `target=["enum"]` / `target=["typealias"]`. Tests should exercise both the accepted-here and rejected-there sites explicitly rather than trusting the bitmask.
+
 ### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
 
 **Source**: #1189 (2026-04-19, implementation)

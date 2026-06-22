@@ -520,6 +520,8 @@ void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
 
+    validateDirectives(s.directives, DirectiveTarget::Enum);
+
     if (current_namespace_target_) {
         codegenError("enum declarations in qualified-imported user-defined modules are not yet supported; use 'from <mod> import <enum>' instead");
     }
@@ -1485,6 +1487,11 @@ DirectiveSignature fromDirectiveDef(const DirectiveDefStmt &s) {
 
 void CodeGen::emitStmt(DirectiveDefStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+
+    // Validate auxiliary directives attached to the @directive declaration
+    // itself (e.g. @doc, @public — #1844 / #708). @directive is stripped from
+    // s.directives at parse time so it does not need a registry entry.
+    validateDirectives(s.directives, DirectiveTarget::Function);
 
     const auto &builtin = builtinDirectiveRegistry();
     if (builtin.find(s.name) != builtin.end())
