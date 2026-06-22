@@ -1,5 +1,5 @@
 from testing import it, describe, expect, fail
-from io import open, close, writeText, deleteFile
+from io import open, close, writeText, readText, deleteFile
 
 # #1702 — `try:` effect-block expression.
 #
@@ -107,6 +107,23 @@ fn nestedInnerOkOuterErr() -> Result<int, Error>:
     b = safeDiv(10, 0)?
     a + b
 
+# ===== 3-level nested try: =====
+#
+# Each `?` runs emitScopeCleanupToDepth at a distinct scope_depth — the test
+# guards the scope-depth bookkeeping against off-by-one bugs that 2-level
+# coverage cannot exercise.
+
+fn nestedThreeLevelErr() -> Result<int, Error>:
+  return try:
+    middle: Result<int, Error> = try:
+      inner: Result<int, Error> = try:
+        v = safeDiv(10, 0)?
+        v + 1
+      a = inner?
+      a + 10
+    b = middle?
+    b + 100
+
 # ===== Composes with `using` =====
 
 fn tryUsingFailOnOpen(path: str) -> Result<int, Error>:
@@ -127,6 +144,25 @@ fn tryUsingSucceeds(path: str) -> Result<int, Error>:
         Ok(_): 0
         Err(e): return Err(e)
     42
+
+fn tryUsingBodyEscape(path: str) -> Result<int, Error>:
+  # open(path, "w") succeeds and `using` binds f. Write a sentinel via f, then
+  # ? on an Err escapes the outer try:. emitScopeCleanupToDepth(ts.scope_depth)
+  # must walk down the using scope (running close on f, which flushes the
+  # sentinel) BEFORE the err PHI captures the Err. Reading the sentinel back
+  # via readText after the call is the observable proof that close ran — ASan
+  # runs with detect_leaks=0 so a skipped-close leak path is otherwise silent.
+  # Mirrors writeThenFailViaQuestion (function-return path) in
+  # using_resource.test.ry, adapted for the try: block lowering.
+  return try:
+    using f = open(path, "w")?:
+      case writeText(f, "body-escape-sentinel"):
+        Ok(_): 0
+        Err(e): return Err(e)
+      r: Result<int, Error> = Err(Error("body-escape-witness"))
+      v = r?
+      0
+    99
 
 # ===== ARC-managed str err escape =====
 #
@@ -226,6 +262,12 @@ fn tryBlockTests():
       Ok(v): fail("expected outer Err")
       Err(e): expect(e.message).toEq("division by zero")
 
+  @it("Nested: 3 levels — innermost Err propagates through each ? to outer")
+  fn nestedThreeLevelEscape():
+    case nestedThreeLevelErr():
+      Ok(v): fail("expected outer Err")
+      Err(e): expect(e.message).toEq("division by zero")
+
   @it("using composition: ? in using init escapes the try: block")
   fn usingInitEscape():
     # /tmp path that does not exist — open returns Err, ? escapes try:.
@@ -239,6 +281,21 @@ fn tryBlockTests():
     case tryUsingSucceeds(path):
       Ok(v): expect(v).toEq(42)
       Err(e): fail("unexpected err: " + e.message)
+    deleteFile(path)
+
+  @it("using composition: ? in body after bind escapes outer try, close fires")
+  fn usingBodyEscapeCloses():
+    path = "/tmp/ry_2298_using_body.txt"
+    case tryUsingBodyEscape(path):
+      Ok(v): fail("expected outer Err")
+      Err(e): expect(e.message).toEq("body-escape-witness")
+    # If the using close hook ran during the ?-escape, the sentinel write was
+    # flushed; readText observes it. ASan's detect_leaks=0 cannot catch a
+    # skipped-close leak, so this content assertion is the actual regression
+    # guard for the close-after-?-after-bind path.
+    case readText(path):
+      Ok(s): expect(s).toEq("body-escape-sentinel")
+      Err(e): fail("readText: " + e.message)
     deleteFile(path)
 
   @it("ARC-managed str err: retain on ? escape — message survives cleanup")
