@@ -259,10 +259,9 @@ TEST(Paths, ManifestReadWrite) {
     std::string tmp(tmp_dir);
 
     std::vector<std::string> files = {"builtins.ry", "str.ry"};
-    ry::write_manifest(tmp, "0.0.3", files);
+    ry::write_manifest(tmp, files);
 
     auto manifest = ry::read_manifest(tmp);
-    EXPECT_EQ(manifest.version, "0.0.3");
     ASSERT_EQ(manifest.files.size(), 2u);
     EXPECT_EQ(manifest.files[0], "builtins.ry");
     EXPECT_EQ(manifest.files[1], "str.ry");
@@ -378,6 +377,5 @@ TEST(Paths, FindNativeLibraryPrefersExeParentOverRyHome) {
 
 TEST(Paths, ManifestReadMissing) {
     auto manifest = ry::read_manifest("/nonexistent/path");
-    EXPECT_TRUE(manifest.version.empty());
     EXPECT_TRUE(manifest.files.empty());
 }

@@ -1,9 +1,7 @@
 #include "ry/project/paths.hpp"
 #include "ry/project/project_config.hpp"
-#include "ry/cli/self_update.hpp"
 #include <cstdlib>
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -131,8 +129,6 @@ StdlibManifest read_manifest(const fs::path &dir) {
     std::string json((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
 
-    manifest.version = ry::self_update::detail::extract_json_string(json, "version");
-
     // Extract files array
     auto arr_start = json.find('[');
     auto arr_end = json.find(']');
@@ -153,11 +149,10 @@ StdlibManifest read_manifest(const fs::path &dir) {
 }
 
 void write_manifest(const fs::path &dir,
-                    const std::string &version,
                     const std::vector<std::string> &files) {
     fs::path manifest_path = dir / "manifest.json";
     std::ofstream out(manifest_path);
-    out << "{\n  \"version\": \"" << version << "\",\n  \"files\": [";
+    out << "{\n  \"files\": [";
     for (size_t i = 0; i < files.size(); i++) {
         if (i > 0) out << ", ";
         out << "\"" << files[i] << "\"";

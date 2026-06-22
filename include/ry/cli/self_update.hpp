@@ -48,7 +48,7 @@ SignatureAction evaluate_signature_policy(
 
 std::string download_and_extract(const std::string &download_url, const std::string &tag);
 bool replace_binary(const std::string &tmp_dir, const std::string &binary_path);
-bool install_stdlib(const std::string &tmp_dir, const std::string &new_version);
+bool install_stdlib(const std::string &tmp_dir);
 bool install_native_libs(const std::string &tmp_dir);
 
 } // namespace detail

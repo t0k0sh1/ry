@@ -587,7 +587,7 @@ bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_pa
     return true;
 }
 
-bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_version) {
+bool install_stdlib(const std::string &tmp_dir_str) {
     namespace fs = std::filesystem;
 
     // Detect archive layout: new archives use share/std, old ones use lib/std.
@@ -658,7 +658,7 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
     }
 
     // Write new manifest
-    ry::write_manifest(dest_std, new_version, new_files);
+    ry::write_manifest(dest_std, new_files);
 
     // Clean up old lib/std only when ALL files were copied successfully.
     // On partial failure, keep old lib/std so the user retains a working stdlib.
@@ -779,9 +779,7 @@ int cmd_self_update(int argc, char *argv[]) {
     }
 
     // Install/update stdlib
-    std::string version = target.tag;
-    if (!version.empty() && version[0] == 'v') version = version.substr(1);
-    if (detail::install_stdlib(tmp_dir, version)) {
+    if (detail::install_stdlib(tmp_dir)) {
         std::cerr << "Standard library updated.\n";
     }
 
