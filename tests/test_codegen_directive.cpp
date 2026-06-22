@@ -234,17 +234,22 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     // (demand-driven loading for the called package) and must NOT include
     // "path" (no call ever lands on a path symbol).
     //
-    // Post-#2285 caveat: descriptor-migrated modules whose dispatcher is
-    // a `return nullptr;` stub (currently base64) let the StdlibRegistry
-    // loop continue through sibling dispatchers (io / net / http / json /
-    // thread), each of which inserts its library at the top per the
-    // "Stdlib dispatchers must insert their module library" rule. Those
-    // siblings appear in `libs` even though no call lands on them; the
-    // strict invariant "libs.size() == 1" no longer holds. The test now
-    // asserts the called package IS present and the never-called package
-    // (path) is NOT, which is the load-bearing demand-driven property.
-    // The sibling spurious-load artifact resolves as each module
-    // migrates to descriptor-driven dispatch.
+    // Transitional set after #2285 (base64 descriptor migration, #2299):
+    // descriptor-migrated dispatchers (currently base64) return nullptr,
+    // letting the StdlibRegistry loop continue through sibling dispatchers.
+    // Among those, dispatchIO unconditionally inserts "io" at its top per
+    // the "Stdlib dispatchers must insert their module library" rule
+    // (.claude/rules/codegen-stdlib-dispatcher.md L34-46), even when no
+    // io call lands on it. Other table-driven siblings (net/http/path/
+    // thread/runtime_internal) insert only on match and are silent here;
+    // json/json5 are gated by isJson*Imported and skipped.
+    //
+    // This is a bounded regression guard: the expected set is the exact
+    // current transitional content. When a new dispatcher is added or an
+    // existing dispatcher's insertion behavior changes, this assertion
+    // forces an explicit update rather than letting a sibling silently
+    // join. When all native dispatchers are descriptor-driven (#2299
+    // close criterion), collapse expected_libs to {"base64"}.
     std::string src =
         "@native(\"base64\")\n"
         "fn encode(data: str) -> str\n"
@@ -260,8 +265,14 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     cg.compile(prog);
 
     auto &libs = cg.getRequiredLibraries();
-    EXPECT_TRUE(libs.count("base64"));
-    EXPECT_FALSE(libs.count("path"));
+    const std::unordered_set<std::string> expected_libs = {
+        "base64",
+        "io",
+    };
+    EXPECT_EQ(libs, expected_libs)
+        << "Required-libraries set changed. If a new dispatcher silently "
+        << "joined or an existing dispatcher's insert behavior changed, "
+        << "update expected_libs explicitly and revisit #2299.";
 }
 
 TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {

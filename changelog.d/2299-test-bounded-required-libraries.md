@@ -1,0 +1,3 @@
+### Changed
+
+- `GetRequiredLibrariesOnlyIncludesCalledFunctions` (`tests/test_codegen_directive.cpp`) のアサーションを presence/absence チェック (`EXPECT_TRUE(libs.count("base64"))` + `EXPECT_FALSE(libs.count("path"))`) から、実測値ベースの bounded exact-set assertion (`EXPECT_EQ(libs, {"base64", "io"})`) に強化。PR #2285 の base64 descriptor 移行で sibling dispatcher が dispatcher loop に fall-through し、`dispatchIO` の unconditional top-insert が `"io"` を required-libraries 集合に押し込む transitional 状態を、固定された期待集合として記録する。新規 dispatcher の追加・既存 dispatcher の insertion 挙動変更が起きると EXPECT_EQ が fail するため、silent regression を防ぐ regression guard として機能する。issue #2299 の完了条件 (`ASSERT_EQ(libs.size(), 1u)`) は全モジュールの descriptor 移行完了時 (v0.0.31+) に達成する想定で、本変更ではトラッカー issue を open のままとする。 (#2299)
