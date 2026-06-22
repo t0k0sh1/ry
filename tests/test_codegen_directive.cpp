@@ -273,6 +273,37 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
         << "update expected_libs explicitly and revisit #2299.";
 }
 
+TEST(NativeFnSigs, GetRequiredLibrariesExcludesImportedButUncalledIo) {
+    // Regression for PR #2332 (CodeRabbit review on #2299): when io is
+    // imported (the sig-presence gate passes) but only a base64 call is
+    // emitted, dispatchIO must NOT insert "io" into required_libraries.
+    // The per-emit markIo lambda gates insertion on actual io-dispatch
+    // success, so callsites that fall through (e.g. base64.encode) do
+    // not pollute the set.
+    std::string src =
+        "@native(\"base64\")\n"
+        "fn encode(data: str) -> str\n"
+        "@native(\"io\")\n"
+        "fn readText(path: str) -> Result<str, Error>\n"
+        "print(encode(\"Hello\"))\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &libs = cg.getRequiredLibraries();
+    const std::unordered_set<std::string> expected_libs = {
+        "base64",
+    };
+    EXPECT_EQ(libs, expected_libs)
+        << "dispatchIO inserted 'io' for a non-io callsite. The per-emit "
+        << "markIo lambda must only insert on successful io dispatch, not "
+        << "on gate-pass alone.";
+}
+
 TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {
     // Declares @native("libname") functions but doesn't call any.
     // getRequiredLibraries() should return empty (demand-driven loading).

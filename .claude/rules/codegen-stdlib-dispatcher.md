@@ -36,7 +36,20 @@ When a bare builtin (in `builtins_` map or `emitBuiltinCore` inline branch) call
 **Source**: #1856 (2026-05-22, fix)
 **Tags**: stdlib, dispatch, used_native_libraries, custom-emitter, inline-codegen, jit-symbol-resolution, regression
 
-**Rule**: A stdlib dispatcher (`dispatchIO`, `dispatchHttp`, future module dispatchers wired via `RY_REGISTER_STDLIB_PACKAGE`) MUST call `cg.used_native_libraries_.insert("<mod>")` before any custom-emitter or inline-codegen branch that might early-return. Do not rely on the final `emitTableDrivenNativeCall(... "<mod>", <mod>_table, ...)` fallthrough to register the library, because every early-return path bypasses it. When the dispatcher also has a sig-presence gate (rule below, #1855 / #2299), place the insert immediately after the gate — `cg.used_native_libraries_.insert` runs only when the package is actually imported (consistent with `dispatchJson` / `dispatchJson5` / `dispatchIO`).
+**Rule**: A stdlib dispatcher (`dispatchIO`, `dispatchHttp`, future module dispatchers wired via `RY_REGISTER_STDLIB_PACKAGE`) MUST register `cg.used_native_libraries_.insert("<mod>")` before any custom-emitter or inline-codegen branch returns a non-null value. Do not rely on the final `emitTableDrivenNativeCall(... "<mod>", <mod>_table, ...)` fallthrough to register the library, because every early-return path bypasses it. Two equivalent patterns:
+
+1. **Top-insert (simpler)**: place `cg.used_native_libraries_.insert("<mod>")` at the dispatcher entry (after the sig-presence gate, if any). Inserts on every dispatcher entry, including non-matching callees that ultimately return nullptr — wastes a dlopen on `from <mod> import X; <only-non-mod-calls>` programs.
+2. **Per-emit insert (more precise)**: wrap each return point with a helper that inserts only on non-null returns. Insert fires only on actual dispatch success, so non-matching callees don't pollute `required_libraries`. See `dispatchIO`'s `markIo` lambda (PR #2332, addressing CodeRabbit review on #2299):
+
+   ```cpp
+   auto markIo = [&](llvm::Value *v) -> llvm::Value * {
+       if (v) cg.used_native_libraries_.insert("io");
+       return v;
+   };
+   // ... return markIo(emitFileOpen(cg, e));
+   ```
+
+   Per-emit is preferred when the dispatcher has a broad sig-presence gate (e.g. `isIoImported` passes for any io import, including programs that never call an io fn).
 
 **Why**: `emitTableDrivenNativeCall` reads `sig.library` from the matched table entry and registers it, so functions that go through the table are covered. But any dispatcher that branches to a `customEmitter` or emits LLVM IR inline (e.g. `dispatchIO`'s `open` → `emitFileOpen`, `readAll(File)` → `emitFileReadAll`, `lines(File)` → `emitFileLines`, `writeText(File,_)` → `emitFileWriteText`, `writeText(str,str)` inline branch directly calling `__ry_write_text`) skips the table-driven helper entirely. With nothing registering the library, `libry_<mod>.dylib` is never `dlopen`ed and JIT lookup fails with `Symbols not found: [ ___ry_<name> ]`. The failure only surfaces when the user imports a non-table function in isolation; if any other import in the program reaches the table-driven path or another emitter that explicitly inserts the library, the bug is masked (e.g. `close(f)` in `codegen_call.cpp` explicitly inserted `"io"`, so any program importing `close` accidentally worked). Per-emitter inserts are fragile — each new custom emitter must remember to add the line. A single insert at the top of the dispatcher covers every branch and is idempotent (`std::set::insert`), so the `emitTableDrivenNativeCall` fallthrough's own insert is a harmless no-op.
 

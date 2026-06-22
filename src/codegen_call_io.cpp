@@ -403,28 +403,33 @@ static bool isIoImported(CodeGen &cg) {
 
 RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
-    // Gate before any side effect (including used_native_libraries_ insert)
-    // so a program that never imports io does not pull libry_io.dylib into
-    // the JIT load set (#2299 close criterion 2). Without this gate every
-    // sibling-dispatcher fall-through (e.g. base64-only program reaching
-    // dispatchIO through the StdlibRegistry loop after dispatchBase64
-    // returns nullptr) silently adds "io" to required_libraries.
+    // Gate: skip when io isn't in the program's import set, so a sibling
+    // dispatcher fall-through (e.g. base64-only program reaching dispatchIO
+    // through the StdlibRegistry loop) returns nullptr without side effects
+    // (#2299 close criterion 2).
     if (!isIoImported(cg))
         return nullptr;
 
-    // Register libry_io.dylib for JIT loading. The custom emitters and
-    // inline paths below (open / readAll(File) / readLine(File) / lines /
-    // writeText File and str/str overloads) bypass emitTableDrivenNativeCall
-    // and therefore miss the sig.library-driven insert
+    // Per-emit insert: register libry_io.dylib only when an io dispatch
+    // actually succeeds (non-null return). The gate above passes for ANY
+    // io import; a program that imports io but never calls an io fn would
+    // otherwise pollute required_libraries when dispatchIO is reached for
+    // a non-io callee (PR #2332 CodeRabbit review). Per-emit insert covers
+    // custom-emitter paths (open / readAll(File) / readLine(File) / lines /
+    // writeText File and str/str overloads) that bypass emitTableDrivenNativeCall;
+    // table-driven fallthrough's own self-insert is idempotent
     // (codegen-stdlib-dispatcher.md #1856).
-    cg.used_native_libraries_.insert("io");
+    auto markIo = [&](llvm::Value *v) -> llvm::Value * {
+        if (v) cg.used_native_libraries_.insert("io");
+        return v;
+    };
 
     const auto &n = e.callee;
     const auto sz = e.args.size();
 
     // open(path, mode) — new name, always File
     if (n == "open" && sz == 2)
-        return emitFileOpen(cg, e);
+        return markIo(emitFileOpen(cg, e));
 
     // readAll(f: File) — 1-arg (0-arg stdin handled by table)
     if (n == "readAll" && sz == 1) {
@@ -432,12 +437,12 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         if (!cg.isFile(arg0))
             cg.codegenError("readAll(f): argument must be a File handle; "
                             "use readAll() with no arguments to read from stdin");
-        return emitFileReadAll(cg, e, arg0);
+        return markIo(emitFileReadAll(cg, e, arg0));
     }
 
     // readLine() — 0-arg stdin reader, returns Result<Option<str>, Error>
     if (n == "readLine" && sz == 0)
-        return emitStdinReadLine(cg, e);
+        return markIo(emitStdinReadLine(cg, e));
 
     // readLine(f: File) — 1-arg
     if (n == "readLine" && sz == 1) {
@@ -445,7 +450,7 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         if (!cg.isFile(arg0))
             cg.codegenError("readLine(f): argument must be a File handle; "
                             "use readLine() with no arguments to read from stdin");
-        return emitFileReadLine(cg, e, arg0);
+        return markIo(emitFileReadLine(cg, e, arg0));
     }
 
     // lines(f: File) -> Iterator<str>
@@ -453,24 +458,24 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (!cg.isFile(arg0))
             cg.codegenError("lines(f): argument must be a File handle");
-        return emitFileLines(cg, e, arg0, rk_file);
+        return markIo(emitFileLines(cg, e, arg0, rk_file));
     }
 
     // writeText — 2-arg: check if arg0 is File or str
     if (n == "writeText" && sz == 2) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (cg.isFile(arg0))
-            return emitFileWriteText(cg, e, arg0);
+            return markIo(emitFileWriteText(cg, e, arg0));
         // Non-File: inline str-based writeText (arg0 already emitted)
         llvm::Value *content = cg.emitExpr(*e.args[1]);
         if (!cg.isStrLike(arg0) || !cg.isStrLike(content))
             cg.codegenError("writeText(path, content) requires str arguments");
         auto fn = cg.getRuntimeFn("__ry_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
-        return cg.wrapStatusAsResult(status);
+        return markIo(cg.wrapStatusAsResult(status));
     }
 
-    return cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table));
+    return markIo(cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table)));
 }
 
 // ===== Shared helper: ptr → Result<T, Error> with static error message =====
