@@ -22,7 +22,7 @@ Directives can be applied to the following declarations:
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops; among built-ins, only `@parallel` targets `for`. User-defined directives declaring `target=["for"]` may also be applied to `for` statements; directives with a different target are silently ignored per the target-mismatch rule.
-- `@directive` declarations themselves (so a directive declaration can be marked `@public` for cross-package import)
+- `@directive` declarations themselves (so a directive declaration can be marked `@public` for cross-package import or carry a `@doc` documentation string)
 
 ## Built-in Directives
 
