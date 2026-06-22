@@ -17,6 +17,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# ---- Constants -------------------------------------------------------------
+
+# JSONL schema version (single source of truth for both record builders, #2300).
+# Schema contract: docs/architecture/jsonl-run-logs.md.
+SCHEMA_VERSION="1"
+
 # ---- Repo root -------------------------------------------------------------
 
 REPO_ROOT="$PWD"
@@ -187,6 +193,7 @@ STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 HOST_OS="$(uname -s)"
 
 jq -nc \
+  --arg schema_version "$SCHEMA_VERSION" \
   --arg run_id "$RUN_ID" \
   --arg started_at "$STARTED_AT" \
   --arg host_os "$HOST_OS" \
@@ -197,7 +204,7 @@ jq -nc \
   --arg ry_version "$RY_VERSION" \
   '{
     record_type: "run_meta",
-    schema_version: "1",
+    schema_version: $schema_version,
     run_id: $run_id,
     started_at: $started_at,
     host_os: $host_os,
@@ -299,6 +306,7 @@ run_one() {
   fi
 
   jq -nc \
+    --arg schema_version "$SCHEMA_VERSION" \
     --arg run_id "$RUN_ID" \
     --arg target "$target" \
     --argjson exit_code "$exit_code" \
@@ -314,7 +322,7 @@ run_one() {
     --args \
     '{
       record_type: "command",
-      schema_version: "1",
+      schema_version: $schema_version,
       run_id: $run_id,
       target: $target,
       command: $ARGS.positional,

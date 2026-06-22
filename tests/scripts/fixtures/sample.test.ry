@@ -1,0 +1,7 @@
+from testing import it, describe, expect
+
+@describe("export-run-logs fixture")
+fn exportRunLogsFixtureTests():
+  @it("trivial pass for run-log schema validation")
+  fn trivialPass():
+    expect(1).toEq(1)
