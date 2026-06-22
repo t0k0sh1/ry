@@ -256,7 +256,7 @@ When a `@native` function declares default arguments, the materialized binding i
 
 **Standard library declarations (`share/std/`):**
 
-`@native` declarations for all built-in functions live under `share/std/` relative to the `ry` executable, organized by category. These files are automatically loaded as a prelude and enable argument count validation for built-in function calls. For the full function reference, see [Builtins](builtins.md), [Builtins — String](builtins-string.md), and [Collections](collections.md).
+`@native` declarations for all built-in functions live under `share/std/` relative to the `ry` executable, organized by category. These files form the canonical [`ry.lang`](modules.md#canonical-module-paths) prelude and are automatically loaded into every program; they enable argument count validation for built-in function calls. For the full function reference, see [Builtins](builtins.md), [Builtins — String](builtins-string.md), and [Collections](collections.md).
 
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).

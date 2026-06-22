@@ -1213,15 +1213,77 @@ TEST(ParserTest, QualifiedImportSingleModule) {
     EXPECT_FALSE(qi.alias.has_value());
 }
 
-TEST(ParserTest, QualifiedImportDottedPathRejected) {
-    // AC6: 'import a.b' (dot-separated) is rejected with clear error.
+TEST(ParserTest, QualifiedImportDottedPathRejectedForNonRyNamespace) {
+    // AC6 (post-#1769): 'import a.b' (dot-separated) is still rejected for any
+    // first segment OTHER than the reserved `ry` namespace. This lock prevents
+    // the parser from accepting arbitrary multi-segment qualified imports
+    // through the back door — only `ry.*` is the dotted whitelist.
     try {
         parseStr("import a.b");
-        FAIL() << "Expected parser to reject dotted module path in qualified import";
+        FAIL() << "Expected parser to reject dotted module path 'import a.b'";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("dotted module paths"), std::string::npos)
             << "Error should mention dotted module paths: " << msg;
+    }
+    try {
+        parseStr("import user.utils");
+        FAIL() << "Expected parser to reject dotted module path 'import user.utils'";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("dotted module paths"), std::string::npos)
+            << "Error should mention dotted module paths: " << msg;
+    }
+}
+
+TEST(ParserTest, QualifiedImportRyDottedAccepted) {
+    // #1769: `import ry.<sub>` is the canonical qualified form for the
+    // reserved stdlib namespace. The module_name carries the last segment
+    // (the bare effective name), and the new import_path carries the full
+    // slash-separated path for the resolver.
+    auto prog = parseStr("import ry.math");
+    ASSERT_EQ(prog.size(), 1u);
+    auto *qi = std::get_if<std::unique_ptr<QualifiedImportStmt>>(&prog[0]);
+    ASSERT_NE(qi, nullptr);
+    EXPECT_EQ((*qi)->module_name, "math");
+    EXPECT_EQ((*qi)->import_path, "ry/math");
+    EXPECT_FALSE((*qi)->alias.has_value());
+}
+
+TEST(ParserTest, QualifiedImportRyDottedWithAlias) {
+    // #1769: alias on a ry.* qualified import binds the alias as the effective
+    // name (matching the existing `import math as m` Python-style contract).
+    auto prog = parseStr("import ry.math as ryMath");
+    ASSERT_EQ(prog.size(), 1u);
+    auto *qi = std::get_if<std::unique_ptr<QualifiedImportStmt>>(&prog[0]);
+    ASSERT_NE(qi, nullptr);
+    EXPECT_EQ((*qi)->module_name, "math");
+    EXPECT_EQ((*qi)->import_path, "ry/math");
+    ASSERT_TRUE((*qi)->alias.has_value());
+    EXPECT_EQ(*(*qi)->alias, "ryMath");
+}
+
+TEST(ParserTest, QualifiedImportRyDottedCollidesWithBareImport) {
+    // #1769: `import math` and `import ry.math` both bind the bare effective
+    // name "math". The parser's existing duplicate-effective-name check
+    // (imported_modules_) catches the collision regardless of which form
+    // came first. Users must disambiguate with an alias.
+    try {
+        parseStr("import math\nimport ry.math");
+        FAIL() << "Expected parser to reject duplicate effective name 'math'";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("duplicate qualified import"), std::string::npos)
+            << "Error should mention duplicate qualified import: " << msg;
+    }
+    // Reverse order: ry.math first, then bare math.
+    try {
+        parseStr("import ry.math\nimport math");
+        FAIL() << "Expected parser to reject duplicate effective name 'math' (reverse order)";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("duplicate qualified import"), std::string::npos)
+            << "Error should mention duplicate qualified import: " << msg;
     }
 }
 

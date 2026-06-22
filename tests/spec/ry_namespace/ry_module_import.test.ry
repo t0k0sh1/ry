@@ -1,0 +1,30 @@
+from testing import it, describe, expect
+
+# #1769: ry.<module> form resolves to the same physical modules as the
+# legacy flat / std spellings. The three intrinsic gating paths
+# (testing intrinsics, C++ resource kinds, C++ builtin records) must
+# accept the ry.* spelling as canonical.
+from ry.math import sqrt, PI
+from ry.regex import Match, regexFindAll
+
+# coexistence: importing the same physical module via both ry.* and flat
+# must round-trip to identical values.
+from math import PI as flatPI
+
+@describe("ry.<module> canonical import (#1769)")
+fn ryModuleImportTests():
+  @it("from ry.math resolves to the same physical module as bare math")
+  fn shouldResolveMath():
+    expect(sqrt(4.0)).toEq(2.0)
+    expect(PI).toBeCloseTo(3.141592653589793, 10)
+
+  @it("ry.math.PI and math.PI are the same value (canonical / compat coexist)")
+  fn shouldCoexistAcrossSpellings():
+    expect(PI).toEq(flatPI)
+
+  @it("from ry.regex import Match exposes the C++ builtin record")
+  fn shouldResolveRegexMatch():
+    matches: List<Match> = regexFindAll("abc123def456", "\\d+")
+    expect(len(matches)).toEq(2)
+    expect(matches[0].full).toEq("123")
+    expect(matches[1].full).toEq("456")

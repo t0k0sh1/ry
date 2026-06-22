@@ -85,10 +85,14 @@ static const std::unordered_set<std::string> &testingIntrinsics() {
 // shadow (resolved via `referrer_dir`) does NOT silently absorb the
 // intrinsic names. Only the stdlib testing module gets the bypass; a local
 // shadow continues to fail with the existing `'<name>' not found` diagnostic.
+// #1769: callers may pass either the legacy bare spelling (`testing`) or the
+// canonical reserved-namespace spelling (`ry/testing`); compare on the
+// canonicalized bare name so both paths agree.
 static bool isTestingIntrinsic(bool from_stdlib,
                                const std::string &module_path,
                                const std::string &name) {
-    return from_stdlib && module_path == "testing" &&
+    return from_stdlib &&
+           ModuleLoader::canonicalStdlibName(module_path) == "testing" &&
            testingIntrinsics().count(name) > 0;
 }
 
@@ -108,7 +112,7 @@ static bool isCppResourceKind(bool from_stdlib,
     if (id == ResourceKindRegistry::NONE) return false;
     const auto *info = ResourceKindRegistry::instance().getInfo(id);
     if (!info || !info->library) return false;
-    return module_path == info->library;
+    return ModuleLoader::canonicalStdlibName(module_path) == info->library;
 }
 
 // #1888: Builtin record types registered in `CodeGen` constructor (not in the
@@ -125,7 +129,7 @@ static bool isCppBuiltinRecord(bool from_stdlib,
         kModuleToRecords = {
             {"regex", {"Match"}},
         };
-    auto it = kModuleToRecords.find(module_path);
+    auto it = kModuleToRecords.find(ModuleLoader::canonicalStdlibName(module_path));
     if (it == kModuleToRecords.end()) return false;
     return it->second.count(name) > 0;
 }
@@ -367,6 +371,22 @@ ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
     }
 }
 
+bool ModuleLoader::isRyPath(const std::string &module_path) {
+    return module_path.size() >= 3 && module_path[0] == 'r' &&
+           module_path[1] == 'y' && module_path[2] == '/';
+}
+
+std::string ModuleLoader::canonicalStdlibName(const std::string &module_path) {
+    // Non-`ry/` paths (legacy bare spellings: "math", "testing", "regex", ...)
+    // are returned unchanged so the gating predicates remain backward
+    // compatible with the existing `from math import` / `from testing import`
+    // resolution paths.
+    if (!isRyPath(module_path)) return module_path;
+    std::string tail = module_path.substr(3);
+    if (tail == "lang") return "std";  // ry.lang -> the prelude directory
+    return tail;                       // ry.<sub> -> <sub>
+}
+
 std::string ModuleLoader::cachedCanonical(const std::string &raw, std::error_code &ec) {
     auto it = canonical_cache_.find(raw);
     if (it != canonical_cache_.end()) {
@@ -451,6 +471,50 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
 
         return {};
     };
+
+    // #1769: `ry/*` reserved-namespace intercept. The path is remapped to the
+    // physical stdlib name (`ry/lang` -> `std`, `ry/<sub>` -> `<sub>`) and
+    // resolved against `search_paths_` ONLY — never `referrer_dir`. This
+    // guarantees that a project-local `ry/` directory cannot shadow the
+    // bundled stdlib. The original spelling is preserved in the cache key
+    // and in any error message. If the referrer directory contains a local
+    // `ry/` directory or `ry.ry` file, record a one-time warning so the
+    // user is alerted to the future reservation conflict; the probe itself
+    // is cached per-referrer so a file with many `ry.*` imports does not
+    // re-stat the same directory.
+    if (isRyPath(module_path)) {
+        if (!referrer_dir.empty() &&
+            probed_ry_shadow_dirs_.insert(referrer_dir).second) {
+            std::error_code shadow_ec;
+            const fs::path local_ry_dir = fs::path(referrer_dir) / "ry";
+            const fs::path local_ry_file = fs::path(referrer_dir) / "ry.ry";
+            if (fs::is_directory(local_ry_dir, shadow_ec) ||
+                fs::is_regular_file(local_ry_file, shadow_ec)) {
+                loader_warnings_.push_back(
+                    "warning: 'ry' is a reserved stdlib namespace; "
+                    "the local 'ry' module in '" + referrer_dir +
+                    "' is ignored and will become an error in a future release");
+            }
+        }
+
+        const std::string remapped = canonicalStdlibName(module_path);
+        for (const auto &dir : search_paths_) {
+            ResolvedPath rp = try_resolve(dir, remapped, /*from_stdlib=*/true);
+            if (!rp.path.empty()) {
+                if (ry::traceEnabled())
+                    emitTraceEvent("import.resolve.hit", "compile", &loc,
+                                   {TraceField("module_path", module_path),
+                                    TraceField("resolved_path", rp.path)});
+                resolve_cache_[cache_key] = rp;
+                return rp;
+            }
+        }
+        if (ry::traceEnabled())
+            emitTraceEvent("import.resolve.error", "compile", &loc,
+                           {TraceField("module_path", module_path),
+                            TraceField("detail", "module not found")});
+        throw std::runtime_error("module not found: " + module_path);
+    }
 
     // Relative import: "." or "./submod" — resolve only against referrer_dir
     bool is_relative = (module_path == ".") ||
@@ -674,7 +738,12 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         if (std::holds_alternative<std::unique_ptr<QualifiedImportStmt>>(stmt)) {
             auto &qimp = *std::get<std::unique_ptr<QualifiedImportStmt>>(stmt);
 
-            ResolvedPath rp = resolve(qimp.module_name, referrer_dir);
+            // #1769: dotted qualified imports (`import ry.math`) carry the full
+            // slash-separated path in `import_path`; bare imports leave it empty.
+            const std::string &resolve_path = qimp.import_path.empty()
+                                                  ? qimp.module_name
+                                                  : qimp.import_path;
+            ResolvedPath rp = resolve(resolve_path, referrer_dir);
             const std::string &abs_path = rp.path;
 
             // Propagate stdlib origin to codegen — Task 9 uses this to gate
@@ -800,7 +869,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         // project-local `testing.ry` shadow must continue to fail with the
         // existing `'<name>' not found in module 'testing'` diagnostic — its
         // intrinsic names are not implicitly imported here either.
-        if (rp.from_stdlib && imp.module_path == "testing") {
+        if (rp.from_stdlib &&
+            ModuleLoader::canonicalStdlibName(imp.module_path) == "testing") {
             if (imp.names.empty()) {
                 for (const auto &name : testingIntrinsics())
                     imported_testing_intrinsics_.insert(name);
