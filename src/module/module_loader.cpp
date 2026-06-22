@@ -576,19 +576,21 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
                 "use 'ry.<module>' (e.g. 'ry.lang', 'ry.math')");
         }
 
-        // #2297: stdlib allowlist — `ry/` 接頭辞の直後の第一セグメントが #1769
-        // 列挙の 11 module のいずれでなければ reject。`ry.builtins` / `ry.gc` /
-        // `ry.core` 等の internal module を user-facing でアクセス不能にする。
-        const auto sep = module_path.find('/', 3);
-        const std::string first_segment = module_path.substr(
-            3, sep == std::string::npos ? std::string::npos : sep - 3);
-        if (!isPublicRyModule(first_segment)) {
+        // #2297: stdlib allowlist — `ry/<sub>` の `<sub>` が #1769 列挙の 11
+        // module のいずれでなければ reject。`ry.builtins` / `ry.gc` / `ry.core`
+        // 等の internal module だけでなく、`ry.math.internal` のようなネスト
+        // パスも reject する (public surface は **完全な enumeration** であり、
+        // public module の下に深い public path は存在しない)。
+        const std::string public_module = module_path.substr(3);
+        if (public_module.find('/') != std::string::npos ||
+            !isPublicRyModule(public_module)) {
             if (ry::traceEnabled())
                 emitTraceEvent("import.resolve.error", "compile", &loc,
                                {TraceField("module_path", module_path),
                                 TraceField("detail", "internal stdlib module rejected")});
             throw std::runtime_error(
-                "'ry." + first_segment + "' is not a public stdlib module; "
+                "'" + toRyDotForm(module_path) +
+                "' is not a public stdlib module; "
                 "available: " + publicRyModulesListForError());
         }
 

@@ -256,3 +256,20 @@ TEST_F(RyNamespaceWarningTest, BogusRyModuleErrorUsesDotSpelling) {
     EXPECT_EQ(r.err.find("ry/bogus"), std::string::npos)
         << "error must NOT use slash spelling 'ry/bogus': " << r.err;
 }
+
+TEST_F(RyNamespaceWarningTest, NestedRyPathRejectedAsNotPublic) {
+    // public surface は full enumeration なので、`ry.<public>.<deeper>` のような
+    // ネスト import も "not a public stdlib module" として早期 reject される
+    // (たとえ `share/std/math/internal.ry` が将来追加されても resolve loop に
+    // 落とさず、policy gate でブロックする)。
+    auto p = writeScript("nested_ry.ry",
+        "from ry.math.internal import x\n");
+
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_NE(r.exit_code, 0) << "nested ry.* path must reject, stderr was: " << r.err;
+    EXPECT_NE(r.err.find("'ry.math.internal' is not a public stdlib module"),
+              std::string::npos)
+        << "error should explicitly state the nested path is not public: " << r.err;
+    EXPECT_EQ(r.err.find("ry/math/internal"), std::string::npos)
+        << "error must NOT use slash spelling: " << r.err;
+}
