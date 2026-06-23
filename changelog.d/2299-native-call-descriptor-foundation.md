@@ -8,4 +8,4 @@
 ### Scope
 
 - foundation のみ。任意の `dispatchXXX` (io/net/http/thread/path/json/json5/base64) は無変更で、`emitTableDrivenNativeCall` / `emitGenericNativeCall` 経路も書き換えていない。
-- 本 PR では #2299 criterion 1 (全 dispatcher descriptor 駆動化) は close しない。tracking issue は open のまま、v0.0.31+ で per-module 移行を継続する。 (#2299)
+- 本 PR の foundation 着地と先行 PR #2306 / #2332 の組み合わせで #2299 を close する。後続の per-module descriptor 移行は本 issue の範囲外として個別 issue で追跡する。 (#2299)
