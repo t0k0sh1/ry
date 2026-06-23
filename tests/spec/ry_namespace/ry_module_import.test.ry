@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from testing import it, describe, expect, fail
 
 # #1769: ry.<module> form resolves to the same physical modules as the
 # legacy flat / std spellings. The three intrinsic gating paths
@@ -6,6 +6,12 @@ from testing import it, describe, expect
 # accept the ry.* spelling as canonical.
 from ry.math import sqrt, PI
 from ry.regex import Match, regexFindAll
+
+# #2309: ry.net / ry.json5 joined the public allowlist in v0.0.30 alongside
+# ry.base64. The canonical spelling must resolve to the same physical modules
+# as the bare aliases (`from net import ...` / `from json5 import ...`).
+from ry.net import bind, listenerPort
+from ry.json5 import load, stringify
 
 # coexistence: importing the same physical module via both ry.* and flat
 # must round-trip to identical values.
@@ -28,3 +34,21 @@ fn ryModuleImportTests():
     expect(len(matches)).toEq(2)
     expect(matches[0].full).toEq("123")
     expect(matches[1].full).toEq("456")
+
+  @it("from ry.net import bind exposes the net primitives (#2309)")
+  fn shouldResolveNetBind():
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        port = listenerPort(server)
+        close(server)
+        expect(port > 0).toEq(true)
+      Err(e):
+        fail("ry.net bind unexpectedly failed: " + e.message)
+
+  @it("from ry.json5 import load + stringify roundtrips through the json5 module (#2309)")
+  fn shouldResolveJson5Roundtrip():
+    case load[int]("42"):
+      Ok(v):
+        expect(stringify(v)).toEq("42")
+      Err(e):
+        fail("ry.json5 load unexpectedly failed: " + e.message)

@@ -265,6 +265,8 @@ Since v0.0.30 (#1769) the canonical namespace for all official stdlib modules is
 | `ry.regex` | `regex` / `std.regex` | Regular expressions |
 | `ry.testing` | `testing` / `std.testing` | Test framework intrinsics |
 | `ry.base64` | `base64` / `std.base64` | Base64 encode / decode |
+| `ry.net` | `net` / `std.net` | TCP / TLS socket primitives |
+| `ry.json5` | `json5` / `std.json5` | JSON5 parse / stringify |
 
 All three spellings resolve to the same physical modules; the canonical `ry.*` form is recommended for new code.
 
