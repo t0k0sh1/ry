@@ -18,8 +18,8 @@ namespace fs = std::filesystem;
 // the only reliable detector short of sanitizer instrumentation.
 // Pre-fix repro on macOS ≈ 15/100; 0/100 with the fix is strong
 // evidence (`P(0/100 | p=0.15) = 0.85^100 ≈ 8.7e-8`).
-// See `.claude/rules/codegen-arc-cow.md` and KNOWLEDGE.md L49 for the
-// root-cause history (`#1266` → `#1799` → `#2246`).
+// See `.claude/rules/codegen-arc-cow.md` for the root-cause history
+// (`#1266` → `#1799` → `#2246`).
 
 namespace {
 

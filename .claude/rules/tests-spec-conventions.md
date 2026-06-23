@@ -5,174 +5,22 @@ paths:
 
 # Tests — Spec Conventions
 
-### `case` arms in `.test.ry` files must have a non-empty body
-
-**Source**: #804 (2026-04-14, implementation)
-**Tags**: testing, case, option, ry-syntax
-
-**Rule**: Every arm of a `case` expression in Ry must have at least one statement. An arm with no body (e.g. `None:` followed immediately by the closing `)`) causes a parser error pointing at the enclosing `describe` or `it` call — which can be confusing.
-
-```ry
-# ❌ Parser error — empty arm not allowed
-case opt:
-    Some(v): expect(v).toEq(1)
-    None:           # ← triggers "unexpected token ')'"
-
-# ✅ Use a flag variable to verify the None path
-gotNone = false
-case opt:
-    Some(v): fail("unexpected Some")
-    None: gotNone = true
-expect(gotNone).toEq(true)
-```
-
-### Ry has no `pass` — use `0` for no-op `case` arm bodies
-
-**Source**: #1607 (2026-05-09, implementation)
-**Tags**: testing, case, no-op, ry-syntax, coderabbit-translation
-
-**Rule**: Ry has no `pass` keyword. When a `case` arm needs a no-op body (e.g. an `Ok(_):` arm that intentionally discards the result of a verified setup call), use `0` as the canonical no-op statement.
-
-**Why**: Python-style `pass` is parsed as a bare identifier reference, producing a misleading "expected '=', '+=', ... after identifier" error pointing at the token after `pass`. CodeRabbit and other reviewers regularly suggest `pass` in Ry test snippets because their templates are language-agnostic; translating those suggestions to Ry requires substituting `0` (the convention already used in `nul_safety_io.test.ry`, `nul_safety_filesystem.test.ry`, etc.).
-
-```ry
-# ❌ Parser error — pass is not a Ry keyword
-case mkdirAll(parent):
-  Ok(_): pass                         # ← "expected '=' ... after identifier"
-  Err(e): fail("setup failed: " + e.message)
-
-# ✅ Use 0 as the no-op statement
-case mkdirAll(parent):
-  Ok(_): 0
-  Err(e): fail("setup failed: " + e.message)
-```
-
-**How to apply**: When porting a CodeRabbit suggestion or other external code snippet that uses `pass`, replace it with `0`. Empty body is also rejected (see the entry above), so the no-op cannot simply be omitted.
+This file covers only hazards that are not visible from reading the code.
 
 ### `expect(str).toEq("literal")` is NUL-truncating — use `expect(str == "literal").toEq(true)` for NUL-containing strings
 
-**Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
+**Tags**: testing, NUL-safety, codegen_test
 
-`toEq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
-`strcmp` stops at the first `\0`, so `expect(substr("a\0b", 0, 3)).toEq("a\0b")` passes even
-when `substr` returns `"a"` — both C-strings compare equal as `""` / `"a"` depending on content.
-
-**Why**: The `==` operator between two `str` values routes through `emitComparisonOp`
-(`codegen_expr.cpp:1016`) → `__ry_str_cmp` (byte_len + memcmp), which is NUL-safe.
-The `toEq` matcher is a separate code path that does not reuse that logic.
-
-**How to apply**: When the expected value contains an embedded `\0`, write the assertion as:
-```ry
-expect(expr == "a\0b").toEq(true)   # NUL-safe: routes through __ry_str_cmp
-# NOT:
-expect(expr).toEq("a\0b")           # NUL-truncating: strcmp stops at \0
-```
-Assertions whose expected value has no embedded NUL are safe to leave as `toEq("literal")`.
-Only `toHaveLen` and `toBeEmpty` are NUL-safe matchers besides `toEq(bool)`.
-
-### Ry expect matchers: use `toNotContain`, not `notToContain`
-
-**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, ry-syntax, matchers
-
-**Rule**: The correct negating form for string containment in Ry expect matchers is
-`toNotContain("...")`, not `notToContain("...")`. Using `notToContain` compiles but calls
-a non-existent method at runtime, producing an "undefined method" error.
-
-```ry
-# ❌ Wrong — runtime error
-expect(e.message).notToContain("NUL")
-
-# ✅ Correct
-expect(e.message).toNotContain("NUL")
-```
-
-### Ry case arms: `()` unit expression and `if <var>:` as sole body cause parse failures
-
-**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, case, parser, unit, if
-
-**Rule**: Two patterns in case arm bodies trigger parser errors that manifest as a confusing
-"unexpected token ')'" pointing at the nearest enclosing call expression with parenthesized
-arguments — historically the most common one was the now-removed `describe(..., ():` /
-`it(..., ():` lambda form (#1602), but the same parser confusion can still surface on any
-function-call boundary inside a `fn` body:
-
-**Pattern 1: `()` as a case arm body**
-```ry
-# Fails — parser sees ')' as closing the surrounding call expression:
-case isDir(d):
-  Ok(v): removeAll(d)
-  Err(_): ()         # <-- breaks parser
-
-# Fix: use a real expression, or discard the conditional entirely:
-removeAll(d)        # discard Result; Ok = removed, Err = didn't exist, both fine for setup
-```
-
-**Pattern 2: `if <bool>:` as the sole statement in an inline case arm body**
-```ry
-# Fails — single-arm if expression at end of inline case arm body breaks parser:
-case isDir(d):
-  Ok(v): if v: removeAll(d)   # <-- breaks parser
-  Err(_): 0
-
-# Fix: use unconditional call (discard result) or move inside a multiline body with a trailing statement:
-removeAll(d)          # simplest fix for setup guards
-```
-
-**Pattern 3: `Ok(true)` / `Ok(false)` literal patterns are NOT supported**
-```ry
-# Fails — nested literal matching inside constructor patterns:
-case isDir(d):
-  Ok(true): removeAll(d)   # <-- parser error, not a type error
-  _: ()
-
-# Fix: bind to variable, then check:
-case isDir(d):
-  Ok(v): expect(v).toBeTrue()
-  Err(e): fail("isDir failed: " + e.message)
-```
-
-**How to apply**: In test files, always use `Err(e): fail(...)` (not `Err(_): ()`) for error arms.
-For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d)` — the returned
-`Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
-`Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.
-
-### `Err(e):` formatting for non-Error Err slots: pick by Result<Ok, Err> shape
-
-**Source**: #1447 (2026-05-08, original entry); #1638 (2026-05-08, ARC Ok slot row resolved)
-**Tags**: testing, case, Err binding, str, ARC, non-Error, f-string
-
-**Rule**: When formatting the bound `e` inside `fail(...)` of an `Err(e):` arm whose Err slot is **not** `Error`, the canonical pattern depends on the Result shape:
-
-| Result type | `"prefix: " + e` | `f"prefix: {e}"` | Canonical |
-|---|---|---|---|
-| `Result<int, str>` | works | works | either |
-| `Result<int, int>` | compile error (no int+str concat) | works | f-string |
-| `Result<List<int>, str>` (ARC Ok slot) | works (post #1638) | works (post #1638) | either |
-
-**Why**: `Result<int, str>` preserves the str typing of the Err slot through the binding, so both `+` (str concat) and f-string interpolation work. `Result<int, int>` cannot use `+ e` because there is no `str + int` operator, but f-string accepts int interpolation. `Result<ARC-type, str>` (where the Ok slot holds an ARC-managed type like `List`, `Map`, etc.) was previously broken (#1638): metadata from the Ok side leaked through `propagateMeta` and made the Err binding look like a collection — `+ e` was rejected at compile time, and `f"{e}"` typechecked but crashed at runtime. #1638's fix (typeSig-driven `propagateTypeMeta(innerSig, ...)` in the Err arm of `emitPatternBindings`) restores str typing on the Err binding, so both forms work as for `Result<int, str>`.
-
-**How to apply**: For `Err(e):` arms in `tests/spec/`:
-
-- `Result<int, str>` and `Result<<primitive>, Error>` paths: use `+ e.message` (Error) or `+ e` (str) — most readable.
-- `Result<int, int>` paths: use `f"...({e})"` — f-string is the only way to interpolate an int into the message.
-- `Result<<ARC-type>, str>` paths (post #1638): both `+ e` and `f"{e}"` work. Prefer `+ e` for parity with `Result<int, str>`.
+`toEq` for strings emits `strcmp` (`codegen_test.cpp:784`) which stops at the first `\0`. `==` goes through `__ry_str_cmp` (byte_len + memcmp) and is NUL-safe. Testing a NUL-containing string with `expect(expr).toEq("a\0b")` truncates at `\0`, so differences after the NUL pass silently. The only NUL-safe matchers are `toHaveLen` / `toBeEmpty` / `toEq(bool)`.
 
 ### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`, and must cover module-global declarations
 
-**Source**: #1466 (2026-04-30, follow-up to #1450 / #1451); #1468 (2026-04-30, module-global blind spot)
 **Tags**: testing, naming, camelCase, sweep, blind-spot, module-global
 
-**Rule**: When grep-driven renaming sweeps target Ry identifiers in `.test.ry` files, the search pattern must include the implicit-binding form (`name: type = value` with no `let`/`var` keyword), not just keyword-prefixed declarations — and it must cover **module-global** declarations (no leading whitespace) as well as bodies inside `it(...)`. The camelCase parser flip (#1443) and the `tests/spec/` sweep (#1450 / #1451) used patterns anchored on `let` / `var`, missing every implicit binding inside `it(...)` blocks; #1466's follow-up sweep then anchored on `^\s+` (one or more leading spaces), which still missed module-global implicit bindings such as `cow_global_box: CowBox = ...` at column 0 (#1468 cleanup).
+Anchoring a sweep to `let` / `var` lets the implicit binding form (`name: type = value`, no keyword) pass the parser's camelCase check undetected. Requiring indentation with `^\s+` misses column-0 module-global declarations. Use `^\s*` and consume underscores with `[a-zA-Z0-9_]`. Per-site `Read` + `Edit` instead of grep reproduces the same gaps as #1466 — use the 4-step procedure in `/horizontal-sweep`.
 
-**Why**: The parser accepts `noHeaders: Map<str, str> = {}` exactly like a `let` declaration, both as an indented binding inside `it(...)` and as a module-global at the top level. `grep -E '\b(let|var)\s+...'` skips both forms; `grep -E '^\s+...'` skips the module-global form. A second blind spot in #1466's recommended grep was that the identifier body was written as `[a-zA-Z0-9]+`, which excludes `_` — so multi-underscore names (`cow_global_box`) failed to match because the engine consumed only `cow_global` before the trailing `\s*[:=]` check ran into a stray `_box`. Tests still pass under either spelling, so without an exhaustive grep the rename silently leaves the old name in place.
+### `tests/spec/<name>/` directories collide with stdlib module names
 
-**How to apply**: For any future Ry-identifier sweep, audit with the anchor-form-agnostic regex below — `^\s*` (zero or more leading spaces) matches both indented and module-global declarations, the body uses `[a-zA-Z0-9_]` so the engine can consume any number of underscores, and the trailing `\s*[:=]` covers `name: Type = ...` and `name = ...`. The regex deliberately omits `let` / `var` / `const` keyword forms — the parser camelCase enforcement from #1443 already rejects those at compile time, so a residual snake_case binding under a keyword cannot ship undetected; the implicit-binding form (no keyword) is the one that slips past the parser:
+**Tags**: testing, module-loader, stdlib, layout, collision, gotcha
 
-```bash
-grep -rEn --include='*.ry' '^\s*[a-z][a-zA-Z0-9_]*_[a-zA-Z0-9_]+\s*[:=]' tests/spec/ \
-  | grep -vE ':\s*#|"[^"]*[a-z_]+[^"]*"'
-```
-
-Apply the rewrite via `sed` on the matching files (`sed -i '' 's/oldName/newName/g' <files>`) — per-site `Read` + `Edit` is the pattern that produced #1466's gap in the first place.
-
-→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
+`ry test`'s module loader treats every directory on the resolution path as a potential package root. A `tests/spec/<name>/` directory whose name matches a stdlib module name (`testing`, `math`, `path`, `filesystem`, `crypto`, `io`, `json`, `regex`, `thread`, `time`, `http`, `str`, `list`, `map`, `set`, `option`, `result`, etc.) shadows `share/std/<name>/` and produces a runtime import error such as `'it' not found in module 'testing'` (silent at compile time). When adding a `.test.ry` file to a subdirectory, cross-check against `ls share/std/`; avoid colliding names and prefer the top-level flat form (`tests/spec/directive_skip.test.ry`). Existing directories `tests/spec/{braced_import,combinatorial,concurrency}/` are safe. When a stdlib module is renamed, audit `tests/spec/` for new collisions.

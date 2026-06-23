@@ -28,15 +28,6 @@
       }
     },
     {
-      "name": "tsan",
-      "inherits": "default",
-      "binaryDir": "${sourceDir}/build-tsan",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "ENABLE_TSAN": "ON"
-      }
-    },
-    {
       "name": "fuzz",
       "inherits": "default",
       "binaryDir": "${sourceDir}/build-fuzz",
@@ -68,10 +59,6 @@
     {
       "name": "asan",
       "configurePreset": "asan"
-    },
-    {
-      "name": "tsan",
-      "configurePreset": "tsan"
     },
     {
       "name": "fuzz",

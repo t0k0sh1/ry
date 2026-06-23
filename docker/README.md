@@ -1,6 +1,6 @@
 # ry Linux Docker Development Environment
 
-Run tests in a Linux environment (Debian trixie + glibc 2.40, via the pre-baked `ry-ci` GHCR image) from macOS, matching CI conditions for all sanitizer presets, libFuzzer, and static analysis.
+Run tests in a Linux environment (Debian trixie + glibc 2.40, via the pre-baked `ry-ci` GHCR image) from macOS, matching CI conditions for ASan/UBSan, libFuzzer, and cppcheck.
 
 On macOS, use this environment for sanitizer, fuzzer, and static-analysis
 verification. Do not silently fall back to native execution. Reset stale
@@ -20,20 +20,14 @@ manually delete them.
 ./docker/run.sh asan ry test -p
 ./docker/run.sh asan ry test tests/spec/combinatorial/collection_element.test.ry
 
-# TSan (mirrors CI tsan job)
-./docker/run.sh tsan ry_tests
-
 # libFuzzer (mirrors CI fuzz job)
 ./docker/run.sh fuzz fuzz_parser  -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/parser/       tests/fuzz/corpus/parser
 ./docker/run.sh fuzz fuzz_json    -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/json/         tests/fuzz/corpus/json
 ./docker/run.sh fuzz fuzz_utf8    -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/utf8/         tests/fuzz/corpus/utf8
 ./docker/run.sh fuzz fuzz_io_open -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/fuzz_io_open/ tests/fuzz/corpus/fuzz_io_open
 
-# Static analysis (mirrors CI clang-tidy / lint / scan-build jobs)
-./docker/run.sh static-analysis clang-tidy
+# Static analysis (mirrors CI lint job)
 ./docker/run.sh static-analysis cppcheck
-./docker/run.sh static-analysis scan-build
-./docker/run.sh static-analysis all
 
 # Interactive shell
 ./docker/run.sh default bash
@@ -48,7 +42,6 @@ manually delete them.
 |--------|-----------|-------------------|----------------|
 | `default` | none | — | `build-docker/` |
 | `asan` | ASan + UBSan | `ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1`<br>`UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1` | `build-asan-docker/` |
-| `tsan` | TSan | `TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1` | `build-tsan-docker/` |
 | `fuzz` | ASan + UBSan | same as `asan` | `build-fuzz-docker/` |
 
 ## Static analysis tools
@@ -57,17 +50,13 @@ manually delete them.
 
 | Tool | Source | Notes |
 |------|--------|-------|
-| `clang-tidy` | `/usr/local/llvm/bin/clang-tidy` | Reuses `build-docker/` for `compile_commands.json` |
 | `cppcheck` | `/opt/cppcheck/bin/cppcheck` | No build required |
-| `scan-build` | `/usr/local/llvm/bin/scan-build` | Configures+builds in dedicated `build-scan-docker/` (host bind-mount), HTML report at `build-scan-docker/scan-build-report/<timestamp>/`, exits non-zero on findings via `--status-bugs` |
-| `all` | — | Runs clang-tidy → cppcheck → scan-build in sequence |
-
-> **`scan-build` and `all`** isolate their analyzer-wrapped CMake configuration in `build-scan-docker/` (host) ↔ `build-scan/` (container). `build-docker/` is untouched. To reset analyzer state, use `./.claude/skills/pre-commit-checklist/run-scan-build.sh --clean`.
+| `all` | — | Same as `cppcheck` for now |
 
 ## Notes
 
-- Host build dirs (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`, `build-fuzz-docker/`, `build-scan-docker/`) are separate from native macOS builds (`build/`, `build-asan/`, `build-tsan/`, `build-fuzz/`). The container only sees the per-preset Docker build dir, never the host macOS ones.
-- `run.sh` bind-mounts source/config entries individually (`src/`, `include/`, `tests/`, `share/`, `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, analyzer configs) rather than the whole project root, preventing host macOS build artifacts from appearing inside the container.
+- Host build dirs (`build-docker/`, `build-asan-docker/`, `build-fuzz-docker/`) are separate from native macOS builds (`build/`, `build-asan/`, `build-fuzz/`). The container only sees the per-preset Docker build dir, never the host macOS ones.
+- `run.sh` bind-mounts source/config entries individually (`src/`, `include/`, `tests/`, `share/`, `CMakeLists.txt`, `CMakePresets.json`, `package.toml`, `.cppcheck-suppressions`) rather than the whole project root, preventing host macOS build artifacts from appearing inside the container.
 - When the build consumes a new top-level source directory, config file, or dotfile, add it to `run.sh` mount arguments and, when required at startup, `entrypoint.sh` required-mount checks. Verify the container sees the new path.
 - `entrypoint.sh` fails fast (exit codes 70/71/72) if a required mount is missing, a macOS Mach-O binary slips into the per-preset build dir, or `/Users/...` paths appear in `compile_commands.json`.
 - On Apple Silicon the container runs arm64 Linux natively (no x86_64 QEMU emulation).

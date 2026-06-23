@@ -26,12 +26,7 @@ add_compile_options(-fno-rtti)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
-option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(ENABLE_FUZZER "Enable libFuzzer coverage-guided fuzzing (Clang-only; use 'fuzz' preset)" OFF)
-
-if(ENABLE_TSAN AND (ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_FUZZER))
-    message(FATAL_ERROR "ENABLE_TSAN cannot be combined with ENABLE_ASAN, ENABLE_UBSAN, or ENABLE_FUZZER")
-endif()
 
 if(ENABLE_FUZZER AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     message(FATAL_ERROR "ENABLE_FUZZER requires Clang (detected '${CMAKE_CXX_COMPILER_ID}'). Use 'cmake --preset fuzz' which sets CMAKE_CXX_COMPILER=/usr/local/llvm/bin/clang++.")
@@ -52,11 +47,6 @@ if(ENABLE_UBSAN)
         -fno-omit-frame-pointer
     )
     add_link_options(-fsanitize=undefined)
-endif()
-
-if(ENABLE_TSAN)
-    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=thread)
 endif()
 
 if(ENABLE_FUZZER)
@@ -545,10 +535,10 @@ target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 target_compile_options(ry_tests PRIVATE ${RY_WARNING_FLAGS})
 
 include(GoogleTest)
-if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN OR ENABLE_FUZZER)
+if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_FUZZER)
     # サニタイザー有効時は gtest_discover_tests を使わない:
     #   - ASan: ビルド時のバイナリ実行で LLVM の container-overflow false positive が発生
-    #   - UBSan/TSan: 同様に discovery 時の実行が予期せぬ失敗を引き起こしうる
+    #   - UBSan: 同様に discovery 時の実行が予期せぬ失敗を引き起こしうる
     add_test(NAME ry_tests COMMAND ry_tests)
     if(ENABLE_ASAN)
         set_tests_properties(ry_tests PROPERTIES

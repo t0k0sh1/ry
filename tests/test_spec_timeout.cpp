@@ -12,20 +12,6 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-// TSan + Linux libtsan instruments `setitimer(ITIMER_REAL)` SIGALRM delivery
-// and the `siglongjmp` interceptor.  When the SIGALRM handler calls
-// `siglongjmp` to deliver `@timeout(ms)` failure to the codegen continuation,
-// libtsan deadlocks (CI: subprocess never returns within 30s).  The same code
-// path completes in ~1.4s on macOS TSan and passes under ASan+UBSan + default
-// builds.  This is an upstream TSan + signal-handler interaction issue, not a
-// race in ry code.  Skip the subprocess tests under TSan; full coverage is
-// preserved on the other CI gates.  See
-// `.claude/skills/tsan-known-issues/SKILL.md` for the policy entry.
-#if defined(__SANITIZE_THREAD__) || \
-    (defined(__has_feature) && __has_feature(thread_sanitizer))
-#  define RY_TSAN_BUILD 1
-#endif
-
 namespace fs = std::filesystem;
 
 struct TimeoutRunResult {
@@ -36,8 +22,8 @@ struct TimeoutRunResult {
 };
 
 // Backstop wait: tests use @timeout(200) so the child should exit well under a
-// second under normal builds, and within a few seconds under TSan/ASan on slow
-// CI runners.  A 30-second WNOHANG poll + SIGKILL fallback prevents an
+// second under normal builds, and within a few seconds under ASan on slow CI
+// runners.  A 30-second WNOHANG poll + SIGKILL fallback prevents an
 // unfinished runtime implementation from hanging ry_tests indefinitely while
 // being generous enough that JIT warmup on instrumented Linux containers does
 // not cause spurious failures (the actual @timeout(200) deadline is what gets
@@ -134,7 +120,7 @@ protected:
         // and `from testing import timeout` cannot be satisfied.  Use the
         // per-preset CMake binary dir (e.g. build/, build-asan/) so the
         // directory is host-backed under docker per-preset bind mounts —
-        // a hard-coded `RY_SOURCE_ROOT/build` would route asan/tsan/fuzz
+        // a hard-coded `RY_SOURCE_ROOT/build` would route asan / fuzz
         // writes to the docker overlay and ENOSPC there.  Per-pid subdir
         // avoids parallel test-run collisions.
         tmpDir_ = fs::path(RY_BINARY_DIR) /
@@ -157,12 +143,6 @@ protected:
 // for #1688 — without per-test timeout, the alarm() handler would
 // _exit(124) and the trailing test would never execute.
 TEST_F(SpecTimeoutTest, InfiniteLoopTestTimesOutAndContinuesToNext) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("infinite_loop.test.ry",
         "from testing import it, expect, timeout\n"
         "\n"
@@ -202,12 +182,6 @@ TEST_F(SpecTimeoutTest, InfiniteLoopTestTimesOutAndContinuesToNext) {
 // still run after multiple timeouts. Guards against a regression where
 // signal-handler / timeout-end paths drift in their state-reset behaviour.
 TEST_F(SpecTimeoutTest, MixedTimeoutsContinueExecution) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("mixed_timeouts.test.ry",
         "from testing import it, expect, timeout\n"
         "\n"
@@ -272,12 +246,6 @@ TEST_F(SpecTimeoutTest, MixedTimeoutsContinueExecution) {
 // handles set up by @beforeEach) are never released. A subsequent test that
 // observes the cleanup side-effect must see it.
 TEST_F(SpecTimeoutTest, AfterEachRunsAfterTimedOutTest) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("after_each_after_timeout.test.ry",
         "from testing import it, expect, describe, timeout, afterEach\n"
         "\n"
@@ -333,12 +301,6 @@ TEST_F(SpecTimeoutTest, AfterEachRunsAfterTimedOutTest) {
 // AE itself blows the budget, a secondary failure line is reported and the
 // test loop continues to the next @it.
 TEST_F(SpecTimeoutTest, AfterEachHangSurfacedAsSecondaryFailure) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("after_each_hang.test.ry",
         "from testing import it, expect, describe, timeout, afterEach\n"
         "\n"
@@ -396,12 +358,6 @@ TEST_F(SpecTimeoutTest, AfterEachHangSurfacedAsSecondaryFailure) {
 // that chain falls through to the @afterEach phase. Without this guarantee
 // users would have to mirror cleanup outside @afterEach.
 TEST_F(SpecTimeoutTest, AfterEachRunsAfterBeforeEachTimedOut) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("after_each_after_before_each_timeout.test.ry",
         "from testing import it, expect, describe, timeout, "
         "beforeEach, afterEach\n"
@@ -465,12 +421,6 @@ TEST_F(SpecTimeoutTest, AfterEachRunsAfterBeforeEachTimedOut) {
 // @afterEach symmetrically inside aeNormalBB, so this is the canary for the
 // file-level layer.
 TEST_F(SpecTimeoutTest, FileLevelAfterEachAlsoRunsAfterTimeout) {
-#ifdef RY_TSAN_BUILD
-    GTEST_SKIP() << "Skipped under TSan: libtsan's siglongjmp interceptor "
-                    "deadlocks when invoked from the SIGALRM handler that "
-                    "@timeout(ms) installs. Coverage preserved on default / "
-                    "ASan+UBSan / macOS TSan builds.";
-#endif
     auto path = writeTest("file_after_each_after_timeout.test.ry",
         "from testing import it, expect, timeout, afterEach\n"
         "\n"

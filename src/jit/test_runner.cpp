@@ -91,9 +91,10 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
     }
 
     // argv は stack のみで構築する。#2236 で heap 経由の std::vector に倒した
-    // ところ collection_meta_propagation.test.ry の並列実行下 flake (#1895)
-    // が ~8% から ~31% に跳ね、KNOWLEDGE.md「Subprocess-runner perturbation
-    // note」記載のとおり stack-only が必須条件になった。
+    // ところ collection_meta_propagation.test.ry の並列実行下 fail rate (#1895)
+    // が ~8% から ~31% に跳ね、`.claude/rules/jit-teardown-suppression.md`
+    // 記載のとおり stack-only が必須条件になった (per-spawn allocation を
+    // perturb すると teardown timing が下流バグの再現率を増幅する)。
     const char *argv[5] = {exe_path.c_str(), "test", nullptr, nullptr, nullptr};
     int slot = 2;
     if (outline) argv[slot++] = "--outline";
@@ -136,10 +137,10 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
 }
 
 // Subprocess fan-out: each test file runs in its own child process so the
-// JIT teardown 6-step suppression (KNOWLEDGE.md "LLVM ORC JIT intermittent
-// teardown crash") holds (1 source = 1 process). Parent JIT-free; only
-// posix_spawn / pipe-read / waitpid. Worker count = 1 still goes through
-// this path so the dispatcher is uniform (#2234).
+// JIT teardown 6-step suppression (`.claude/rules/jit-teardown-suppression.md`)
+// holds (1 source = 1 process). Parent JIT-free; only posix_spawn / pipe-read
+// / waitpid. Worker count = 1 still goes through this path so the dispatcher
+// is uniform (#2234).
 static int runTestFilesSubprocessFanOut(const std::vector<std::string> &test_files,
                                         const std::string &exe_path,
                                         int parallelism,
@@ -247,8 +248,8 @@ int computeParallelism(int requested_workers, std::size_t test_file_count) {
 // runRyFile loop is gone — even worker=1 spawns one subprocess per file. This
 // is what makes the 6-step JIT teardown suppression hold (1 source = 1 process):
 // the parent never JITs and child exits via _exit, so leaks are reclaimed by
-// the OS instead of accumulating across files (KNOWLEDGE.md "LLVM ORC JIT
-// intermittent teardown crash").
+// the OS instead of accumulating across files
+// (`.claude/rules/jit-teardown-suppression.md`).
 //
 // `--coverage` / `--trace` must be disabled (with a warning) at the call site
 // before reaching here when the target is multi-file — coverage requires

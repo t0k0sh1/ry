@@ -56,4 +56,4 @@ Use before implementation and during test review.
 
 ## Related
 
-- `docs/reference/test-taxonomy.md` — contract / internal / regression 分類と section header tag 規約。テスト追加時は適切な tag 配置を確認する。
+- `docs/reference/test-taxonomy.md` — contract / internal / regression classification and section header tag conventions. Verify correct tag placement when adding tests.

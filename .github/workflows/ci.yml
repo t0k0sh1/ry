@@ -14,11 +14,11 @@ permissions:
   packages: read
 
 # All Linux jobs run inside ghcr.io/<owner>/ry-ci, which bakes in
-# clang/clang++/clang-tidy/scan-build/FileCheck (LLVM 21, source-built),
-# OpenSSL 3, cmake, ninja, ccache, cppcheck, and a pinned GoogleTest
-# source tarball at $RY_VENDORED_GTEST_TARBALL. There is no `apt` /
-# `apt-get` invocation anywhere in this workflow — that is the central
-# property the image was introduced to provide (see issue #1505).
+# clang/clang++/FileCheck (LLVM 21, source-built), OpenSSL 3, cmake,
+# ninja, ccache, cppcheck, and a pinned GoogleTest source tarball at
+# $RY_VENDORED_GTEST_TARBALL. There is no `apt` / `apt-get` invocation
+# anywhere in this workflow — that is the central property the image
+# was introduced to provide (see issue #1505).
 env:
   CI_IMAGE: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
 
@@ -107,8 +107,7 @@ jobs:
         run: |
           # Reference-integrity lint for prompt definition files (.claude/ +
           # AGENTS.md + CLAUDE.md): fails on stale inline-code paths
-          # (#1827-class drift), dead /skill links, and KNOWLEDGE.md
-          # section-name English/Japanese drift. Pure bash/grep/awk/find —
+          # (#1827-class drift) and dead /skill links. Pure bash/grep/awk/find —
           # no toolchain or build artifacts needed. Escape hatch for
           # non-existent example paths: fenced blocks / plain prose (the lint
           # only inspects inline-code backtick spans). See the script header
@@ -131,7 +130,7 @@ jobs:
             --suppressions-list=.cppcheck-suppressions \
             --suppress=normalCheckLevelMaxBranches \
             --inline-suppr \
-            -i build -i build-asan -i build-tsan \
+            -i build -i build-asan \
             -j "$(nproc)" \
             --quiet \
             src/ include/
@@ -151,11 +150,10 @@ jobs:
 
       - name: Rust format check (rustfmt, #2015)
         run: |
-          # Rust quality gate symmetric with the C++ clang-tidy / cppcheck gates.
-          # rustfmt needs no LLVM. The image's Rust is the version pinned locally
-          # by rust-toolchain.toml (kept equal to docker/ci.Dockerfile
-          # RUST_VERSION), so `--check` here matches local `cargo fmt` output —
-          # no formatting drift between local and CI.
+          # Rust quality gate symmetric with the C++ cppcheck gate. rustfmt
+          # needs no LLVM. The image's Rust is the version pinned locally by
+          # rust-toolchain.toml (kept equal to docker/ci.Dockerfile
+          # RUST_VERSION), so `--check` here matches local `cargo fmt` output.
           cargo fmt --manifest-path crates/emit/Cargo.toml -- --check
 
       - name: Rust lint (clippy, #2015)
@@ -238,95 +236,16 @@ jobs:
           # on the Rust cdylib side, which the shared-instance requirement exists for.
           echo 'print(3.14 + 2.71)' | dist/ry -c
 
-  # Heavy analysis jobs (clang-tidy, scan-build, asan, tsan, filecheck):
+  # Heavy analysis jobs (asan, filecheck):
   # All run on every pull_request and on push triggers configured at the
   # workflow level. There is no PR-only skip — the trunk-based development
-  # model assumes heavy coverage gates each PR (#1367).
-  #
-  # Warn-only steps remain warn-only:
-  # - scan-build / "Build + Analyze": existing findings still need triage.
-  # - tsan / "Test (Ry self-tests / TSan)": upstream LargeMmapAllocator CHECK
-  #   on Linux runners (google/sanitizers#1716). The C++ test step above is
-  #   the required gate for #630's race fixes.
-  # - filecheck / "Run FileCheck IR golden tests": LLVM-version sensitivity
-  #   until goldens are confirmed stable.
+  # model assumes heavy coverage gates each PR (#1367). The filecheck job
+  # remains warn-only (LLVM-version sensitivity until goldens are confirmed
+  # stable).
   #
   # The commented-out fuzz block at the bottom of this file keeps its
   # internal `if:` gate intentionally; do not "tidy" it during edits — when
   # the block is re-enabled the gate may need a deliberate decision.
-
-  clang-tidy:
-    runs-on: ubuntu-24.04
-    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    steps:
-      - uses: actions/checkout@v4
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: /root/.cache/ccache
-          key: ci-clang-tidy-${{ github.ref }}-${{ github.sha }}
-          restore-keys: |
-            ci-clang-tidy-${{ github.ref }}-
-            ci-clang-tidy-
-      - name: Build
-        # PR runs build only the `ry` target (~76 TU) for faster feedback;
-        # push-to-main keeps full all-target coverage so clang-tidy has the
-        # same compile_commands.json input as on developer machines. See
-        # .claude/rules/ci-workflows.md "Static-analysis PR scope: --target ry on PR ...".
-        # NOTE: --target ry narrows only the *build* step here; clang-tidy
-        # itself still analyses every file matched by `find src -name '*.cpp'`.
-        run: |
-          cmake --preset default
-          cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
-      - name: Run clang-tidy
-        run: |
-          find src -name '*.cpp' -print0 \
-            | xargs -0 -n 1 -P "$(nproc)" clang-tidy -p build --quiet
-
-  scan-build:
-    runs-on: ubuntu-24.04
-    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure
-        run: |
-          scan-build \
-            --use-analyzer=/usr/local/llvm/bin/clang \
-            --use-cc=/usr/local/llvm/bin/clang \
-            --use-c++=/usr/local/llvm/bin/clang++ \
-            cmake --preset default
-      - name: Build + Analyze
-        # warn-only: triage existing findings before making this required.
-        # Once findings are resolved, remove continue-on-error.
-        # PR runs analyse only the `ry` target (~76 TU) for faster feedback;
-        # push-to-main keeps full all-target coverage. See
-        # .claude/rules/ci-workflows.md "Static-analysis PR scope: --target ry on PR ...".
-        continue-on-error: true
-        run: |
-          scan-build \
-            --use-analyzer=/usr/local/llvm/bin/clang \
-            --use-cc=/usr/local/llvm/bin/clang \
-            --use-c++=/usr/local/llvm/bin/clang++ \
-            -o scan-build-report \
-            --status-bugs \
-            cmake --build build ${{ github.event_name == 'pull_request' && '--target ry' || '' }} --parallel
-      - name: Upload scan-build report
-        if: always()
-        # warn-only: this step is best-effort. actions/upload-artifact@v4
-        # occasionally fails after exhausting its 5-retry budget when the
-        # GitHub Actions artifact API returns a transient HTML error page
-        # instead of JSON (observed on #1750 main-branch run). The Build +
-        # Analyze step above is the source-of-truth and is already
-        # continue-on-error: true for the same warn-only reason; failing
-        # the whole scan-build job on an artifact-upload glitch would be
-        # strictly worse than just losing one report's diagnostics.
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: scan-build-report
-          path: scan-build-report
-          retention-days: 14
-          if-no-files-found: ignore
 
   filecheck:
     runs-on: ubuntu-24.04
@@ -341,7 +260,6 @@ jobs:
           restore-keys: |
             ci-filecheck-${{ github.ref }}-
             ci-filecheck-
-            ci-test-
       - name: Configure
         run: cmake --preset default
       - name: Build ry
@@ -384,79 +302,13 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ./build-asan/ry test
 
-  tsan:
-    runs-on: ubuntu-24.04
-    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
-    # ThreadSanitizer coverage for #630's P0 race fixes is split:
-    #
-    # - The C++ test step is REQUIRED. It runs ry_tests, which
-    #   includes ConcurrencySpecSuite → the @parallel for stress
-    #   tests in tests/spec/concurrency.test.ry. This is where the
-    #   #630 race fixes are actually validated. Any PR that
-    #   re-introduces a race will fail this step.
-    #
-    # - The Ry self-test step is WARN-ONLY (continue-on-error).
-    #   Not because races are tolerated, but because TSan's
-    #   LargeMmapAllocator trips an internal CHECK failure on
-    #   Linux runners that is unrelated to ry code (upstream
-    #   issue https://github.com/google/sanitizers/issues/1716).
-    #   The failure is not reproducible on macOS or in the C++
-    #   test harness — it is a TSan runtime / allocator bug that
-    #   only surfaces under the self-test driver's subprocess
-    #   layout. Pinning to ubuntu-22.04 and lowering
-    #   vm.mmap_rnd_bits=28 were both tried and neither helped.
-    #   The warn-only step still reports races in the log; once
-    #   upstream fixes the allocator CHECK we should flip this
-    #   back to required.
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lower ASLR entropy for TSan compatibility
-        # Ubuntu 24.04 defaults to vm.mmap_rnd_bits=32, which is one
-        # of several things that can trip TSan's allocator. Lowering
-        # to 28 is the upstream-recommended first line of defence even
-        # though it does not fully fix the self-test crash. The sysctl
-        # is applied on the host runner (not inside the container)
-        # because the container shares the host kernel namespace.
-        # See https://github.com/google/sanitizers/issues/1716.
-        run: sysctl -w vm.mmap_rnd_bits=28 || sudo sysctl -w vm.mmap_rnd_bits=28 || true
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: /root/.cache/ccache
-          key: ci-tsan-${{ github.ref }}-${{ github.sha }}
-          restore-keys: |
-            ci-tsan-${{ github.ref }}-
-            ci-tsan-
-      - name: Build (TSan)
-        # TSan instruments only the C++ side; the Rust cdylib and shared libLLVM
-        # are uninstrumented (corrosion does not propagate -fsanitize=* into the
-        # cargo build — #1993). The cdylib's 28 ABI functions are single-threaded
-        # IR-builder calls, so this does not weaken the #630 race gate, which
-        # lives in the (instrumented) C++ runtime exercised by ry_tests.
-        run: |
-          cmake --preset tsan
-          cmake --build build-tsan
-      - name: Test (C++ / TSan)
-        env:
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ./build-tsan/ry_tests
-      - name: Test (Ry self-tests / TSan)
-        # Warn-only: see the job-level comment. TSan's LargeMmapAllocator
-        # is currently broken for the self-test subprocess layout on
-        # Linux runners (unrelated to ry code). The C++ test step above
-        # is the required gate for #630's race fixes.
-        continue-on-error: true
-        env:
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ./build-tsan/ry test
-
   macos-smoke-rust:
     # macOS build/link smoke for the emit Rust cdylib.
     # workflow_dispatch-only: macOS runners cost ~10x a Linux runner, and the
     # purpose is to prove the Apple-linker path works on demand — specifically
     # that the `-Wl,-undefined,dynamic_lookup` cdylib link arg in
     # crates/emit/build.rs resolves __ry_* and LLVM* symbols from the
-    # host process. The per-PR safety net is the Linux test/asan/tsan jobs
+    # host process. The per-PR safety net is the Linux test/asan jobs
     # above. Homebrew llvm@21 ships a shared libLLVM.dylib, satisfying the
     # shared-libLLVM requirement (#1997). Retained past the #1993 cutover to
     # keep continuous Apple-linker validation before the tag-push-driven

@@ -33,8 +33,8 @@ extern "C" void __ry_thread_cleanup(void *thread_ptr);
 // (not `unlock_shared()`) after the thread-local count drops to zero;
 // a mis-dispatch would corrupt std::shared_mutex state.
 //
-// Runs under the required `build-tsan/ry_tests` step and doubles as a
-// shared_mutex contention stress for TSan.
+// Runs under the required `ry_tests` step and doubles as a shared_mutex
+// contention stress.
 
 
 namespace {

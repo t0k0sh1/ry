@@ -1,6 +1,6 @@
 ---
 name: stdlib-module-add
-description: Procedure for adding a new stdlib module (`@native`) — 5 steps plus constant-addition and extending existing modules. Use when adding a stdlib module, declaring `@native`, editing `src/runtime/native/<mod>.cpp`, calling `add_ry_native_lib`, adding constants, or touching `share/std/<mod>/<mod>.ry`. Also fires on Japanese triggers stdlib モジュール追加, 新しい標準ライブラリ, @native 宣言, 定数の追加.
+description: Procedure for adding a new stdlib module (`@native`) — 5 steps plus constant-addition and extending existing modules. Use when adding a stdlib module, declaring `@native`, editing `src/runtime/native/<mod>.cpp`, calling `add_ry_native_lib`, adding constants, or touching `share/std/<mod>/<mod>.ry`.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
@@ -12,7 +12,7 @@ Procedure for adding a new standard library module, constants, or functions. Ter
 
 ### 1. Ry declaration file
 
-Declare `@native("mod")` in `share/std/<mod>/<mod>.ry`. Use bare `@native` only when all functions are custom-emitted and no `libry_<mod>.*` exists; the argument otherwise drives runtime library loading. `manifest.json` needs no update.
+Declare `@native("mod")` in `share/std/<mod>/<mod>.ry`. Use bare `@native` only when all functions are custom-emitted and no `libry_<mod>.*` exists. `manifest.json` needs no update.
 
 ```ry
 @native("crypto")
@@ -57,11 +57,9 @@ Shared helpers (in `codegen_call_dispatch.cpp`):
 
 ## Adding Constants
 
-Add an `@const` declaration in `share/std/<mod>/<mod>.ry`. From the dispatch file, call `StdlibRegistry::instance().registerConstant(...)` in static init (registry: `include/ry/stdlib_registry.hpp`; example: `MathConstReg` in `src/codegen_call.cpp`). `codegen_stmt.cpp` needs no changes.
+Add an `@const` declaration in `share/std/<mod>/<mod>.ry`. From the dispatch file, call `StdlibRegistry::instance().registerConstant(...)` in static init (registry: `include/ry/stdlib_registry.hpp`; example: `MathConstReg` in `src/codegen_call.cpp`).
 
 ## Adding Functions to Existing Modules
-
-Touch:
 
 1. `share/std/<mod>/<mod>.ry` — `@native("mod") fn` declaration.
 2. `src/runtime/native/<mod>.cpp` — C++ implementation.

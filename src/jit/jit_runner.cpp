@@ -73,8 +73,8 @@ namespace ry {
 // LLVM LLJIT. main() consults this via jitWasInitialized() to decide whether
 // to bypass the C++ static destructor chain on exit (_exit(rc)) — even with
 // the triple-stage leak below, the destructor chain intermittently aborts
-// inside glibc heap consolidation during scan-build / -O0 runs in CI when
-// JIT state has perturbed the heap.
+// inside glibc heap consolidation in CI when JIT state has perturbed the
+// heap.
 static std::atomic<bool> g_jitInitialized{false};
 
 bool jitWasInitialized() {
@@ -205,8 +205,8 @@ int runRySource(const std::string &src, const std::string &source_name,
     // suppressed alongside ~LLJIT() in the #1187 family workaround at the
     // bottom of this function.  Without this, the ~CodeGen() frame walks
     // its functions_ map -> vector<OverloadEntry> -> unique_ptr<...>::reset()
-    // chain on a heap whose state has been disturbed by JIT teardown, and
-    // crashes intermittently under TSan on macOS (#1657).
+    // chain on a heap whose state has been disturbed by JIT teardown
+    // (originally surfaced as intermittent crashes on macOS, #1657).
     int coverage_offset = cs ? cs->file_id_offset : 0;
     if (ry::traceEnabled())
         ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
@@ -490,12 +490,12 @@ int runRySource(const std::string &src, const std::string &source_name,
     //   functions_ (unordered_map<string, vector<OverloadEntry>>)
     //     -> ~OverloadEntry()
     //       -> unique_ptr<unordered_map<size_t, FnTypeInfo>>::reset()
-    // and on macOS under TSan that reset() intermittently calls free() on a
-    // garbage pointer (e.g. 0x4800000001135036) — symptom of the same #1187
-    // family heap corruption that already forces ~LLJIT() to leak above.
+    // and on macOS that reset() intermittently calls free() on a garbage
+    // pointer (e.g. 0x4800000001135036) — symptom of the same #1187 family
+    // heap corruption that already forces ~LLJIT() to leak above.
     // Suppressing only ~LLJIT() leaves ~CodeGen() running on the disturbed
-    // heap; combined leak is the canonical workaround until the LLVM ORC /
-    // TSan upstream root cause is identified (#1657).  This is still a
+    // heap; combined leak is the canonical workaround until the LLVM ORC
+    // upstream root cause is identified (#1657).  This is still a
     // workaround, not a true root cause fix.
     (void)cg.release(); // NOLINT(bugprone-unused-return-value)
 

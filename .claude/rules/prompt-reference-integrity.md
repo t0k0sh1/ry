@@ -1,27 +1,13 @@
----
-paths:
-  - ".claude/**/*.md"
-  - "AGENTS.md"
-  - "CLAUDE.md"
----
-
 # Prompt / Instruction Reference Integrity
 
 - Ensure each skill's `allowed-tools` covers every command prescribed by its body.
 - After editing agent frontmatter, validate the YAML; prompt-reference lint does not validate YAML syntax.
 
-### Inline-code references in prompt files are CI-linted — keep paths, `/<name>` skill links, and KNOWLEDGE.md section names resolvable
+### Inline-code references in prompt files are CI-linted — keep paths and `/<name>` skill links resolvable
 
-**Source**: #2029 (2026-06-07; cleanup of the #1827 parser path drift)
 **Tags**: tooling, ci, lint, references, drift, prompt-definitions
 
-**Context**: #1827 moved the parser / lexer sources from a flat layout
-into subdirectories, but the rename was never swept through the
-`.claude/` prompt definitions — leaving ~20 stale inline-code paths, a
-dead slash-command link, and an English/Japanese `KNOWLEDGE.md`
-section-name mismatch (grep silently missed the cited section).
-`scripts/check-prompt-refs.sh` (wired into the CI `lint` job by #2029)
-now mechanically blocks that drift class.
+#1827 moved the parser / lexer sources into subdirectories but the rename was never swept through `.claude/` prompt definitions — leaving ~20 stale inline-code paths and a dead slash-command link. `scripts/check-prompt-refs.sh` (wired into the CI `lint` job by #2029) now mechanically blocks that drift class.
 
 **Rule**: across `.claude/**/*.md`, `AGENTS.md`, and `CLAUDE.md`, every
 **inline-code** (single-backtick) token is held to:
@@ -33,9 +19,7 @@ now mechanically blocks that drift class.
 - a `/<name>` slash-command must have a matching
   `.claude/skills/<name>/SKILL.md` (or be a known built-in — extend
   `BUILTIN_CMDS` in the script; filesystem-path tokens go in
-  `NON_SKILL_SLASH`);
-- a `## <heading>` cited on a line that mentions `KNOWLEDGE.md` must
-  exist verbatim as a heading in `KNOWLEDGE.md`.
+  `NON_SKILL_SLASH`).
 
 **Escape hatch (intentional, documented)**: the lint inspects inline-code
 spans ONLY — triple-backtick fenced blocks and plain prose are NOT

@@ -117,11 +117,15 @@ RUN set -eux; \
     rm -rf "openssl-${OPENSSL_VERSION}" "openssl-${OPENSSL_VERSION}.tar.gz"
 
 #
-# Stage 5: llvm-builder — source-build LLVM 21 + clang + clang-tools-extra.
+# Stage 5: llvm-builder — source-build LLVM 21 + clang.
 #
 # This is the heaviest stage; on a native amd64 runner it takes 30-60 min,
 # on arm64 60-90 min. Image rebuilds are infrequent (only on Dockerfile
 # changes), so this is the right tradeoff vs depending on apt.llvm.org.
+#
+# clang-tools-extra (clang-tidy / clangd / etc.) is NOT built — CI dropped
+# the clang-tidy job. scan-build comes bundled with clang itself and is
+# removed in the post-install cleanup below to keep the image slim.
 #
 FROM gcc:14-trixie AS llvm-builder
 
@@ -139,7 +143,7 @@ RUN set -eux; \
     cmake -S llvm -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local/llvm \
-        -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+        -DLLVM_ENABLE_PROJECTS="clang" \
         -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
         -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
         -DLLVM_ENABLE_RTTI=ON \
@@ -157,9 +161,16 @@ RUN set -eux; \
         -DCOMPILER_RT_BUILD_PROFILE=OFF \
         -DCOMPILER_RT_BUILD_XRAY=OFF \
         -DCOMPILER_RT_BUILD_MEMPROF=OFF \
-        -DCOMPILER_RT_BUILD_ORC=OFF; \
+        -DCOMPILER_RT_BUILD_ORC=OFF \
+        -DCOMPILER_RT_SANITIZERS_TO_BUILD="asan;ubsan;fuzzer"; \
     cmake --build build --parallel; \
     cmake --install build; \
+    # Strip retired static-analysis tools to keep the image lean.
+    # clang-tidy / clangd / etc. are not built (clang-tools-extra disabled
+    # above). scan-build ships with clang itself; remove the wrapper script,
+    # the libexec helpers, and scan-view (the HTML report viewer).
+    rm -f /usr/local/llvm/bin/scan-build /usr/local/llvm/bin/scan-view; \
+    rm -rf /usr/local/llvm/libexec/scan-build* /usr/local/llvm/share/scan-build /usr/local/llvm/share/scan-view; \
     cd /tmp; \
     rm -rf "llvm-project-${LLVM_VERSION}.src" "llvm-project-${LLVM_VERSION}.src.tar.xz"
 
@@ -180,8 +191,8 @@ RUN set -eux; \
 #
 # clippy-preview + rustfmt-preview are included so the CI `lint` job can run
 # `cargo clippy -- -D warnings` and `cargo fmt --check` as a Rust quality gate
-# (#2015), symmetric with the C++ clang-tidy / cppcheck gates. Only ry-ci needs
-# them (release's ry-ci-glibc-old does not lint), so they are not added to
+# (#2015), symmetric with the C++ cppcheck gate. Only ry-ci needs them
+# (release's ry-ci-glibc-old does not lint), so they are not added to
 # docker/ci-glibc-old.Dockerfile.
 #
 FROM gcc:14-trixie AS rust-bootstrap

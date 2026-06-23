@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# §3.5.5 all (clang-tidy + cppcheck + scan-build via Docker)
+# §3.5.5 all (cppcheck via Docker)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
@@ -10,7 +10,7 @@ for arg in "$@"; do
     -h|--help)
       sed -n '2p' "$0"
       echo "Usage: run-static-analysis-all.sh [--clean]"
-      echo "  --clean: remove host build-docker/ + build-scan-docker/ before building (forwarded to docker/run.sh)"
+      echo "  --clean: remove host build-docker/ before building (forwarded to docker/run.sh)"
       exit 0
       ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;

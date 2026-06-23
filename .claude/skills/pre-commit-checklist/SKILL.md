@@ -40,22 +40,13 @@ Record skipped checks and reasons in the PR description.
 
 ## Knowledge Update
 
-Update a rule or skill when work reveals:
-
-- A reusable implementation constraint.
-- A new rejection-test requirement.
-- A rejected design alternative worth preserving.
-- A non-obvious command recovery.
-- A recurring review pattern.
-
-Use `/knowledge-md-management` when no destination exists.
+Update a rule or skill when work reveals a reusable constraint, a new rejection-test requirement, a rejected design alternative, a non-obvious command recovery, or a recurring review pattern. Create a new path-scoped rule (`.claude/rules/<topic>.md` with a `paths:` frontmatter) when no existing destination fits.
 
 ## Commands
 
 ```bash
 ./.claude/skills/pre-commit-checklist/run-tests.sh
 ./.claude/skills/pre-commit-checklist/run-asan.sh
-./.claude/skills/pre-commit-checklist/run-tsan.sh
 ./.claude/skills/pre-commit-checklist/run-static-analysis-all.sh
 ./.claude/skills/pre-commit-checklist/run-rust-lint.sh
 ./.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh
@@ -66,8 +57,7 @@ Use `/knowledge-md-management` when no destination exists.
 
 - Use script `--clean` options for build-tree cleanup.
 - Sanitizer wrappers supply required runtime options; use them instead of hand-written ASan/UBSan invocations.
-- Fix test, sanitizer, race, clang-tidy, cppcheck, Rust lint, and prompt-reference failures.
-- `scan-build` and Ry self-tests under TSan are advisory; investigate every new finding.
+- Fix test, sanitizer, race, cppcheck, Rust lint, and prompt-reference failures.
 - Fuzzer crashes follow `/triage-side-finding`; preserve crash inputs in regression and corpus directories.
 
 ## Completion

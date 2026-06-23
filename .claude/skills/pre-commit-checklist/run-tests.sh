@@ -60,7 +60,7 @@ echo "==> preset=$PRESET build-dir=$BUILD_DIR" >&2
 if (( CLEAN == 1 )); then
   rm -rf "$BUILD_DIR"
 elif [[ -f "$BUILD_DIR/CMakeCache.txt" ]] && \
-     grep -qE '^(ENABLE_ASAN|ENABLE_TSAN|ENABLE_UBSAN|ENABLE_FUZZER):BOOL=ON$' "$BUILD_DIR/CMakeCache.txt"; then
+     grep -qE '^(ENABLE_ASAN|ENABLE_UBSAN|ENABLE_FUZZER):BOOL=ON$' "$BUILD_DIR/CMakeCache.txt"; then
   echo "==> $BUILD_DIR/CMakeCache.txt has sanitizer/fuzzer preset enabled — removing" >&2
   rm -rf "$BUILD_DIR"
 fi
