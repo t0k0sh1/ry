@@ -17,7 +17,7 @@ This file covers only hazards that are not visible from reading the code.
 
 **Tags**: testing, naming, camelCase, sweep, blind-spot, module-global
 
-Anchoring a sweep to `let` / `var` lets the implicit binding form (`name: type = value`, no keyword) pass the parser's camelCase check undetected. Requiring indentation with `^\s+` misses column-0 module-global declarations. Use `^\s*` and consume underscores with `[a-zA-Z0-9_]`. Per-site `Read` + `Edit` instead of grep reproduces the same gaps as #1466 — use the 4-step procedure in `/horizontal-sweep`.
+Anchoring a sweep to `let` / `var` lets the implicit binding form (`name: type = value`, no keyword) pass the parser's camelCase check undetected. Requiring indentation with `^\s+` misses column-0 module-global declarations. Use `^\s*`, consume underscores with `[a-zA-Z0-9_]`, and prefer batch grep/sed over per-site edits.
 
 ### `tests/spec/<name>/` directories collide with stdlib module names
 

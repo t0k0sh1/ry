@@ -49,6 +49,9 @@ build-rust/
 build-docker/
 build-asan-docker/
 build-fuzz-docker/
+build-scan-docker/
+build-tsan/
+build-tsan-docker/
 
 # Editor / tool caches
 .cache/

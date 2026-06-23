@@ -6,7 +6,7 @@ This document categorizes the runtime boundary so that selected native runtime m
 
 - **All runtime entry points are `extern "C"` symbols prefixed `__ry_`.** This is the stable contract: codegen lowers user-level operations into calls to these symbols, and the runtime owns their implementation.
 - **The boundary is C-only.** Parameters and return types are limited to scalar types (`int64_t`, `double`, `bool` as `int8_t`), opaque pointers, and POD structs whose layout is fixed by `include/ry/runtime/{core,native}/*.hpp`. LLVM types must not appear on either side.
-- **Memory ownership crosses the boundary via the ARC contract.** Allocations made by the runtime carry an `ArcHeader` (or `StringHeader` for `str`) at a fixed negative offset; codegen emits the matching retain/release calls. See `.claude/rules/codegen-arc-cow.md` for the full contract.
+- **Memory ownership crosses the boundary via the ARC contract.** Allocations made by the runtime carry an `ArcHeader` (or `StringHeader` for `str`) at a fixed negative offset; codegen emits the matching retain/release calls.
 
 ## Two-category split
 
@@ -79,4 +79,4 @@ Core modules are higher migration value (memory-safety dividend) but higher impl
 - [Codegen Terminology](codegen-terminology.md) — canonical vocabulary (this page defines the runtime boundary).
 - [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the orthogonal LLVM IR emission boundary on the codegen side.
 - [Native Call Boundary](native-call-boundary.md) — the codegen-side dispatch / descriptor selection boundary that decides which `__ry_*` symbol from this contract gets called; design issue #2231.
-- `.claude/rules/runtime-memory-safety.md` — runtime memory-safety rules (forbidden functions, OOM handling, NULL checks).
+- Runtime memory-safety conventions (forbidden functions, OOM handling, NULL checks).

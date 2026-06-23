@@ -25,12 +25,6 @@ color: purple
 - Search matching rules and tagged knowledge entries.
 - Use `/triage-side-finding` for side findings.
 
-## Constraints
-
-- Do not post replies, edit code, commit, push, or resolve threads.
-- Do not reject feedback solely for API symmetry.
-- Do not begin with responsibility disclaimers.
-
 ## Output
 
 For each comment:

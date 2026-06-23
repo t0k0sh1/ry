@@ -12,7 +12,7 @@ This file covers only hazards that are not visible from reading the code.
 
 **Tags**: testing, codegen-test, stdlib, rename, refactor, blind-spot
 
-Files such as `tests/test_codegen_directive.cpp` embed source inline as `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")`. Sweeping only `.ry` files misses these. Because exported symbols still match, the build succeeds; failure appears only at `./build/ry_tests` run time. When renaming a `@native` function, use the 4-step procedure in `/horizontal-sweep`.
+Files such as `tests/test_codegen_directive.cpp` embed source inline as `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")`. Sweeping only `.ry` files misses these. Because exported symbols still match, the build succeeds; failure appears only at `./build/ry_tests` run time. When renaming a `@native` function, include embedded Ry source in the grep/sed sweep.
 
 ### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
 

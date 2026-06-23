@@ -26,7 +26,6 @@ Do not use when the current reproduction window may close; `/triage-side-finding
 
 ## Constraints
 
-- Read-only: do not modify code or repository state.
 - Separate evidence from inference.
 - State when the occurrence condition remains unknown.
 

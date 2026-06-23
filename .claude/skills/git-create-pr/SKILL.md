@@ -1,6 +1,6 @@
 ---
 name: git-create-pr
-description: User-invoked slash command that ensures a feature branch, commits any pending work, rebases onto main, pushes, and opens a PR — all in one pass. Never invoke autonomously, from another skill, or merely because implementation is complete.
+description: User-invoked slash command that ensures a feature branch, commits pending work, rebases onto main, pushes, and opens a PR.
 allowed-tools: Bash(git status:*), Bash(gh pr create:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git checkout -b:*), Read, Edit
 metadata:
   short-description: Branch, push, and open a PR
@@ -10,12 +10,10 @@ metadata:
 
 ## Invocation Gate
 
-- Run only when the user directly invokes `/git-create-pr`.
-- Never invoke this skill autonomously or from another skill.
-- Never propose this skill, present it as an option, include it in a plan, or list it as a next step.
-- Do not invoke or suggest `/git-push` from within this skill — Steps 1-4 are inlined; delegation is prohibited per #2176.
+- Run only on direct `/git-create-pr` invocation.
+- Steps 1-4 inline the `/git-push` actions.
 
-> **Sync with `/git-push`**: Steps 1-4 below mirror the *actions* of `.claude/skills/git-push/SKILL.md` Steps 0-3, with added skip guards. Keep them in sync at the action level — not byte-for-byte.
+> Keep Steps 1-4 action-compatible with `/git-push` Steps 0-3.
 
 ## Context
 
@@ -33,7 +31,7 @@ metadata:
 | Feature branch + clean + (no upstream or unpushed commits) | Step 3 → Step 4 → Step 5 |
 | Feature branch + clean + upstream set + everything pushed | Step 5 only |
 
-Rule: **commit only when dirty; rebase + push only when something needs pushing; PR always**.
+Rule: commit only when dirty; rebase + push only when needed; always open the PR.
 
 ## Steps
 
@@ -41,41 +39,39 @@ Rule: **commit only when dirty; rebase + push only when something needs pushing;
 
 ### 1. Branch ensure
 
-> AGENTS.md "Git And GitHub": do not commit directly on `main`.
-
 - Run `git rev-parse --abbrev-ref HEAD`. If not `main`, skip to Step 2.
 - If on `main`, create a feature branch:
-  1. **Infer `type`** from user intent and working-tree changes:
+  1. Infer `type` from user intent and changes:
 
      | Type | When to use |
      |------|-------------|
-     | `feat` | New feature or functionality |
+     | `feat` | New feature |
      | `fix` | Bug fix |
      | `docs` | Documentation only |
-     | `refactor` | Code restructuring without behavior change |
-     | `test` | Adding or updating tests |
+     | `refactor` | No behavior change |
+     | `test` | Test changes |
      | `chore` | Build, CI, dependencies, tooling |
 
-  2. **Generate a short kebab-case description** (2-4 words ideal). Examples: `feat/add-crypto-stdlib`, `fix/utf8-overread`, `refactor/parser-cleanup`.
-  3. **Validate** before `git checkout -b`: lowercase it, strip every non-alphabetic character, and confirm the result does NOT contain `main`. If it does, regenerate and re-validate. Hard MUST — never bypass.
-  4. Run `git checkout -b <type>/<short-description>` and report the branch name. Do **not** stop to ask for approval.
+  2. Generate `<type>/<short-kebab-description>`, e.g. `feat/add-crypto-stdlib`.
+  3. Before `git checkout -b`, lowercase the branch name, strip non-letters, and confirm it does not contain `main`; regenerate if needed.
+  4. Run `git checkout -b <type>/<short-description>` and report it.
 
 ### 2. Commit
 
 - **Skip when** working tree is clean.
-- Stage and create a single commit using **Conventional Commits** (`feat:` / `fix:` / `refactor:` / `chore:` / etc.).
+- Stage and create one Conventional Commit (`feat:`, `fix:`, `refactor:`, `chore:`, etc.).
 
 ### 3. Rebase onto `origin/main`
 
 - **Skip when** Step 4 has nothing to push: clean + upstream set + no commits ahead of `@{u}`.
 - `git fetch origin`
 - `git rebase origin/main`
-- **Do not re-run `git fetch` between rebase and push** — weakens the `--force-with-lease` guard.
+- Do not re-run `git fetch` between rebase and push; it weakens `--force-with-lease`.
 - On conflict:
   - `git diff --name-only --diff-filter=U` to list conflicting files
   - `Read` + `Edit` to resolve
   - `git add <file>` per resolved file → `git rebase --continue`
-  - If unresolvable: STOP and report (do **not** auto-`git rebase --abort`)
+  - If unresolvable: stop and report; do not auto-`git rebase --abort`
 
 ### 4. Push
 
