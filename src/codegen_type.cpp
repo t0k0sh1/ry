@@ -3,6 +3,9 @@
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include "ry/stdlib_registry.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+
 
 namespace ry {
 
@@ -536,16 +539,31 @@ bool CodeGen::isLiteralUnionType(const std::string &typeName) {
     return ry::util::isLiteralUnionType(typeName);
 }
 
+// Safe std::strtoll wrapper for type constraint integer literals.
+// Rejects empty, trailing-garbage, and out-of-int64 inputs via the caller-
+// supplied error callback. Mirrors src/parser/parser_decl.cpp:951-955.
+template<typename ErrorFn>
+static int64_t parseInt64Bound(const std::string &what,
+                               const std::string &s, ErrorFn error) {
+    char *end = nullptr;
+    errno = 0;
+    int64_t val = std::strtoll(s.c_str(), &end, 10);
+    if (s.empty() || errno == ERANGE || end != s.c_str() + s.size())
+        error(what + " out of range in type constraint: " + s);
+    return val;
+}
+
 std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::string &typeName) {
     // Callers are responsible for resolving type aliases before calling this function.
+    auto err = [this](const std::string &m) { codegenError(m); };
 
     // Range type: "1..12"
     if (isRangeType(typeName)) {
         auto pos = typeName.find("..");
         TypeConstraint tc;
         tc.kind = TypeConstraint::Kind::IntRange;
-        tc.range_low = std::stoll(typeName.substr(0, pos));
-        tc.range_high = std::stoll(typeName.substr(pos + 2));
+        tc.range_low = parseInt64Bound("range low bound", typeName.substr(0, pos), err);
+        tc.range_high = parseInt64Bound("range high bound", typeName.substr(pos + 2), err);
         if (tc.range_low > tc.range_high)
             codegenError("invalid range type: low bound " +
                 std::to_string(tc.range_low) + " > high bound " +
@@ -557,7 +575,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     if (isIntLiteralType(typeName)) {
         TypeConstraint tc;
         tc.kind = TypeConstraint::Kind::IntLiteral;
-        tc.int_values.push_back(std::stoll(typeName));
+        tc.int_values.push_back(parseInt64Bound("integer literal", typeName, err));
         return tc;
     }
 
@@ -584,7 +602,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
             tc.kind = TypeConstraint::Kind::IntLiteral;
             tc.int_values.reserve(components.size());
             for (auto &c : components)
-                tc.int_values.push_back(std::stoll(c));
+                tc.int_values.push_back(parseInt64Bound("integer literal", c, err));
             return tc;
         }
 

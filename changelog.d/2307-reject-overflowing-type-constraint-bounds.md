@@ -1,0 +1,3 @@
+### Fixed
+
+- `parseTypeConstraint` (`src/codegen_type.cpp`) が単一整数リテラル型 / 範囲型の上下境界 / 整数リテラル union のメンバーで `int64_t` を超える値を受け取った際、`std::stoll` の uncaught `std::out_of_range` でプロセス全体が abort (`libc++abi: ... stoll: out of range`, exit 134) する問題を修正。`src/parser/parser_decl.cpp:951-955` の固定長配列サイズで既に確立されている `std::strtoll` + `errno == ERANGE` + end-pointer + empty-string check のパターンを移植した file-local テンプレート helper `parseInt64Bound` を導入し、4 箇所 (`std::stoll`) の呼び出しを差し替えた。失敗時は `codegenError` 経由で通常のコンパイル診断 (`integer literal out of range in type constraint: <value>` / `range low bound out of range ...` / `range high bound out of range ...`) を返す。 (#2307)
