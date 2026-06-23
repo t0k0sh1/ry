@@ -685,7 +685,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // a user declares @native("base64") fn encode(str) alongside
         // `from base64 import encode`, while preserving valid type-based
         // overloads like encode(str) and encode(int).
-        auto &sigVec = native_fn_sigs_[ry::util::nativeSigKey(effectivePackage, sig.name)];
+        const std::string sigKey = ry::util::nativeSigKey(effectivePackage, sig.name);
+        auto &sigVec = native_fn_sigs_[sigKey];
         bool duplicate = false;
         for (const auto &existing : sigVec) {
             if (existing.params.size() != sig.params.size()) continue;
@@ -698,8 +699,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
             if (same) { duplicate = true; break; }
         }
-        if (!duplicate)
+        if (!duplicate) {
+            // Build descriptor alongside the signature (foundation for
+            // descriptor-driven dispatch, #2299 follow-up to #2231).
+            // v1 stores library_name only; subsequent consumer PRs extend
+            // the struct when they need additional fields.
+            native_call_descriptors_[sigKey].push_back(
+                NativeCallDescriptor{inferLibraryName(sig.library, sig.package)});
+
             sigVec.push_back(std::move(sig));
+        }
         return;
     }
 

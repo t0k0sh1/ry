@@ -183,6 +183,7 @@ add_library(ry_lib STATIC
     src/codegen_metadata.cpp
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
+    src/native_call_descriptor.cpp
     src/runtime/core/error.cpp
     src/runtime/core/host_shims.cpp
     src/cli/cli.cpp
@@ -456,6 +457,7 @@ add_executable(ry_tests
     tests/test_codegen_advanced.cpp
     tests/test_codegen_contract.cpp
     tests/test_codegen_directive.cpp
+    tests/test_native_call_descriptor.cpp
     tests/test_project_config.cpp
     tests/test_self_update.cpp
     tests/test_diagnostic.cpp

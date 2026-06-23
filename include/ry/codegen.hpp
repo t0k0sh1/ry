@@ -4,6 +4,7 @@
 #include "ry/ast/ast.hpp"
 #include "ry/codegen_native_dispatch.hpp"
 #include "ry/directive_meta.hpp"
+#include "ry/native_call_descriptor.hpp"
 #include "ry/sema/sema_return.hpp"
 #include "ry/source_manager/source_location.hpp"
 #include "ry/source_manager/source_manager.hpp"
@@ -79,6 +80,15 @@ public:
     // Keyed by "package::name" for module functions, bare name for builtins.
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
     getNativeFnSigs() const { return native_fn_sigs_; }
+
+    // Access the NativeCallDescriptor registry built alongside native_fn_sigs_
+    // during @native declaration processing. v1 populates declaration-time
+    // fields only (module_name / fn_name / library_name); remaining fields
+    // stay at default until consumer PRs migrate dispatchers per
+    // docs/architecture/native-call-boundary.md follow-ups. Same key shape
+    // as getNativeFnSigs() so the two maps can be cross-referenced.
+    const std::unordered_map<std::string, std::vector<NativeCallDescriptor>>&
+    getNativeCallDescriptors() const { return native_call_descriptors_; }
 
     // Libraries that must be dynamically loaded at JIT time (demand-driven:
     // only includes libraries for functions actually called during codegen).
@@ -1198,6 +1208,12 @@ public:
 
     // @native fn rich signature registry
     std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
+
+    // NativeCallDescriptor registry (foundation for descriptor-driven dispatch,
+    // #2299 follow-up to #2231). Populated in lock-step with native_fn_sigs_;
+    // no consumer in v1, see getNativeCallDescriptors() for details.
+    std::unordered_map<std::string, std::vector<NativeCallDescriptor>>
+        native_call_descriptors_;
 
     // Testing intrinsics imported via `from testing import ...`. Set by
     // setTestingIntrinsicsImported() from ModuleLoader::importedTestingIntrinsics()
