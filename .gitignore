@@ -44,14 +44,11 @@
 # build files
 build/
 build-asan/
-build-tsan/
 build-fuzz/
 build-rust/
 build-docker/
 build-asan-docker/
-build-tsan-docker/
 build-fuzz-docker/
-build-scan-docker/
 
 # Editor / tool caches
 .cache/

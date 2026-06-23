@@ -672,17 +672,6 @@ but ASan / leak detectors may report it. The leak is reclaimed at
 process exit. This is an accepted trade-off — calling C++ destructors
 from a signal-driven longjmp would be undefined behavior.
 
-**Known limitation (TSan on Linux):** `@timeout` is not exercised under
-the Linux ThreadSanitizer CI gate. Linux libtsan's `siglongjmp`
-interceptor deadlocks when invoked from the SIGALRM handler that
-delivers the timeout, so the subprocess-driven regression tests
-(`tests/test_spec_timeout.cpp`) are skipped under TSan via `GTEST_SKIP`.
-Functional coverage (timeout fires, fail counted, next test runs,
-`@afterEach` after timeout, hung `@afterEach`) is preserved on the
-default / ASan+UBSan / filecheck / macOS-TSan builds. Promoting
-`@timeout` to TSan-required is gated on either an upstream libtsan
-fix or a redesign that avoids `siglongjmp` from a signal handler.
-
 **Composition with `@afterEach`:** when `@timeout` fires mid-test
 (body phase), the runtime unwinds the body via `siglongjmp`, then
 **runs `@afterEach` under its own fresh `N`-ms budget** (#1781). If

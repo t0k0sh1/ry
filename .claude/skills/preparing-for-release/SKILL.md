@@ -8,21 +8,21 @@ metadata:
 
 # Preparing for Release
 
-Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone. See AGENTS.md "Workflow". The **Release cleanup** issue is the close-out step: it closes the Release issue, the milestone, then itself.
+Creates three issues — **Release prep**, **Release**, and **Release cleanup** — under the target version's milestone. The **Release cleanup** issue closes the Release issue, the milestone, and itself in order.
 
 ## Inputs
 
-Repository: `t0k0sh1/ry`. User input `$ARGUMENTS` (release version, e.g. `0.0.14` or `v0.0.14`). If absent, **ask the user** — do NOT guess.
+Repository: `t0k0sh1/ry`. `$ARGUMENTS` contains the release version (e.g. `0.0.14` / `v0.0.14`). If absent, **ask the user** — do not guess.
 
 ## Steps
 
 ### Step 1: Resolve and validate the version
 
-- Strip a leading `v` from `$ARGUMENTS` to obtain `<X.Y.Z>`.
-- Validate against the regex `^[0-9]+\.[0-9]+\.[0-9]+$`. This mirrors the `^v[0-9]+\.[0-9]+\.[0-9]+$` filter that `release.yml`'s `build` job applies to the tag, so prerelease forms like `0.0.14-rc.1` and other invalid inputs are rejected here.
-- If validation fails, report the offending input and stop.
+- Strip any leading `v` from `$ARGUMENTS` to get `<X.Y.Z>`.
+- Match against `^[0-9]+\.[0-9]+\.[0-9]+$` (symmetric with the `^v[0-9]+\.[0-9]+\.[0-9]+$` pattern used by the `build` job in `release.yml`). Reject forms like `0.0.14-rc.1`.
+- On validation failure, report the input value and stop.
 
-For the rest of this skill, `<X.Y.Z>` denotes the validated semver string and `v<X.Y.Z>` the prefixed tag/milestone form.
+Going forward, `<X.Y.Z>` denotes the validated semver string; `v<X.Y.Z>` denotes the prefixed tag/milestone form.
 
 ### Step 2: Verify the milestone exists
 
@@ -31,8 +31,7 @@ gh api "repos/t0k0sh1/ry/milestones?state=open" \
   --jq '.[] | select(.title=="v<X.Y.Z>") | .number'
 ```
 
-- If the result is empty, the milestone does not exist (or is closed). **Stop and ask the user** to create it before re-running. Do not auto-create — milestone creation is intentionally a deliberate, manual act.
-- Otherwise record the milestone number for cross-checking.
+If empty, **stop and ask the user to create the milestone** — do not create it automatically. If found, record the milestone number.
 
 ### Step 3: Check for duplicate issues
 
@@ -42,26 +41,19 @@ gh issue list --milestone "v<X.Y.Z>" --state open \
   --jq '[.[] | select(.title == "Release prep: v<X.Y.Z>" or .title == "Release: v<X.Y.Z>" or .title == "Release cleanup: v<X.Y.Z>")]'
 ```
 
-- Strict title match is intentional — `--search` is full-text and can hit unrelated issues.
-- If any element is returned, report the existing issue number(s) and stop. Do not create duplicates.
+Exact title matching is intentional (`--search` performs full-text matching and may hit unrelated issues). If any results are returned, report the existing issue numbers and stop.
 
 ### Note: CodeQL gate is enforced by `release.yml`
 
-Since #1542, `release.yml` runs a `codeql-gate` preflight job that verifies the `codeql.yml` workflow run for the exact `github.sha` finished with `conclusion=success` before the `release` job is allowed to publish artifacts. This removes the previous race where a tag push could publish a Release before the CodeQL analysis on the same commit had even started (v0.0.18 / #1539 follow-up).
+`release.yml` has a `codeql-gate` preflight job that blocks the release job until a `codeql.yml` run with `event=push` completes with `conclusion=success` (#1542). No manual verification required.
 
-Operational consequences for this skill:
-
-- **No need to pre-check** "is the latest main CodeQL run green?" in Steps 4/5 — the release workflow itself will block publish until it is.
-- The gate filters CodeQL runs by `event=push`. PR-triggered and `workflow_dispatch`-triggered `codeql.yml` runs are **not** counted toward the gate; only mainline analysis state matters.
-- If CodeQL itself is broken / unavailable and a release must ship, run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`. This is an escape hatch — leave the input at its `false` default for normal tag-push releases.
-- If the tag points to a commit that was never pushed to main (so `event=push` CodeQL never ran for it), the gate fails by default. This is intentional — fix the tag's target commit rather than bypassing the gate.
+- PR-triggered and `workflow_dispatch` runs do not count. Only `event=push`.
+- To bypass CodeQL if necessary, run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`.
+- If the tag points to a commit not on main, the gate fails by default. Fix the target commit rather than bypassing.
 
 ### Step 4: Create the Release prep issue
 
-**Substitution rules before invocation:**
-
-- Replace every `<X.Y.Z>` placeholder with the validated version (e.g. `0.0.14`).
-- Leave `<PREV>` and `YYYY-MM-DD` as literals — the prep worker fills those in.
+**Substitution:** Replace `<X.Y.Z>` with the validated version. Leave `<PREV>` and `YYYY-MM-DD` as literals.
 
 ````bash
 gh issue create \
@@ -71,7 +63,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Follow the standard issue implementation flow through self-verification. Git publication and PR creation are outside the implementation plan; the release tag itself is out of scope (sibling Release issue).
+Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section. Git publication, PR creation, and the release tag itself are out of scope (sibling Release issue).
 
 ## Tasks
 
@@ -81,7 +73,7 @@ Collapses `changelog.d/*.md` fragments into `[Unreleased]` and deletes them.
 
 ### 2. Verify `share/std/manifest.json` matches the on-disk stdlib
 
-`share/std/manifest.json` is hand-maintained (#1390 precedent) and is the inventory ledger for the release. Drift between the manifest and the actual stdlib directory is not caught by CI, packaging, or runtime — verify here.
+Drift is not caught by CI — verify here.
 
 ```bash
 diff <(jq -r '.files[] | "share/std/" + .' share/std/manifest.json | sort) \
@@ -89,7 +81,7 @@ diff <(jq -r '.files[] | "share/std/" + .' share/std/manifest.json | sort) \
 ```
 
 - Empty diff → no action.
-- Files present on disk but missing from manifest → add to `files` array (match existing grouping: top-level flat entries, then per-module subdirectories).
+- Files on disk but missing from manifest → add to `files` array (top-level flat entries, then per-module subdirectories).
 - Files in manifest but missing on disk → remove from `files` array.
 
 Include the manifest edit in the same Release prep PR.
@@ -117,10 +109,7 @@ Above the new `[<X.Y.Z>]` heading, insert `## [Unreleased]` (body empty; future 
 
 ### 6. Verify `release.yml`'s container pin is fresh
 
-`release.yml` pins the Linux release container to an immutable
-`:llvm-<MAJOR>-rev<N>` tag (#1508) for byte-reproducibility across
-re-runs. Look up the latest published rev on GHCR (public registry —
-no `gh` auth scope required):
+`release.yml` pins the Linux release container to `:llvm-<MAJOR>-rev<N>` (#1508). Look up the latest rev on GHCR:
 
 ```bash
 curl -s "https://ghcr.io/token?scope=repository:t0k0sh1/ry-ci-glibc-old:pull" \
@@ -129,40 +118,25 @@ curl -s "https://ghcr.io/token?scope=repository:t0k0sh1/ry-ci-glibc-old:pull" \
   | jq -r '.tags[]' | grep -E '^llvm-[0-9]+-rev[0-9]+$' | sort -V | tail -1
 ```
 
-Compare with the literal in `.github/workflows/release.yml` (the
-`format(...)` argument on the `container:` line). If they match, no
-change needed. If different, bump the pin in this same Release prep
-PR. Add `changelog.d/<this-issue>-bump-release-image-rev.md` (a `###
-Fixed` or `### Changed` entry describing the bump) so `assemble-changelog.sh`
-in Task 1 folds it into the `[<X.Y.Z>]` section.
-
-The curl command uses the anonymous public GHCR token endpoint
-rather than `gh api .../packages/container/.../versions` because
-the latter requires the PAT to carry `read:packages` scope, which
-`gh auth login` does not grant by default. The curl pattern works
-for any maintainer.
+Compare with the `container:` line `format(...)` argument in `.github/workflows/release.yml`. If different, update the pin in the same PR and add `changelog.d/<this-issue>-bump-release-image-rev.md` to be folded into `[<X.Y.Z>]` by Task 1.
 
 ## Verification
 
 - `git diff CHANGELOG.md` shows new `[<X.Y.Z>]` + empty `[Unreleased]` + updated comparison links; `changelog.d/` no longer contains the assembled fragments
-- `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (macOS: substitute `cmake --preset rust-emit` → `build-rust/`, i.e. `./build-rust/ry_tests` / `./build-rust/ry`; sanitizer/fuzzer runs not required for a docs-only change; see `/pre-commit-checklist`)
-
-## Note
-
-`release.yml` enforces a CodeQL preflight gate on the released SHA (#1542). No manual "is CodeQL green on main?" check is needed in this prep issue — the gate runs at tag-push time and blocks publish on its own.
+- `/pre-commit-checklist` passes (sanitizer/fuzzer runs not required for a docs-only change)
 
 ## Out of scope
 
-Bumping VERSION files (none exists; CMake defaults `RY_VERSION` to `0.0.0`, CI injects from tag); pushing `v<X.Y.Z>` (Release issue).
+Bumping VERSION files (none exists); pushing `v<X.Y.Z>` (Release issue).
 EOF
 )"
 ````
 
-Capture the new issue number from the URL printed by `gh issue create` — call it `<P>` — for the cross-link in Step 5.
+Extract the issue number from the URL printed by `gh issue create` and record it as `<P>` (for cross-linking in Step 5).
 
 ### Step 5: Create the Release issue
 
-**Substitution:** as Step 4 + replace `<P>` with the prep issue number; leave `<NEXT>` literal.
+**Substitution:** Same as Step 4; additionally replace `<P>` with the prep issue number. Leave `<NEXT>` as a literal.
 
 ````bash
 gh issue create \
@@ -172,7 +146,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Push the `v<X.Y.Z>` tag to trigger `release.yml` and complete the GitHub Release for v<X.Y.Z>.
+Push the `v<X.Y.Z>` tag to trigger `release.yml` and publish the GitHub Release.
 
 ## Prerequisites
 
@@ -215,14 +189,13 @@ git push origin v<X.Y.Z>
 
 ### 4. Report to the user
 
-- Tag `v<X.Y.Z>` pushed; `release.yml` running: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>
-- Once `release.yml` finishes and the Release publishes, proceed to the Release cleanup issue — it verifies artifacts, then closes this Release issue, the milestone, and itself.
+Tag `v<X.Y.Z>` pushed; `release.yml` running: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>. Once the Release publishes, proceed to the cleanup issue.
 
 Then **stop**. Leave this Release issue **open with its `wip` label**. Do not poll the workflow.
 
 ## Note
 
-`release.yml` runs a `codeql-gate` preflight job (#1542) that confirms the `codeql.yml` `event=push` run for the tag's exact SHA finished with `conclusion=success` before the release is published. Manual pre-tag CodeQL verification is therefore unnecessary. If the gate fails (CodeQL outage, broken analysis, or the tag pointing to a commit that was never pushed to main), the workflow will fail loudly. To override only when CodeQL itself is the problem, re-run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`.
+`release.yml` runs a `codeql-gate` preflight job (#1542): CodeQL `event=push` run for the tag's exact SHA must finish `conclusion=success` before publish. If the gate fails, the workflow fails loudly. To override (CodeQL outage only), re-run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`.
 
 ## Out of scope
 
@@ -231,11 +204,11 @@ EOF
 )"
 ````
 
-Capture the new issue number from the URL printed by `gh issue create` — call it `<R>`.
+Extract the issue number from the URL printed by `gh issue create` and record it as `<R>`.
 
 ### Step 6: Create the Release cleanup issue
 
-**Substitution:** as Step 4 + replace `<R>` with the release issue number. Leave `<this-issue>` literal — the cleanup worker substitutes its own issue number at run time (the cleanup issue's number is not knowable until `gh issue create` returns).
+**Substitution:** Same as Step 4; additionally replace `<R>` with the release issue number. Leave `<this-issue>` as a literal (the cleanup executor substitutes their own issue number at run time).
 
 ````bash
 gh issue create \
@@ -245,7 +218,7 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Verify the v<X.Y.Z> release artifacts are healthy and close the milestone.
+Verify v<X.Y.Z> release artifacts and close the milestone.
 
 ## Prerequisites
 
@@ -253,7 +226,7 @@ Verify the v<X.Y.Z> release artifacts are healthy and close the milestone.
 
 ## Tasks
 
-In the commands below, `<R>` is the Release issue number (from Prerequisites) and `<this-issue>` is this cleanup issue's own number — substitute both before running.
+In the commands below, `<R>` is the Release issue number and `<this-issue>` is this cleanup issue's own number — substitute both before running.
 
 ### 1. Verify release.yml run
 
@@ -283,7 +256,7 @@ gh issue close <R>
 
 ### 4. Close the milestone
 
-Precondition: the milestone has no other open issues besides **this cleanup issue itself**.
+Precondition: no other open issues in the milestone besides **this cleanup issue itself**.
 
 ```bash
 MS_NUM=$(gh api 'repos/t0k0sh1/ry/milestones?state=open' \
@@ -297,7 +270,7 @@ Excluding **this cleanup issue's own number** (`<this-issue>`), the list must be
 - (b) close them, or
 - (c) abort the cleanup.
 
-Do not proceed without explicit user direction. Once only this cleanup issue remains open in the milestone:
+Do not proceed without explicit user direction. Once only this cleanup issue remains open:
 
 ```bash
 gh api -X PATCH "repos/t0k0sh1/ry/milestones/$MS_NUM" -f state=closed
@@ -317,8 +290,8 @@ EOF
 )"
 ````
 
-Capture the new issue number from the URL printed by `gh issue create` — call it `<C>`.
+Extract the issue number from the URL printed by `gh issue create` and record it as `<C>`.
 
 ### Step 7: Report
 
-Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` after running `scripts/claim-issue.sh '#<P>'`; `#<C>` is addressed after the `v<X.Y.Z>` tag is pushed and `release.yml` finishes.
+Report `#<P>` (Release prep), `#<R>` (Release), and `#<C>` (Release cleanup) with their URLs. Start work from `#<P>` after running `scripts/claim-issue.sh '#<P>'`. Address `#<C>` only after `release.yml` completes following the `v<X.Y.Z>` tag push.

@@ -7,16 +7,13 @@
 #       `src/parser/parser.cpp`),
 #   (b) `/skill` slash-command references with no matching
 #       .claude/skills/<name>/SKILL.md (dead skill links, e.g. a deleted
-#       skill still referenced in prose),
-#   (c) `## …` KNOWLEDGE.md section references whose heading text is not
-#       present verbatim in KNOWLEDGE.md (English/Japanese name drift that
-#       makes a grep for the cited section silently miss).
+#       skill still referenced in prose).
 #
 # DETECTION IS INLINE-CODE-SPAN ONLY. Only tokens wrapped in single
 # backticks are inspected; triple-backtick fenced blocks (``` / ~~~) are
 # stripped before scanning, exactly like scripts/check-llvm-emit-abi-header.sh
 # strips comments. This is the intentional, documented ESCAPE HATCH: to
-# legitimately mention a path / skill / section that does not (yet) exist,
+# legitimately mention a path / skill that does not (yet) exist,
 # write it inside a fenced block or as plain prose WITHOUT inline backticks.
 # Tokens containing a `<...>` placeholder, a glob (`*` / `?`), or a
 # `:line` / `::symbol` suffix are also skipped (see docs-reference-conventions.md
@@ -38,7 +35,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || {
   exit 1
 }
 
-KB="KNOWLEDGE.md"
 TAB="$(printf '\t')"
 
 # Slash-commands that are valid even without a .claude/skills/<name>/ dir
@@ -48,10 +44,6 @@ BUILTIN_CMDS="clear help config model fast loop run init review verify simplify 
 NON_SKILL_SLASH="tmp workspace"
 
 # File list: explicit args (testing) or the default instruction-file scope.
-# KNOWLEDGE.md is deliberately NOT scanned for (a)/(b): it is a prose-heavy
-# knowledge base that discusses path naming (including intentionally
-# non-existent counter-example paths). It is used only as the (c) source of
-# truth.
 if [ "$#" -gt 0 ]; then
   FILES="$(printf '%s\n' "$@")"
 else
@@ -109,21 +101,6 @@ scan_skills() {
   done | sort -u
 }
 
-# (c) Emit "<file>\t<line>\t<heading>" for KNOWLEDGE.md section refs that
-# do not resolve to a verbatim heading in KNOWLEDGE.md.
-scan_sections() {
-  printf '%s\n' "$FILES" | while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    readable "$f" || continue
-    strip_fences "$f" | grep -E 'KNOWLEDGE\.md' | grep -oE '`#{2,6} [^`]+`' | tr -d '`' | while IFS= read -r h; do
-      case "$h" in *'...'*|*'<'*|*'>'*) continue ;; esac   # skip placeholder headings
-      grep -qxF -- "$h" "$KB" 2>/dev/null && continue
-      ln="$(line_of "$f" "$h")"
-      printf '%s%s%s%s%s\n' "$f" "$TAB" "${ln:-?}" "$TAB" "$h"
-    done
-  done | sort -u
-}
-
 bad=0
 
 viol_a="$(scan_paths)"
@@ -147,18 +124,8 @@ if [ -n "$viol_b" ]; then
   done
 fi
 
-viol_c="$(scan_sections)"
-if [ -n "$viol_c" ]; then
-  bad=1
-  echo "::error::check-prompt-refs (c): KNOWLEDGE.md section reference(s) whose heading is not present verbatim in ${KB}." >&2
-  echo "  Fix: match the exact heading text in ${KB} (watch for English vs Japanese section names)." >&2
-  printf '%s\n' "$viol_c" | while IFS="$TAB" read -r f ln h; do
-    echo "  ${f}:${ln}: ${h}" >&2
-  done
-fi
-
 if [ "$bad" -ne 0 ]; then
   echo "check-prompt-refs: FAILED (see ::error:: annotations above)." >&2
   exit 1
 fi
-echo "check-prompt-refs: clean (paths, /skill links, and KNOWLEDGE.md section names all resolve)."
+echo "check-prompt-refs: clean (paths and /skill links resolve)."

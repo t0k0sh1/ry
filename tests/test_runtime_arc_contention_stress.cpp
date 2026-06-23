@@ -18,13 +18,13 @@
 // The LLVM IR uses `atomicrmw add/sub seqcst` on the int64_t
 // strong_count field at the start of the ARC header block.  This
 // file replicates those ops using __atomic_fetch_add / _sub with
-// __ATOMIC_SEQ_CST so TSan can verify there are no races.
+// __ATOMIC_SEQ_CST so any future sanitizer pass can verify there are
+// no races.
 //
 // Why C++ instead of a Ry spec test?
 // ConcurrencySpecSuite already exercises the JIT-compiled atomic
 // ARC path.  These tests complement it by exercising the raw atomic
-// layer directly and are part of the required TSan gate
-// (build-tsan/ry_tests).
+// layer directly and are part of the required `ry_tests` gate.
 
 
 namespace {

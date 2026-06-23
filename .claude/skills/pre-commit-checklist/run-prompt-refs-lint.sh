@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # §3.5.7 Prompt/instruction reference lint — reproduce the CI `lint` job's
 # "Check prompt/instruction reference integrity" step locally (#2029):
-# fails on stale inline-code paths, dead /skill links, and KNOWLEDGE.md
-# section-name drift across .claude/ + AGENTS.md + CLAUDE.md.
+# fails on stale inline-code paths and dead /skill links across .claude/ +
+# AGENTS.md + CLAUDE.md.
 #
 # Run before pushing any change under .claude/, AGENTS.md, or CLAUDE.md.
 #

@@ -6,373 +6,62 @@ paths:
 
 # Runtime / Memory
 
+This file covers only hazards that are not visible from reading the code.
+Coding conventions (forbidden functions, naming, allocator selection, etc.) are enforced by the `lint` job in `.github/workflows/ci.yml` ("Check for banned unsafe allocation functions" / "Check for banned direct exit() calls in runtime").
+
 ### Local types in `namespace ry` must not shadow public class names in `include/ry/*.hpp`
 
-**Source**: PR #1729 (2026-05-11, PR #1723 surfacing)
-**Tags**: odr, namespace, runtime, gotcha, comdat, linker, libstdc++, libc++
+**Tags**: odr, comdat, gotcha
 
-**Rule**: Translation-unit-local types declared inside `namespace ry { ... }`
-in any `src/runtime/**/*.cpp` (or other `.cpp`) must use a name that does **not**
-collide with a public class declared in `include/ry/*.hpp`. Prefix or suffix
-the local type with the module name (e.g. `JsonParser` inside
-`runtime_json.cpp`, not `Parser`). Anonymous namespaces do **not** suffice
-when both definitions sit under `namespace ry` — the linker still merges
-implicit / inline destructor symbols across translation units via COMDAT.
+Declaring `namespace ry { struct Parser { ... } }` in `src/runtime/native/*.cpp` causes the destructor mangling (`_ZN2ry6ParserD1Ev`) to collide with `ry::Parser` from `include/ry/parser/parser.hpp`. The linker resolves the COMDAT collision by picking one definition and applying it to all TUs. While both destructors are trivial the problem goes undetected; the moment one side gains a non-POD member (#1723) the wrong destructor runs on the other TU's heap memory, causing heap corruption — a latent class that can hide for years while both sides remain trivial. An anonymous namespace hides external linkage but does not prevent the COMDAT collision when both definitions are under `namespace ry`. Rename TU-local types with a module qualifier, such as `JsonParser` or `HttpParser`.
 
-**Why** (concrete incident): `src/runtime/native/json.cpp` had `struct Parser` in
-`namespace ry` for a TU-local JSON parser. `include/ry/parser/parser.hpp` has
-`class ry::Parser` for the Ry source parser. Both auto-generated
-destructors (`_ZN2ry6ParserD1Ev`) share the same mangled symbol. On Linux
-libstdc++ the linker COMDAT-picked `parser.hpp`'s destructor and applied it
-across every TU, including `__ry_json_parse`. PR #1723 added
-`std::unordered_set<std::string> imported_modules_` to `ry::Parser`, making
-its destructor non-trivial. From that point on, `JsonParser` instances
-were destructed by code that ran `~unordered_set()` on JSON-struct memory,
-reading garbage as the hashtable bucket count and corrupting the heap.
+### `arc_alloc` / `checked_malloc` mixing is masked by ASan
 
-The bug was **latent for years** — both destructors were trivially equal
-until the qualified-import work added a non-POD member.
+**Tags**: arc, asan, gotcha
 
-**How to apply**:
-- For every TU-local type inside `src/runtime/**/*.cpp` (or any `.cpp`
-  declared in `namespace ry`), use a module-qualified name:
-  `JsonParser`, `HttpParser`, `TomlLexer`, etc. — never the bare
-  `Parser` / `Lexer` / `Tokenizer` / etc. used by public headers.
-- Anonymous namespaces (`namespace { struct Parser { ... }; }`) hide
-  external linkage but **do not** prevent the COMDAT collision when the
-  destructor inlines into another TU that includes the public header.
-  Renaming is the safe fix.
-- When auditing existing code, grep for class names in `include/ry/*.hpp`
-  and search `src/*.cpp` for matching `struct <Name>` / `class <Name>`
-  inside `namespace ry`. Surface any matches before they grow non-trivial
-  members.
+Allocating a header struct returned to Ry with `checked_malloc` corrupts malloc metadata when the `header_ptr - 16` retain fires. ASan happens to stay silent due to different allocator layout; `pointer being freed was not allocated` fires only on the **default Linux build**. When suspecting an allocator mismatch, always reproduce on the default build — "ASan green" is not proof of absence. The forbidden-function table (`malloc` / `realloc` / `calloc` / `strdup` / `strndup` / `exit` in `src/runtime/`) is enforced by CI lint.
 
-### Runtime functions returning ARC-managed structs must use `arc_alloc`, not `checked_malloc`
+### JIT-visible atomic counters
 
-**Source**: #1007, #1011 (2026-04-16, bug fixes), PR #997 (pattern established for ListHeader)
-**Tags**: arc, runtime, memory-safety, iolistheader, listheader, mapheader, http, gotcha
+**Tags**: atomic, abi
 
-**Rule**: Any runtime function that returns a heap-allocated struct (e.g.
-`IOListHeader`, `ListHeader`, `MapHeader`) **to Ry code** must allocate the
-struct with `arc_alloc`, not `checked_malloc`.
+C++ does not guarantee layout identity between `std::atomic<int64_t>` and plain `int64_t`. Counters exposed to the JIT as raw `int64_t*` via `atomicrmw` (e.g., `__ry_arc_counter_address()`) must be implemented with `alignas(T) T` and `__atomic_*` builtins — `reinterpret_cast`ing `std::atomic` storage for JIT use is a toolchain-dependent time bomb.
 
-**Why**: `emitVarDecl` in the codegen emits a retain that reads
-`header_ptr - ARC_HEADER_SIZE` (16 bytes) to increment the strong-count.
-When the header was allocated with `checked_malloc` that region is malloc
-metadata, not an ARC counter. Corrupting it and then calling
-`arc_release`/`__ry_arc_free_counted` on scope exit causes a crash:
+### RWLock dispatch requires thread-local storage — shared map + `mode_mu` creates a three-way deadlock
 
-```text
-malloc: *** error for object 0x...: pointer being freed was not allocated
-```
+**Tags**: rwlock, deadlock, gotcha
 
-**Affected sites in this codebase** (checked 2026-04-16):
+`__ry_rwlock_unlock`'s `unlock_shared()` vs `unlock()` decision must use only `thread_local std::unordered_map<RWLockHandle*, int>`. The `std::unordered_map<std::thread::id, int>` + separate `mode_mu` approach (audit Option A in #630) creates a three-way deadlock: the `mode_mu` holder blocks inside `lock_shared` → existing reader cannot acquire `mode_mu` to unlock → writer waits forever.
 
-| Function | File | Fixed by |
-|---|---|---|
-| `makeStringList`, `makeMatchList` | `include/ry/runtime/core/list.hpp` | PR #997 |
-| `makeByteList` | `include/ry/runtime/native/io.hpp` | PR #1007 |
-| `__ry_read_bytes` | `src/runtime/native/io.cpp` | PR #1007 |
-| `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime/native/net.cpp` | PR #1007 |
-| `__ry_tls_receive` | `src/runtime/native/http/tls.cpp` | PR #1007 |
-| `build_str_map` | `src/runtime/native/http/http.cpp` | PR #1011 |
+### Nested `std::shared_mutex::lock_shared()` calls are UB
 
-**Error-path pairing**: when an allocation succeeds with `arc_alloc` but
-the function later bails out before returning to Ry, free with `arc_free`,
-not `free`. Example: `__ry_tcp_receive` allocates the header with
-`arc_alloc`, then on `recv()` error calls `free(header->data)` (plain `free`
-because the data buffer uses `checked_malloc`) and `arc_free(header)`.
+**Tags**: rwlock, ub, gotcha
 
-**Also**: C++ tests that call these runtime functions directly must also use
-`arc_free` (not `free`) to release the returned struct.
+Under [thread.sharedmutex.requirements], calling `lock_shared()` on a `shared_mutex` already held by the same thread is UB. libc++ passes silently, but strict or instrumented builds will detonate. Nested reads must only increment a TLS counter; call `unlock_shared()` on the underlying mutex only at the 1→0 transition. Regression coverage: `tests/test_runtime_rwlock_stress.cpp::NestedReadLockPerThread`.
 
-### JIT-visible atomic counters must not expose `std::atomic<T>` storage via raw `T*`
+### Ry panic terminates immediately via `_Exit(1)` — it is not thrown as a C++ exception
 
-**Source**: #1158 (2026-04-23, implementation)
-**Tags**: runtime, atomic, jit, abi, layout, arc
+**Tags**: panic, trap-path, _Exit, gotcha
 
-**Rule**: If JIT-generated IR needs the address of a counter as a raw
-`int64_t*` (or other plain-data pointer), back the storage with an
-`alignas(T) T` object and access it through `__atomic_*` builtins. Do
-not store the counter as `std::atomic<T>` and then return
-`reinterpret_cast<T*>(&atomic_obj)` to the JIT.
+Both `emitRuntimeError` (codegen) and `ry_runtime_trap_exit` (shared helper in `include/ry/runtime/core/alloc.hpp`) emit `fflush(stdout)+fflush(stderr)+_Exit(1)`. The purpose is to bypass the `atexit` chain (LLVM `ManagedStatic` destructors, etc.): using `exit()` causes glibc's `atexit` to run `PassRegistry::~PassRegistry` on JIT-live heap and fire `free(): invalid pointer` SIGABRT (#1838).
 
-**Why**: Ry's JIT emits `atomicrmw` directly against the address returned
-by `__ry_arc_counter_address()`. C++ does not guarantee that
-`std::atomic<int64_t>` has the same layout or address semantics as a
-plain `int64_t`, so exposing its storage as `int64_t*` is a portability
-bug even if it happens to work on one toolchain. `__atomic_fetch_add`,
-`__atomic_fetch_sub`, and `__atomic_load_n` preserve the required
-relaxed-atomic semantics without relying on `std::atomic` object layout.
+As a consequence, a `try { ... } catch (std::exception &)` cannot intercept a worker panic. The catch in `__ry_thread_spawn` (`src/runtime/native/thread.cpp`) is dormant defensive code, not an active error propagation path. To implement `threadJoin(t) -> Err` / `blockOn(task) -> Err`, `emitRuntimeError` / `ry_runtime_trap_exit` would need to be refactored to throw-based, with a top-level catch in `ry run` / `ry test` (#880 closed not-planned). Before writing a test that expects a panic to return `Err(msg)`, verify in code that the panic path actually throws a C++ exception.
 
-### RWLock dispatch state must be thread-local, not guarded by a shared mutex
+### `hasEmbeddedNul` / `stringByteLen` are Ry-handle-only — calling them on raw C strings is UB
 
-**Source**: #871 (2026-04-11, implementation; follow-up to #630 P1 audit)
-**Tags**: rwlock, runtime-thread, concurrency, deadlock, thread-local, gotcha
+**Tags**: nul-safety, stringheader, gotcha
 
-**Rule**: In `src/runtime/native/thread.cpp`, the per-thread counter that tells
-`__ry_rwlock_unlock` whether to call `unlock_shared()` vs `unlock()` on
-the underlying `std::shared_mutex` lives in a
-`thread_local std::unordered_map<RWLockHandle*, int>` at namespace
-scope. Do NOT reintroduce a shared `std::unordered_map<std::thread::id, int>`
-guarded by a separate `mode_mu`.
+Both functions read a `StringHeader` immediately before the pointer. Passing a non-`makeString` pointer (C string literals like `"POST"`, `std::string::c_str()`, `strdup`/`malloc`-derived keys in C++ tests) interprets random memory as `byte_len`:
 
-**Why**: The #630 audit suggested two fixes for the original two-step
-race (where `mu.lock_shared()` was held before the tracking map was
-updated). Option A — "hold mode_mu across lock_shared()" — **deadlocks**
-under writer contention: a thread holding `mode_mu` while blocked
-inside `lock_shared()` prevents any existing reader from taking
-`mode_mu` to dispatch its own unlock, so the writer it is waiting on
-can never make progress. Three-way deadlock: writer waits for existing
-reader, existing reader waits for `mode_mu`, `mode_mu` owner waits
-for writer. Thread-local tracking (Option B) sidesteps this entirely
-because no shared data structure exists for the dispatch.
+- `hasEmbeddedNul` false positive → function returns `nullptr` → HTTP mock-server tests hang forever on `accept`
+- `stringByteLen` garbage → `Content-Length` corrupted → server reads wrong byte count and hangs
 
-**Caveat**: unbalanced `rwlockReadLock` without a matching
-`rwlockUnlock` leaves a stale TLS entry that persists until thread
-exit. If an RWLockHandle is then freed and a new one is allocated at
-the same address, the stale count could be misinterpreted. The
-previous map-based tracker had the same property — unbalanced lock
-usage is a program bug, not something the runtime should engineer
-around.
+Call these functions only inside codegen emitters (where arguments are guaranteed to be Ry handles) or runtime functions that exclusively receive Ry handles. For runtime functions that may be called from C++ tests via `.c_str()` / literals, move the NUL check to the codegen emitter side.
 
-### Recursive `lock_shared()` on `std::shared_mutex` is undefined behavior in C++17
+Side note: since #1022, Ry `str` can contain embedded NULs (`StringHeader.byte_len`). Reject them with `hasEmbeddedNul` before passing to NUL-sensitive C APIs (`realpath` / `stat` / `getaddrinfo`, etc.); binary-safe consumers (HTTP body, etc.) must not reject them.
 
-**Source**: #871 (2026-04-11, CodeRabbit review on PR #885)
-**Tags**: rwlock, runtime-thread, std-shared-mutex, ub, gotcha
+### Calling `setLastError` from a bool-returning function pollutes the TLS buffer
 
-**Rule**: `__ry_rwlock_read_lock` must call `rwlock->mu.lock_shared()`
-**only on the outermost read acquire**, gated by `tls_rwlock_read_counts`
-being empty for that rwlock. Nested reads just bump the TLS counter.
-`__ry_rwlock_unlock` mirrors this: the underlying `unlock_shared()`
-only runs when the TLS counter drops from 1 to 0.
+**Tags**: setLastError, thread-local, gotcha
 
-**Why**: Per [thread.sharedmutex.requirements] / cppreference
-"If lock_shared is called by a thread that already owns the mutex in
-any mode (exclusive or shared), the behavior is undefined." The TLS
-counter exists solely to dispatch unlock correctly; it does not make
-the underlying mutex reentrant. An earlier draft of the #871 fix
-called `lock_shared()` unconditionally and still passed tests on
-libc++ because the UB happened to be benign, but it would be a
-time-bomb under a stricter standard library or instrumented build.
-The regression is covered by
-`tests/test_runtime_rwlock_stress.cpp::NestedReadLockPerThread`.
-
-### Ry runtime panics bypass C++ exceptions — they `fprintf + _Exit(1)`
-
-**Source**: #828, #1838 (2026-05-21 codegen trap path), #1840 (2026-05-21 runtime trap-path unification)
-**Tags**: panic, runtime, exception, thread, trap-path, _Exit, fflush, atexit, managed-static, gotcha
-
-**Rule**: Every `CodeGen::emitRuntimeError` call site emits IR that
-runs `fprintf(stderr, ...)`, then `fflush(stdout)` + `fflush(stderr)`,
-followed by `_Exit(1)` + `CreateUnreachable`
-(`src/codegen_call_user.cpp:740-778`). Ry's user-level panics
-(divide-by-zero, array OOB, range/contract violations, integer
-overflow, etc.) therefore **terminate the entire process immediately
-via `_Exit`** — they do not propagate as C++ exceptions, and they
-bypass `atexit` handlers (including LLVM `ManagedStatic` destructors).
-
-The C++ runtime trap-path counterpart — used when JIT'd code calls
-out to a runtime function that panics (e.g. `__ry_utf8_char_at`
-out-of-bounds, JSON parse error, ARC misuse) — is the shared helper
-`ry_runtime_trap_exit()` in `include/ry/runtime/core/alloc.hpp`. It does
-the same `fflush(stdout); fflush(stderr); std::_Exit(1);`. Any new
-trap path emitted from runtime C++ MUST call this helper, never
-`exit(1)` or `std::exit(1)`. The `lint` job in `.github/workflows/ci.yml`
-("Check for banned direct exit() calls in runtime") blocks
-regressions automatically.
-
-Any feature that plans to "catch a worker panic and report it as a
-value" (e.g. `threadJoin(t) -> Err` for a panicking worker,
-`blockOn(task) -> Err` for a panicking async body) cannot rely on
-existing defensive `try { ... } catch (std::exception &)` blocks
-inside runtime functions — those only fire for C++ exceptions
-that escape from LLVM-generated code, which never happens for
-user panics. The existing catch in `__ry_thread_spawn`
-(`src/runtime/native/thread.cpp`) is dormant defensive code, not an
-active error-propagation path. Fixing this requires refactoring
-both `emitRuntimeError` and `ry_runtime_trap_exit` to a throw-based
-path + installing a top-level catch in `ry run` / `ry test` —
-proposed in #880 (closed not-planned). Before writing tests that trigger a panic and
-expect `Err(error_msg)`, verify that the panic *actually* throws a
-C++ exception; the only current throw path from runtime code is
-`__ry_task_join` double-join (`src/runtime/core/parallel.cpp:292`) and a
-handful of compile-time lexer/loader errors.
-
-**Why `_Exit` and not `exit`** (#1838): `exit(1)` invokes the
-`atexit` chain, which on Linux glibc runs LLVM `ManagedStatic`
-destructors (`PassRegistry::~PassRegistry`, etc.) on a heap still
-referenced by the JIT'd module that triggered the trap.
-`free(): invalid pointer` SIGABRT replaces the expected
-`ExitedWithCode(1)` before death-test assertions can observe it.
-`_Exit` bypasses `atexit` entirely; no static destructor runs.
-The explicit `fflush(stdout); fflush(stderr)` immediately before
-`_Exit` recovers the libc buffer flush that `exit` would have done
-via `atexit`, so panic messages and any preceding `print` output
-are not lost.
-
-**Why `llvm_shutdown` / RAII don't apply**: those would only help on
-the *normal* exit path (process returns from `main`). The trap path
-runs **inside** a JIT'd thread that has no way to unwind back to
-`main` — `_Exit` from within the JIT is the only correct semantic
-for "abort this process immediately without disturbing the JIT heap".
-
-### `ListHeader` / `IOListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
-
-**Source**: #997 (2026-04-16, fix)
-**Tags**: runtime, arc, list, memory-safety, allocation
-
-**Rule**: Every list header (`ListHeader*` or `IOListHeader*`) returned from a
-C++ runtime function to Ry code must be allocated with `arc_alloc(sizeof(…))`,
-not `checked_malloc(sizeof(…))`. The Ry ARC machinery reads/writes
-`header_ptr - 16` (the ARC prefix) when retaining or releasing the list.
-If the header is plain `checked_malloc`, this access lands in malloc metadata
-→ use-after-free / bad-free at scope exit.
-
-Applies to:
-- `ListHeader` (string/match lists): use `makeStringList` / `makeMatchList` in
-  `include/ry/runtime/core/list.hpp` — these already use `arc_alloc`.
-- `IOListHeader` (byte lists): use `makeByteList` in `include/ry/runtime/native/io.hpp`;
-  also `makeEmptyIOList` in `runtime_net.cpp` and inline allocations in
-  `runtime_net.cpp` / `runtime_tls.cpp` / `runtime_io.cpp` — all converted in #997.
-
-**C++ tests that wrap these headers**: Use `arc_free(header)` (from
-`include/ry/runtime/core/arc.hpp`) instead of `free(header)`. The `data` array
-inside the header is separately `checked_malloc`'d and must be freed with plain
-`free`. Individual string elements created by `dupString` are also plain
-`checked_malloc` and freed with plain `free`.
-
-### NUL-safety at C API boundaries: `stringByteLen`, `hasEmbeddedNul`, and propagating nullptr
-
-**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, c-api-boundary, stringByteLen, hasEmbeddedNul, Result
-
-**Rule**: PR #1022 introduced `StringHeader` with an explicit `byte_len` field, allowing Ry `str`
-to contain embedded NUL bytes. C library APIs (`realpath`, `stat`, `mkdir`, `getaddrinfo`, etc.)
-assume NUL-terminated strings and silently truncate at the first `\0`. Apply the following three
-patterns consistently when implementing or auditing runtime functions that pass Ry string handles
-to POSIX/libc:
-
-**1. Use `stringByteLen(handle)` instead of `strlen(handle)`**:
-```cpp
-// Wrong (silently truncates at \0):
-size_t n = strlen(handle);
-// Right:
-size_t n = static_cast<size_t>(stringByteLen(handle));
-```
-
-**2. Validate with `hasEmbeddedNul` before passing to NUL-sensitive C APIs**:
-```cpp
-// Defined in include/ry/runtime/core/string.hpp:
-inline bool hasEmbeddedNul(const char *handle) {
-    if (!handle) return false;
-    size_t n = static_cast<size_t>(stringByteLen(handle));
-    return n > 0 && memchr(handle, '\0', n) != nullptr;
-}
-
-// Usage in runtime functions:
-if (hasEmbeddedNul(p)) {
-    setLastError("path.basename: argument contains an embedded NUL byte");
-    return nullptr;  // caller wraps as Result<str, Error> via ResultPtr
-}
-```
-
-**3. Propagate `nullptr` through chained join-style helpers**:
-When a helper like `join2_impl(a, b)` returns nullptr on NUL, callers must guard and propagate:
-```cpp
-extern "C" const char *__ry_path_join3(const char *a, const char *b, const char *c) {
-    char *ab = join2_impl(a, b);
-    if (!ab) return nullptr;  // without this, join2_impl(nullptr, c) silently returns c
-    char *result = join2_impl(ab, c);
-    freeStringSlot(ab);
-    return result;
-}
-```
-Without the `if (!ab)` guard, `join2_impl(nullptr, c)` treats nullptr as empty string and returns
-a copy of `c` — silently succeeding when it should propagate the error.
-
-**How to apply**:
-- Binary-safe consumers (HTTP body, multipart file values): use `stringByteLen` for length; do NOT
-  reject NUL — these legitimately carry binary payloads.
-- Text/path consumers (URLs, host names, header names, file paths): reject NUL with `hasEmbeddedNul`
-  and return `Err` / nullptr.
-- Upgrade bare `-> str` runtime functions that pass user strings to NUL-sensitive C APIs to
-  `-> Result<str, Error>` (return nullptr + `setLastError`; set `ReturnWrapping::ResultPtr` in
-  the dispatch table).
-- **Audit scope**: PR #1054 covered libc-sensitive modules (path, net, http, http_client,
-  filesystem) but not binary-safe stdlib (e.g. base64). When adding a new stdlib module, grep
-  its runtime for `strlen(input)` and replace with `stringByteLen(input)` for any function that
-  receives a Ry `str` handle. `base64` was fixed as a post-#1054 follow-up in #1129.
-
-### `hasEmbeddedNul` / `stringByteLen` are only safe on Ry string handles — never on raw C strings
-
-**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, stringheader, c-api-boundary, runtime
-
-**Rule**: Both `hasEmbeddedNul(handle)` and `stringByteLen(handle)` read a `StringHeader` struct
-immediately *before* the pointer to obtain `byte_len`. This is only valid when `handle` points
-into a Ry string slot (i.e., the pointer came from `makeString` or was read from a Ry `str` handle).
-
-**It is undefined behaviour** (reads garbage memory) when applied to:
-- C string literals: `hasEmbeddedNul("POST")` — no `StringHeader` prefix
-- `std::string::c_str()` results — allocated by the STL without a `StringHeader`
-- `strdup`/`malloc`-allocated strings (e.g. map keys built by C++ tests) — no `StringHeader` prefix
-- Any other raw `const char *` that did not originate from a Ry string slot
-
-**Symptoms**:
-- `hasEmbeddedNul` false positive: reads random bytes as `byte_len`, `memchr` finds NUL → returns
-  `true` unexpectedly, causing the runtime function to return nullptr and HTTP mock server tests
-  to hang (server `::accept` waits for a client that never connects).
-- `stringByteLen` garbage value: random bytes interpreted as body/data length → `Content-Length`
-  header wildly wrong → HTTP server reads wrong number of bytes → test hangs.
-
-**How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
-Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
-fn is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
-check to the codegen emitter.
-
-### Do not call `setLastError` in bool-return runtime functions — thread-local `last_error_buf` pollution
-
-**Source**: #1128 (2026-04-18). **Tags**: nul-safety, setLastError, thread-local, runtime, bool-return
-
-**Rule**: `setLastError` writes to a thread-local buffer (`last_error_buf` in `runtime_error.cpp`). In runtime functions whose Ry return type has **no error channel** (e.g. `bool`-returning `__ry_file_exists`), calling `setLastError` when rejecting NUL would leave stale error text in the buffer. The next Result-returning call on the same thread that fails an unrelated check reads the buffer for `e.message`, and would silently report the stale NUL rejection message instead of its own.
-
-**How to apply**:
-- Bool-return-only functions (e.g. `exists`) that detect an invalid argument: return the safe conservative value (`false` / `0`) silently — do **not** call `setLastError`.
-- Result-returning functions: call `setLastError("fn: argument contains an embedded NUL byte")` before returning `nullptr` / `1`.
-- This matches the split used in `src/runtime/native/io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
-
-### Forbidden heap allocation functions and trap-path exits in new C++ code
-
-**Source**: #1498 (migrated from AGENTS.md, 2026-05-02), #1840 (2026-05-21 trap-path unification)
-**Tags**: runtime, memory-safety, malloc, oom, checked_malloc, forbidden-functions, lint, exit, _Exit, trap-path
-
-**Rule**: Use the safe wrappers from `include/ry/runtime/core/alloc.hpp`.
-The following functions must **not** be called directly in new code:
-
-| Forbidden | Replacement | Reason |
-|-----------|-------------|--------|
-| `malloc` | `checked_malloc` | OOM → null → segfault |
-| `realloc` | `checked_realloc` | OOM → null |
-| `calloc` | `checked_malloc` + `memset` | OOM → null |
-| `strdup` | `checked_strdup` | OOM → null |
-| `strndup` | `checked_strndup` | OOM → null |
-| `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | integer overflow → heap buffer overflow |
-| `exit` / `std::exit` (in `src/runtime/**/*.cpp`) | `ry_runtime_trap_exit()` | `exit()` runs `atexit` → LLVM `ManagedStatic` destructors on JIT-live heap → SIGABRT (#1838) |
-
-Additional rules:
-- On OOM, call `oom_abort(n)` with the requested size and abort
-  immediately — do not return `nullptr`.
-- Before passing external input (HTTP request body, JSON parse result,
-  etc.) to `strcmp` / `strlen`, check for NULL.
-- The CI `lint` job detects direct calls to forbidden functions and
-  auto-blocks new additions. Two grep-based steps live in
-  `.github/workflows/ci.yml`: "Check for banned unsafe allocation
-  functions" (scans `src/`+`include/` for raw `malloc`/`realloc`/etc.)
-  and "Check for banned direct exit() calls in runtime" (scans
-  `src/runtime/**/*.cpp` for direct `exit(...)` / `std::exit(...)`).
-- The `exit` ban is scoped to `src/runtime/**/*.cpp` deliberately: user-visible
-  exit-builtin codegen (`src/codegen_call_user.cpp` `getStdlibExit`,
-  `src/codegen_match.cpp:1172`) and shutdown paths in `main.cpp` still
-  use `exit()` legitimately. The `_Exit`, `_exit`, and `quick_exit`
-  forms are also allowed everywhere — the regex word-boundary in the
-  lint step doesn't match those identifiers.
-
+`setLastError` writes to a thread-local buffer (`last_error_buf` in `runtime_error.cpp`). Calling it from a function with no error channel (e.g., `bool`-returning `__ry_file_exists`) causes a subsequent Result-returning function to read the buffer and **report a stale, unrelated message as `e.message`**. When a bool-returning function detects an invalid argument, return only `false` / `0` without calling `setLastError`.

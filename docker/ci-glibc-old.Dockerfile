@@ -108,7 +108,7 @@ RUN set -eux; \
     cmake -S llvm -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local/llvm \
-        -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+        -DLLVM_ENABLE_PROJECTS="clang" \
         -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
         -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
         -DLLVM_ENABLE_RTTI=ON \
@@ -126,9 +126,14 @@ RUN set -eux; \
         -DCOMPILER_RT_BUILD_PROFILE=OFF \
         -DCOMPILER_RT_BUILD_XRAY=OFF \
         -DCOMPILER_RT_BUILD_MEMPROF=OFF \
-        -DCOMPILER_RT_BUILD_ORC=OFF; \
+        -DCOMPILER_RT_BUILD_ORC=OFF \
+        -DCOMPILER_RT_SANITIZERS_TO_BUILD="asan;ubsan;fuzzer"; \
     cmake --build build --parallel; \
     cmake --install build; \
+    # Strip retired static-analysis tools (clang-tools-extra is not built;
+    # scan-build ships with clang itself but the CI scan-build job is gone).
+    rm -f /usr/local/llvm/bin/scan-build /usr/local/llvm/bin/scan-view; \
+    rm -rf /usr/local/llvm/libexec/scan-build* /usr/local/llvm/share/scan-build /usr/local/llvm/share/scan-view; \
     cd /tmp; \
     rm -rf "llvm-project-${LLVM_VERSION}.src" "llvm-project-${LLVM_VERSION}.src.tar.xz"
 

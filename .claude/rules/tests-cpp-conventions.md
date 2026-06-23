@@ -6,221 +6,52 @@ paths:
 
 # Tests — C++ Conventions
 
-### Defensive guards: test every branch reachable through a supported API
-
-For defensive validation, distinguish supported calls from corrupted internal state:
-
-- If a supported C/C++/FFI call can trigger the guard, add a direct regression test.
-- If reaching it requires constructing corrupted private state, document the guard near its owning implementation instead of manufacturing an unsupported test.
-- `emit` boundary NULL handles and callbacks are supported-input cases and belong in `tests/test_emit_abi_guards.cpp`; inner NULL fields of a corrupted `EmitCtx` are documented-only.
-
-When subprocess GoogleTests execute `RY_BINARY_PATH`, rebuild both `ry_tests` and the `ry` executable. Pass `RY_BINARY_PATH` as `execl`'s path and `argv[0]`; bare `"ry"` breaks stdlib discovery on Linux.
+This file covers only hazards that are not visible from reading the code.
 
 ### Renaming stdlib `@native` functions: also sweep embedded Ry source in C++ tests
 
-**Source**: #1414 (2026-04-29, implementation — advisor call-out)
 **Tags**: testing, codegen-test, stdlib, rename, refactor, blind-spot
 
-**Context**: When renaming stdlib `@native` functions (e.g. snake_case → camelCase in v0.0.16's `#1437` / `#1438` / `#1414`), the obvious places to update are the `share/std/<mod>/<mod>.ry` declarations, the C++ runtime symbol exports (`__ry_<mod>_<oldName>` → `__ry_<mod>_<newName>`), the dispatcher tables in `src/codegen_call_*.cpp`, and `tests/spec/*.test.ry`. A grep across `share/`, `tests/spec/`, `examples/`, and `docs/` will find all of these.
-
-It will **not** find Ry source strings embedded inside C++ tests. Files like `tests/test_codegen_directive.cpp` contain `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")` literals — these reference the old name from inside a `.cpp` file, so a `.ry`-only sweep misses them entirely. The build links cleanly because the exported symbol matches whatever the embedded source declares (the C++ test re-declares `@native fn is_absolute`, which dispatches through `__ry_path_isAbsolute` only if the linker sees that symbol — and it doesn't, since we renamed it).
-
-**Rule**: When renaming any `@native` function, also grep across `tests/` (including `.cpp` files) and `src/` for the old name as a bare word, filtering out C++ STL false positives:
-
-```bash
-grep -rnE '\b(<old1>|<old2>|...)\b' src/ include/ tests/ share/ examples/ \
-  | grep -v 'std::filesystem::' \
-  | grep -v 'fs::'
-```
-
-Don't rely on `.ry`-only sweeps. The build is the authoritative check — if you miss an embedded reference, `cmake --build build` succeeds (the C++ test compiles fine) but `./build/ry_tests` fails when the test runs the embedded source through codegen and finds no matching symbol. Catch it at grep time, not at test time.
-
-**How to apply**:
-- Always run the cross-tree grep before declaring the rename complete, even if `.ry` files all look clean.
-- For PRs in the snake_case→camelCase series, the embedded-source pattern is `runSource("...@native(\\"<mod>\\")...fn <oldName>...")` — focus the grep on the unique old function name token.
-
-→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
+Files such as `tests/test_codegen_directive.cpp` embed source inline as `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")`. Sweeping only `.ry` files misses these. Because exported symbols still match, the build succeeds; failure appears only at `./build/ry_tests` run time. When renaming a `@native` function, use the 4-step procedure in `/horizontal-sweep`.
 
 ### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
 
-**Source**: #1390 (2026-04-27, implementation)
 **Tags**: testing, codegen-test, directives, stdlib, module-loader, harness
 
-**Context**: After #1390, the non-bootstrap built-in directives (`@inline`, `@parallel`, `@const`, `@deprecated`, `@each`, `@property`) and `@it` / `@describe` are declared in stdlib `.ry` files (`share/std/core/directive.ry`, `share/std/testing/testing.ry`). Their declarations reach a normal `./build/ry` invocation only via `ModuleLoader` → `from std import` (wildcard) → `builtins.ry` re-export → `core/directive.ry`, plus the explicit `from testing import ...` for the testing pair.
-
-The codegen test harness (`runSource`, `runSourceWithWarnings`, `runTestSource`, `compileSource` in `tests/test_codegen_common.hpp`) goes `Parser → CodeGen` directly and **skips `ModuleLoader` entirely**. Source that uses any of these directives without inline declarations therefore fails at codegen with `unknown directive '@inline'` (or `@parallel`, etc.) — even though the same source runs fine through the real CLI.
-
-**Rule**: Any C++ test that exercises a directive declared in stdlib `.ry` (the 8 listed above) must wrap its source with `withStdlibDirectiveDecls()` from `tests/test_codegen_common.hpp`. The helper prepends inline `@directive(target=...)` declarations equivalent to what the loader would inject.
-
-**How to apply**:
-- Adding a new test that uses any of `@inline / @parallel / @const / @deprecated / @each / @property / @it / @describe`: wrap the source string — `runSource(withStdlibDirectiveDecls("..."))`. Don't try to express the directive declaration inline ad-hoc.
-- Adding a new directive to the stdlib `.ry` declarations: extend `withStdlibDirectiveDecls()` in `tests/test_codegen_common.hpp` to include the new declaration so existing tests that exercise it continue to work.
-- Removing a directive from the C++ registry: registry deletion + stdlib `.ry` declaration + helper update + applying the helper to affected tests must land in **one commit** because `emitStmt(DirectiveDefStmt)`'s collision check rejects builds where a registry entry and a `.ry` declaration coexist for the same name.
-
-**Why a smoke test is still needed**: The helper bypasses the actual `ModuleLoader` → `builtins.ry` re-export chain, so all-green C++ tests prove the codegen logic but not the loader path. Always also run a smoke test through the real CLI (`./build/ry /tmp/<file>.ry`) when changing the directive declaration locations or the re-export wiring.
+`@inline` / `@parallel` / `@const` / `@deprecated` / `@each` / `@property` / `@it` / `@describe` are declared in stdlib `.ry` files (since #1390). C++ test harnesses (`runSource`, etc.) skip `ModuleLoader` entirely, so sources using these directives fail with `unknown directive '@inline'` — but only at **runtime**, not at build time. When moving a directive declaration to a stdlib `.ry` file, extending `withStdlibDirectiveDecls()` + applying it to existing tests + removing the registry entry must all land in **one commit** (a registry entry coexisting with a `.ry` declaration trips the build's collision check).
 
 ### Stdlib `@native` fns reachable from `runTestSource` need APPENDED inline decls (not prepended)
 
-**Source**: #718 (2026-05-07, implementation)
 **Tags**: testing, codegen-test, stdlib, module-loader, harness, line-number, fail
 
-**Context**: After #718, `fail()` is no longer a compiler builtin — its body lives in `share/std/testing/testing.ry` as a Ry function that calls `_reportFail` (`@native("testing")`). For a normal `./build/ry test` invocation the loader resolves `from testing import fail` and codegen sees `fail` as a regular user function. The C++ codegen test harness (`runTestSource` / `runTestSourceNoTestingImports` in `tests/test_codegen_common.hpp`) skips `ModuleLoader` entirely and therefore never sees those declarations — `fail(…)` lookup at codegen time fails with `undefined function: fail`.
-
-**Rule**: When a stdlib `@native` fn (or a Ry fn that wraps a `@native` symbol) becomes reachable from C++ test sources after migration from compiler-magic, inject the inline declarations into the test harness via a helper analogous to `withStdlibDirectiveDecls`. For #718 the helper is `withTestingFnDecls` — it appends `_reportFail` and `fail` declarations to the user source and is applied **inside** `runTestSource` / `runTestSourceNoTestingImports` so existing call sites need no opt-in.
-
-**Why APPEND (not prepend)**: Some tests assert specific line numbers in the printed output (e.g. `CodeGenTest.FailWithMessage` expects the failure to report `line 21`). Prepending decls shifts every user-source line and breaks those assertions silently — the test still runs, but the diagnostic line number is off by the number of injected lines. Appending preserves user-source line numbers because all injected lines come after the user's last meaningful line.
-
-**How to apply**:
-- Adding a new test that uses `fail(...)` (or any future migrated stdlib fn): no opt-in needed — `runTestSource` already injects the decls. Just write the test as if `fail` were a builtin.
-- Adding a new stdlib-migrated fn that other tests must call: extend `withTestingFnDecls` (or add a parallel helper) with the new declaration and the `@native(...)` symbol decl it wraps. Apply via the relevant `runTestSource*` entry points.
-- Tests that assert specific source line numbers in output: keep using the APPEND pattern. A future "prepend" temptation (e.g. to make decls visible to a forward-reference analysis) must come with explicit accounting for the line-shift impact on every line-asserting test.
-
-**Smoke verification**: As with `withStdlibDirectiveDecls`, the helper bypasses the real `ModuleLoader` → `from testing import fail` chain. Run a smoke test through the real CLI (`./build/ry test /tmp/<file>.test.ry`) when changing the testing.ry declarations or the loader wiring for testing intrinsics.
-
-### CodeGenTest::runSource cannot compile code that imports stdlib modules
-
-**Source**: #842 (2026-04-11, implementation)
-**Tags**: testing, codegen-test, stdlib, module-loader, harness
-
-**Context**: `CodeGenTest::runSource` / `expectCompileError` in
-`tests/test_codegen_common.hpp` goes directly from `Parser` to
-`CodeGen::compile` without invoking `ModuleLoader`. Source that contains
-`from math import ...` (or any stdlib import) therefore fails with
-`error: unresolved import: math (ModuleLoader should have resolved this)`
-because codegen expects the import node to have been pre-resolved.
-
-The only test harness that currently runs `ModuleLoader` is
-`ImportTest` (`tests/test_codegen_stmt.cpp:617`), which uses a tempdir
-+ `writeFile()` — it is designed for user-level imports of files you
-write yourself, NOT for pulling in the real `share/std/*` modules.
-
-**Consequences for custom-emitter compile-error tests**: Rejection
-branches inside stdlib-module custom emitters
-(e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
-cannot be covered via `expectCompileError` today. Workarounds:
-
-- Smoke-verify the error via `printf '...\n' | ./build/ry -c` during development
-  and document the expected error text in the PR description.
-- Add a happy-path test in `tests/spec/<mod>.test.ry` that exercises the
-  *successful* branches of the custom emitter, so any refactor that
-  breaks dispatch is still caught by the Ry self-test suite.
-- A proper fix is to extend the C++ test harness with a helper that
-  sets up a `ModuleLoader` pointing at the repo's `share/` directory.
-  Tracked as a future enhancement; not blocking feature work.
-
-**Rule**: If you need a C++ unit test for a rejection branch inside a
-stdlib custom emitter, the harness limitation applies — fall back to
-smoke tests + document the gap in the PR. Don't add failing
-`expectCompileError` tests for `from math import` / `from json import`
-/ etc.
+`runTestSource` / `runTestSourceNoTestingImports` skip `ModuleLoader`, so `fail(…)` fails with `undefined function: fail` (since #718). **Prepending declarations is forbidden** — tests that assert line numbers silently shift and produce false passes. Append declarations after the source, as `withTestingFnDecls` does.
 
 ### Test loader-pipeline changes for AST variants with codegen no-op via `resolveImportsOnly` introspection
 
-**Source**: #709 (2026-04-27, implementation — advisor call-out)
 **Tags**: testing, module-loader, codegen-no-op, multi-pr-chain, blind-spot
 
-**Context**: When a new AST variant is introduced across a multi-PR chain (parser lands first, loader/export updates next, codegen registration last), the middle PR adds the variant to `isExportable()` / `getExportName()` in `src/module/module_loader.cpp` while codegen for the variant is still a deliberate no-op. Execution-based tests (`runWithImports` returning a printed value) cannot directly verify the variant flows through the loader, because nothing in the running program observes its presence. In #709, AC #4 ("private `_`-prefixed directive defs are excluded by wildcard import") had no execution-based test that could distinguish "directive def is in program but does nothing" from "directive def was filtered out". Arguing "`isPrivateName` is a string check, so it must work uniformly for all exportable variants" is logically sound but only indirect evidence — a future refactor of the wildcard path could introduce per-variant filtering and the indirect-coverage tests would not catch it.
-
-**Rule**: When adding a new AST variant to `module_loader.cpp`'s exportable list, and that variant has a codegen no-op until a later PR, add a `resolveImportsOnly()` helper to the `ImportTest` fixture (mirror `runWithImports`, drop `CodeGen::compile` + `runModule`, return the `Program`). Write a Program-introspection test that walks top-level statements with `std::holds_alternative<TheVariant>` and asserts the expected names are present (public) and absent (private).
-
-**How to apply**:
-- Don't rely solely on `EXPECT_THROW` for `from mod import _name` for the variant — that named-private throw fires at `module_loader.cpp:73-82` before AST traversal in `extractDefinitions`, so it doesn't exercise the variant-specific path.
-- Reference: `ImportTest.DirectiveDefWildcardExcludesPrivate` and the `resolveImportsOnly` helper in `tests/test_codegen_stmt.cpp` (#709).
+In a multi-PR chain where an intermediate PR adds a loader/export but leaves codegen as a deliberate no-op, execution-based tests cannot distinguish "variant exists but is no-op" from "variant was filtered out". `EXPECT_THROW` fires at `module_loader.cpp:73-82` and bypasses variant-specific paths deeper in `extractDefinitions`, so it does not cover the no-op stage. Write introspection tests using `resolveImportsOnly()` + `std::holds_alternative<TheVariant>` to directly inspect the program.
 
 ### Use `-> Unit` in @it/@describe rejection tests to isolate the directive check
 
-**Source**: #1122 (2026-04-18, implementation)
 **Tags**: testing, directives, codegen-test
 
-**Rule**: When writing a C++ rejection test for `@it` or `@describe` return-type enforcement, use `-> Unit` as the return type annotation — not `-> int`, `-> bool`, `-> str`, etc.
-
-**Why**: If the test function body (e.g. `expect(1).toEq(1)`) doesn't return a value of the declared type, codegen fires a secondary error — "function does not return a value on all code paths" — **before** the directive check. The test then passes even if the directive enforcement is removed, silently breaking the regression guard.
-
-`-> Unit` is safe because `expect(...)` naturally returns `Unit`, so the body satisfies the return type. The only path that throws is the directive enforcement itself.
-
-### RWLock stress tests for #871 must be C++ GoogleTests, not Ry spec files
-
-**Source**: #871 (2026-04-11, implementation)
-**Tags**: rwlock, testing, tsan, spec-loader, gotcha
-
-**Rule**: When adding a TSan-gated stress test for
-`src/runtime/native/thread.cpp` primitives, put it in a pure C++
-GoogleTest under `tests/` (e.g.
-`tests/test_runtime_rwlock_stress.cpp`), NOT in
-`tests/spec/concurrency.test.ry`. Wire it into `ry_tests` via
-`CMakeLists.txt` so it runs under the **required** `build-tsan/ry_tests`
-step.
-
-**Why**: The C++ test harness used by `CodeGenTest.ConcurrencySpecSuite`
-is `runTestSource` in `tests/test_codegen_common.hpp`, which goes
-`Lexer → Parser → CodeGen` directly and never invokes `ModuleLoader`.
-Any `from thread import ...` statement in a spec run via that harness
-fails with `unresolved import: thread (ModuleLoader should have
-resolved this)`. Adding a stress test to `concurrency.test.ry`
-therefore silently breaks the TSan-required gate. A pure C++ test
-that calls `__ry_rwlock_*` directly via `include/ry/runtime/native/thread.hpp`
-works under all sanitizers, runs in the required step, and is more
-direct anyway — we are testing a runtime invariant, not a language
-feature. See also the entry at the top of this "Testing" section for
-the `runSource` / `runTestSource` limitation.
+In rejection tests for `@it` / `@describe` return-type enforcement, using `-> int` / `-> bool` / `-> str` can cause "does not return a value on all code paths" to fire **before** the directive check, masking whether enforcement works. Using `-> Unit` matches the natural return type of `expect(...)`, ensuring the only path that throws is the directive enforcement.
 
 ### C++ `\xNN` hex escape consumes ALL following hex digits — never use `\xNNX` when X is a hex char
 
-**Source**: PR #1053 (test authoring, 2026-04-17). **Tags**: c++, test, nul-safe, string-literal
+**Tags**: c++, test, nul-safe, string-literal
 
-**Rule**: In a C++ string literal, `\x` consumes every subsequent hex character (0–9, a–f, A–F) as part of a single escape sequence. So `"\x00a"` is NOT `NUL + 'a'`; it is the single byte `0x00a = 10 = '\n'`. This silently produces the wrong byte value instead of a compile error.
-
-**Examples of the trap**:
-```cpp
-// WRONG: "\x00a" = '\n' (0x0a), "\x00b" = '\x0b', "\x00A" = '\n', "\x00F" = '\x0f'
-makeString("k\x00a", 3);  // produces k + 0x0a, NOT k + NUL + 'a'
-
-// CORRECT options:
-const char raw[] = {'k', '\0', 'a'};        // char array initializer — unambiguous
-makeString(raw, 3);
-
-// OR adjacent string literals (concatenated by the compiler):
-makeString("k\x00" "a", 3);                 // "k\x00" ends the hex sequence; "a" is next literal
-```
-
-**Why it matters here**: NUL-key disambiguation tests build keys like `k\0a` vs `k\0b`. Using `"k\x00a"` / `"k\x00b"` produces identical keys (`k\n`) and the test silently passes for the wrong reason. Always use the char-array or adjacent-literal form when the byte after `\xNN` is a hex character.
-
-The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime/core/string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex interface was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime/core/regex.hpp`, `src/runtime/core/regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
+C++ string literal `\x` consumes all following hex characters as one escape. `"\x00a"` is not `NUL + 'a'`; it is `0x0a = '\n'` (one byte). In NUL-key identity tests, `"k\x00a"` and `"k\x00b"` both become the same key (`k\n`), causing tests to pass for the wrong reason. Use char-array initializers (`{'k', '\0', 'a'}`) or adjacent string literals (`"k\x00" "a"`).
 
 ### Thread-local HTTP error buffer is shared across tests in the same process
 
-**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, testing, http, thread-local
+**Tags**: nul-safety, testing, http, thread-local
 
-**Rule**: `http_last_error_buf` in `runtime_http_error.cpp` is `thread_local` and persists for
-the lifetime of the thread. If test A sets an error message (e.g. "url contains embedded NUL")
-and test B then performs an operation that fails but does *not* write to `http_last_error_buf`
-(e.g. a connection refused), test B's `e.message` will still contain test A's stale message.
+`http_last_error_buf` (`runtime_http_error.cpp`) is `thread_local` and persists for the thread's lifetime. If test A writes an error message and test B then fails without overwriting the buffer, test B's `e.message` will contain test A's stale message. Tests that assert error message content may produce different results depending on test execution order.
 
-**How to apply**: Do not write spec tests that assert error message contents after a network
-failure that may or may not set the buffer. For NUL-safety tests, assert only that the result
-is `Err` and that `e.message` contains the expected string. Never assert the message is
-*absent* across test boundaries.
+### Subprocess tests: pass the full path as argv[0] to `execl` (bare `"ry"` breaks stdlib resolution on Linux)
 
-### Subprocess tests: `execl` の argv[0] にフルパスを渡す (`"ry"` 短縮は Linux で stdlib 解決を壊す)
-
-**Source**: #1869 (2026-05-23, fix — CI failure investigation)
 **Tags**: testing, subprocess, execl, fork, stdlib-resolution, linux, macos, blind-spot
 
-**Context**: `tests/test_*.cpp` の fork+pipe subprocess helper で `execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr)` のように argv[0] に bare `"ry"` を渡すと、子プロセス側で `argv[0] = "ry"` (slash なし) が見える。`src/project/paths.cpp:94` の `find_share_dir` は `fs::path(exe_path).parent_path()` で exe_dir を導出するため、bare `"ry"` だと `parent_path() = ""` → `fs::canonical("", ec)` の挙動が **macOS では CWD を返して成功 (CWD = repo root → `share/std/` 命中)**、**Linux glibc では失敗** → exe-adjacent share lookup (step 3) が機能しない。`setenv("RY_ENV", "internal", 1)` が同時に存在すると global `~/.ry/share` lookup (step 2) もスキップされ、`/tmp/<script>` を referrer に持つ subprocess は `findProjectRoot` も nullopt を返すので step 1 (project override) も塞がる — 結果 `find_share_dir = {}` で「`module not found: io`」になる。macOS native では発生せず Linux CI / Docker でのみ再現するため、ローカル `./build/ry_tests` パスでも CI で FAIL する非対称性が罠。
-
-**Rule**: subprocess を起動する `execl(RY_BINARY_PATH, ...)` 形式では、argv[0] にも **フルパス (`RY_BINARY_PATH`)** を渡す:
-
-```cpp
-// 禁止 (macOS では動くが Linux で fs::canonical("") が失敗し stdlib 解決が壊れる)
-execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr);
-
-// 正しい
-execl(RY_BINARY_PATH, RY_BINARY_PATH, tmp.c_str(), nullptr);
-```
-
-**Why**: `RY_BINARY_PATH` は CMake `target_compile_definitions` で `$<TARGET_FILE:ry>` (フルパス) として注入されるため、argv[0] にそのまま流用すれば exe path resolution が両 OS で安定する。kernel の exec 解決は第 1 引数の `RY_BINARY_PATH` (path) を使うため、argv[0] の変更は子プロセス側の自己認識のみに影響する (安全)。
-
-**How to apply**:
-- 新規 subprocess test を追加する時、`execl(RY_BINARY_PATH, ?, ...)` の `?` は **常に `RY_BINARY_PATH`** にする。`"ry"` / `argv[0]` / 任意の短縮形を使わない
-- import を含む Ry source を subprocess で実行するテストでのみ症状が顕在化するが、import を含まないテスト (bare builtin `input()` など) も将来 import を足された瞬間に再発するため、**全 subprocess test に予防適用**する
-- canonical 例: `tests/test_read_line_builtin.cpp` (#1869 で導入), `tests/test_input_builtin.cpp` / `tests/test_help.cpp` / `tests/test_stdin.cpp` (#1869 で予防修正)
+`find_share_dir` in `src/project/paths.cpp` derives `exe_dir` from `fs::path(exe_path).parent_path()`. Passing bare `"ry"` as argv[0] makes `parent_path()` return `""`, which succeeds on macOS (returns CWD) but **fails on Linux glibc**, breaking exe-adjacent share lookup. When `RY_ENV=internal` is also set, `~/.ry/share` lookup is skipped too, producing `module not found: io`. This failure is Linux-only and does not reproduce on macOS — a non-symmetric trap. In `execl(RY_BINARY_PATH, ...)` calls, pass **the full path `RY_BINARY_PATH`** for argv[0] as well.

@@ -1,6 +1,6 @@
 ---
 name: ry-trace
-description: Analyze Ry internal behavior using --trace and --trace-out. Use when investigating 内部挙動 / trace / --trace / --trace-out / JSON Lines trace output / import 解決 / JIT 実行 / compiler pipeline flow / function call tracing / branch selection.
+description: Analyze Ry internal behavior using --trace and --trace-out. Use when investigating internal behavior / trace / --trace / --trace-out / JSON Lines trace output / import resolution / JIT execution / compiler pipeline flow / function call tracing / branch selection.
 allowed-tools: Bash
 ---
 
@@ -17,7 +17,7 @@ Use `--trace` to observe Ry's internal execution pipeline. Trace output is a JSO
 - To see both program stdout and trace separately, use `--trace-out=<path>` to redirect trace to a file.
 - For test analysis: `./build/ry test --trace ...`.
 - Use trace selectively — only when behavior is unclear or evidence is needed. Output is verbose.
-- When trace-derived facts inform a Plan or investigation summary, label them explicitly as "trace で確認した事実".
+- When trace-derived facts inform a Plan or investigation summary, label them explicitly as "confirmed via trace".
 
 ## Example Commands
 

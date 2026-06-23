@@ -12,10 +12,10 @@
 // Exercises __ry_lock_acquire / __ry_lock_release under heavy
 // contention from many threads.  Complements the Ry-level test in
 // tests/spec/concurrency_stress.test.ry (which uses 4 threads via
-// threadSpawn) by calling the C runtime functions directly so TSan
-// instruments the critical section itself.
+// threadSpawn) by calling the C runtime functions directly so any
+// future sanitizer pass instruments the critical section itself.
 //
-// All tests are part of the required build-tsan/ry_tests gate.
+// All tests are part of the required `ry_tests` gate.
 
 
 namespace {
@@ -30,9 +30,9 @@ constexpr int kIterPerWorker  = 10'000;
 // (non-atomic) counter, then release.  Mutual exclusion guarantees
 // the final counter equals kNumWorkers * kIterPerWorker.
 //
-// A non-atomic int64_t counter is intentional: under TSan, any
-// unsynchronised increment would be reported as a data race, which
-// proves that the lock actually serialises accesses.
+// A non-atomic int64_t counter is intentional: an unsynchronised
+// increment would be a data race per the C++ memory model — relying
+// on the lock to serialise accesses is what the test proves.
 TEST(RuntimeLockStress, MutualExclusionUnderHighContention) {
     void *lock = ry::__ry_lock_new();
     ASSERT_NE(lock, nullptr);
