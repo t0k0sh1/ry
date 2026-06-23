@@ -2,6 +2,7 @@
 paths:
   - ".github/workflows/**/*.yml"
   - ".github/actions/**/*.yml"
+  - ".github/codeql/**/*.yml"
 ---
 
 # CI Workflows
@@ -52,7 +53,9 @@ Release gating on CodeQL must filter runs to `event=push`, poll first for run ex
 
 **Tags**: ci, codeql, static-analysis, performance, target
 
-C/C++ CodeQL builds target `ry` on `pull_request`; pushes to `main` build all. Do not narrow the push side.
+C/C++ CodeQL builds target `ry` on both `pull_request` and push to `main`. This keeps Code Scanning focused on production CLI/runtime TUs; tests, fuzz harnesses, and generated build-tree probes are covered by their own jobs. For compiled languages with manual builds, the build step is the enforcement point; `.github/codeql/codeql-config.yml` `paths-ignore` is a supporting filter.
+
+Verify: `grep -n 'cmake --build build --target ry --parallel' .github/workflows/codeql.yml` matches.
 
 ### Artifact patterns
 

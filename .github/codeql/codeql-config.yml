@@ -1,0 +1,8 @@
+# CodeQL Advanced config: focus Code Scanning dashboard on production
+# C/C++ code under src/ and include/. Test / fuzz / generated trees are
+# covered by asan / ubsan / fuzz jobs and do not need a second pass via
+# CodeQL.
+paths-ignore:
+  - tests
+  - build
+  - 'build-*'
