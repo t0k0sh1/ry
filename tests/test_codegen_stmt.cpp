@@ -2609,6 +2609,42 @@ TEST_F(CodeGenTest, TypeAliasRefinedTypes) {
         "print(d)"), "5\n");
 }
 
+// ===== Type constraint integer overflow (#2307) =====
+
+TEST_F(CodeGenTest, TypeConstraintIntOverflow) {
+    // Single int literal — large positive overflow
+    expectCompileError("x: 999999999999999999999999999999 = 1",
+                       "out of range in type constraint");
+    // Single int literal — large negative overflow
+    // (isIntLiteralType in src/util/type_name.cpp accepts a leading '-')
+    expectCompileError("x: -999999999999999999999999999999 = 1",
+                       "out of range in type constraint");
+    // Single int literal — INT64_MAX + 1
+    expectCompileError("x: 9223372036854775808 = 1",
+                       "out of range in type constraint");
+    // Single int literal — INT64_MIN - 1
+    expectCompileError("x: -9223372036854775809 = 1",
+                       "out of range in type constraint");
+
+    // Range type — low bound overflow
+    expectCompileError("x: 999999999999999999999999999999..1 = 1",
+                       "out of range in type constraint");
+    // Range type — high bound overflow
+    expectCompileError("x: 1..999999999999999999999999999999 = 1",
+                       "out of range in type constraint");
+    // Range type — negative low bound overflow
+    expectCompileError("x: -9223372036854775809..1 = 1",
+                       "out of range in type constraint");
+
+    // Int-literal union — one overflow member
+    expectCompileError("x: 1 | 999999999999999999999999999999 | 3 = 1",
+                       "out of range in type constraint");
+
+    // Sanity guard: INT64_MAX still compiles and runs.
+    EXPECT_EQ(runSource("x: 9223372036854775807 = 9223372036854775807\nprint(x)"),
+              "9223372036854775807\n");
+}
+
 // ===== Function type alias =====
 
 TEST_F(CodeGenTest, TypeAliasFnType) {
