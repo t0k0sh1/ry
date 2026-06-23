@@ -108,7 +108,7 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
 }
 
 // Common driver: prints "line:<s>" / "EOF" / "ERR:<msg>" for one readLine call.
-static const char *driver_print_line = R"(from io import readLine
+static const char *driver_print_line = R"(from ry.io import readLine
 case readLine():
     Ok(opt):
         case opt:
@@ -124,7 +124,7 @@ TEST(ReadLineBuiltin, EOFReturnsOkNone) {
 }
 
 TEST(ReadLineBuiltin, EmptyLineReturnsOkSomeEmpty) {
-    auto [out, rc] = runRyWithStdin(R"(from io import readLine
+    auto [out, rc] = runRyWithStdin(R"(from ry.io import readLine
 case readLine():
     Ok(opt):
         case opt:
@@ -144,7 +144,7 @@ TEST(ReadLineBuiltin, NormalLineReturnsOkSome) {
 }
 
 TEST(ReadLineBuiltin, MultiLineReturnsSomeSomeNone) {
-    auto [out, rc] = runRyWithStdin(R"(from io import readLine
+    auto [out, rc] = runRyWithStdin(R"(from ry.io import readLine
 fn one():
     case readLine():
         Ok(opt):
@@ -162,7 +162,7 @@ one()
 }
 
 TEST(ReadLineBuiltin, MissingTrailingNewlineReturnsSomeThenNone) {
-    auto [out, rc] = runRyWithStdin(R"(from io import readLine
+    auto [out, rc] = runRyWithStdin(R"(from ry.io import readLine
 fn one():
     case readLine():
         Ok(opt):

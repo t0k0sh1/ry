@@ -252,7 +252,7 @@ Importing a non-`@public` symbol from another package is a compile error. Wildca
 
 Since v0.0.30 (#1769) the canonical namespace for all official stdlib modules is the reserved `ry.*` path:
 
-| Canonical | Compatibility alias | Notes |
+| Canonical | Compatibility alias (deprecated since #2350) | Notes |
 |---|---|---|
 | `ry.lang` | implicit prelude / `from std import` | The explicit prelude module; symbols loaded into every program |
 | `ry.math` | `math` / `std.math` | Mathematical constants and functions |
@@ -268,14 +268,14 @@ Since v0.0.30 (#1769) the canonical namespace for all official stdlib modules is
 | `ry.net` | `net` / `std.net` | TCP / TLS socket primitives |
 | `ry.json5` | `json5` / `std.json5` | JSON5 parse / stringify |
 
-All three spellings resolve to the same physical modules; the canonical `ry.*` form is recommended for new code.
+All three spellings resolve to the same physical modules. The canonical `ry.*` form is required for new code; the compatibility aliases now emit a one-time deprecation warning on import and will be rejected in a future release.
 
 ```ry
 # Recommended (canonical):
 from ry.math import sqrt, PI
 import ry.math               # binds the bare last segment `math`
 
-# Still supported (legacy):
+# Deprecated (compatibility alias — emits warning):
 from math import sqrt        # flat form
 from std.math import NAN     # dotted std form
 ```
