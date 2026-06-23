@@ -33,9 +33,8 @@ stripped before the existence check.
 - Run locally before pushing prompt-file changes:
   `.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh`
   (`/pre-commit-checklist`).
-- When code moves, sweep the prompt files in the same PR
-  (`/horizontal-sweep`); the lint is the completeness oracle — re-run it
-  to zero.
+- When code moves, sweep prompt files in the same PR; the lint is the
+  completeness oracle — re-run it to zero.
 - Bare filenames with no directory prefix (e.g. `scanner.c` shorthand in
   the tree-sitter docs) are intentionally NOT linted: they name a file,
   not a location. Prefer the full path for new references.
@@ -53,6 +52,5 @@ include/ry/diagnostic.hpp ->  include/ry/diagnostic/diagnostic.hpp
 src/scanner.c             ->  editor/tree-sitter/src/scanner.c
 ```
 
-See also `.claude/rules/docs-reference-conventions.md` (the `docs/` /
-README analogue, including the `<...>` placeholder convention) and
-`.claude/skills/horizontal-sweep/SKILL.md`.
+See also `.claude/rules/docs-reference-conventions.md` for the `docs/` /
+README analogue, including the `<...>` placeholder convention.

@@ -1,6 +1,6 @@
 ---
 name: pre-commit-checklist
-description: Required self-verification before declaring work complete or publishing changes.
+description: Select applicable self-verification checks before declaring work complete or publishing changes.
 allowed-tools: Bash(./.claude/skills/pre-commit-checklist/*.sh:*), Bash(git diff:*), Bash(git fetch:*)
 ---
 
@@ -18,15 +18,13 @@ Use `git diff --name-only origin/main`. Multiple categories take the strictest r
 | Parser / lexer / json / utf8 / string / io | run | run | run | run | run |
 | Other code | run | run | run | run | skip |
 
-Always evaluate:
+Also evaluate when relevant:
 
 - Rules / skills update.
-- Static analysis.
 - Rust lint when `crates/` changed.
 - Prompt-reference lint when `.claude/`, `AGENTS.md`, or `CLAUDE.md` changed.
 - Export-run-logs JSONL schema test when `scripts/export-run-logs.sh`, `tests/scripts/`, or the `__ry_test_summary` output format in `src/test_runtime.cpp` changed.
 - tree-sitter check when grammar, scanner, query, or EBNF changed.
-- Background-execution prohibition.
 - Label cleanup policy.
 
 Record skipped checks and reasons in the PR description.
@@ -62,6 +60,5 @@ Update a rule or skill when work reveals a reusable constraint, a new rejection-
 
 ## Completion
 
-- Confirm no background or detached process was started.
 - Do not change labels during self-verification.
 - Post-merge `wip` cleanup occurs only during a user-invoked `/git-finalize-pr`.

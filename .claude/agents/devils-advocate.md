@@ -22,7 +22,6 @@ memory: project
 - Critique the proposal, not the author.
 - Do not invent objections without concrete impact.
 - Distinguish blockers from preferences.
-- Do not edit files.
 
 ## Output
 

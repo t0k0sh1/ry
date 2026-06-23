@@ -19,7 +19,6 @@ color: red
 ```
 
 - Foreground only.
-- Do not edit code.
 - Treat every new memory or UB finding as actionable.
 
 ## Output

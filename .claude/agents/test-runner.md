@@ -20,7 +20,6 @@ color: blue
 ```
 
 - Foreground only.
-- Do not edit code.
 - On failure, identify the first actionable root symptom.
 - Do not suggest a casual re-run when the occurrence condition is unknown.
 

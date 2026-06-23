@@ -127,7 +127,7 @@ RUN set -eux; \
         -DCOMPILER_RT_BUILD_XRAY=OFF \
         -DCOMPILER_RT_BUILD_MEMPROF=OFF \
         -DCOMPILER_RT_BUILD_ORC=OFF \
-        -DCOMPILER_RT_SANITIZERS_TO_BUILD="asan;ubsan;fuzzer"; \
+        -DCOMPILER_RT_SANITIZERS_TO_BUILD="asan"; \
     cmake --build build --parallel; \
     cmake --install build; \
     # Strip retired static-analysis tools (clang-tools-extra is not built;

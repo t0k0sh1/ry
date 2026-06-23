@@ -16,7 +16,7 @@ paths:
 - Queries:
   - `(node_name)` matches a named node; `"literal"` matches an anonymous source literal.
   - Use unquoted field labels in `field_name: (node)`; quote only literal source tokens.
-- Run `/pre-commit-checklist`.
+- Run applicable tree-sitter checks.
 
 ### Prefer internal `token(seq(...))` over an external scanner for multi-line delimited literals
 
