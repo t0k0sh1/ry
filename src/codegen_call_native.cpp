@@ -443,50 +443,10 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 // ===== Generic dispatch for @native("libname") functions =====
 //
 // This handles calls to functions declared with @native("libname") that are
-// NOT covered by the hardcoded stdlib dispatch tables. It uses the signature
-// registry to derive the C calling convention from the Ry type annotations.
-
-namespace {
-
-// Infer the ReturnWrapping from the Ry return type name.
-// Returns {wrapping, out_param_type_name} where out_param_type_name is non-empty
-// only for ResultOutParam. List<T> element-stride metadata for
-// `Result<List<T>, _>` is set later via propagateTypeMeta on the wrapped
-// result, so no extra return field is needed here.
-std::pair<CodeGen::ReturnWrapping, std::string>
-inferReturnWrapping(const std::string &returnType) {
-    using RW = CodeGen::ReturnWrapping;
-
-    // Result<T, Error> patterns
-    if (returnType.size() > 7 && returnType.substr(0, 7) == "Result<") {
-        // Extract the Ok type from Result<OkType, Error>, handling nested
-        // generics like Result<Map<K, V>, Error> by counting bracket depth.
-        int depth = 0;
-        size_t commaPos = std::string::npos;
-        for (size_t i = 7; i < returnType.size(); ++i) {
-            if (returnType[i] == '<') ++depth;
-            else if (returnType[i] == '>') --depth;
-            else if (returnType[i] == ',' && depth == 0) { commaPos = i; break; }
-        }
-        if (commaPos == std::string::npos) return {RW::Direct, ""};
-        std::string okType = returnType.substr(7, commaPos - 7);
-        while (!okType.empty() && okType.back() == ' ') okType.pop_back();
-
-        if (okType == "Unit")  return {RW::ResultStatus, ""};
-        if (okType == "int")   return {RW::ResultOutParam, "int"};
-        if (okType == "float") return {RW::ResultOutParam, "float"};
-        if (okType == "bool")  return {RW::ResultOutParam, "int"};
-        // str, List<...>, Map<...>, or any pointer type → ResultPtr
-        return {RW::ResultPtr, ""};
-    }
-
-    if (returnType == "bool") return {RW::BoolFromI64, ""};
-
-    // str, int, float, Unit, or any other type → Direct
-    return {RW::Direct, ""};
-}
-
-} // namespace
+// NOT covered by the hardcoded stdlib dispatch tables. The dispatcher
+// consults the NativeCallDescriptor registry (built at @native declaration
+// time in src/codegen_fn.cpp) for return wrapping, error channel, and
+// List<u8> enforcement metadata — eliminating per-call inference (#2337).
 
 llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // O(1) lookup via secondary index: fn_name → candidate library names
@@ -509,6 +469,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // another — Pass 2 only runs on empty Pass 1.
     const NativeFnSignature *matchedSig = nullptr;
     std::string matchedPackage;
+    size_t matchedIdx = 0;  // overload index within native_fn_sigs_[matchedSigKey]
     std::vector<llvm::Type *> paramTypes;
     std::vector<bool> needsWidening(e.args.size(), false);
     std::vector<llvm::Type *> candidateTypes;
@@ -518,7 +479,8 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
         if (sigIt == native_fn_sigs_.end()) continue;
-        for (const auto &sig : sigIt->second) {
+        for (size_t sigIdx = 0; sigIdx < sigIt->second.size(); ++sigIdx) {
+            const auto &sig = sigIt->second[sigIdx];
             if (sig.params.size() != e.args.size()) continue;
             bool typesMatch = true;
             candidateTypes.clear();
@@ -543,6 +505,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 }
                 matchedSig = &sig;
                 matchedPackage = lib;
+                matchedIdx = sigIdx;
                 paramTypes = std::move(candidateTypes);
             }
         }
@@ -554,7 +517,8 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
             auto sigIt = native_fn_sigs_.find(sigKey);
             if (sigIt == native_fn_sigs_.end()) continue;
-            for (const auto &sig : sigIt->second) {
+            for (size_t sigIdx = 0; sigIdx < sigIt->second.size(); ++sigIdx) {
+                const auto &sig = sigIt->second[sigIdx];
                 if (sig.params.size() != e.args.size()) continue;
                 bool typesMatch = true;
                 candidateTypes.clear();
@@ -585,6 +549,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                     }
                     matchedSig = &sig;
                     matchedPackage = lib;
+                    matchedIdx = sigIdx;
                     paramTypes = std::move(candidateTypes);
                     needsWidening = std::move(candidateNeedsWidening);
                 }
@@ -597,6 +562,15 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     used_native_libraries_.insert(matchedPackage);
 
+    // Look up the descriptor populated alongside this sig in codegen_fn.cpp.
+    // Descriptors and sigs are pushed in lock-step under the same sigKey, so
+    // matchedIdx indexes both. The descriptor carries pre-computed return
+    // wrapping, error channel, and List<u8>-arg metadata so we don't
+    // re-infer at every call (#2337).
+    const std::string matchedSigKey = ry::util::nativeSigKey(matchedPackage, e.callee);
+    const NativeCallDescriptor &desc =
+        native_call_descriptors_.at(matchedSigKey)[matchedIdx];
+
     // Reject list arguments whose declared param type is `List<u8>` but
     // whose actual element stride is not i8 (e.g. bare int literals
     // produce i64-stride lists incompatible with IOListHeader). Sig-level
@@ -604,16 +578,14 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // both resolve to `ptrTy_`; the byte-stride invariant lives in
     // TypeMeta::ListElem. Mirrors the table-driven enforcement at
     // `emitTableDrivenNativeCall:364-374` so generic-dispatch callers
-    // see the same error wording. Resolve type aliases before comparing
-    // so a `type Bytes = List<u8>` declaration is still gated.
-    for (size_t i = 0; i < matchedSig->params.size(); i++) {
-        const std::string declared = resolveTypeAlias(
-            ry::util::trimTypeNameSpaces(matchedSig->params[i].typeName));
-        if (declared != "List<u8>") continue;
-        llvm::Type *elemTy = getListElementType(args[i]);
+    // see the same error wording. The descriptor caches the first
+    // List<u8> param index found at @native declaration time.
+    if (desc.require_list_u8_arg >= 0) {
+        size_t argIdx = static_cast<size_t>(desc.require_list_u8_arg);
+        llvm::Type *elemTy = getListElementType(args[argIdx]);
         if (!elemTy || elemTy != i8Ty_)
             codegenError(e.callee + "() requires List<u8> as argument "
-                         + std::to_string(i)
+                         + std::to_string(argIdx)
                          + "; use [97u8, 0u8, 98u8] (explicit u8 literals) or"
                            " toBytes(\"...\") to produce a byte list");
     }
@@ -642,11 +614,37 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         : e.callee;
     std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, symbolName);
 
-    // Determine C-level calling convention from the Ry return type
-    auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->returnTypeName);
+    // Arity-suffix runtime symbol when this sigKey has multiple overloads
+    // with different arities (path::join's __ry_path_join2/3/4 convention).
+    // Today only path::join triggers this — other multi-arity @native fns
+    // (math::log, math::pow, etc.) live in custom-emitter dispatchers and
+    // don't reach the generic path.
+    {
+        const auto &overloads = native_fn_sigs_.at(matchedSigKey);
+        if (overloads.size() > 1) {
+            size_t firstArity = overloads[0].params.size();
+            for (size_t i = 1; i < overloads.size(); ++i) {
+                if (overloads[i].params.size() != firstArity) {
+                    rtName += std::to_string(e.args.size());
+                    break;
+                }
+            }
+        }
+    }
 
-    // Error function name for Result wrappings
-    std::string errFnName = ry::util::deriveRuntimeFnName(matchedPackage, "get_last_error");
+    // Determine C-level calling convention from the Ry return type (pre-
+    // computed in the descriptor at @native declaration time).
+    CodeGenReturnWrapping wrapping = desc.return_wrapping;
+    const std::string &outParamType = desc.out_param_type_name;
+
+    // Error function name for Result wrappings. The descriptor pre-computes
+    // it from library_name; for descriptors without a library (bare @native
+    // outside knownNativeLibs), fall back to deriving from matchedPackage
+    // to preserve current behavior for any non-Pattern-C consumer that ever
+    // reaches this path.
+    std::string errFnName = desc.error_channel.empty()
+        ? ry::util::deriveRuntimeFnName(matchedPackage, "get_last_error")
+        : desc.error_channel;
 
     // Build C-level return type and handle out-param
     llvm::Type *outTy = nullptr;

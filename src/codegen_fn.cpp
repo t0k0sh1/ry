@@ -702,10 +702,45 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         if (!duplicate) {
             // Build descriptor alongside the signature (foundation for
             // descriptor-driven dispatch, #2299 follow-up to #2231).
-            // v1 stores library_name only; subsequent consumer PRs extend
-            // the struct when they need additional fields.
-            native_call_descriptors_[sigKey].push_back(
-                NativeCallDescriptor{inferLibraryName(sig.library, sig.package)});
+            // v1 (#2335) stored library_name only; #2337 pilot populates
+            // return_wrapping / out_param_type_name / error_channel /
+            // require_list_u8_arg so emitGenericNativeCall consumes
+            // pre-computed values instead of re-inferring at dispatch.
+            auto [wrapping, outParamType] = inferReturnWrapping(sig.returnTypeName);
+
+            // Error channel: __ry_<lib>_get_last_error when the descriptor
+            // resolves to a library; bare @native in unknown modules leaves
+            // it empty (the dispatch consumer falls back to deriving from
+            // matchedPackage for behavior-preservation symmetry). Using
+            // effectivePackage matches emitGenericNativeCall's matchedPackage
+            // exactly — both come from sig.library / sig.package via the
+            // same precedence ordering.
+            std::string errCh;
+            if (!effectivePackage.empty())
+                errCh = ry::util::deriveRuntimeFnName(effectivePackage,
+                                                     "get_last_error");
+
+            // require_list_u8_arg: first param whose declared type spells
+            // exactly `List<u8>` (after whitespace trim). Stdlib @native
+            // params don't use type aliases, so resolveTypeAlias is omitted
+            // for the YAGNI single-source. Loop short-circuits at first
+            // match — no stdlib fn declares 2+ List<u8> params.
+            int requireU8Idx = -1;
+            for (std::size_t i = 0; i < sig.params.size(); ++i) {
+                if (ry::util::trimTypeNameSpaces(sig.params[i].typeName)
+                        == "List<u8>") {
+                    requireU8Idx = static_cast<int>(i);
+                    break;
+                }
+            }
+
+            NativeCallDescriptor desc;
+            desc.library_name        = inferLibraryName(sig.library, sig.package);
+            desc.return_wrapping     = wrapping;
+            desc.out_param_type_name = outParamType;
+            desc.error_channel       = errCh;
+            desc.require_list_u8_arg = requireU8Idx;
+            native_call_descriptors_[sigKey].push_back(std::move(desc));
 
             sigVec.push_back(std::move(sig));
         }
