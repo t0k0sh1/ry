@@ -2,7 +2,7 @@ from testing import it, describe, expect, fail
 
 from json5 import load, stringify, stringifySafe, dump
 from str import contains, byteLen
-from io import open, close, writeText, readText
+from io import open, close, writeText, readText, toBytes, bytesToStr
 from math import NAN, INF
 
 # ============================================================================
@@ -301,6 +301,105 @@ fn json5SingleQuoteTests():
     case load[str]("'say \"hi\"'"):
       Ok(v): expect(stringify(v)).toEq("\"say \\\"hi\\\"\"")
       Err(e): fail("unescaped double-in-single failed: " + e.message)
+
+# ============================================================================
+# JSON5-specific feature: string escape sequences (#2313)
+# ============================================================================
+
+@describe("json5 — string escape sequences")
+fn json5StringEscapeTests():
+  @it("should decode \\v as 0x0B byte")
+  fn shouldDecodeVerticalTab():
+    case load[str]("'\\v'"):
+      Ok(s): expect(toBytes(s)).toEq([0x0Bu8])
+      Err(e): fail("\\v decode failed: " + e.message)
+
+  @it("should decode classical \\b \\f \\n \\r \\t escapes")
+  fn shouldDecodeClassicalEscapes():
+    case load[str]("'\\b\\f\\n\\r\\t'"):
+      Ok(s): expect(toBytes(s)).toEq([0x08u8, 0x0Cu8, 0x0Au8, 0x0Du8, 0x09u8])
+      Err(e): fail("classical escape decode failed: " + e.message)
+
+  @it("should decode \\0 as NUL byte")
+  fn shouldDecodeNul():
+    case load[str]("'\\0'"):
+      Ok(s): expect(s == "\0").toEq(true)
+      Err(e): fail("\\0 decode failed: " + e.message)
+
+  @it("should reject \\0 followed by digit as octal escape")
+  fn shouldRejectOctalEscape():
+    case load[str]("'\\01'"):
+      Ok(_): fail("expected Err for \\01")
+      Err(e): expect(e.message).toContain("octal escape is not allowed")
+
+  @it("should decode \\x41 as ASCII 'A'")
+  fn shouldDecodeHexAscii():
+    case load[str]("'\\x41'"):
+      Ok(s): expect(s == "A").toEq(true)
+      Err(e): fail("\\x41 decode failed: " + e.message)
+
+  @it("should decode \\xff (lowercase hex) as byte 0xFF")
+  fn shouldDecodeHexLowercase():
+    case load[str]("'\\xff'"):
+      Ok(s): expect(toBytes(s)).toEq([0xFFu8])
+      Err(e): fail("\\xff decode failed: " + e.message)
+
+  @it("should decode \\xFF (uppercase hex) as byte 0xFF")
+  fn shouldDecodeHexUppercase():
+    case load[str]("'\\xFF'"):
+      Ok(s): expect(toBytes(s)).toEq([0xFFu8])
+      Err(e): fail("\\xFF decode failed: " + e.message)
+
+  @it("should reject incomplete \\x escape")
+  fn shouldRejectIncompleteHexEscape():
+    case load[str]("'\\x'"):
+      Ok(_): fail("expected Err for incomplete \\x")
+      Err(e): expect(e.message).toContain("incomplete \\x escape")
+
+  @it("should reject invalid hex digit in \\x escape")
+  fn shouldRejectInvalidHexDigit():
+    case load[str]("'\\xZZ'"):
+      Ok(_): fail("expected Err for \\xZZ")
+      Err(e): expect(e.message).toContain("invalid hex digit in \\x escape")
+
+  @it("should decode chained \\xHH escapes")
+  fn shouldDecodeChainedHexEscapes():
+    case load[str]("'\\x41\\x42'"):
+      Ok(s): expect(s == "AB").toEq(true)
+      Err(e): fail("chained \\x decode failed: " + e.message)
+
+  @it("should decode \\uHHHH for BMP code point")
+  fn shouldDecodeUnicodeBmp():
+    case load[str]("'\\u0041'"):
+      Ok(s): expect(s == "A").toEq(true)
+      Err(e): fail("\\u0041 decode failed: " + e.message)
+
+  @it("should decode surrogate pair to supplementary code point (U+1F600)")
+  fn shouldDecodeSurrogatePair():
+    case load[str]("'\\uD83D\\uDE00'"):
+      Ok(s): expect(toBytes(s)).toEq([0xF0u8, 0x9Fu8, 0x98u8, 0x80u8])
+      Err(e): fail("surrogate pair decode failed: " + e.message)
+
+  @it("should reject unpaired high surrogate")
+  fn shouldRejectUnpairedHighSurrogate():
+    case load[str]("'\\uD83D'"):
+      Ok(_): fail("expected Err for unpaired high surrogate")
+      Err(e): expect(e.message).toContain("unpaired high surrogate")
+
+  @it("should reject incomplete \\u escape")
+  fn shouldRejectIncompleteUnicodeEscape():
+    case load[str]("'\\u00'"):
+      Ok(_): fail("expected Err for incomplete \\u")
+      Err(e): expect(e.message).toContain("incomplete unicode escape")
+
+  @it("should reject unescaped control character (0x01) in string")
+  fn shouldRejectRawControlChar():
+    case bytesToStr([0x22u8, 0x01u8, 0x22u8]):
+      Ok(input):
+        case load[str](input):
+          Ok(_): fail("expected Err for raw control char")
+          Err(e): expect(e.message).toContain("unescaped control character")
+      Err(e): fail("bytesToStr setup failed: " + e.message)
 
 # ============================================================================
 # JSON5-specific feature: multi-line string (line continuation)
