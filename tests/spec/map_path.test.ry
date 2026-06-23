@@ -320,3 +320,72 @@ fn questionOpTests():
     cfg: Map<str, any> = {}
     expect(lookupHostGetPath(cfg)).toBeNone()
 
+# Issue #2301: numeric-segment edge cases for `tryParseSegmentInt`
+# (src/codegen_call_collection.cpp:40). The helper uses `std::isdigit`
+# to filter then `std::stoll` for parsing — base-10 only, no negative
+# sign acceptance.
+@describe("getPath: numeric segment edge cases")
+fn getPathNumericEdgeCases():
+  @it("leading zero is parsed as base-10 integer (no octal handling)")
+  fn leadingZeroIsDecimal():
+    # Build a list long enough that index 12 is distinct from index 8.
+    items: List<any> = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+    m: Map<str, any> = {"items": items}
+    case m.getPath("items.012"):
+      Some(v):
+        x: int = v
+        # std::stoll("012") returns 12, NOT 10 (octal).
+        expect(x).toEq(130)
+      None: fail("expected Some(130) at items.012")
+
+  @it("negative-looking segment is treated as a str key, not a reverse index")
+  fn negativeIsStrKey():
+    # tryParseSegmentInt rejects '-' (not a std::isdigit char), so "-1"
+    # falls through to str-key lookup. List<any> has no str-key path, so
+    # getPath returns None — there is no Python-style xs[-1] semantics here.
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    expect(m.getPath("items.-1")).toBeNone()
+
+  @it("integer segment exceeding int64 range falls back to str key (None for List)")
+  fn hugeIntegerIsStrKey():
+    # All-digit segment passes the isdigit gate but std::stoll throws
+    # std::out_of_range → tryParseSegmentInt catches and returns nullopt.
+    # The segment is then treated as a str key on the List, yielding None.
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    expect(m.getPath("items.99999999999999999999")).toBeNone()
+
+# Issue #2301: COW shared-receiver semantics. The top-level receiver
+# is COW-checked at src/codegen_call_collection.cpp:1547, but the
+# intermediate-walk loop (lines 1571-1616) mutates inner Maps in
+# place. When two aliases share the outer Map, setPath on one writes
+# through to the other's view of the inner Map.
+@describe("setPath: shared-receiver aliasing through intermediate Map")
+fn setPathSharedAliasing():
+  @it("intermediate Map is mutated in place even when the outer Map is aliased")
+  fn intermediateSharedAcrossAliases():
+    inner: Map<str, any> = {"b": 1}
+    m1: Map<str, any> = {"a": inner}
+    m2 = m1
+    m1.setPath("a.b", 99)
+    case m2.getPath("a.b"):
+      Some(v):
+        x: int = v
+        # Top-level COW forks m1's outer Map but the inner Map's Arc
+        # remains shared with m2, so m2 observes the in-place write.
+        expect(x).toEq(99)
+      None: fail("expected Some(99) at m2.a.b")
+
+# Issue #2301: keys containing '.' are unaddressable. `splitDotPath`
+# has no escape syntax, so a Map<str, any> loaded from JSON whose key
+# contains '.' (e.g. "server.host") is never reachable via getPath
+# or dot-sugar — it is always treated as a nested path.
+@describe("getPath: dotted keys in Map are unaddressable")
+fn getPathDottedKeyUnaddressable():
+  @it("Map key containing '.' is never matched by getPath")
+  fn dottedKeyIsSplit():
+    # The key "a.b" exists as a top-level entry, but getPath("a.b")
+    # splits into ["a", "b"] and walks — there is no top-level "a".
+    m: Map<str, any> = {"a.b": 1}
+    expect(m.getPath("a.b")).toBeNone()

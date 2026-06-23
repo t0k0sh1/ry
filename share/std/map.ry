@@ -36,6 +36,20 @@ fn remove(map: Map<str, int>, key: str) -> Unit
 # or leaf returns None. Numeric segments resolve to List<any> int indexes
 # when the intermediate any holds a List, or to str keys when it holds a
 # Map (runtime tag dispatch).
+#
+# Path constraints (compile-time errors): the `path` argument must be
+# a string literal — variable-bound paths are rejected. Empty paths
+# (`""`), leading dots (`".a"`), trailing dots (`"a."`), and consecutive
+# dots (`"a..b"`) are rejected as malformed.
+#
+# Numeric segments use base-10 parsing only: `"items.012"` resolves to
+# index 12 (no octal handling). Segments containing a minus sign
+# (`"items.-1"`) are NOT reverse indexes — they fall back to str-key
+# lookup, which yields None on List intermediates.
+#
+# Keys containing '.' are unaddressable: there is no escape syntax,
+# so a Map<str, any> loaded from JSON whose key is `"server.host"`
+# cannot be reached via getPath (the path is always split on '.').
 @public
 @native
 fn getPath(map: Map<str, any>, path: str) -> Option<any>
@@ -46,6 +60,17 @@ fn getPath(map: Map<str, any>, path: str) -> Option<any>
 # The leaf segment is inserted (if new) or updated (if existing).
 # Top-level receiver is COW-checked; intermediate Maps mutate in place,
 # so callers sharing references to a nested Map see the change.
+#
+# Path constraints (compile-time errors) match getPath: the `path`
+# argument must be a string literal; empty / leading-dot / trailing-dot /
+# consecutive-dot paths are rejected.
+#
+# Unlike getPath, setPath cannot write through a List intermediate:
+# every intermediate segment must be a Map<str, any> at runtime, so a
+# List value at any non-leaf segment aborts with "intermediate segment
+# 'X' is not a Map" (e.g. `setPath(m, "items.0", v)` fails on "items",
+# not on the numeric leaf). Reach List elements via direct index
+# assignment instead (`m["items"][0] = v`).
 @public
 @native
 fn setPath(map: Map<str, any>, path: str, value: any) -> Unit

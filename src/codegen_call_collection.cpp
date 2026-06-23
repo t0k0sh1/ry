@@ -13,6 +13,8 @@ namespace {
 // Empty path or any empty segment is a static error (matches the issue
 // #1701 grammar: every segment must be a non-empty identifier-like str).
 // `callee` flows into the diagnostic ("getPath" / "setPath").
+// The "no escape syntax for '.' in keys" limitation falls out of this
+// unconditional split — see share/std/map.ry for the user-facing contract.
 std::vector<std::string> splitDotPath(CodeGen &cg, const std::string &pathStr,
                                        const char *callee) {
     std::vector<std::string> segments;
@@ -37,6 +39,12 @@ std::vector<std::string> splitDotPath(CodeGen &cg, const std::string &pathStr,
 // Returns the segment's int form when it is a non-empty all-digits str;
 // nullopt otherwise. Shared between getPath now and setPath when its
 // List-index support lands.
+//
+// Invariant: the returned value is always >= 0. The all-digits filter
+// excludes '-', so negative inputs are rejected (downstream codegen
+// relies on this — see emitAnyPathStep in src/codegen_any.cpp). Base-10
+// only via std::stoll: "012" → 12, not 10 (no octal handling). User-
+// facing contract is documented at share/std/map.ry.
 std::optional<int64_t> tryParseSegmentInt(const std::string &s) {
     if (s.empty()) return std::nullopt;
     for (char c : s)
