@@ -614,19 +614,25 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         : e.callee;
     std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, symbolName);
 
-    // Arity-suffix runtime symbol when this sigKey has multiple overloads
-    // with different arities (path::join's __ry_path_join2/3/4 convention).
-    // Today only path::join triggers this — other multi-arity @native fns
-    // (math::log, math::pow, etc.) live in custom-emitter dispatchers and
-    // don't reach the generic path.
+    // Arity-suffix runtime symbol for path::join's __ry_path_join2/3/4
+    // convention. The gate is intentionally scoped to (matchedPackage,
+    // symbolName) — a generic "multi-arity overload set" heuristic would
+    // silently break any future @native overload whose runtime side does
+    // NOT use the suffix convention (caught by CodeRabbit on PR #2342).
+    // When another module adopts the same convention, extend the gate
+    // here or migrate to an explicit descriptor field.
     {
-        const auto &overloads = native_fn_sigs_.at(matchedSigKey);
-        if (overloads.size() > 1) {
-            size_t firstArity = overloads[0].params.size();
-            for (size_t i = 1; i < overloads.size(); ++i) {
-                if (overloads[i].params.size() != firstArity) {
-                    rtName += std::to_string(e.args.size());
-                    break;
+        const bool usesAritySuffixedRuntimeSymbol =
+            matchedPackage == "path" && symbolName == "join";
+        if (usesAritySuffixedRuntimeSymbol) {
+            const auto &overloads = native_fn_sigs_.at(matchedSigKey);
+            if (overloads.size() > 1) {
+                size_t firstArity = overloads[0].params.size();
+                for (size_t i = 1; i < overloads.size(); ++i) {
+                    if (overloads[i].params.size() != firstArity) {
+                        rtName += std::to_string(e.args.size());
+                        break;
+                    }
                 }
             }
         }
