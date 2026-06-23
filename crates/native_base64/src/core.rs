@@ -36,8 +36,16 @@ pub fn encode_with_into(input: &[u8], alphabet: &[u8; 64], pad: bool, out: &mut 
     let mut i = 0;
     while i < len {
         let a = u32::from(input[i]);
-        let b = if i + 1 < len { u32::from(input[i + 1]) } else { 0 };
-        let c = if i + 2 < len { u32::from(input[i + 2]) } else { 0 };
+        let b = if i + 1 < len {
+            u32::from(input[i + 1])
+        } else {
+            0
+        };
+        let c = if i + 2 < len {
+            u32::from(input[i + 2])
+        } else {
+            0
+        };
         let triple = (a << 16) | (b << 8) | c;
 
         out[j] = alphabet[((triple >> 18) & 0x3F) as usize];
