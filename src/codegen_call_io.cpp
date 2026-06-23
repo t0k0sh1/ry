@@ -1259,19 +1259,24 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<Name
 }
 
 // ===== Path =====
-
-static const CodeGen::NativeDispatchEntry path_table[] = {
-    {"join",        nullptr, CodeGen::ReturnWrapping::ResultPtr,   -1, nullptr},
-    {"basename",    nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"dirname",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"ext",         nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"resolve",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"isAbsolute",  nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr},
-};
-
+//
+// path dispatch is fully descriptor-driven via emitGenericNativeCall (#2337).
+// The package is registered here only so isStdlibPackageName("path") stays
+// true (used by the "module not imported" diagnostic in
+// codegen_call_dispatch.cpp). The dispatcher returns nullptr to let dispatch
+// fall through to emitGenericNativeCall, which reads `@native("path")`
+// declarations from share/std/path/path.ry as the source of truth for
+// arity, return wrapping (ResultPtr / BoolFromI64), and error channel
+// (__ry_path_get_last_error). The runtime symbol for `join` uses the
+// arity-suffix convention (`__ry_path_join2/3/4`) which emitGenericNativeCall
+// applies when sigKey has multiple overloads with different arities.
+//
+// See `.claude/rules/codegen-stdlib-dispatcher.md` "Descriptor-migrated
+// stdlib dispatcher stubs must return nullptr" — routing here would cause
+// 3× arg re-emission on type mismatch.
 RY_REGISTER_STDLIB_PACKAGE(path, "share/std/path/path.ry", dispatchPath)
-static llvm::Value *dispatchPath(CodeGen &cg, const CallExpr &e) {
-    return cg.emitTableDrivenNativeCall(e, "path", path_table, std::size(path_table));
+static llvm::Value *dispatchPath(CodeGen &, const CallExpr &) {
+    return nullptr;
 }
 
 } // namespace ry
