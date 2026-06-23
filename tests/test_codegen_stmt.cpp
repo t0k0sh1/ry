@@ -2645,6 +2645,28 @@ TEST_F(CodeGenTest, TypeConstraintIntOverflow) {
               "9223372036854775807\n");
 }
 
+// ===== Tuple field index integer overflow (#2308) =====
+
+TEST_F(CodeGenTest, TupleIndexOverflow) {
+    // Oversized decimal index (42 nines) used to abort via uncaught
+    // std::out_of_range from std::stoul; must surface the normal diagnostic.
+    expectCompileError(
+        "t = (1, 2)\nprint(t.999999999999999999999999999999999999999999)",
+        {"tuple index", "out of range"});
+
+    // ULONG_MAX + 1 — just past the strtoul boundary on 64-bit unsigned long.
+    expectCompileError("t = (1, 2)\nprint(t.18446744073709551616)",
+                       "tuple index");
+
+    // In-bounds-but-too-large index keeps the existing wording untouched.
+    expectCompileError("t = (1, 2)\nprint(t.2)",
+                       "tuple index 2 out of range");
+
+    // In-bounds numeric field access still works.
+    EXPECT_EQ(runSource("t = (10, 20)\nprint(t.0)\nprint(t.1)"),
+              "10\n20\n");
+}
+
 // ===== Function type alias =====
 
 TEST_F(CodeGenTest, TypeAliasFnType) {

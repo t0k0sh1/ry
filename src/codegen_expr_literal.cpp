@@ -2,6 +2,9 @@
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+
 
 namespace ry {
 
@@ -288,8 +291,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
-        auto idx = std::stoul(e->field);
-        if (idx >= structTy->getNumElements())
+        // std::stoul throws std::out_of_range on overflow, which propagates
+        // uncaught and aborts the process; use strtoul + errno/end-pointer.
+        char *end = nullptr;
+        errno = 0;
+        unsigned long idx = std::strtoul(e->field.c_str(), &end, 10);
+        bool parseFailed = (errno == ERANGE) ||
+                           (end != e->field.c_str() + e->field.size());
+        if (parseFailed || idx >= structTy->getNumElements())
             codegenError("tuple index " + e->field + " out of range");
         llvm::Value *fieldVal = builder_.CreateExtractValue(
             obj, static_cast<unsigned>(idx), "tuple." + e->field);
