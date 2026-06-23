@@ -166,8 +166,10 @@ entry above for integer literal parsing.
 - `src/parser/parser_decl.cpp:787` — fixed in #1259 (array size `T[N]`)
 - `src/codegen_type.cpp:133` — inline-array type resolution from
   string name; still unfixed (#1281 proposed a fix, closed not-planned)
-- `src/codegen_expr_literal.cpp:109` — tuple numeric field access
-  (`.0`, `.1`, ...); still unfixed (#1281 proposed a fix, closed not-planned)
+- `src/codegen_expr_literal.cpp` — tuple numeric field access
+  (`.0`, `.1`, ...); fixed in #2308 (inline `std::strtoul` + `errno` /
+  end-pointer guard, routing failures through the existing
+  `tuple index <field> out of range` diagnostic)
 
 **How to apply**: When you see a new `std::sto*` call anywhere in
 `src/parser*.cpp`, `src/codegen*.cpp`, or any frontend path that
