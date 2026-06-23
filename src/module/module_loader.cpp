@@ -23,14 +23,16 @@ using ry::emitTraceDiagnostic;
 using ry::emitTraceEvent;
 
 // #2297: 公開 stdlib モジュール許可リスト。#1769 で `ry.*` の public surface
-// として列挙された 11 モジュールのみ受理し、それ以外は internal とみなして
+// として列挙された 13 モジュールのみ受理し、それ以外は internal とみなして
 // reject する。`StdlibRegistry` は codegen dispatch table で「dispatcher を持つ
 // package」を列挙するもので意図が異なるため、ここで独立に policy を維持する
 // (例: `runtime_internal` は dispatch を持つが internal、逆に `lang` / `regex` /
-// `filesystem` / `testing` は dispatcher を持たないが public)。
-static constexpr std::array<std::string_view, 11> kPublicRyModules = {
+// `filesystem` / `testing` は dispatcher を持たないが public)。v0.0.30 で
+// `net` / `json5` を追加 (#2309)。
+static constexpr std::array<std::string_view, 13> kPublicRyModules = {
     "lang", "math", "io", "path", "filesystem", "json",
     "http", "thread", "regex", "testing", "base64",
+    "net", "json5",
 };
 
 static bool isPublicRyModule(std::string_view first_segment) {
@@ -576,7 +578,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
                 "use 'ry.<module>' (e.g. 'ry.lang', 'ry.math')");
         }
 
-        // #2297: stdlib allowlist — `ry/<sub>` の `<sub>` が #1769 列挙の 11
+        // #2297: stdlib allowlist — `ry/<sub>` の `<sub>` が #1769 列挙の 13
         // module のいずれでなければ reject。`ry.builtins` / `ry.gc` / `ry.core`
         // 等の internal module だけでなく、`ry.math.internal` のようなネスト
         // パスも reject する (public surface は **完全な enumeration** であり、

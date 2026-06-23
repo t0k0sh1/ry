@@ -241,6 +241,12 @@ TEST_F(RyNamespaceWarningTest, InternalStdlibModuleRejectedWithHint) {
         << "error should list 'ry.lang' in available modules: " << r.err;
     EXPECT_NE(r.err.find("ry.math"), std::string::npos)
         << "error should list 'ry.math' in available modules: " << r.err;
+    // #2309: net / json5 を allowlist に追加した後、エラーリストの 13 件表示
+    // (`ry.base64, ry.net, ry.json5` を含む) を回帰でロックする。
+    EXPECT_NE(r.err.find("ry.net"), std::string::npos)
+        << "error should list 'ry.net' in available modules (#2309): " << r.err;
+    EXPECT_NE(r.err.find("ry.json5"), std::string::npos)
+        << "error should list 'ry.json5' in available modules (#2309): " << r.err;
 }
 
 TEST_F(RyNamespaceWarningTest, BogusRyModuleErrorUsesDotSpelling) {

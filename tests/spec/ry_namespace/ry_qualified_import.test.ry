@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from testing import it, describe, expect, fail
 
 # #1769: `import ry.<mod>` is the qualified form of the canonical
 # reserved-namespace import. The bare name (`math`) is the last segment,
@@ -8,6 +8,10 @@ import ry.math
 # Alias form: rebind ry.math under a different bare name so it could coexist
 # alongside a hypothetical `import math` without parser collision.
 import ry.math as ryMath
+
+# #2309: ry.net / ry.json5 joined the public allowlist in v0.0.30.
+import ry.net
+import ry.json5
 
 @describe("import ry.* qualified namespace (#1769)")
 fn ryQualifiedImportTests():
@@ -22,3 +26,17 @@ fn ryQualifiedImportTests():
     # contract documented in docs/reference/modules.md.
     expect(ryMath.sqrt(16.0)).toEq(4.0)
     expect(ryMath.PI).toEq(math.PI)
+
+  @it("import ry.net exposes the net namespace at its bare last segment (#2309)")
+  fn shouldExposeNetSegment():
+    case net.bind("127.0.0.1", 0):
+      Ok(server):
+        port = net.listenerPort(server)
+        close(server)
+        expect(port > 0).toEq(true)
+      Err(e):
+        fail("ry.net qualified bind unexpectedly failed: " + e.message)
+
+  @it("import ry.json5 exposes the json5 namespace at its bare last segment (#2309)")
+  fn shouldExposeJson5Segment():
+    expect(json5.stringify(42)).toEq("42")
