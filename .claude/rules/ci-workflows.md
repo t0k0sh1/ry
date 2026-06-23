@@ -198,14 +198,25 @@ Verify: `grep -n 'continue-on-error' .github/workflows/*.yml` shows analysis and
 
 ### Rust crate quality gate runs in the `lint` job; adding clippy/rustfmt needs an image rebuild first
 
-**Source**: #2015 (2026-06-03)
-**Tags**: ci, rust, clippy, rustfmt, emit, container, ghcr, toolchain-pin
+**Source**: #2015 (2026-06-03); scope-aligned with local wrapper in #2344 (2026-06-23)
+**Tags**: ci, rust, clippy, rustfmt, emit, native_base64, workspace, container, ghcr, toolchain-pin
 
-`crates/emit` is gated in the `ci.yml` `lint` job: `cargo fmt --manifest-path crates/emit/Cargo.toml -- --check` + `cargo clippy -p emit -- -D warnings` + `cargo check -p emit` (#1995). The three are orthogonal — do not merge. `clippy` needs the baked `LLVM_SYS_211_PREFIX` + shared libLLVM; `cargo fmt --check` does not.
+All workspace crates (currently `crates/emit` + `crates/native_base64`) are gated in the `ci.yml` `lint` job: `cargo fmt --all -- --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo check --workspace --all-targets` (#1995). The three are orthogonal — do not merge. `clippy` needs the baked `LLVM_SYS_211_PREFIX` + shared libLLVM (via the `emit` crate's `llvm-sys` dep); `cargo fmt --check` does not. The local wrapper `.claude/skills/pre-commit-checklist/run-rust-lint.sh` runs the same `--all` / `--workspace --all-targets` scope; do not split scope between CI and local — drift was fixed in #2344 after `crates/native_base64` (#2282) sat fmt-unchecked in CI.
 
 **Toolchain pin**: Keep `rust-toolchain.toml` in sync with `RUST_VERSION` in `docker/ci.Dockerfile`; a mismatch flags clean code. CI's `/opt/rust/bin/cargo` ignores the file (pin only steers rustup). **Bump both simultaneously.**
 
 `ry-ci` must bake `clippy-preview` and `rustfmt-preview`: `--components="rustc,cargo,rust-std-${RARCH},clippy-preview,rustfmt-preview"`. If `install.sh` rejects, consult `channel-rust-<RUST_VERSION>.toml` `[pkg.*]`. Push Dockerfile first → auto-rebuild (~60–90 min) → re-run CI (`.claude/skills/ci-image-workflow/SKILL.md` "new tool added to image"; only `ry-ci` needs updating). Local: `./.claude/skills/pre-commit-checklist/run-rust-lint.sh`. Policy: root `Cargo.toml` `[workspace.lints]`; FFI carve-outs: `#![allow(...)]` in `lib.rs`.
+
+### Quote workflow step `name:` values that contain ` #` — YAML silently treats them as comments
+
+**Source**: #2344 (2026-06-23) side-finding
+**Tags**: ci, github-actions, yaml, gotcha, step-name
+
+In a plain (unquoted) YAML scalar, `#` preceded by whitespace starts a comment — so `- name: Foo (rustfmt, #2015)` is parsed as `"Foo (rustfmt,"` and the rest is dropped on the floor. The step still executes (the `run:` body is independent), but the Actions UI / logs show the truncated name, and any downstream tooling that matches on the full name silently misses. `#2344` repaired four such names in `ci.yml` (`(rustfmt, #2015)`, `(clippy, #2015)`, `(JSONL schema, #2300)`, `(#2109 AC #5/#7)`).
+
+**Rule**: wrap step `name:` values that contain ` #` in single quotes — e.g. `name: 'Rust lint (clippy, #2015)'`. `( #NNNN)` with no preceding space (e.g. `(#2069)`) is safe — `#` is only a comment marker after whitespace.
+
+Verify: `ruby -ryaml -e 'YAML.load_file("..yml")["jobs"].each{|jn,j| j["steps"].each{|s| puts "#{jn}: #{s["name"].inspect}" if s["name"]&.include?("#")}}'` — every step name must end with `)` (or whatever closing character its body intends). A bare `(` near the tail is a truncation tell.
 
 ### Linux Ry self-test: pass no `-p`
 

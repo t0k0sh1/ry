@@ -74,7 +74,7 @@ jobs:
           # cannot be caught by import-path inspection; the future physical
           # crate split (#2023) turns this into a Cargo-enforced constraint.
           bash scripts/check-emit-composite-no-primitive.sh
-      - name: Check emit composite LLVM IR-gen concentration (#2109 AC #5/#7)
+      - name: 'Check emit composite LLVM IR-gen concentration (#2109 AC #5/#7)'
         run: |
           # Enforces #2109 AC #5/#7: the LLVM C IR-generation API
           # (`llvm_sys::core`, `LLVMBuild*`) must be confined to the primitive
@@ -135,35 +135,42 @@ jobs:
             --quiet \
             src/ include/
 
-      - name: Verify emit ABI struct layout (Rust side, #1995)
+      - name: Rust workspace check (#1995 ABI layout assert)
         run: |
           # The Rust half of the C++ <-> Rust ABI struct-layout contract:
           # the `const _: () = assert!(size_of / align_of / offset_of! ...)`
-          # items in crates/emit/src/lib.rs are const-evaluated
-          # during `cargo check`, so this step fails on any layout drift.
+          # items in crates/emit/src/abi.rs are const-evaluated during
+          # `cargo check`, so this step fails on any layout drift. The
+          # `--workspace --all-targets` scope mirrors the local wrapper
+          # (.claude/skills/pre-commit-checklist/run-rust-lint.sh) and
+          # covers every member crate (currently `emit` + `native_base64`,
+          # plus any future native_* crate added by issues like #2282).
           # (The C++ half is the static_assert TU compiled into ry_tests by
           # the `test` job.) cargo / CARGO_HOME / LLVM_SYS_211_PREFIX are
           # baked into the CI image (docker/ci.Dockerfile). This is a narrow
           # type-check + layout-assert pass; it does NOT build `ry` against
           # the Rust cdylib — the full integration build is the `test` job.
-          cargo check -p emit
+          cargo check --workspace --all-targets
 
-      - name: Rust format check (rustfmt, #2015)
+      - name: 'Rust format check (rustfmt, #2015)'
         run: |
           # Rust quality gate symmetric with the C++ cppcheck gate. rustfmt
           # needs no LLVM. The image's Rust is the version pinned locally by
           # rust-toolchain.toml (kept equal to docker/ci.Dockerfile
           # RUST_VERSION), so `--check` here matches local `cargo fmt` output.
-          cargo fmt --manifest-path crates/emit/Cargo.toml -- --check
+          # `--all` runs over every workspace member (#2344 aligned scope
+          # with the local wrapper, so new native_* crates land covered).
+          cargo fmt --all -- --check
 
-      - name: Rust lint (clippy, #2015)
+      - name: 'Rust lint (clippy, #2015)'
         run: |
           # clippy compiles llvm-sys exactly like the `cargo check` step above,
           # so it relies on the same baked LLVM_SYS_211_PREFIX + shared libLLVM
           # in the image ENV. `-D warnings` makes any lint a hard failure. Kept
           # separate from `cargo check` (whose #1995 ABI-layout-assert purpose is
-          # orthogonal) rather than merged.
-          cargo clippy -p emit -- -D warnings
+          # orthogonal) rather than merged. `--workspace --all-targets` matches
+          # the local wrapper (#2344) so the gate covers every member crate.
+          cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     runs-on: ubuntu-24.04
@@ -190,7 +197,7 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test
-      - name: Test (export-run-logs JSONL schema, #2300)
+      - name: 'Test (export-run-logs JSONL schema, #2300)'
         # `jq` is not in `ry-ci:llvm-21` (gcc:14-trixie base); install a
         # prebuilt binary inline, verified against the project's published
         # sha256sum.txt (https://github.com/jqlang/jq/tree/master/sig) so an
