@@ -1119,8 +1119,7 @@ StmtNode Parser::parseStatement() {
 
 
 
-std::vector<StmtNode> Parser::parseBlock() {
-    RecursionGuard guard(*this);
+void Parser::consumeBlockOpening(const char *missing_indent_msg) {
     if (lex_.peek().kind != TokenKind::Newline)
         parseError("expected newline after ':'");
     lex_.next(); // consume Newline
@@ -1145,9 +1144,14 @@ std::vector<StmtNode> Parser::parseBlock() {
         if (chain_pending_dedents_ > 0) {
             --chain_pending_dedents_; // chain absorbed the Indent on our behalf
         } else {
-            parseError("expected indented block");
+            parseError(missing_indent_msg);
         }
     }
+}
+
+std::vector<StmtNode> Parser::parseBlock() {
+    RecursionGuard guard(*this);
+    consumeBlockOpening();
     // Snapshot AFTER body's opening Indent accounting so the body loop's
     // drain only fires for chain Dedents emitted DURING this block's
     // parse (not those that belong to the block's own exit).

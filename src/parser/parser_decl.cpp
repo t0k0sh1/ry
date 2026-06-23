@@ -1271,14 +1271,7 @@ StmtNode Parser::parseCaseStatementNoSubject(const Token &caseTok) {
         parseError("expected ':' after 'case'");
     lex_.next(); // consume ':'
 
-    if (lex_.peek().kind != TokenKind::Newline)
-        parseError("expected newline after ':'");
-    lex_.next();
-    skipNewlines();
-
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next();
+    consumeBlockOpening();
 
     auto caseStmt = std::make_unique<CaseCondStmt>();
     caseStmt->loc = locFromToken(caseTok);
@@ -1335,14 +1328,7 @@ StmtNode Parser::parseCaseStatementWithSubject(const Token &caseTok) {
         parseError("expected ':' after case subject");
     lex_.next(); // consume ':'
 
-    if (lex_.peek().kind != TokenKind::Newline)
-        parseError("expected newline after ':'");
-    lex_.next(); // consume Newline
-    skipNewlines();
-
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next(); // consume Indent
+    consumeBlockOpening();
 
     auto caseStmt = std::make_unique<CaseStmt>();
     caseStmt->subject = std::move(subject);

@@ -102,3 +102,45 @@ fn multilineUfcsChainTests():
         .iter()
         .toList()
     expect(buildList()).toEq([1, 2, 3])
+  @it("should allow multiline UFCS chain in case statement subject")
+  fn shouldAllowMultilineUfcsChainInCaseSubjectStatement():
+    # #2311: subject-bearing `case` statement with multiline UFCS subject.
+    # Parity with `while`/`if` body openings — the chain absorbs the body's
+    # literal Indent, and consumeBlockOpening's #2136 path decrements
+    # chain_pending_dedents_ in place of the missing Indent token. Arm
+    # column matches the chain continuation column (the issue's repro
+    # shape).
+    xs = [1, 2, 3]
+    matched = 0
+    case xs
+        .len():
+        3:
+            matched = 3
+        _:
+            matched = -1
+    expect(matched).toEq(3)
+  @it("should allow multiline UFCS chain in case expression subject")
+  fn shouldAllowMultilineUfcsChainInCaseSubjectExpression():
+    # #2311 expression form. Same accounting path through
+    # parseCaseExprWithSubject; verifies end-to-end that the produced
+    # CaseExpr binds the matched arm's value.
+    xs = [1, 2, 3]
+    label = case xs
+        .len():
+        3 : "three"
+        _ : "other"
+    expect(label).toEq("three")
+  @it("should allow multiline UFCS chain in a case expression arm guard")
+  fn shouldAllowMultilineUfcsChainInCaseExprArmGuard():
+    # #2311 side-finding: parseCaseExprArmBody hand-rolled the same Indent
+    # check that the case body openings did. Triggerable when the arm guard
+    # contains a multiline UFCS chain (leaves chain_pending_dedents_>0) and
+    # the arm body is block-form. The statement-form sibling is unaffected
+    # because its arm body routes through parseBlockOrInline → parseBlock.
+    xs = [1, 2, 3]
+    r = case 1:
+        1 if xs
+            .len() > 0:
+            100
+        _ : 0
+    expect(r).toEq(100)
