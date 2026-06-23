@@ -183,7 +183,7 @@ add_library(ry_lib STATIC
     src/codegen_metadata.cpp
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
-    src/native_call_descriptor.cpp
+    src/codegen_native_call_descriptor.cpp
     src/runtime/core/error.cpp
     src/runtime/core/host_shims.cpp
     src/cli/cli.cpp

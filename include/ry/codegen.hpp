@@ -82,11 +82,11 @@ public:
     getNativeFnSigs() const { return native_fn_sigs_; }
 
     // Access the NativeCallDescriptor registry built alongside native_fn_sigs_
-    // during @native declaration processing. v1 populates declaration-time
-    // fields only (module_name / fn_name / library_name); remaining fields
-    // stay at default until consumer PRs migrate dispatchers per
-    // docs/architecture/native-call-boundary.md follow-ups. Same key shape
-    // as getNativeFnSigs() so the two maps can be cross-referenced.
+    // during @native declaration processing. v1 stores library_name only;
+    // package/name are represented by the map key. Subsequent consumer PRs
+    // can extend the descriptor per docs/architecture/native-call-boundary.md
+    // follow-ups. Same key shape as getNativeFnSigs() so the two maps can be
+    // cross-referenced.
     const std::unordered_map<std::string, std::vector<NativeCallDescriptor>>&
     getNativeCallDescriptors() const { return native_call_descriptors_; }
 
