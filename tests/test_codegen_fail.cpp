@@ -1543,3 +1543,132 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeGenericDeclaration) {
         "fn map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U>\n"
     ));
 }
+
+// ============================================================
+// #2301: getPath / setPath rejection coverage
+//
+// Issue #1701 / PR #2287 added `getPath(map, path)` and
+// `setPath(map, path, value)` for nested Map<str, any> access.
+// `splitDotPath` (src/codegen_call_collection.cpp:17-34) and the
+// per-function receiver/literal checks (lines 1421/1427 for getPath,
+// 1523/1525/1529 for setPath) reject malformed calls at compile time,
+// and the setPath intermediate-walk loop (lines 1571-1616) aborts at
+// runtime when an intermediate segment is missing or not a Map.
+// None of these branches were exercised before #2301.
+//
+// `Map<str, any>` annotation and `m.getPath(...)` / `m.setPath(...)`
+// dispatch flow through `emitCollOp_getPath` / `emitCollOp_setPath`
+// in src/codegen_call_collection.cpp — no `from map import` is needed,
+// so these tests work in the ModuleLoader-less compileSource harness.
+// ============================================================
+
+TEST_F(CodeGenTest, GetPathEmptyPathRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.getPath(\"\")\n",
+        "getPath() path has empty trailing segment");
+}
+
+TEST_F(CodeGenTest, GetPathLeadingDotRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.getPath(\".a\")\n",
+        "getPath() path has empty segment");
+}
+
+TEST_F(CodeGenTest, GetPathTrailingDotRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.getPath(\"a.\")\n",
+        "getPath() path has empty trailing segment");
+}
+
+TEST_F(CodeGenTest, GetPathNonAnyValueTypeRejected) {
+    expectCompileError(
+        "m: Map<str, int> = {\"a\": 1}\n"
+        "m.getPath(\"a\")\n",
+        "getPath() receiver value type must be `any`");
+}
+
+TEST_F(CodeGenTest, GetPathNonLiteralPathRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "p = \"a\"\n"
+        "m.getPath(p)\n",
+        "getPath() currently requires a string literal path");
+}
+
+TEST_F(CodeGenTest, SetPathEmptyPathRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.setPath(\"\", 1)\n",
+        "setPath() path has empty trailing segment");
+}
+
+TEST_F(CodeGenTest, SetPathLeadingDotRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.setPath(\".a\", 1)\n",
+        "setPath() path has empty segment");
+}
+
+TEST_F(CodeGenTest, SetPathTrailingDotRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.setPath(\"a.\", 1)\n",
+        "setPath() path has empty trailing segment");
+}
+
+TEST_F(CodeGenTest, SetPathNonAnyValueTypeRejected) {
+    expectCompileError(
+        "m: Map<str, int> = {\"a\": 1}\n"
+        "m.setPath(\"a\", 1)\n",
+        "setPath() receiver value type must be `any`");
+}
+
+TEST_F(CodeGenTest, SetPathNonLiteralPathRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "p = \"a\"\n"
+        "m.setPath(p, 1)\n",
+        "setPath() currently requires a string literal path");
+}
+
+// setPath runtime aborts: intermediate-walk loop in
+// src/codegen_call_collection.cpp:1571-1616 emits
+// `__ry_runtime_error` + `_Exit(1)` when an intermediate segment is
+// missing or is not a Map. Use `EXPECT_EXIT` to assert both message
+// and exit code.
+
+TEST_F(CodeGenTest, SetPathIntermediateMissAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "m: Map<str, any> = {}\n"
+            "m.setPath(\"a.b\", 1)\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'a\\.b': intermediate segment 'a' not found");
+}
+
+TEST_F(CodeGenTest, SetPathIntermediateNotMapAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "m: Map<str, any> = {\"a\": 42}\n"
+            "m.setPath(\"a.b\", 1)\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'a\\.b': intermediate segment 'a' is not a Map");
+}
+
+// setPath cannot write into List intermediates (asymmetric with
+// getPath, which dispatches numeric segments to list indices via
+// `emitAnyPathStep`). The setPath intermediate-walk loop only checks
+// `tag == RyAnyTag::Map`, so a List-tagged intermediate falls through
+// to the "is not a Map" error path. Documented in share/std/map.ry.
+TEST_F(CodeGenTest, SetPathListIntermediateAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "items: List<any> = [1]\n"
+            "m: Map<str, any> = {\"items\": items}\n"
+            "m.setPath(\"items.0\", 9)\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'items\\.0': intermediate segment 'items' is not a Map");
+}

@@ -2060,12 +2060,12 @@ llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
             listHeaderTy_, listPtr, 0, "pathstep.list.len.field");
         llvm::Value *len = builder_.CreateLoad(
             i64Ty_, lenField, "pathstep.list.len");
+        // `*intSegment` is non-negative by `tryParseSegmentInt`'s
+        // invariant (src/codegen_call_collection.cpp), so a negative-
+        // wrap + `idx < 0` check would be dead — only the upper bound
+        // can fire (#2301).
         llvm::Value *idxVal = llvm::ConstantInt::getSigned(i64Ty_, *intSegment);
-        llvm::Value *wrapped = emitNegativeIndexWrap(idxVal, len, "pathstep.list");
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *neg = builder_.CreateICmpSLT(wrapped, zero, "pathstep.list.neg");
-        llvm::Value *over = builder_.CreateICmpSGE(wrapped, len, "pathstep.list.over");
-        llvm::Value *oob = builder_.CreateOr(neg, over, "pathstep.list.oob");
+        llvm::Value *oob = builder_.CreateICmpSGE(idxVal, len, "pathstep.list.oob");
         auto *listHitBB = createBBInFn("pathstep.list_hit", fn);
         emitBranchCond(oob, missBB, listHitBB);
 
@@ -2075,7 +2075,7 @@ llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
         llvm::Value *dataPtr = builder_.CreateLoad(
             ptrTy_, dataField, "pathstep.list.data.ptr");
         llvm::Value *listElemPtr = builder_.CreateGEP(
-            anyTy_, dataPtr, wrapped, "pathstep.list.elem.ptr");
+            anyTy_, dataPtr, idxVal, "pathstep.list.elem.ptr");
         listFoundAny = builder_.CreateLoad(
             anyTy_, listElemPtr, "pathstep.list.elem");
         listFoundEndBB = builder_.GetInsertBlock();
