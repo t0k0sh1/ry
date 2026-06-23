@@ -27,14 +27,7 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
         parseError("expected ':' after 'case'");
     lex_.next(); // consume ':'
 
-    if (lex_.peek().kind != TokenKind::Newline)
-        parseError("expected newline after ':'");
-    lex_.next();
-    skipNewlines();
-
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next();
+    consumeBlockOpening();
 
     auto caseExpr = std::make_unique<CaseCondExpr>();
     bool seenWildcard = false;
@@ -93,14 +86,7 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
         parseError("expected ':' after case subject");
     lex_.next(); // consume ':'
 
-    if (lex_.peek().kind != TokenKind::Newline)
-        parseError("expected newline after ':'");
-    lex_.next();
-    skipNewlines();
-
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next();
+    consumeBlockOpening();
 
     auto caseExpr = std::make_unique<CaseExpr>();
     caseExpr->subject = std::move(subject);
@@ -177,12 +163,13 @@ void Parser::parseCaseExprArmBody(std::vector<StmtNode> &stmts, ExprPtr &value) 
         return;
     }
 
-    // Block arm.
-    lex_.next(); // consume Newline
-    skipNewlines();
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block after ':' in case expression arm");
-    lex_.next(); // consume Indent
+    // Block arm. #2311: route through consumeBlockOpening so a multiline
+    // UFCS chain in the arm guard (which can leave chain_pending_dedents_>0
+    // before this opening) is handled the same way as the case header. The
+    // statement-form arm body already routes through parseBlock; this lifts
+    // the expression-form arm body to the same accounting. The site-specific
+    // diagnostic message is preserved.
+    consumeBlockOpening("expected indented block after ':' in case expression arm");
 
     while (true) {
         if (lex_.peek().kind == TokenKind::Dedent ||

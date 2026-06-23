@@ -2380,6 +2380,110 @@ TEST(ParserTest, UfcsMultilineChainInLambdaBody) {
     EXPECT_TRUE(std::holds_alternative<CallStmt>(fn.body[1]));
 }
 
+TEST(ParserTest, UfcsMultilineChainInCaseSubjectStmt) {
+    // #2311: subject-bearing `case` statement with a 1-hop multiline UFCS
+    // chain in the subject. Parity with `while`/`if` body openings: the
+    // chain absorbs the body's literal Indent and parseBlock's #2136
+    // path (now reused via consumeBlockOpening) decrements
+    // chain_pending_dedents_ in place of an Indent token.
+    Program prog = parseStr(
+        "case xs\n"
+        "    .len():\n"
+        "    3:\n"
+        "        print(1)\n"
+        "    _:\n"
+        "        print(2)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(cs.subject->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(cs.subject->data)->callee, "len");
+    ASSERT_EQ(cs.arms.size(), 2u);
+}
+
+TEST(ParserTest, UfcsMultilineChainInCaseSubjectExpr) {
+    // #2311: subject-bearing `case` expression with a 1-hop multiline UFCS
+    // chain in the subject. Same accounting path as the statement form
+    // above, exercised through parseCaseExprWithSubject.
+    Program prog = parseStr(
+        "label = case xs\n"
+        "    .len():\n"
+        "    3 : \"three\"\n"
+        "    _ : \"other\"");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &ce = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(ce.subject->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(ce.subject->data)->callee, "len");
+    ASSERT_EQ(ce.arms.size(), 2u);
+}
+
+TEST(ParserTest, UfcsMultilineChainInCaseSubjectStmtMultiHop) {
+    // #2311: 2-hop chain in subject (depth ≥ 2). Locks the drain-loop +
+    // implicit-Indent decrement path in consumeBlockOpening — the deeper
+    // hop's matching Dedent arrives before the body content; without the
+    // drain loop the body would see a Dedent first and parseBlock would
+    // report "empty block is not allowed".
+    Program prog = parseStr(
+        "case data\n"
+        "    .filter(p)\n"
+        "        .map(f):\n"
+        "    1:\n"
+        "        handle(1)\n"
+        "    _:\n"
+        "        handle(0)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(cs.subject->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(cs.subject->data)->callee, "map");
+    ASSERT_EQ(cs.arms.size(), 2u);
+}
+
+TEST(ParserTest, UfcsMultilineChainInCaseSubjectExprMultiHop) {
+    // #2311: 2-hop chain in subject for expression-form case. Same depth-≥2
+    // accounting path through parseCaseExprWithSubject.
+    Program prog = parseStr(
+        "label = case data\n"
+        "    .filter(p)\n"
+        "        .map(f):\n"
+        "    1 : \"one\"\n"
+        "    _ : \"other\"");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &ce = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(ce.subject->data));
+    EXPECT_EQ(std::get<std::unique_ptr<CallExpr>>(ce.subject->data)->callee, "map");
+    ASSERT_EQ(ce.arms.size(), 2u);
+}
+
+TEST(ParserTest, UfcsMultilineChainInCaseExprArmGuard) {
+    // #2311 side-finding: a multiline UFCS chain in an arm guard followed
+    // by a BLOCK arm body — only triggerable for case-EXPRESSION form,
+    // since the statement form's arm body already routes through
+    // parseBlockOrInline → parseBlock (CPD-aware). Pre-fix this fired
+    // "expected indented block after ':' in case expression arm" inside
+    // parseCaseExprArmBody. Fix lifts that block-arm opening through the
+    // shared consumeBlockOpening helper.
+    Program prog = parseStr(
+        "r = case 1:\n"
+        "    1 if xs\n"
+        "        .len() > 0:\n"
+        "        100\n"
+        "    _ : 0");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &ce = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
+    ASSERT_EQ(ce.arms.size(), 2u);
+    EXPECT_NE(ce.arms[0].guard, nullptr);
+}
+
 TEST(ParserTest, UfcsOneHopCallStmtShape) {
     // #2138 regression guard: a 1-hop UFCS call statement (no chain,
     // no trailing block) must still parse to a CallStmt — not the

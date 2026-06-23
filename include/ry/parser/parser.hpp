@@ -133,6 +133,11 @@ private:
     TypeNodePtr parseTypeName();
     TypeNodePtr parseTypeNameSingle();
     TypeNodePtr parseFnType();
+    // #2311: shared body-opening sequence (Newline + Indent or
+    // chain_pending_dedents_). See parser.cpp for CPD accounting details.
+    // `missing_indent_msg` overrides the default "expected indented block"
+    // diagnostic when a call site wants to preserve a more specific message.
+    void consumeBlockOpening(const char *missing_indent_msg = "expected indented block");
     std::vector<StmtNode> parseBlock();
     std::vector<StmtNode> parseBlockOrInline();
     std::vector<ExprPtr> parseArgList(std::vector<NamedArg> *named_out = nullptr);
