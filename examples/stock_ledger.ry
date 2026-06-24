@@ -1,0 +1,146 @@
+# 在庫台帳 — SKU ごとの在庫移動を List<StockMovement> で記録し Result で不正操作を拒否する
+
+enum MovementKind:
+  Receive(int)
+  Issue(int)
+  Adjust(int)
+
+record StockItem:
+  sku: str
+  name: str
+  onHand: int
+  reorderAt: int
+  invariant:
+    onHand >= 0
+
+record StockMovement:
+  sku: str
+  kind: MovementKind
+  resultOnHand: int
+
+record MovementOrder:
+  sku: str
+  kind: MovementKind
+
+fn movementLabel(k: MovementKind) -> str:
+  return case k:
+    MovementKind::Receive(n) : f"receive {n}"
+    MovementKind::Issue(n) : f"issue {n}"
+    MovementKind::Adjust(delta) : f"adjust {delta}"
+
+fn findIndex(items: List<StockItem>, sku: str) -> Option<int>:
+  for i, it in enumerate(items):
+    if it.sku == sku:
+      return Some(i)
+  return None
+
+fn requireSku(items: List<StockItem>, sku: str) -> Result<int, Error>:
+  case findIndex(items, sku):
+    Some(i):
+      return Ok(i)
+    None:
+      return Err(Error(f"unknown SKU '{sku}'"))
+
+fn applyMovement(item: StockItem, kind: MovementKind) -> Result<StockItem, Error>:
+  case kind:
+    MovementKind::Receive(n):
+      if n <= 0:
+        return Err(Error(f"receive amount {n} must be positive for {item.sku}"))
+      return Ok(StockItem(item.sku, item.name, item.onHand + n, item.reorderAt))
+    MovementKind::Issue(n):
+      if n <= 0:
+        return Err(Error(f"issue amount {n} must be positive for {item.sku}"))
+      if n > item.onHand:
+        return Err(Error(f"issue {n} exceeds onHand {item.onHand} for {item.sku}"))
+      return Ok(StockItem(item.sku, item.name, item.onHand - n, item.reorderAt))
+    MovementKind::Adjust(delta):
+      next = item.onHand + delta
+      if next < 0:
+        return Err(Error(f"adjust {delta} would make {item.sku} negative ({next})"))
+      return Ok(StockItem(item.sku, item.name, next, item.reorderAt))
+
+fn applyToLedger(items: List<StockItem>, sku: str, kind: MovementKind, journal: List<StockMovement>) -> Result<List<StockItem>, Error>:
+  i = requireSku(items, sku)?
+  updated = applyMovement(items[i], kind)?
+  next: List<StockItem> = []
+  for j, t in enumerate(items):
+    if j == i:
+      append!(next, updated)
+    else:
+      append!(next, t)
+  append!(journal, StockMovement(sku, kind, updated.onHand))
+  return Ok(next)
+
+fn runMovements(items: List<StockItem>, moves: List<MovementOrder>, journal: List<StockMovement>) -> Result<List<StockItem>, Error>:
+  current = items
+  for mv in moves:
+    case applyToLedger(current, mv.sku, mv.kind, journal):
+      Ok(updated):
+        current = updated
+      Err(e):
+        return Err(e)
+  return Ok(current)
+
+fn isLowStock(item: StockItem) -> bool:
+  return item.onHand <= item.reorderAt
+
+fn lowStockItems(items: List<StockItem>) -> List<StockItem>:
+  return filter(items, isLowStock)
+
+fn printItems(items: List<StockItem>):
+  for it in items:
+    print(f"  {it.sku} {it.name}: onHand={it.onHand} (reorderAt={it.reorderAt})")
+
+fn printLedger(journal: List<StockMovement>):
+  for e in journal:
+    print(f"  {e.sku}: {movementLabel(e.kind)} -> onHand={e.resultOnHand}")
+
+# --- demo: initial stock ---
+
+initial: List<StockItem> = [
+  StockItem("BOOK-01", "Hitchhiker's Guide", 12, 5),
+  StockItem("MUG-01", "Coffee mug", 8, 10),
+  StockItem("PEN-01", "Ballpoint pen", 50, 20),
+  StockItem("LAMP-01", "Desk lamp", 3, 5)
+]
+
+print("initial stock:")
+printItems(initial)
+
+# --- demo: successful movement sequence ---
+
+moves: List<MovementOrder> = [
+  MovementOrder("BOOK-01", MovementKind::Issue(4)),
+  MovementOrder("MUG-01", MovementKind::Receive(1)),
+  MovementOrder("PEN-01", MovementKind::Issue(15)),
+  MovementOrder("LAMP-01", MovementKind::Adjust(2))
+]
+
+journal: List<StockMovement> = []
+case runMovements(initial, moves, journal):
+  Ok(finalItems):
+    print("\njournal:")
+    printLedger(journal)
+    print("\nstock after movements:")
+    printItems(finalItems)
+    print("\nlow-stock items (onHand <= reorderAt):")
+    printItems(lowStockItems(finalItems))
+  Err(e):
+    print(f"unexpected error: {e.message}")
+
+# --- demo: error paths (each guard exercised independently) ---
+
+errCases: List<MovementOrder> = [
+  MovementOrder("BOOK-01", MovementKind::Issue(99)),
+  MovementOrder("GHOST-99", MovementKind::Receive(5)),
+  MovementOrder("LAMP-01", MovementKind::Adjust(-99))
+]
+
+print("\nerror paths:")
+errJournal: List<StockMovement> = []
+for mv in errCases:
+  case applyToLedger(initial, mv.sku, mv.kind, errJournal):
+    Ok(_):
+      print(f"  unexpected: {mv.sku} {movementLabel(mv.kind)} succeeded")
+    Err(e):
+      print(f"  rejected: {e.message}")
