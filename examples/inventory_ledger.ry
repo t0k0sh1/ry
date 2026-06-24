@@ -90,11 +90,12 @@ print("opening stock:")
 printStock(catalog, initial)
 
 case runAll(initial, transactions):
-  Ok(final):
+  Ok(finalStock):
     print("\nafter transactions:")
-    printStock(catalog, final)
+    printStock(catalog, finalStock)
     print("\ncategory totals:")
-    for k, v in totalsByCategory(catalog, final):
+    totals = totalsByCategory(catalog, finalStock)
+    for k, v in totals:
       print(f"  {k}: {v}")
   Err(e):
     print(f"unexpected error: {e.message}")

@@ -32,7 +32,10 @@ fn aggregate(readings: List<Reading>) -> Map<str, Stats>:
   return result
 
 fn locationsOrdered(stats: Map<str, Stats>) -> List<str>:
-  return sort(keys(stats), (a: str, b: str) => a < b)
+  out: List<str> = []
+  for k, _ in stats:
+    append!(out, k + "")
+  return sort(out, (a: str, b: str) => a < b)
 
 fn formatStats(s: Stats) -> str:
   return f"count={s.count} min={s.minC} max={s.maxC} avg={statAvg(s)}"
