@@ -95,17 +95,13 @@ The entire stdlib forms a single package — `share/std/package.toml` is its pac
 
 See [Module Reference — Standard Library](modules.md#standard-library) for the full list of stdlib sub-modules and import semantics.
 
-## strict-any mode
+## strict-any semantics
 
-An **opt-in compiler mode** that enables stricter `any` semantics ahead of those semantics becoming the default. Introduced in v0.0.30 (#2319) to give existing code a migration window before subsequent issues (#2316, #2317, #2321, #2323) plug additional rules into the framework and #2322 eventually flips strict-any to the default.
+The **default `any` semantics** as of v0.0.30 (#2322): direct arithmetic and ordering comparisons on `any` are rejected, and implicit unwrap from `any` to a concrete type is rejected at every Path 9 site (variable declaration, named-fn arg, lambda arg, `Ok` / `Err` / `Some` slot). Equality (`==`, `!=`) and explicit `any` boundaries (`v: any = ...`, FFI returns, `from ry.json import load`) remain valid.
 
-Activation:
+The rule catalog is namespaced under `[strict-any/<rule>]` in diagnostics — the prefix is retained as the rule-group identifier even though the semantics are no longer opt-in.
 
-- `RY_STRICT_ANY=1` environment variable (inherited by `ry test` subprocesses), or
-- `--strict-any` CLI flag (which `setenv`-s the same variable so subprocess inheritance is automatic).
+- **`any-arithmetic`** — direct binary `+`/`-`/`*`/`/`/`%`/`//`/`**` and unary `-`, plus ordering comparisons `<`/`<=`/`>`/`>=` on an `any`-typed operand are rejected. Equality (`==`, `!=`) is intentionally permitted: `__ry_any_eq` returns 0 on type mismatch (safe), whereas ordering would trap. Fix: annotate the operand type or use `asType[T](...)` (#2315) to recover a concrete value first.
+- **`any-implicit-unwrap`** — assigning, passing, or wrapping an `any` value into a concrete-typed slot is rejected. Fix: `case asType[T](v): Ok(x): ...` narrowing before the boundary.
 
-Diagnostics produced by the mode are tagged `[strict-any/<rule>]` in the message so users can grep for them and follow-up issues can extend the rule catalog without changing the diagnostic shape. Currently shipped rules:
-
-- **`any-arithmetic`** — direct binary `+`/`-`/`*`/`/`/`%`/`//`/`**` and unary `-` on an `any`-typed operand is rejected. Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) are still permitted because they always yield a concrete `bool`. The fix is to annotate the operand type or use `asType[T](...)` (#2315) to recover a concrete value before the operation.
-
-See [Strict-any mode reference](strict-any.md) for the full rule catalog and migration guidance.
+See [Strict-any mode reference](strict-any.md) for the full catalog and migration cookbook.

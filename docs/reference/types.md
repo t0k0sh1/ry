@@ -960,17 +960,17 @@ x = "hello"    # now holds str
 x = true       # now holds bool
 ```
 
-### Arithmetic Operations
+### Arithmetic and Ordering Operations
 
-> **Deprecated (#2316)**: Direct arithmetic operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) on `any` values are deprecated and emit a compile-time warning on stderr. They continue to work during the deprecation window. Use [`asType[T]`](#explicit-any-conversion-astype--istype) to narrow before operating:
+> **Error (since v0.0.30, #2322)**: Direct arithmetic operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) and ordering comparisons (`<`, `<=`, `>`, `>=`) on `any` values are rejected by the `[strict-any/any-arithmetic]` rule. Use [`asType[T]`](#explicit-any-conversion-astype--istype) to narrow before operating:
 >
 > ```ry
 > x: any = 10
 > y: any = 3
-> # Deprecated: direct arithmetic on any
+> # Rejected: direct arithmetic on any
 > # z: any = x + y
 >
-> # Preferred: narrow first
+> # Required: narrow each operand first
 > case asType[int](x):
 >     Ok(xi):
 >         case asType[int](y):
@@ -982,63 +982,14 @@ x = true       # now holds bool
 >     Err(e):
 >         print(e.message)
 > ```
->
-> The warning is per-operator, deduplicated, and one-time per compilation. Strict-mode escalation to a hard error is planned for #2322.
 
-When both operands are `any`, arithmetic operations dispatch at runtime based on the actual types:
-
-| Operation | Types | Result |
-|-----------|-------|--------|
-| `+` | int + int | int |
-| `+` | float + float | float |
-| `+` | int + float | float |
-| `+` | str + str | str (concatenation) |
-| `-` | numeric | int or float |
-| `*` | numeric | int or float |
-| `*` | str * int / int * str | str (repetition) |
-| `/` | numeric | float (always) |
-| `//` | int // int | int |
-| `//` | with float | float |
-| `%` | numeric | int or float |
-| `**` | numeric | float (always) |
-| unary `-` | int | int |
-| unary `-` | float | float |
-
-When one operand is `any` and the other is a concrete type, the concrete value is automatically wrapped before the operation.
-
-```ry
-x: any = 10
-y: any = x + 20    # 20 is auto-wrapped; result is any(int) = 30
-```
-
-Incompatible type combinations (e.g., `str - int`) cause a **runtime error**.
-
-### Comparison Operations
-
-`==` and `!=` on `any` are **retained** and do not emit a deprecation warning. The runtime returns `false` on type mismatch (different tags) rather than trapping, so dynamic equality is safe. For collections held in `any`, equality reduces to pointer identity — see [Element-Type Metadata is Erased](#element-type-metadata-is-erased) for the rationale.
-
-> **Deprecated (#2316)**: Ordering comparisons (`<`, `<=`, `>`, `>=`) on `any` values are deprecated and emit a compile-time warning on stderr. They trap at runtime on type mismatch (e.g., `int < str`). Use [`asType[T]`](#explicit-any-conversion-astype--istype) to narrow before comparing:
->
-> ```ry
-> x: any = 3
-> y: any = 4
-> # Deprecated: direct ordering on any
-> # print(x < y)
->
-> # Preferred: narrow first
-> case asType[int](x):
->     Ok(xi):
->         case asType[int](y):
->             Ok(yi):
->                 print(xi < yi)
->             Err(e): print(e.message)
->     Err(e): print(e.message)
-> ```
+Equality (`==`, `!=`) on `any` is **retained** and does not require narrowing. `__ry_any_eq` returns `false` on type mismatch rather than trapping, so dynamic equality is safe. For collections held in `any`, equality reduces to pointer identity — see [Element-Type Metadata is Erased](#element-type-metadata-is-erased) for the rationale.
 
 | Operation | Behavior |
 |-----------|----------|
 | `==`, `!=` | Retained. Same-type compare; int/float mixing allowed; type-mismatch returns `false` |
-| `<`, `<=`, `>`, `>=` | Deprecated (warned). Numeric (int/float mixing allowed) and string (lexicographic); type-mismatch traps at runtime |
+| `<`, `<=`, `>`, `>=` | Rejected by `[strict-any/any-arithmetic]`. Narrow with `asType[T]` first |
+| `+` `-` `*` `/` `//` `%` `**` unary `-` | Rejected by `[strict-any/any-arithmetic]`. Narrow with `asType[T]` first |
 
 ```ry
 x: any = 3
@@ -1062,19 +1013,24 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 
 ### Passing any to Typed Functions
 
-An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
+> **Error (since v0.0.30, #2322)**: Passing an `any` value to a parameter with a concrete type triggers the `[strict-any/any-implicit-unwrap]` rule (Path 9b). Narrow with `asType[T]` first.
 
 ```ry
 fn addOne(x: int) -> int:
     return x + 1
 
 v: any = 42
-result = addOne(v)   # any(int) is unwrapped to int; result is 43
+# Rejected:
+# result = addOne(v)
+# Required:
+case asType[int](v):
+    Ok(n): print(addOne(n))
+    Err(e): print(e.message)
 ```
 
 ### Untyped Parameters (Deprecated)
 
-> **Deprecated (#2317, #2323)**: Function and lambda parameters without a type annotation default to `any` and emit a compile-time warning on stderr. They continue to work during the deprecation window. Add a concrete type, a union, or — once available — a generic type parameter. For an intentional type-erasure receiver, write `: any` **explicitly** (no warning is emitted for the explicit form):
+> **Deprecated (#2317, #2323)**: Function and lambda parameters without a type annotation default to `any` and emit a compile-time warning. Add a concrete type, a union, or — once available — a generic type parameter. For an intentional type-erasure receiver, write `: any` **explicitly** (no warning is emitted for the explicit form):
 >
 > ```ry
 > # Deprecated: implicit any from omitted annotation
@@ -1093,11 +1049,11 @@ result = addOne(v)   # any(int) is unwrapped to int; result is 43
 > g = (x: any) -> bool => true
 > ```
 >
-> Warnings are gated by `shouldEmitAnyLintAt` so stdlib and cross-package imports stay quiet — the importer cannot act on third-party code. Bare-form single-param lambdas (`x => expr`) have no syntactic slot for an annotation; convert to paren form (`(x: T) => expr`) to silence the warning. Strict-mode escalation to a hard error is a future change tracked outside this issue.
+> Warnings are gated by `shouldEmitAnyLintAt` so stdlib and cross-package imports stay quiet — the importer cannot act on third-party code. Bare-form single-param lambdas (`x => expr`) have no syntactic slot for an annotation; convert to paren form (`(x: T) => expr`) to silence the warning. Once an unannotated parameter is reached by arithmetic / unwrap inside the body, the `[strict-any/any-arithmetic]` and `[strict-any/any-implicit-unwrap]` rules error out — the deprecation warning is the lead indicator that the body will not compile as-is.
 
 ### Explicit any conversion (`asType` / `isType`)
 
-Implicit unwrap (`x: T = anyVal`) panics with `_Exit(1)` on tag mismatch — acceptable when the `any` value is produced in the same scope, fatal for externally-parsed data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.). Use `asType[T]` and `isType[T]` to recover concrete types safely:
+Implicit unwrap (`x: T = anyVal`) is rejected by the `[strict-any/any-implicit-unwrap]` rule as of v0.0.30 (#2322). `asType[T]` and `isType[T]` are the canonical recovery API for both same-scope and externally-parsed data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.):
 
 ```ry
 @public

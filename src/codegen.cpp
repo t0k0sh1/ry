@@ -10,14 +10,12 @@
 namespace ry {
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
-                 int coverage_file_id_offset, bool outline_mode,
-                 bool strict_any_mode)
+                 int coverage_file_id_offset, bool outline_mode)
     : ctx_(std::make_unique<llvm::LLVMContext>()),
       mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
       builder_(*ctx_),
       test_mode_(test_mode),
       outline_mode_(outline_mode),
-      strict_any_mode_(strict_any_mode),
       coverage_mode_(coverage_mode),
       coverage_file_id_offset_(coverage_file_id_offset),
       sm_(sm) {

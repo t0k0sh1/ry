@@ -52,16 +52,14 @@ fn identity(x: any) -> any:    # Parameter type any (explicit)
 
 When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime.
 
-> **Deprecated (#2317, #2323)**: Omitting a parameter type annotation emits a compile-time warning. Write `: any` explicitly to suppress it, or prefer a concrete type. See [Untyped Parameters (Deprecated)](types.md#untyped-parameters-deprecated) for migration guidance.
+> **Deprecated (#2317, #2323)**: Omitting a parameter type annotation emits a compile-time warning. Write `: any` explicitly to suppress it, or prefer a concrete type. See [Untyped Parameters (Deprecated)](types.md#untyped-parameters-deprecated) for migration guidance. As of v0.0.30 (#2322) the body of an unannotated function can no longer perform arithmetic / ordering or implicit unwrap on the implicit-any parameter — those operations are rejected by the `[strict-any/<rule>]` rule set. Add an explicit type annotation to make the parameter usable.
 
 ```ry
 # Deprecated: implicit any from omitted annotation
 fn add(a, b):
     return a + b
-
-add(1, 2)              # 3 (int + int)
-add("hello", " world") # "hello world" (str + str)
-add(1, 2.0)            # 3.0 (int + float)
+# `a + b` is rejected by [strict-any/any-arithmetic] — add `: any` or a
+# concrete type to make the body compile.
 ```
 
 You can also use `any` explicitly in type annotations (no warning):

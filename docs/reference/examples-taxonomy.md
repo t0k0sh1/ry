@@ -33,7 +33,7 @@ canonical カテゴリのファイルは以下をすべて満たす:
 1. ビルドした `<build-dir>/ry <file>` がゼロ exit code で完結する (`<build-dir>` は preset により `build/` または `build-rust/`、`AGENTS.md` の "Build And Test" 表を参照)。
 2. `fn` の引数は明示型注釈を持つ。戻り値および lambda 引数の注釈省略は許容する (`docs/architecture/implicit-any-paths.md` の Path 1/2/3 の keep / deprecate 区分に従う)。LoRA training data としては戻り値の明示注釈を**推奨**する。
 3. import は canonical 形式のみ — `from ry.<module> import …` または `import ry.<module>` (`changelog.d/2351-reject-legacy-stdlib-imports.md` で legacy 形式が hard error 化済み)。
-4. `--strict-any` を付けてもエラーなくビルドできる。`any` の使用は dynamic boundary に限定する (次節)。
+4. strict-any default (v0.0.30 以降の compiler 既定) でビルドできる。`any` の使用は dynamic boundary に限定する (次節)。
 5. 意図的な panic / abort / 未網羅 `case` 起因のフォールスルー失敗を含まない。
 6. ライブラリ外部依存なし — `from ry.*` の stdlib のみで完結する。
 

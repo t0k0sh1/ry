@@ -235,9 +235,11 @@ TEST_F(AnyUsageWarningsTest, Pattern3ParenLambdaMultiParamFires) {
 TEST_F(AnyUsageWarningsTest, Pattern3BareLambdaUnannotatedFires) {
     // Bare-form lambdas (`x => expr` without parens) also fire — the syntax has
     // no slot for a type annotation, so users must switch to the paren form.
+    // The body returns the parameter unchanged so the Pattern 3 lint fires
+    // without colliding with the `any-arithmetic` rule (#2322).
     auto p = writeTmp("p3_bare_lambda.ry",
-        "inc = x => x + 1\n"
-        "print(inc(5))\n");
+        "id = x => x\n"
+        "print(id(5))\n");
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.err.find("warning: parameter 'x' of lambda has no type annotation"),
@@ -278,151 +280,9 @@ TEST_F(AnyUsageWarningsTest, Pattern3AnnotatedParamSuppressed) {
         << "stderr was: " << r.err;
 }
 
-// ---------------------------------------------------------------------------
-// Pattern 4: implicit any → concrete unwrap (variable declaration)
-// ---------------------------------------------------------------------------
-
-TEST_F(AnyUsageWarningsTest, Pattern4AnyToConcreteFiresWarning) {
-    auto p = writeTmp("p4_fire.ry",
-        "fn getAny() -> any:\n"
-        "    return 42\n"
-        "v: int = getAny()\n"
-        "print(v)\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: assigning 'any' to variable 'v' of type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-TEST_F(AnyUsageWarningsTest, Pattern4ConcreteToConcreteSuppressed) {
-    auto p = writeTmp("p4_concrete.ry",
-        "fn getInt() -> int:\n"
-        "    return 42\n"
-        "v: int = getInt()\n"
-        "print(v)\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_EQ(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-// ---------------------------------------------------------------------------
-// Pattern 4b: implicit any → concrete unwrap (named function-call argument)
-// #2321 extends the Pattern 4 lint to the three previously-silent sub-cases
-// listed under Path 9 of docs/architecture/implicit-any-paths.md.
-// ---------------------------------------------------------------------------
-
-TEST_F(AnyUsageWarningsTest, Pattern4bCallArgFiresWarning) {
-    auto p = writeTmp("p4b_fire.ry",
-        "fn f(n: int) -> int:\n"
-        "    return n + 1\n"
-        "v: any = 1\n"
-        "print(f(v))\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: passing 'any' value to parameter 'n' of type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-// The default-value branch in `src/codegen_call_user.cpp` is a separate
-// emit site from the explicit-arg branch above, with a distinct
-// "default value" message phrasing. Pin the compat warning here so a
-// regression that stops emitting the default-value warning (while still
-// unwrapping at runtime) cannot pass — the matching strict-mode reject
-// pair lives in `tests/test_strict_any.cpp`.
-TEST_F(AnyUsageWarningsTest, Pattern4bDefaultValueFiresWarning) {
-    auto p = writeTmp("p4b_default_fire.ry",
-        "fn getAny() -> any:\n"
-        "    return 42\n"
-        "fn f(x: int = getAny()) -> int:\n"
-        "    return x + 1\n"
-        "print(f())\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: passing 'any' default value to parameter 'x' of type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-TEST_F(AnyUsageWarningsTest, Pattern4cLambdaCallArgFiresWarning) {
-    auto p = writeTmp("p4c_fire.ry",
-        "g = (n: int) -> int => n + 1\n"
-        "v: any = 1\n"
-        "print(g(v))\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: passing 'any' value to lambda parameter of type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-TEST_F(AnyUsageWarningsTest, Pattern4dOkSlotFiresWarning) {
-    auto p = writeTmp("p4d_ok_fire.ry",
-        "fn f(v: any) -> Result<int, str>:\n"
-        "    return Ok(v)\n"
-        "case f(1):\n"
-        "    Ok(n): print(n)\n"
-        "    Err(e): print(e)\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: wrapping 'any' value as Ok with expected payload type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-TEST_F(AnyUsageWarningsTest, Pattern4dErrSlotFiresWarning) {
-    auto p = writeTmp("p4d_err_fire.ry",
-        "fn f(v: any) -> Result<int, str>:\n"
-        "    return Err(v)\n"
-        "case f(\"oops\"):\n"
-        "    Ok(n): print(n)\n"
-        "    Err(e): print(e)\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: wrapping 'any' value as Err with expected payload type 'str'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[str]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
-
-TEST_F(AnyUsageWarningsTest, Pattern4dSomeSlotFiresWarning) {
-    auto p = writeTmp("p4d_some_fire.ry",
-        "fn f(v: any) -> Option<int>:\n"
-        "    return Some(v)\n"
-        "case f(1):\n"
-        "    Some(n): print(n)\n"
-        "    None: print(\"none\")\n");
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0);
-    EXPECT_NE(r.err.find("warning: wrapping 'any' value as Some with expected payload type 'int'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
-        << "stderr was: " << r.err;
-}
+// Pattern 4 (implicit any → concrete unwrap across all four Path 9 sub-cases)
+// was promoted from a warning to a hard error in #2322; coverage now lives
+// entirely in `tests/test_strict_any.cpp` (AnyImplicitUnwrap*RejectedByDefault).
 
 // ---------------------------------------------------------------------------
 // Cross-pattern interactions
@@ -497,24 +357,20 @@ TEST_F(AnyUsageWarningsTest, StdlibImportsDoNotWarn) {
 
 TEST_F(AnyUsageWarningsTest, IntraPackageImportWarnsOnBodyLevelPatterns) {
     // Pin the file_id gate for AssignStmt sites inside an imported body
-    // (Patterns 1 / 4). The imported file's stmts share file_id with the
+    // (Pattern 1). The imported file's stmts share file_id with the
     // enclosing fn, so suppression at the FnStmt level extends to nested
     // var decls — but only because current_loc_ updates via emitStmt
     // (AssignStmt&). Lock in that intra-package code also warns body-level.
     writeTmp("util_body.ry",
         "fn run(x: int) -> int:\n"
         "    erased: any = x\n"           // Pattern 1 in user's own lib
-        "    recovered: int = erased\n"  // Pattern 4 in user's own lib
-        "    return recovered\n");
+        "    return x\n");
     auto p = writeTmp("main_body.ry",
         "from util_body import run\n"
         "print(run(7))\n");
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.err.find("variable 'erased' is annotated 'any'"),
-              std::string::npos)
-        << "stderr was: " << r.err;
-    EXPECT_NE(r.err.find("assigning 'any' to variable 'recovered' of type 'int'"),
               std::string::npos)
         << "stderr was: " << r.err;
 }

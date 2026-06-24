@@ -28,10 +28,7 @@ void printDocsHelp();
 // Parse --env= flag or RY_ENV env var. Returns true if skip_global_lib should be set.
 bool parseRyEnv(int &argc, char **&argv);
 
-// Parse --trace / --trace-out= / --emit-llvm-ir / --strict-any flags.
-// --strict-any does not surface as an out-param; it setenv-s RY_STRICT_ANY
-// so subprocesses spawned by `ry test` inherit it (single propagation
-// channel — see src/jit/jit_runner.cpp).
+// Parse --trace / --trace-out= / --emit-llvm-ir flags.
 void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string &trace_out,
                       bool &emit_llvm_ir);
 
