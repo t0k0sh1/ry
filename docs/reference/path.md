@@ -1,6 +1,6 @@
 # Path Function Reference
 
-File path operations. All functions require explicit import from `path`.
+File path operations. All functions require explicit import from `ry.path`.
 
 ```ry
 from ry.path import join, basename, dirname, ext, resolve, isAbsolute

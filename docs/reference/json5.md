@@ -1,6 +1,6 @@
 # JSON5 Function Reference
 
-JSON5 parsing and serialization. All functions require explicit import from `json5`.
+JSON5 parsing and serialization. All functions require explicit import from `ry.json5`.
 
 ```ry
 from ry.json5 import load, stringify, stringifySafe, dump

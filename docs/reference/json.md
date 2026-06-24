@@ -1,6 +1,6 @@
 # JSON Function Reference
 
-JSON parsing and serialization. All functions require explicit import from `json`.
+JSON parsing and serialization. All functions require explicit import from `ry.json`.
 
 ```ry
 from ry.json import load, stringify, stringifySafe, dump

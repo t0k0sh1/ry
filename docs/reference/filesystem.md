@@ -1,6 +1,6 @@
 # Filesystem Function Reference
 
-File and directory manipulation. All functions require explicit import from `filesystem`.
+File and directory manipulation. All functions require explicit import from `ry.filesystem`.
 
 The `filesystem` module handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` module handles reading and writing file contents.
 

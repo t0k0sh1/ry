@@ -1,6 +1,6 @@
 # Base64 Function Reference
 
-Base64 encoding and decoding. All functions require explicit import from `base64`.
+Base64 encoding and decoding. All functions require explicit import from `ry.base64`.
 
 ```ry
 from ry.base64 import encode, decode, encodeUrlSafe, decodeUrlSafe

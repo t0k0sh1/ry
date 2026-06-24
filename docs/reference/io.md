@@ -1,6 +1,6 @@
 # I/O Function Reference
 
-Standard I/O and file operations. All functions require explicit import from `io`.
+Standard I/O and file operations. All functions require explicit import from `ry.io`.
 
 ```ry
 from ry.io import readText, writeText, exists

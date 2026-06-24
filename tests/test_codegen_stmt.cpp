@@ -2467,6 +2467,22 @@ TEST_F(ImportTest, LegacyUserDefinedModuleDoesNotTrigger) {
         "5\n");
 }
 
+TEST_F(ImportTest, LegacyStdNonPublicFormStillResolves) {
+    // PR #2357 review: `from std.<X> import …` for non-public X (e.g.
+    // `runtime_internal`) must NOT be rejected — there is no canonical
+    // `ry.runtime_internal` to suggest, so triggering the legacy hard error
+    // would give the user contradictory guidance. tryLegacyToCanonical
+    // returns nullopt for these and resolution proceeds normally.
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from std.runtime_internal import arcLiveCount\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
 TEST_F(CodeGenTest, TypeAlias) {
     std::string src =
         "type MyInt = int\n"
