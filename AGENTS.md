@@ -72,6 +72,7 @@ cmake --build <build-dir>
 - tree-sitter: `editor/tree-sitter/README.md` + `.claude/rules/tree-sitter-grammar-editing.md`; rebuild `ry.so`.
 - CI images: `/ci-image-workflow`.
 - Test classification: `docs/reference/test-taxonomy.md`.
+- Examples classification: `docs/reference/examples-taxonomy.md`.
 
 ## Completion
 
