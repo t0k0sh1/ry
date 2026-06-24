@@ -1,0 +1,22 @@
+# enumerate と zip でindexペアや要素ペアを得る
+xs = [10, 20, 30]
+
+# enumerate(xs) は (index, value) のtuple Listを返す
+pairs = enumerate(xs)
+print(pairs)
+
+# 通常のforループでdestructuringして使う
+for i, x in enumerate(xs):
+  print(i, x)
+
+# zip(a, b) は同じindexの要素をペアにする
+ys = ["a", "b", "c"]
+combined = zip(xs, ys)
+print(combined)
+
+for n, label in zip(xs, ys):
+  print(label, n)
+
+# 長さが違う場合、短い方に合わせて切り詰められる
+print(zip([1, 2, 3], [10, 20]))
+print(zip([1, 2], [10, 20, 30, 40]))

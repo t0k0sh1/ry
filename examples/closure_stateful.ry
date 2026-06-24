@@ -1,0 +1,31 @@
+# パラメータをキャプチャするclosure、関数合成、カリー化を示す
+# 兄弟スコープと相互再帰は examples/nested_functions.ry を参照
+
+# 2つのパラメータをキャプチャするclosure: a*x + b
+fn makeLinear(a: int, b: int) -> fn(int) -> int:
+  return (x: int) => a * x + b
+
+threeXPlusTen = makeLinear(3, 10)
+print(threeXPlusTen(5))
+
+# 関数合成: 2つの fn(int) -> int を1つの新しいclosureに
+fn compose(f: fn(int) -> int, g: fn(int) -> int) -> fn(int) -> int:
+  return (x: int) => f(g(x))
+
+double = (x: int) => x * 2
+inc = (x: int) => x + 1
+doubleThenInc = compose(inc, double)
+print(doubleThenInc(5))
+
+# closureを返すclosureを返す: 各レベルでパラメータをcaptureする
+fn outer(a: int) -> fn(int) -> fn(int) -> int:
+  fn middle(b: int) -> fn(int) -> int:
+    fn inner(c: int) -> int:
+      return a + b + c
+    return inner
+  return middle
+
+# 1段ずつ呼び出すことで各レベルのcaptureが解決される
+f = outer(10)
+g = f(20)
+print(g(30))

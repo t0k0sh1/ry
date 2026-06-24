@@ -1,0 +1,23 @@
+# selective import (from ry.<module> import <name>) のcanonical形式を示す
+# preludeの暗黙利用と明示importの両方を扱う
+
+# モジュールから特定の名前だけを取り込む
+from ry.math import PI, sqrt
+from ry.base64 import encode
+
+print(sqrt(2.0))
+print(PI)
+print(encode("hi"))
+
+# 同じモジュールの別のシンボルを別行のimportで取り込んでもよい
+from ry.math import abs, round
+
+print(abs(-3))
+print(round(3.7))
+
+# prelude (ry.lang) はimport不要で利用可能。明示的にimportもできる
+from ry.lang import map, filter
+
+nums: List<int> = [1, 2, 3, 4, 5]
+print(map(nums, (n: int) => n * 10))
+print(filter(nums, (n: int) => n % 2 == 0))

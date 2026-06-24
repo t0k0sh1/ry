@@ -1,0 +1,22 @@
+# 関連データを持たないenumのバリアント、等値性、caseマッチを示す
+enum Color:
+  Red
+  Green
+  Blue
+
+# 同じバリアントは等しく、異なるバリアントは等しくない
+print(Color::Red == Color::Red)
+print(Color::Red != Color::Green)
+
+# str()はバリアント名を返す
+print(str(Color::Red))
+print(str(Color::Blue))
+
+# caseでバリアントを分岐する
+fn name(c: Color) -> str:
+  return case c:
+    Color::Red : "red"
+    Color::Green : "green"
+    Color::Blue : "blue"
+
+print(name(Color::Blue))

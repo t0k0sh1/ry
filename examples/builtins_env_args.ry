@@ -1,0 +1,22 @@
+# プロセス環境変数とCLI引数の取得を示す
+
+# env(key) は環境変数を Option<str> で返す。未設定ならNone
+case env("PATH"):
+  Some(path):
+
+    # 値が長いので先頭1要素だけ表示
+    parts = split(path, ":")
+    print(parts[0])
+  None:
+    print("PATH not set")
+
+# 未設定の変数はNone
+print(env("RY_EXAMPLES_NONEXISTENT_XYZ"))
+
+# 2引数版 env(key, default) は未設定時にdefaultを直接返す
+print(env("RY_EXAMPLES_NONEXISTENT_XYZ", "fallback"))
+
+# args() はコマンドライン引数のList<str>を返す
+# `ry run examples/builtins_env_args.ry` のように追加引数なしで実行すると空Listになる
+for arg in args():
+  print(arg)

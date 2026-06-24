@@ -1,0 +1,49 @@
+# モジュールレベル@constと、それを関数から参照する例 (issue #817)
+@const
+PI: float = 3.14
+
+@const
+MAX_RETRIES: int = 5
+
+@const
+GREETING: str = "hello"
+
+@const
+PRIMES: List<int> = [2, 3, 5, 7, 11]
+
+@const
+SCORES: Map<str, int> = {"alice": 90, "bob": 80}
+
+record Point:
+  x: int
+  y: int
+
+@const
+ORIGIN: Point = Point(0, 0)
+
+# 関数からはこれらの定数を直接参照できる
+fn circleArea(radius: float) -> float:
+  return PI * radius * radius
+
+fn isValidRetry(attempt: int) -> bool:
+  return attempt > 0 and attempt <= MAX_RETRIES
+
+fn greetName(name: str) -> str:
+  return GREETING + ", " + name
+
+fn primeCount() -> int:
+  return len(PRIMES)
+
+fn aliceScore() -> int:
+  return SCORES["alice"]
+
+fn distanceFromOrigin(p: Point) -> int:
+  return p.x - ORIGIN.x + (p.y - ORIGIN.y)
+
+print(circleArea(2.0))
+print(isValidRetry(3))
+print(isValidRetry(10))
+print(greetName("Ry"))
+print(primeCount())
+print(aliceScore())
+print(distanceFromOrigin(Point(3, 4)))

@@ -1,0 +1,41 @@
+# type aliasで型に意味のある名前を与え、union aliasや入れ子aliasも示す
+
+# 基本: プリミティブのエイリアス
+type Meters = float
+
+distance: Meters = 3.14
+print(distance)
+
+# 2つのプリミティブのunion alias
+type Pair = int | str
+
+a: Pair = 42
+b: Pair = "hello"
+print(str(a))
+print(str(b))
+
+# 入れ子aliasは平坦化される
+type Inner = int | str
+
+type Outer = Inner | bool
+
+v1: Outer = 7
+v2: Outer = "ok"
+v3: Outer = true
+print(str(v1), str(v2), str(v3))
+
+# union aliasを関数の引数と戻り値で使う
+type Tagged = int | str
+
+fn show(v: Tagged) -> str:
+  return str(v)
+
+fn choose(b: bool) -> Tagged:
+  if b:
+    return 42
+  return "zero"
+
+print(show(7))
+print(show("abc"))
+print(show(choose(true)))
+print(show(choose(false)))

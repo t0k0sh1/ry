@@ -1,0 +1,48 @@
+# asType[T] / isType[T] による any 値の安全な絞り込みを示す
+# JSON の load[Map<str, any>] 等から得た any 値を具体型に narrow する標準パターン
+
+# isType[T] は any が型 T を保持していれば true
+v: any = 42
+print(isType[int](v))
+print(isType[str](v))
+print(isType[bool](v))
+
+# asType[T] はチェック付きのcast。型が合えば Ok、合わなければ Err
+case asType[int](v):
+  Ok(n):
+    print(n)
+  Err(e):
+    print(e.message)
+
+w: any = "hello"
+case asType[int](w):
+  Ok(_):
+    print("unexpected ok")
+  Err(e):
+    print(e.message)
+
+# 異なる any 値に対して順にcastを試みるディスパッチ
+fn describe(value: any) -> str:
+  case asType[int](value):
+    Ok(n):
+      return "int: " + str(n)
+    Err(_):
+      0
+  case asType[str](value):
+    Ok(s):
+      return "str: " + s
+    Err(_):
+      0
+  case asType[bool](value):
+    Ok(b):
+      return "bool: " + str(b)
+    Err(_):
+      0
+  return "unknown"
+
+asInt: any = 7
+asStr: any = "ry"
+asBool: any = true
+print(describe(asInt))
+print(describe(asStr))
+print(describe(asBool))

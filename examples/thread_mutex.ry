@@ -1,0 +1,41 @@
+# Lock (mutex) と RWLock による排他制御を示す
+from ry.thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, rwlockNew, rwlockReadLock, rwlockWriteLock, rwlockUnlock, atomicIntNew, atomicIntLoad, atomicIntAdd
+
+# Mutex: 1つのthreadだけがcritical sectionに入れる
+lock = lockNew()
+counter = atomicIntNew(0)
+
+t1 = threadSpawn(():
+  for i in range(5):
+    lockAcquire(lock)
+    atomicIntAdd(counter, 1)
+    lockRelease(lock)
+)
+t2 = threadSpawn(():
+  for i in range(5):
+    lockAcquire(lock)
+    atomicIntAdd(counter, 1)
+    lockRelease(lock)
+)
+
+threadJoin(t1)
+threadJoin(t2)
+print(atomicIntLoad(counter))
+
+# RWLock: 複数reader同時、writerは排他
+rw = rwlockNew()
+readCount = atomicIntNew(0)
+
+r1 = threadSpawn(():
+  rwlockReadLock(rw)
+  atomicIntAdd(readCount, 1)
+  rwlockUnlock(rw)
+)
+r2 = threadSpawn(():
+  rwlockReadLock(rw)
+  atomicIntAdd(readCount, 1)
+  rwlockUnlock(rw)
+)
+threadJoin(r1)
+threadJoin(r2)
+print(atomicIntLoad(readCount))

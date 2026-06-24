@@ -1,0 +1,26 @@
+# URL-safe base64 (encode/decodeUrlSafe) と標準base64との違いを示す
+from ry.base64 import encode, encodeUrlSafe, decode, decodeUrlSafe
+
+# 標準base64は + と / を使うが、URL-safe版は - と _ を使う
+text = "?>>"
+std = encode(text)
+urlSafe = encodeUrlSafe(text)
+print(std)
+print(urlSafe)
+
+# URL-safe版は = padding も省略する
+print(encodeUrlSafe("Hello, World!"))
+
+# 復号は対応する関数で行う (標準は decode、URL-safeは decodeUrlSafe)
+case decodeUrlSafe(urlSafe):
+  Ok(decoded):
+    print(decoded)
+  Err(e):
+    print(e.message)
+
+# 不正な文字列はErrを返す
+case decodeUrlSafe("!!!"):
+  Ok(_):
+    print("unexpected ok")
+  Err(e):
+    print(e.message)

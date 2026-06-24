@@ -1,0 +1,46 @@
+# Semaphoreで同時実行数を制限、Barrierでthreadを同期させる
+from ry.thread import threadSpawn, threadJoin, semaphoreNew, semaphoreAcquire, semaphoreRelease, barrierNew, barrierWait, atomicIntNew, atomicIntLoad, atomicIntAdd
+
+# Semaphore(N): 同時にN個のthreadだけがcritical sectionへ入れる
+# ここではN=2で、2つの thread が permit を取得して進める
+case semaphoreNew(2):
+  Ok(sem):
+    counter = atomicIntNew(0)
+
+    t1 = threadSpawn(():
+      semaphoreAcquire(sem)
+      atomicIntAdd(counter, 1)
+      semaphoreRelease(sem)
+    )
+    t2 = threadSpawn(():
+      semaphoreAcquire(sem)
+      atomicIntAdd(counter, 1)
+      semaphoreRelease(sem)
+    )
+
+    threadJoin(t1)
+    threadJoin(t2)
+    print(atomicIntLoad(counter))
+  Err(e):
+    print(e.message)
+
+# Barrier(N): N個の thread が barrierWait に到達するまで全員待つ
+# 厳密にN個のthreadを起動・joinしなければdeadlockする
+case barrierNew(2):
+  Ok(barrier):
+    reached = atomicIntNew(0)
+
+    b1 = threadSpawn(():
+      atomicIntAdd(reached, 1)
+      barrierWait(barrier)
+    )
+    b2 = threadSpawn(():
+      atomicIntAdd(reached, 1)
+      barrierWait(barrier)
+    )
+
+    threadJoin(b1)
+    threadJoin(b2)
+    print(atomicIntLoad(reached))
+  Err(e):
+    print(e.message)

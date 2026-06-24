@@ -1,0 +1,48 @@
+# caseを値を返す式として使う、OR-pattern、文字列リテラルマッチ、ガード節を示す
+
+# 整数リテラルとwildcardによる式形式
+x = 2
+label = case x:
+  1 : "one"
+  2 : "two"
+  _ : "other"
+
+print(label)
+
+# OR-pattern: 1 | 2 | 3 などをまとめて分岐
+fn bucket(n: int) -> str:
+  return case n:
+    1 | 2 | 3 : "small"
+    4 | 5 | 6 : "medium"
+    _ : "large"
+
+print(bucket(3))
+print(bucket(5))
+
+# ガード付き分岐 — 評価順に一致する最初のアームが採用される
+score = 85
+grade = case score:
+  n if n >= 90 : "A"
+  n if n >= 80 : "B"
+  n if n >= 70 : "C"
+  _ : "F"
+
+print(grade)
+
+# 文字列リテラルにマッチ
+s = "hello"
+kind = case s:
+  "hello" : "greeting"
+  "bye" : "farewell"
+  _ : "unknown"
+
+print(kind)
+
+# 負の整数リテラルもマッチ可能
+y = -1
+sign = case y:
+  -1 : "minus one"
+  0 : "zero"
+  _ : "other"
+
+print(sign)

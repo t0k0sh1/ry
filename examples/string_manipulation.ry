@@ -1,0 +1,24 @@
+# 文字列のcase変換、trim、split/join、replace、prefix/suffix判定を示す
+text = "  Hello, Ry World  "
+
+# 前後の空白を除去 / 一方の端のみtrim
+print(trim(text))
+print(trimStart(text))
+print(trimEnd(text))
+
+# 大小変換
+print(toUpper("hello"))
+print(toLower("HELLO"))
+
+# 部分文字列の置換 (target → replacement)
+print(replace("aaabbb", "a", "X"))
+
+# 区切り文字でsplit、結合はjoin
+parts = split("one,two,three", ",")
+print(parts)
+print(join(parts, " | "))
+
+# 接頭辞・接尾辞判定 (ignoreCase付きversion)
+print(startsWith("hello world", "hello"))
+print(endsWith("hello world", "world"))
+print(startsWith("Hello", "hello", true))
