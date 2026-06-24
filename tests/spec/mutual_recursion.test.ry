@@ -1,6 +1,6 @@
 # --- Basic mutual recursion (isEven / isOdd) ---
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 fn isEven(n: int) -> bool:
   if n == 0:

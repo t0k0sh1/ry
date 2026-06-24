@@ -1,4 +1,4 @@
-from testing import it, describe, expect, each, property
+from ry.testing import it, describe, expect, each, property
 
 @describe("@each parameterized tests")
 fn eachParameterizedTests():

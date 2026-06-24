@@ -167,13 +167,13 @@ protected:
         // exe-adjacent share) を解決できる。RY_ENV=internal を runRy 内で setenv するため
         // 開発時は exe-adjacent share を使う。
         std::ofstream(tmpDir_ / "a.test.ry")
-            << "from testing import it, expect\n"
+            << "from ry.testing import it, expect\n"
             << "\n"
             << "@it(\"a passes\")\n"
             << "fn aPasses():\n"
             << "  expect(1).toEq(1)\n";
         std::ofstream(tmpDir_ / "b.test.ry")
-            << "from testing import it, expect\n"
+            << "from ry.testing import it, expect\n"
             << "\n"
             << "@it(\"b passes\")\n"
             << "fn bPasses():\n"

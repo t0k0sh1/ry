@@ -1,4 +1,4 @@
-from testing import it, describe, expect, mock, verify
+from ry.testing import it, describe, expect, mock, verify
 
 fn makeIntResult(ok: bool, v: int, msg: str) -> Result<int, Error>:
   if ok:

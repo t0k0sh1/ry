@@ -1,9 +1,9 @@
 # I/O Function Reference
 
-Standard I/O and file operations. All functions require explicit import from `io`.
+Standard I/O and file operations. All functions require explicit import from `ry.io`.
 
 ```ry
-from io import readText, writeText, exists
+from ry.io import readText, writeText, exists
 ```
 
 ## Function List
@@ -58,7 +58,7 @@ from io import readText, writeText, exists
 ### Reading and Writing Files
 
 ```ry
-from io import readText, writeText, appendText, exists, deleteFile
+from ry.io import readText, writeText, appendText, exists, deleteFile
 
 case writeText("hello.txt", "Hello, World!"):
     Ok(_):
@@ -82,7 +82,7 @@ case deleteFile("hello.txt"):
 ### File Handle API
 
 ```ry
-from io import open, readAll, readLine, writeText, close, deleteFile, lines
+from ry.io import open, readAll, readLine, writeText, close, deleteFile, lines
 
 # Write then read back via handle
 case open("/tmp/hello.txt", "w"):
@@ -134,7 +134,7 @@ deleteFile("/tmp/hello.txt")
 ### Byte Operations
 
 ```ry
-from io import toBytes, bytesToStr, writeBytes, readBytes
+from ry.io import toBytes, bytesToStr, writeBytes, readBytes
 
 bs = toBytes("ABC")
 print(len(bs))    # 3
@@ -157,7 +157,7 @@ case writeBytes("data.bin", bs):
 ### Reading from Standard Input
 
 ```ry
-from io import readLine
+from ry.io import readLine
 
 case readLine():
     Ok(opt):

@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 fn pickOne<T>(a: T) -> T:
     return a

@@ -1,8 +1,8 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
-from io import writeText, readText, exists
-from path import join
+from ry.filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
+from ry.io import writeText, readText, exists
+from ry.path import join
 
 @describe("mkdir / mkdirAll")
 fn mkdirMkdirallTests():

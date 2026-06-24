@@ -15,7 +15,7 @@
 These functions require explicit import:
 
 ```ry
-from http import listen, method, path, header, body, bodyBytes, query, queryAll, cookie, cookies, formField, formFile, formFields, response
+from ry.http import listen, method, path, header, body, bodyBytes, query, queryAll, cookie, cookies, formField, formFile, formFields, response
 ```
 
 ### Server
@@ -54,7 +54,7 @@ from http import listen, method, path, header, body, bodyBytes, query, queryAll,
 ### Basic HTTP Server
 
 ```ry
-from http import listen, method, path, header, body, response
+from ry.http import listen, method, path, header, body, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     m = method(req)
@@ -71,7 +71,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ### Non-blocking Server with `async fn`
 
 ```ry
-from http import listen, path, response
+from ry.http import listen, path, response
 
 async fn startServer(port: int) -> str:
     listen("127.0.0.1", port, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -89,7 +89,7 @@ t = startServer(8080)
 ### Server with Request Limit (`maxRequests`)
 
 ```ry
-from http import listen, path, response, httpGet, status, body
+from ry.http import listen, path, response, httpGet, status, body
 
 portHolder = [0]
 fn onPort(p: int) -> Unit:
@@ -117,7 +117,7 @@ result = blockOn(t)  # Server exits after 1 request; blockOn completes
 ### Reading Query Parameters
 
 ```ry
-from http import listen, path, query, queryAll, response
+from ry.http import listen, path, query, queryAll, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     p = path(req)
@@ -134,7 +134,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ### Reading Headers
 
 ```ry
-from http import listen, header, response
+from ry.http import listen, header, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     case header(req, "Authorization")?:
@@ -148,7 +148,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ### Handling Form Submissions
 
 ```ry
-from http import listen, formField, formFile, response
+from ry.http import listen, formField, formFile, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     case formField(req, "username")?:
@@ -167,7 +167,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ### Reading Cookies
 
 ```ry
-from http import listen, cookie, cookies, response
+from ry.http import listen, cookie, cookies, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     case cookie(req, "session_id")?:
@@ -300,7 +300,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 ### Client Usage Example
 
 ```ry
-from http import httpGet, httpPost, status, body, header
+from ry.http import httpGet, httpPost, status, body, header
 
 # Simple GET request
 case httpGet("http://example.com/api/data"):

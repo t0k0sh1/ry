@@ -1,7 +1,7 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from net import bind, listen, accept, connect, listenerPort
-from io import toBytes, bytesToStr
+from ry.net import bind, listen, accept, connect, listenerPort
+from ry.io import toBytes, bytesToStr
 
 @describe("HTTP Server API")
 fn httpServerApiTests():

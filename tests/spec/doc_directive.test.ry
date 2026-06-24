@@ -1,4 +1,4 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 # #1844: @doc directive — Markdown documentation metadata.
 # Verifies that @doc parses and compiles on every declaration kind in scope,

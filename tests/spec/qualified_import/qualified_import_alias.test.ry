@@ -1,7 +1,7 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-import math as m
-from math import PI
+import ry.math as m
+from ry.math import PI
 
 @describe("qualified import alias (#1724)")
 fn qualifiedImportAliasTests():

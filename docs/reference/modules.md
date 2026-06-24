@@ -9,7 +9,7 @@ Ry uses a module system to organize code. A **module** can be either a single `.
 | Selective import | `from <module> import <name>` | Binds the named symbol into the current file's scope |
 | Qualified import | `import <module>` | Binds the module itself; access members via `<module>.<name>` |
 
-The standard library is automatically imported into every program through the canonical [`ry.lang`](#canonical-module-paths) prelude. See the [canonical paths](#canonical-module-paths) section below for the recommended `ry.*` spelling and the legacy `std` / flat-import compatibility aliases.
+The standard library is automatically imported into every program through the canonical [`ry.lang`](#canonical-module-paths) prelude. See the [canonical paths](#canonical-module-paths) section below for the required `ry.*` spelling.
 
 ---
 
@@ -26,7 +26,7 @@ Imports all functions and types from the module.
 ### Selective Import
 
 ```ry
-from math import sqrt
+from ry.math import sqrt
 ```
 
 Imports only the specified definition.
@@ -34,7 +34,7 @@ Imports only the specified definition.
 ### Multiple Selective Import
 
 ```ry
-from math import sqrt, PI
+from ry.math import sqrt, PI
 ```
 
 Imports multiple definitions separated by commas.
@@ -42,7 +42,7 @@ Imports multiple definitions separated by commas.
 ### Symbol Alias
 
 ```ry
-from math import sqrt as squareRoot
+from ry.math import sqrt as squareRoot
 ```
 
 Each imported name may carry an optional `as <ident>` clause that binds the
@@ -50,7 +50,7 @@ symbol under a different local name. Aliases can be mixed with non-aliased
 names in a single statement:
 
 ```ry
-from math import sqrt as sr, PI, sin as s
+from ry.math import sqrt as sr, PI, sin as s
 ```
 
 Self-alias (`foo as foo`) is normalized to a plain import — the formatter
@@ -66,7 +66,7 @@ work as expected.
 ### Braced Selective Import
 
 ```ry
-from math import { PI, E }
+from ry.math import { PI, E }
 ```
 
 The selective import list may be wrapped in braces. Single-line and
@@ -74,7 +74,7 @@ multi-line forms are both accepted, with an optional trailing comma —
 useful for importing many symbols without losing readability:
 
 ```ry
-from math import {
+from ry.math import {
   PI,
   E,
 }
@@ -84,10 +84,10 @@ Braced form composes with `as <ident>` aliases exactly like the
 comma-separated form:
 
 ```ry
-from math import { PI as p, E }
+from ry.math import { PI as p, E }
 ```
 
-The empty form `from math import {}` is rejected as a parse error.
+The empty form `from ry.math import {}` is rejected as a parse error.
 Symbol resolution, visibility, and alias limitations are identical to
 the comma-separated form — the braces are purely syntactic. Editor
 support (tree-sitter): single-line braced imports are recognized; brace-
@@ -113,7 +113,7 @@ and `from math import {a, *}`. Use the selective form
 ### Qualified Import
 
 ```ry
-import math
+import ry.math
 x = math.sqrt(2.0)       # 1.4142135623730951
 y = math.PI              # 3.141592653589793
 ```
@@ -127,8 +127,8 @@ Qualified import composes with selective import — both forms may target
 the same module in the same file:
 
 ```ry
-import math
-from math import PI
+import ry.math
+from ry.math import PI
 print(math.sqrt(PI))     # 1.7724538509055159
 print(PI)                # 3.141592653589793
 ```
@@ -252,32 +252,28 @@ Importing a non-`@public` symbol from another package is a compile error. Wildca
 
 Since v0.0.30 (#1769) the canonical namespace for all official stdlib modules is the reserved `ry.*` path:
 
-| Canonical | Compatibility alias (deprecated since #2350) | Notes |
-|---|---|---|
-| `ry.lang` | implicit prelude / `from std import` | The explicit prelude module; symbols loaded into every program |
-| `ry.math` | `math` / `std.math` | Mathematical constants and functions |
-| `ry.io` | `io` / `std.io` | File I/O and standard input |
-| `ry.path` | `path` / `std.path` | File path operations |
-| `ry.filesystem` | `filesystem` / `std.filesystem` | Directory operations |
-| `ry.json` | `json` / `std.json` | JSON parse / stringify |
-| `ry.http` | `http` / `std.http` | HTTP client |
-| `ry.thread` | `thread` / `std.thread` | Concurrency primitives |
-| `ry.regex` | `regex` / `std.regex` | Regular expressions |
-| `ry.testing` | `testing` / `std.testing` | Test framework intrinsics |
-| `ry.base64` | `base64` / `std.base64` | Base64 encode / decode |
-| `ry.net` | `net` / `std.net` | TCP / TLS socket primitives |
-| `ry.json5` | `json5` / `std.json5` | JSON5 parse / stringify |
+| Canonical | Notes |
+|---|---|
+| `ry.lang` | The explicit prelude module; symbols loaded into every program |
+| `ry.math` | Mathematical constants and functions |
+| `ry.io` | File I/O and standard input |
+| `ry.path` | File path operations |
+| `ry.filesystem` | Directory operations |
+| `ry.json` | JSON parse / stringify |
+| `ry.http` | HTTP client |
+| `ry.thread` | Concurrency primitives |
+| `ry.regex` | Regular expressions |
+| `ry.testing` | Test framework intrinsics |
+| `ry.base64` | Base64 encode / decode |
+| `ry.net` | TCP / TLS socket primitives |
+| `ry.json5` | JSON5 parse / stringify |
 
-All three spellings resolve to the same physical modules. The canonical `ry.*` form is required for new code; the compatibility aliases now emit a one-time deprecation warning on import and will be rejected in a future release.
+Legacy `from <module> import …` / `from std.<module> import …` / `from std import …` / `import <module>` forms were rejected as of #2351; use the `ry.*` canonical forms above.
 
 ```ry
-# Recommended (canonical):
+# Canonical:
 from ry.math import sqrt, PI
 import ry.math               # binds the bare last segment `math`
-
-# Deprecated (compatibility alias — emits warning):
-from math import sqrt        # flat form
-from std.math import NAN     # dotted std form
 ```
 
 The `ry.lang` prelude is loaded automatically — the `print(...)`, `len(...)`, `range(...)`, `map(...)`, `filter(...)`, conversion helpers (`int(...)`, `float(...)`, `str(...)`), and similar utilities are available without any explicit import. Explicit `from ry.lang import x` is still allowed for readability.
@@ -286,15 +282,15 @@ The leading segment `ry` is reserved. A user-defined top-level `ry/` directory o
 
 ---
 
-## Standard Library (`std`)
+## Standard Library
 
-The standard library (`std`) is a collection of built-in modules automatically imported into every program. As of v0.0.30 the canonical namespace for these modules is [`ry`](#canonical-module-paths); `std` is retained as a compatibility alias. It provides:
+The standard library is a collection of built-in modules accessible under the canonical namespace [`ry`](#canonical-module-paths). Legacy `std` and bare forms are rejected as of #2351. It provides:
 - Built-in functions (`print`, `len`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`int`, `float`, `str`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
-The entire standard library forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore share package-internal helpers across files; user code only sees the symbols marked `@public`. An import such as `from math import sqrt` resolves to a `@public` symbol exposed by the stdlib package.
+The entire standard library forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore share package-internal helpers across files; user code only sees the symbols marked `@public`. An import such as `from ry.math import sqrt` resolves to a `@public` symbol exposed by the stdlib package.
 
 ### Sub-modules
 
@@ -307,7 +303,7 @@ The following sub-modules require explicit import:
 | [`path`](path.md) | File path operations (join, basename, dirname, etc.) |
 
 ```ry
-from math import sqrt, PI, sin
+from ry.math import sqrt, PI, sin
 ```
 
 You can also explicitly import specific definitions from standard library modules:
@@ -408,7 +404,7 @@ from math
 from math   # Skipped
 
 # Error: the qualified form rejects duplicates at parse time
-import math
+import ry.math
 import math   # Error: 'import math' already in this file
 ```
 

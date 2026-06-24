@@ -1,5 +1,5 @@
 # JSON objectを型付きrecordへ復元する方法を示す
-from json import load
+from ry.json import load
 
 record Person:
   name: str

@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from base64 import encode, decode, encodeUrlSafe, decodeUrlSafe, encodeBytes, encodeBytesUrlSafe, decodeBytes, decodeBytesUrlSafe
+from ry.base64 import encode, decode, encodeUrlSafe, decodeUrlSafe, encodeBytes, encodeBytesUrlSafe, decodeBytes, decodeBytesUrlSafe
 
 @describe("base64")
 fn base64Tests():

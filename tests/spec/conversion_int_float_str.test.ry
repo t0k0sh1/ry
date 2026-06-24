@@ -5,7 +5,7 @@
 # usable as type names in annotations — the parser disambiguates by position.
 # `toInt` / `toFloat` / `toStr` / `parseInt` / `parseFloat` were removed.
 
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 @describe("int() / float() parse a str into a Result")
 fn intFloatParseTests():

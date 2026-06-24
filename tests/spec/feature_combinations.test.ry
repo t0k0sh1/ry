@@ -1,4 +1,4 @@
-from testing import describe, it, each, beforeAll, afterAll, beforeEach, mock, spy, expect, verify
+from ry.testing import describe, it, each, beforeAll, afterAll, beforeEach, mock, spy, expect, verify
 
 # #1784 — feature-combination runtime semantics. Companion to the
 # "Feature interactions" section of docs/reference/testing.md. Each

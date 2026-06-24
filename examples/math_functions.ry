@@ -1,5 +1,5 @@
 # mathモジュールの定数、平方根、丸め、無限値判定を示す
-from math import PI, INF, sqrt, round, isInf
+from ry.math import PI, INF, sqrt, round, isInf
 
 radius = 3.0
 area = PI * radius * radius

@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # Directory-module form: `usermoddir/` resolves to the directory module
 # whose files (`part_a.ry`, `part_b.ry`) are merged at load time. Qualified

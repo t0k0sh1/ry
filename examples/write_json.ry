@@ -1,5 +1,5 @@
 # JSON 書き出し (stdlib の json モジュール)
-from json import stringify
+from ry.json import stringify
 
 # Map<str, any> リテラル: 各値を明示的に any 化する必要がある
 v1: any = 1

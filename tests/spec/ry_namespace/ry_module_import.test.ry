@@ -1,4 +1,4 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 # #1769: ry.<module> form resolves to the same physical modules as the
 # legacy flat / std spellings. The three intrinsic gating paths
@@ -15,7 +15,7 @@ from ry.json5 import load, stringify
 
 # coexistence: importing the same physical module via both ry.* and flat
 # must round-trip to identical values.
-from math import PI as flatPI
+from ry.math import PI as flatPI
 
 @describe("ry.<module> canonical import (#1769)")
 fn ryModuleImportTests():

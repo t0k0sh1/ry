@@ -4,7 +4,7 @@
 # replaces `when`/`match`) and the `if` expression forms (single-expression
 # `=>` form and tail-expression block form).
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("case with subject")
 fn caseWithSubjectTests():

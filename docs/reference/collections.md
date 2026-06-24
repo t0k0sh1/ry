@@ -914,7 +914,7 @@ print(get(m, "z", 0))   # 0
 `getPath(map, path) -> Option<any>`. Walks `path` (dot-separated string) through a nested `Map<str, any>` and returns the leaf value as `Option<any>`. Designed for navigating JSON-like trees produced by `json.load[Map<str, any>]`.
 
 ```ry
-from json import load
+from ry.json import load
 
 case load[Map<str, any>]("{\"db\":{\"host\":\"localhost\",\"port\":5432}}"):
   Ok(cfg):

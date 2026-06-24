@@ -88,13 +88,13 @@ c = Color::Red
 print(c)               # Red
 
 # Module import (with optional `as` alias)
-from math import sqrt, PI as PI_CONST
+from ry.math import sqrt, PI as PI_CONST
 print(sqrt(PI_CONST))
 
 # Qualified import: bind the module itself
-import math
-print(math.sqrt(2.0))   # 1.4142135623730951
-print(math.PI)          # 3.141592653589793
+import ry.math
+print(ry.math.sqrt(2.0))   # 1.4142135623730951
+print(ry.math.PI)          # 3.141592653589793
 ```
 
 ## Installation

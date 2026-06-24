@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from io import open, readAll, writeText, close, deleteFile
+from ry.io import open, readAll, writeText, close, deleteFile
 
 # Helper: open path for write, write content under `using`, let block exit close it.
 fn writeViaUsing(path: str, content: str) -> Result<Unit, Error>:

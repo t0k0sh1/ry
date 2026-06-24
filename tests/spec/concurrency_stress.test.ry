@@ -1,9 +1,9 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 from set import add, union
 from map import hasKey, keys, remove
 from gc import collect
-from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, atomicIntNew, atomicIntLoad, atomicIntAdd
+from ry.thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, atomicIntNew, atomicIntLoad, atomicIntAdd
 
 # ────────────────────────────────────────────────────────────────
 # @parallel for with collection captures (CoW semantics)

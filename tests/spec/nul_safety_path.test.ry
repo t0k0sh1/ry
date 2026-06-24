@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from path import join, basename, dirname, ext, resolve
+from ry.path import join, basename, dirname, ext, resolve
 
 @describe("nul_safety_path")
 fn nulSafetyPathTests():

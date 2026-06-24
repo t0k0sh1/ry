@@ -77,15 +77,19 @@ static std::string toUserFacingPath(const std::string &module_path) {
                                                 : module_path;
 }
 
-// #2350: legacy stdlib import (`from math import …` / `from std.math import …` /
-// `from std import …` / `import math`) を canonical な user-facing `ry.<…>` 形式
-// に変換する。legacy 形式でなければ `nullopt`。Phase 1 では呼び出し元が戻り値
-// を deprecation warning として surface し、Phase 2 で hard error 化予定。
+// #2350 / #2351: legacy stdlib import (`from math import …` / `from std.math
+// import …` / `from std import …` / `import math`) を canonical な user-facing
+// `ry.<…>` 形式に変換する。canonical な公開 ry モジュールが存在しない場合
+// (例: `std/runtime_internal` — `ry.runtime_internal` は非公開) は nullopt を
+// 返し、legacy 検出から外す。これにより「reject + 提示した代替も拒否」という
+// 矛盾した案内 (#2357 review) が発生せず、非公開モジュールは従来どおり
+// `std/<internal>` / 裸 `<internal>` 形式で解決可能のまま残る。
 // 前提: caller は rp.from_stdlib==true でゲートする — bogus 形式は resolve() が
 // 例外を投げて detector に到達しないため、ここに来る時点で実モジュールに解決済み。
-//   "std"       -> "ry.lang"   (flat std → explicit prelude)
-//   "std/math"  -> "ry.math"   (std.dotted → public submodule)
-//   "math"      -> "ry.math"   (bare flat → public submodule)
+//   "std"             -> "ry.lang"   (flat std → explicit prelude)
+//   "std/math"        -> "ry.math"   (std.dotted → public submodule)
+//   "std/runtime_internal" -> nullopt  (non-public; legacy form still accepted)
+//   "math"            -> "ry.math"   (bare flat → public submodule)
 static std::optional<std::string>
 tryLegacyToCanonical(const std::string &resolve_path) {
     if (ModuleLoader::isRyPath(resolve_path)) return std::nullopt;
@@ -93,8 +97,11 @@ tryLegacyToCanonical(const std::string &resolve_path) {
     // することで、`kRyLangPreludePath` / `canonicalStdlibName` と同期する。
     if (resolve_path == "std")
         return toRyDotForm(ModuleLoader::kRyLangPreludePath);
-    if (resolve_path.size() > 4 && resolve_path.compare(0, 4, "std/") == 0)
-        return "ry." + resolve_path.substr(4);
+    if (resolve_path.size() > 4 && resolve_path.compare(0, 4, "std/") == 0) {
+        auto suffix = resolve_path.substr(4);
+        if (isPublicRyModule(suffix)) return "ry." + suffix;
+        return std::nullopt;
+    }
     if (isPublicRyModule(resolve_path)) return "ry." + resolve_path;
     return std::nullopt;
 }
@@ -869,16 +876,16 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             ResolvedPath rp = resolve(resolve_path, referrer_dir);
             const std::string &abs_path = rp.path;
 
-            // #2350: legacy `import math` を deprecation warning として surface する。
-            // dedup key は元の spelling — ファイル内で同じ `import math` が複数回
-            // 出ても (typically まず無いが) 1 回のみ。
+            // #2351: legacy `import math` 形式は hard error。`rp.from_stdlib` の
+            // 確認後に検出するため、user-defined module (referrer dir に同名
+            // ファイルが存在し `from_stdlib=false` となるケース) は影響を受けない。
             if (rp.from_stdlib) {
-                if (auto canon = tryLegacyToCanonical(resolve_path);
-                    canon && warned_legacy_imports_.insert(resolve_path).second) {
-                    loader_warnings_.push_back(
-                        "warning: 'import " + toRyDotForm(resolve_path) +
-                        "' is a deprecated stdlib path; use 'import " +
-                        *canon + "' instead");
+                if (auto canon = tryLegacyToCanonical(resolve_path)) {
+                    throw std::runtime_error(makeImportError(
+                        qimp.loc.line,
+                        "'import " + toRyDotForm(resolve_path) +
+                        "' is a legacy stdlib import form and is no longer "
+                        "supported; use 'import " + *canon + "' instead"));
                 }
             }
 
@@ -1000,17 +1007,17 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         ResolvedPath rp = resolve(imp.module_path, referrer_dir);
         const std::string &abs_path = rp.path;
 
-        // #2350: legacy `from math import …` / `from std.math import …` /
-        // `from std import …` を deprecation warning として surface する。
-        // dedup key は元の spelling — `from math import a` と `from math import b`
-        // の両方が同ファイルにあっても 1 回のみ。
+        // #2351: legacy `from math import …` / `from std.math import …` /
+        // `from std import …` 形式は hard error。`rp.from_stdlib` の確認後に
+        // 検出するため、user-defined module (referrer dir に同名ファイルが
+        // 存在し `from_stdlib=false` となるケース) は影響を受けない。
         if (rp.from_stdlib) {
-            if (auto canon = tryLegacyToCanonical(imp.module_path);
-                canon && warned_legacy_imports_.insert(imp.module_path).second) {
-                loader_warnings_.push_back(
-                    "warning: 'from " + toRyDotForm(imp.module_path) +
-                    " import …' is a deprecated stdlib path; use 'from " +
-                    *canon + " import …' instead");
+            if (auto canon = tryLegacyToCanonical(imp.module_path)) {
+                throw std::runtime_error(makeImportError(
+                    imp.loc.line,
+                    "'from " + toRyDotForm(imp.module_path) +
+                    " import …' is a legacy stdlib import form and is no longer "
+                    "supported; use 'from " + *canon + " import …' instead"));
             }
         }
 

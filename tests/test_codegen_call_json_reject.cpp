@@ -127,7 +127,7 @@ protected:
 
 TEST_F(JsonLoadTypeRejectTest, LoadRejectsListPointer) {
     auto p = writeTmp("load_reject_list.ry",
-        "from json import load\n"
+        "from ry.json import load\n"
         "xs: List<int> = [1, 2, 3]\n"
         "r = load[Map<str, int>](xs)\n");
     auto r = runRy({"run", p.string().c_str()});
@@ -139,7 +139,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsListPointer) {
 
 TEST_F(JsonLoadTypeRejectTest, LoadRejectsMapPointer) {
     auto p = writeTmp("load_reject_map.ry",
-        "from json import load\n"
+        "from ry.json import load\n"
         "m: Map<str, int> = {\"a\": 1}\n"
         "r = load[List<int>](m)\n");
     auto r = runRy({"run", p.string().c_str()});
@@ -151,7 +151,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsMapPointer) {
 
 TEST_F(JsonLoadTypeRejectTest, LoadRejectsSetPointer) {
     auto p = writeTmp("load_reject_set.ry",
-        "from json import load\n"
+        "from ry.json import load\n"
         "s: Set<int> = {1, 2, 3}\n"
         "r = load[Map<str, int>](s)\n");
     auto r = runRy({"run", p.string().c_str()});
@@ -165,7 +165,7 @@ TEST_F(JsonLoadTypeRejectTest, LoadRejectsSetPointer) {
 // in the positive sibling so the fix does not over-reject.
 TEST_F(JsonLoadTypeRejectTest, LoadAcceptsStrArgument) {
     auto p = writeTmp("load_accept_str.ry",
-        "from json import load\n"
+        "from ry.json import load\n"
         "case load[Map<str, int>](\"{\\\"a\\\": 1}\"):\n"
         "  Ok(_):\n"
         "    print(\"ok\")\n"

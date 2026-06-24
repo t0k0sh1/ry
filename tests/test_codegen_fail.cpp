@@ -58,7 +58,7 @@ TEST_F(CodeGenTest, ExpectOutsideTestModeWinsOverImportCheck) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("only allowed in test mode"), std::string::npos)
             << "got: " << msg;
-        EXPECT_EQ(msg.find("requires 'from testing import"), std::string::npos)
+        EXPECT_EQ(msg.find("requires 'from ry.testing import"), std::string::npos)
             << "import check must NOT fire first; got: " << msg;
     }
 }
@@ -84,7 +84,7 @@ TEST_F(CodeGenTest, ExpectRequiresTestingImport) {
         FAIL() << "Expected compile error";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import expect'"),
+        EXPECT_NE(msg.find("requires 'from ry.testing import expect'"),
                   std::string::npos)
             << "got: " << msg;
     }
@@ -100,7 +100,7 @@ TEST_F(CodeGenTest, MockRequiresTestingImport) {
         FAIL() << "Expected compile error";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import mock'"),
+        EXPECT_NE(msg.find("requires 'from ry.testing import mock'"),
                   std::string::npos)
             << "got: " << msg;
     }
@@ -112,7 +112,7 @@ TEST_F(CodeGenTest, FailRequiresTestingImport) {
         FAIL() << "Expected compile error";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("requires 'from testing import fail'"),
+        EXPECT_NE(msg.find("requires 'from ry.testing import fail'"),
                   std::string::npos)
             << "got: " << msg;
     }

@@ -135,11 +135,6 @@ private:
     // The probe does two filesystem stats per `ry/*` import; caching by
     // referrer collapses N stats into one for files with multiple `ry.*` imports.
     std::unordered_set<std::string> probed_ry_shadow_dirs_;
-    // #2350: legacy stdlib import 形式 (`from math`, `from std.math`,
-    // `from std`, `import math`) を検出した時に発行した deprecation warning の
-    // dedup 用 set。key は元の resolve 文字列 (`"math"` / `"std/math"` / `"std"`)。
-    // 同一スペリングに対して loader 生存期間中 1 回のみ警告する。
-    std::unordered_set<std::string> warned_legacy_imports_;
 
     // Cached fs::canonical — populates ec with original error on failure
     std::string cachedCanonical(const std::string &raw, std::error_code &ec);

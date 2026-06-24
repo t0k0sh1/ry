@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # Regression + detector for #2247: higher-order combinator inner loops
 # (filter / map / reduce / fold / any / all / tap) and emitCollOp_get Map

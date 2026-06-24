@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockWriteLock, rwlockUnlock, semaphoreNew, semaphoreAcquire, semaphoreRelease, barrierNew, barrierWait, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntAdd, atomicIntSub, atomicIntCas, atomicIntFree, atomicBoolNew, atomicBoolLoad, atomicBoolStore
+from ry.thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockWriteLock, rwlockUnlock, semaphoreNew, semaphoreAcquire, semaphoreRelease, barrierNew, barrierWait, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntAdd, atomicIntSub, atomicIntCas, atomicIntFree, atomicBoolNew, atomicBoolLoad, atomicBoolStore
 
 @describe("threadSpawn and threadJoin")
 fn threadspawnAndThreadjoinTests():

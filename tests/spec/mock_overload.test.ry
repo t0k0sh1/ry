@@ -1,5 +1,5 @@
-from testing import it, describe, expect, mock, mockReturnValueOnce, verify, verifyCalledWith, spy, mockClear, mockReset, mockResetAll, fail
-from math import digits, abs, pow, floor
+from ry.testing import it, describe, expect, mock, mockReturnValueOnce, verify, verifyCalledWith, spy, mockClear, mockReset, mockResetAll, fail
+from ry.math import digits, abs, pow, floor
 
 fn addNum(a: int, b: int) -> int:
   return a + b

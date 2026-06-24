@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from io import bytesToStr, toBytes
+from ry.io import bytesToStr, toBytes
 
 @describe("search and check")
 fn searchAndCheckTests():

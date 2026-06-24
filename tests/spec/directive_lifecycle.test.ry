@@ -1,4 +1,4 @@
-from testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect, timeout
+from ry.testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect, timeout
 
 # #1686 — @beforeEach / @afterEach / @beforeAll / @afterAll runtime semantics.
 # Each describe verifies one specific contract; counters are kept describe-local

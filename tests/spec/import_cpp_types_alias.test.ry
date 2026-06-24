@@ -1,8 +1,8 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from io import open, close, writeText, deleteFile, File as MyFile
-from thread import lockNew, lockAcquire, lockRelease, lockFree, Lock as MyLock
-from regex import regexFindAll, Match as M
+from ry.io import open, close, writeText, deleteFile, File as MyFile
+from ry.thread import lockNew, lockAcquire, lockRelease, lockFree, Lock as MyLock
+from ry.regex import regexFindAll, Match as M
 
 record MHolder:
   m: M

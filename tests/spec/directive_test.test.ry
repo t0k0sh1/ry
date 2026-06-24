@@ -1,4 +1,4 @@
-from testing import it, describe, expect, each, property
+from ry.testing import it, describe, expect, each, property
 
 # Tests for @it and @describe directive syntax on named functions (#634)
 

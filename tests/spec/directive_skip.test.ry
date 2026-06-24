@@ -1,4 +1,4 @@
-from testing import it, expect, each, property, skip
+from ry.testing import it, expect, each, property, skip
 
 # @skip @it does not execute the function body — even if the body would
 # fail, the file-level exit code stays at 0 (only failed tests bump it).

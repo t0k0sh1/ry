@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # #2115: multiline UFCS chains with continuation lines starting with `.`.
 # Isolated into its own spec file so the tree-sitter grammar gap

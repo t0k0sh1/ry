@@ -1722,6 +1722,13 @@ inline std::string testingStdlibSearchPath() {
     return (std::filesystem::path(__FILE__).parent_path().parent_path()
             / "share" / "std").string();
 }
+// Derive the repo's share/ path. Needed for legacy `std/X` / `std` resolution
+// tests, which the `ry` binary supports by adding both share/ and share/std/
+// to search_paths (jit_runner.cpp).
+inline std::string testingShareSearchPath() {
+    return (std::filesystem::path(__FILE__).parent_path().parent_path()
+            / "share").string();
+}
 } // namespace
 
 // AC #1: `from testing import expect` resolves and `expect` does not appear
@@ -1729,7 +1736,7 @@ inline std::string testingStdlibSearchPath() {
 TEST_F(ImportTest, FromTestingImportExpectResolves) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     Program prog = resolveImportsOnly(
-        "from testing import expect\n",
+        "from ry.testing import expect\n",
         tmp_dir_.string(),
         search_paths);
 
@@ -1758,7 +1765,7 @@ TEST_F(ImportTest, FromTestingImportAllTestingSymbolsResolve) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from testing import it, describe, expect, mock, verify, fail\n",
+            "from ry.testing import it, describe, expect, mock, verify, fail\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -1772,8 +1779,8 @@ TEST_F(ImportTest, FromTestingImportExpectViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from testing\n"
-            "from testing import expect\n",
+            "from ry.testing\n"
+            "from ry.testing import expect\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -1787,7 +1794,7 @@ TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
         resolveImportsOnly(
-            "from testing import expect as e\n",
+            "from ry.testing import expect as e\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected alias on testing intrinsic to be rejected";
@@ -1802,11 +1809,11 @@ TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
 TEST_F(ImportTest, FromTestingImportRejectsAliasOnCacheHitPath) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
-        // First `from testing` warms the cache; the aliased lookup must then
+        // First `from ry.testing` warms the cache; the aliased lookup must then
         // travel the cache-hit branch in resolveImports.
         resolveImportsOnly(
-            "from testing\n"
-            "from testing import mock as m\n",
+            "from ry.testing\n"
+            "from ry.testing import mock as m\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected alias on testing intrinsic to be rejected (cache-hit)";
@@ -1824,7 +1831,7 @@ TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
         resolveImportsOnly(
-            "from testing import xyz\n",
+            "from ry.testing import xyz\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected non-intrinsic name to be rejected";
@@ -1832,7 +1839,7 @@ TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("'xyz'"), std::string::npos) << msg;
         EXPECT_NE(msg.find("not found in module"), std::string::npos) << msg;
-        EXPECT_NE(msg.find("'testing'"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'ry.testing'"), std::string::npos) << msg;
     }
 }
 
@@ -1847,6 +1854,10 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotBypassIntrinsicCheck) {
     writeFile("testing.ry", "fn unrelated() -> int:\n    return 1\n");
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
+        // Bare `from testing import` is intentional: this exercises the
+        // local-shadow path (`from_stdlib=false`), bypassing the #2351
+        // legacy-form rejection. Canonicalizing would resolve the stdlib
+        // testing module instead and miss the shadow regression.
         resolveImportsOnly(
             "from testing import expect\n",
             tmp_dir_.string(),
@@ -1878,7 +1889,7 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
 TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     // Post-#722 `verify` is a regular `@public fn verify` in
@@ -1896,7 +1907,7 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
 TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     EXPECT_EQ(intrinsics.count("each"), 0u);
@@ -1910,7 +1921,7 @@ TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
 TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect\n",
+        "from ry.testing import expect\n",
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {"expect"};
@@ -1920,7 +1931,7 @@ TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
 TEST_F(ImportTest, FromTestingImportMultipleIntrinsicsRecordsAll) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect, mock, fail\n",
+        "from ry.testing import expect, mock, fail\n",
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {"expect", "mock", "fail"};
@@ -1937,7 +1948,7 @@ TEST_F(ImportTest, FromMathDoesNotPolluteTestingIntrinsics) {
 TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing import expect, it\n",
+        "from ry.testing import expect, it\n",
         tmp_dir_.string(),
         search_paths);
     // `it` is a `@directive` declaration in testing.ry, not a runtime
@@ -1950,7 +1961,7 @@ TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
 TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
@@ -1974,7 +1985,7 @@ TEST_F(ImportTest, CodeGenReceivesEmptySetWithoutTestingImport) {
 TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing import expect, fail, it\n",
+        "from ry.testing import expect, fail, it\n",
         tmp_dir_.string(),
         search_paths);
     // `it` is a `@directive` declaration in testing.ry; only `expect`
@@ -2187,20 +2198,20 @@ TEST_F(ImportTest, FromCppResourceKindImportsResolve) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     struct Case { const char *mod; const char *type; };
     const Case cases[] = {
-        {"io", "File"},
-        {"net", "TcpListener"},
-        {"net", "TcpStream"},
-        {"http", "TlsStream"},
-        {"http", "HttpRequest"},
-        {"http", "HttpResponse"},
-        {"http", "HttpClientResponse"},
-        {"thread", "Thread"},
-        {"thread", "Lock"},
-        {"thread", "RWLock"},
-        {"thread", "Semaphore"},
-        {"thread", "Barrier"},
-        {"thread", "AtomicInt"},
-        {"thread", "AtomicBool"},
+        {"ry.io", "File"},
+        {"ry.net", "TcpListener"},
+        {"ry.net", "TcpStream"},
+        {"ry.http", "TlsStream"},
+        {"ry.http", "HttpRequest"},
+        {"ry.http", "HttpResponse"},
+        {"ry.http", "HttpClientResponse"},
+        {"ry.thread", "Thread"},
+        {"ry.thread", "Lock"},
+        {"ry.thread", "RWLock"},
+        {"ry.thread", "Semaphore"},
+        {"ry.thread", "Barrier"},
+        {"ry.thread", "AtomicInt"},
+        {"ry.thread", "AtomicBool"},
     };
     for (const auto &c : cases) {
         std::string src = std::string("from ") + c.mod + " import " + c.type + "\n";
@@ -2214,7 +2225,7 @@ TEST_F(ImportTest, FromRegexImportMatchResolves) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from regex import Match\n",
+            "from ry.regex import Match\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2226,8 +2237,8 @@ TEST_F(ImportTest, FromCppResourceKindResolvesViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from io\n"
-            "from io import File\n",
+            "from ry.io\n"
+            "from ry.io import File\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2237,8 +2248,8 @@ TEST_F(ImportTest, FromRegexImportMatchResolvesViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from regex\n"
-            "from regex import Match\n",
+            "from ry.regex\n"
+            "from ry.regex import Match\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2249,7 +2260,7 @@ TEST_F(ImportTest, FromIoImportTcpListenerStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import TcpListener\n",
+            "from ry.io import TcpListener\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2260,7 +2271,7 @@ TEST_F(ImportTest, FromIoImportUnknownTypeStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import NotARealType\n",
+            "from ry.io import NotARealType\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2272,7 +2283,7 @@ TEST_F(ImportTest, FromIoImportErrorStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import Error\n",
+            "from ry.io import Error\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2285,6 +2296,8 @@ TEST_F(ImportTest, FromIoImportErrorStillRejected) {
 TEST_F(ImportTest, FromLocalIoShadowDoesNotBypassCppTypeCheck) {
     writeFile("io.ry", "fn dummy() -> int:\n    return 0\n");
     EXPECT_THROW({
+        // Bare `from io import` is intentional: exercises the local-shadow
+        // path (`from_stdlib=false`), bypassing #2351 legacy-form rejection.
         resolveImportsOnly(
             "from io import File\n",
             tmp_dir_.string(),
@@ -2300,7 +2313,7 @@ TEST_F(ImportTest, ImportAliasResourceTypeWorks) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from io import File as MyFile\n"
+            "from ry.io import File as MyFile\n"
             "fn use(f: MyFile) -> bool:\n"
             "    return true\n",
             tmp_dir_.string(),
@@ -2312,8 +2325,8 @@ TEST_F(ImportTest, ImportAliasResourceTypeWorksCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from io\n"
-            "from io import File as MyFile\n"
+            "from ry.io\n"
+            "from ry.io import File as MyFile\n"
             "fn use(f: MyFile) -> bool:\n"
             "    return true\n",
             tmp_dir_.string(),
@@ -2326,7 +2339,7 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorks) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from regex import Match as M\n"
+            "from ry.regex import Match as M\n"
             "fn use(m: M) -> str:\n"
             "    return m.full\n",
             tmp_dir_.string(),
@@ -2338,8 +2351,8 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from regex\n"
-            "from regex import Match as M\n"
+            "from ry.regex\n"
+            "from ry.regex import Match as M\n"
             "fn use(m: M) -> str:\n"
             "    return m.full\n",
             tmp_dir_.string(),
@@ -2347,7 +2360,128 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
     });
 }
 
-// ===== type alias =====
+// ===== #2351: legacy stdlib import forms rejected as hard errors =====
+//
+// Promoted from #2350 deprecation warnings. Each rejection site lives in
+// ModuleLoader::resolveImports() under the `rp.from_stdlib` guard, so a
+// user-defined module sharing a stdlib name (resolved with from_stdlib=false)
+// must continue to import successfully — see UserDefinedModuleDoesNotTrigger
+// below, the most important regression guard for this change.
+
+TEST_F(ImportTest, LegacyFlatFormIsRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from math import sqrt\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy flat form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'from math import"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyStdDottedFormIsRejected) {
+    // `std/X` resolves via `share/` (the `ry` binary adds both share/std/ AND
+    // share/ to search_paths; jit_runner.cpp).
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from std.math import NAN\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy std.dotted form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'from std.math import"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyFlatStdFormIsRejected) {
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from std import print\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy flat-std form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.lang"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyQualifiedFlatFormIsRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "import math\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy qualified flat form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'import math'"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyAliasedImportIsRejected) {
+    // Alias (`as flatPI`) does not affect detection — module_path is still "math".
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from math import PI as flatPI\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy aliased import to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyUserDefinedModuleDoesNotTrigger) {
+    // A user-defined `math.ry` shadows the stdlib name. Loader resolves to the
+    // local file (rp.from_stdlib == false) — rejection must NOT fire. A false
+    // positive here would break every project that happens to have a local
+    // module sharing a stdlib name; this is the key regression guard for #2351.
+    writeFile("math.ry",
+        "@public\nfn add(a: int, b: int) -> int:\n    return a + b\n");
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_EQ(runWithImports(
+        "from math import add\n"
+        "print(add(2, 3))",
+        tmp_dir_.string(),
+        search_paths),
+        "5\n");
+}
+
+TEST_F(ImportTest, LegacyStdNonPublicFormStillResolves) {
+    // PR #2357 review: `from std.<X> import …` for non-public X (e.g.
+    // `runtime_internal`) must NOT be rejected — there is no canonical
+    // `ry.runtime_internal` to suggest, so triggering the legacy hard error
+    // would give the user contradictory guidance. tryLegacyToCanonical
+    // returns nullopt for these and resolution proceeds normally.
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from std.runtime_internal import arcLiveCount\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
 
 TEST_F(CodeGenTest, TypeAlias) {
     std::string src =

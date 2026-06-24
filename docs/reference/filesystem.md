@@ -1,13 +1,13 @@
 # Filesystem Function Reference
 
-File and directory manipulation. All functions require explicit import from `filesystem`.
+File and directory manipulation. All functions require explicit import from `ry.filesystem`.
 
 The `filesystem` module handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` module handles reading and writing file contents.
 
 ```ry
-from filesystem import listDir, walk, glob, copy, move, remove, removeAll
-from filesystem import mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink
-from filesystem import chmod, symlink, readLink
+from ry.filesystem import listDir, walk, glob, copy, move, remove, removeAll
+from ry.filesystem import mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink
+from ry.filesystem import chmod, symlink, readLink
 ```
 
 ## Function List
@@ -36,7 +36,7 @@ from filesystem import chmod, symlink, readLink
 ### Directory Operations
 
 ```ry
-from filesystem import mkdir, mkdirAll, listDir, removeAll
+from ry.filesystem import mkdir, mkdirAll, listDir, removeAll
 
 # Create a single directory
 case mkdir("/tmp/myapp"):
@@ -63,8 +63,8 @@ removeAll("/tmp/myapp")
 ### File Operations
 
 ```ry
-from filesystem import copy, move, remove, fileSize
-from io import writeText
+from ry.filesystem import copy, move, remove, fileSize
+from ry.io import writeText
 
 writeText("/tmp/hello.txt", "Hello, World!")
 
@@ -88,7 +88,7 @@ remove("/tmp/renamed.txt")
 ### Recursive Traversal
 
 ```ry
-from filesystem import walk, glob
+from ry.filesystem import walk, glob
 
 # Walk a directory tree (like find)
 case walk("/var/log"):
@@ -110,7 +110,7 @@ case glob("/var/log/*.log"):
 ### Path Type Checks
 
 ```ry
-from filesystem import isFile, isDir, isSymlink
+from ry.filesystem import isFile, isDir, isSymlink
 
 case isFile("/etc/hosts"):
   Ok(true): print("regular file")
@@ -129,7 +129,7 @@ case isSymlink("/usr/local/bin/python"):
 ### Symbolic Links
 
 ```ry
-from filesystem import symlink, readLink, isSymlink
+from ry.filesystem import symlink, readLink, isSymlink
 
 # Create a symlink
 symlink("/usr/local/bin/ry", "/tmp/ry_link")
@@ -148,7 +148,7 @@ case isSymlink("/tmp/ry_link"):
 ### Permissions
 
 ```ry
-from filesystem import chmod
+from ry.filesystem import chmod
 
 # chmod 755 (rwxr-xr-x) — use decimal value: 0o755 = 493
 chmod("/tmp/script.sh", 493)

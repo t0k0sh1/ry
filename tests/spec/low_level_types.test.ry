@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("i32 type")
 fn i32TypeTests():

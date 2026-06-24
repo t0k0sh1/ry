@@ -2,7 +2,7 @@
 
 # ── Setup ────────────────────────────────────────────────────────────────────
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 enum Event:
     Click(int, int)

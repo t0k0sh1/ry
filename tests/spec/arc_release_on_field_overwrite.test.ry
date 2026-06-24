@@ -12,7 +12,7 @@
 # detect_leaks=0, so these tests are behavioral — repeated overwrite + value
 # correctness under ASan. Direct leak detection is tracked separately.
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 type IntList = List<int>
 type StrIntMap = Map<str, int>

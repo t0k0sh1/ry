@@ -118,7 +118,7 @@ protected:
 
 TEST_F(Json5LoadTypeRejectTest, LoadRejectsListPointer) {
     auto p = writeTmp("load_reject_list.ry",
-        "from json5 import load\n"
+        "from ry.json5 import load\n"
         "xs: List<int> = [1, 2, 3]\n"
         "r = load[Map<str, int>](xs)\n");
     auto r = runRy({"run", p.string().c_str()});
@@ -130,7 +130,7 @@ TEST_F(Json5LoadTypeRejectTest, LoadRejectsListPointer) {
 
 TEST_F(Json5LoadTypeRejectTest, LoadRejectsMapPointer) {
     auto p = writeTmp("load_reject_map.ry",
-        "from json5 import load\n"
+        "from ry.json5 import load\n"
         "m: Map<str, int> = {\"a\": 1}\n"
         "r = load[List<int>](m)\n");
     auto r = runRy({"run", p.string().c_str()});
@@ -143,7 +143,7 @@ TEST_F(Json5LoadTypeRejectTest, LoadRejectsMapPointer) {
 // Regression guard: str argument must still compile and execute.
 TEST_F(Json5LoadTypeRejectTest, LoadAcceptsStrArgument) {
     auto p = writeTmp("load_accept_str.ry",
-        "from json5 import load\n"
+        "from ry.json5 import load\n"
         "case load[Map<str, int>](\"{a: 1}\"):\n"
         "  Ok(_):\n"
         "    print(\"ok\")\n"

@@ -1,9 +1,9 @@
 # Base64 Function Reference
 
-Base64 encoding and decoding. All functions require explicit import from `base64`.
+Base64 encoding and decoding. All functions require explicit import from `ry.base64`.
 
 ```ry
-from base64 import encode, decode, encodeUrlSafe, decodeUrlSafe
+from ry.base64 import encode, decode, encodeUrlSafe, decodeUrlSafe
 ```
 
 ## Function List
@@ -24,7 +24,7 @@ from base64 import encode, decode, encodeUrlSafe, decodeUrlSafe
 ### Basic Encoding and Decoding
 
 ```ry
-from base64 import encode, decode
+from ry.base64 import encode, decode
 
 encoded = encode("Hello, World!")
 print(encoded)  # SGVsbG8sIFdvcmxkIQ==
@@ -41,7 +41,7 @@ case decode(encoded):
 URL-safe base64 uses `-` and `_` instead of `+` and `/`, and omits padding (`=`). Useful for URLs, filenames, and tokens.
 
 ```ry
-from base64 import encodeUrlSafe, decodeUrlSafe
+from ry.base64 import encodeUrlSafe, decodeUrlSafe
 
 encoded = encodeUrlSafe("data with special chars: ?&=")
 # No + / or = in the output
@@ -62,8 +62,8 @@ Input strings may contain embedded NUL bytes (`\0`); `encode` and `encodeUrlSafe
 `encodeBytes` and `decodeBytes` operate directly on `List<u8>`, making them suitable for binary data such as images, audio, or cryptographic payloads that may contain arbitrary byte values including embedded NUL bytes.
 
 ```ry
-from base64 import encodeBytes, decodeBytes
-from io import readBytes, writeBytes
+from ry.base64 import encodeBytes, decodeBytes
+from ry.io import readBytes, writeBytes
 
 # Encode raw binary file content to base64
 case readBytes("/path/to/image.jpg"):
@@ -88,7 +88,7 @@ case decodeBytes("AP8A"):
 URL-safe variants are also available for byte data:
 
 ```ry
-from base64 import encodeBytesUrlSafe, decodeBytesUrlSafe
+from ry.base64 import encodeBytesUrlSafe, decodeBytesUrlSafe
 
 token: List<u8> = [0xFBu8, 0xFFu8, 0x00u8, 0x01u8]
 encoded = encodeBytesUrlSafe(token)

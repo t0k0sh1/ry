@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from regex import replace, regexReplace, findAll, regexFindAll
+from ry.regex import replace, regexReplace, findAll, regexFindAll
 
 @describe("regex replace capture group backreferences")
 fn regexReplaceCaptureGroupBackreferencesTests():

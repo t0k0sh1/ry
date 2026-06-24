@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from io import open
+from ry.io import open
 
 @describe("partial import: open only (regression for #1856)")
 fn ioPartialImportOpenTests():

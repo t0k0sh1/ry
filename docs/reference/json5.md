@@ -1,9 +1,9 @@
 # JSON5 Function Reference
 
-JSON5 parsing and serialization. All functions require explicit import from `json5`.
+JSON5 parsing and serialization. All functions require explicit import from `ry.json5`.
 
 ```ry
-from json5 import load, stringify, stringifySafe, dump
+from ry.json5 import load, stringify, stringifySafe, dump
 ```
 
 ## Overview
@@ -93,7 +93,7 @@ no JSON5 representation either.
 ### Configuration file with comments and trailing commas
 
 ```ry
-from json5 import load, stringify
+from ry.json5 import load, stringify
 
 src = "{\n  // tool config\n  name: 'ry',\n  port: 0xFF,\n  ratio: .5,\n}"
 case load[Map<str, any>](src):
@@ -106,7 +106,7 @@ case load[Map<str, any>](src):
 ### Reading a typed value
 
 ```ry
-from json5 import load
+from ry.json5 import load
 
 case load[int]("+0xFF"):
   Ok(n): print(n)             # 255
@@ -116,8 +116,8 @@ case load[int]("+0xFF"):
 ### Round-tripping `Infinity`
 
 ```ry
-from json5 import load, stringify
-from math import INF
+from ry.json5 import load, stringify
+from ry.math import INF
 
 v: any = INF
 s = stringify(v)              # "Infinity"
@@ -129,7 +129,7 @@ case load[float](s):
 ### Loading into a record
 
 ```ry
-from json5 import load
+from ry.json5 import load
 
 record Point:
   x: float

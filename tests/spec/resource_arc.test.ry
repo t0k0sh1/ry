@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from thread import lockNew, lockAcquire, lockRelease, lockFree, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntFree, threadSpawn, threadJoin
+from ry.thread import lockNew, lockAcquire, lockRelease, lockFree, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntFree, threadSpawn, threadJoin
 
 @describe("ARC resource cleanup")
 fn arcResourceCleanupTests():

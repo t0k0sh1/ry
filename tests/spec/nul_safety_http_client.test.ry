@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from http import httpGet, httpPost, httpRequest
+from ry.http import httpGet, httpPost, httpRequest
 
 @describe("nul_safety_http_client")
 fn nulSafetyHttpClientTests():

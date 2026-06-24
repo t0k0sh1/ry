@@ -15,7 +15,7 @@ All types are opaque pointers managed by ARC (Automatic Reference Counting). The
 These functions require explicit import:
 
 ```ry
-from net import bind, listen, accept, connect, listenerPort, shutdown, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
+from ry.net import bind, listen, accept, connect, listenerPort, shutdown, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
 ```
 
 | Function | Signature | Description |
@@ -47,8 +47,8 @@ These functions are built-in and work with TCP socket types. No import needed.
 ### Echo Server
 
 ```ry
-from net import bind, listen, accept, connect
-from io import toBytes, bytesToStr
+from ry.net import bind, listen, accept, connect
+from ry.io import toBytes, bytesToStr
 
 # Server
 case bind("127.0.0.1", 8080):
@@ -103,8 +103,8 @@ case connect("127.0.0.1", 8080):
 ### Concurrent Echo Server with `async fn`
 
 ```ry
-from net import bind, listen, accept, connect, listenerPort
-from io import toBytes, bytesToStr
+from ry.net import bind, listen, accept, connect, listenerPort
+from ry.io import toBytes, bytesToStr
 
 async fn echoServer(server: TcpListener) -> str:
     case accept(server):
@@ -143,7 +143,7 @@ case bind("127.0.0.1", 0):
 By default, `receive()` uses a 30-second timeout if no custom timeout is set. Use `setTimeout()`, `setReceiveTimeout()`, or `setSendTimeout()` to override the default:
 
 ```ry
-from net import connect, setReceiveTimeout
+from ry.net import connect, setReceiveTimeout
 
 case connect("127.0.0.1", 8080):
     Ok(conn):

@@ -1,5 +1,5 @@
-from testing import it, describe, expect
-from std.math import NAN, INF
+from ry.testing import it, describe, expect
+from ry.math import NAN, INF
 
 @describe("Numeric comparison matchers")
 fn numericComparisonMatchersTests():

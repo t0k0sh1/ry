@@ -179,7 +179,7 @@ TEST_F(TraceModeTest, TraceWithMultiFileTestsEmitsWarningAndDisables) {
     std::ofstream mainFile(tmp_dir_ / "main.ry");
     mainFile << "print(\"main\")\n";
     std::ofstream testFile(tmp_dir_ / "tests/sample.test.ry");
-    testFile << "from testing import it, describe\n"
+    testFile << "from ry.testing import it, describe\n"
                 "@describe(\"x\")\n"
                 "fn xGroup():\n"
                 "  @it(\"y\")\n"

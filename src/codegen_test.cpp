@@ -1083,7 +1083,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'mock' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("mock"))
-        codegenError(s.loc, "'mock' requires 'from testing import mock'");
+        codegenError(s.loc, "'mock' requires 'from ry.testing import mock'");
 
     if (s.args.size() != 2)
         codegenError("mock() requires exactly 2 arguments: function name and replacement");
@@ -1864,7 +1864,7 @@ void CodeGen::emitMockReturnValueOnceCall(CallStmt &s) {
         codegenError("'mockReturnValueOnce' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("mockReturnValueOnce"))
         codegenError(s.loc,
-            "'mockReturnValueOnce' requires 'from testing import mockReturnValueOnce'");
+            "'mockReturnValueOnce' requires 'from ry.testing import mockReturnValueOnce'");
 
     if (s.args.size() != 2)
         codegenError("mockReturnValueOnce() requires exactly 2 arguments: function name and return value");
@@ -2054,7 +2054,7 @@ void CodeGen::emitSpyCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'spy' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("spy"))
-        codegenError(s.loc, "'spy' requires 'from testing import spy'");
+        codegenError(s.loc, "'spy' requires 'from ry.testing import spy'");
 
     if (s.args.size() != 1)
         codegenError("spy() requires exactly 1 argument: function name");
@@ -2537,7 +2537,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     if (!test_mode_)
         codegenError("'verifyCalledWith' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("verifyCalledWith"))
-        codegenError("'verifyCalledWith' requires 'from testing import verifyCalledWith'");
+        codegenError("'verifyCalledWith' requires 'from ry.testing import verifyCalledWith'");
 
     if (e.args.empty())
         codegenError("verifyCalledWith() requires at least 1 argument: function name");
@@ -3454,7 +3454,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     if (!test_mode_)
         codegenError("'expect' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("expect"))
-        codegenError(s.loc, "'expect' requires 'from testing import expect'");
+        codegenError(s.loc, "'expect' requires 'from ry.testing import expect'");
 
     llvm::Value *actualVal = emitExpr(*s.actual);
     llvm::Type *actualTy = actualVal->getType();
@@ -4118,7 +4118,7 @@ void CodeGen::emitFailCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'fail' is only allowed in test mode (use 'ry test')");
     if (!testing_intrinsics_imported_.count("fail"))
-        codegenError(s.loc, "'fail' requires 'from testing import fail'");
+        codegenError(s.loc, "'fail' requires 'from ry.testing import fail'");
 
     if (s.args.size() > 1)
         codegenError("fail() expects 0 or 1 argument(s), but got " + std::to_string(s.args.size()));

@@ -1,4 +1,4 @@
-from testing import it, describe, expect, mock, spy, verify, verifyCalledWith, mockClear, mockReset
+from ry.testing import it, describe, expect, mock, spy, verify, verifyCalledWith, mockClear, mockReset
 
 # Real implementations — these must continue to run when spied.
 fn computeReal(x: int) -> int:
