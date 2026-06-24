@@ -19,6 +19,20 @@ void CodeGen::strictAnyError(const SourceLocation &loc, const std::string &rule,
     codegenError(loc, "[strict-any/" + rule + "]: " + msg);
 }
 
+void CodeGen::emitImplicitUnwrapDiag(const SourceLocation &loc,
+                                      const std::string &context,
+                                      const std::string &typeName) {
+    if (!strict_any_mode_ && !shouldEmitAnyLintAt(loc.file_id))
+        return;
+    const std::string msg = context +
+        " performs an implicit runtime unwrap; "
+        "use a checked cast such as 'asType[" + typeName +
+        "](...)' or 'case' narrowing for safety";
+    if (strict_any_mode_)
+        strictAnyError(loc, "any-implicit-unwrap", msg);
+    emitAnyUsageWarning(msg);
+}
+
 // ===== Result disc provenance helper =====
 
 bool CodeGen::tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
@@ -630,17 +644,14 @@ void CodeGen::emitVarDecl(const std::string &name,
                             (llvm::isa<llvm::StructType>(annotTy) &&
                              findRecordInfoForType(
                                  llvm::cast<llvm::StructType>(annotTy))))) {
-                    // #2317 Pattern 4: assigning any to a concrete-annotated
-                    // variable performs an implicit runtime unwrap. Warn
-                    // before the unwrap so users move to checked casts.
-                    // See Pattern 1 above for the gate rationale.
-                    if (shouldEmitAnyLintAt(current_loc_.file_id)) {
-                        emitAnyUsageWarning("assigning 'any' to variable '" + name +
-                            "' of type '" + *annot +
-                            "' performs an implicit runtime unwrap; "
-                            "use a checked cast such as 'asType[" + *annot +
-                            "](...)' or 'case' narrowing for safety");
-                    }
+                    // #2317 Pattern 4 / #2321: assigning any to a concrete-
+                    // annotated variable performs an implicit runtime unwrap.
+                    // Strict mode rejects; compat mode warns so users move to
+                    // checked casts. See Pattern 1 above for the gate rationale.
+                    emitImplicitUnwrapDiag(current_loc_,
+                        "assigning 'any' to variable '" + name +
+                        "' of type '" + *annot + "'",
+                        *annot);
                     // any → narrow unwrap. The gate accepts every shape
                     // unwrapFromAny knows how to dispatch on annotTy:
                     //   - i64 + simple-enum metadata → descriptor-checked

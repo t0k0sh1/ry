@@ -118,6 +118,7 @@ protected:
 
 constexpr const char *kStrictAnyEnv = "RY_STRICT_ANY";
 constexpr const char *kArithRuleTag = "[strict-any/any-arithmetic]";
+constexpr const char *kImplicitUnwrapTag = "[strict-any/any-implicit-unwrap]";
 
 } // namespace
 
@@ -205,4 +206,174 @@ TEST_F(StrictAnyTest, StrictAnyForTestSubcommandViaPreSubcommandFlag) {
     EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
     EXPECT_NE(r.err.find(kArithRuleTag), std::string::npos)
         << "stderr was: " << r.err;
+}
+
+// ---------------------------------------------------------------------------
+// #2321: any-implicit-unwrap rule. Covers the four Path 9 sub-cases from
+// docs/architecture/implicit-any-paths.md:
+//   9a — variable declaration `n: int = v` where `v: any`
+//   9b — named function-call argument `f(v)` (and the default-value path)
+//   9c — lambda-call argument
+//   9d — `Ok(v)` / `Err(v)` / `Some(v)` into a typed Result/Option slot
+// Each sub-case has a strict-rejects / compat-allows pair mirroring the
+// arithmetic test structure above.
+// ---------------------------------------------------------------------------
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapVarDeclRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_var.ry",
+        "v: any = 1\n"
+        "n: int = v\n"
+        "print(n)\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapVarDeclAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_var_compat.ry",
+        "v: any = 1\n"
+        "n: int = v\n"
+        "print(n)\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "1\n");
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapNamedCallArgRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_call.ry",
+        "fn f(n: int) -> int:\n"
+        "    return n + 1\n"
+        "v: any = 1\n"
+        "print(f(v))\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapNamedCallArgAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_call_compat.ry",
+        "fn f(n: int) -> int:\n"
+        "    return n + 1\n"
+        "v: any = 1\n"
+        "print(f(v))\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "2\n");
+}
+
+// Default-value branch (codegen_call_user.cpp:220-222) emits a distinct
+// "passing 'any' default value" message. Pins that the branch is wired —
+// the explicit-arg test above hits the :192-194 branch and would not
+// surface a regression in the default-value codegen.
+TEST_F(StrictAnyTest, AnyImplicitUnwrapDefaultValueRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_default.ry",
+        "fn getAny() -> any:\n"
+        "    return 42\n"
+        "fn f(x: int = getAny()) -> int:\n"
+        "    return x + 1\n"
+        "print(f())\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("default value"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapDefaultValueAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_default_compat.ry",
+        "fn getAny() -> any:\n"
+        "    return 42\n"
+        "fn f(x: int = getAny()) -> int:\n"
+        "    return x + 1\n"
+        "print(f())\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "43\n");
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapLambdaCallArgRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_lambda.ry",
+        "g = (n: int) -> int => n + 1\n"
+        "v: any = 1\n"
+        "print(g(v))\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapLambdaCallArgAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_lambda_compat.ry",
+        "g = (n: int) -> int => n + 1\n"
+        "v: any = 1\n"
+        "print(g(v))\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "2\n");
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapOkSlotRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_ok.ry",
+        "fn f(v: any) -> Result<int, str>:\n"
+        "    return Ok(v)\n"
+        "case f(1):\n"
+        "    Ok(n): print(n)\n"
+        "    Err(e): print(e)\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapOkSlotAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_ok_compat.ry",
+        "fn f(v: any) -> Result<int, str>:\n"
+        "    return Ok(v)\n"
+        "case f(1):\n"
+        "    Ok(n): print(n)\n"
+        "    Err(e): print(e)\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "1\n");
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapErrSlotRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_err.ry",
+        "fn f(v: any) -> Result<int, str>:\n"
+        "    return Err(v)\n"
+        "case f(\"oops\"):\n"
+        "    Ok(n): print(n)\n"
+        "    Err(e): print(e)\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapSomeSlotRejectedInStrict) {
+    auto p = writeTmp("any_unwrap_some.ry",
+        "fn f(v: any) -> Option<int>:\n"
+        "    return Some(v)\n"
+        "case f(1):\n"
+        "    Some(n): print(n)\n"
+        "    None: print(\"none\")\n");
+    auto r = runRy({"run", p.string().c_str()}, {{kStrictAnyEnv, "1"}});
+    EXPECT_NE(r.exit_code, 0) << "stdout: " << r.out << "\nstderr: " << r.err;
+    EXPECT_NE(r.err.find(kImplicitUnwrapTag), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapSomeSlotAllowedWithoutFlag) {
+    auto p = writeTmp("any_unwrap_some_compat.ry",
+        "fn f(v: any) -> Option<int>:\n"
+        "    return Some(v)\n"
+        "case f(1):\n"
+        "    Some(n): print(n)\n"
+        "    None: print(\"none\")\n");
+    auto r = runRy({"run", p.string().c_str()}, {});
+    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_EQ(r.out, "1\n");
 }
