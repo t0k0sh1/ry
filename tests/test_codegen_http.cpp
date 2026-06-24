@@ -11,16 +11,20 @@
 
 
 using namespace ry;
+// Post-#2339: net helpers used by http server tests carry the explicit
+// `@native("net")` tag for descriptor-driven dispatch (mirrors the io
+// test rewrite in #2338). `sleep` stays bare because thread remains
+// table-driven through Installment 3.
 static const std::string HTTP_DECLS = R"(
-@native
+@native("net")
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
-@native
+@native("net")
 fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
-@native
+@native("net")
 fn accept(listener: TcpListener) -> Result<TcpStream, Error>
-@native
+@native("net")
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 @native("io")
 fn toBytes(s: str) -> List<u8>
@@ -462,17 +466,17 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
 // ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
-@native
+@native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
-@native
+@native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int) -> Result<Unit, Error>
-@native
+@native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int, portCallback: fn(int) -> Unit) -> Result<Unit, Error>
-@native
+@native("http")
 fn method(req: HttpRequest) -> str
-@native
+@native("http")
 fn path(req: HttpRequest) -> str
-@native
+@native("http")
 fn response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 )";
 

@@ -301,3 +301,109 @@ TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindNoneForFilesystemFileSi
     ASSERT_NE(it, descs.end());
     EXPECT_EQ(it->second[0].resource_kind, ResourceKindRegistry::NONE);
 }
+
+// =============================================================================
+// Installment 2-b (#2339): per-entry error_channel override via
+// ResourceKindRegistry::Info::errorChannelLibrary
+//
+// TlsStream is the only resource today whose error channel module differs
+// from its owning library: it lives in the http library (linkage) but
+// reports errors through __ry_tls_get_last_error. The descriptor populator
+// reads `errorChannelLibrary` and overrides `error_channel` accordingly,
+// independent of the @native package tag.
+// =============================================================================
+
+TEST(NativeCallDescriptor, ErrorChannelOverride_TlsStreamGoesToTlsChannel) {
+    // @native("net") tlsConnect(...) -> Result<TlsStream, Error>:
+    // the package-derived default would be __ry_net_get_last_error, but
+    // rk_tls_stream's errorChannelLibrary="tls" overrides it to
+    // __ry_tls_get_last_error. The override resolves the descriptor's
+    // per-entry mismatch without any @native syntax extension.
+    std::string src =
+        "@native(\"net\")\n"
+        "fn tlsConnect(host: str, port: int) -> Result<TlsStream, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("net::tlsConnect");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.return_wrapping, CodeGenReturnWrapping::ResultPtr);
+    EXPECT_EQ(desc.error_channel, "__ry_tls_get_last_error")
+        << "TlsStream must override the package-derived __ry_net_get_last_error";
+    EXPECT_NE(desc.resource_kind, ResourceKindRegistry::NONE);
+    const auto *info = ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->typeName, "TlsStream");
+    EXPECT_STREQ(info->library, "http");
+    EXPECT_STREQ(info->errorChannelLibrary, "tls");
+}
+
+TEST(NativeCallDescriptor, ErrorChannelOverride_TcpStreamUsesPackageDefault) {
+    // @native("net") connect(...) -> Result<TcpStream, Error>:
+    // rk_tcp_stream's errorChannelLibrary defaults to "net" (same as library)
+    // so no override fires; the descriptor keeps the package-derived
+    // __ry_net_get_last_error.
+    std::string src =
+        "@native(\"net\")\n"
+        "fn connect(host: str, port: int) -> Result<TcpStream, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("net::connect");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.error_channel, "__ry_net_get_last_error");
+    const auto *info = ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_STREQ(info->library, "net");
+    EXPECT_STREQ(info->errorChannelLibrary, "net");
+}
+
+TEST(NativeCallDescriptor, ErrorChannelOverride_HttpResponseUsesPackageDefault) {
+    // @native("http") response(...) -> Result<HttpResponse, Error>:
+    // rk_http_response's errorChannelLibrary defaults to "http" so the
+    // descriptor keeps the package-derived __ry_http_get_last_error.
+    std::string src =
+        "@native(\"http\")\n"
+        "fn response(status: int, headers: Map<str, str>, body: str)"
+        " -> Result<HttpResponse, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("http::response");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.error_channel, "__ry_http_get_last_error");
+    const auto *info = ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->typeName, "HttpResponse");
+    EXPECT_STREQ(info->errorChannelLibrary, "http");
+}

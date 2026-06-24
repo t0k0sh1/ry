@@ -35,7 +35,7 @@ struct TcpListenerHandle {
 };
 
 
-extern "C" void *__ry_bind(const char *host, int64_t port) {
+extern "C" void *__ry_net_bind(const char *host, int64_t port) {
     if (hasEmbeddedNul(host)) {
         setLastError("bind: host argument contains an embedded NUL byte");
         return nullptr;
@@ -189,7 +189,7 @@ extern "C" void *__ry_connect_resolved(const ::addrinfo *info) {
     return ry_net_connect_resolved(info);
 }
 
-extern "C" void *__ry_connect(const char *host, int64_t port) {
+extern "C" void *__ry_net_connect(const char *host, int64_t port) {
     if (hasEmbeddedNul(host)) {
         setLastError("connect: host argument contains an embedded NUL byte");
         return nullptr;

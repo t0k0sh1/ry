@@ -38,10 +38,10 @@ int __ry_resolve(const char *host, int64_t port, ::addrinfo **out);
 
 extern "C" {
 
-void *__ry_bind(const char *host, int64_t port);
+void *__ry_net_bind(const char *host, int64_t port);
 int64_t __ry_listen(void *listener, int64_t backlog);
 void *__ry_accept(void *listener);
-void *__ry_connect(const char *host, int64_t port);
+void *__ry_net_connect(const char *host, int64_t port);
 void *__ry_connect_resolved(const ::addrinfo *info);
 int64_t __ry_tcp_send(void *stream, void *byte_list);
 void   *__ry_tcp_receive(void *stream, int64_t max_bytes);

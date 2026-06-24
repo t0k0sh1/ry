@@ -13,7 +13,8 @@ struct NetResourceReg { NetResourceReg() {
     auto &r = ResourceKindRegistry::instance();
     rk_tcp_listener = r.registerKind("TcpListener", "__ry_arc_dtor_tcp_listener", "__ry_tcp_listener_cleanup", "net");
     rk_tcp_stream = r.registerKind("TcpStream", "__ry_arc_dtor_tcp_stream", "__ry_tcp_cleanup", "net");
-    rk_tls_stream = r.registerKind("TlsStream", "__ry_arc_dtor_tls_stream", "__ry_tls_cleanup", "http");
+    rk_tls_stream = r.registerKind("TlsStream", "__ry_arc_dtor_tls_stream", "__ry_tls_cleanup", "http",
+                                   /*errorChannelLibrary=*/"tls");
     rk_http_request = r.registerKind("HttpRequest", "__ry_arc_dtor_http_request", "__ry_http_request_cleanup", "http");
     rk_http_response = r.registerKind("HttpResponse", "__ry_arc_dtor_http_response", "__ry_http_response_cleanup", "http");
     rk_http_client_response = r.registerKind("HttpClientResponse", "__ry_arc_dtor_http_client_response", "__ry_http_client_response_cleanup", "http");
@@ -458,16 +459,11 @@ llvm::Value *CodeGen::emitPtrToResult(llvm::Value *ptr, const std::string &name,
 
 // ===== Net custom emitters =====
 
-static llvm::Value *emitNetBind(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *host = cg.emitExpr(*e.args[0]);
-    llvm::Value *port = cg.emitExpr(*e.args[1]);
-    auto fn = cg.getRuntimeFn("__ry_bind", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, "bind_result");
-    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
-    cg.addResourceKind(res, rk_tcp_listener);
-    return res;
-}
+// bind / connect / tlsConnect were migrated to descriptor-driven dispatch in
+// #2339 (Installment 2-b); their static emitters were deleted along with
+// net_table[]. The handle-coupled overloads below remain custom because
+// emitGenericNativeCall has no typed-handle check at consume time (#2338
+// kept io's File-coupled overloads custom for the same reason).
 
 static llvm::Value *emitNetTcpListen(CodeGen &cg, const CallExpr &e) {
     // Guard: TCP listen is 2-arg only; 3+ arg calls are HTTP listen
@@ -516,25 +512,6 @@ static llvm::Value *emitNetShutdown(CodeGen &cg, const CallExpr &e) {
     return cg.builder_.CreateCall(fn, {val});
 }
 
-static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *host = cg.emitExpr(*e.args[0]);
-    llvm::Value *port = cg.emitExpr(*e.args[1]);
-    bool isTls = e.callee == "tlsConnect";
-    auto fn = cg.getRuntimeFn(
-        isTls ? "__ry_tls_connect" : "__ry_connect", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
-    cg.used_native_libraries_.insert(isTls ? "http" : "net");
-    llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
-    if (isTls) {
-        llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_tls_get_last_error");
-        cg.addResourceKind(res, rk_tls_stream);
-        return res;
-    }
-    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
-    cg.addResourceKind(res, rk_tcp_stream);
-    return res;
-}
-
 static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 2);
     llvm::Value *stream = cg.emitExpr(*e.args[0]);
@@ -554,26 +531,71 @@ static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
     return cg.builder_.CreateCall(fn, {stream, ms});
 }
 
-// ===== Net dispatch table =====
+// ===== Net dispatcher =====
 
-static const CodeGen::NativeDispatchEntry net_table[] = {
-    {"bind",               nullptr, {}, 0, nullptr, emitNetBind},
-    {"listen",             nullptr, {}, 0, nullptr, emitNetTcpListen},
-    {"accept",             nullptr, {}, 0, nullptr, emitNetAccept},
-    {"listenerPort",       nullptr, {}, 0, nullptr, emitNetListenerPort},
-    {"shutdown",           nullptr, {}, 0, nullptr, emitNetShutdown},
-    {"connect",            nullptr, {}, 0, nullptr, emitNetConnect},
-    {"tlsConnect",         nullptr, {}, 0, nullptr, emitNetConnect},
-    {"setTimeout",         nullptr, {}, 0, nullptr, emitNetTimeout},
-    {"setReceiveTimeout",  nullptr, {}, 0, nullptr, emitNetTimeout},
-    {"setSendTimeout",     nullptr, {}, 0, nullptr, emitNetTimeout},
-};
+// Gate: skip when net isn't in the program's import set, so a sibling
+// dispatcher fall-through (e.g. http-only program reaching dispatchNet
+// through the StdlibRegistry loop) returns nullptr without side effects.
+// Mirrors dispatchIO's gate (#2338).
+static bool isNetImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    for (const auto &kv : sigs) {
+        if (kv.first.rfind("net::", 0) == 0)  // C++17 prefix-check idiom
+            return true;
+    }
+    return false;
+}
 
 // Priority 50: net must dispatch before http (priority 100) because
 // net::listen (2-arg) falls through to http::listen (3+-arg).
-RY_REGISTER_STDLIB_PACKAGE_PRIO(net, "share/std/net/net.ry", dispatchNet, 50)
+// snake_case=true: tlsConnect → __ry_net_tls_connect for the descriptor-
+// driven entries (#2339). The handle-coupled custom branches below use
+// hand-named symbols (__ry_listen / __ry_accept / __ry_tcp_set_timeout
+// etc.) and bypass the symbol derivation entirely.
+RY_REGISTER_STDLIB_PACKAGE_FULL(net, "share/std/net/net.ry", dispatchNet, 50, true)
 static llvm::Value *dispatchNet(CodeGen &cg, const CallExpr &e) {
-    return cg.emitTableDrivenNativeCall(e, "net", net_table, std::size(net_table));
+    if (!isNetImported(cg))
+        return nullptr;
+
+    // Per-emit insert for the remaining custom branches (handle-coupled
+    // overloads). The Group A declarative entries that #2339 migrated to
+    // descriptor-driven dispatch register the library automatically inside
+    // emitGenericNativeCall — this lambda covers only the paths that
+    // bypass that consume site.
+    auto markNet = [&](llvm::Value *v) -> llvm::Value * {
+        if (v) cg.used_native_libraries_.insert("net");
+        return v;
+    };
+
+    const auto &n = e.callee;
+    const auto sz = e.args.size();
+
+    // listen(listener: TcpListener, backlog: int) — TcpListener handle
+    // check + static error string. 3+ arg `listen` (the HTTP overload)
+    // returns nullptr below to fall through to dispatchHttp.
+    if (n == "listen" && sz == 2)
+        return markNet(emitNetTcpListen(cg, e));
+
+    // accept / listenerPort / shutdown — TcpListener handle check.
+    if (n == "accept" && sz == 1)
+        return markNet(emitNetAccept(cg, e));
+    if (n == "listenerPort" && sz == 1)
+        return markNet(emitNetListenerPort(cg, e));
+    if (n == "shutdown" && sz == 1)
+        return markNet(emitNetShutdown(cg, e));
+
+    // setTimeout / setReceiveTimeout / setSendTimeout — overload + library
+    // switching (TcpStream → net, TlsStream → http). emitNetTimeout does
+    // its own `used_native_libraries_` insert; do not double-mark.
+    if ((n == "setTimeout" || n == "setReceiveTimeout" || n == "setSendTimeout")
+        && sz == 2)
+        return emitNetTimeout(cg, e);
+
+    // bind / connect / tlsConnect — descriptor-driven; fall through to
+    // emitGenericNativeCall. tlsConnect's TlsStream resource_kind drives
+    // the error_channel override to __ry_tls_get_last_error and adds the
+    // http library to used_native_libraries_ at consume time (#2339).
+    return nullptr;
 }
 
 // ===== Http custom emitters =====
@@ -585,23 +607,12 @@ static llvm::Value *emitHttpNulCheck(CodeGen &cg, llvm::Value *strVal, const std
     return cg.builder_.CreateICmpNE(hasNul, llvm::ConstantInt::get(cg.i64Ty_, 0), hint + "_is_nul");
 }
 
-static llvm::Value *emitHttpResponse(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 3);
-    llvm::Value *status = cg.emitExpr(*e.args[0]);
-    llvm::Value *headers = cg.emitExpr(*e.args[1]);
-    llvm::Value *body = cg.emitExpr(*e.args[2]);
-    if (status->getType() != cg.i64Ty_)
-        cg.codegenError("response() status must be int");
-    if (headers->getType() != cg.ptrTy_)
-        cg.codegenError("response() headers must be Map<str, str>");
-    if (body->getType() != cg.ptrTy_)
-        cg.codegenError("response() body must be str");
-    auto fn = cg.getRuntimeFn("__ry_http_response_create", cg.ptrTy_, {cg.i64Ty_, cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {status, headers, body}, "http_resp");
-    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
-    cg.addResourceKind(res, rk_http_response);
-    return res;
-}
+// `response` was migrated to descriptor-driven dispatch in #2339; its
+// static emitter was deleted along with http_table[]. The runtime symbol
+// was renamed `__ry_http_response_create` → `__ry_http_response` to match
+// the `__ry_<module>_<snake>(callee)` convention emitGenericNativeCall
+// derives. The descriptor populates rk_http_response from the return type
+// (Result<HttpResponse, Error>) automatically.
 
 static llvm::Value *emitHttpRequestStr(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
@@ -835,7 +846,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     llvm::BasicBlock *returnBB = cg.createBB("http.listen_return");
 
     // 1. bind(host, port)
-    auto bindFn = cg.getRuntimeFn("__ry_bind", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
+    auto bindFn = cg.getRuntimeFn("__ry_net_bind", cg.ptrTy_, {cg.ptrTy_, cg.i64Ty_});
     llvm::Value *listener = cg.builder_.CreateCall(bindFn, {host, port}, "http_listener");
 
     llvm::Value *isNull = cg.builder_.CreateICmpEQ(listener,
@@ -1136,33 +1147,86 @@ static llvm::Value *emitHttpClientFree(CodeGen &cg, const CallExpr &e) {
     return llvm::ConstantInt::get(cg.i64Ty_, 0);
 }
 
-// ===== Http dispatch table =====
+// ===== Http dispatcher =====
 
-static const CodeGen::NativeDispatchEntry http_table[] = {
-    {"response",                  nullptr, {}, 0, nullptr, emitHttpResponse},
-    {"method",                    nullptr, {}, 0, nullptr, emitHttpRequestStr},
-    {"path",                      nullptr, {}, 0, nullptr, emitHttpRequestStr},
-    {"body",                      nullptr, {}, 0, nullptr, emitHttpBody},
-    {"bodyBytes",                 nullptr, {}, 0, nullptr, emitHttpBodyBytes},
-    {"header",                    nullptr, {}, 0, nullptr, emitHttpHeader},
-    {"query",                     nullptr, {}, 0, nullptr, emitHttpOptionField},
-    {"cookie",                    nullptr, {}, 0, nullptr, emitHttpOptionField},
-    {"formField",                 nullptr, {}, 0, nullptr, emitHttpOptionField},
-    {"queryAll",                  nullptr, {}, 0, nullptr, emitHttpMapAll},
-    {"cookies",                   nullptr, {}, 0, nullptr, emitHttpMapAll},
-    {"formFields",                nullptr, {}, 0, nullptr, emitHttpMapAll},
-    {"formFile",                  nullptr, {}, 0, nullptr, emitHttpFormFile},
-    {"listen",                    nullptr, {}, 0, nullptr, emitHttpListen},
-    {"httpGet",                   nullptr, {}, 0, nullptr, emitHttpClientCall},
-    {"httpPost",                  nullptr, {}, 0, nullptr, emitHttpClientCall},
-    {"httpRequest",               nullptr, {}, 0, nullptr, emitHttpClientCall},
-    {"status",                    nullptr, {}, 0, nullptr, emitHttpStatus},
-    {"httpClientResponseFree",    nullptr, {}, 0, nullptr, emitHttpClientFree},
-};
+// Gate: skip when http isn't in the program's import set, so a sibling
+// dispatcher fall-through returns nullptr without side effects. Mirrors
+// dispatchIO / dispatchNet (#2338, #2339).
+static bool isHttpImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    for (const auto &kv : sigs) {
+        if (kv.first.rfind("http::", 0) == 0)
+            return true;
+    }
+    return false;
+}
 
 RY_REGISTER_STDLIB_PACKAGE(http, "share/std/http/http.ry", dispatchHttp)
 static llvm::Value *dispatchHttp(CodeGen &cg, const CallExpr &e) {
-    return cg.emitTableDrivenNativeCall(e, "http", http_table, std::size(http_table));
+    if (!isHttpImported(cg))
+        return nullptr;
+
+    // Per-emit insert for the remaining custom branches. Descriptor-driven
+    // entries (response) register the library automatically via
+    // emitGenericNativeCall; this lambda covers only the bypass paths.
+    auto markHttp = [&](llvm::Value *v) -> llvm::Value * {
+        if (v) cg.used_native_libraries_.insert("http");
+        return v;
+    };
+
+    const auto &n = e.callee;
+    const auto sz = e.args.size();
+
+    // listen — 3+ args: HTTP server overload (control flow synthesis).
+    // 2-arg listen was already handled by dispatchNet's TCP listen branch
+    // and won't reach here.
+    if (n == "listen" && sz >= 3)
+        return markHttp(emitHttpListen(cg, e));
+
+    // method / path — HttpRequest typed-handle check; Direct str return.
+    if ((n == "method" || n == "path") && sz == 1)
+        return markHttp(emitHttpRequestStr(cg, e));
+
+    // body / bodyBytes — overloaded HttpRequest vs HttpClientResponse.
+    if (n == "body" && sz == 1)
+        return markHttp(emitHttpBody(cg, e));
+    if (n == "bodyBytes" && sz == 1)
+        return markHttp(emitHttpBodyBytes(cg, e));
+
+    // header — Option<str> return + NUL check.
+    if (n == "header" && sz == 2)
+        return markHttp(emitHttpHeader(cg, e));
+
+    // query / cookie / formField — Option<str> return + NUL check.
+    if ((n == "query" || n == "cookie" || n == "formField") && sz == 2)
+        return markHttp(emitHttpOptionField(cg, e));
+
+    // queryAll / cookies / formFields — Map<str, str> return.
+    if ((n == "queryAll" || n == "cookies" || n == "formFields") && sz == 1)
+        return markHttp(emitHttpMapAll(cg, e));
+
+    // formFile — Option<Map<str, str>> return + NUL check.
+    if (n == "formFile" && sz == 2)
+        return markHttp(emitHttpFormFile(cg, e));
+
+    // httpGet / httpPost / httpRequest — URL NUL check + ResultPtr +
+    // rk_http_client_response. Stays custom for NUL check.
+    if ((n == "httpGet" && sz == 1)
+        || (n == "httpPost" && sz == 3)
+        || (n == "httpRequest" && sz == 4))
+        return markHttp(emitHttpClientCall(cg, e));
+
+    // status — HttpClientResponse typed-handle check; Direct int return.
+    if (n == "status" && sz == 1)
+        return markHttp(emitHttpStatus(cg, e));
+
+    // httpClientResponseFree — HttpClientResponse typed-handle check.
+    if (n == "httpClientResponseFree" && sz == 1)
+        return markHttp(emitHttpClientFree(cg, e));
+
+    // response — descriptor-driven; fall through to emitGenericNativeCall
+    // (#2339). The descriptor populates rk_http_response automatically.
+    return nullptr;
 }
 
 // ===== Print =====

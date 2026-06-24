@@ -19,7 +19,7 @@ void __ry_tls_take_ownership(void *tls_stream, int *out_fd, SSL **out_ssl);
 
 extern "C" {
 
-void   *__ry_tls_connect(const char *host, int64_t port);
+void   *__ry_net_tls_connect(const char *host, int64_t port);
 void   *__ry_tls_connect_resolved(const char *host, const struct addrinfo *info);
 int64_t __ry_tls_send(void *tls_stream, void *byte_list);
 void   *__ry_tls_receive(void *tls_stream, int64_t max_bytes);

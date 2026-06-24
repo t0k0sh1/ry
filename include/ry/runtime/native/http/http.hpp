@@ -13,7 +13,7 @@ const char *__ry_http_path(void *req);
 const char *__ry_http_header(void *req, const char *key);
 const char *__ry_http_body(void *req);
 void       *__ry_http_body_bytes(void *req);
-void       *__ry_http_response_create(int64_t status, void *headers_map, const char *body);
+void       *__ry_http_response(int64_t status, void *headers_map, const char *body);
 void        __ry_http_send_response(void *stream, void *response, int64_t keep_alive);
 int64_t     __ry_http_should_keep_alive(void *req);
 const char *__ry_http_query(void *req, const char *key);

@@ -30,7 +30,7 @@ const char *__ry_http_form_field(void *req, const char *name);
 void *__ry_http_form_file(void *req, const char *name);
 void *__ry_http_form_fields(void *req);
 void __ry_http_request_free(void *req);
-void *__ry_http_response_create(int64_t status, void *headers_map, const char *body);
+void *__ry_http_response(int64_t status, void *headers_map, const char *body);
 void __ry_http_send_response(void *stream, void *response);
 void __ry_http_response_free(void *resp);
 
@@ -1268,7 +1268,7 @@ TEST(RuntimeHttp, ChunkedResponseSend) {
     map->bucket_count = 4;
     map->buckets = calloc(4, sizeof(int64_t));
 
-    void *resp = __ry_http_response_create(200, map, ry::makeString("hello world", 11));
+    void *resp = __ry_http_response(200, map, ry::makeString("hello world", 11));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     handle->fd = fds[0];
@@ -1890,7 +1890,7 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
 
     // Body with embedded NUL: "ab\0cd" (5 bytes).
     // Content-Length must use byteLen (5), not strlen (2).
-    void *resp = __ry_http_response_create(200, map, ry::makeString("ab\0cd", 5));
+    void *resp = __ry_http_response(200, map, ry::makeString("ab\0cd", 5));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     handle->fd = fds[0];
@@ -2154,7 +2154,7 @@ TEST(RuntimeHttp, ResponseHeaderCRLFInKeyIsSkipped) {
         {"X-Also-Safe", "fine"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
+    void *resp_ptr = __ry_http_response(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 2);
@@ -2174,7 +2174,7 @@ TEST(RuntimeHttp, ResponseHeaderCRLFInValueIsSkipped) {
         {"X-Also-Safe", "fine"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
+    void *resp_ptr = __ry_http_response(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 2);
@@ -2192,7 +2192,7 @@ TEST(RuntimeHttp, ResponseHeaderLFOnlyIsSkipped) {
         {"X-Clean", "safe"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
+    void *resp_ptr = __ry_http_response(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 1);
@@ -2210,7 +2210,7 @@ TEST(RuntimeHttp, ResponseHeaderSafeHeadersUnaffected) {
         {"Cache-Control", "no-cache"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
+    void *resp_ptr = __ry_http_response(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 3);
