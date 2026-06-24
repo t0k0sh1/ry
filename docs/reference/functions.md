@@ -8,7 +8,7 @@ fn functionName(paramName: type, ...) -> returnType:
     return value
 ```
 
-- Parameter types are optional. When omitted, the parameter is treated as `any` type.
+- Parameter types are optional; when omitted, the parameter defaults to `any` ([deprecated](#type-omission-and-any) — prefer an explicit type).
 - A trailing comma after the last parameter is allowed: `fn f(a: int, b: int,) -> int:`.
 - Return type is optional. When omitted, the return type is **inferred from the body** (both named functions and lambdas). If the function has no `return` statement, the return type is inferred as `Unit`. Use `-> any` explicitly for functions that should accept any return type.
 - The body is an indented block.
@@ -31,7 +31,7 @@ fn greet(name: str) -> Unit:
 
 | Item | Description |
 |---|---|
-| Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted |
+| Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted ([deprecated](#type-omission-and-any)) |
 | Return type | Optional. Inferred from the body when omitted (inferred as `Unit` if no `return` statement) |
 | `Unit` | Return type for functions that return no value |
 
@@ -44,16 +44,18 @@ fn noReturn(x: int) -> Unit:  # Return type Unit (explicit)
 fn getValue() -> int:     # Return type int
     return 42
 
-fn identity(x) -> any:    # Parameter type any (omitted)
+fn identity(x: any) -> any:    # Parameter type any (explicit)
     return x
 ```
 
 ### Type Omission and `any`
 
-When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime. This is similar to Python's untyped parameters.
+When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime.
+
+> **Deprecated (#2317, #2323)**: Omitting a parameter type annotation emits a compile-time warning. Write `: any` explicitly to suppress it, or prefer a concrete type. See [Untyped Parameters (Deprecated)](types.md#untyped-parameters-deprecated) for migration guidance.
 
 ```ry
-# All parameters default to any
+# Deprecated: implicit any from omitted annotation
 fn add(a, b):
     return a + b
 
@@ -62,7 +64,7 @@ add("hello", " world") # "hello world" (str + str)
 add(1, 2.0)            # 3.0 (int + float)
 ```
 
-You can also use `any` explicitly in type annotations:
+You can also use `any` explicitly in type annotations (no warning):
 
 ```ry
 fn identity(x: any) -> any:
@@ -282,7 +284,7 @@ Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **no
 fn process(x: int) -> str:
     return "int"
 
-fn process(x) -> str:          # x: any
+fn process(x: any) -> str:     # any fallback (lowest-priority overload)
     return "any"
 
 process(42)       # "int" — exact match (int) beats any

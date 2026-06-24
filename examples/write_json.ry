@@ -1,9 +1,7 @@
 # JSON 書き出し (stdlib の json モジュール)
 from ry.json import stringify
 
-# Map<str, any> リテラル: 各値を明示的に any 化する必要がある
-v1: any = 1
-v2: any = "hello"
-m: Map<str, any> = {"x": v1, "y": v2}
+# Map<str, any> リテラル: 値はリテラル位置で any に自動ラップされる
+m: Map<str, any> = {"x": 1, "y": "hello"}
 s = stringify(m)
 print(f"stringified: {s}")
