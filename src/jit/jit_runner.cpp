@@ -213,6 +213,12 @@ int runRySource(const std::string &src, const std::string &source_name,
                            {ry::TraceField("file", source_name)});
     auto cg = std::make_unique<CodeGen>(test_mode, &sm, coverage_mode, coverage_offset, outline_mode);
     cg->setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
+    // #2317: arm any-usage lint for the user's package. The set of
+    // exempt file_ids (stdlib + cross-package imports) was accumulated
+    // by ModuleLoader while resolving imports; everything else,
+    // including the user's own intra-package multi-file project,
+    // stays subject to lint.
+    cg->enableAnyUsageLint(loader.externalFileIds());
     ThreadSafeModule tsm = [&]() {
         try {
             auto module = cg->compile(prog);

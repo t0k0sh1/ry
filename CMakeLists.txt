@@ -525,6 +525,7 @@ add_executable(ry_tests
     tests/test_codegen_type_safety.cpp
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
+    tests/test_any_usage_warnings.cpp
     tests/test_ry_namespace_warning.cpp
     tests/test_any_op_warnings.cpp
     tests/test_codegen_call_json_reject.cpp

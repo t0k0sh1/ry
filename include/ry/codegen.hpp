@@ -53,6 +53,18 @@ public:
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
+    // #2317: arm any-usage lint warnings and supply the set of file_ids whose
+    // definitions should be exempt (stdlib + cross-package imports — code the
+    // importer cannot act on). Called once by jit_runner after import
+    // resolution. In-process codegen unit tests skip this call, leaving lint
+    // disabled so their `warnings_` vector stays empty. The user's
+    // intra-package multi-file project is NOT in `external_ids` and stays
+    // subject to lint.
+    void enableAnyUsageLint(std::unordered_set<int> external_ids) {
+        any_lint_enabled_ = true;
+        external_file_ids_ = std::move(external_ids);
+    }
+
     // --- @native fn signature types ---
 
     struct NativeFnParam {
@@ -1172,6 +1184,20 @@ public:
     const SourceManager *sm_ = nullptr;
     SourceLocation current_loc_;
     std::string current_function_name_;
+    // #2317: lint state (see enableAnyUsageLint comment).
+    bool any_lint_enabled_ = false;
+    std::unordered_set<int> external_file_ids_;
+    bool shouldEmitAnyLintAt(int file_id) const {
+        // Off: in-process tests that never called enableAnyUsageLint.
+        // file_id in external_file_ids_: stdlib / cross-package import.
+        return any_lint_enabled_ && external_file_ids_.count(file_id) == 0;
+    }
+    // Centralized prefix for any-usage lint messages (analogue of
+    // emitDeprecationWarning) so the "warning: " prefix and future
+    // formatting changes live at one site.
+    void emitAnyUsageWarning(std::string msg) {
+        warnings_.push_back("warning: " + std::move(msg));
+    }
     std::unordered_set<int64_t> registered_coverage_lines_;
 
     // ======== Coverage & Tracing ========

@@ -747,6 +747,38 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
+    // #2317: warn on broad `any` usage. shouldEmitAnyLintAt suppresses
+    // warnings for stdlib / cross-package definitions (the importer
+    // cannot act on third-party code) while keeping warnings on for
+    // the user's own intra-package multi-file project. @native fns and
+    // generic templates are already short-circuited above.
+    if (shouldEmitAnyLintAt(s->loc.file_id)) {
+        const bool isPublic = hasDirective(s->directives, "public");
+        // Single pass: each param is either implicit-any (Pattern 3)
+        // or explicit-any on a @public fn (Pattern 2 param). The two
+        // arms are mutually exclusive on has_explicit_type.
+        for (const auto &p : s->params) {
+            if (!p.has_explicit_type) {
+                emitAnyUsageWarning("parameter '" + p.name +
+                    "' of function '" + s->name +
+                    "' has no type annotation and defaults to 'any'; "
+                    "add an explicit annotation, a union, "
+                    "or a generic type parameter");
+            } else if (isPublic && p.type && p.type->isBareAnyName()) {
+                emitAnyUsageWarning("public function '" + s->name +
+                    "' parameter '" + p.name + "' is typed 'any'; "
+                    "prefer a concrete type, union, "
+                    "or generic type parameter");
+            }
+        }
+        if (isPublic && s->return_type && s->return_type->isBareAnyName()) {
+            emitAnyUsageWarning("public function '" + s->name +
+                "' returns 'any'; "
+                "prefer a concrete return type, union, "
+                "or generic type parameter");
+        }
+    }
+
     // #1889: reject silent shadow of stdlib built-ins at the top-level.
     // Nested fns are scope-local closures and never feed the global
     // hardcoded-dispatch chain that the guard defends against, so the

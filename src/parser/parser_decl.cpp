@@ -193,7 +193,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                     "(all parameters after a default parameter must also have defaults)");
             }
 
-            fnStmt->params.push_back({paramName.value, std::move(paramType), std::move(default_value)});
+            fnStmt->params.push_back({paramName.value, std::move(paramType), std::move(default_value), has_explicit_type});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
@@ -452,7 +452,7 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot,
                     "(all parameters after a default parameter must also have defaults)");
             }
 
-            result.params.push_back({paramName.value, std::move(paramType), std::move(default_value)});
+            result.params.push_back({paramName.value, std::move(paramType), std::move(default_value), has_explicit_type});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;

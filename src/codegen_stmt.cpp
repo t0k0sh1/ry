@@ -600,6 +600,18 @@ void CodeGen::emitVarDecl(const std::string &name,
                             "' does not match expression type for variable '" + name + "'");
                     }
                 } else if (isAnyType(annotTy)) {
+                    // #2317 Pattern 1: explicit ': any' on a concrete RHS erases
+                    // statically inferred type information. The outer guard at
+                    // line 568 (annotTy != newTy) ensures newTy is non-any here.
+                    // shouldEmitAnyLintAt excludes stdlib / cross-package code;
+                    // current_loc_ is updated by emitStmt(AssignStmt&) before
+                    // the chain reaches here, so its file_id is the decl's.
+                    if (shouldEmitAnyLintAt(current_loc_.file_id)) {
+                        emitAnyUsageWarning("variable '" + name +
+                            "' is annotated 'any' but its initializer has a concrete type; "
+                            "remove the annotation to keep the inferred type, "
+                            "or replace 'any' with the concrete type");
+                    }
                     val = wrapInAny(val);
                     newTy = anyTy_;
                 } else if (isAnyType(newTy) &&
@@ -613,6 +625,17 @@ void CodeGen::emitVarDecl(const std::string &name,
                             (llvm::isa<llvm::StructType>(annotTy) &&
                              findRecordInfoForType(
                                  llvm::cast<llvm::StructType>(annotTy))))) {
+                    // #2317 Pattern 4: assigning any to a concrete-annotated
+                    // variable performs an implicit runtime unwrap. Warn
+                    // before the unwrap so users move to checked casts.
+                    // See Pattern 1 above for the gate rationale.
+                    if (shouldEmitAnyLintAt(current_loc_.file_id)) {
+                        emitAnyUsageWarning("assigning 'any' to variable '" + name +
+                            "' of type '" + *annot +
+                            "' performs an implicit runtime unwrap; "
+                            "use a checked cast such as 'asType[" + *annot +
+                            "](...)' or 'case' narrowing for safety");
+                    }
                     // any → narrow unwrap. The gate accepts every shape
                     // unwrapFromAny knows how to dispatch on annotTy:
                     //   - i64 + simple-enum metadata → descriptor-checked

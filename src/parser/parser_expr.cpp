@@ -1093,14 +1093,16 @@ ExprPtr Parser::parseParenLambdaExpr() {
             lex_.next(); // consume param name
 
             TypeNodePtr paramType = TypeNode::makeBasic("any");
+            bool has_explicit_type = false;
             if (lex_.peek().kind == TokenKind::Colon) {
                 lex_.next(); // consume ':'
                 paramType = parseTypeName();
+                has_explicit_type = true;
             }
             if (lex_.peek().kind == TokenKind::Equals)
                 parseError(paramName.line, "default arguments are not supported in lambda expressions");
 
-            lambda->params.push_back({paramName.value, std::move(paramType), nullptr});
+            lambda->params.push_back({paramName.value, std::move(paramType), nullptr, has_explicit_type});
             paramNameTokens.push_back(paramName);
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
