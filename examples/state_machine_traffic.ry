@@ -1,0 +1,76 @@
+# 信号機 state machine — Light × Event → Light の transition table を Result で表す
+
+enum Light:
+  Red
+  Yellow
+  Green
+
+enum Event:
+  Tick
+  EmergencyStop
+  Reset
+
+fn lightLabel(l: Light) -> str:
+  return case l:
+    Light::Red : "RED"
+    Light::Yellow : "YELLOW"
+    Light::Green : "GREEN"
+
+fn eventLabel(e: Event) -> str:
+  return case e:
+    Event::Tick : "tick"
+    Event::EmergencyStop : "emergency-stop"
+    Event::Reset : "reset"
+
+fn transition(light: Light, event: Event) -> Result<Light, Error>:
+  case event:
+    Event::Reset:
+      return Ok(Light::Red)
+    Event::EmergencyStop:
+      case light:
+        Light::Red:
+          return Err(Error("already Red — emergency-stop is a no-op"))
+        Light::Yellow:
+          return Ok(Light::Red)
+        Light::Green:
+          return Ok(Light::Red)
+    Event::Tick:
+      case light:
+        Light::Red:
+          return Ok(Light::Green)
+        Light::Green:
+          return Ok(Light::Yellow)
+        Light::Yellow:
+          return Ok(Light::Red)
+  return Err(Error("unreachable"))
+
+fn runTrace(start: Light, events: List<Event>) -> Light:
+  current = start
+  print(f"  start: {lightLabel(current)}")
+  for e in events:
+    case transition(current, e):
+      Ok(next):
+        print(f"  on {eventLabel(e)}: {lightLabel(current)} -> {lightLabel(next)}")
+        current = next
+      Err(err):
+        print(f"  on {eventLabel(e)}: rejected — {err.message} (state stays {lightLabel(current)})")
+  return current
+
+# --- demo ---
+
+print("normal cycle:")
+finalState = runTrace(Light::Red, [Event::Tick, Event::Tick, Event::Tick, Event::Tick])
+print(f"  final: {lightLabel(finalState)}")
+
+print("\nemergency-stop after green:")
+_ = runTrace(Light::Red, [Event::Tick, Event::EmergencyStop, Event::Reset])
+
+print("\nemergency from red (rejected):")
+_ = runTrace(Light::Red, [Event::EmergencyStop, Event::Tick])
+
+print("\nlong sequence:")
+seq: List<Event> = [
+  Event::Tick, Event::Tick, Event::EmergencyStop,
+  Event::Reset, Event::Tick, Event::Tick, Event::Tick
+]
+_ = runTrace(Light::Red, seq)

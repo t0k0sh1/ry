@@ -1,0 +1,97 @@
+# 簡易 log 解析 — "TIMESTAMP LEVEL message" 形式の行を typed entry に変換し集計する
+
+enum Level:
+  Debug
+  Info
+  Warn
+  Critical
+
+record LogEntry:
+  timestamp: str
+  level: Level
+  message: str
+
+fn levelLabel(lv: Level) -> str:
+  return case lv:
+    Level::Debug : "DEBUG"
+    Level::Info : "INFO"
+    Level::Warn : "WARN"
+    Level::Critical : "ERROR"
+
+fn parseLevel(token: str) -> Result<Level, Error>:
+  if token == "DEBUG":
+    return Ok(Level::Debug)
+  if token == "INFO":
+    return Ok(Level::Info)
+  if token == "WARN":
+    return Ok(Level::Warn)
+  if token == "ERROR":
+    return Ok(Level::Critical)
+  return Err(Error(f"unknown level '{token}'"))
+
+fn parseLine(line: str) -> Result<LogEntry, Error>:
+  parts = split(line, " ")
+  if len(parts) < 3:
+    return Err(Error(f"too few tokens: '{line}'"))
+  level = parseLevel(parts[1])?
+  # message は 3 番目以降のトークンを再結合 (slice + join)
+  return Ok(LogEntry(parts[0] + "", level, join(slice(parts, 2, len(parts)), " ")))
+
+fn countByLevel(entries: List<LogEntry>) -> Map<str, int>:
+  counts: Map<str, int> = {"DEBUG": 0, "INFO": 0, "WARN": 0, "ERROR": 0}
+  for e in entries:
+    key = case e.level:
+      Level::Debug : "DEBUG"
+      Level::Info : "INFO"
+      Level::Warn : "WARN"
+      Level::Critical : "ERROR"
+    counts[key] = counts[key] + 1
+  return counts
+
+fn isCritical(e: LogEntry) -> bool:
+  return case e.level:
+    Level::Critical : true
+    Level::Debug : false
+    Level::Info : false
+    Level::Warn : false
+
+fn errorsOnly(entries: List<LogEntry>) -> List<LogEntry>:
+  return filter(entries, isCritical)
+
+# --- demo ---
+
+sample = """
+2026-06-25T09:00:00 INFO server started on port 8080
+2026-06-25T09:00:01 DEBUG cache hit for /index
+2026-06-25T09:00:02 INFO 200 GET /api/users
+2026-06-25T09:00:05 WARN slow query: 1230ms for /api/reports
+2026-06-25T09:00:07 ERROR db connection refused
+2026-06-25T09:00:10 ERROR retry failed after 3 attempts
+2026-06-25T09:00:15 INFO recovered
+"""
+
+entries: List<LogEntry> = []
+parseErrors = 0
+for raw in split(sample, "\n"):
+  if trim(raw) == "":
+    continue
+  case parseLine(raw):
+    Ok(e):
+      append!(entries, e)
+    Err(err):
+      parseErrors = parseErrors + 1
+      print(f"parse error: {err.message}")
+
+print("entries parsed:")
+for e in entries:
+  print(f"  {e.timestamp} [{levelLabel(e.level)}] {e.message}")
+
+print(f"\nparse failures: {parseErrors}")
+
+print("\ncount by level:")
+for k, v in countByLevel(entries):
+  print(f"  {k}: {v}")
+
+print("\nerror entries:")
+for e in errorsOnly(entries):
+  print(f"  {e.timestamp} {e.message}")

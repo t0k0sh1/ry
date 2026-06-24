@@ -1,0 +1,83 @@
+# JSON テキストから型付き config record を復元する小プログラム
+# `load[Record]` を nested record と `List<str>` field 込みで使う。
+from ry.json import load
+
+record DbConfig:
+  url: str
+  maxConns: int
+
+record ServerConfig:
+  host: str
+  port: int
+  debug: bool
+  allowedHosts: List<str>
+
+record AppConfig:
+  server: ServerConfig
+  database: DbConfig
+
+fn validatePort(p: int) -> Result<int, Error>:
+  if p < 1 or p > 65535:
+    return Err(Error(f"port {p} out of range 1..65535"))
+  return Ok(p)
+
+fn validateMaxConns(n: int) -> Result<int, Error>:
+  if n < 1:
+    return Err(Error(f"maxConns must be >= 1, got {n}"))
+  if n > 1000:
+    return Err(Error(f"maxConns {n} unreasonably large (>1000)"))
+  return Ok(n)
+
+fn validate(cfg: AppConfig) -> Result<AppConfig, Error>:
+  _ = validatePort(cfg.server.port)?
+  _ = validateMaxConns(cfg.database.maxConns)?
+  return Ok(cfg)
+
+fn loadAppConfig(text: str) -> Result<AppConfig, Error>:
+  raw = load[AppConfig](text)?
+  return validate(raw)
+
+fn summarize(cfg: AppConfig) -> str:
+  hosts = join(cfg.server.allowedHosts, ", ")
+  return f"server={cfg.server.host}:{cfg.server.port} debug={cfg.server.debug} allowed=[{hosts}] db={cfg.database.url} maxConns={cfg.database.maxConns}"
+
+# --- demo: success path ---
+
+validText = "{\"server\":{\"host\":\"0.0.0.0\",\"port\":8080,\"debug\":false,\"allowedHosts\":[\"example.com\",\"localhost\"]},\"database\":{\"url\":\"postgres://localhost/app\",\"maxConns\":16}}"
+
+case loadAppConfig(validText):
+  Ok(cfg):
+    print("valid config loaded:")
+    print(f"  {summarize(cfg)}")
+  Err(e):
+    print(f"unexpected failure: {e.message}")
+
+# --- demo: validation error (port out of range) ---
+
+badPortText = "{\"server\":{\"host\":\"0.0.0.0\",\"port\":70000,\"debug\":true,\"allowedHosts\":[]},\"database\":{\"url\":\"postgres://x/y\",\"maxConns\":4}}"
+
+case loadAppConfig(badPortText):
+  Ok(_):
+    print("unexpected: bad port accepted")
+  Err(e):
+    print(f"bad-port path rejected: {e.message}")
+
+# --- demo: validation error (maxConns) ---
+
+badConnsText = "{\"server\":{\"host\":\"x\",\"port\":80,\"debug\":false,\"allowedHosts\":[\"a\"]},\"database\":{\"url\":\"u\",\"maxConns\":0}}"
+
+case loadAppConfig(badConnsText):
+  Ok(_):
+    print("unexpected: zero maxConns accepted")
+  Err(e):
+    print(f"bad-maxConns path rejected: {e.message}")
+
+# --- demo: structural JSON error (missing field) ---
+
+missingFieldText = "{\"server\":{\"host\":\"x\",\"port\":80,\"debug\":false},\"database\":{\"url\":\"u\",\"maxConns\":4}}"
+
+case loadAppConfig(missingFieldText):
+  Ok(_):
+    print("unexpected: missing allowedHosts accepted")
+  Err(e):
+    print(f"missing-field path rejected: {e.message}")

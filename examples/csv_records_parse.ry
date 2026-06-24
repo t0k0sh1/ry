@@ -1,0 +1,81 @@
+# CSV テキストから Person record を復元する — split / trim / int() を組み合わせた解析
+
+record Person:
+  name: str
+  age: int
+  city: str
+
+enum ParseError:
+  EmptyLine
+  WrongFieldCount(int)
+  BadAge(str)
+  EmptyName
+
+fn parseErrorLabel(err: ParseError) -> str:
+  return case err:
+    ParseError::EmptyLine : "empty line"
+    ParseError::WrongFieldCount(n) : f"wrong field count (got {n}, expected 3)"
+    ParseError::BadAge(s) : f"cannot parse age from '{s}'"
+    ParseError::EmptyName : "empty name"
+
+fn parseLine(line: str) -> Result<Person, ParseError>:
+  if trim(line) == "":
+    return Err(ParseError::EmptyLine)
+  fields = split(line, ",")
+  n = len(fields)
+  if n != 3:
+    return Err(ParseError::WrongFieldCount(n))
+  if trim(fields[0]) == "":
+    return Err(ParseError::EmptyName)
+  rawAge = trim(fields[1])
+  case int(rawAge):
+    Ok(age):
+      return Ok(Person(trim(fields[0]) + "", age, trim(fields[2]) + ""))
+    Err(_):
+      return Err(ParseError::BadAge(rawAge + ""))
+
+fn printPerson(p: Person):
+  print(f"  {p.name} ({p.age}) from {p.city}")
+
+fn printError(lineNo: int, err: ParseError):
+  print(f"  line {lineNo}: {parseErrorLabel(err)}")
+
+# --- demo ---
+
+sample = """
+Alice, 30, Tokyo
+Bob, 25, Osaka
+,42, Kyoto
+Carol, twenty, Nagoya
+Dan,40
+Eve, 33, Sapporo
+"""
+
+people: List<Person> = []
+okCount = 0
+failCount = 0
+for i, line in enumerate(split(sample, "\n")):
+  if trim(line) == "":
+    continue
+  case parseLine(line):
+    Ok(p):
+      append!(people, p)
+      okCount = okCount + 1
+    Err(e):
+      printError(i + 1, e)
+      failCount = failCount + 1
+
+print("\nparsed people:")
+for p in people:
+  printPerson(p)
+
+print(f"\nsummary: ok={okCount} fail={failCount}")
+
+# --- demo: average age via sum + map ---
+
+if len(people) > 0:
+  total = sum(map(people, (p: Person) => p.age))
+  avg = total // len(people)
+  print(f"average age (parsed only): {avg}")
+else:
+  print("no valid rows to average")

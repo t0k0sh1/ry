@@ -1,0 +1,86 @@
+# 簡易 HTTP router — メソッド + path の組を typed MatchResult に解決する
+
+record Route:
+  method: str
+  path: str
+  handler: str
+
+enum MatchResult:
+  Exact(str)
+  MethodMismatch(str)
+  NotFound
+
+fn matchRoute(table: List<Route>, method: str, path: str) -> MatchResult:
+  registered: List<str> = []
+  for r in table:
+    if r.path == path:
+      if r.method == method:
+        return MatchResult::Exact(r.handler)
+      append!(registered, r.method + "")
+  if len(registered) > 0:
+    return MatchResult::MethodMismatch(join(registered, ", "))
+  return MatchResult::NotFound
+
+fn resultLabel(res: MatchResult) -> str:
+  return case res:
+    MatchResult::Exact(handler) : f"-> {handler}"
+    MatchResult::MethodMismatch(allowed) : f"-> 405 (allowed: {allowed})"
+    MatchResult::NotFound : "-> 404"
+
+fn padRight(s: str, width: int) -> str:
+  if len(s) >= width:
+    return s
+  return s + repeat(" ", width - len(s))
+
+fn handleRequest(table: List<Route>, method: str, path: str):
+  res = matchRoute(table, method, path)
+  print(f"  {padRight(method, 6)} {padRight(path, 20)} {resultLabel(res)}")
+
+# --- demo ---
+
+routes: List<Route> = [
+  Route("GET", "/users", "listUsers"),
+  Route("POST", "/users", "createUser"),
+  Route("GET", "/users/me", "currentUser"),
+  Route("GET", "/posts", "listPosts"),
+  Route("POST", "/posts", "createPost"),
+  Route("DELETE", "/posts", "deletePost"),
+  Route("GET", "/health", "healthCheck")
+]
+
+print("registered routes:")
+for r in routes:
+  print(f"  {padRight(r.method, 6)} {padRight(r.path, 20)} -> {r.handler}")
+
+print("\nrequests:")
+handleRequest(routes, "GET", "/users")
+handleRequest(routes, "POST", "/users")
+handleRequest(routes, "GET", "/users/me")
+handleRequest(routes, "DELETE", "/posts")
+handleRequest(routes, "PATCH", "/users")
+handleRequest(routes, "GET", "/unknown")
+handleRequest(routes, "GET", "/health")
+handleRequest(routes, "POST", "/health")
+
+# summary: count each MatchResult variant across a batch
+batch: List<(str, str)> = [
+  ("GET", "/users"),
+  ("POST", "/users"),
+  ("PATCH", "/users"),
+  ("DELETE", "/posts"),
+  ("GET", "/nope")
+]
+
+ok = 0
+mm = 0
+nf = 0
+for req in batch:
+  case matchRoute(routes, req.0, req.1):
+    MatchResult::Exact(_):
+      ok = ok + 1
+    MatchResult::MethodMismatch(_):
+      mm = mm + 1
+    MatchResult::NotFound:
+      nf = nf + 1
+
+print(f"\nbatch summary: ok={ok} method-mismatch={mm} not-found={nf}")
