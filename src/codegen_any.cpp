@@ -462,6 +462,67 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                           " target not yet supported";
         return buildErrValue(buildInlineError(msg), resTy);
     };
+    // Source-shape guard (#2315): every helper that walks `any`-held
+    // collection storage (tryUnwrapListFromAny / tryUnwrapMapFromAny /
+    // tryUnwrapRecordFromAny) assumes the source any holds JSON-shape
+    // List<any> / Map<str, any> with 16-byte RyAny stride. Native typed
+    // collections wrapped via `wrapInAny` register themselves in the
+    // `__ry_any_register_typed_coll` side table; iterating them as
+    // RyAny[] reads garbage at 16-byte stride out of an 8-byte buffer.
+    // `asType[List<T>]` / `asType[Map<str, V>]` (T/V ≠ any) on such a
+    // source would silently misread or OOB-read; guard with a runtime
+    // side-table lookup that returns Err on registered typed sources
+    // and delegates to `untypedPath()` otherwise. `load[T]` from json /
+    // json5 sources never registers a typed collection (the parser
+    // always emits `List<any>` / `Map<str, any>`), so this is a no-op
+    // for the load path in practice but defense-in-depth in principle.
+    auto emitTypedCollGuard =
+        [&](const llvm::Twine &nameStem,
+            const std::string &kindLabel,
+            llvm::function_ref<llvm::Value *()> untypedPath) -> llvm::Value * {
+        llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+        auto lookupFn = getRuntimeFn(
+            "__ry_any_lookup_typed_coll", ptrTy_, {ptrTy_});
+        llvm::Value *dataPtr =
+            loadAnyDataPtr(anyVal, nameStem + ".typedchk");
+        llvm::Value *typedName = builder_.CreateCall(
+            lookupFn, {dataPtr}, nameStem + ".typed_name");
+        llvm::Value *isTyped = builder_.CreateICmpNE(
+            typedName,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            nameStem + ".is_typed");
+
+        auto *typedBB = createBBInFn("typedchk.typed", fn);
+        auto *untypedBB = createBBInFn("typedchk.untyped", fn);
+        auto *guardDoneBB = createBBInFn("typedchk.done", fn);
+        emitBranchCond(isTyped, typedBB, untypedBB);
+
+        builder_.SetInsertPoint(typedBB);
+        std::string label =
+            targetTypeName.empty() ? "?" : targetTypeName;
+        std::string msg =
+            callerLabel + "[" + label + "]: cannot reconstruct " +
+            kindLabel + " from a native typed collection source "
+            "(only List<any> / Map<str, any> / Set<any> JSON-shape "
+            "sources are supported)";
+        llvm::Value *typedErr =
+            buildErrValue(buildInlineError(msg), resTy);
+        llvm::BasicBlock *typedEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(guardDoneBB);
+
+        builder_.SetInsertPoint(untypedBB);
+        llvm::Value *untypedResult = untypedPath();
+        llvm::BasicBlock *untypedEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(guardDoneBB);
+
+        builder_.SetInsertPoint(guardDoneBB);
+        llvm::PHINode *phi =
+            builder_.CreatePHI(resTy, 2, nameStem + ".result");
+        phi->addIncoming(typedErr, typedEndBB);
+        phi->addIncoming(untypedResult, untypedEndBB);
+        return phi;
+    };
 
     // Sub-helper dispatch stays CodeGen-private per [[lowered_any]] Path 1
     // design: each helper uses `record_types_` / `reverse_option_types_` /
@@ -527,9 +588,17 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
 
             // Enum path: load actual descriptor, compare against the
             // expected Option<inner> descriptor, then unwrap or Err.
+            // Use the canonical `Option<inner>` name for descriptor
+            // lookup so `T?` shorthand and type aliases (e.g. `Maybe`)
+            // all hit the same global as the wrap site, which always
+            // emits the canonical form. `targetTypeName` is preserved
+            // for user-facing error messages.
             builder_.SetInsertPoint(enumPathBB);
+            std::string canonicalOptName =
+                innerName.empty() ? targetTypeName
+                                  : "Option<" + innerName + ">";
             auto *expectedEnumDesc =
-                getOrCreateEnumDescriptor(targetTypeName, st);
+                getOrCreateEnumDescriptor(canonicalOptName, st);
             llvm::Value *enumDataPtr =
                 loadAnyDataPtr(anyVal, "tryopt.entry");
             llvm::Value *actualEnumDesc = builder_.CreateLoad(
@@ -546,10 +615,11 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
 
             // Descriptor matches: reuse the panic-version enum unwrap.
             // Its trap branches are dead because we proved the
-            // descriptor matches.
+            // descriptor matches. Pass the canonical name so the inner
+            // descriptor lookup hits the same global.
             builder_.SetInsertPoint(enumOkBB);
             llvm::Value *optVal =
-                unwrapEnumFromAny(anyVal, st, targetTypeName);
+                unwrapEnumFromAny(anyVal, st, canonicalOptName);
             llvm::Value *optOk = buildOkValue(optVal, resTy);
             llvm::BasicBlock *enumOkEndBB = builder_.GetInsertBlock();
             emitBranchUncond(optDoneBB);
@@ -605,9 +675,15 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
 
         // Map / fallback path: existing helper covers Map reconstruction
         // and produces the "expected JSON object" Err on other tags.
+        // Wrap in typed-coll guard so a native typed Map<str, X> source
+        // (X ≠ any) returns Err instead of mis-iterating the value buffer.
         builder_.SetInsertPoint(mapPathBB);
-        llvm::Value *mapResult = tryUnwrapRecordFromAny(
-            anyVal, st, *info, targetTypeName, resTy, callerLabel);
+        llvm::Value *mapResult =
+            emitTypedCollGuard("tryrec.entry.map", "record", [&] {
+                return tryUnwrapRecordFromAny(anyVal, st, *info,
+                                                targetTypeName, resTy,
+                                                callerLabel);
+            });
         llvm::BasicBlock *mapEndBB = builder_.GetInsertBlock();
         emitBranchUncond(doneBB);
 
@@ -687,8 +763,12 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                 llvm::Type *elemTy = resolveType(inner);
                 if (!elemTy)
                     return emitUnsupportedErr("typed List<" + inner + ">");
-                return tryUnwrapListFromAny(anyVal, elemTy, inner,
-                                              targetTypeName, resTy, callerLabel);
+                return emitTypedCollGuard(
+                    "trylst.entry", "typed List<" + inner + ">", [&] {
+                        return tryUnwrapListFromAny(
+                            anyVal, elemTy, inner, targetTypeName, resTy,
+                            callerLabel);
+                    });
             }
         } else if (ry::util::isSetTypeName(resolved)) {
             std::string inner = ry::util::trimTypeNameSpaces(
@@ -713,9 +793,12 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                     if (!valTy)
                         return emitUnsupportedErr(
                             "typed Map<str, " + v + ">");
-                    return tryUnwrapMapFromAny(anyVal, valTy, v,
-                                                 targetTypeName, resTy,
-                                                 callerLabel);
+                    return emitTypedCollGuard(
+                        "trymap.entry", "typed Map<str, " + v + ">", [&] {
+                            return tryUnwrapMapFromAny(
+                                anyVal, valTy, v, targetTypeName, resTy,
+                                callerLabel);
+                        });
                 }
             }
         }

@@ -1274,7 +1274,8 @@ fn asTypeTests():
     v: any = AnyRecPoint(1, 2)
     case asType[AnyRecPlain](v):
       Ok(_): fail("expected Err")
-      Err(_): expect(true).toEq(true)
+      Err(e):
+        expect(e.message == "asType[AnyRecPlain]: expected record AnyRecPlain, got a different record type").toEq(true)
   @it("should convert any holding Option<int> to Ok(Option<int>)")
   fn shouldAsTypeOptionIntOk():
     v: any = Some(42)
@@ -1315,7 +1316,8 @@ fn asTypeTests():
     v: any = 42
     case asType[List<any>](v):
       Ok(_): fail("expected Err")
-      Err(_): expect(true).toEq(true)
+      Err(e):
+        expect(e.message == "asType[List<any>]: expected List<any>").toEq(true)
   @it("should extract typed values from json5-shaped Map<str, any>")
   fn shouldAsTypeFromJsonShape():
     m: Map<str, any> = {"age": 30, "name": "Alice"}
@@ -1325,6 +1327,30 @@ fn asTypeTests():
     case asType[str](m["name"]):
       Ok(s): expect(s).toEq("Alice")
       Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should reject native typed List<int> source (typed-coll guard)")
+  fn shouldAsTypeRejectNativeTypedList():
+    xs: List<int> = [1, 2, 3]
+    v: any = xs
+    case asType[List<int>](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
+  @it("should reject native typed Map<str, int> source (typed-coll guard)")
+  fn shouldAsTypeRejectNativeTypedMap():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    v: any = m
+    case asType[Map<str, int>](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
+  @it("should reject native typed Map source when target is record")
+  fn shouldAsTypeRejectNativeTypedMapForRecord():
+    m: Map<str, int> = {"x": 1, "y": 2}
+    v: any = m
+    case asType[AnyRecPoint](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
 
 @describe("isType type-test on any")
 fn isTypeTests():
