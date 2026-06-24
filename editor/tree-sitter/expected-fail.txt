@@ -35,7 +35,6 @@ tests/spec/enum_generic_param_type.test.ry
 tests/spec/generic_bounds.test.ry
 
 # === Lambda body with block expressions (`=> if ... :`, `=> if ... else ...`) ===
-tests/spec/lambda_paren_omit.test.ry
 tests/spec/nested_fn_return_fn.test.ry
 tests/spec/option_branch_merge_none.test.ry
 tests/spec/option_lambda_if.test.ry

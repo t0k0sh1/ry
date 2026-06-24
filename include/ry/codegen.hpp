@@ -1200,6 +1200,17 @@ public:
     void emitAnyUsageWarning(std::string msg) {
         warnings_.push_back("warning: " + std::move(msg));
     }
+    // Pattern 3 (#2317, #2323): unannotated parameter defaults to `any`.
+    // Owns the shared migration-guidance tail so wording cannot drift
+    // between the named-fn and lambda call sites.
+    void emitImplicitAnyParamWarning(const std::string &paramName,
+                                     const std::string &contextDesc) {
+        emitAnyUsageWarning("parameter '" + paramName +
+            "' of " + contextDesc +
+            " has no type annotation and defaults to 'any'; "
+            "add an explicit annotation, a union, "
+            "or a generic type parameter");
+    }
     std::unordered_set<int64_t> registered_coverage_lines_;
 
     // ======== Coverage & Tracing ========

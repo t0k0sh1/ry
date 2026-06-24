@@ -770,6 +770,53 @@ TEST(ParserTest, LambdaOptionAWithParenPrefix) {
     ASSERT_TRUE(lambda->expr_body != nullptr);
 }
 
+// [regression #1572] Bare-paren-omitted single-param lambda: `x => x + 1`.
+// Codegen-level coverage was deleted with #2323 (deprecated; would emit a
+// Pattern 3 warning on every spec run). The parser must still build a
+// single-param LambdaExpr from this surface syntax.
+TEST(ParserTest, BareLambdaSingleParam) {
+    Program prog = parseStr("inc = x => x + 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_EQ(lambda->params.size(), 1u);
+    EXPECT_EQ(lambda->params[0].name, "x");
+    EXPECT_FALSE(lambda->params[0].has_explicit_type);
+    EXPECT_EQ(lambda->params[0].type->toString(), "any");
+    ASSERT_TRUE(lambda->expr_body != nullptr);
+    EXPECT_EQ(lambda->return_type, nullptr);
+}
+
+// [regression #1572] `if ident => ... else ...` at statement-RHS must not be
+// stolen by the bare-lambda parser. The sibling test
+// `BareLambdaPreservesIfExpressionWithBareIdentCond` covers the same
+// disambiguation inside a lambda body; this one anchors it at the assignment
+// RHS, the position previously covered by tests/spec/lambda_paren_omit.test.ry.
+TEST(ParserTest, IfExprWithBareIdentCondAtStmtRhs) {
+    Program prog = parseStr("flag = true\nresult = if flag => 1 else 2");
+    ASSERT_EQ(prog.size(), 2u);
+    const auto &assign = std::get<AssignStmt>(prog[1]);
+    EXPECT_EQ(assign.name, "result");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfExpr>>(assign.value->data));
+}
+
+// [regression #1572] Bare-paren lambda as a method-call argument.
+// `xs.filter(x => x > 2)` — UFCS-desugared to `filter(xs, x => x > 2)`,
+// so args[1] is the LambdaExpr.
+TEST(ParserTest, BareLambdaAsCallArgument) {
+    Program prog = parseStr("ys = xs.filter(x => x > 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(assign.value->data));
+    const auto &call = std::get<std::unique_ptr<CallExpr>>(assign.value->data);
+    ASSERT_EQ(call->args.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(call->args[1]->data));
+    const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(call->args[1]->data);
+    ASSERT_EQ(lambda->params.size(), 1u);
+    EXPECT_EQ(lambda->params[0].name, "x");
+    EXPECT_FALSE(lambda->params[0].has_explicit_type);
+}
+
 TEST(ParserTest, TypeAnnotationOptionInt) {
     Program prog = parseStr("x: Option<int> = None");
     ASSERT_EQ(prog.size(), 1u);

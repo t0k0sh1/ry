@@ -20,7 +20,7 @@ fn filterPropagatesInnerCollectionMetadata1651Tests():
   @it("filter on List<Map<str, int>> preserves map key access on result")
   fn filterOnListMapStrIntPreservesMapKeyAccessOnResult():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"a": 3}]
-    ys = filter(xs, m => true)
+    ys = filter(xs, (m: any) => true)
     expect(len(ys)).toEq(3)
     expect(ys[0]["a"]).toEq(1)
     expect(ys[2]["a"]).toEq(3)
@@ -28,7 +28,7 @@ fn filterPropagatesInnerCollectionMetadata1651Tests():
   @it("filter on List<List<int>> preserves nested index access on result")
   fn filterOnListListIntPreservesNestedIndexAccessOnResult():
     xss: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
-    ys = filter(xss, l => true)
+    ys = filter(xss, (l: any) => true)
     expect(len(ys)).toEq(3)
     expect(ys[0][0]).toEq(1)
     expect(ys[2][1]).toEq(6)

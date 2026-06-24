@@ -25,7 +25,7 @@ fn typed(x: float) -> str:
 fn preferWidening(x: float) -> str:
   return "float"
 
-fn preferWidening(x) -> str:
+fn preferWidening(x: any) -> str:
   return "any"
 
 # --- tests ---

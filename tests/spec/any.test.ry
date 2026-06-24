@@ -19,45 +19,45 @@ fn anyTypeTests():
     x: any = true
     expect(true).toEq(true)
 
-@describe("optional param type")
-fn optionalParamTypeTests():
-  @it("should accept single param without type annotation")
-  fn shouldAcceptSingleParamWithoutTypeAnnotation():
-    fn addOne(x) -> int:
+@describe("explicit any-typed parameters")
+fn explicitAnyTypedParametersTests():
+  @it("should accept single param with explicit any annotation")
+  fn shouldAcceptSingleParamWithExplicitAnyAnnotation():
+    fn addOne(x: any) -> int:
       return 1
     expect(addOne(42)).toEq(1)
-  @it("should accept multiple params without type annotation")
-  fn shouldAcceptMultipleParamsWithoutTypeAnnotation():
-    fn bothAny(x, y) -> bool:
+  @it("should accept multiple params with explicit any annotation")
+  fn shouldAcceptMultipleParamsWithExplicitAnyAnnotation():
+    fn bothAny(x: any, y: any) -> bool:
       return true
     expect(bothAny(1, "hello")).toEq(true)
-  @it("should accept mixed typed and untyped params")
-  fn shouldAcceptMixedTypedAndUntypedParams():
-    fn mixed(x: int, y) -> int:
+  @it("should accept mixed typed and any-typed params")
+  fn shouldAcceptMixedTypedAndAnyTypedParams():
+    fn mixed(x: int, y: any) -> int:
       return x
     expect(mixed(10, "hello")).toEq(10)
-  @it("should accept lambda without type annotation")
-  fn shouldAcceptLambdaWithoutTypeAnnotation():
-    f = (x) -> bool => true
+  @it("should accept lambda with explicit any annotation")
+  fn shouldAcceptLambdaWithExplicitAnyAnnotation():
+    f = (x: any) -> bool => true
     expect(f(42)).toEq(true)
   @it("should accept int as param")
   fn shouldAcceptIntAsParam():
-    fn accept(v) -> bool:
+    fn accept(v: any) -> bool:
       return true
     expect(accept(42)).toEq(true)
   @it("should accept float as param")
   fn shouldAcceptFloatAsParam():
-    fn acceptF(v) -> bool:
+    fn acceptF(v: any) -> bool:
       return true
     expect(acceptF(3.14)).toEq(true)
   @it("should accept str as param")
   fn shouldAcceptStrAsParam():
-    fn acceptS(v) -> bool:
+    fn acceptS(v: any) -> bool:
       return true
     expect(acceptS("hello")).toEq(true)
   @it("should accept bool as param")
   fn shouldAcceptBoolAsParam():
-    fn acceptB(v) -> bool:
+    fn acceptB(v: any) -> bool:
       return true
     expect(acceptB(false)).toEq(true)
 
@@ -277,7 +277,7 @@ fn overloadResolutionConcretePreferredOverAnyTests():
   fn shouldPreferConcreteOverloadOverAny():
     fn dispatch(x: int) -> str:
       return "int"
-    fn dispatch(x) -> str:
+    fn dispatch(x: any) -> str:
       return "any"
     expect(dispatch(42)).toEq("int")
 
@@ -350,22 +350,22 @@ fn anyUnaryNegationTests():
 fn anyParameterComputationTests():
   @it("should compute int addition via any params")
   fn shouldComputeIntAdditionViaAnyParams():
-    fn add(a, b):
+    fn add(a: any, b: any):
       return a + b
     expect(add(1, 2)).toEq(3)
   @it("should concatenate strings via any params")
   fn shouldConcatenateStringsViaAnyParams():
-    fn concat(a, b):
+    fn concat(a: any, b: any):
       return a + b
     expect(concat("hello", " world")).toEq("hello world")
   @it("should multiply mixed int/float")
   fn shouldMultiplyMixedIntFloat():
-    fn mul(a, b):
+    fn mul(a: any, b: any):
       return a * b
     expect(mul(3, 2.0)).toEq(6.0)
   @it("should compare via any params")
   fn shouldCompareViaAnyParams():
-    fn greater(a, b):
+    fn greater(a: any, b: any):
       return a > b
     expect(greater(5, 3)).toEq(true)
 
@@ -394,14 +394,14 @@ fn anyIdentityRoundTripTests():
 
 @describe("any lambda computation")
 fn anyLambdaComputationTests():
-  @it("should support lambda with implicit any param and return")
-  fn shouldSupportLambdaWithImplicitAnyParamAndReturn():
-    f = (x):
+  @it("should support lambda with explicit any param and inferred return")
+  fn shouldSupportLambdaWithExplicitAnyParamAndInferredReturn():
+    f = (x: any):
       return x + 1
     expect(f(10)).toEq(11)
   @it("should return any from lambda computation")
   fn shouldReturnAnyFromLambdaComputation():
-    f = (a, b):
+    f = (a: any, b: any):
       return a * b
     expect(f(3, 4)).toEq(12)
 
