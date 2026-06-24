@@ -6,13 +6,17 @@
 
 namespace ry {
 
-// Reserved stdlib built-in function names; see .claude/rules/codegen-stdlib-dispatcher.md for maintenance.
+// Reserved stdlib built-in function names. New entries reach this list when an
+// `@native` dispatch is carved out of a Pattern A table into a Pattern B
+// `emitBuiltin*` helper (compiler builtin), at which point the name becomes
+// claimed at parse time so user fns cannot shadow it. Keep this list sorted.
 inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames = {
     "Err",
     "Error",
     "None",
     "Ok",
     "Some",
+    "abs",
     "all",
     "any",
     "args",
@@ -20,6 +24,7 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "availableParallelism",
     "blockOn",
     "byteLen",
+    "ceil",
     "charAt",
     "checkedAdd",
     "checkedMul",
@@ -27,6 +32,7 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "close",
     "contains",
     "count",
+    "digits",
     "distinct",
     "endsWith",
     "enumerate",
@@ -37,6 +43,7 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "first",
     "flat",
     "float",
+    "floor",
     "fold",
     "get",
     "getPath",
@@ -51,10 +58,12 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "len",
     "lines",
     "load",
+    "log",
     "map",
     "max",
     "min",
     "pop",
+    "pow",
     "print",
     "range",
     "readAll",
@@ -70,6 +79,7 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "replace",
     "reverse",
     "reverse!",
+    "round",
     "saturatingAdd",
     "saturatingMul",
     "saturatingSub",
@@ -81,9 +91,13 @@ inline const std::unordered_set<std::string_view> kReservedBuiltinFunctionNames 
     "sort!",
     "split",
     "startsWith",
+    "stringify",
+    "stringifySafe",
     "substr",
     "sum",
     "tap",
+    "threadJoin",
+    "threadSpawn",
     "toLower",
     "toUpper",
     "trim",

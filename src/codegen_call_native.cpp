@@ -13,10 +13,24 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     // Guard: check if this callee has any registered @native signature
     // for this package (or as a bare name for inline declarations).
-    // The sigKey is reused later for signature lookup (variadic + normal paths).
+    // The sigIt is reused later for signature lookup (variadic + normal paths).
     std::string sigKey = ry::util::nativeSigKey(package, e.callee);
-    if (!native_fn_sigs_.count(sigKey) && !native_fn_sigs_.count(e.callee))
-        return nullptr;
+    auto sigItHead = native_fn_sigs_.find(sigKey);
+    if (sigItHead == native_fn_sigs_.end()) {
+        sigItHead = native_fn_sigs_.find(e.callee);
+        if (sigItHead == native_fn_sigs_.end())
+            return nullptr;
+    }
+
+    // Descriptor-driven library auto-registration (#2340, criterion 5).
+    // Every sig under one callee belongs to a single declaring module, so
+    // pulling the library name off any registered sig — even before arity /
+    // type checks succeed — is sound. Doing it once up here retires the three
+    // per-branch hand-inserts that used to live in the variadic / customEmitter
+    // / normal paths and ensures the JIT loads `libry_<module>` before any
+    // early codegenError aborts the rest of the dispatch.
+    if (!sigItHead->second.empty() && !sigItHead->second[0].library.empty())
+        used_native_libraries_.insert(sigItHead->second[0].library);
 
     // Lookup entry in dispatch table
     const NativeDispatchEntry *entry = nullptr;
@@ -142,8 +156,6 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
                 args[i] = emitWideningConversion(args[i], argTypes[i]);
         }
 
-        if (!matchedSig->library.empty())
-            used_native_libraries_.insert(matchedSig->library);
 
         std::string rtName = (entry->rtNameOverride
             ? std::string(entry->rtNameOverride)
@@ -187,10 +199,6 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         bool hasCallArityMatch = false;
         for (const auto &sig : sigIt->second) {
             if (sig.params.size() == e.args.size()) {
-                // Track native library for the JIT — custom emitters return
-                // before the normal matchedSig tracking below.
-                if (!sig.library.empty())
-                    used_native_libraries_.insert(sig.library);
                 hasCallArityMatch = true;
                 break;
             }
@@ -216,7 +224,8 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
                 const bool isSpied = spied_functions_.count(canonicalSig) > 0;
                 if (isMocked || isSpied) {
                     return emitNativeCustomEmitterMockDispatch(
-                        e, entry, *picked, canonicalSig, isMocked, isSpied);
+                        e, entry->customEmitter, *picked, canonicalSig,
+                        isMocked, isSpied);
                 }
             }
         }
@@ -318,8 +327,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             args[i] = emitWideningConversion(args[i], paramLLVMTypes[i]);
     }
 
-    if (!matchedSig->library.empty())
-        used_native_libraries_.insert(matchedSig->library);
+    // Library registration handled at function entry (#2340 auto-register).
 
     // Derive runtime function name
     std::string rtName = entry->rtNameOverride
@@ -758,6 +766,42 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
 // ===== #1682: mock/spy for @native customEmitter overloads =====
 
+llvm::Value *CodeGen::emitBuiltinNativeOrMock(
+    const CallExpr &e,
+    const std::string &package,
+    CodeGenCustomEmitterFn emitter) {
+    // #2340: Pattern B compiler-builtin wrapper. Looks the call up under the
+    // package key the carved-out emitter belongs to (e.g. "math" for
+    // emitMathPow), runs the same #1682 mock/spy gate the Pattern A2 path
+    // uses inside emitTableDrivenNativeCall, and falls back to a direct
+    // emitter call when no mock is registered. Without this the carve-out
+    // would silently bypass any `mock("pow(int, int)", ...)` registration.
+    if (test_mode_) {
+        std::string sigKey = ry::util::nativeSigKey(package, e.callee);
+        auto sigIt = native_fn_sigs_.find(sigKey);
+        if (sigIt == native_fn_sigs_.end())
+            sigIt = native_fn_sigs_.find(e.callee);
+        if (sigIt != native_fn_sigs_.end()) {
+            const NativeFnSignature *picked =
+                pickNativeOverloadByCallShape(e, sigIt->second);
+            if (picked) {
+                std::vector<std::string> pn;
+                pn.reserve(picked->params.size());
+                for (const auto &p : picked->params) pn.push_back(p.typeName);
+                const std::string canonicalSig =
+                    buildCanonicalSig(e.callee, pn);
+                const bool isMocked = mocked_functions_.count(canonicalSig) > 0;
+                const bool isSpied  = spied_functions_.count(canonicalSig) > 0;
+                if (isMocked || isSpied) {
+                    return emitNativeCustomEmitterMockDispatch(
+                        e, emitter, *picked, canonicalSig, isMocked, isSpied);
+                }
+            }
+        }
+    }
+    return emitter(*this, e);
+}
+
 const CodeGen::NativeFnSignature *CodeGen::pickNativeOverloadByCallShape(
     const CallExpr &e, const std::vector<NativeFnSignature> &sigs) {
     // Pass 1: arity-unique match. Covers the digits(n) / digits(n, base)
@@ -809,7 +853,7 @@ const CodeGen::NativeFnSignature *CodeGen::pickNativeOverloadByCallShape(
 
 llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     const CallExpr &e,
-    const NativeDispatchEntry *entry,
+    CodeGenCustomEmitterFn emitter,
     const NativeFnSignature &sig,
     const std::string &canonicalSig,
     bool isMocked,
@@ -835,11 +879,11 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     llvm::FunctionCallee mockIncFn =
         getRuntimeFn("__ry_mock_increment_call", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
 
-    // Spy-only: emit linear increment, then delegate to the customEmitter
+    // Spy-only: emit linear increment, then delegate to the supplied emitter
     // (which emits args + the original call).
     if (isSpied && !isMocked) {
         builder_.CreateCall(mockIncFn, {nameStr});
-        return entry->customEmitter(*this, e);
+        return emitter(*this, e);
     }
 
     // Mocked (with or without spy). Use the mock-get probe BEFORE emitting
@@ -910,11 +954,11 @@ llvm::Value *CodeGen::emitNativeCustomEmitterMockDispatch(
     emitBranchUncond(mergeBB);
     llvm::BasicBlock *captureEndBB = builder_.GetInsertBlock();
 
-    // Original path: delegate to customEmitter (which emits its own args).
+    // Original path: delegate to the supplied emitter (which emits its own args).
     builder_.SetInsertPoint(origBB);
     if (isSpied)
         builder_.CreateCall(mockIncFn, {nameStr});
-    llvm::Value *origResult = entry->customEmitter(*this, e);
+    llvm::Value *origResult = emitter(*this, e);
     emitBranchUncond(mergeBB);
     llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
 

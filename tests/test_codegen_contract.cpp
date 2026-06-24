@@ -49,14 +49,16 @@ TEST_F(CodeGenTest, RequireMultipleConditionsSecondFails) {
 // ===== ensure (postcondition) with variable binding =====
 
 TEST_F(CodeGenTest, EnsureSatisfied) {
+    // `abs` was carved out to emitBuiltinMath (#2340) so it is now reserved.
+    // Use a fresh name to exercise the ensure-postcondition path in isolation.
     std::string src =
-        "fn abs(x: int) -> int:\n"
+        "fn myAbs(x: int) -> int:\n"
         "    ensure v:\n"
         "        v >= 0\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
-        "print(abs(-5))";
+        "print(myAbs(-5))";
     EXPECT_EQ(runSource(src), "5\n");
 }
 

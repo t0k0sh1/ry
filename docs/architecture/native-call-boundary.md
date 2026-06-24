@@ -163,10 +163,10 @@ These issues are **drafts**, not yet filed. Per the AGENTS.md "User Permission G
 6. **Pilot confirmation: path** (six A1 entries, no wrapping / no resource).
 7. Installment 2-a: io / filesystem (resource_kind + module error channels).
 8. Installment 2-b: net / http (resource_kind + multi-channel `__ry_net_*` / `__ry_tls_*` / `__ry_http_*` error channels).
-9. Installment 3-a carve-out: math A2 type-driven entries → `emitBuiltinMath` (Pattern B).
-10. Installment 3-b carve-out: `json::stringify` / `json::stringifySafe` → `emitBuiltinJson`.
-11. Installment 3-c carve-out: `thread::threadSpawn` / `threadJoin` → `emitBuiltinThread`.
-12. `used_native_libraries_` consolidation (descriptor-driven registration, retire the general dispatcher-registration rule, keep the §"Pattern B carve-out" exception).
+9. Installment 3-a carve-out: math A2 type-driven entries → `emitBuiltinMath` (Pattern B). **(#2340)**
+10. Installment 3-b carve-out: `json::stringify` / `json::stringifySafe` (and the json5 mirrors) → `emitBuiltinJson` / `emitBuiltinJson5`. **(#2340)**
+11. Installment 3-c carve-out: `thread::threadSpawn` / `threadJoin` → `emitBuiltinThread`. **(#2340)**
+12. `used_native_libraries_` consolidation (descriptor-driven registration, retire the general dispatcher-registration rule, keep the §"Pattern B carve-out" exception). **(#2340)** — the auto-register lives at `src/codegen_call_native.cpp` `emitTableDrivenNativeCall` entry; the previous customEmitter mock dispatch helper was generalised to accept any `NativeEmitterFn` so Pattern B carve-outs keep #1682 mock/spy semantics.
 13. Mock / spy v2 argument recording across customEmitter callers (current v1 limitation at `src/codegen_call_native.cpp:797`); separate from descriptor work.
 14. Upper codegen migration kickoff: descriptor consumers move to Rust; native knowledge stays in C++ descriptor producers only. This is the issue that #2231 protects, and it is **out of scope of this design**.
 

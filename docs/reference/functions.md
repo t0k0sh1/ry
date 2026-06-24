@@ -364,7 +364,7 @@ The check does **not** apply to:
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
 ```ry
-fn log(msg: str) -> Unit:
+fn greet(msg: str) -> Unit:
     print(msg)
 ```
 

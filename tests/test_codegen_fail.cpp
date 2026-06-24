@@ -330,18 +330,19 @@ TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
 // ============================================================
 // math.pow(int, int) with a negative exponent aborts at runtime.
 //
-// Declares `pow` via a bare `@native` so the dispatcher's fallback
-// bare-name lookup routes the call through `emitMathPow` in
-// `math_table` without needing `ModuleLoader` to resolve the real
-// stdlib import. CodeGenTest::runSource goes Parser → CodeGen
+// Declares the @native("math") signatures inline so emitBuiltinMath
+// (#2340 carve-out) sees `math::pow` / `math::digits` registered and
+// intercepts the call. CodeGenTest::runSource goes Parser → CodeGen
 // directly without invoking ModuleLoader, so `from math import ...`
-// would fail with "unresolved import".
+// would fail with "unresolved import"; the explicit `("math")` tag
+// registers the sig under the right package key without loading the
+// stdlib `.ry` file.
 // ============================================================
 
 TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
     EXPECT_EXIT(
         runSource(
-            "@native\n"
+            "@native(\"math\")\n"
             "fn pow(x: int, y: int) -> int\n"
             "print(pow(2, -1))\n"),
         ::testing::ExitedWithCode(1),
@@ -351,7 +352,7 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
 TEST_F(CodeGenTest, DigitsNegativeNAborts) {
     EXPECT_EXIT(
         runSource(
-            "@native\n"
+            "@native(\"math\")\n"
             "fn digits(n: int, base: int) -> List<int>\n"
             "print(digits(-1, 10))\n"),
         ::testing::ExitedWithCode(1),
@@ -361,7 +362,7 @@ TEST_F(CodeGenTest, DigitsNegativeNAborts) {
 TEST_F(CodeGenTest, DigitsBaseLessThan2Aborts) {
     EXPECT_EXIT(
         runSource(
-            "@native\n"
+            "@native(\"math\")\n"
             "fn digits(n: int, base: int) -> List<int>\n"
             "print(digits(10, 1))\n"),
         ::testing::ExitedWithCode(1),
@@ -371,7 +372,7 @@ TEST_F(CodeGenTest, DigitsBaseLessThan2Aborts) {
 TEST_F(CodeGenTest, DigitsBaseZeroAborts) {
     EXPECT_EXIT(
         runSource(
-            "@native\n"
+            "@native(\"math\")\n"
             "fn digits(n: int, base: int) -> List<int>\n"
             "print(digits(10, 0))\n"),
         ::testing::ExitedWithCode(1),
@@ -1512,14 +1513,19 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsFallthroughAdd) {
     ));
 }
 
-TEST_F(CodeGenTest, ReservedBuiltinAllowsFallthroughAbs) {
-    EXPECT_NO_THROW(runSource(
+// `abs` was added to the reserved set in #2340 alongside the math A2
+// carve-out, so attempting a user `fn abs` declaration is rejected at
+// parse-time with the standard reserved-name diagnostic. The companion
+// fall-through test for `add` above pins that other historically
+// allowed names remain unreserved.
+TEST_F(CodeGenTest, ReservedBuiltinRejectsUserAbs) {
+    expectCompileError(
         "fn abs(x: int) -> int:\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
-        "print(abs(-7))\n"
-    ));
+        "print(abs(-7))\n",
+        "cannot declare function 'abs': name is reserved for a built-in function");
 }
 
 // `@native` declarations are exempt by design — the stdlib itself

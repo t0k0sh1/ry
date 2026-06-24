@@ -662,10 +662,13 @@ static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
 }
 
 // ===== Thread dispatch table =====
-
+//
+// threadSpawn / threadJoin were carved out to emitBuiltinThread (Pattern B)
+// per #2340 — both synthesize an `llvm::Function` from the worker body, which
+// no declarative descriptor can express. The remaining sync / atomic entries
+// stay here as table-driven customEmitters; their `libry_thread` registration
+// is now handled by dispatchThread itself (see below).
 static const CodeGen::NativeDispatchEntry thread_table[] = {
-    {"threadSpawn",      nullptr, {}, 0, nullptr, emitThreadSpawn},
-    {"threadJoin",       nullptr, {}, 0, nullptr, emitThreadJoin},
     // Sync primitives: new
     {"lockNew",          nullptr, {}, 0, nullptr, emitThreadSyncNew},
     {"rwlockNew",        nullptr, {}, 0, nullptr, emitThreadSyncNew},
@@ -700,9 +703,50 @@ static const CodeGen::NativeDispatchEntry thread_table[] = {
     {"atomicBoolFree",   nullptr, {}, 0, nullptr, emitThreadSyncFree},
 };
 
+// Gate the dispatcher: only proceed if any thread sig is actually registered,
+// and in that case register `libry_thread` up-front so the JIT loads it before
+// any customEmitter in the table runs. The previous regime registered the
+// library from emitTableDrivenNativeCall's customEmitter branch; after the
+// generic auto-register lands (see codegen_call_native.cpp) the explicit
+// insert here remains as the dispatcher-level guarantee that JSON / JSON5
+// already provide (codegen_call_json.cpp / codegen_call_json5.cpp).
+//
+// Probe two representative anchors covering the carved-out (threadSpawn) and
+// table-driven (lockNew) sides of the module; a single sig from either side
+// is enough to confirm the user imported `thread`. Mirrors the O(1)
+// `sigs.count(...)` shape used by `isJsonImported` / `isJson5Imported`.
+static bool isThreadImported(CodeGen &cg) {
+    const auto &sigs = cg.getNativeFnSigs();
+    return sigs.count("thread::threadSpawn") || sigs.count("thread::lockNew");
+}
+
 RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
 static llvm::Value *dispatchThread(CodeGen &cg, const CallExpr &e) {
+    if (!isThreadImported(cg))
+        return nullptr;
+    cg.used_native_libraries_.insert("thread");
     return cg.emitTableDrivenNativeCall(e, "thread", thread_table, std::size(thread_table));
+}
+
+// ===== Builtin Thread (Pattern B carve-out, #2340) =====
+//
+// threadSpawn synthesizes an `llvm::Function` from the worker lambda body;
+// threadJoin reads back through a ThreadResult-tagged slot. Neither maps to a
+// declarative descriptor field. Sig gate mirrors emitBuiltinJson so a same-
+// named identifier bound to a variable / lambda still reaches the indirect-
+// call path when `thread` was not imported.
+llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
+    if (e.callee == "threadSpawn" &&
+        native_fn_sigs_.count("thread::threadSpawn")) {
+        used_native_libraries_.insert("thread");
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadSpawn);
+    }
+    if (e.callee == "threadJoin" &&
+        native_fn_sigs_.count("thread::threadJoin")) {
+        used_native_libraries_.insert("thread");
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadJoin);
+    }
+    return nullptr;
 }
 
 } // namespace ry

@@ -33,7 +33,7 @@ Postconditions are checked before every `return`. They specify what the function
 `ensure` requires a variable name that binds the return value. This variable can be used in the postcondition expressions.
 
 ```ry
-fn abs(x: int) -> int:
+fn myAbs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:

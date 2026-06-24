@@ -1,0 +1,3 @@
+### Changed
+
+- Type-driven `@native` dispatches that always required hand-written customEmitters — `math::abs` / `log` / `pow` / `floor` / `ceil` / `round` / `digits`, `json::stringify` / `stringifySafe` (and the `json5` variants), and `thread::threadSpawn` / `threadJoin` — are now compiler builtins (Pattern B) instead of `math_table` / `json_table` / `json5_table` / `thread_table` entries. The user-visible consequence is that those eleven names are now reserved: declaring a user `fn abs(...)` etc. raises `cannot declare function 'X': name is reserved for a built-in function` at parse time. Function behaviour, argument shapes, error channels, `Result` wrapping, and `mock` / `spy` interception (including `mock("pow(int, int)", ...)`) are unchanged. (#2340)

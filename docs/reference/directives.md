@@ -179,7 +179,7 @@ The directive takes exactly one positional string argument. Empty strings (`@doc
 ```ry
 @doc("Returns the absolute value of x.")
 @public
-fn abs(x: int) -> int:
+fn myAbs(x: int) -> int:
   if x < 0:
     return -x
   return x

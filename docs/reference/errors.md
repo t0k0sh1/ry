@@ -44,7 +44,7 @@ The table below shows the most common compile errors; it is not exhaustive.
 | Non-exhaustive match | `case` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
 | `?` on non-Result/Option type | Applied `?` to an expression that is not a `Result` or `Option` type (`'?' operator requires a Result or Option type operand`) | `x = 42` -> `x?` |
 | `?` in non-Result function | Used `?` on a `Result` in a function that does not return `Result` (`'?' on Result can only be used in a fn that returns Result`) | `fn foo() -> int:` with `bar()?` inside |
-| `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `fn log():` with `ensure v:` |
+| `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `fn greet():` with `ensure v:` |
 
 ### Compile Error Examples
 
