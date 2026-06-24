@@ -54,6 +54,10 @@ RunResult runRy(std::vector<const char *> args, const EnvList &extraEnv) {
         close(pipeErr[1]);
         close(STDIN_FILENO);
         setenv("RY_ENV", "internal", 1);
+        // Clear inherited RY_STRICT_ANY so compat-mode cases (which pass
+        // an empty extraEnv) cannot be flipped strict by the parent
+        // process's env. extraEnv may re-set it for strict cases.
+        unsetenv("RY_STRICT_ANY");
         for (const auto &kv : extraEnv)
             setenv(kv.first.c_str(), kv.second.c_str(), 1);
 

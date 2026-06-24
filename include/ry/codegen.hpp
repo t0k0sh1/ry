@@ -2051,7 +2051,8 @@ public:
 
     // Binary operation dispatch (user-defined → any → built-in)
     llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                               const std::string &lhsHint = "", const std::string &rhsHint = "");
+                               const std::string &lhsHint = "", const std::string &rhsHint = "",
+                               SourceLocation outer_loc = {});
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

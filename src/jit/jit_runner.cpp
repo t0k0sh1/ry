@@ -15,6 +15,7 @@
 #include "ry/project/dotenv.hpp"
 #include <atomic>
 #include <csignal>
+#include <cstring>
 #include <filesystem>
 #include <algorithm>
 #include <iterator>
@@ -212,7 +213,10 @@ int runRySource(const std::string &src, const std::string &source_name,
         ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
                            {ry::TraceField("file", source_name)});
     // #2319: see cli.hpp — RY_STRICT_ANY is the single propagation channel.
-    bool strict_any_mode = std::getenv("RY_STRICT_ANY") != nullptr;
+    // Require exact "1" so RY_STRICT_ANY=0 / empty / other do NOT enable.
+    const char *strict_any_env = std::getenv("RY_STRICT_ANY");
+    bool strict_any_mode = strict_any_env != nullptr &&
+                            std::strcmp(strict_any_env, "1") == 0;
     auto cg = std::make_unique<CodeGen>(test_mode, &sm, coverage_mode, coverage_offset, outline_mode, strict_any_mode);
     cg->setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
     // #2317: arm any-usage lint for the user's package. The set of

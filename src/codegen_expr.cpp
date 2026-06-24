@@ -259,6 +259,12 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
+    // #2319: snapshot the outer expression's location before child emission
+    // advances current_loc_; strict-any diagnostics anchor on the unary
+    // expression, not the operand subtree. UnaryExpr has no `loc` member
+    // (loc lives on the parent ExprNode which set current_loc_ in emitExpr
+    // before std::visit, so current_loc_ here IS the outer expr's loc).
+    SourceLocation outer_loc = current_loc_;
     // Constant-fold `-<int literal>` before recursing into emitExpr, so that
     // magnitudes up to `|INT{N}_MIN|` are accepted (e.g. `-128i8`,
     // `-9223372036854775808i64`, `-9223372036854775808`). validateIntRange
@@ -306,7 +312,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         // #2319: strict-any rejects unary `-` on `any` (unary `+` is identity
         // and stays allowed). Shares the rule id with the binary path.
         if (strict_any_mode_ && e->op == "-") {
-            strictAnyError(current_loc_, "any-arithmetic",
+            strictAnyError(outer_loc.isValid() ? outer_loc : current_loc_,
+                           "any-arithmetic",
                            anyArithRejectionMsg("unary '-'"));
         }
         if (e->op == "-") return emitAnyUnaryNeg(val);
@@ -1708,6 +1715,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         return builder_.CreateSelect(tag, happyVal, rhs, "coalesce");
     }
 
+    // Snapshot the outer expression's location BEFORE child emission
+    // advances current_loc_; the strict-any rejection in emitBinaryOp
+    // should anchor on the full `lhs op rhs` expression, not the rhs subtree.
+    // BinaryExpr has no `loc` member (loc lives on the parent ExprNode which
+    // set current_loc_ in emitExpr before std::visit, so current_loc_ here
+    // IS the outer expr's loc).
+    SourceLocation outer_loc = current_loc_;
     llvm::Value *lhs = emitExpr(*e->lhs);
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
@@ -1716,11 +1730,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     std::string lhsHint = getExprLowLevelSuffix(*e->lhs);
     std::string rhsHint = getExprLowLevelSuffix(*e->rhs);
 
-    return emitBinaryOp(op, lhs, rhs, lhsHint, rhsHint);
+    return emitBinaryOp(op, lhs, rhs, lhsHint, rhsHint, outer_loc);
 }
 
 llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                    const std::string &lhsHint, const std::string &rhsHint) {
+                                    const std::string &lhsHint, const std::string &rhsHint,
+                                    SourceLocation outer_loc) {
     // Try user-defined binary operator first
     std::string opFnName = "operator" + op;
     if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
@@ -1732,7 +1747,8 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
         // (==, !=, <, <=, >, >=) remain permitted because they always yield
         // a concrete bool. Operator set lives in isAnyArithOp / arithOps.
         if (strict_any_mode_ && isAnyArithOp(op)) {
-            strictAnyError(current_loc_, "any-arithmetic",
+            strictAnyError(outer_loc.isValid() ? outer_loc : current_loc_,
+                           "any-arithmetic",
                            anyArithRejectionMsg("'" + op + "'"));
         }
         if (!isAnyType(lhs->getType())) lhs = wrapInAny(lhs);
