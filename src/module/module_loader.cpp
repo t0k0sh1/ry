@@ -869,16 +869,16 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             ResolvedPath rp = resolve(resolve_path, referrer_dir);
             const std::string &abs_path = rp.path;
 
-            // #2350: legacy `import math` を deprecation warning として surface する。
-            // dedup key は元の spelling — ファイル内で同じ `import math` が複数回
-            // 出ても (typically まず無いが) 1 回のみ。
+            // #2351: legacy `import math` 形式は hard error。`rp.from_stdlib` の
+            // 確認後に検出するため、user-defined module (referrer dir に同名
+            // ファイルが存在し `from_stdlib=false` となるケース) は影響を受けない。
             if (rp.from_stdlib) {
-                if (auto canon = tryLegacyToCanonical(resolve_path);
-                    canon && warned_legacy_imports_.insert(resolve_path).second) {
-                    loader_warnings_.push_back(
-                        "warning: 'import " + toRyDotForm(resolve_path) +
-                        "' is a deprecated stdlib path; use 'import " +
-                        *canon + "' instead");
+                if (auto canon = tryLegacyToCanonical(resolve_path)) {
+                    throw std::runtime_error(makeImportError(
+                        qimp.loc.line,
+                        "'import " + toRyDotForm(resolve_path) +
+                        "' is a legacy stdlib import form and is no longer "
+                        "supported; use 'import " + *canon + "' instead"));
                 }
             }
 
@@ -1000,17 +1000,17 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         ResolvedPath rp = resolve(imp.module_path, referrer_dir);
         const std::string &abs_path = rp.path;
 
-        // #2350: legacy `from math import …` / `from std.math import …` /
-        // `from std import …` を deprecation warning として surface する。
-        // dedup key は元の spelling — `from math import a` と `from math import b`
-        // の両方が同ファイルにあっても 1 回のみ。
+        // #2351: legacy `from math import …` / `from std.math import …` /
+        // `from std import …` 形式は hard error。`rp.from_stdlib` の確認後に
+        // 検出するため、user-defined module (referrer dir に同名ファイルが
+        // 存在し `from_stdlib=false` となるケース) は影響を受けない。
         if (rp.from_stdlib) {
-            if (auto canon = tryLegacyToCanonical(imp.module_path);
-                canon && warned_legacy_imports_.insert(imp.module_path).second) {
-                loader_warnings_.push_back(
-                    "warning: 'from " + toRyDotForm(imp.module_path) +
-                    " import …' is a deprecated stdlib path; use 'from " +
-                    *canon + " import …' instead");
+            if (auto canon = tryLegacyToCanonical(imp.module_path)) {
+                throw std::runtime_error(makeImportError(
+                    imp.loc.line,
+                    "'from " + toRyDotForm(imp.module_path) +
+                    " import …' is a legacy stdlib import form and is no longer "
+                    "supported; use 'from " + *canon + " import …' instead"));
             }
         }
 

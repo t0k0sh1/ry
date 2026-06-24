@@ -80,23 +80,12 @@ RunResult runRy(std::vector<const char *> args) {
     return r;
 }
 
-size_t countOccurrences(const std::string &haystack, const std::string &needle) {
-    if (needle.empty()) return 0;
-    size_t count = 0;
-    size_t pos = 0;
-    while ((pos = haystack.find(needle, pos)) != std::string::npos) {
-        ++count;
-        pos += needle.size();
-    }
-    return count;
-}
-
-class LegacyImportWarningsTest : public ::testing::Test {
+class LegacyImportErrorsTest : public ::testing::Test {
 protected:
     fs::path tmpDir_;
 
     void SetUp() override {
-        tmpDir_ = fs::path(RY_BINARY_PATH).parent_path() / "legacy_import_warnings_test";
+        tmpDir_ = fs::path(RY_BINARY_PATH).parent_path() / "legacy_import_errors_test";
         fs::remove_all(tmpDir_);
         fs::create_directories(tmpDir_);
     }
@@ -112,78 +101,76 @@ protected:
 
 } // namespace
 
-TEST_F(LegacyImportWarningsTest, FlatFormEmitsWarning) {
+TEST_F(LegacyImportErrorsTest, FlatFormIsRejected) {
     auto p = writeScript("flat_math.ry",
         "from math import sqrt\n"
         "print(sqrt(4.0))\n");
 
     auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_NE(r.err.find("deprecated"), std::string::npos)
-        << "stderr should contain 'deprecated': " << r.err;
+    EXPECT_NE(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_NE(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "stderr should mention 'legacy stdlib import form': " << r.err;
     EXPECT_NE(r.err.find("ry.math"), std::string::npos)
         << "stderr should suggest 'ry.math': " << r.err;
     EXPECT_NE(r.err.find("'from math import"), std::string::npos)
         << "stderr should quote the legacy form: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, StdDottedFormEmitsWarning) {
+TEST_F(LegacyImportErrorsTest, StdDottedFormIsRejected) {
     auto p = writeScript("std_dotted_math.ry",
         "from std.math import NAN\n"
         "print(NAN)\n");
 
     auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_NE(r.err.find("deprecated"), std::string::npos)
-        << "stderr should contain 'deprecated': " << r.err;
+    EXPECT_NE(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_NE(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "stderr should mention 'legacy stdlib import form': " << r.err;
     EXPECT_NE(r.err.find("ry.math"), std::string::npos)
         << "stderr should suggest 'ry.math': " << r.err;
     EXPECT_NE(r.err.find("'from std.math import"), std::string::npos)
         << "stderr should quote the legacy form with dot spelling: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, FlatStdFormEmitsWarning) {
+TEST_F(LegacyImportErrorsTest, FlatStdFormIsRejected) {
     // `print` is exported from share/std/builtins.ry; confirm `from std import print`
-    // (the flat-std legacy form) warns and suggests `ry.lang`.
+    // (the flat-std legacy form) is rejected and suggests `ry.lang`.
     auto p = writeScript("flat_std.ry",
         "from std import print\n"
         "print(\"hi\")\n");
 
     auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_NE(r.err.find("deprecated"), std::string::npos)
-        << "stderr should contain 'deprecated': " << r.err;
+    EXPECT_NE(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_NE(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "stderr should mention 'legacy stdlib import form': " << r.err;
     EXPECT_NE(r.err.find("ry.lang"), std::string::npos)
         << "stderr should suggest 'ry.lang': " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, QualifiedFlatFormEmitsWarning) {
+TEST_F(LegacyImportErrorsTest, QualifiedFlatFormIsRejected) {
     auto p = writeScript("qualified_flat_math.ry",
         "import math\n"
         "print(math.sqrt(9.0))\n");
 
     auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_NE(r.err.find("deprecated"), std::string::npos)
-        << "stderr should contain 'deprecated': " << r.err;
+    EXPECT_NE(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_NE(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "stderr should mention 'legacy stdlib import form': " << r.err;
     EXPECT_NE(r.err.find("ry.math"), std::string::npos)
         << "stderr should suggest 'ry.math': " << r.err;
     EXPECT_NE(r.err.find("'import math'"), std::string::npos)
         << "stderr should quote the legacy form: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, CanonicalFormNoWarning) {
+TEST_F(LegacyImportErrorsTest, CanonicalFormSucceeds) {
     auto p = writeScript("canonical.ry",
         "from ry.math import sqrt\n"
         "print(sqrt(4.0))\n");
 
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_EQ(r.err.find("deprecated"), std::string::npos)
-        << "canonical form must not emit deprecation warning: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, RyLangExplicitFormNoWarning) {
+TEST_F(LegacyImportErrorsTest, RyLangExplicitFormSucceeds) {
     // Explicit `from ry.lang import …` is canonical, not legacy.
     auto p = writeScript("ry_lang_explicit.ry",
         "from ry.lang import print\n"
@@ -191,25 +178,14 @@ TEST_F(LegacyImportWarningsTest, RyLangExplicitFormNoWarning) {
 
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_EQ(r.err.find("deprecated"), std::string::npos)
-        << "ry.lang explicit form must not emit deprecation warning: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, FlatFormDeduplicatedAcrossMultipleImports) {
-    auto p = writeScript("dedup_math.ry",
-        "from math import sqrt\n"
-        "from math import PI\n"
-        "print(sqrt(PI))\n");
-
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_EQ(countOccurrences(r.err, "deprecated"), 1u)
-        << "same legacy spelling must warn at most once, stderr was: " << r.err;
-}
-
-TEST_F(LegacyImportWarningsTest, UserDefinedModuleNoFalsePositive) {
+TEST_F(LegacyImportErrorsTest, UserDefinedModuleNoFalsePositive) {
     // A user-defined `math.ry` shadows the stdlib name. Loader resolves to the
-    // local file (rp.from_stdlib == false) — detector must NOT fire.
+    // local file (rp.from_stdlib == false) — detector must NOT fire. This is the
+    // single most important regression guard for Phase 2: a false positive would
+    // break every existing project that happens to have a local module sharing
+    // a stdlib name.
     std::ofstream(tmpDir_ / "math.ry")
         << "@public\nfn add(a: int, b: int) -> int:\n    return a + b\n";
 
@@ -220,11 +196,11 @@ TEST_F(LegacyImportWarningsTest, UserDefinedModuleNoFalsePositive) {
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
     EXPECT_EQ(r.out, "5\n");
-    EXPECT_EQ(r.err.find("deprecated"), std::string::npos)
-        << "user-defined module must not trigger deprecation warning: " << r.err;
+    EXPECT_EQ(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "user-defined module must not trigger legacy rejection: " << r.err;
 }
 
-TEST_F(LegacyImportWarningsTest, AliasedImportEmitsWarning) {
+TEST_F(LegacyImportErrorsTest, AliasedImportIsRejected) {
     // Alias (`as flatPI`) does not affect detection — module_path is still "math".
     // Use a constant (`PI`) because stdlib `@native` fn alias is not yet
     // supported (see tests/spec/ry_namespace/ry_module_import.test.ry:18).
@@ -233,25 +209,9 @@ TEST_F(LegacyImportWarningsTest, AliasedImportEmitsWarning) {
         "print(flatPI)\n");
 
     auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_NE(r.err.find("deprecated"), std::string::npos)
-        << "aliased legacy import must still warn: " << r.err;
+    EXPECT_NE(r.exit_code, 0) << "stderr: " << r.err;
+    EXPECT_NE(r.err.find("legacy stdlib import form"), std::string::npos)
+        << "aliased legacy import must still be rejected: " << r.err;
     EXPECT_NE(r.err.find("ry.math"), std::string::npos)
         << "stderr should suggest 'ry.math': " << r.err;
-}
-
-TEST_F(LegacyImportWarningsTest, MultipleDistinctLegacyModulesEachWarnOnce) {
-    auto p = writeScript("multi_distinct.ry",
-        "from math import sqrt\n"
-        "from testing import it\n"
-        "print(sqrt(4.0))\n");
-
-    auto r = runRy({"run", p.string().c_str()});
-    EXPECT_EQ(r.exit_code, 0) << "stderr: " << r.err;
-    EXPECT_EQ(countOccurrences(r.err, "deprecated"), 2u)
-        << "two distinct legacy modules should each warn once, stderr was: " << r.err;
-    EXPECT_NE(r.err.find("ry.math"), std::string::npos)
-        << "stderr should mention ry.math: " << r.err;
-    EXPECT_NE(r.err.find("ry.testing"), std::string::npos)
-        << "stderr should mention ry.testing: " << r.err;
 }

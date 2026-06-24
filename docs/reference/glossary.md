@@ -58,7 +58,7 @@ See [Module Reference — Visibility](modules.md#visibility) for the practical v
 
 The **canonical reserved namespace** for the official standard library, introduced in v0.0.30 (#1769). Documented public stdlib modules are addressable under the `ry.*` path: the implicit prelude is `ry.lang`, and each public submodule lives under `ry.<module>`.
 
-The full set of public modules accepted via `ry.*` is the 13 documented entries: `ry.lang`, `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`, `ry.regex`, `ry.testing`, `ry.base64`, `ry.net`, `ry.json5`. Anything else under the `ry.*` prefix — including internal stdlib helpers such as `ry.builtins`, `ry.gc`, `ry.core`, `ry.runtime_internal`, and any module not on the documented list — is **rejected** with an error that lists the public modules. Every documented module is also addressable through its bare alias (`math`, `net`, `json5`, …) for source-level compatibility; the canonical `ry.*` form is recommended for new code.
+The full set of public modules accepted via `ry.*` is the 13 documented entries: `ry.lang`, `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.json`, `ry.http`, `ry.thread`, `ry.regex`, `ry.testing`, `ry.base64`, `ry.net`, `ry.json5`. Anything else under the `ry.*` prefix — including internal stdlib helpers such as `ry.builtins`, `ry.gc`, `ry.core`, `ry.runtime_internal`, and any module not on the documented list — is **rejected** with an error that lists the public modules. Legacy bare aliases (`math`, `net`, `json5`, …) for these documented modules were rejected as of #2351; the canonical `ry.*` form is required.
 
 Two import shapes resolve through this namespace:
 
@@ -69,7 +69,7 @@ import ry.math                  # qualified import; binds `math` (last segment)
 
 Bare `import ry` and `from ry import X` are **invalid** — `ry` is a reserved namespace with no top-level exports. The loader rejects both forms with an error advising `ry.<module>`.
 
-The legacy `from std import` / `from std.<mod> import` / flat `from <mod> import` spellings continue to work as **compatibility aliases**; they resolve through the same physical modules under `share/std/`.
+Legacy `from std import` / `from std.<mod> import` / flat `from <mod> import` spellings for the 13 public modules listed above were rejected as of #2351 — the loader emits a hard error suggesting the canonical `ry.*` form.
 
 A user-defined top-level `ry/` module (a local `ry/` directory or `ry.ry` file) does **not** shadow the reserved namespace — the loader resolves `ry.*` only against the stdlib search paths and emits a one-time warning advising the user to rename their local module. A future release will promote this warning to a hard error.
 
@@ -87,7 +87,7 @@ The set of symbols `ry.lang` exposes is the union of the files directly under `s
 
 ## stdlib (`std`)
 
-The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. As of v0.0.30 the canonical spelling for the stdlib namespace is [`ry`](#ry-namespace) (e.g. `ry.math`), with `std` retained as a compatibility alias.
+The **standard library**. A collection of built-in modules — including `ry.math`, `ry.io`, `ry.path`, `ry.filesystem`, `ry.thread`, `ry.regex`, and others — that is automatically imported into every program. The canonical spelling for the stdlib namespace is [`ry`](#ry-namespace) (e.g. `ry.math`). Legacy `std` and bare forms (`from std import`, `from math import`, etc.) were rejected as of #2351.
 
 The stdlib provides core types, conversion helpers (`int`, `float`, `str`), built-in functions (`print`, `len`, `range`), and common utilities.
 
