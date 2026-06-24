@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <array>
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -75,8 +76,11 @@ RunResult runRy(std::vector<const char *> args) {
     outReader.join();
     errReader.join();
     int status = 0;
-    waitpid(pid, &status, 0);
-    r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    pid_t waited = -1;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+    r.exit_code = (waited == pid && WIFEXITED(status)) ? WEXITSTATUS(status) : -1;
     return r;
 }
 
