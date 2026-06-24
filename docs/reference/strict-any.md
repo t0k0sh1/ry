@@ -77,7 +77,7 @@ Example rejection:
 ```ry
 v: any = 1
 n: int = v
-# error[strict-any/any-implicit-unwrap]: assigning 'any' to variable 'n' of type 'int' performs an implicit runtime unwrap; use a checked cast such as 'asType[int](...)' or 'case' narrowing for safety
+# error: [strict-any/any-implicit-unwrap]: assigning 'any' to variable 'n' of type 'int' performs an implicit runtime unwrap; use a checked cast such as 'asType[int](...)' or 'case' narrowing for safety
 ```
 
 To fix, use `asType[T]` (#2315) with `case` narrowing — the same recovery pattern shown in `any-arithmetic` above:

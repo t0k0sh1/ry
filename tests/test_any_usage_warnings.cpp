@@ -280,6 +280,30 @@ TEST_F(AnyUsageWarningsTest, Pattern4bCallArgFiresWarning) {
         << "stderr was: " << r.err;
 }
 
+// The default-value branch in `src/codegen_call_user.cpp` is a separate
+// emit site from the explicit-arg branch above, with a distinct
+// "default value" message phrasing. Pin the compat warning here so a
+// regression that stops emitting the default-value warning (while still
+// unwrapping at runtime) cannot pass — the matching strict-mode reject
+// pair lives in `tests/test_strict_any.cpp`.
+TEST_F(AnyUsageWarningsTest, Pattern4bDefaultValueFiresWarning) {
+    auto p = writeTmp("p4b_default_fire.ry",
+        "fn getAny() -> any:\n"
+        "    return 42\n"
+        "fn f(x: int = getAny()) -> int:\n"
+        "    return x + 1\n"
+        "print(f())\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: passing 'any' default value to parameter 'x' of type 'int'"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("implicit runtime unwrap"), std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("asType[int]"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
 TEST_F(AnyUsageWarningsTest, Pattern4cLambdaCallArgFiresWarning) {
     auto p = writeTmp("p4c_fire.ry",
         "g = (n: int) -> int => n + 1\n"
