@@ -61,6 +61,36 @@ case asType[int](a):
     Err(_): print("a not int")
 ```
 
+### `any-implicit-unwrap`
+
+Implicit conversion of an `any`-typed value to a concrete type — performed today via a runtime tag check in `unwrapFromAny` — is rejected in strict-any mode. The rule covers the four Path 9 sites enumerated in [`docs/architecture/implicit-any-paths.md`](../architecture/implicit-any-paths.md):
+
+- Variable declaration: `n: int = v` where `v: any`.
+- Named function-call argument: `f(v)` (and the default-value branch when the omitted default is `any`-typed).
+- Lambda-call argument: `g(v)` where `g: (int) -> int`.
+- `Ok(v)` / `Err(v)` / `Some(v)` flowing into a `Result<T, E>` / `Option<T>` slot whose payload type is concrete.
+
+Compat mode keeps running such code but emits a warning at the same sites (with the existing Pattern 4 message template); strict mode promotes those warnings into a `[strict-any/any-implicit-unwrap]` hard error.
+
+Example rejection:
+
+```ry
+v: any = 1
+n: int = v
+# error: [strict-any/any-implicit-unwrap]: assigning 'any' to variable 'n' of type 'int' performs an implicit runtime unwrap; use a checked cast such as 'asType[int](...)' or 'case' narrowing for safety
+```
+
+To fix, use `asType[T]` (#2315) with `case` narrowing — the same recovery pattern shown in `any-arithmetic` above:
+
+```ry
+v: any = 1
+case asType[int](v):
+    Ok(n): print(n)
+    Err(_): print("not int")
+```
+
+The rule does not affect explicit `any` boundaries (`v: any = ...`, `from ry.json import load`, FFI `@extern` returns) — those remain valid in both modes. Reassignment to a previously-declared variable, `return v` from a typed function, and collection mutation paths are structurally similar hazards but are out of scope for this rule and tracked separately.
+
 ## Relationship to upcoming changes
 
 Strict-any is the framework that several v0.0.30 follow-up issues plug into:

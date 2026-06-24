@@ -1245,6 +1245,17 @@ public:
                                      const std::string &rule,
                                      const std::string &msg);
 
+    // #2321 `any-implicit-unwrap` rule helper. Each Path 9 call site (var
+    // decl, named-call arg, lambda-call arg, Ok/Err/Some slot) feeds the
+    // same shape: a site-specific context phrase + the target type name.
+    // The helper appends the shared remediation suffix ("performs an
+    // implicit runtime unwrap; use ...") so the wording lives at one place,
+    // and routes to `strictAnyError` or `emitAnyUsageWarning` based on
+    // `strict_any_mode_` and `shouldEmitAnyLintAt(loc.file_id)`.
+    void emitImplicitUnwrapDiag(const SourceLocation &loc,
+                                const std::string &context,
+                                const std::string &typeName);
+
     // @native let constants
     std::unordered_set<std::string> native_constants_;
     static bool isNativeConstant(const std::string &name);

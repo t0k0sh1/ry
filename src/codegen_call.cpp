@@ -944,8 +944,15 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // is more specific (mirror of Ok emitter for #1115).
         if (expectedInnerTy && isAnyType(inner->getType()) &&
             !isAnyType(expectedInnerTy) && expectedInnerTy != i8Ty_ &&
-            canAnyHoldType(expectedInnerTy))
+            canAnyHoldType(expectedInnerTy)) {
+            // #2321: implicit any → concrete unwrap on Some() into a typed
+            // Option<T> slot (Path 9d). Strict mode rejects; compat mode warns.
+            const std::string slotName = reverseResolveTypeName(expectedInnerTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "wrapping 'any' value as Some with expected payload type '" + slotName + "'",
+                slotName);
             inner = unwrapFromAny(inner, expectedInnerTy);
+        }
         llvm::StructType *optTy = getOptionType(inner->getType());
         return buildSomeValue(inner, optTy);
     }
@@ -970,8 +977,15 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // branch alongside Ok(0) must produce the same Result struct type).
         if (expectedOkTy && isAnyType(inner->getType()) &&
             !isAnyType(expectedOkTy) && expectedOkTy != i8Ty_ &&
-            canAnyHoldType(expectedOkTy))
+            canAnyHoldType(expectedOkTy)) {
+            // #2321: implicit any → concrete unwrap on Ok() into a typed
+            // Result<T, _> slot (Path 9d). Strict mode rejects; compat mode warns.
+            const std::string slotName = reverseResolveTypeName(expectedOkTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "wrapping 'any' value as Ok with expected payload type '" + slotName + "'",
+                slotName);
             inner = unwrapFromAny(inner, expectedOkTy);
+        }
         llvm::StructType *resTy = getResultType(inner->getType(), errTy);
         return buildOkValue(inner, resTy);
     }
@@ -997,8 +1011,15 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // must emit the same Result struct as Ok(concrete) in the sibling branch.
         if (expectedErrTy && isAnyType(inner->getType()) &&
             !isAnyType(expectedErrTy) && expectedErrTy != i8Ty_ &&
-            canAnyHoldType(expectedErrTy))
+            canAnyHoldType(expectedErrTy)) {
+            // #2321: implicit any → concrete unwrap on Err() into a typed
+            // Result<_, E> slot (Path 9d). Strict mode rejects; compat mode warns.
+            const std::string slotName = reverseResolveTypeName(expectedErrTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "wrapping 'any' value as Err with expected payload type '" + slotName + "'",
+                slotName);
             inner = unwrapFromAny(inner, expectedErrTy);
+        }
         llvm::StructType *resTy = getResultType(okTy, inner->getType());
         return buildErrValue(inner, resTy);
     }
