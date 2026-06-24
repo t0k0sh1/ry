@@ -753,7 +753,18 @@ a == b   # true (same tag, element-wise equal)
 
 ## any Type
 
-The `any` type is a built-in dynamic type that can hold any primitive value, collection, record, or enum value. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
+Ry is statically typed; `any` is not a general-purpose dynamic variable or a substitute for inferred types or union types. `any` is a runtime-tagged, type-erased slot — `x = 1` infers `int` and remains statically typed for its lifetime, while `x: any = 1` is a deliberate erasure operation that stores the value alongside a runtime tag.
+
+Intended use cases:
+
+- JSON / JSON5 transport (`json.load[Map<str, any>]`, `json5.load`) and dynamic-shape map traversal (`Map<str, any>.getPath`).
+- FFI and native return placeholders, where the concrete return type is dispatched by a custom emitter rather than declared statically.
+- Plugin or dynamic-dispatch boundaries that produce heterogeneous values.
+- Diagnostics and runtime type-introspection.
+
+For ordinary application variables, use inferred types (`x = 1`) or explicit concrete types (`x: int = 1`); prefer union types (`int | str`) when the variant set is known.
+
+To recover a concrete type from an `any` value safely, use [`asType[T]` / `isType[T]`](#explicit-any-conversion-astype--istype).
 
 ### Supported Types
 
@@ -800,7 +811,7 @@ When a collection is wrapped in `any`, the element type (e.g. `List<int>` vs `Li
 - **Deep equality** (`anyA == anyB` where both hold a collection) compares length and the data buffer byte-by-byte at an 8-byte stride. This is exact for primitive lists (`List<int>` / `List<float>` / `List<bool>`); for `List<str>` and `List<nested-collection>` it reduces to header-pointer identity, which is conservative (may report `false` for two logically equal collections). For `Map` and `Set`, equality is **pointer identity only** — hashing requires the key/element type, which is erased.
 - **String conversion** of a collection-holding `any` emits an opaque marker (`<List>`, `<Map>`, `<Set>`) rather than rendering elements. To get a typed printout, unwrap explicitly: `xs: List<int> = anyVal; print(xs)`.
 
-These limitations are intentional for v0.0.25 and tracked in follow-up issues; for now, treat `any` as a transport mechanism for dynamic data (e.g. JSON-shaped values from #1698) and unwrap to a concrete type before doing per-element work.
+Unwrap to a concrete type before doing per-element work. See [Explicit any conversion](#explicit-any-conversion-astype--istype) for safe recovery.
 
 ### Records in `any`
 
@@ -902,9 +913,9 @@ sh: Shape = makeAnyShape()
 Concrete values are automatically **wrapped** when assigned to `any`, and `any` values are automatically **unwrapped** when assigned to a concrete type.
 
 ```ry
-# Wrapping: concrete → any
-x: any = 42          # int is wrapped into any
-x = "hello"          # reassignment with a different type is allowed
+# Wrapping: concrete → any (the type is erased at the assignment site)
+age: any = 42          # int wrapped; static type is now erased
+name: any = "Alice"    # str wrapped independently
 
 # Unwrapping: any → concrete
 fn getValue() -> any:
@@ -940,13 +951,13 @@ The wrap is only triggered by the `any` element annotation on the destination. W
 
 ### Reassignment
 
-An `any` variable can be reassigned to a value of any supported type:
+An `any` variable can be reassigned to a value of any supported type. This is a property of the type-erasure mechanism, not a recommended pattern for ordinary variables — prefer inferred types or concrete annotations instead.
 
 ```ry
 x: any = 42
-x = 3.14       # OK: now holds float
-x = "hello"    # OK: now holds str
-x = true       # OK: now holds bool
+x = 3.14       # now holds float
+x = "hello"    # now holds str
+x = true       # now holds bool
 ```
 
 ### Arithmetic Operations
@@ -1063,7 +1074,7 @@ result = addOne(v)   # any(int) is unwrapped to int; result is 43
 
 ### Explicit any conversion (`asType` / `isType`)
 
-Implicit unwrap (`let x: T = anyVal`) panics with `_Exit(1)` on tag mismatch — fine for trusted code paths, fatal for dynamic data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.). Use `asType[T]` and `isType[T]` to recover concrete types safely:
+Implicit unwrap (`x: T = anyVal`) panics with `_Exit(1)` on tag mismatch — acceptable when the `any` value is produced in the same scope, fatal for externally-parsed data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.). Use `asType[T]` and `isType[T]` to recover concrete types safely:
 
 ```ry
 @public
