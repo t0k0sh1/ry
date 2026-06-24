@@ -53,6 +53,8 @@ fn runAll(account: Account, ops: List<Op>, journal: List<JournalEntry>) -> Resul
   return Ok(current)
 
 fn transfer(src: Account, dst: Account, amount: int) -> Result<TransferOutcome, Error>:
+  if src.id == dst.id:
+    return Err(Error(f"cannot transfer within account {src.id}"))
   srcAfter = apply(src, Op::Withdraw(amount))?
   dstAfter = apply(dst, Op::Deposit(amount))?
   return Ok(TransferOutcome(srcAfter, dstAfter))

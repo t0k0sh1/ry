@@ -29,9 +29,13 @@ fn addTask(tasks: List<Task>, t: Task) -> List<Task>:
 fn updateTaskStatus(tasks: List<Task>, id: int, newStatus: Status) -> Result<List<Task>, Error>:
   case findIndex(tasks, id):
     Some(i):
-      old = tasks[i]
-      tasks[i] = Task(old.id, old.title, newStatus, old.priority)
-      return Ok(tasks)
+      next: List<Task> = []
+      for j, t in enumerate(tasks):
+        if j == i:
+          append!(next, Task(t.id, t.title, newStatus, t.priority))
+        else:
+          append!(next, t)
+      return Ok(next)
     None:
       return Err(Error(f"task id {id} not found"))
 
@@ -83,8 +87,9 @@ print("\npending only:")
 printAll(filterPending(stage2))
 
 print("\nstatus counts:")
-for k, v in countByStatus(stage2):
-  print(f"  {k}: {v}")
+statusCounts = countByStatus(stage2)
+for k in ["pending", "in_progress", "done"]:
+  print(f"  {k}: {statusCounts[k]}")
 
 # error path: missing id
 case markDone(stage2, 99, "now"):

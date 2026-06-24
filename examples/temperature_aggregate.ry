@@ -63,22 +63,33 @@ for loc in locationsOrdered(stats):
     None:
       print(f"  {loc}: (missing)")
 
-# extreme finder: hottest and coldest avg
-hottestAvg = -1000.0
+# extreme finder: seed from first entry to avoid hard-coded sentinels
 hottest = ""
-coldestAvg = 1000.0
 coldest = ""
+hottestAvg = 0.0
+coldestAvg = 0.0
+seeded = false
 for loc, s in stats:
   avg = statAvg(s)
-  if avg > hottestAvg:
-    hottestAvg = avg
+  if not seeded:
     hottest = loc
-  if avg < coldestAvg:
-    coldestAvg = avg
     coldest = loc
+    hottestAvg = avg
+    coldestAvg = avg
+    seeded = true
+  else:
+    if avg > hottestAvg:
+      hottestAvg = avg
+      hottest = loc
+    if avg < coldestAvg:
+      coldestAvg = avg
+      coldest = loc
 
-print(f"\nhottest avg: {hottest} ({hottestAvg})")
-print(f"coldest avg: {coldest} ({coldestAvg})")
+if seeded:
+  print(f"\nhottest avg: {hottest} ({hottestAvg})")
+  print(f"coldest avg: {coldest} ({coldestAvg})")
+else:
+  print("\n(no readings to find extremes)")
 
 # error path: aggregate of empty list
 empty: List<Reading> = []

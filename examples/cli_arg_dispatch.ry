@@ -51,7 +51,8 @@ dispatch("live", args())
 
 # 2) hardcoded samples (covers every Command variant)
 emptyArgv: List<str> = []
-dispatch("sample-hello-default", emptyArgv)
+dispatch("sample-help-empty", emptyArgv)
+dispatch("sample-hello-default", ["hello"])
 dispatch("sample-hello-name", ["hello", "Alice"])
 dispatch("sample-echo", ["echo", "the", "quick", "fox"])
 dispatch("sample-help", ["help"])
