@@ -1,4 +1,4 @@
-from testing import describe, it, each, beforeAll, expect
+from ry.testing import describe, it, each, beforeAll, expect
 
 # #1788 — companion to the "Setup patterns for @each parameterized tests"
 # recipe in docs/reference/testing.md. The combination @each + @beforeEach

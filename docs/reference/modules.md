@@ -26,7 +26,7 @@ Imports all functions and types from the module.
 ### Selective Import
 
 ```ry
-from math import sqrt
+from ry.math import sqrt
 ```
 
 Imports only the specified definition.
@@ -34,7 +34,7 @@ Imports only the specified definition.
 ### Multiple Selective Import
 
 ```ry
-from math import sqrt, PI
+from ry.math import sqrt, PI
 ```
 
 Imports multiple definitions separated by commas.
@@ -42,7 +42,7 @@ Imports multiple definitions separated by commas.
 ### Symbol Alias
 
 ```ry
-from math import sqrt as squareRoot
+from ry.math import sqrt as squareRoot
 ```
 
 Each imported name may carry an optional `as <ident>` clause that binds the
@@ -50,7 +50,7 @@ symbol under a different local name. Aliases can be mixed with non-aliased
 names in a single statement:
 
 ```ry
-from math import sqrt as sr, PI, sin as s
+from ry.math import sqrt as sr, PI, sin as s
 ```
 
 Self-alias (`foo as foo`) is normalized to a plain import — the formatter
@@ -66,7 +66,7 @@ work as expected.
 ### Braced Selective Import
 
 ```ry
-from math import { PI, E }
+from ry.math import { PI, E }
 ```
 
 The selective import list may be wrapped in braces. Single-line and
@@ -74,7 +74,7 @@ multi-line forms are both accepted, with an optional trailing comma —
 useful for importing many symbols without losing readability:
 
 ```ry
-from math import {
+from ry.math import {
   PI,
   E,
 }
@@ -84,7 +84,7 @@ Braced form composes with `as <ident>` aliases exactly like the
 comma-separated form:
 
 ```ry
-from math import { PI as p, E }
+from ry.math import { PI as p, E }
 ```
 
 The empty form `from math import {}` is rejected as a parse error.
@@ -113,7 +113,7 @@ and `from math import {a, *}`. Use the selective form
 ### Qualified Import
 
 ```ry
-import math
+import ry.math
 x = math.sqrt(2.0)       # 1.4142135623730951
 y = math.PI              # 3.141592653589793
 ```
@@ -127,8 +127,8 @@ Qualified import composes with selective import — both forms may target
 the same module in the same file:
 
 ```ry
-import math
-from math import PI
+import ry.math
+from ry.math import PI
 print(math.sqrt(PI))     # 1.7724538509055159
 print(PI)                # 3.141592653589793
 ```
@@ -276,8 +276,8 @@ from ry.math import sqrt, PI
 import ry.math               # binds the bare last segment `math`
 
 # Deprecated (compatibility alias — emits warning):
-from math import sqrt        # flat form
-from std.math import NAN     # dotted std form
+from ry.math import sqrt        # flat form
+from ry.math import NAN     # dotted std form
 ```
 
 The `ry.lang` prelude is loaded automatically — the `print(...)`, `len(...)`, `range(...)`, `map(...)`, `filter(...)`, conversion helpers (`int(...)`, `float(...)`, `str(...)`), and similar utilities are available without any explicit import. Explicit `from ry.lang import x` is still allowed for readability.
@@ -307,7 +307,7 @@ The following sub-modules require explicit import:
 | [`path`](path.md) | File path operations (join, basename, dirname, etc.) |
 
 ```ry
-from math import sqrt, PI, sin
+from ry.math import sqrt, PI, sin
 ```
 
 You can also explicitly import specific definitions from standard library modules:
@@ -408,7 +408,7 @@ from math
 from math   # Skipped
 
 # Error: the qualified form rejects duplicates at parse time
-import math
+import ry.math
 import math   # Error: 'import math' already in this file
 ```
 

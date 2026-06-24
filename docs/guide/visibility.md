@@ -149,7 +149,7 @@ The entire `share/std/` tree is **one** package — `share/std/package.toml` is 
 
 Two consequences follow:
 
-1. **From user code**, only stdlib symbols marked `@public` are importable. `from math import sqrt` resolves to a `@public` symbol that the stdlib package chooses to expose. Non-`@public` helpers inside the stdlib (for instance, internal implementation files under `share/std/runtime_internal/` or under `share/std/core/`) remain package-internal and are invisible to importers.
+1. **From user code**, only stdlib symbols marked `@public` are importable. `from ry.math import sqrt` resolves to a `@public` symbol that the stdlib package chooses to expose. Non-`@public` helpers inside the stdlib (for instance, internal implementation files under `share/std/runtime_internal/` or under `share/std/core/`) remain package-internal and are invisible to importers.
 2. **Inside the stdlib itself**, stdlib modules can freely call each other's package-internal helpers. This keeps maintenance ergonomics close to a single-codebase project even though the stdlib spans many sub-modules.
 
 If the stdlib is ever split into independently-released packages (a future possibility tied to the planned `ry add` system), each piece would gain its own `package.toml` and the cross-stdlib helper calls would need explicit `@public` markers.

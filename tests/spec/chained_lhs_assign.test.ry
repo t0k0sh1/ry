@@ -5,7 +5,7 @@
 # fix lands. Error-path cases (immutable/const, rvalue LHS, missing map key
 # compound) live in C++ tests, not here.
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 record LhsPoint:
   x: int

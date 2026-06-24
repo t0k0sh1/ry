@@ -1,4 +1,4 @@
-from testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
+from ry.testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
 
 # #1780 — file-top-level lifecycle hooks. @beforeAll/@beforeEach/@afterEach/
 # @afterAll declared outside any @describe wrap every @it in the file. With

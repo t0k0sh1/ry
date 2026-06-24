@@ -4,7 +4,7 @@
 # defaulted to Option<i8> or Option<i64> respectively, causing a type
 # mismatch with same-branch Some<T> values.
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("None() in if-expr then-branch (#1154)")
 fn noneInIfExprThenBranch1154Tests():

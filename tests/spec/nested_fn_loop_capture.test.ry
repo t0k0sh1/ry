@@ -5,7 +5,7 @@
 # the file fails to compile with "undefined variable: ..." pointing into the
 # nested fn body.
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # ===== Top-level repros: bug A (loop induction var) for `for` =====
 

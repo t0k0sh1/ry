@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # Bug 1 of PR #1736: `import usermod` + `import usermod as u`. Before the
 # fix the namespace bucket was keyed by the effective (alias-rewritten) name

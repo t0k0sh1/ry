@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from math import INF, isNan, isInf
+from ry.math import INF, isNan, isInf
 
 @describe("division")
 fn divisionTests():

@@ -1,5 +1,5 @@
 # ファイル IO
-from io import readText, writeText
+from ry.io import readText, writeText
 
 # ファイル書き込み
 case writeText("/tmp/ry_test.txt", "hello from ry\nline 2\n"):

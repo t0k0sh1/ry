@@ -1,4 +1,4 @@
-from testing import it, expect, each, property, only
+from ry.testing import it, expect, each, property, only
 
 # When @only exists anywhere in this file, all @it tests WITHOUT @only are
 # implicitly skipped. Only tests tagged with @only run.

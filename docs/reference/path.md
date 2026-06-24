@@ -3,7 +3,7 @@
 File path operations. All functions require explicit import from `path`.
 
 ```ry
-from path import join, basename, dirname, ext, resolve, isAbsolute
+from ry.path import join, basename, dirname, ext, resolve, isAbsolute
 ```
 
 ## Function List
@@ -26,7 +26,7 @@ from path import join, basename, dirname, ext, resolve, isAbsolute
 ### Joining Paths
 
 ```ry
-from path import join
+from ry.path import join
 
 case join("/tmp", "data", "file.txt"):
   Ok(p): print(p)   # /tmp/data/file.txt
@@ -41,7 +41,7 @@ case join("/tmp", "/usr"):
 ### Extracting Path Components
 
 ```ry
-from path import basename, dirname, ext
+from ry.path import basename, dirname, ext
 
 p = "/home/user/docs/report.pdf"
 
@@ -61,7 +61,7 @@ case ext(p):
 ### Extension Edge Cases
 
 ```ry
-from path import ext
+from ry.path import ext
 
 print(ext("archive.tar.gz")?)   # .gz
 print(ext(".gitignore")?)       # (empty string — hidden file with no extension)
@@ -72,7 +72,7 @@ print(ext("Makefile")?)         # (empty string)
 ### Checking Absolute Paths
 
 ```ry
-from path import isAbsolute
+from ry.path import isAbsolute
 
 print(isAbsolute("/usr/local"))  # true
 print(isAbsolute("src/main.ry")) # false
@@ -81,7 +81,7 @@ print(isAbsolute("src/main.ry")) # false
 ### Resolving Paths
 
 ```ry
-from path import resolve
+from ry.path import resolve
 
 case resolve("/tmp"):
   Ok(p):

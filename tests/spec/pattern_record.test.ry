@@ -10,7 +10,7 @@
 #   - Regression: existing record field access and patterns unaffected
 
 # Record types used throughout this spec file.
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 record Point:
   x: int

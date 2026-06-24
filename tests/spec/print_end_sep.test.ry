@@ -1,4 +1,4 @@
-from testing import it, describe
+from ry.testing import it, describe
 
 @describe("print end parameter")
 fn printEndParameterTests():

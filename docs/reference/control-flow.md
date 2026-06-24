@@ -948,7 +948,7 @@ If the body explicitly calls `close(name)`, the implicit close on block exit is 
 ### Example
 
 ```ry
-from io import writeText, open, readAll
+from ry.io import writeText, open, readAll
 
 fn loadGreeting(path: str) -> Result<str, Error>:
     using f = open(path, "r")?:

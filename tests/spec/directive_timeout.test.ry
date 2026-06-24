@@ -1,4 +1,4 @@
-from testing import it, expect, describe, timeout
+from ry.testing import it, expect, describe, timeout
 
 # Happy path: a test that completes well within its timeout must pass.
 @timeout(1000)

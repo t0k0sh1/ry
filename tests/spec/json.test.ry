@@ -1,9 +1,9 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from json import load, stringify, stringifySafe, dump
+from ry.json import load, stringify, stringifySafe, dump
 from str import contains, repeat, byteLen
-from io import open, close, writeText, readText
-from math import NAN, INF
+from ry.io import open, close, writeText, readText
+from ry.math import NAN, INF
 
 @describe("json load — primitives")
 fn jsonLoadPrimitivesTests():

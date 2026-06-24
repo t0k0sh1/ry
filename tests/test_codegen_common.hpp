@@ -263,7 +263,7 @@ inline std::string withStdlibDirectiveDecls(const std::string &src) {
 // before the source reaches the harness — otherwise it fails as
 // "unresolved import: testing".
 inline std::string stripTestingImport(const std::string &src) {
-    static const std::string prefix = "from testing import ";
+    static const std::string prefix = "from ry.testing import ";
     if (src.compare(0, prefix.size(), prefix) != 0) {
         return src;
     }

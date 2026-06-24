@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("for mutation safety — IndexExpr iterables (#1091)")
 fn forMutationSafetyIndexexprIterables1091Tests():

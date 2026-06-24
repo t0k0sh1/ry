@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes, bytesToStr
+from ry.io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes, bytesToStr
 
 # Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
 globBs: List<u8> = [97, 0, 98]

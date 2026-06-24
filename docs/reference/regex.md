@@ -5,7 +5,7 @@
 Regex literals use the `/pattern/` syntax. They can be stored in variables or passed directly to functions that accept a `Regex` parameter:
 
 ```ry
-from regex import isMatch, split, replace
+from ry.regex import isMatch, split, replace
 
 # Regex literals enable type-based overloading
 "hello".isMatch(/[a-z]+/)        # true
@@ -60,7 +60,7 @@ These functions take a regex literal pattern and use text-first argument order f
 | `findAll` | `(str, Regex) -> List<Match>` | Returns all non-overlapping matches with capture groups |
 
 ```ry
-from regex import isMatch, search, replace, split, findAll
+from ry.regex import isMatch, search, replace, split, findAll
 
 # Direct call
 print(isMatch("hello", /[a-z]+/))       # true
@@ -101,7 +101,7 @@ pos = regexSearch("abc123", "[0-9]+")  # 3
 | `groups` | `List<str>` | Captured group texts, in order (empty list if no capture groups) |
 
 ```ry
-from regex import findAll
+from ry.regex import findAll
 
 # Without capture groups: groups is empty
 matches = findAll("a1b2c3", /[0-9]/)
@@ -213,7 +213,7 @@ The `replace` / `regexReplace` functions support backreferences in the replaceme
 Out-of-range or unmatched groups expand to an empty string.
 
 ```ry
-from regex import replace
+from ry.regex import replace
 
 # Swap words: $2 and $1
 print(replace("hello world", /(\w+) (\w+)/, "$2, $1!"))

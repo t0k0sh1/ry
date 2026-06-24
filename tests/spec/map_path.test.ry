@@ -1,5 +1,5 @@
-from testing import it, describe, expect, fail
-from json import load
+from ry.testing import it, describe, expect, fail
+from ry.json import load
 
 @describe("getPath: jq-style path access for Map<str, any>")
 fn getPathTests():

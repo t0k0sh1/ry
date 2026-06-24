@@ -1,4 +1,4 @@
-from testing import it, expect, each, property, todo
+from ry.testing import it, expect, each, property, todo
 
 # @todo @it suppresses body emission entirely — type errors and undefined
 # identifiers in the body are NOT detected (the body never reaches codegen).

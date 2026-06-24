@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes
+from ry.io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes
 
 @describe("nul_safety_io")
 fn nulSafetyIoTests():

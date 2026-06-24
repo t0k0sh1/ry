@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from io import writeText
+from ry.io import writeText
 
 @describe("partial import: writeText(path, content) only (regression for #1856)")
 fn ioPartialImportWriteTextTests():

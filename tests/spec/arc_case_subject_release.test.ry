@@ -16,7 +16,7 @@
 #   - prefer List<List<int>> over List<str> (#1235 blind spot)
 #   - heap-backed strings via concat (`prefix + "ps"`) — not literals (ARC_IMMORTAL)
 
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 from runtime_internal import arcLiveCount
 

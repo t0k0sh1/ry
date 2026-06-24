@@ -1,8 +1,8 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from net import bind, listen, accept, listenerPort
-from io import toBytes, bytesToStr
-from http import httpGet, httpPost, httpRequest, status, body, header
+from ry.net import bind, listen, accept, listenerPort
+from ry.io import toBytes, bytesToStr
+from ry.http import httpGet, httpPost, httpRequest, status, body, header
 
 @describe("HTTP Client")
 fn httpClientTests():

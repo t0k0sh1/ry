@@ -1,6 +1,6 @@
 # --- helper functions ---
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 fn doubleFloat(x: float) -> float:
   return x * 2.0

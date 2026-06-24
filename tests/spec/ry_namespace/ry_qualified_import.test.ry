@@ -1,4 +1,4 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 # #1769: `import ry.<mod>` is the qualified form of the canonical
 # reserved-namespace import. The bare name (`math`) is the last segment,

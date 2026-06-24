@@ -1,4 +1,4 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 # Issue #2264: tuple element に内部 `,` を持つ 2 引数 generic を書くと
 # codegen の tuple splitter が `<>` depth を無視して "unknown type: Map<str"

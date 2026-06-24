@@ -1729,7 +1729,7 @@ inline std::string testingStdlibSearchPath() {
 TEST_F(ImportTest, FromTestingImportExpectResolves) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     Program prog = resolveImportsOnly(
-        "from testing import expect\n",
+        "from ry.testing import expect\n",
         tmp_dir_.string(),
         search_paths);
 
@@ -1758,7 +1758,7 @@ TEST_F(ImportTest, FromTestingImportAllTestingSymbolsResolve) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from testing import it, describe, expect, mock, verify, fail\n",
+            "from ry.testing import it, describe, expect, mock, verify, fail\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -1772,8 +1772,8 @@ TEST_F(ImportTest, FromTestingImportExpectViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from testing\n"
-            "from testing import expect\n",
+            "from ry.testing\n"
+            "from ry.testing import expect\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -1787,7 +1787,7 @@ TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
         resolveImportsOnly(
-            "from testing import expect as e\n",
+            "from ry.testing import expect as e\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected alias on testing intrinsic to be rejected";
@@ -1802,11 +1802,11 @@ TEST_F(ImportTest, FromTestingImportRejectsAliasOnLoadPath) {
 TEST_F(ImportTest, FromTestingImportRejectsAliasOnCacheHitPath) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
-        // First `from testing` warms the cache; the aliased lookup must then
+        // First `from ry.testing` warms the cache; the aliased lookup must then
         // travel the cache-hit branch in resolveImports.
         resolveImportsOnly(
-            "from testing\n"
-            "from testing import mock as m\n",
+            "from ry.testing\n"
+            "from ry.testing import mock as m\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected alias on testing intrinsic to be rejected (cache-hit)";
@@ -1824,7 +1824,7 @@ TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
         resolveImportsOnly(
-            "from testing import xyz\n",
+            "from ry.testing import xyz\n",
             tmp_dir_.string(),
             search_paths);
         FAIL() << "Expected non-intrinsic name to be rejected";
@@ -1832,7 +1832,7 @@ TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("'xyz'"), std::string::npos) << msg;
         EXPECT_NE(msg.find("not found in module"), std::string::npos) << msg;
-        EXPECT_NE(msg.find("'testing'"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'ry.testing'"), std::string::npos) << msg;
     }
 }
 
@@ -1878,7 +1878,7 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
 TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     // Post-#722 `verify` is a regular `@public fn verify` in
@@ -1896,7 +1896,7 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
 TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     EXPECT_EQ(intrinsics.count("each"), 0u);
@@ -1910,7 +1910,7 @@ TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
 TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect\n",
+        "from ry.testing import expect\n",
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {"expect"};
@@ -1920,7 +1920,7 @@ TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
 TEST_F(ImportTest, FromTestingImportMultipleIntrinsicsRecordsAll) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
-        "from testing import expect, mock, fail\n",
+        "from ry.testing import expect, mock, fail\n",
         tmp_dir_.string(),
         search_paths);
     std::unordered_set<std::string> expected = {"expect", "mock", "fail"};
@@ -1937,7 +1937,7 @@ TEST_F(ImportTest, FromMathDoesNotPolluteTestingIntrinsics) {
 TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing import expect, it\n",
+        "from ry.testing import expect, it\n",
         tmp_dir_.string(),
         search_paths);
     // `it` is a `@directive` declaration in testing.ry, not a runtime
@@ -1950,7 +1950,7 @@ TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
 TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing\n",
+        "from ry.testing\n",
         tmp_dir_.string(),
         search_paths);
     // Post-#722 `verify` is no longer a testing intrinsic (it is a regular
@@ -1974,7 +1974,7 @@ TEST_F(ImportTest, CodeGenReceivesEmptySetWithoutTestingImport) {
 TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
-        "from testing import expect, fail, it\n",
+        "from ry.testing import expect, fail, it\n",
         tmp_dir_.string(),
         search_paths);
     // `it` is a `@directive` declaration in testing.ry; only `expect`
@@ -2187,20 +2187,20 @@ TEST_F(ImportTest, FromCppResourceKindImportsResolve) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     struct Case { const char *mod; const char *type; };
     const Case cases[] = {
-        {"io", "File"},
-        {"net", "TcpListener"},
-        {"net", "TcpStream"},
-        {"http", "TlsStream"},
-        {"http", "HttpRequest"},
-        {"http", "HttpResponse"},
-        {"http", "HttpClientResponse"},
-        {"thread", "Thread"},
-        {"thread", "Lock"},
-        {"thread", "RWLock"},
-        {"thread", "Semaphore"},
-        {"thread", "Barrier"},
-        {"thread", "AtomicInt"},
-        {"thread", "AtomicBool"},
+        {"ry.io", "File"},
+        {"ry.net", "TcpListener"},
+        {"ry.net", "TcpStream"},
+        {"ry.http", "TlsStream"},
+        {"ry.http", "HttpRequest"},
+        {"ry.http", "HttpResponse"},
+        {"ry.http", "HttpClientResponse"},
+        {"ry.thread", "Thread"},
+        {"ry.thread", "Lock"},
+        {"ry.thread", "RWLock"},
+        {"ry.thread", "Semaphore"},
+        {"ry.thread", "Barrier"},
+        {"ry.thread", "AtomicInt"},
+        {"ry.thread", "AtomicBool"},
     };
     for (const auto &c : cases) {
         std::string src = std::string("from ") + c.mod + " import " + c.type + "\n";
@@ -2214,7 +2214,7 @@ TEST_F(ImportTest, FromRegexImportMatchResolves) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from regex import Match\n",
+            "from ry.regex import Match\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2226,8 +2226,8 @@ TEST_F(ImportTest, FromCppResourceKindResolvesViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from io\n"
-            "from io import File\n",
+            "from ry.io\n"
+            "from ry.io import File\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2237,8 +2237,8 @@ TEST_F(ImportTest, FromRegexImportMatchResolvesViaCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         resolveImportsOnly(
-            "from regex\n"
-            "from regex import Match\n",
+            "from ry.regex\n"
+            "from ry.regex import Match\n",
             tmp_dir_.string(),
             search_paths);
     });
@@ -2249,7 +2249,7 @@ TEST_F(ImportTest, FromIoImportTcpListenerStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import TcpListener\n",
+            "from ry.io import TcpListener\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2260,7 +2260,7 @@ TEST_F(ImportTest, FromIoImportUnknownTypeStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import NotARealType\n",
+            "from ry.io import NotARealType\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2272,7 +2272,7 @@ TEST_F(ImportTest, FromIoImportErrorStillRejected) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_THROW({
         resolveImportsOnly(
-            "from io import Error\n",
+            "from ry.io import Error\n",
             tmp_dir_.string(),
             search_paths);
     }, std::runtime_error);
@@ -2300,7 +2300,7 @@ TEST_F(ImportTest, ImportAliasResourceTypeWorks) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from io import File as MyFile\n"
+            "from ry.io import File as MyFile\n"
             "fn use(f: MyFile) -> bool:\n"
             "    return true\n",
             tmp_dir_.string(),
@@ -2312,8 +2312,8 @@ TEST_F(ImportTest, ImportAliasResourceTypeWorksCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from io\n"
-            "from io import File as MyFile\n"
+            "from ry.io\n"
+            "from ry.io import File as MyFile\n"
             "fn use(f: MyFile) -> bool:\n"
             "    return true\n",
             tmp_dir_.string(),
@@ -2326,7 +2326,7 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorks) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from regex import Match as M\n"
+            "from ry.regex import Match as M\n"
             "fn use(m: M) -> str:\n"
             "    return m.full\n",
             tmp_dir_.string(),
@@ -2338,8 +2338,8 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     EXPECT_NO_THROW({
         runWithImports(
-            "from regex\n"
-            "from regex import Match as M\n"
+            "from ry.regex\n"
+            "from ry.regex import Match as M\n"
             "fn use(m: M) -> str:\n"
             "    return m.full\n",
             tmp_dir_.string(),

@@ -1,5 +1,5 @@
 # pathモジュールでpathの結合と構成要素の抽出を行う
-from path import join, basename, dirname, ext
+from ry.path import join, basename, dirname, ext
 
 case join("/tmp", "reports", "summary.txt"):
   Ok(path):

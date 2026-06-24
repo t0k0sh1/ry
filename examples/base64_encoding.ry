@@ -1,5 +1,5 @@
 # base64モジュールによる文字列のエンコードとデコードを示す
-from base64 import encode, decode
+from ry.base64 import encode, decode
 
 encoded = encode("Hello, Ry!")
 print(encoded)

@@ -3,7 +3,7 @@
 JSON parsing and serialization. All functions require explicit import from `json`.
 
 ```ry
-from json import load, stringify, stringifySafe, dump
+from ry.json import load, stringify, stringifySafe, dump
 ```
 
 ## Overview
@@ -72,7 +72,7 @@ Unsupported `T` (returns `Err` from the coerce step):
 ### Loading into `Map<str, any>` and pattern-matching
 
 ```ry
-from json import load
+from ry.json import load
 
 case load[Map<str, any>]("{\"name\": \"Alice\", \"age\": 30}"):
   Ok(m):
@@ -86,7 +86,7 @@ case load[Map<str, any>]("{\"name\": \"Alice\", \"age\": 30}"):
 ### Primitive and container `load[T]`
 
 ```ry
-from json import load
+from ry.json import load
 
 case load[int]("42"):
   Ok(n): print(n)                  # 42
@@ -106,7 +106,7 @@ work via the same recursive path; the error message tells you which
 nested location failed.
 
 ```ry
-from json import load
+from ry.json import load
 
 record Person { name: str, age: int }
 
@@ -129,7 +129,7 @@ case load[Option<Person>]("null"):
 ### Compact and pretty stringify
 
 ```ry
-from json import stringify
+from ry.json import stringify
 
 print(stringify([1, 2, 3]))        # [1,2,3]
 
@@ -151,8 +151,8 @@ enum). `stringifySafe` returns those failures as `Err(Error)` so callers
 can recover.
 
 ```ry
-from json import stringifySafe
-from math import NAN
+from ry.json import stringifySafe
+from ry.math import NAN
 
 case stringifySafe(NAN):
   Ok(s): print(s)
@@ -178,7 +178,7 @@ byte-lexicographic order (matching Python's `json.dumps(sort_keys=True)`
 for valid UTF-8). Nested maps are sorted recursively.
 
 ```ry
-from json import stringify
+from ry.json import stringify
 
 m: Map<str, any> = {}
 m["c"] = 3
@@ -196,8 +196,8 @@ print(stringify(m, 2, sortKeys=true))
 Combine with `stringifySafe` for error recovery on unsupported inputs:
 
 ```ry
-from json import stringifySafe
-from math import INF
+from ry.json import stringifySafe
+from ry.math import INF
 
 m: Map<str, any> = {}
 m["b"] = 2
@@ -211,8 +211,8 @@ case stringifySafe(m, sortKeys=true):
 ### Loading from a `File` handle
 
 ```ry
-from io import open
-from json import load
+from ry.io import open
+from ry.json import load
 
 case open("config.json", "r"):
   Ok(f):
@@ -230,8 +230,8 @@ case open("config.json", "r"):
 same as `load[T](text)` — see "Supported `T` in `load[T]`" above.
 
 ```ry
-from io import open
-from json import load
+from ry.io import open
+from ry.json import load
 
 case open("config.json", "r"):
   Ok(f):
@@ -244,8 +244,8 @@ case open("config.json", "r"):
 ### Dumping to a `File` handle
 
 ```ry
-from io import open
-from json import dump
+from ry.io import open
+from ry.json import dump
 
 case open("out.json", "w"):
   Ok(f):

@@ -144,7 +144,7 @@ protected:
 // _exit(124) and the trailing test would never execute.
 TEST_F(SpecTimeoutTest, InfiniteLoopTestTimesOutAndContinuesToNext) {
     auto path = writeTest("infinite_loop.test.ry",
-        "from testing import it, expect, timeout\n"
+        "from ry.testing import it, expect, timeout\n"
         "\n"
         "@timeout(200)\n"
         "@it(\"infinite loop times out\")\n"
@@ -183,7 +183,7 @@ TEST_F(SpecTimeoutTest, InfiniteLoopTestTimesOutAndContinuesToNext) {
 // signal-handler / timeout-end paths drift in their state-reset behaviour.
 TEST_F(SpecTimeoutTest, MixedTimeoutsContinueExecution) {
     auto path = writeTest("mixed_timeouts.test.ry",
-        "from testing import it, expect, timeout\n"
+        "from ry.testing import it, expect, timeout\n"
         "\n"
         "@it(\"normal one\")\n"
         "fn normalOne():\n"
@@ -247,7 +247,7 @@ TEST_F(SpecTimeoutTest, MixedTimeoutsContinueExecution) {
 // observes the cleanup side-effect must see it.
 TEST_F(SpecTimeoutTest, AfterEachRunsAfterTimedOutTest) {
     auto path = writeTest("after_each_after_timeout.test.ry",
-        "from testing import it, expect, describe, timeout, afterEach\n"
+        "from ry.testing import it, expect, describe, timeout, afterEach\n"
         "\n"
         "@describe(\"ae after timeout\")\n"
         "fn group():\n"
@@ -302,7 +302,7 @@ TEST_F(SpecTimeoutTest, AfterEachRunsAfterTimedOutTest) {
 // test loop continues to the next @it.
 TEST_F(SpecTimeoutTest, AfterEachHangSurfacedAsSecondaryFailure) {
     auto path = writeTest("after_each_hang.test.ry",
-        "from testing import it, expect, describe, timeout, afterEach\n"
+        "from ry.testing import it, expect, describe, timeout, afterEach\n"
         "\n"
         "# group1 has a hanging @afterEach; only its @timeout-guarded @it\n"
         "# safely exercises it. group2 has no @afterEach so the trailing\n"
@@ -359,7 +359,7 @@ TEST_F(SpecTimeoutTest, AfterEachHangSurfacedAsSecondaryFailure) {
 // users would have to mirror cleanup outside @afterEach.
 TEST_F(SpecTimeoutTest, AfterEachRunsAfterBeforeEachTimedOut) {
     auto path = writeTest("after_each_after_before_each_timeout.test.ry",
-        "from testing import it, expect, describe, timeout, "
+        "from ry.testing import it, expect, describe, timeout, "
         "beforeEach, afterEach\n"
         "\n"
         "# Module-level so the trailing observer describe can read it.\n"
@@ -422,7 +422,7 @@ TEST_F(SpecTimeoutTest, AfterEachRunsAfterBeforeEachTimedOut) {
 // file-level layer.
 TEST_F(SpecTimeoutTest, FileLevelAfterEachAlsoRunsAfterTimeout) {
     auto path = writeTest("file_after_each_after_timeout.test.ry",
-        "from testing import it, expect, timeout, afterEach\n"
+        "from ry.testing import it, expect, timeout, afterEach\n"
         "\n"
         "counter = 0\n"
         "\n"

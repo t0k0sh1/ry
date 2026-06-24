@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from net import bind, connect
+from ry.net import bind, connect
 
 @describe("nul_safety_net")
 fn nulSafetyNetTests():

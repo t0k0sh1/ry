@@ -45,7 +45,7 @@ Test files use directives (`@it`, `@describe`) and the helpers `expect`, `mock`,
 - `verify` is an ordinary `@public fn verify(name: str) -> int` declared in `share/std/testing/testing.ry`. Without the import, codegen rejects the call with the standard `undefined function: verify` diagnostic. (`verifyCalledWith` is an intrinsic — not a `@public fn` — because it must inspect the mocked function's signature at compile time to validate argument types, which a regular Ry function cannot do.)
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @it("test case name")
 fn testAdd():
@@ -55,7 +55,7 @@ fn testAdd():
 Group related tests using `@describe`:
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("Arithmetic")
 fn arithmeticTests():
@@ -79,7 +79,7 @@ fn arithmeticTests():
 Variables declared in the `@describe` function body are automatically captured by inner `@it` functions:
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("User validation")
 fn userValidationTests():
@@ -100,7 +100,7 @@ fn userValidationTests():
 `@describe` functions can be nested to create multi-level groupings. Output is indented to reflect the nesting depth:
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("API")
 fn apiTests():
@@ -168,7 +168,7 @@ foo("arg", ():
 Immediately marks the current test as failed.
 
 ```ry
-from testing import it, fail
+from ry.testing import it, fail
 
 @it("should not reach here")
 fn shouldNotReachHere():
@@ -186,7 +186,7 @@ fn shouldNotReachHere():
 Three directives allow individual test selection within a file:
 
 ```ry
-from testing import it, expect, skip, only, todo
+from ry.testing import it, expect, skip, only, todo
 
 @skip
 @it("temporarily disabled while bug #123 is open")
@@ -250,7 +250,7 @@ Calculator
 ## Example
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("Arithmetic")
 fn arithmeticTests():
@@ -280,7 +280,7 @@ fn booleansTests():
 Four directives — `@beforeEach`, `@afterEach`, `@beforeAll`, `@afterAll` — let you factor common setup/teardown out of every `@it` body. They are declared on parameterless, return-typeless functions either **inside a `@describe` block** (the body is inlined into the describe at codegen time and runs in the describe's variable scope) or **at file top level** (the body is inlined around every `@it` in the file and runs in the file's top-level scope). File-level and describe-level hooks cascade — see [Execution order](#execution-order) for the full ordering.
 
 ```ry
-from testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect
+from ry.testing import describe, it, beforeEach, afterEach, beforeAll, afterAll, expect
 
 @describe("counter")
 fn counterTests():
@@ -340,7 +340,7 @@ file @afterAll                                             (once per file)
 Top-level `@it` (no enclosing `@describe`) skips every describe-level layer: only file `@beforeAll` / `@beforeEach` / `@afterEach` / `@afterAll` run.
 
 ```ry
-from testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
+from ry.testing import it, describe, beforeAll, beforeEach, afterEach, afterAll, expect
 
 log = ""
 
@@ -458,7 +458,7 @@ error: @timeout cannot be combined with @property on fn '<fn>'
 Installing a `mock` or `spy` in the describe's `@beforeEach` produces a fresh installation for each `@it`: the hook body is inlined per `@it`, and the auto-restore at `@it` end clears both the implementation override and the call counter.
 
 ```ry
-from testing import describe, it, beforeEach, mock, verify, expect
+from ry.testing import describe, it, beforeEach, mock, verify, expect
 
 fn fetchValue() -> int:
     return 7
@@ -488,7 +488,7 @@ fn mockInBeforeEach():
 `@beforeAll` fires once before the iteration loop begins, and `@afterAll` once after every iteration of every `@it` in the describe completes:
 
 ```ry
-from testing import describe, it, each, beforeAll, expect
+from ry.testing import describe, it, each, beforeAll, expect
 
 @describe("beforeAll runs once before all each iterations")
 fn beforeAllRunsOncePerEach():
@@ -524,7 +524,7 @@ Each `@describe` owns its own lifecycle hooks. An outer describe's `@beforeEach`
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
 ```ry
-from testing import it, describe, mock, expect
+from ry.testing import it, describe, mock, expect
 
 fn fetchData() -> str:
     return "real data"
@@ -553,7 +553,7 @@ fn mockingTests():
 Returns the number of times a mocked function was called (as `int`). The argument is the **string name** of the function — `verify` is an ordinary `@public fn` exported by the `testing` module, not a compiler intrinsic, so the bare-identifier sugar that `mock` accepts does not apply here.
 
 ```ry
-from testing import it, describe, mock, verify, expect
+from ry.testing import it, describe, mock, verify, expect
 
 @describe("verify")
 fn verifyTests():
@@ -573,7 +573,7 @@ fn verifyTests():
 Returns the number of times a mocked function was called with arguments that exactly match `args...` (as `int`). Unlike `verify`, the function name must be a **string literal** because `verifyCalledWith` is a compiler intrinsic that resolves the original function's signature at compile time to validate argument types.
 
 ```ry
-from testing import it, describe, mock, verifyCalledWith, expect
+from ry.testing import it, describe, mock, verifyCalledWith, expect
 
 fn compute(x: int) -> int:
     return x * 2
@@ -663,7 +663,7 @@ fn verifyCalledWithTests():
 Records calls to a function without replacing its implementation. Unlike `mock`, the original function body still executes — `spy` only adds call-count and argument-recording instrumentation around it.
 
 ```ry
-from testing import it, describe, spy, verify, verifyCalledWith, expect
+from ry.testing import it, describe, spy, verify, verifyCalledWith, expect
 
 fn compute(x: int) -> int:
     return x * 3
@@ -700,7 +700,7 @@ fn spyTests():
 Enqueues a value for the named function. The next call to that function dequeues and returns the head of the queue. When the queue empties, calls fall back to the function set via `mock(name, replacement)` (if any), then to the original implementation — matching Jest's fallback chain.
 
 ```ry
-from testing import it, describe, mock, mockReturnValueOnce, verify, expect
+from ry.testing import it, describe, mock, mockReturnValueOnce, verify, expect
 
 fn fetchUser() -> str:
     return "real"
@@ -739,7 +739,7 @@ fn mockReturnValueOnceTests():
 Resets the recorded call list (and call count) for a single mock to zero, but keeps the mock active. Subsequent calls continue to dispatch to the replacement.
 
 ```ry
-from testing import it, describe, mock, verify, mockClear, expect
+from ry.testing import it, describe, mock, verify, mockClear, expect
 
 @describe("mockClear")
 fn mockClearTests():
@@ -768,7 +768,7 @@ fn mockClearTests():
 Removes a single mock entirely, restoring the original implementation. After `mockReset`, calls dispatch to the original function and the call count is zero.
 
 ```ry
-from testing import it, describe, mock, verify, mockReset, expect
+from ry.testing import it, describe, mock, verify, mockReset, expect
 
 fn fetchData() -> str:
     return "real"
@@ -796,7 +796,7 @@ fn mockResetTests():
 Removes every mock currently active in the enclosing `it` block. Equivalent to the automatic cleanup that runs when an `it` block ends, but explicit and usable mid-block.
 
 ```ry
-from testing import it, describe, mock, verify, mockResetAll, expect
+from ry.testing import it, describe, mock, verify, mockResetAll, expect
 
 fn fa() -> int:
     return 1
@@ -832,7 +832,7 @@ Since v0.0.24 (#1682), overloaded functions can be mocked / spied / verified per
 **Signature-form syntax.** Pass `"name(T1, T2)"` instead of the bare name to target a specific overload:
 
 ```ry
-from testing import it, describe, mock, verify, verifyCalledWith, expect
+from ry.testing import it, describe, mock, verify, verifyCalledWith, expect
 
 fn add(a: int, b: int) -> int:
     return a + b
@@ -887,7 +887,7 @@ fn overloadedMockTests():
 **Syntax:**
 
 ```ry
-from testing import it, expect
+from ry.testing import it, expect
 
 @each([
     (1, 2, 3),
@@ -913,7 +913,7 @@ See [Feature interactions](#feature-interactions) for combinations with lifecycl
 `@property` generates random inputs and runs the test multiple times.
 
 ```ry
-from testing import it, expect
+from ry.testing import it, expect
 
 @property(count=100)
 @it("should verify addition is commutative")
@@ -1026,7 +1026,7 @@ Common errors and what they usually mean.
 **Fix:** Add an explicit `from testing import ...` line at the top of the file naming every symbol you use:
 
 ```ry
-from testing import describe, it, beforeEach, afterEach, expect, mock, verify
+from ry.testing import describe, it, beforeEach, afterEach, expect, mock, verify
 ```
 
 `testing` is not auto-imported even for files ending in `.test.ry`.
@@ -1098,7 +1098,7 @@ Worked patterns for situations that compose multiple `testing` features. Each ex
 Use when order-dependent logic must observe a specific sequence of return values (e.g. retry-then-succeed, paginated fetch).
 
 ```ry
-from testing import it, describe, expect, mockReturnValueOnce
+from ry.testing import it, describe, expect, mockReturnValueOnce
 
 fn fetchOnceStr() -> str:
   return "orig"
@@ -1121,7 +1121,7 @@ After the queue is drained the next call falls back to the default `mock(...)` l
 Use when the real function must run (e.g. it has side effects you care about) and you only want to inspect arguments after the fact.
 
 ```ry
-from testing import it, describe, expect, spy, verify, verifyCalledWith
+from ry.testing import it, describe, expect, spy, verify, verifyCalledWith
 
 fn computeReal(x: int) -> int:
   return x * 3
@@ -1146,7 +1146,7 @@ fn spyVerifyCalledWithTests():
 Use whenever the value under test comes from float arithmetic — the bit-exact value rarely matches the decimal literal you would write by hand.
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("Float approximate matchers")
 fn floatApproxMatchers():
@@ -1165,7 +1165,7 @@ fn floatApproxMatchers():
 Use when a property holds for **any** input (e.g. algebraic laws, monotonicity, idempotence).
 
 ```ry
-from testing import it, describe, expect, property
+from ry.testing import it, describe, expect, property
 
 @describe("@property tests")
 fn propertyTests():
@@ -1187,7 +1187,7 @@ fn propertyTests():
 Use when the same function name has multiple overloads and you need to mock one without disturbing the others.
 
 ```ry
-from testing import it, describe, expect, mock, mockResetAll
+from ry.testing import it, describe, expect, mock, mockResetAll
 
 fn addNum(a: int, b: int) -> int:
   return a + b
@@ -1212,7 +1212,7 @@ The signature key is the parameter type list inside parentheses, exactly as it a
 Use when several `@it` blocks in the same describe need a freshly-installed mock with a zeroed call counter. Hoisting `mock(...)` into `@beforeEach` reuses every `@it`'s auto-restore boundary, so each test sees a clean slate without manual `mockReset` / `mockClear`.
 
 ```ry
-from testing import describe, it, beforeEach, mock, verify, expect
+from ry.testing import describe, it, beforeEach, mock, verify, expect
 
 fn fetchValue() -> int:
     return 7
@@ -1242,7 +1242,7 @@ The Feature interactions section's [`mock` / `spy` inside `@beforeEach`](#mock--
 Use when an `@each` parameterized `@it` needs per-iteration or once-per-describe setup. `@each` cannot coexist with `@beforeEach` (compile error — see [Lifecycle hooks with `@each` / `@property`](#lifecycle-hooks-with-each--property)), so the workarounds below are the canonical alternatives.
 
 ```ry
-from testing import describe, it, each, beforeAll, expect
+from ry.testing import describe, it, each, beforeAll, expect
 
 fn freshCounter() -> int:
     return 0

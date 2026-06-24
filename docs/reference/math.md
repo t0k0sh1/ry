@@ -5,7 +5,7 @@
 The `math` module provides mathematical constants and functions. Unlike the `std` module, it is not automatically imported. Use explicit import to access the functions.
 
 ```ry
-from math import sqrt, PI, sin
+from ry.math import sqrt, PI, sin
 ```
 
 Functions that take `float` parameters also accept `int` arguments via implicit `int → float` widening, matching the behaviour of [user-defined overload resolution](functions.md#resolution-priority). For example, `sqrt(4)` and `atan2(1, 1)` are valid — the integers are converted to `float` at the call site. Exact-type overloads still win: `pow(2, 3)` dispatches to the `(int, int) -> int` overload and returns `8` (int), not `8.0`. Low-level integer types (`i8`, `i16`, …) are not widened automatically and require explicit `as` casts.
@@ -22,7 +22,7 @@ Functions that take `float` parameters also accept `int` arguments via implicit 
 | `NAN` | `float` | Not a Number |
 
 ```ry
-from math import PI, E, INF, NAN
+from ry.math import PI, E, INF, NAN
 
 circumference = 2.0 * PI * radius
 ```
@@ -37,7 +37,7 @@ circumference = 2.0 * PI * radius
 | `abs(x)` | `(float) -> float` | Absolute value of float |
 
 ```ry
-from math import abs
+from ry.math import abs
 
 abs(-5)      # 5
 abs(-3.14)   # 3.14
@@ -59,7 +59,7 @@ This matches the trap behavior of `+`, `-`, `*`, unary `-`, `//`, and `%` on `in
 | `digits(n, base)` | `(int, int) -> List<int>` | Decompose `n` into digits of the given base, low-first |
 
 ```ry
-from math import digits
+from ry.math import digits
 
 digits(1234)         # [4, 3, 2, 1]
 digits(255, 16)      # [15, 15]
@@ -70,7 +70,7 @@ digits(0)            # [0]
 The result is ordered low-first (least-significant digit at index 0), matching Ruby's `Integer#digits`. Composing with `sum` yields the digit sum in one expression:
 
 ```ry
-from math import digits
+from ry.math import digits
 
 sum(digits(1234))    # 10
 ```
@@ -98,7 +98,7 @@ The algorithm uses only `%` and `/` operations, so it has no overflow concerns r
 | `round(x, digits)` | `(float, int) -> float` | Round to given decimal places (half away from zero) |
 
 ```ry
-from math import floor, ceil, round
+from ry.math import floor, ceil, round
 
 floor(3.7)           # 3
 ceil(3.2)            # 4
@@ -131,7 +131,7 @@ Rounding uses C99 half-away-from-zero semantics (via `round(x * 10^digits) / 10^
 | `pow(x, y)` | `(int, int) -> int` | Integer exponentiation via fast-exponentiation |
 
 ```ry
-from math import sqrt, pow
+from ry.math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
@@ -153,7 +153,7 @@ The integer overload raises a runtime error when the exponent is negative (`pow(
 | `log10(x)` | `(float) -> float` | Base-10 logarithm |
 
 ```ry
-from math import log
+from ry.math import log
 
 log(8.0, 2.0)      # 3.0
 log(100.0, 10.0)   # 2.0
@@ -208,7 +208,7 @@ log(100.0, 10.0)   # 2.0
 | `isInf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
 
 ```ry
-from math import isNan, isInf, NAN, INF
+from ry.math import isNan, isInf, NAN, INF
 
 isNan(NAN)   # true
 isInf(INF)   # true

@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from regex import isMatch, search, replace, split, findAll
+from ry.regex import isMatch, search, replace, split, findAll
 
 @describe("regex literal match")
 fn regexLiteralMatchTests():

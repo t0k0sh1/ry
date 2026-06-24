@@ -1,6 +1,6 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from io import open, readAll, readLine, writeText, close, deleteFile, lines
+from ry.io import open, readAll, readLine, writeText, close, deleteFile, lines
 
 @describe("file handle API")
 fn fileHandleTests():

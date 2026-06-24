@@ -350,7 +350,7 @@ Enables parameterized testing by running a test multiple times with different pa
 **Syntax:**
 
 ```ry
-from testing import it, each, expect
+from ry.testing import it, each, expect
 
 @each([(1, 2), (3, 6), (5, 10)])
 @it("should double {0} as {1}")
@@ -361,7 +361,7 @@ fn testDouble(input: int, expected: int):
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
 ```ry
-from testing import it, each, expect
+from ry.testing import it, each, expect
 
 fn makeInputs() -> List<(int, int)>:
     return [(1, 1), (2, 4), (3, 9)]
@@ -388,7 +388,7 @@ Enables property-based testing by generating random inputs for a test.
 **Syntax:**
 
 ```ry
-from testing import it, property, expect
+from ry.testing import it, property, expect
 
 @property(count=100)
 @it("should verify multiplication is commutative")
@@ -424,7 +424,7 @@ Declares a test case by attaching the directive to a named function. The functio
 **Syntax:**
 
 ```ry
-from testing import it, expect
+from ry.testing import it, expect
 
 @it("should pass simple assertion")
 fn testCase():
@@ -434,7 +434,7 @@ fn testCase():
 **Basic example:**
 
 ```ry
-from testing import it, expect
+from ry.testing import it, expect
 
 @it("should add 1 + 2 = 3")
 fn testAdd():
@@ -444,7 +444,7 @@ fn testAdd():
 **Composed with `@each` or `@property`:**
 
 ```ry
-from testing import it, each, property, expect
+from ry.testing import it, each, property, expect
 
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
@@ -474,7 +474,7 @@ Groups a set of related tests by attaching the directive to a named function. In
 **Syntax:**
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("group name")
 fn groupName():
@@ -486,7 +486,7 @@ fn groupName():
 **Basic example:**
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("arithmetic")
 fn arithmeticTests():
@@ -504,7 +504,7 @@ fn arithmeticTests():
 Variables declared in the outer `@describe` body are automatically captured by every inner `@it` function.
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("shared setup")
 fn sharedSetupTests():
@@ -523,7 +523,7 @@ fn sharedSetupTests():
 **Nested groups:**
 
 ```ry
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("outer")
 fn outer():
@@ -543,7 +543,7 @@ Marks an `@it` test as skipped. The function body is not executed; the test is r
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import skip` at the top (or use a wildcard `from testing`).
 
 ```ry
-from testing import it, expect, skip
+from ry.testing import it, expect, skip
 
 @skip
 @it("temporarily disabled while bug #123 is open")
@@ -564,7 +564,7 @@ When at least one `@only` appears in a test file, every `@it` in that file **wit
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import only` at the top (or use a wildcard `from testing`).
 
 ```ry
-from testing import it, expect, only
+from ry.testing import it, expect, only
 
 @only
 @it("the one failing case I am currently debugging")
@@ -591,7 +591,7 @@ Marks an `@it` test as a not-yet-implemented placeholder. The function body is *
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import todo` at the top (or use a wildcard `from testing`).
 
 ```ry
-from testing import it, todo
+from ry.testing import it, todo
 
 @todo
 @it("upcoming feature, body not yet written")
@@ -618,7 +618,7 @@ add `from testing import timeout` at the top (or use a wildcard `from
 testing`).
 
 ```ry
-from testing import it, expect, timeout
+from ry.testing import it, expect, timeout
 
 @timeout(1000)
 @it("completes within 1 second")
@@ -691,7 +691,7 @@ files must add `from testing import beforeEach` at the top (or use
 a wildcard `from testing`).
 
 ```ry
-from testing import describe, it, beforeEach, expect
+from ry.testing import describe, it, beforeEach, expect
 
 @describe("counter starts fresh each test")
 fn counterTests():
@@ -744,7 +744,7 @@ _Composition with failing assertions_ below.
 **Defined as:** Declared in `share/std/testing/testing.ry`.
 
 ```ry
-from testing import describe, it, afterEach, expect
+from ry.testing import describe, it, afterEach, expect
 
 @describe("cleanup after each test")
 fn cleanupTests():
@@ -796,7 +796,7 @@ Runs **once** before the first `@it` inside the enclosing
 **Defined as:** Declared in `share/std/testing/testing.ry`.
 
 ```ry
-from testing import describe, it, beforeAll, expect
+from ry.testing import describe, it, beforeAll, expect
 
 @describe("seed shared resource once")
 fn sharedResourceTests():
@@ -831,7 +831,7 @@ Used for one-time teardown.
 **Defined as:** Declared in `share/std/testing/testing.ry`.
 
 ```ry
-from testing import describe, it, beforeAll, afterAll, expect
+from ry.testing import describe, it, beforeAll, afterAll, expect
 
 @describe("shared handle opened once, closed once")
 fn teardownTests():

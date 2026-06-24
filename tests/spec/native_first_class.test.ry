@@ -4,7 +4,7 @@
 # raised "undefined variable: int" because emitExprVariant(VariableExpr)
 # never consulted native_fn_sigs_.
 
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
 from convert import int
 

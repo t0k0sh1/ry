@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
+from ry.thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
 record ListBag:
   items: List<int>

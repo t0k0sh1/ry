@@ -5,7 +5,7 @@
 # ambiguity guard fired with "ambiguous @native call in lambda return-type
 # inference".
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("lambda return-type inference over @native length overloads")
 fn lambdaReturnTypeInferenceOverNativeLengthOverloadsTests():

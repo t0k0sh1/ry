@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 # #1769: the canonical prelude is `ry.lang`. Symbols that are implicitly
 # available without any import are also explicitly importable from `ry.lang`.

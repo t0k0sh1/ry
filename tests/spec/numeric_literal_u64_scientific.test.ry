@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @describe("u64 max value literal (#807)")
 fn u64MaxValueLiteral807Tests():

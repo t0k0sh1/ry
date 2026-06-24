@@ -1,5 +1,5 @@
 # JSON 読み込み (stdlib の json モジュール)
-from json import load
+from ry.json import load
 
 # パース: Map<str, any> として型付きで取得
 raw = "{\"name\": \"Alice\", \"age\": 30, \"items\": [1, 2, 3]}"

@@ -1,6 +1,6 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
-from thread import lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockUnlock, rwlockFree, atomicIntNew, atomicIntLoad, atomicIntFree
+from ry.thread import lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockUnlock, rwlockFree, atomicIntNew, atomicIntLoad, atomicIntFree
 
 @describe("ARC resource alias — explicit free should decrement refcount (#427)")
 fn arcResourceAliasExplicitFreeShouldDecrementRefcount427Tests():

@@ -19,7 +19,7 @@ All types are opaque pointers managed by ARC (Automatic Reference Counting). Use
 ## Import
 
 ```ry
-from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease
+from ry.thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease
 ```
 
 ## Thread
@@ -32,7 +32,7 @@ from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease
 ### Example — side-effect worker (`Unit`)
 
 ```ry
-from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
+from ry.thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
 counter = atomicIntNew(0)
 t = threadSpawn(():
@@ -45,7 +45,7 @@ print(atomicIntLoad(counter))  # 1
 ### Example — value-returning worker (`int` / `float` / `bool`)
 
 ```ry
-from thread import threadSpawn, threadJoin
+from ry.thread import threadSpawn, threadJoin
 
 t = threadSpawn(() => 42)
 case threadJoin(t):

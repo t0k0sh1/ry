@@ -1,7 +1,7 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from json import load, stringify
-from thread import lockNew, lockAcquire, lockRelease, lockFree
+from ry.json import load, stringify
+from ry.thread import lockNew, lockAcquire, lockRelease, lockFree
 
 @describe("collection element loads preserve metadata (#1320)")
 fn collectionElementLoadsPreserveMetadata1320Tests():

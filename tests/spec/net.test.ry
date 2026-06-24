@@ -1,7 +1,7 @@
-from testing import it, describe, expect, fail
+from ry.testing import it, describe, expect, fail
 
-from net import bind, listen, accept, connect, listenerPort, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
-from io import toBytes, bytesToStr
+from ry.net import bind, listen, accept, connect, listenerPort, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
+from ry.io import toBytes, bytesToStr
 
 @describe("TCP socket API")
 fn tcpSocketApiTests():

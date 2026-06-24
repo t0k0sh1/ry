@@ -1,4 +1,4 @@
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 from .shapes import ORIGIN_X as ZERO_X, ORIGIN_Y
 from .shapes import rectArea as area

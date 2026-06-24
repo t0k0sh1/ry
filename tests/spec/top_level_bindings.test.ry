@@ -4,7 +4,7 @@
 # mutable `let`) can be read — and, for mutable bindings, written — from inside
 # any top-level function defined after the binding in the same module.
 
-from testing import it, describe, expect
+from ry.testing import it, describe, expect
 
 @const
 TOP_PI: float = 3.14
