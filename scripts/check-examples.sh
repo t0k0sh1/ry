@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Verify that canonical examples/*.ry programs still run cleanly (#2329).
 #
-# Runs `ry run` on every *.ry file directly under examples/ (non-recursive)
-# and reports failures by file name. Exit code only — no golden-output
-# matching. The non-recursive glob is the exclusion mechanism: future
-# negative / review / intentional-failure examples live in subdirectories
-# such as examples/negative/ or examples/review/ (see examples/README.md)
-# and are skipped automatically.
+# Runs `ry run` on every *.ry file under examples/ that the taxonomy
+# (docs/reference/examples-taxonomy.md) classifies as canonical, and
+# reports failures by file name. Exit code only — no golden-output
+# matching. Files whose first line is `# regression #NNNN` or `# scratch`
+# are non-canonical and skipped (intentional compile-error or
+# runtime-panic demos, or pre-polish exploratory code).
 #
 # Usage:
 #   scripts/check-examples.sh
@@ -37,10 +37,22 @@ fi
 RY_BIN="$RY_BUILD_DIR/ry"
 
 shopt -s nullglob
-EXAMPLES=(examples/*.ry)
+ALL=(examples/*.ry)
 shopt -u nullglob
 
-(( ${#EXAMPLES[@]} > 0 )) || { echo "error: no examples/*.ry files found" >&2; exit 1; }
+(( ${#ALL[@]} > 0 )) || { echo "error: no examples/*.ry files found" >&2; exit 1; }
+
+EXAMPLES=()
+SKIPPED=()
+for f in "${ALL[@]}"; do
+  first_line=""
+  IFS= read -r first_line < "$f" || true
+  if [[ "$first_line" =~ ^#[[:space:]](regression|scratch)([[:space:]]|$) ]]; then
+    SKIPPED+=("$f")
+  else
+    EXAMPLES+=("$f")
+  fi
+done
 
 TOTAL=${#EXAMPLES[@]}
 PASS=0
@@ -57,5 +69,9 @@ for f in "${EXAMPLES[@]}"; do
   fi
 done
 
-echo "$PASS/$TOTAL examples passed" >&2
+if (( ${#SKIPPED[@]} > 0 )); then
+  echo "$PASS/$TOTAL canonical examples passed (${#SKIPPED[@]} non-canonical skipped)" >&2
+else
+  echo "$PASS/$TOTAL canonical examples passed" >&2
+fi
 (( FAIL == 0 )) || exit 1
