@@ -779,11 +779,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // arms are mutually exclusive on has_explicit_type.
         for (const auto &p : s->params) {
             if (!p.has_explicit_type) {
-                emitAnyUsageWarning("parameter '" + p.name +
-                    "' of function '" + s->name +
-                    "' has no type annotation and defaults to 'any'; "
-                    "add an explicit annotation, a union, "
-                    "or a generic type parameter");
+                emitImplicitAnyParamWarning(p.name,
+                    "function '" + s->name + "'");
             } else if (isPublic && p.type && p.type->isBareAnyName()) {
                 emitAnyUsageWarning("public function '" + s->name +
                     "' parameter '" + p.name + "' is typed 'any'; "

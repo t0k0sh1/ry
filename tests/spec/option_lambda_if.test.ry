@@ -64,9 +64,9 @@ fn optionLambdaIfExprInferenceUnannotatedReturnTypeTests():
       Some(v): expect(v).toEq(10)
       None: fail("expected Some but got None")
 
-  @it("should infer Option<int> from unannotated lambda with Some(x) vs Some(literal)")
-  fn shouldInferOptionIntFromUnannotatedLambdaWithSomeXVsSomeLiteral():
-    f = (x) => if x > 0 => Some(x) else Some(0)
+  @it("should infer Option<int> from lambda with Some(x) vs Some(literal)")
+  fn shouldInferOptionIntFromLambdaWithSomeXVsSomeLiteral():
+    f = (x: int) => if x > 0 => Some(x) else Some(0)
     case f(5):
       Some(v): expect(v).toEq(5)
       None: fail("expected Some but got None")
@@ -74,9 +74,9 @@ fn optionLambdaIfExprInferenceUnannotatedReturnTypeTests():
       Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
 
-  @it("should infer Option<int> from unannotated 3-branch if with Some/None/Some mix")
-  fn shouldInferOptionIntFromUnannotated3BranchIfWithSomeNoneSomeMix():
-    f = (x) => if x > 0 => Some(x) else if x == 0 => None() else Some(-1)
+  @it("should infer Option<int> from 3-branch if with Some/None/Some mix")
+  fn shouldInferOptionIntFrom3BranchIfWithSomeNoneSomeMix():
+    f = (x: int) => if x > 0 => Some(x) else if x == 0 => None() else Some(-1)
     case f(5):
       Some(v): expect(v).toEq(5)
       None: fail("expected Some but got None")
@@ -87,9 +87,9 @@ fn optionLambdaIfExprInferenceUnannotatedReturnTypeTests():
       Some(v): expect(v).toEq(-1)
       None: fail("expected Some but got None")
 
-  @it("should preserve Some payload when unannotated lambda flows into typed binding")
-  fn shouldPreserveSomePayloadWhenUnannotatedLambdaFlowsIntoTypedBinding():
-    f = (x) => if x > 0 => Some(x) else Some(0)
+  @it("should preserve Some payload when lambda flows into typed binding")
+  fn shouldPreserveSomePayloadWhenLambdaFlowsIntoTypedBinding():
+    f = (x: int) => if x > 0 => Some(x) else Some(0)
     o: Option<int> = f(42)
     case o:
       Some(v): expect(v).toEq(42)
@@ -99,9 +99,9 @@ fn optionLambdaIfExprInferenceUnannotatedReturnTypeTests():
       Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
 
-  @it("should infer Option<int> from unannotated block-if-expr lambda with Some/Some")
-  fn shouldInferOptionIntFromUnannotatedBlockIfExprLambdaWithSomeSome():
-    f = (x) => if x > 0:
+  @it("should infer Option<int> from block-if-expr lambda with Some/Some")
+  fn shouldInferOptionIntFromBlockIfExprLambdaWithSomeSome():
+    f = (x: int) => if x > 0:
       (Some(x))
     else:
       (Some(0))
@@ -112,9 +112,9 @@ fn optionLambdaIfExprInferenceUnannotatedReturnTypeTests():
       Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
 
-  @it("should still handle Some(x) vs None() with unannotated param")
-  fn shouldStillHandleSomeXVsNoneWithUnannotatedParam():
-    f = (x) => if x > 0 => Some(x) else None()
+  @it("should handle Some(x) vs None() in lambda")
+  fn shouldHandleSomeXVsNoneInLambda():
+    f = (x: int) => if x > 0 => Some(x) else None()
     case f(3):
       Some(v): expect(v).toEq(3)
       None: fail("expected Some but got None")

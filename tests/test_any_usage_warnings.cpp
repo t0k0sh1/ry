@@ -202,10 +202,64 @@ TEST_F(AnyUsageWarningsTest, Pattern3ExplicitAnyParamSuppressed) {
         << "stderr was: " << r.err;
 }
 
-TEST_F(AnyUsageWarningsTest, Pattern3LambdaUnannotatedSuppressed) {
-    // Unannotated lambda params are idiomatic — Pattern 3 only targets named fns.
-    auto p = writeTmp("p3_lambda.ry",
-        "f = (x) => 1\n"
+TEST_F(AnyUsageWarningsTest, Pattern3ParenLambdaUnannotatedFires) {
+    // #2323: lambda params without an annotation default to `any` and now fire
+    // the same Pattern 3 deprecation warning as named-fn params.
+    auto p = writeTmp("p3_paren_lambda.ry",
+        "f = (x) -> bool => true\n"
+        "print(f(42))\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: parameter 'x' of lambda has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("defaults to 'any'"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3ParenLambdaMultiParamFires) {
+    // Each unannotated param produces its own warning.
+    auto p = writeTmp("p3_paren_lambda_multi.ry",
+        "f = (x, y) -> bool => true\n"
+        "print(f(1, 2))\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: parameter 'x' of lambda has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("warning: parameter 'y' of lambda has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3BareLambdaUnannotatedFires) {
+    // Bare-form lambdas (`x => expr` without parens) also fire — the syntax has
+    // no slot for a type annotation, so users must switch to the paren form.
+    auto p = writeTmp("p3_bare_lambda.ry",
+        "inc = x => x + 1\n"
+        "print(inc(5))\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: parameter 'x' of lambda has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3LambdaExplicitTypeSuppressed) {
+    auto p = writeTmp("p3_lambda_typed.ry",
+        "f = (x: int) -> int => x + 1\n"
+        "print(f(42))\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_EQ(r.err.find("has no type annotation"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3LambdaExplicitAnySuppressed) {
+    // Mirrors Pattern3ExplicitAnyParamSuppressed for lambdas: an explicit
+    // `: any` annotation marks an intentional type-erasure use case.
+    auto p = writeTmp("p3_lambda_explicit_any.ry",
+        "f = (x: any) -> int => 1\n"
         "print(f(42))\n");
     auto r = runRy({"run", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);

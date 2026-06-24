@@ -305,6 +305,15 @@ llvm::Value *CodeGen::buildClosureStruct(
 // ===== LambdaExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
+    // #2323: Pattern 3 for lambda params. LambdaExpr has no loc field, so the
+    // gate uses current_loc_ set by the enclosing statement (same file).
+    if (shouldEmitAnyLintAt(current_loc_.file_id)) {
+        for (const auto &p : e->params) {
+            if (!p.has_explicit_type)
+                emitImplicitAnyParamWarning(p.name, "lambda");
+        }
+    }
+
     // Build a set of parameter names
     std::unordered_set<std::string> paramNames;
     for (auto &p : e->params)

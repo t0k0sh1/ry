@@ -1072,6 +1072,29 @@ v: any = 42
 result = addOne(v)   # any(int) is unwrapped to int; result is 43
 ```
 
+### Untyped Parameters (Deprecated)
+
+> **Deprecated (#2317, #2323)**: Function and lambda parameters without a type annotation default to `any` and emit a compile-time warning on stderr. They continue to work during the deprecation window. Add a concrete type, a union, or — once available — a generic type parameter. For an intentional type-erasure receiver, write `: any` **explicitly** (no warning is emitted for the explicit form):
+>
+> ```ry
+> # Deprecated: implicit any from omitted annotation
+> # fn addOne(x) -> int: return 1
+> # f = (x) -> bool => true
+> # inc = x => x + 1
+>
+> # Preferred: concrete type
+> fn addOne(x: int) -> int:
+>     return x + 1
+> f = (x: int) -> bool => x > 0
+>
+> # Or, when type-erasure is intentional, an explicit any annotation
+> fn dispatch(x: any) -> str:
+>     return "any"
+> g = (x: any) -> bool => true
+> ```
+>
+> Warnings are gated by `shouldEmitAnyLintAt` so stdlib and cross-package imports stay quiet — the importer cannot act on third-party code. Bare-form single-param lambdas (`x => expr`) have no syntactic slot for an annotation; convert to paren form (`(x: T) => expr`) to silence the warning. Strict-mode escalation to a hard error is a future change tracked outside this issue.
+
 ### Explicit any conversion (`asType` / `isType`)
 
 Implicit unwrap (`x: T = anyVal`) panics with `_Exit(1)` on tag mismatch — acceptable when the `any` value is produced in the same scope, fatal for externally-parsed data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.). Use `asType[T]` and `isType[T]` to recover concrete types safely:

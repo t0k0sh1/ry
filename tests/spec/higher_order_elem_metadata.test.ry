@@ -121,7 +121,7 @@ fn higherOrderPositiveCorrectnessTests():
   @it("filter of List<Map<str,int>> with always-true preserves elements (issue minimum repro)")
   fn filterListMapStrIntAlwaysTruePreservesElements():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"a": 3}]
-    ys = filter(xs, m => true)
+    ys = filter(xs, (m: any) => true)
     expect(ys[2]["a"]).toEq(3)
     expect(ys[0]["a"]).toEq(1)
     expect(ys[1]["b"]).toEq(2)
@@ -129,14 +129,14 @@ fn higherOrderPositiveCorrectnessTests():
   @it("filter of List<List<int>> with always-true preserves nested elements")
   fn filterListListIntAlwaysTruePreservesNested():
     xss: List<List<int>> = [[1, 2], [3, 4]]
-    ys = filter(xss, x => true)
+    ys = filter(xss, (x: any) => true)
     expect(ys[0][1]).toEq(2)
     expect(ys[1][0]).toEq(3)
 
   @it("map of List<int> via identity transform preserves values")
   fn mapListIntIdentityPreservesValues():
     xs: List<int> = [10, 20]
-    ys = map(xs, n => n)
+    ys = map(xs, (n: any) => n)
     expect(ys[0]).toEq(10)
     expect(ys[1]).toEq(20)
 

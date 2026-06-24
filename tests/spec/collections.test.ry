@@ -89,70 +89,61 @@ fn listTests():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a: int, b: int) => a + b)
     expect(total).toEq(Some(15))
-  @it("should reduce with untyped lambda")
-  fn shouldReduceWithUntypedLambda():
+  @it("should reduce 2-element int list")
+  fn shouldReduce2ElementIntList():
+    expect(reduce([1, 2], (a: int, b: int) => a + b)).toEq(Some(3))
+  @it("should reduce 3-element int list")
+  fn shouldReduce3ElementIntList():
+    expect(reduce([1, 2, 3], (a: int, b: int) => a + b)).toEq(Some(6))
+  @it("should reduce float list")
+  fn shouldReduceFloatList():
+    expect(reduce([1.0, 2.0, 3.0], (a: float, b: float) => a + b)).toEq(Some(6.0))
+  @it("should reduce 1-element list")
+  fn shouldReduce1ElementList():
+    expect(reduce([42], (a: int, b: int) => a + b)).toEq(Some(42))
+  @it("should match fold result on int list")
+  fn shouldMatchFoldResultOnIntList():
     xs = [1, 2, 3, 4, 5]
-    total = reduce(xs, (a, b) => a + b)
-    expect(total).toEq(Some(15))
-  @it("should reduce 2-element list with untyped lambda")
-  fn shouldReduce2ElementListWithUntypedLambda():
-    expect(reduce([1, 2], (a, b) => a + b)).toEq(Some(3))
-  @it("should reduce 3-element list with untyped lambda")
-  fn shouldReduce3ElementListWithUntypedLambda():
-    expect(reduce([1, 2, 3], (a, b) => a + b)).toEq(Some(6))
-  @it("should reduce float list with untyped lambda")
-  fn shouldReduceFloatListWithUntypedLambda():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).toEq(Some(6.0))
-  @it("should reduce 1-element list with untyped lambda")
-  fn shouldReduce1ElementListWithUntypedLambda():
-    expect(reduce([42], (a, b) => a + b)).toEq(Some(42))
-  @it("should match fold result when using untyped reduce")
-  fn shouldMatchFoldResultWhenUsingUntypedReduce():
-    xs = [1, 2, 3, 4, 5]
-    expect(reduce(xs, (a, b) => a + b)).toEq(Some(fold(xs, 0, (a: int, b: int) => a + b)))
-  @it("should match fold result when using untyped reduce on float list")
-  fn shouldMatchFoldResultWhenUsingUntypedReduceOnFloatList():
+    expect(reduce(xs, (a: int, b: int) => a + b)).toEq(Some(fold(xs, 0, (a: int, b: int) => a + b)))
+  @it("should match fold result on float list")
+  fn shouldMatchFoldResultOnFloatList():
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    expect(reduce(xs, (a, b) => a + b)).toEq(Some(fold(xs, 0.0, (a: float, b: float) => a + b)))
+    expect(reduce(xs, (a: float, b: float) => a + b)).toEq(Some(fold(xs, 0.0, (a: float, b: float) => a + b)))
   @it("should fold")
   fn shouldFold():
     xs = [1, 2, 3, 4, 5]
     total = fold(xs, 0, (a: int, b: int) => a + b)
     expect(total).toEq(15)
-  @it("should fold with untyped lambda")
-  fn shouldFoldWithUntypedLambda():
-    xs = [1, 2, 3, 4, 5]
-    expect(fold(xs, 0, (a, b) => a + b)).toEq(15)
-  @it("should fold 2-element list with untyped lambda")
-  fn shouldFold2ElementListWithUntypedLambda():
-    expect(fold([1, 2], 0, (a, b) => a + b)).toEq(3)
-  @it("should fold 3-element list with untyped lambda")
-  fn shouldFold3ElementListWithUntypedLambda():
-    expect(fold([1, 2, 3], 0, (a, b) => a + b)).toEq(6)
-  @it("should fold float list with untyped lambda")
-  fn shouldFoldFloatListWithUntypedLambda():
-    expect(fold([1.0, 2.0, 3.0], 0.0, (a, b) => a + b)).toEq(6.0)
-  @it("should fold string list with untyped lambda")
-  fn shouldFoldStringListWithUntypedLambda():
-    expect(fold(["a", "b", "c"], "", (a, b) => a + b)).toEq("abc")
-  @it("should match reduce result when using untyped fold")
-  fn shouldMatchReduceResultWhenUsingUntypedFold():
+  @it("should fold 2-element int list")
+  fn shouldFold2ElementIntList():
+    expect(fold([1, 2], 0, (a: int, b: int) => a + b)).toEq(3)
+  @it("should fold 3-element int list")
+  fn shouldFold3ElementIntList():
+    expect(fold([1, 2, 3], 0, (a: int, b: int) => a + b)).toEq(6)
+  @it("should fold float list")
+  fn shouldFoldFloatList():
+    expect(fold([1.0, 2.0, 3.0], 0.0, (a: float, b: float) => a + b)).toEq(6.0)
+  @it("should fold string list")
+  fn shouldFoldStringList():
+    expect(fold(["a", "b", "c"], "", (a: str, b: str) => a + b)).toEq("abc")
+  @it("should match reduce and fold result on int list")
+  fn shouldMatchReduceAndFoldResultOnIntList():
     xs = [1, 2, 3, 4, 5]
     expected = fold(xs, 0, (a: int, b: int) => a + b)
     actual = (reduce(xs, (a: int, b: int) => a + b)) ?? 0
     expect(actual).toEq(expected)
-  @it("should reduce with -> int return type annotation on untyped params")
-  fn shouldReduceWithIntReturnTypeAnnotationOnUntypedParams():
-    expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).toEq(Some(15))
-  @it("should fold with -> int return type annotation on untyped params")
-  fn shouldFoldWithIntReturnTypeAnnotationOnUntypedParams():
-    expect(fold([1, 2, 3, 4, 5], 0, (a, b) -> int => a + b)).toEq(15)
+  @it("should reduce with -> int return type annotation")
+  fn shouldReduceWithIntReturnTypeAnnotation():
+    expect(reduce([1, 2, 3, 4, 5], (a: int, b: int) -> int => a + b)).toEq(Some(15))
+  @it("should fold with -> int return type annotation")
+  fn shouldFoldWithIntReturnTypeAnnotation():
+    expect(fold([1, 2, 3, 4, 5], 0, (a: int, b: int) -> int => a + b)).toEq(15)
   @it("should reduce float list with -> float return type annotation")
   fn shouldReduceFloatListWithFloatReturnTypeAnnotation():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).toEq(Some(6.0))
+    expect(reduce([1.0, 2.0, 3.0], (a: float, b: float) -> float => a + b)).toEq(Some(6.0))
   @it("should reduce with -> int annotation and block-body lambda")
   fn shouldReduceWithIntAnnotationAndBlockBodyLambda():
-    f = (a, b) -> int:
+    f = (a: int, b: int) -> int:
       return a + b
     expect(reduce([1, 2, 3, 4, 5], f)).toEq(Some(15))
   @it("should return None for reduce of empty list")
