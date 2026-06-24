@@ -231,6 +231,46 @@ fn anyUnwrapInFunctionCallTests():
     v: any = true
     expect(typedBool(v)).toEq(true)
 
+@describe("any unwrap in lambda call")
+fn anyUnwrapInLambdaCallTests():
+  @it("should pass any(int) to int param of lambda")
+  fn shouldPassAnyIntToIntParamOfLambda():
+    f = (x: int) -> int => x + 1
+    v: any = 42
+    expect(f(v)).toEq(43)
+  @it("should pass any(float) to float param of lambda")
+  fn shouldPassAnyFloatToFloatParamOfLambda():
+    f = (x: float) -> float => x + 1.0
+    v: any = 2.5
+    expect(f(v)).toEq(3.5)
+  @it("should pass any(str) to str param of lambda")
+  fn shouldPassAnyStrToStrParamOfLambda():
+    f = (x: str) -> str => x
+    v: any = "hello"
+    expect(f(v)).toEq("hello")
+  @it("should pass any(bool) to bool param of lambda")
+  fn shouldPassAnyBoolToBoolParamOfLambda():
+    f = (x: bool) -> bool => x
+    v: any = true
+    expect(f(v)).toEq(true)
+
+@describe("any unwrap into Result slot")
+fn anyUnwrapIntoResultSlotTests():
+  @it("should unwrap any(int) into Ok slot of Result<int, str>")
+  fn shouldUnwrapAnyIntIntoOkSlot():
+    a: any = 42
+    r: Result<int, str> = Ok(a)
+    case r:
+      Ok(v): expect(v).toEq(42)
+      Err(_): fail("expected Ok")
+  @it("should unwrap any(str) into Err slot of Result<int, str>")
+  fn shouldUnwrapAnyStrIntoErrSlot():
+    a: any = "boom"
+    r: Result<int, str> = Err(a)
+    case r:
+      Ok(_): fail("expected Err")
+      Err(e): expect(e).toEq("boom")
+
 @describe("overload resolution: concrete preferred over any")
 fn overloadResolutionConcretePreferredOverAnyTests():
   @it("should prefer concrete overload over any")
