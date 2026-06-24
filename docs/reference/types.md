@@ -1018,6 +1018,68 @@ v: any = 42
 result = addOne(v)   # any(int) is unwrapped to int; result is 43
 ```
 
+### Explicit any conversion (`asType` / `isType`)
+
+Implicit unwrap (`let x: T = anyVal`) panics with `_Exit(1)` on tag mismatch — fine for trusted code paths, fatal for dynamic data (`json5.load[Map<str, any>]` results, mixed `List<any>` cells, etc.). Use `asType[T]` and `isType[T]` to recover concrete types safely:
+
+```ry
+@public
+@native
+fn asType<T>(value: any) -> Result<T, Error>
+
+@public
+@native
+fn isType<T>(value: any) -> bool
+```
+
+- **`asType[T](v)`** is a checked cast. On tag/descriptor match it returns `Ok(value)`; on mismatch it returns `Err(Error{message: "asType[T]: ..."})` instead of crashing. The supported `T` set matches `json.load[T]` / `json5.load[T]`: `int`, `float` (accepts both `Float` and `Int` source tags), `bool`, `str`, user-defined `record` (descriptor-aware: subtype unwrap succeeds, unrelated record types `Err`), `Option<T>`, `List<any>`, `Map<str, any>`, `Set<any>`, and typed `List<T>` / `Map<str, V>` reconstructed from a JSON-shape source. `Result<T, E>`, organic enums, `Set<T>` (T ≠ any), and `Map<NonStr, _>` return a "target not yet supported" `Err`.
+- **`isType[T](v)`** is a runtime tag test. Returns `true` for matching tag (records walk the descriptor chain, so `isType[Parent](anyHoldingChild)` is `true`). `isType[any]` is always `true`. Element types of collections are erased — `isType[List<int>]` and `isType[List<any>]` are equivalent. `Option<T>`, `Result<T, E>`, and organic enum targets are rejected at compile time because the runtime tag (`RyAnyTag::Enum`) cannot distinguish enum types without a descriptor compare (use case-based unwrap on the underlying enum value instead).
+
+#### Recovering typed values from JSON-shaped data
+
+```ry
+from json5 import load
+
+case load[Map<str, any>](text):
+  Ok(m):
+    case asType[int](m["age"]):
+      Ok(age): print(f"age = {age}")
+      Err(e): print(f"bad age field: {e.message}")
+    case asType[str](m["name"]):
+      Ok(name): print(f"name = {name}")
+      Err(e): print(f"bad name field: {e.message}")
+  Err(e): print(f"parse error: {e.message}")
+```
+
+The error message includes the caller label and target type, so failures are self-documenting:
+
+```text
+asType[int]: expected int
+asType[float]: expected float or int
+asType[AnyRecPoint]: expected record AnyRecPoint, got a different record type
+```
+
+#### Records and Option in any: native vs JSON-shaped sources
+
+`asType[T]` handles two source shapes:
+
+- **Native-tagged source** (`v: any = SomeRecord(...)` or `v: any = Some(42)`): the runtime tag is `Record` / `Enum` and the descriptor identifies the concrete type. `asType` verifies the descriptor (subtype walk for records, equality for enums) and returns `Ok` directly, or `Err` if the descriptor does not match.
+- **JSON-shaped source** (`v: any = parsed_map_or_null` from `json5.load[Map<str, any>]`): the runtime tag is `Map` (for records) or `Unit` (for `Option<T> = None`); `asType` walks the fields by name (records) or maps `Unit → Ok(None)` (Option) and reconstructs the typed value.
+
+`isType[T]` only inspects the runtime tag (no JSON-shape interpretation): `isType[Record]` on an `any`-holding-Map returns `false`. Use `asType[T]` when you want either shape accepted, `isType[T]` when you want strict tag identity.
+
+```ry
+v: any = AnyRecPoint(1, 2)
+case asType[AnyRecPoint](v):
+  Ok(p): expect(p.x).toEq(1)        # native record-tagged → Ok
+  Err(_): fail("unreachable")
+
+case asType[AnyRecPlain](v):
+  Ok(_): fail("unreachable")
+  Err(e): expect(e.message).toEq(  # different record type → Err
+    "asType[AnyRecPlain]: expected record AnyRecPlain, got a different record type")
+```
+
 ---
 
 ## Type Rules (Type Conversion in Operations)

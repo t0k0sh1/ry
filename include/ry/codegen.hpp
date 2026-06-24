@@ -2503,6 +2503,11 @@ public:
     llvm::Value *emitSetOp_is_superset(const CallExpr &e);
     // ======== Native/Stdlib & Resource Tracking ========
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
+    // Checked cast / type-test on `any` (#2315). Dispatches `asType<T>(...)`
+    // and `isType<T>(...)` callees that the parser produces from the
+    // `name[T](args)` surface syntax. Returns nullptr for non-matching
+    // callees so the dispatch chain can continue.
+    llvm::Value *emitBuiltinAnyCast(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
     // Generic dispatch for @native("libname") functions not covered by
     // self-registering stdlib dispatch tables. Uses the signature registry
@@ -2614,6 +2619,13 @@ public:
     int64_t getAnyTypeTagForValue(llvm::Value *val);
     llvm::Value *wrapInAny(llvm::Value *val);
     llvm::Value *buildUnitAny();
+    // Read the raw 8-byte data slot of an `any` value as a `ptr`. The
+    // RyAny struct stores `data` as `[8 x i8]`, so an alloca + store +
+    // GEP-field-1 + load is required to reinterpret the bytes as a
+    // pointer. Used by every `any → record/enum/collection` lowering
+    // that needs the inner descriptor or header pointer.
+    llvm::Value *loadAnyDataPtr(llvm::Value *anyVal,
+                                  const llvm::Twine &nameStem);
     // `targetTypeName` is the declared Ry source-level type of the unwrap
     // destination (e.g. "str", "List<int>", "Map<str,int>"). Required for
     // collection unwraps so the runtime tag dispatch picks the right tag and
@@ -2627,8 +2639,13 @@ public:
     // `List<any>` / `Map<str,any>` / `Set<any>`, user-defined records (flat
     // and nested) are fully supported. Result / enum / typed-Set / typed-Map
     // with non-str keys still return a runtime "not yet supported" Err.
+    // `callerLabel` is the bracketed prefix shown in error messages
+    // (e.g. "load" → "load[T]: ...", "asType" → "asType[T]: ..."). #2315
+    // adds `asType` as a second caller; defaults to "load" so existing
+    // json/json5 sites are unchanged.
     llvm::Value *tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
-                                   const std::string &targetTypeName = "");
+                                   const std::string &targetTypeName = "",
+                                   const std::string &callerLabel = "load");
     // L1 primitive for issue #1701 jq-style path access. Performs one hop
     // through an `any`-held container by a str segment. Map<str, any> hops
     // use `segmentStr` as a str key; List<any> hops use `intSegment` (parsed
@@ -2657,7 +2674,8 @@ public:
                                           llvm::StructType *recordStructTy,
                                           const RecordInfo &info,
                                           const std::string &targetTypeName,
-                                          llvm::StructType *resTy);
+                                          llvm::StructType *resTy,
+                                          const std::string &callerLabel = "load");
     // Typed `List<T>` reconstruction from a `List<any>`-tagged source (#1852).
     // The JSON parser emits arrays as `List<any>` with 16B per slot; the
     // target list expects native stride for `T`, so a fresh header + data
@@ -2670,7 +2688,8 @@ public:
                                         llvm::Type *elemTy,
                                         const std::string &elemTypeName,
                                         const std::string &targetTypeName,
-                                        llvm::StructType *resTy);
+                                        llvm::StructType *resTy,
+                                        const std::string &callerLabel = "load");
     // Typed `Map<str, V>` reconstruction from a `Map<str,any>`-tagged source
     // (#1852). Keys are always `str` (JSON object keys); values are recursively
     // unwrapped via `tryUnwrapFromAny`. The fresh map allocates header + keys
@@ -2682,7 +2701,8 @@ public:
                                        llvm::Type *valTy,
                                        const std::string &valTypeName,
                                        const std::string &targetTypeName,
-                                       llvm::StructType *resTy);
+                                       llvm::StructType *resTy,
+                                       const std::string &callerLabel = "load");
     // Typed `Option<T>` reconstruction from `any` (#1852). Accepts two source
     // shapes: Unit (JSON null) maps to `Ok(None)`; any other tag is forwarded
     // to `tryUnwrapFromAny` for the inner type and on success wrapped in
@@ -2693,7 +2713,8 @@ public:
                                           llvm::Type *innerTy,
                                           const std::string &innerTypeName,
                                           const std::string &targetTypeName,
-                                          llvm::StructType *resTy);
+                                          llvm::StructType *resTy,
+                                          const std::string &callerLabel = "load");
     // Enum (organic / Option<T> / Result<V,E> / simple) unwrap from `any`.
     // `targetTy` may be a `StructType` for ADT / Option / Result or `i64Ty_`
     // for simple enums; `targetTypeName` is the source-level Ry type name

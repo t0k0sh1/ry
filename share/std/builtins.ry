@@ -72,3 +72,20 @@ fn env(key: str) -> Option<str>
 @public
 @native
 fn env(key: str, default: str) -> str
+
+# Explicit checked cast from `any` to a concrete type (#2315). Returns
+# Ok(value) on tag match, Err(Error{message}) on mismatch. Use this in
+# place of implicit assignment unwrap (`let x: T = anyVal`) to recover
+# concrete values from dynamic data such as `json5.load[Map<str, any>]`
+# results without crashing the process on a wrong tag.
+@public
+@native
+fn asType<T>(value: any) -> Result<T, Error>
+
+# Runtime type-test on an `any` value (#2315). Returns true when the
+# `any` holds a value of type T. Records walk the descriptor chain so
+# `isType[Parent](anyHoldingChild)` returns true. `isType[any]` always
+# returns true.
+@public
+@native
+fn isType<T>(value: any) -> bool

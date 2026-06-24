@@ -236,6 +236,16 @@ llvm::Value *CodeGen::buildUnitAny() {
     return builder_.CreateLoad(anyTy_, tmp, "any.unit.val");
 }
 
+llvm::Value *CodeGen::loadAnyDataPtr(llvm::Value *anyVal,
+                                       const llvm::Twine &nameStem) {
+    llvm::AllocaInst *tmp =
+        builder_.CreateAlloca(anyTy_, nullptr, nameStem + ".tmp");
+    builder_.CreateStore(anyVal, tmp);
+    llvm::Value *slot =
+        builder_.CreateStructGEP(anyTy_, tmp, 1, nameStem + ".data.slot");
+    return builder_.CreateLoad(ptrTy_, slot, nameStem + ".data");
+}
+
 llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
                                      const std::string &rawTargetTypeName) {
     // Substitute generic type-parameter names at the helper's entry so every
@@ -430,7 +440,8 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
 }
 
 llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy,
-                                        const std::string &rawTargetTypeName) {
+                                        const std::string &rawTargetTypeName,
+                                        const std::string &callerLabel) {
     // Substitute generic type-parameter names so downstream dispatches see the
     // concrete type. Mirrors `unwrapFromAny`'s entry-point substitution.
     const std::string targetTypeName = substituteTypeParamsInName(rawTargetTypeName);
@@ -447,7 +458,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     };
     auto emitUnsupportedErr = [&](const std::string &kindLabel) -> llvm::Value * {
         std::string label = targetTypeName.empty() ? "?" : targetTypeName;
-        std::string msg = "load[" + label + "]: " + kindLabel +
+        std::string msg = callerLabel + "[" + label + "]: " + kindLabel +
                           " target not yet supported";
         return buildErrValue(buildInlineError(msg), resTy);
     };
@@ -484,14 +495,176 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                 innerName = ry::util::trimTypeNameSpaces(
                     resolved.substr(0, resolved.size() - 1));
             }
-            return tryUnwrapOptionFromAny(anyVal, st, innerTy, innerName,
-                                            targetTypeName, resTy);
+            // Two-shape source dispatch (#2315) for Option<T>:
+            //   tag == Enum + matching descriptor → reuse
+            //       `unwrapEnumFromAny` (verified, so its descriptor-
+            //       mismatch trap is dead code).
+            //   otherwise → `tryUnwrapOptionFromAny` for the JSON-shape
+            //       sources (Unit→None, primitive→Some via recurse).
+            llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+            llvm::Value *entryTag = builder_.CreateExtractValue(
+                anyVal, {0}, "tryopt.entry.tag");
+            llvm::Value *isEnum = builder_.CreateICmpEQ(
+                entryTag,
+                llvm::ConstantInt::get(
+                    i64Ty_, static_cast<uint64_t>(RyAnyTag::Enum)),
+                "tryopt.entry.is_enum");
+
+            auto *enumPathBB =
+                createBBInFn("tryopt.entry.enum_path", fn);
+            auto *fallbackBB =
+                createBBInFn("tryopt.entry.fallback", fn);
+            auto *optDoneBB = createBBInFn("tryopt.entry.done", fn);
+            emitBranchCond(isEnum, enumPathBB, fallbackBB);
+
+            // Fallback path: existing helper handles Unit / recurse cases.
+            builder_.SetInsertPoint(fallbackBB);
+            llvm::Value *fallbackResult = tryUnwrapOptionFromAny(
+                anyVal, st, innerTy, innerName, targetTypeName, resTy,
+                callerLabel);
+            llvm::BasicBlock *fallbackEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(optDoneBB);
+
+            // Enum path: load actual descriptor, compare against the
+            // expected Option<inner> descriptor, then unwrap or Err.
+            builder_.SetInsertPoint(enumPathBB);
+            auto *expectedEnumDesc =
+                getOrCreateEnumDescriptor(targetTypeName, st);
+            llvm::Value *enumDataPtr =
+                loadAnyDataPtr(anyVal, "tryopt.entry");
+            llvm::Value *actualEnumDesc = builder_.CreateLoad(
+                ptrTy_, enumDataPtr, "tryopt.entry.actual_desc");
+            llvm::Value *descEq = builder_.CreateICmpEQ(
+                actualEnumDesc, expectedEnumDesc,
+                "tryopt.entry.desc_eq");
+
+            auto *enumOkBB =
+                createBBInFn("tryopt.entry.enum_ok", fn);
+            auto *enumErrBB =
+                createBBInFn("tryopt.entry.enum_err", fn);
+            emitBranchCond(descEq, enumOkBB, enumErrBB);
+
+            // Descriptor matches: reuse the panic-version enum unwrap.
+            // Its trap branches are dead because we proved the
+            // descriptor matches.
+            builder_.SetInsertPoint(enumOkBB);
+            llvm::Value *optVal =
+                unwrapEnumFromAny(anyVal, st, targetTypeName);
+            llvm::Value *optOk = buildOkValue(optVal, resTy);
+            llvm::BasicBlock *enumOkEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(optDoneBB);
+
+            // Descriptor mismatch: prefixed Err.
+            builder_.SetInsertPoint(enumErrBB);
+            std::string optTypeLabel =
+                targetTypeName.empty() ? "?" : targetTypeName;
+            std::string optDescMsg =
+                callerLabel + "[" + optTypeLabel + "]: expected " +
+                optTypeLabel + ", got a different enum type";
+            llvm::Value *optDescErr =
+                buildErrValue(buildInlineError(optDescMsg), resTy);
+            llvm::BasicBlock *enumErrEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(optDoneBB);
+
+            // Merge.
+            builder_.SetInsertPoint(optDoneBB);
+            llvm::PHINode *optPhi = builder_.CreatePHI(
+                resTy, 3, "tryopt.entry.result");
+            optPhi->addIncoming(fallbackResult, fallbackEndBB);
+            optPhi->addIncoming(optOk, enumOkEndBB);
+            optPhi->addIncoming(optDescErr, enumErrEndBB);
+            return optPhi;
         }
         const RecordInfo *info = findRecordInfoForType(st);
         if (!info) {
             return emitUnsupportedErr("non-record struct");
         }
-        return tryUnwrapRecordFromAny(anyVal, st, *info, targetTypeName, resTy);
+        // Two-shape source dispatch (#2315): the JSON `load[T]` path always
+        // sees a Map<str, any>-tagged source, but `asType[T]` may receive an
+        // any already holding a Record (native value). Branch on the runtime
+        // tag so we can:
+        //   tag == Record → descriptor walk + reuse `unwrapFromAny`. The
+        //       internal mismatch-trap inside `unwrapFromAny` is dead code
+        //       because we've already proven the descriptor matches.
+        //   otherwise → fall back to the existing `tryUnwrapRecordFromAny`
+        //       which handles Map-shaped sources and produces the
+        //       "expected JSON object" Err on every other tag.
+        llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+        llvm::Value *entryTag = builder_.CreateExtractValue(
+            anyVal, {0}, "tryrec.entry.tag");
+        llvm::Value *isRecord = builder_.CreateICmpEQ(
+            entryTag,
+            llvm::ConstantInt::get(i64Ty_,
+                                   static_cast<uint64_t>(RyAnyTag::Record)),
+            "tryrec.entry.is_rec");
+
+        auto *recPathBB = createBBInFn("tryrec.entry.rec_path", fn);
+        auto *mapPathBB = createBBInFn("tryrec.entry.map_path", fn);
+        auto *doneBB = createBBInFn("tryrec.entry.done", fn);
+        emitBranchCond(isRecord, recPathBB, mapPathBB);
+
+        // Map / fallback path: existing helper covers Map reconstruction
+        // and produces the "expected JSON object" Err on other tags.
+        builder_.SetInsertPoint(mapPathBB);
+        llvm::Value *mapResult = tryUnwrapRecordFromAny(
+            anyVal, st, *info, targetTypeName, resTy, callerLabel);
+        llvm::BasicBlock *mapEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(doneBB);
+
+        // Record path: descriptor walk + `unwrapFromAny` reuse.
+        builder_.SetInsertPoint(recPathBB);
+        std::string recTypeName = findRecordTypeName(st);
+        if (recTypeName.empty())
+            recTypeName = targetTypeName;
+        auto *expectedDesc = getOrCreateRecordDescriptor(recTypeName, st);
+
+        // Load actual descriptor from any.data[8] (treated as a ptr to the
+        // record box data region, whose first field is the descriptor*).
+        llvm::Value *dataPtr = loadAnyDataPtr(anyVal, "tryrec.entry");
+        llvm::Value *actualDesc = builder_.CreateLoad(
+            ptrTy_, dataPtr, "tryrec.entry.actual_desc");
+
+        auto subtypeFn = getRuntimeFn(
+            "__ry_record_is_subtype_desc", i64Ty_, {ptrTy_, ptrTy_});
+        llvm::Value *subtypeRes = builder_.CreateCall(
+            subtypeFn, {actualDesc, expectedDesc},
+            "tryrec.entry.subtype");
+        llvm::Value *isSubtype = builder_.CreateICmpNE(
+            subtypeRes, llvm::ConstantInt::get(i64Ty_, 0),
+            "tryrec.entry.is_subtype");
+
+        auto *descOkBB = createBBInFn("tryrec.entry.desc_ok", fn);
+        auto *descErrBB = createBBInFn("tryrec.entry.desc_err", fn);
+        emitBranchCond(isSubtype, descOkBB, descErrBB);
+
+        // Descriptor OK: reuse the panic-version unwrap. The internal
+        // mismatch trap will never fire because we just proved subtype.
+        builder_.SetInsertPoint(descOkBB);
+        llvm::Value *recVal = unwrapFromAny(anyVal, targetTy, targetTypeName);
+        llvm::Value *recOk = buildOkValue(recVal, resTy);
+        llvm::BasicBlock *descOkEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(doneBB);
+
+        // Descriptor mismatch: prefixed Err.
+        builder_.SetInsertPoint(descErrBB);
+        std::string recTypeLabel =
+            targetTypeName.empty() ? "?" : targetTypeName;
+        std::string descMsg = callerLabel + "[" + recTypeLabel +
+                              "]: expected record " + recTypeLabel +
+                              ", got a different record type";
+        llvm::Value *descErrResult =
+            buildErrValue(buildInlineError(descMsg), resTy);
+        llvm::BasicBlock *descErrEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(doneBB);
+
+        // Merge all three arms.
+        builder_.SetInsertPoint(doneBB);
+        llvm::PHINode *recPhi =
+            builder_.CreatePHI(resTy, 3, "tryrec.entry.result");
+        recPhi->addIncoming(mapResult, mapEndBB);
+        recPhi->addIncoming(recOk, descOkEndBB);
+        recPhi->addIncoming(descErrResult, descErrEndBB);
+        return recPhi;
     }
     if (targetTy == i64Ty_ && !targetTypeName.empty() &&
         isSimpleEnumTypeName(targetTypeName)) {
@@ -515,7 +688,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                 if (!elemTy)
                     return emitUnsupportedErr("typed List<" + inner + ">");
                 return tryUnwrapListFromAny(anyVal, elemTy, inner,
-                                              targetTypeName, resTy);
+                                              targetTypeName, resTy, callerLabel);
             }
         } else if (ry::util::isSetTypeName(resolved)) {
             std::string inner = ry::util::trimTypeNameSpaces(
@@ -541,7 +714,8 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                         return emitUnsupportedErr(
                             "typed Map<str, " + v + ">");
                     return tryUnwrapMapFromAny(anyVal, valTy, v,
-                                                 targetTypeName, resTy);
+                                                 targetTypeName, resTy,
+                                                 callerLabel);
                 }
             }
         }
@@ -552,7 +726,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         std::string typeForMsg =
             targetTypeName.empty() ? "float" : targetTypeName;
         std::string msg =
-            "load[" + typeForMsg + "]: expected float or int";
+            callerLabel + "[" + typeForMsg + "]: expected float or int";
         llvm::Value *errMsgStr = cachedGlobalString(msg);
         RyAnyTryUnwrapDesc tryUnwrapDesc{};
         tryUnwrapDesc.kind = static_cast<int>(AnyTryUnwrapKind::F64Promote);
@@ -601,7 +775,7 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                      : (targetTy == ptrTy_) ? "str"
                                             : "unknown";
     }
-    std::string msg = "load[" + typeForMsg + "]: expected " + typeForMsg;
+    std::string msg = callerLabel + "[" + typeForMsg + "]: expected " + typeForMsg;
     llvm::Value *errMsgStr = cachedGlobalString(msg);
 
     RyAnyTryUnwrapDesc tryUnwrapDesc{};
@@ -627,10 +801,11 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
                                                llvm::StructType *recordStructTy,
                                                const RecordInfo &info,
                                                const std::string &targetTypeName,
-                                               llvm::StructType *resTy) {
+                                               llvm::StructType *resTy,
+                                               const std::string &callerLabel) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty() ? "?" : targetTypeName;
-    const std::string prefix = "load[" + typeLabel + "]: ";
+    const std::string prefix = callerLabel + "[" + typeLabel + "]: ";
 
     // Field-kind classification drives ARC release on every err exit. Records
     // are built field-by-field via InsertValue; if iter k fails, every
@@ -777,7 +952,7 @@ llvm::Value *CodeGen::tryUnwrapRecordFromAny(llvm::Value *anyVal,
 
         // Recursive unwrap.
         llvm::Value *subResult =
-            tryUnwrapFromAny(elemAny, fieldLlvmTy, fieldTypeName);
+            tryUnwrapFromAny(elemAny, fieldLlvmTy, fieldTypeName, callerLabel);
         llvm::Value *subDisc = builder_.CreateExtractValue(
             subResult, {0}, "tryrec.fld_" + f.name + ".sub.disc");
 
@@ -880,11 +1055,12 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
                                              llvm::Type *elemTy,
                                              const std::string &elemTypeName,
                                              const std::string &targetTypeName,
-                                             llvm::StructType *resTy) {
+                                             llvm::StructType *resTy,
+                                             const std::string &callerLabel) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel =
         targetTypeName.empty() ? ("List<" + elemTypeName + ">") : targetTypeName;
-    const std::string prefix = "load[" + typeLabel + "]: ";
+    const std::string prefix = callerLabel + "[" + typeLabel + "]: ";
 
     auto buildInlineError = [&](const std::string &msg) -> llvm::Value * {
         llvm::Value *errStr = cachedGlobalString(msg);
@@ -979,7 +1155,7 @@ llvm::Value *CodeGen::tryUnwrapListFromAny(llvm::Value *anyVal,
 
     // Recursive unwrap.
     llvm::Value *subResult =
-        tryUnwrapFromAny(srcAny, elemTy, elemTypeName);
+        tryUnwrapFromAny(srcAny, elemTy, elemTypeName, callerLabel);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "trylst.sub.disc");
     auto *subOkBB = createBBInFn("trylst.sub.ok", fn);
@@ -1130,11 +1306,12 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
                                             llvm::Type *valTy,
                                             const std::string &valTypeName,
                                             const std::string &targetTypeName,
-                                            llvm::StructType *resTy) {
+                                            llvm::StructType *resTy,
+                                            const std::string &callerLabel) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty()
         ? ("Map<str, " + valTypeName + ">") : targetTypeName;
-    const std::string prefix = "load[" + typeLabel + "]: ";
+    const std::string prefix = callerLabel + "[" + typeLabel + "]: ";
 
     auto buildInlineError = [&](const std::string &msg) -> llvm::Value * {
         llvm::Value *errStr = cachedGlobalString(msg);
@@ -1243,7 +1420,7 @@ llvm::Value *CodeGen::tryUnwrapMapFromAny(llvm::Value *anyVal,
         builder_.CreateLoad(anyTy_, srcValAnyPtr, "trymap.src.val");
 
     llvm::Value *subResult =
-        tryUnwrapFromAny(srcAny, valTy, valTypeName);
+        tryUnwrapFromAny(srcAny, valTy, valTypeName, callerLabel);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "trymap.sub.disc");
     auto *subOkBB = createBBInFn("trymap.sub.ok", fn);
@@ -1442,10 +1619,11 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
                                                llvm::Type *innerTy,
                                                const std::string &innerTypeName,
                                                const std::string &targetTypeName,
-                                               llvm::StructType *resTy) {
+                                               llvm::StructType *resTy,
+                                               const std::string &callerLabel) {
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     const std::string typeLabel = targetTypeName.empty() ? "?" : targetTypeName;
-    const std::string prefix = "load[" + typeLabel + "]: ";
+    const std::string prefix = callerLabel + "[" + typeLabel + "]: ";
 
     // Three-way dispatch on the source `any` tag:
     //   Unit → Ok(None)
@@ -1478,7 +1656,7 @@ llvm::Value *CodeGen::tryUnwrapOptionFromAny(llvm::Value *anyVal,
     // (e.g. "expected JSON object" for record innerTy when tag = Int).
     builder_.SetInsertPoint(recurseBB);
     llvm::Value *subResult =
-        tryUnwrapFromAny(anyVal, innerTy, innerTypeName);
+        tryUnwrapFromAny(anyVal, innerTy, innerTypeName, callerLabel);
     llvm::Value *subDisc = builder_.CreateExtractValue(
         subResult, {0}, "tryopt.sub.disc");
     emitBranchCond(subDisc, innerOkBB, innerErrBB);
