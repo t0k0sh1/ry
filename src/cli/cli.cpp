@@ -246,6 +246,9 @@ void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string 
             trace_out = argv[1] + 12;
         } else if (std::strcmp(argv[1], "--emit-llvm-ir") == 0) {
             emit_llvm_ir = true;
+        } else if (std::strcmp(argv[1], "--strict-any") == 0) {
+            // #2319: see cli.hpp — flag is mirrored to RY_STRICT_ANY.
+            setenv("RY_STRICT_ANY", "1", 1);
         } else {
             break;
         }

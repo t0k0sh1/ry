@@ -15,6 +15,15 @@ struct RegexResourceReg { RegexResourceReg() {
     rk_regex = ResourceKindRegistry::instance().registerKind(
         "Regex", nullptr, nullptr, nullptr);
 }} regex_resource_reg;
+
+// #2319: shared remediation message for the any-arithmetic strict-any
+// rule, used by both the binary and unary guard sites in this file.
+// `op_desc` is the operator phrase to splice in, e.g. "'+'" or "unary '-'".
+std::string anyArithRejectionMsg(const std::string &op_desc) {
+    return "direct " + op_desc + " on 'any' is not permitted in strict-any "
+           "mode; annotate the operand type or use asType[T](...) to "
+           "recover a concrete value first";
+}
 }
 
 // Range check for suffixed integer literals.
@@ -294,6 +303,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
 
     // any-type unary dispatch (#223)
     if (isAnyType(val->getType())) {
+        // #2319: strict-any rejects unary `-` on `any` (unary `+` is identity
+        // and stays allowed). Shares the rule id with the binary path.
+        if (strict_any_mode_ && e->op == "-") {
+            strictAnyError(current_loc_, "any-arithmetic",
+                           anyArithRejectionMsg("unary '-'"));
+        }
         if (e->op == "-") return emitAnyUnaryNeg(val);
         if (e->op == "+") return val;
         codegenError("operator '" + e->op + "' not supported for any type");
@@ -1713,6 +1728,13 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 
     // any-type dynamic dispatch (#223)
     if (isAnyType(lhs->getType()) || isAnyType(rhs->getType())) {
+        // #2319: strict-any rejects direct arithmetic on `any`. Comparisons
+        // (==, !=, <, <=, >, >=) remain permitted because they always yield
+        // a concrete bool. Operator set lives in isAnyArithOp / arithOps.
+        if (strict_any_mode_ && isAnyArithOp(op)) {
+            strictAnyError(current_loc_, "any-arithmetic",
+                           anyArithRejectionMsg("'" + op + "'"));
+        }
         if (!isAnyType(lhs->getType())) lhs = wrapInAny(lhs);
         if (!isAnyType(rhs->getType())) rhs = wrapInAny(rhs);
         return emitAnyBinaryOp(op, lhs, rhs);

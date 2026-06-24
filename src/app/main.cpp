@@ -265,6 +265,13 @@ int main(int argc, char *argv[]) {
             if (ry::traceEnabled() && !sessionStarted) {
                 ry::emitTraceEvent("session.start", "session", nullptr,
                                    {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
+                // SessionTraceGuard (declared above) captures sessionStarted
+                // by reference and reads it in its destructor to emit
+                // session.end. The clang analyzer does not model the
+                // ref-capturing destructor read, producing a false-positive
+                // dead-store warning. Suppressed locally; surfaced by #2319's
+                // CLI / header changes triggering re-analysis of this TU.
+                [[clang::suppress]]
                 sessionStarted = true;
             }
         }

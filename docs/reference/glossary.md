@@ -94,3 +94,18 @@ The stdlib provides core types, conversion helpers (`int`, `float`, `str`), buil
 The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 
 See [Module Reference — Standard Library](modules.md#standard-library) for the full list of stdlib sub-modules and import semantics.
+
+## strict-any mode
+
+An **opt-in compiler mode** that enables stricter `any` semantics ahead of those semantics becoming the default. Introduced in v0.0.30 (#2319) to give existing code a migration window before subsequent issues (#2316, #2317, #2321, #2323) plug additional rules into the framework and #2322 eventually flips strict-any to the default.
+
+Activation:
+
+- `RY_STRICT_ANY=1` environment variable (inherited by `ry test` subprocesses), or
+- `--strict-any` CLI flag (which `setenv`-s the same variable so subprocess inheritance is automatic).
+
+Diagnostics produced by the mode are tagged `[strict-any/<rule>]` in the message so users can grep for them and follow-up issues can extend the rule catalog without changing the diagnostic shape. Currently shipped rules:
+
+- **`any-arithmetic`** — direct binary `+`/`-`/`*`/`/`/`%`/`//`/`**` and unary `-` on an `any`-typed operand is rejected. Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) are still permitted because they always yield a concrete `bool`. The fix is to annotate the operand type or use `asType[T](...)` (#2315) to recover a concrete value before the operation.
+
+See [Strict-any mode reference](strict-any.md) for the full rule catalog and migration guidance.
