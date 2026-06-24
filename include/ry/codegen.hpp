@@ -1931,16 +1931,32 @@ public:
 
     // Emit the tri-block mock dispatch for a customEmitter native call. The
     // mockBB emits args fresh and dispatches through __ry_mock_get; origBB
-    // delegates to the customEmitter (which emits its own args). Returns the
-    // PHI-merged result. Pre-condition: caller has already verified
+    // delegates to the supplied emitter (which emits its own args). Returns
+    // the PHI-merged result. Pre-condition: caller has already verified
     // (mocked || spied) for this canonicalSig.
+    //
+    // The emitter callback is `entry->customEmitter` for Pattern A2 callsites
+    // and the carved-out compiler builtin (e.g. `emitMathPow`) for Pattern B
+    // callsites (#2340). Both share the `CodeGenCustomEmitterFn` shape so the
+    // indirection is a pure generalisation — mock/spy semantics are unchanged.
     llvm::Value *emitNativeCustomEmitterMockDispatch(
         const CallExpr &e,
-        const NativeDispatchEntry *entry,
+        CodeGenCustomEmitterFn emitter,
         const NativeFnSignature &sig,
         const std::string &canonicalSig,
         bool isMocked,
         bool isSpied);
+
+    // Pattern B (compiler-builtin) wrapper: looks the call up under
+    // `package::e.callee` to drive the AST-level overload picker, runs the
+    // mock/spy gate, and falls back to a direct `emitter(*this, e)` call when
+    // no mock is registered. Use from emitBuiltinMath / emitBuiltinJson /
+    // emitBuiltinThread to keep the #1682 mock/spy behaviour after the #2340
+    // carve-out moved the dispatch off the table path.
+    llvm::Value *emitBuiltinNativeOrMock(
+        const CallExpr &e,
+        const std::string &package,
+        CodeGenCustomEmitterFn emitter);
 
     llvm::Value *toBool(llvm::Value *v);
 
@@ -2554,6 +2570,24 @@ public:
     // callees so the dispatch chain can continue.
     llvm::Value *emitBuiltinAnyCast(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
+    // Type-driven @native carve-outs (#2340 / native-call-boundary §"Installment
+    // 3"). Each helper intercepts the named callee only when the matching
+    // module's signatures are present, then leaves the corresponding `libry_*`
+    // library registration to its own body — the table path no longer reaches
+    // these names.
+    llvm::Value *emitBuiltinMath(const CallExpr &e);
+    llvm::Value *emitBuiltinJson(const CallExpr &e);
+    llvm::Value *emitBuiltinJson5(const CallExpr &e);
+    llvm::Value *emitBuiltinThread(const CallExpr &e);
+    // Shared body for emitBuiltinJson and emitBuiltinJson5 — both modules
+    // expose the same `stringify` / `stringifySafe` callees, differing only in
+    // the package name and the runtime entry-point emitter pointers. Lives in
+    // codegen_call_json.cpp.
+    llvm::Value *emitBuiltinJsonModuleStringify(
+        const CallExpr &e,
+        const char *package,
+        CodeGenCustomEmitterFn stringifyEmitter,
+        CodeGenCustomEmitterFn stringifySafeEmitter);
     // Generic dispatch for @native("libname") functions not covered by
     // self-registering stdlib dispatch tables. Uses the signature registry
     // to derive the C calling convention from Ry type annotations.

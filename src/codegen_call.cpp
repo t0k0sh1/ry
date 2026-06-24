@@ -8,7 +8,14 @@
 namespace ry {
 
 // ===== Builtin Conversion =====
-
+//
+// Pattern B carve-out (#2340): int(s) / float(s) are reserved compiler
+// builtins, not @native dispatched. The descriptor-driven library auto-
+// registration in emitTableDrivenNativeCall / emitGenericNativeCall never
+// reaches them — the reserved-name guard claims the callee before any
+// descriptor lookup runs — so the `libry_convert` load has to be expressed
+// directly with `used_native_libraries_.insert("convert")` here. The same
+// rationale applies to input() / close() in emitBuiltinCore below.
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // int(s) → Result<int, Error>.  Parses a str; for number→int use `x as int`.
     if (e.callee == "int") {
@@ -18,6 +25,8 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             codegenError("int() requires a str argument; use 'value as int' to convert a number to int");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fn = getRuntimeFn("__ry_str_to_int", i64Ty_, {ptrTy_, ptrTy_});
+        // Pattern B carve-out: see the file-header comment above for why this
+        // insert is not removed by the descriptor-driven consolidation.
         used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
@@ -39,6 +48,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             codegenError("float() requires a str argument; use 'value as float' to convert a number to float");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
         auto fn = getRuntimeFn("__ry_str_to_float", i64Ty_, {ptrTy_, ptrTy_});
+        // Pattern B carve-out: see emitBuiltinConversion header comment above.
         used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_float_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
@@ -608,10 +618,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "input") {
         if (e.args.size() > 1)
             codegenError("input() takes 0 or 1 arguments");
-        // Runtime lives in libry_io — without this insert the JIT fails to
-        // resolve __ry_io_read_line / __ry_io_input_prompt for programs that
-        // never `import` from io. Bare builtins are not declared as
-        // @native("io"), so library registration must happen here.
+        // Pattern B carve-out (#2340): `input` is a reserved compiler builtin,
+        // not @native("io"). The descriptor-driven library auto-registration
+        // never reaches this name, so the JIT load of libry_io has to be
+        // expressed directly so that __ry_io_read_line / __ry_io_input_prompt
+        // resolve for programs that never `import` io.
         used_native_libraries_.insert("io");
 
         llvm::Value *outAlloca = emitAlloca(ptrTy_, "inp_out");
@@ -721,8 +732,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             // happens at scope exit (or when the last alias drops); decoupling
             // the user-facing close from refcount-drop keeps lines()/readLine()
             // iterators valid after close (they observe fp==nullptr and finish).
-            // The io runtime symbol lives in libry_io — register the library so
-            // bare close(f) calls (no enclosing io import path) resolve.
+            // Pattern B carve-out (#2340): `close` is a reserved compiler
+            // builtin, not @native("io"). The descriptor-driven library
+            // auto-registration never reaches this name, so the libry_io load
+            // for __ry_io_file_close is expressed directly here.
             used_native_libraries_.insert("io");
             auto fn = getRuntimeFn("__ry_io_file_close", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
             builder_.CreateCall(fn, {val});
@@ -1480,7 +1493,13 @@ static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
 }
 
 // ===== Math dispatch table =====
-
+//
+// abs / floor / ceil / round / log / pow / digits were carved out to
+// emitBuiltinMath (Pattern B) per #2340 — they are type-driven and never
+// matched a declarative descriptor. isNan / isInf stay here because they are
+// declarative single-arity float predicates and have no Pattern B home.
+// math has no `libry_math` artifact, so no library auto-registration is needed
+// either before or after the carve-out.
 static const CodeGen::NativeDispatchEntry math_table[] = {
     // 1-arg float->float (bare C library names)
     {"sqrt",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sqrt"},
@@ -1496,23 +1515,41 @@ static const CodeGen::NativeDispatchEntry math_table[] = {
     // 2-arg float->float
     {"atan2", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "atan2"},
     {"hypot", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "hypot"},
-    // Custom emitters (arity is metadata for the 1-arg legacy overload —
-    // actual arity dispatch happens via registered @native sigs at the
-    // custom-emitter gate in emitTableDrivenNativeCall; see codegen_call_native.cpp).
-    {"abs",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathAbs},
-    {"floor",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
-    {"ceil",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
-    {"round",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
-    {"log",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathLog},
-    {"pow",    nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitMathPow},
+    // Single-arity float predicates — declarative; remain in the table.
     {"isNan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
     {"isInf",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
-    {"digits", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathDigits},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(math, "share/std/math/math.ry", dispatchMath)
 static llvm::Value *dispatchMath(CodeGen &cg, const CallExpr &e) {
     return cg.emitTableDrivenNativeCall(e, "math", math_table, std::size(math_table));
+}
+
+// ===== Builtin Math (Pattern B carve-out, #2340) =====
+//
+// Type-driven entries (int/float overload, multi-arity rounding, do-while
+// digit extraction) that cannot become a declarative descriptor.  Intercepts
+// only when the matching `math::<name>` sig is registered so that user fns
+// named `abs` / `log` / etc. with no `import math` reach `emitUserFnCall`
+// (#1889 reserved-name guard rejects user fn definitions at parse time, but
+// keeping the sig gate lets a same-named identifier still resolve through
+// indirect-call paths when the name is bound to a variable / lambda).
+llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
+    const auto hasSig = [&](const std::string &name) {
+        return native_fn_sigs_.count(ry::util::nativeSigKey("math", name)) > 0;
+    };
+    if (e.callee == "abs"    && hasSig("abs"))
+        return emitBuiltinNativeOrMock(e, "math", &emitMathAbs);
+    if ((e.callee == "floor" || e.callee == "ceil" || e.callee == "round") &&
+        hasSig(e.callee))
+        return emitBuiltinNativeOrMock(e, "math", &emitMathFloorCeilRound);
+    if (e.callee == "log"    && hasSig("log"))
+        return emitBuiltinNativeOrMock(e, "math", &emitMathLog);
+    if (e.callee == "pow"    && hasSig("pow"))
+        return emitBuiltinNativeOrMock(e, "math", &emitMathPow);
+    if (e.callee == "digits" && hasSig("digits"))
+        return emitBuiltinNativeOrMock(e, "math", &emitMathDigits);
+    return nullptr;
 }
 
 // Math constants self-registration

@@ -192,6 +192,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinCollection(*e))  return v;
         if (auto *v = emitBuiltinSetOps(*e))      return v;
         if (auto *v = emitBuiltinRegex(*e))       return v;
+        // Type-driven @native carve-outs (#2340).  Order: json before json5 so
+        // that programs importing both modules resolve `stringify` to the json
+        // dispatcher — same precedence as the table-driven path used before
+        // the carve-out (`dispatchJson` runs before `dispatchJson5` because of
+        // alphabetical package ordering).
+        if (auto *v = emitBuiltinMath(*e))        return v;
+        if (auto *v = emitBuiltinJson(*e))        return v;
+        if (auto *v = emitBuiltinJson5(*e))       return v;
+        if (auto *v = emitBuiltinThread(*e))      return v;
     }
 
     // Dispatch to self-registering stdlib module helpers

@@ -149,11 +149,11 @@ static llvm::Value *emitJson5DumpFile(CodeGen &cg, const CallExpr &e) {
 
 
 // ===== JSON5 dispatch table =====
-
+//
+// stringify / stringifySafe were carved out to emitBuiltinJson5 (Pattern B)
+// per #2340 — see emitBuiltinJson5 below for the rationale shared with json.
 static const CodeGen::NativeDispatchEntry json5_table[] = {
-    {"stringify",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJson5Stringify},
-    {"stringifySafe", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJson5StringifySafe},
-    {"dump",          nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJson5DumpFile},
+    {"dump", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJson5DumpFile},
 };
 
 // Gate the dispatcher: only proceed if any json5 symbol is actually
@@ -205,6 +205,15 @@ static llvm::Value *dispatchJson5(CodeGen &cg, const CallExpr &e) {
     }
 
     return cg.emitTableDrivenNativeCall(e, "json5", json5_table, std::size(json5_table));
+}
+
+// ===== Builtin Json5 (Pattern B carve-out, #2340) =====
+//
+// Delegates to the shared emitBuiltinJsonModuleStringify body in
+// codegen_call_json.cpp; ordering and sig-gate rationale live there.
+llvm::Value *CodeGen::emitBuiltinJson5(const CallExpr &e) {
+    return emitBuiltinJsonModuleStringify(
+        e, "json5", &emitJson5Stringify, &emitJson5StringifySafe);
 }
 
 } // namespace ry

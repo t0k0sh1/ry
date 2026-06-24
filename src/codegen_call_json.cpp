@@ -169,18 +169,14 @@ static llvm::Value *emitJsonDumpFile(CodeGen &cg, const CallExpr &e) {
 
 
 // ===== JSON dispatch table =====
-
+//
+// `stringify` / `stringifySafe` were carved out to emitBuiltinJson (Pattern B)
+// per #2340 — they are polymorphic over the Ry value type and never matched a
+// declarative descriptor. `load[T]` is intercepted by `dispatchJson` via
+// suffix match against `e.callee`; `dump` stays here because it remains a
+// declaration-driven 2/3-arity File-first call.
 static const CodeGen::NativeDispatchEntry json_table[] = {
-    // arity field is metadata only when customEmitter is set — actual arity
-    // dispatch happens via registered @native sigs at the custom-emitter gate
-    // in emitTableDrivenNativeCall (see codegen_call_native.cpp).
-    //
-    // `load[T]` is intercepted by `dispatchJson` via suffix match against
-    // `e.callee` (which is mangled to `load<T>` by the parser), so it has no
-    // entry in this table.
-    {"stringify",     nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringify},
-    {"stringifySafe", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitJsonStringifySafe},
-    {"dump",          nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
+    {"dump", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJsonDumpFile},
 };
 
 // Gate the dispatcher: only proceed if any json symbol is actually
@@ -241,6 +237,50 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     }
 
     return cg.emitTableDrivenNativeCall(e, "json", json_table, std::size(json_table));
+}
+
+// ===== Builtin Json / Json5 shared body (Pattern B carve-out, #2340) =====
+//
+// stringify / stringifySafe are polymorphic over the Ry value type and never
+// fit the declarative descriptor shape, so they live here as compiler builtins.
+// json and json5 share the surface verbatim — same callee names, same sig-gate
+// pattern, only the package and runtime entry-point symbols differ. The chain
+// order in codegen_call_dispatch.cpp puts json before json5, matching the
+// pre-carve precedence (alphabetical package ordering put `dispatchJson` ahead
+// of `dispatchJson5`).
+//
+// Sig gate: intercept only when `<package>::<name>` is registered. Without the
+// gate every bare `stringify` call in a program that did not import json /
+// json5 would short-circuit user fns; the reserved-name guard in
+// builtin_names.hpp blocks user *definitions*, but a same-named identifier
+// bound to a variable / lambda must still reach the indirect-call path in
+// emitExprVariant.
+//
+// Library registration: the carved emitters register `<package>` directly so
+// the JIT loads `libry_<package>` before the runtime symbol is referenced.
+// dispatchJson / dispatchJson5 still cover the load[T] / dump paths.
+llvm::Value *CodeGen::emitBuiltinJsonModuleStringify(
+    const CallExpr &e,
+    const char *package,
+    CodeGenCustomEmitterFn stringifyEmitter,
+    CodeGenCustomEmitterFn stringifySafeEmitter) {
+    const std::string pkgPrefix = std::string(package) + "::";
+    if (e.callee == "stringify" &&
+        native_fn_sigs_.count(pkgPrefix + "stringify")) {
+        used_native_libraries_.insert(package);
+        return emitBuiltinNativeOrMock(e, package, stringifyEmitter);
+    }
+    if (e.callee == "stringifySafe" &&
+        native_fn_sigs_.count(pkgPrefix + "stringifySafe")) {
+        used_native_libraries_.insert(package);
+        return emitBuiltinNativeOrMock(e, package, stringifySafeEmitter);
+    }
+    return nullptr;
+}
+
+llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
+    return emitBuiltinJsonModuleStringify(
+        e, "json", &emitJsonStringify, &emitJsonStringifySafe);
 }
 
 } // namespace ry

@@ -30,9 +30,9 @@ Returns the absolute value of `x`.
 
 ## Examples
 
-    abs(-3)  # 3
+    myAbs(-3)  # 3
 """)
-fn abs(x: int) -> int:
+fn myAbs(x: int) -> int:
   if x < 0:
     return -x
   return x
@@ -41,9 +41,9 @@ fn abs(x: int) -> int:
 fn docDirectiveTests():
   @it("compiles and runs documented functions normally")
   fn shouldExecuteDocumentedFn():
-    expect(abs(-7)).toEq(7)
-    expect(abs(5)).toEq(5)
-    expect(abs(0)).toEq(0)
+    expect(myAbs(-7)).toEq(7)
+    expect(myAbs(5)).toEq(5)
+    expect(myAbs(0)).toEq(0)
   @it("compiles and constructs documented records normally")
   fn shouldConstructDocumentedRecord():
     p = Point(3, 4)

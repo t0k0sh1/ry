@@ -3041,14 +3041,16 @@ TEST_F(DirectiveTest, DescribeBeforeEachRunsBeforeItBody) {
 // @doc on a function — accepts a single string positional argument and the
 // declaration compiles without effect on emitted IR (metadata-only).
 TEST_F(DirectiveTest, DocDirectiveOnFn) {
+    // `abs` was reserved as a compiler builtin (#2340); use a fresh name so the
+    // test only exercises @doc directive acceptance on a user fn.
     EXPECT_NO_THROW({
         runSource(
             "@doc(\"Returns the absolute value of x.\")\n"
-            "fn abs(x: int) -> int:\n"
+            "fn myAbs(x: int) -> int:\n"
             "    if x < 0:\n"
             "        return -x\n"
             "    return x\n"
-            "print(abs(-3))\n"
+            "print(myAbs(-3))\n"
         );
     });
 }

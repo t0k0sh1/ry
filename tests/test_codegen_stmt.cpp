@@ -132,14 +132,14 @@ TEST_F(CodeGenTest, FnBasicDefinitions) {
         "fn isPositive(x: int) -> bool:\n"
         "    return x > 0\n"
         "print(isPositive(5))"), "true\n");
-    // FnWithIf
+    // FnWithIf — `abs` is reserved (#2340), use a fresh name.
     EXPECT_EQ(runSource(
-        "fn abs(x: int) -> int:\n"
+        "fn myAbs(x: int) -> int:\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
-        "print(abs(-5))\n"
-        "print(abs(3))"), "5\n3\n");
+        "print(myAbs(-5))\n"
+        "print(myAbs(3))"), "5\n3\n");
     // FnCallAsStatement
     EXPECT_EQ(runSource(
         "fn greet() -> int:\n"
