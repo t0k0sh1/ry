@@ -1,0 +1,39 @@
+# triple-quoted block strings: indentation stripping and multi-line content
+
+# The leading and trailing newlines are dropped, and the common indentation
+# of the content lines is removed.
+poem = """
+  roses are red
+    violets are blue
+  this is multi-line
+  """
+
+print(poem)
+
+# Blank lines inside the block are preserved verbatim
+withBlank = """
+  alpha
+
+  beta
+  """
+
+print(withBlank)
+
+# Raw tabs and other whitespace are kept verbatim
+escaped = """tab	here"""
+print(escaped)
+
+# Block strings happily contain quotes without escaping
+quoted = """she said "hi" and left"""
+print(quoted)
+
+# Useful for embedded documentation or templates
+fn helpText() -> str:
+  return """
+    Usage: greet [--upper] <name>
+
+    Options:
+      --upper   shout the greeting
+    """
+
+print(helpText())
