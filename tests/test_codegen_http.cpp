@@ -22,9 +22,9 @@ fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
 fn listenerPort(listener: TcpListener) -> int
-@native
+@native("io")
 fn toBytes(s: str) -> List<u8>
-@native
+@native("io")
 fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 @native
 fn sleep(ms: int) -> Unit

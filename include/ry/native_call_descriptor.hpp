@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "ry/codegen_native_dispatch.hpp"  // CodeGenReturnWrapping
+#include "ry/stdlib_registry.hpp"  // ResourceKindRegistry::NONE
 
 namespace ry {
 
@@ -18,6 +19,10 @@ namespace ry {
 // `out_param_type_name` which `inferReturnWrapping` returns alongside
 // `return_wrapping` (filesystem's `Result<int>` / `Result<bool>` entries
 // need it for `ResultOutParam`, and filesystem shares the consume path).
+//
+// Installment 2-a (#2338) adds `resource_kind` for resource-coupled
+// modules (io, filesystem, net, http, thread). When non-NONE the consume
+// path attaches the kind to the wrapped result via addResourceKind.
 struct NativeCallDescriptor {
     std::optional<std::string> library_name;
 
@@ -28,6 +33,12 @@ struct NativeCallDescriptor {
     std::string out_param_type_name;   // non-empty only for ResultOutParam
     std::string error_channel;         // e.g. "__ry_base64_get_last_error"; empty = none
     int require_list_u8_arg = -1;      // arg index requiring List<u8>; -1 = no check
+
+    // Installment 2-a (#2338): ResourceKindRegistry index for resource-
+    // returning natives (e.g. io::open returns Result<File, Error>; the
+    // descriptor carries rk_file so the consume path tags the wrapped
+    // result automatically). NONE (-1) means "not a resource".
+    int resource_kind = ResourceKindRegistry::NONE;
 };
 
 // inferLibraryName: derives the descriptor's library_name from the
@@ -53,8 +64,29 @@ std::optional<std::string> inferLibraryName(const std::string &directiveTag,
 //
 // Returns {wrapping, out_param_type_name}. out_param_type_name is non-empty
 // only when wrapping == ResultOutParam.
+// extractResultOkType: returns the trimmed Ok type from "Result<T, Error>"
+// (e.g. "File" from "Result<File, Error>"), or an empty string when the
+// input does not name a Result<T, _>. Pure depth-aware comma finder used
+// by inferReturnWrapping, inferResourceKind, and the return-type metadata
+// propagation path in emitGenericNativeCall — keep one copy.
+std::string extractResultOkType(const std::string &returnTypeName);
+
 std::pair<CodeGenReturnWrapping, std::string>
 inferReturnWrapping(const std::string &returnTypeName);
+
+// inferResourceKind: extracts the inner type name from a return type
+// spelling and looks it up against ResourceKindRegistry. Returns the
+// registered kind id when the inner type names a registered resource
+// (e.g. "Result<File, Error>" -> rk_file), or ResourceKindRegistry::NONE
+// otherwise. Mirrors inferReturnWrapping in shape (pure, declaration-
+// time) so codegen_fn.cpp populates both at @native registration time.
+//
+// Result wrapping is the only currently-supported carrier: a bare
+// resource return type (e.g. `fn open() -> File`) would also resource-
+// tag the value, but no stdlib uses that shape today. Direct returns
+// are intentionally excluded to keep the inference's blast radius
+// scoped to error-throwable resource constructors.
+int inferResourceKind(const std::string &returnTypeName);
 
 // knownNativeLibs: mirror of CMakeLists.txt's RY_NATIVE_LIBS list
 // (12 entries: base64, path, convert, filesystem, gc, testing, io,

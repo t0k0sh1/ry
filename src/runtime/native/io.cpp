@@ -13,6 +13,29 @@
 
 namespace ry {
 
+// Dual-write error channel (#2338): io owns __ry_io_get_last_error so its
+// descriptor-driven dispatch consumers read from a module-local buffer
+// (matches base64/path/filesystem/net/http convention). The same write
+// also lands in the shared __ry_set_last_error buffer so cross-module
+// callers that delegate to io fns (json::load_file / dump_file, json5
+// counterparts) continue to surface io errors through the shared
+// __ry_get_last_error channel without per-call bridging. The DEFINE_LAST_ERROR
+// macro does not cover this dual-write shape, so the buffer + setter +
+// reader are defined manually here.
+static thread_local char io_last_error_buf[512] = {0};
+
+static void setLastError(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(io_last_error_buf, sizeof(io_last_error_buf), fmt, args);
+    va_end(args);
+    __ry_set_last_error(io_last_error_buf);
+}
+
+extern "C" const char *__ry_io_get_last_error() {
+    return makeString(io_last_error_buf, strlen(io_last_error_buf));
+}
+
 static const long MAX_READ_SIZE = 256L * 1024 * 1024; // 256 MB
 
 static FILE *fopen_nofollow(const char *path, const char *mode) {
@@ -28,18 +51,6 @@ static FILE *fopen_nofollow(const char *path, const char *mode) {
     FILE *f = fdopen(fd, mode);
     if (!f) { close(fd); return nullptr; }
     return f;
-}
-
-// __ry_set_last_error / __ry_get_last_error are defined in runtime_error.cpp
-// (part of ry_lib). Native libs resolve them from the process at runtime.
-
-static void setLastError(const char *fmt, ...) {
-    char buf[512];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    __ry_set_last_error(buf);
 }
 
 // IOListHeader and makeByteList are defined in runtime_io.hpp
@@ -84,7 +95,7 @@ extern "C" int64_t __ry_io_input_prompt(const char *prompt, const char **out_lin
     return __ry_io_read_line(out_line);
 }
 
-extern "C" const char *__ry_read_all() {
+extern "C" const char *__ry_io_read_all() {
     size_t cap = 4096;
     size_t len = 0;
     char *buf = (char *)checked_malloc(cap);
@@ -109,7 +120,7 @@ extern "C" const char *__ry_read_all() {
 
 // ===== File I/O =====
 
-extern "C" const char *__ry_read_text(const char *path) {
+extern "C" const char *__ry_io_read_text(const char *path) {
     if (hasEmbeddedNul(path)) {
         setLastError("read_text: argument contains an embedded NUL byte");
         return nullptr;
@@ -145,7 +156,7 @@ extern "C" const char *__ry_read_text(const char *path) {
     return result;
 }
 
-extern "C" int64_t __ry_write_text(const char *path, const char *content) {
+extern "C" int64_t __ry_io_write_text(const char *path, const char *content) {
     if (hasEmbeddedNul(path)) {
         setLastError("write_text: argument contains an embedded NUL byte");
         return 1;
@@ -165,7 +176,7 @@ extern "C" int64_t __ry_write_text(const char *path, const char *content) {
     return 0;
 }
 
-extern "C" int64_t __ry_append_text(const char *path, const char *content) {
+extern "C" int64_t __ry_io_append_text(const char *path, const char *content) {
     if (hasEmbeddedNul(path)) {
         setLastError("append_text: argument contains an embedded NUL byte");
         return 1;
@@ -185,12 +196,12 @@ extern "C" int64_t __ry_append_text(const char *path, const char *content) {
     return 0;
 }
 
-extern "C" int64_t __ry_file_exists(const char *path) {
+extern "C" int64_t __ry_io_exists(const char *path) {
     if (hasEmbeddedNul(path)) return 0;
     return access(path, F_OK) == 0 ? 1 : 0;
 }
 
-extern "C" int64_t __ry_delete_file(const char *path) {
+extern "C" int64_t __ry_io_delete_file(const char *path) {
     if (hasEmbeddedNul(path)) {
         setLastError("delete_file: argument contains an embedded NUL byte");
         return 1;
@@ -202,7 +213,7 @@ extern "C" int64_t __ry_delete_file(const char *path) {
     return 0;
 }
 
-extern "C" void *__ry_read_bytes(const char *path) {
+extern "C" void *__ry_io_read_bytes(const char *path) {
     if (hasEmbeddedNul(path)) {
         setLastError("read_bytes: argument contains an embedded NUL byte");
         return nullptr;
@@ -239,7 +250,7 @@ extern "C" void *__ry_read_bytes(const char *path) {
     return header;
 }
 
-extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
+extern "C" int64_t __ry_io_write_bytes(const char *path, void *list) {
     if (hasEmbeddedNul(path)) {
         setLastError("write_bytes: argument contains an embedded NUL byte");
         return 1;
@@ -261,11 +272,11 @@ extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
 
 // ===== Byte conversions =====
 
-extern "C" void *__ry_str_to_bytes(const char *s) {
+extern "C" void *__ry_io_to_bytes(const char *s) {
     return makeByteList((const uint8_t *)s, stringByteLen(s));
 }
 
-extern "C" const char *__ry_bytes_to_str(void *list) {
+extern "C" const char *__ry_io_bytes_to_str(void *list) {
     auto *header = (IOListHeader *)list;
     return makeString(reinterpret_cast<const char *>(header->data),
                       static_cast<size_t>(header->len));

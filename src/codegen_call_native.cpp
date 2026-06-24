@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/native_call_descriptor.hpp"  // extractResultOkType
 #include "ry/stdlib_registry.hpp"
 
 
@@ -703,6 +704,11 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     case ReturnWrapping::ResultPtr:
         result = wrapPtrAsResult(callResult, errFnName.c_str());
+        // Installment 2-a (#2338): resource-coupled natives (e.g.
+        // io::open returning Result<File, Error>) tag the wrapped result
+        // with the descriptor's resource kind so ARC sees it correctly.
+        if (desc.resource_kind != ResourceKindRegistry::NONE)
+            addResourceKind(result, desc.resource_kind);
         break;
 
     case ReturnWrapping::ResultStatus:
@@ -741,23 +747,11 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // For Result<T, Error>, propagate the metadata of the inner Ok type T
     // onto the Result value so downstream operations can inspect elements.
     const std::string &retType = matchedSig->returnTypeName;
-    if (retType.size() > 7 && retType.compare(0, 7, "Result<") == 0) {
-        // Extract Ok type using the same depth-aware comma finder as inferReturnWrapping
-        int depth = 0;
-        size_t commaPos = std::string::npos;
-        for (size_t i = 7; i < retType.size(); ++i) {
-            if (retType[i] == '<') ++depth;
-            else if (retType[i] == '>') --depth;
-            else if (retType[i] == ',' && depth == 0) { commaPos = i; break; }
-        }
-        if (commaPos != std::string::npos) {
-            std::string okType = retType.substr(7, commaPos - 7);
-            while (!okType.empty() && okType.back() == ' ') okType.pop_back();
-            propagateTypeMeta(okType, result);
-        }
-    } else {
+    std::string okType = extractResultOkType(retType);
+    if (!okType.empty())
+        propagateTypeMeta(okType, result);
+    else if (retType.size() <= 7 || retType.compare(0, 7, "Result<") != 0)
         propagateTypeMeta(retType, result);
-    }
 
     return result;
 }

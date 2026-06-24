@@ -187,7 +187,7 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("open() requires str arguments (path, mode)");
     auto fn = cg.getRuntimeFn("__ry_io_file_open", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
-    llvm::Value *res = cg.wrapPtrAsResult(ptr);
+    llvm::Value *res = cg.wrapPtrAsResult(ptr, "__ry_io_get_last_error");
     cg.addResourceKind(res, rk_file);
     return res;
 }
@@ -195,7 +195,7 @@ static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
 static llvm::Value *emitFileReadAll(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
     auto fn = cg.getRuntimeFn("__ry_io_file_read_all", cg.ptrTy_, {cg.ptrTy_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {fileHandle}, "file_read_all_ptr");
-    return cg.wrapPtrAsResult(ptr);
+    return cg.wrapPtrAsResult(ptr, "__ry_io_get_last_error");
 }
 
 static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
@@ -214,7 +214,7 @@ static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::
             return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
         },
         [&]() -> llvm::Value * {
-            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+            return cg.buildErrValue(cg.buildErrorFromRuntime("__ry_io_get_last_error"), resTy);
         });
 }
 
@@ -234,7 +234,7 @@ static llvm::Value *emitStdinReadLine(CodeGen &cg, const CallExpr & /*e*/) {
             return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
         },
         [&]() -> llvm::Value * {
-            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+            return cg.buildErrValue(cg.buildErrorFromRuntime("__ry_io_get_last_error"), resTy);
         });
 }
 
@@ -330,78 +330,31 @@ static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Valu
         cg.codegenError("writeText(file, s): second argument must be str");
     auto fn = cg.getRuntimeFn("__ry_io_file_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
     llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, s}, "file_wt_status");
-    return cg.wrapStatusAsResult(status);
+    return cg.wrapStatusAsResult(status, "__ry_io_get_last_error");
 }
 
 // ===== Builtin IO =====
 
-static constexpr const char *IO_ERR = "__ry_get_last_error";
-
-static const CodeGen::NativeDispatchEntry io_table[] = {
-    // 0-arg -> str (stdin). readLine() is handled by dispatchIO's custom
-    // intercept (returns Result<Option<str>, Error>), not via this table.
-    {"readAll",     nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
-     nullptr, "__ry_read_all"},
-    // 1-arg -> Result<str, Error>
-    {"readText",    nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
-     nullptr, "__ry_read_text", IO_ERR},
-    {"bytesToStr",  nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
-     nullptr, "__ry_bytes_to_str", IO_ERR, CodeGen::ListElemMeta::None, 0},
-    // 2-arg -> Result<Unit, Error>
-    {"writeText",   nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
-     nullptr, "__ry_write_text", IO_ERR},
-    {"appendText",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
-     nullptr, "__ry_append_text", IO_ERR},
-    {"writeBytes",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
-     nullptr, "__ry_write_bytes", IO_ERR, CodeGen::ListElemMeta::None, 1},
-    // 1-arg -> Result<Unit, Error>
-    {"deleteFile",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 1, nullptr,
-     nullptr, "__ry_delete_file", IO_ERR},
-    // exists -> BoolFromI64 with name remap
-    {"exists",      nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr,
-     nullptr, "__ry_file_exists"},
-    // readBytes -> ResultPtr + list_elem=I8
-    {"readBytes",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
-     nullptr, "__ry_read_bytes", IO_ERR, CodeGen::ListElemMeta::I8},
-    // toBytes -> Direct + list_elem=I8
-    {"toBytes",     nullptr, CodeGen::ReturnWrapping::Direct,       1, nullptr,
-     nullptr, "__ry_str_to_bytes", nullptr, CodeGen::ListElemMeta::I8},
-};
-
-// Sig-presence gate for dispatchIO. Mirrors isJsonImported/isJson5Imported
-// (codegen-stdlib-dispatcher.md #1855) with two complementary checks:
-//
-// 1. Prefix scan over native_fn_sigs_ keys for "io::*" — the canonical form
-//    populated by `from io import ...` (ModuleLoader path) and user code
-//    declaring `@native("io") fn <name>(...)`.
-// 2. Bare-name presence check for known io fn names — the C++ test harness
-//    pattern: `runSource()` skips ModuleLoader, so inline test sources
-//    declare `@native fn writeText(...)` (no library tag) which registers
-//    under the bare key "writeText" (no "::" prefix). Without this branch
-//    the gate misses all such tests (#2299 follow-up).
-//
-// The bare-name list mirrors share/std/io/io.ry's @public @native
-// declarations and must be updated when io's surface changes. Drift risk
-// is the same maintenance discipline that #1855 already documents for
-// isJsonImported / isJson5Imported.
+// Sig-presence gate for dispatchIO. Prefix scan over native_fn_sigs_ for
+// "io::*" — the canonical key populated both by `from io import ...`
+// (ModuleLoader path) and `@native("io") fn ...` declarations. Post-#2338
+// the bare-name fallback list that #2332 originally added is no longer
+// needed: declarative entries dispatch through emitGenericNativeCall
+// (which does its own sig-key lookup), all C++ test harnesses inline
+// io @native decls with the explicit `@native("io")` tag, and the
+// remaining custom-emitter branches below do their own arity/callee
+// matching that is harmless when the gate over-passes for unrelated
+// callees.
 static bool isIoImported(CodeGen &cg) {
     const auto &sigs = cg.getNativeFnSigs();
     for (const auto &kv : sigs) {
         if (kv.first.rfind("io::", 0) == 0)  // C++17 prefix-check idiom
             return true;
     }
-    static constexpr const char *io_known_names[] = {
-        "readLine", "readAll", "readText", "writeText", "appendText",
-        "exists", "deleteFile", "readBytes", "writeBytes",
-        "toBytes", "bytesToStr", "open", "close", "lines",
-    };
-    for (const char *name : io_known_names) {
-        if (sigs.count(name)) return true;
-    }
     return false;
 }
 
-RY_REGISTER_STDLIB_PACKAGE(io, "share/std/io/io.ry", dispatchIO)
+RY_REGISTER_STDLIB_PACKAGE_NAMING(io, "share/std/io/io.ry", dispatchIO, /*snake_case=*/true)
 static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
     // Gate: skip when io isn't in the program's import set, so a sibling
     // dispatcher fall-through (e.g. base64-only program reaching dispatchIO
@@ -410,15 +363,11 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
     if (!isIoImported(cg))
         return nullptr;
 
-    // Per-emit insert: register libry_io.dylib only when an io dispatch
-    // actually succeeds (non-null return). The gate above passes for ANY
-    // io import; a program that imports io but never calls an io fn would
-    // otherwise pollute required_libraries when dispatchIO is reached for
-    // a non-io callee (PR #2332 CodeRabbit review). Per-emit insert covers
-    // custom-emitter paths (open / readAll(File) / readLine(File) / lines /
-    // writeText File and str/str overloads) that bypass emitTableDrivenNativeCall;
-    // table-driven fallthrough's own self-insert is idempotent
-    // (codegen-stdlib-dispatcher.md #1856).
+    // Per-emit insert for the remaining custom branches (open and the
+    // File-coupled overloads). The Group A declarative entries that #2338
+    // migrated to descriptor-driven dispatch register the library
+    // automatically inside emitGenericNativeCall's matched-sig branch —
+    // this lambda covers only the paths that bypass that consume site.
     auto markIo = [&](llvm::Value *v) -> llvm::Value * {
         if (v) cg.used_native_libraries_.insert("io");
         return v;
@@ -427,11 +376,17 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
     const auto &n = e.callee;
     const auto sz = e.args.size();
 
-    // open(path, mode) — new name, always File
+    // open(path, mode) — runtime symbol is __ry_io_file_open, which does
+    // not follow the __ry_io_<snake>(callee) convention emitGenericNativeCall
+    // derives. Stays a custom emitter pending the future @native("io",
+    // symbol="...") descriptor field (architecture doc §"Pilot"). The
+    // descriptor's resource_kind is still populated at @native registration
+    // time (rk_file via inferResourceKind) but is not read on this path —
+    // emitFileOpen continues the manual addResourceKind call.
     if (n == "open" && sz == 2)
         return markIo(emitFileOpen(cg, e));
 
-    // readAll(f: File) — 1-arg (0-arg stdin handled by table)
+    // readAll(f: File) — 1-arg (0-arg stdin is descriptor-driven post-#2338)
     if (n == "readAll" && sz == 1) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (!cg.isFile(arg0))
@@ -461,7 +416,13 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         return markIo(emitFileLines(cg, e, arg0, rk_file));
     }
 
-    // writeText — 2-arg: check if arg0 is File or str
+    // writeText — 2-arg: dispatch the File overload here; inline the
+    // str/str overload too, because the type-check requires emitting arg0
+    // and returning nullptr would force emitGenericNativeCall to re-emit
+    // all args (double side effect on the str payload). Both branches go
+    // through __ry_io_<snake>(callee) so the runtime symbol matches what
+    // emitGenericNativeCall would derive — keeping the inline path here
+    // is purely a side-effect-preservation choice.
     if (n == "writeText" && sz == 2) {
         llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
         if (cg.isFile(arg0))
@@ -470,12 +431,15 @@ static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
         llvm::Value *content = cg.emitExpr(*e.args[1]);
         if (!cg.isStrLike(arg0) || !cg.isStrLike(content))
             cg.codegenError("writeText(path, content) requires str arguments");
-        auto fn = cg.getRuntimeFn("__ry_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
+        auto fn = cg.getRuntimeFn("__ry_io_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
         llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
-        return markIo(cg.wrapStatusAsResult(status));
+        return markIo(cg.wrapStatusAsResult(status, "__ry_io_get_last_error"));
     }
 
-    return markIo(cg.emitTableDrivenNativeCall(e, "io", io_table, std::size(io_table)));
+    // readText / appendText / writeBytes / deleteFile / exists / readBytes /
+    // bytesToStr / toBytes / readAll() (0-arg) — all declarative entries
+    // fall through to emitGenericNativeCall (descriptor-driven path).
+    return nullptr;
 }
 
 // ===== Shared helper: ptr → Result<T, Error> with static error message =====

@@ -1,5 +1,6 @@
 #include "test_codegen_common.hpp"
 #include "ry/native_call_descriptor.hpp"
+#include "ry/stdlib_registry.hpp"
 
 using namespace ry;
 
@@ -210,4 +211,93 @@ TEST(NativeCallDescriptor, DescriptorStorage_ResultOutParamWithType) {
     EXPECT_EQ(desc.return_wrapping, CodeGenReturnWrapping::ResultOutParam);
     EXPECT_EQ(desc.out_param_type_name, "int");
     EXPECT_EQ(desc.error_channel, "__ry_filesystem_get_last_error");
+}
+
+// =============================================================================
+// Installment 2-a (#2338): resource_kind population
+//
+// inferResourceKind looks up the inner type of a Result<T, Error> against
+// ResourceKindRegistry. For io::open's `Result<File, Error>` return type
+// the registered "File" kind (rk_file, registered at static init in
+// src/codegen_call_io.cpp) is captured on the descriptor. Non-resource
+// returners (str, int, List<u8>, Unit) get NONE.
+// =============================================================================
+
+TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindForOpenReturnsFile) {
+    // io::open(path: str, mode: str) -> Result<File, Error>: the descriptor
+    // carries rk_file so the descriptor-driven path (and any future migration
+    // of io::open out of dispatchIO's custom emitter into emitGenericNativeCall)
+    // can tag the wrapped result without a hand-written addResourceKind call.
+    std::string src =
+        "@native(\"io\")\n"
+        "fn open(path: str, mode: str) -> Result<File, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("io::open");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_NE(desc.resource_kind, ResourceKindRegistry::NONE);
+    // The kind id is the integer returned by registerKind("File", ...) in
+    // codegen_call_io.cpp's static init. Cross-check by name via the
+    // registry's getInfo to keep the assertion stable against init order.
+    const auto *info = ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->typeName, "File");
+}
+
+TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindNoneForReadText) {
+    // io::readText returns Result<str, Error> — no resource. The descriptor's
+    // resource_kind stays NONE so emitGenericNativeCall's addResourceKind
+    // call is skipped on this path.
+    std::string src =
+        "@native(\"io\")\n"
+        "fn readText(path: str) -> Result<str, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("io::readText");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    EXPECT_EQ(it->second[0].resource_kind, ResourceKindRegistry::NONE);
+}
+
+TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindNoneForFilesystemFileSize) {
+    // filesystem::fileSize returns Result<int, Error> — no resource. Guards
+    // the regression where a future change to inferResourceKind might
+    // accidentally match `int` against a resource (e.g. if the registry
+    // ever gained a primitive-typed entry).
+    std::string src =
+        "@native(\"filesystem\")\n"
+        "fn fileSize(path: str) -> Result<int, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("filesystem::fileSize");
+    ASSERT_NE(it, descs.end());
+    EXPECT_EQ(it->second[0].resource_kind, ResourceKindRegistry::NONE);
 }
