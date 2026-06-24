@@ -1,0 +1,34 @@
+# bounded generics with record subtyping
+record Animal:
+  name: str
+  legs: int
+
+# Dog is a subtype of Animal: it inherits Animal's fields and adds one
+record Dog < Animal:
+  breed: str
+
+# GuideDog is a subtype of Dog, transitively a subtype of Animal
+record GuideDog < Dog:
+  handler: str
+
+# A bounded generic accepts Animal and any of its subtypes
+fn describe<T: Animal>(a: T) -> str:
+  return a.name + " has " + str(a.legs) + " legs"
+
+cat = Animal("Cat", 4)
+rex = Dog("Rex", 4, "Labrador")
+guide = GuideDog("Lily", 4, "Poodle", "Anna")
+
+print(describe(cat))
+print(describe(rex))
+print(describe(guide))
+
+# Bounds compose with extra unbounded parameters
+fn pairLabel<T: Animal, U>(a: T, extra: U) -> str:
+  return a.name + " (" + str(extra) + ")"
+
+print(pairLabel(rex, 42))
+print(pairLabel(guide, "trained"))
+
+# Explicit type argument selects the bound used for checking
+print(describe[Dog](rex))

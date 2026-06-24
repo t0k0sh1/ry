@@ -1,0 +1,50 @@
+# nested fn definitions: scoping, sibling calls, mutual recursion
+
+# A helper defined inside its enclosing function
+fn computeArea(width: int, height: int) -> int:
+  fn rectArea(w: int, h: int) -> int:
+    return w * h
+  return rectArea(width, height)
+
+print("area:", computeArea(3, 4))
+
+# Same name in sibling scopes does not collide
+fn foo() -> int:
+  fn helper() -> int:
+    return 1
+  return helper()
+
+fn bar() -> int:
+  fn helper() -> int:
+    return 2
+  return helper()
+
+print("foo + bar =", foo() + bar())
+
+# Mutual recursion between nested functions
+fn parityOf(n: int) -> str:
+  fn isEven(k: int) -> bool:
+    if k == 0:
+      return true
+    return isOdd(k - 1)
+  fn isOdd(k: int) -> bool:
+    if k == 0:
+      return false
+    return isEven(k - 1)
+  if isEven(n):
+    return "even"
+  return "odd"
+
+print("4 is", parityOf(4))
+print("7 is", parityOf(7))
+
+# Passing a nested function to a higher-order function
+fn apply(f: fn(int) -> int, x: int) -> int:
+  return f(x)
+
+fn runDoubler(x: int) -> int:
+  fn doubleIt(n: int) -> int:
+    return n * 2
+  return apply(doubleIt, x)
+
+print("doubled:", runDoubler(5))

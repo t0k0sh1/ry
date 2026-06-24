@@ -1,0 +1,41 @@
+# positional record destructuring in case, with guards and nesting
+record Point:
+  x: int
+  y: int
+
+record Segment:
+  start: Point
+  endPt: Point
+
+# Bind fields positionally
+p = Point(3, 4)
+case p:
+  Point(a, b):
+    print("point", a, b)
+
+# Mix a literal with a binding to filter on a field
+case Point(0, 5):
+  Point(0, y):
+    print("on y-axis, y =", y)
+  _:
+    print("off-axis")
+
+# Add a guard on the destructured fields
+case Point(10, 3):
+  Point(a, b) if a > b:
+    print("x bigger")
+  Point(_, _):
+    print("y bigger or equal")
+
+# Patterns nest: a record inside a record
+seg = Segment(Point(1, 2), Point(3, 4))
+case seg:
+  Segment(Point(x1, _), Point(x2, _)):
+    print("x range:", x1, "to", x2)
+
+# case as an expression
+labelStr = case Point(0, 0):
+  Point(0, 0) : "origin"
+  _ : "other"
+
+print(labelStr)

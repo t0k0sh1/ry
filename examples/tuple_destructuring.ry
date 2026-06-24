@@ -1,0 +1,36 @@
+# tuple destructuring with case patterns, guards, and Option nesting
+
+# Bind both components from a 2-tuple
+case (10, 20):
+  (x, y):
+    print(x, y)
+
+# Mix a literal with a binding to filter and capture
+case (1, 99):
+  (1, n):
+    print("matched 1, n =", n)
+  _:
+    print("no match")
+
+# Add a guard on a tuple binding
+case (10, 3):
+  (a, b) if a > b:
+    print("first bigger")
+  (a, b):
+    print("other")
+
+# Patterns nest: an Option inside a tuple
+opt: Option<int> = Some(7)
+t = (opt, 42)
+case t:
+  (Some(v), _):
+    print("found", v)
+  _:
+    print("not found")
+
+# case can return a value (expression form)
+total = case (3, 4):
+  (a, b) : a + b
+  _ : -1
+
+print("total =", total)

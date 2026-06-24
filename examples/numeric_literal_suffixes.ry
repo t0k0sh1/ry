@@ -1,0 +1,27 @@
+# numeric literal type suffixes and matching type annotations
+
+# Signed integer suffixes — i8, i16, i32, i64 are all available; i8 and i64 shown
+a: i8 = 127i8
+d: i64 = 1000i64
+print("signed:", a as int, d)
+
+# Unsigned integer suffixes — u8, u16, u32, u64 are all available; u8 and u64 shown
+u: u8 = 255u8
+x: u64 = 1000u64
+print("unsigned:", u as int, x as int)
+
+# Float suffixes — f32 and f64
+f: f32 = 3.14f32
+g: f64 = 2.5f64
+print("f32 value:", f as float)
+print("f64 value:", g)
+
+# Arithmetic on suffixed literals stays in that type
+sumI32 = 10i32 + 20i32
+sumU8 = 100u8 + 50u8
+sumF32 = 1.5f32 + 2.5f32
+print("sums:", sumI32 as int, sumU8 as int, sumF32 as float)
+
+# Negative suffixed literals
+neg: i8 = -128i8
+print("min i8:", neg as int)

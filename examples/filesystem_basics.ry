@@ -1,0 +1,26 @@
+# filesystem stdlib: create a directory, write files, inspect, then clean up
+from ry.filesystem import mkdirAll, removeAll, listDir, isFile, isDir, fileSize
+from ry.io import writeText
+from ry.path import join
+
+dir = "/tmp/ry_examples_fs"
+
+# Idempotent setup: clear any leftover state, then recreate the directory.
+# Re-running this example must not fail because a directory already exists.
+removeAll(dir)
+case mkdirAll(dir):
+  Ok(_):
+
+    # `?` propagates an Err out of each call, so the filesystem chain stays flat.
+    helloPath = join(dir, "hello.txt")?
+    writeText(helloPath, "hello from ry\n")?
+    writeText(join(dir, "data.txt")?, "12345")?
+    entries = listDir(dir)?
+    print("entries:", len(entries))
+    print("hello.txt isFile:", isFile(helloPath)?)
+    print("hello.txt size:", fileSize(helloPath)?)
+    print("dir isDir:", isDir(dir)?)
+  Err(e):
+    print("mkdirAll failed:", e.message)
+
+removeAll(dir)
