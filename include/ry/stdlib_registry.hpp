@@ -80,8 +80,15 @@ class ResourceKindRegistry {
     static ResourceKindRegistry &instance();
 
     // Register a new resource kind. Returns the assigned integer ID.
+    // `errorChannelLibrary` (optional, defaults to `library`) overrides the
+    // module name used to derive the resource's last-error runtime symbol
+    // (`__ry_<errorChannelLibrary>_get_last_error`). Used by resources whose
+    // error channel is distinct from their owning library — e.g. TlsStream
+    // lives in the http library (linkage) but reports errors through
+    // `__ry_tls_get_last_error` (#2339, Installment 2-b).
     int registerKind(const char *typeName, const char *dtorName,
-                     const char *cleanupFnName, const char *library);
+                     const char *cleanupFnName, const char *library,
+                     const char *errorChannelLibrary = nullptr);
 
     // Lookup resource kind ID by Ry type name. Returns NONE if not found.
     int lookupByTypeName(const std::string &typeName) const;
@@ -91,6 +98,7 @@ class ResourceKindRegistry {
         const char *dtorName;
         const char *cleanupFnName;
         const char *library;
+        const char *errorChannelLibrary;  // never null; defaults to `library`
     };
 
     const Info *getInfo(int id) const;

@@ -744,6 +744,22 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // io::open -> Result<File, Error>) get rk_file via the type-
             // name reverse lookup against the runtime ResourceKindRegistry.
             desc.resource_kind       = inferResourceKind(sig.returnTypeName);
+
+            // Installment 2-b (#2339): multi-channel error override. When the
+            // returned resource declares a distinct error-channel library
+            // (e.g. TlsStream lives in http but errors flow through
+            // __ry_tls_get_last_error), override the package-derived
+            // error_channel with the resource's own channel.
+            if (desc.resource_kind != ResourceKindRegistry::NONE) {
+                const auto *info =
+                    ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+                if (info && info->errorChannelLibrary
+                    && effectivePackage != info->errorChannelLibrary) {
+                    desc.error_channel = ry::util::deriveRuntimeFnName(
+                        info->errorChannelLibrary, "get_last_error");
+                }
+            }
+
             native_call_descriptors_[sigKey].push_back(std::move(desc));
 
             sigVec.push_back(std::move(sig));

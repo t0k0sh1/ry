@@ -55,12 +55,14 @@ ResourceKindRegistry &ResourceKindRegistry::instance() {
 int ResourceKindRegistry::registerKind(const char *typeName,
                                        const char *dtorName,
                                        const char *cleanupFnName,
-                                       const char *library) {
+                                       const char *library,
+                                       const char *errorChannelLibrary) {
     auto it = name_to_id_.find(typeName);
     if (it != name_to_id_.end())
         return it->second;
     int id = static_cast<int>(entries_.size());
-    entries_.push_back({typeName, dtorName, cleanupFnName, library});
+    entries_.push_back({typeName, dtorName, cleanupFnName, library,
+                        errorChannelLibrary ? errorChannelLibrary : library});
     name_to_id_.emplace(typeName, id);
     return id;
 }

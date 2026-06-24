@@ -158,7 +158,7 @@ extern "C" void *__ry_tls_connect_resolved(const char *host, const ::addrinfo *i
     return tls_handshake(host, fd);
 }
 
-extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
+extern "C" void *__ry_net_tls_connect(const char *host, int64_t port) {
     void *tcp = ry_net_connect(host, port);
     if (!tcp) {
         setLastError("tlsConnect: cannot connect to %s:%lld: %s",

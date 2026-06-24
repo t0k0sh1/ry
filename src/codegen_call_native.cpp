@@ -707,8 +707,19 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         // Installment 2-a (#2338): resource-coupled natives (e.g.
         // io::open returning Result<File, Error>) tag the wrapped result
         // with the descriptor's resource kind so ARC sees it correctly.
-        if (desc.resource_kind != ResourceKindRegistry::NONE)
+        if (desc.resource_kind != ResourceKindRegistry::NONE) {
             addResourceKind(result, desc.resource_kind);
+            // Installment 2-b (#2339): when the resource's owning library
+            // differs from matchedPackage (e.g. @native("net") tlsConnect
+            // returns TlsStream whose dtor / cleanup live in the http
+            // library), link that library in addition to matchedPackage.
+            // Idempotent with the matchedPackage insert at line 564.
+            // `registerKind` rejects empty/null library, so the inner null
+            // check on info->library would be dead — getInfo guards OOB ids.
+            if (const auto *info =
+                    ResourceKindRegistry::instance().getInfo(desc.resource_kind))
+                used_native_libraries_.insert(info->library);
+        }
         break;
 
     case ReturnWrapping::ResultStatus:

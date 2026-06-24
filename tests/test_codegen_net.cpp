@@ -9,26 +9,33 @@
 
 
 using namespace ry;
+// Post-#2339 these must carry the explicit `@native("net")` tag —
+// descriptor-driven dispatch indexes by library name, and bare `@native`
+// without a containing module produces a sigKey under the bare name only
+// (no "net::" prefix), which the runtime-symbol derivation
+// (`__ry_<pkg>_<snake>`) cannot honor. Mirrors the io test rewrite in
+// #2338. `sleep` keeps the bare `@native` because thread remains
+// table-driven through Installment 3.
 static const std::string NET_DECLS = R"(
-@native
+@native("net")
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
-@native
+@native("net")
 fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
-@native
+@native("net")
 fn accept(listener: TcpListener) -> Result<TcpStream, Error>
-@native
+@native("net")
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
-@native
+@native("net")
 fn tlsConnect(host: str, port: int) -> Result<TlsStream, Error>
 @native("io")
 fn toBytes(s: str) -> List<u8>
 @native("io")
 fn bytesToStr(bs: List<u8>) -> Result<str, Error>
-@native
+@native("net")
 fn setTimeout(stream: TcpStream, ms: int) -> Unit
-@native
+@native("net")
 fn setReceiveTimeout(stream: TcpStream, ms: int) -> Unit
-@native
+@native("net")
 fn setSendTimeout(stream: TcpStream, ms: int) -> Unit
 @native
 fn sleep(ms: int) -> Unit
@@ -55,7 +62,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):
@@ -99,7 +106,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 async fn runServer(server: TcpListener) -> str:
@@ -302,7 +309,7 @@ TEST(TcpRecv, ErrorReturnsNull) {
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):
@@ -323,7 +330,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):
@@ -344,7 +351,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetSetSendTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):
@@ -365,7 +372,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 async fn serverTask(server: TcpListener) -> str:
@@ -436,7 +443,7 @@ TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
 
 TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):
@@ -460,7 +467,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-@native
+@native("net")
 fn listenerPort(listener: TcpListener) -> int
 
 case bind("127.0.0.1", 0):

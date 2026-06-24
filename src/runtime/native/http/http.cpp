@@ -582,7 +582,7 @@ extern "C" void *__ry_http_cookies(void *r) {
     return build_str_map_copy(req->cookie_keys, req->cookie_values, req->cookie_count);
 }
 
-extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
+extern "C" void *__ry_http_response(int64_t status, void *headers_map, const char *body) {
     auto *map = (MapHeader *)headers_map;
     for (int64_t i = 0; i < map->len; i++) {
         if (hasEmbeddedNul(map->keys[i]) || hasEmbeddedNul(map->vals[i])) {
