@@ -142,6 +142,8 @@ void printMainHelp() {
     llvm::outs() << "  --trace          Emit structured internal trace as JSON Lines\n";
     llvm::outs() << "  --trace-out=PATH Write trace output to PATH (or '-' for stderr)\n";
     llvm::outs() << "  --emit-llvm-ir   Emit unoptimized LLVM IR to stdout and exit\n";
+    llvm::outs() << "  --strict-any     Enable strict-any semantics (mirrors RY_STRICT_ANY=1);\n";
+    llvm::outs() << "                   place BEFORE the subcommand (e.g. `ry --strict-any test ...`)\n";
     llvm::outs() << "\n";
     llvm::outs() << "Run 'ry <command> --help' for more information on a command.\n";
 }
@@ -159,6 +161,9 @@ void printTestHelp() {
     llvm::outs() << "  --trace              Emit structured internal trace as JSON Lines\n";
     llvm::outs() << "  --trace-out=PATH     Write trace output to PATH (or '-' for stderr)\n";
     llvm::outs() << "  -h, --help           Show this help\n";
+    llvm::outs() << "\n";
+    llvm::outs() << "Global options that affect `ry test` go BEFORE the subcommand:\n";
+    llvm::outs() << "  ry --strict-any test <file>    Run tests under strict-any semantics\n";
 }
 
 void printInitHelp() {
@@ -246,6 +251,9 @@ void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string 
             trace_out = argv[1] + 12;
         } else if (std::strcmp(argv[1], "--emit-llvm-ir") == 0) {
             emit_llvm_ir = true;
+        } else if (std::strcmp(argv[1], "--strict-any") == 0) {
+            // #2319: see cli.hpp — flag is mirrored to RY_STRICT_ANY.
+            setenv("RY_STRICT_ANY", "1", 1);
         } else {
             break;
         }

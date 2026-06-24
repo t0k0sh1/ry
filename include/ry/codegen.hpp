@@ -48,7 +48,7 @@ class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
                      bool coverage_mode = false, int coverage_file_id_offset = 0,
-                     bool outline_mode = false);
+                     bool outline_mode = false, bool strict_any_mode = false);
     ~CodeGen();
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
@@ -1171,6 +1171,8 @@ public:
     int for_snap_counter_ = 0;   // monotonic counter for unique __for_iter_snap names (#1021)
     bool test_mode_ = false;
     bool outline_mode_ = false;
+    // #2319: opt-in strict-any semantics; see docs/reference/strict-any.md.
+    bool strict_any_mode_ = false;
     // True iff a top-level or describe-nested `@only @it` directive exists in
     // the current translation unit. Set during compile()'s pre-pass and read
     // by emitItDirective / emitEachItDirective / emitPropertyItDirective to
@@ -1234,6 +1236,14 @@ public:
     // #2316: push a deprecation warning for direct `<op>` on `any`, deduped
     // by `opKey` (operator spelling). #2322 will flip the body to codegenError.
     void warnAnyOpDeprecated(std::string opKey, std::string message);
+
+    // Strict-any diagnostics (#2319). Each rule is identified by a short
+    // kebab-case id embedded in the message as `[strict-any/<rule>]:` so
+    // users can grep and follow-up issues can extend the catalog without
+    // changing the diagnostic shape.
+    [[noreturn]] void strictAnyError(const SourceLocation &loc,
+                                     const std::string &rule,
+                                     const std::string &msg);
 
     // @native let constants
     std::unordered_set<std::string> native_constants_;
@@ -2041,7 +2051,8 @@ public:
 
     // Binary operation dispatch (user-defined → any → built-in)
     llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                               const std::string &lhsHint = "", const std::string &rhsHint = "");
+                               const std::string &lhsHint = "", const std::string &rhsHint = "",
+                               SourceLocation outer_loc = {});
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
@@ -2758,6 +2769,10 @@ public:
                                     const std::string &targetTypeName);
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
+    // #2319: shared predicate for the arithmetic operators that dispatch
+    // through emitAnyBinaryOp's `arithOps` map; co-located with that map
+    // so the two cannot drift.
+    static bool isAnyArithOp(const std::string &op);
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
     // Loose negative-evidence predicate (ptrTy_ && !isNonStrPointer). For type

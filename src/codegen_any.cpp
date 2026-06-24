@@ -14,6 +14,12 @@ bool CodeGen::canAnyHoldType(llvm::Type *ty) const {
     return ty == i64Ty_ || ty == f64Ty_ || ty == i1Ty_ || ty == ptrTy_;
 }
 
+bool CodeGen::isAnyArithOp(const std::string &op) {
+    // Keep this list in sync with emitAnyBinaryOp's `arithOps` map below.
+    return op == "+" || op == "-" || op == "*" || op == "/" ||
+           op == "%" || op == "//" || op == "**";
+}
+
 int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
     if (ty == i64Ty_)  return static_cast<int64_t>(RyAnyTag::Int);
     if (ty == f64Ty_)  return static_cast<int64_t>(RyAnyTag::Float);
@@ -2202,6 +2208,7 @@ llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
     llvm::AllocaInst *rhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.rhs");
     builder_.CreateStore(rhs, rhsPtr);
 
+    // Operator keys must match isAnyArithOp() above (#2319 strict-any guard).
     static const std::unordered_map<std::string, std::string> arithOps = {
         {"+", "__ry_any_add"}, {"-", "__ry_any_sub"},
         {"*", "__ry_any_mul"}, {"/", "__ry_any_div"},

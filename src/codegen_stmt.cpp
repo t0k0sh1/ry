@@ -14,6 +14,11 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
 
+void CodeGen::strictAnyError(const SourceLocation &loc, const std::string &rule,
+                              const std::string &msg) {
+    codegenError(loc, "[strict-any/" + rule + "]: " + msg);
+}
+
 // ===== Result disc provenance helper =====
 
 bool CodeGen::tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
