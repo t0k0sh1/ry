@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -74,6 +75,28 @@ static std::string toRyDotForm(const std::string &slash_path) {
 static std::string toUserFacingPath(const std::string &module_path) {
     return ModuleLoader::isRyPath(module_path) ? toRyDotForm(module_path)
                                                 : module_path;
+}
+
+// #2350: legacy stdlib import (`from math import …` / `from std.math import …` /
+// `from std import …` / `import math`) を canonical な user-facing `ry.<…>` 形式
+// に変換する。legacy 形式でなければ `nullopt`。Phase 1 では呼び出し元が戻り値
+// を deprecation warning として surface し、Phase 2 で hard error 化予定。
+// 前提: caller は rp.from_stdlib==true でゲートする — bogus 形式は resolve() が
+// 例外を投げて detector に到達しないため、ここに来る時点で実モジュールに解決済み。
+//   "std"       -> "ry.lang"   (flat std → explicit prelude)
+//   "std/math"  -> "ry.math"   (std.dotted → public submodule)
+//   "math"      -> "ry.math"   (bare flat → public submodule)
+static std::optional<std::string>
+tryLegacyToCanonical(const std::string &resolve_path) {
+    if (ModuleLoader::isRyPath(resolve_path)) return std::nullopt;
+    // "std" → "ry.lang"。canonical 物理パス定数を dot 形式に変換して経由
+    // することで、`kRyLangPreludePath` / `canonicalStdlibName` と同期する。
+    if (resolve_path == "std")
+        return toRyDotForm(ModuleLoader::kRyLangPreludePath);
+    if (resolve_path.size() > 4 && resolve_path.compare(0, 4, "std/") == 0)
+        return "ry." + resolve_path.substr(4);
+    if (isPublicRyModule(resolve_path)) return "ry." + resolve_path;
+    return std::nullopt;
 }
 
 // Check if a statement is an exportable definition
@@ -846,6 +869,19 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             ResolvedPath rp = resolve(resolve_path, referrer_dir);
             const std::string &abs_path = rp.path;
 
+            // #2350: legacy `import math` を deprecation warning として surface する。
+            // dedup key は元の spelling — ファイル内で同じ `import math` が複数回
+            // 出ても (typically まず無いが) 1 回のみ。
+            if (rp.from_stdlib) {
+                if (auto canon = tryLegacyToCanonical(resolve_path);
+                    canon && warned_legacy_imports_.insert(resolve_path).second) {
+                    loader_warnings_.push_back(
+                        "warning: 'import " + toRyDotForm(resolve_path) +
+                        "' is a deprecated stdlib path; use 'import " +
+                        *canon + "' instead");
+                }
+            }
+
             // Propagate stdlib origin to codegen — Task 9 uses this to gate
             // qualified-call routing (stdlib → existing dispatch chain;
             // user-defined → "not yet supported" error in v0.0.23).
@@ -963,6 +999,20 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
         ResolvedPath rp = resolve(imp.module_path, referrer_dir);
         const std::string &abs_path = rp.path;
+
+        // #2350: legacy `from math import …` / `from std.math import …` /
+        // `from std import …` を deprecation warning として surface する。
+        // dedup key は元の spelling — `from math import a` と `from math import b`
+        // の両方が同ファイルにあっても 1 回のみ。
+        if (rp.from_stdlib) {
+            if (auto canon = tryLegacyToCanonical(imp.module_path);
+                canon && warned_legacy_imports_.insert(imp.module_path).second) {
+                loader_warnings_.push_back(
+                    "warning: 'from " + toRyDotForm(imp.module_path) +
+                    " import …' is a deprecated stdlib path; use 'from " +
+                    *canon + " import …' instead");
+            }
+        }
 
         // Record testing-module intrinsics observed in the import statement
         // ONLY when the import resolved to the stdlib testing module. A
