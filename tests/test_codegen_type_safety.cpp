@@ -722,9 +722,9 @@ TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
 // ============================================================
 
 static const std::string IO_DECLS_1055 = R"(
-@native
+@native("io")
 fn bytesToStr(bs: List<u8>) -> Result<str, Error>
-@native
+@native("io")
 fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
 )";
 

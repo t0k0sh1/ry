@@ -15,7 +15,7 @@ int64_t __ry_io_file_read_line(void *handle, const char **out_line);
 int64_t __ry_io_file_write_text(void *handle, const char *s);
 void __ry_io_file_close(void *handle);
 void __ry_io_file_cleanup(void *handle);
-const char *__ry_get_last_error();
+const char *__ry_io_get_last_error();
 }
 
 // __ry_io_file_open / __ry_io_file_write_text expect Ry string handles
@@ -47,7 +47,7 @@ TEST(RuntimeIoFileTest, OpenNonexistentPathReturnsNull) {
     const char *mode = ryStr("r");
     void *h = __ry_io_file_open(path, mode);
     EXPECT_EQ(h, nullptr);
-    const char *err = __ry_get_last_error();
+    const char *err = __ry_io_get_last_error();
     EXPECT_NE(err, nullptr);
     EXPECT_NE(std::strstr(err, "open"), nullptr);
     freeRyStr(err);

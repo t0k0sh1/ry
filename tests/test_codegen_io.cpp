@@ -15,25 +15,30 @@ static void removeIfExists(const std::string &path) {
     std::remove(path.c_str());
 }
 
-// @native fn declarations needed for IO functions
+// @native fn declarations needed for IO functions. Post-#2338 these must
+// carry the explicit `@native("io")` tag — descriptor-driven dispatch
+// indexes by library name, and bare `@native` without a containing
+// module cannot resolve to libry_io.dylib (runSource skips ModuleLoader
+// so rule (b) module-keyed inference does not apply). Mirrors the
+// share/std/io/io.ry surface that ModuleLoader normally injects.
 static const std::string IO_DECLS = R"(
-@native
+@native("io")
 fn readText(path: str) -> Result<str, Error>
-@native
+@native("io")
 fn writeText(path: str, content: str) -> Result<Unit, Error>
-@native
+@native("io")
 fn appendText(path: str, content: str) -> Result<Unit, Error>
-@native
+@native("io")
 fn exists(path: str) -> bool
-@native
+@native("io")
 fn deleteFile(path: str) -> Result<Unit, Error>
-@native
+@native("io")
 fn readBytes(path: str) -> Result<List<u8>, Error>
-@native
+@native("io")
 fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
-@native
+@native("io")
 fn toBytes(s: str) -> List<u8>
-@native
+@native("io")
 fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 )";
 

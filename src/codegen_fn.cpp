@@ -740,6 +740,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             desc.out_param_type_name = outParamType;
             desc.error_channel       = errCh;
             desc.require_list_u8_arg = requireU8Idx;
+            // Installment 2-a (#2338): resource-returning natives (e.g.
+            // io::open -> Result<File, Error>) get rk_file via the type-
+            // name reverse lookup against the runtime ResourceKindRegistry.
+            desc.resource_kind       = inferResourceKind(sig.returnTypeName);
             native_call_descriptors_[sigKey].push_back(std::move(desc));
 
             sigVec.push_back(std::move(sig));
