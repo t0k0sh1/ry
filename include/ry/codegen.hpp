@@ -1198,8 +1198,16 @@ public:
     std::unordered_set<std::string> deprecated_variables_;
     std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
     std::vector<std::string> warnings_;
+    // #2316: keyed by operator spelling ("+", "<", "unary -") to avoid pushing
+    // one string per call site into warnings_ when an op repeats. jit_runner
+    // content-dedups warnings_ at surface time too, so this only prunes the
+    // per-site allocation cost — observable output is the same either way.
+    std::unordered_set<std::string> warned_any_ops_;
 
     void emitDeprecationWarning(const std::string &name);
+    // #2316: push a deprecation warning for direct `<op>` on `any`, deduped
+    // by `opKey` (operator spelling). #2322 will flip the body to codegenError.
+    void warnAnyOpDeprecated(std::string opKey, std::string message);
 
     // @native let constants
     std::unordered_set<std::string> native_constants_;

@@ -951,6 +951,29 @@ x = true       # OK: now holds bool
 
 ### Arithmetic Operations
 
+> **Deprecated (#2316)**: Direct arithmetic operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) on `any` values are deprecated and emit a compile-time warning on stderr. They continue to work during the deprecation window. Use [`asType[T]`](#explicit-any-conversion-astype--istype) to narrow before operating:
+>
+> ```ry
+> x: any = 10
+> y: any = 3
+> # Deprecated: direct arithmetic on any
+> # z: any = x + y
+>
+> # Preferred: narrow first
+> case asType[int](x):
+>     Ok(xi):
+>         case asType[int](y):
+>             Ok(yi):
+>                 z: int = xi + yi
+>                 print(z)
+>             Err(e):
+>                 print(e.message)
+>     Err(e):
+>         print(e.message)
+> ```
+>
+> The warning is per-operator, deduplicated, and one-time per compilation. Strict-mode escalation to a hard error is planned for #2322.
+
 When both operands are `any`, arithmetic operations dispatch at runtime based on the actual types:
 
 | Operation | Types | Result |
@@ -981,10 +1004,30 @@ Incompatible type combinations (e.g., `str - int`) cause a **runtime error**.
 
 ### Comparison Operations
 
+`==` and `!=` on `any` are **retained** and do not emit a deprecation warning. The runtime returns `false` on type mismatch (different tags) rather than trapping, so dynamic equality is safe. For collections held in `any`, equality reduces to pointer identity — see [Element-Type Metadata is Erased](#element-type-metadata-is-erased) for the rationale.
+
+> **Deprecated (#2316)**: Ordering comparisons (`<`, `<=`, `>`, `>=`) on `any` values are deprecated and emit a compile-time warning on stderr. They trap at runtime on type mismatch (e.g., `int < str`). Use [`asType[T]`](#explicit-any-conversion-astype--istype) to narrow before comparing:
+>
+> ```ry
+> x: any = 3
+> y: any = 4
+> # Deprecated: direct ordering on any
+> # print(x < y)
+>
+> # Preferred: narrow first
+> case asType[int](x):
+>     Ok(xi):
+>         case asType[int](y):
+>             Ok(yi):
+>                 print(xi < yi)
+>             Err(e): print(e.message)
+>     Err(e): print(e.message)
+> ```
+
 | Operation | Behavior |
 |-----------|----------|
-| `==`, `!=` | Works for same types; int/float mixing is allowed |
-| `<`, `<=`, `>`, `>=` | Numeric (int/float mixing allowed) and string (lexicographic) |
+| `==`, `!=` | Retained. Same-type compare; int/float mixing allowed; type-mismatch returns `false` |
+| `<`, `<=`, `>`, `>=` | Deprecated (warned). Numeric (int/float mixing allowed) and string (lexicographic); type-mismatch traps at runtime |
 
 ```ry
 x: any = 3
@@ -992,9 +1035,9 @@ y: any = 3.0
 print(x == y)    # true (int/float comparison)
 ```
 
-Type mismatches in comparison (e.g., `int < str`) cause a **runtime error**.
-
 ### String Conversion
+
+`print(anyVal)`, `str(anyVal)`, and f-string interpolation `f"{anyVal}"` on `any` values are **retained** and do not emit a deprecation warning (#2316).
 
 `any` values support `print()` and f-string interpolation:
 
