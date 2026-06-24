@@ -374,7 +374,29 @@ corrosion_import_crate(
 set_target_properties(ry_base64 PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
+# ===== xid: ECMAScript IdentifierName predicates for json5 (#2314) =====
+# Tiny Rust cdylib (`unicode-ident` wrapper) exposing
+# `__ry_xid_start(u32)` / `__ry_xid_continue(u32)`. Unlike ry_base64 this
+# is NOT a JIT-callable @native module — it's a C++ runtime dependency
+# of libry_json5. We follow the `emit` pattern (linked into the `ry` /
+# `ry_tests` executables so its symbols live process-wide) rather than
+# a libry_json5 → libry_xid inter-library link: that would have given
+# libry_json5 an `LC_LOAD_DYLIB` pointing at the transient cargo deps
+# path (Rust sets the cdylib install_name there, not `@rpath`), which
+# breaks on `cargo clean` or relocation. With the process-link approach,
+# libry_xid is loaded at `ry` startup and `__ry_xid_*` resolves into
+# dlopen'd libry_json5 via macOS `-undefined dynamic_lookup` / Linux
+# `-rdynamic` — the same mechanism that resolves `__ry_set_last_error`.
+# This keeps the "no inter-library link dependencies between native
+# libs" invariant (CMakeLists ~277) intact.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/xid/Cargo.toml"
+    CRATES xid
+)
+set_target_properties(ry_xid PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
+set(RY_NATIVE_LIBS ry_base64 ry_xid ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # Linker-arg form of RY_NATIVE_LIBS. corrosion's IMPORTED CMake target
 # (`ry_base64`) is a UTILITY/INTERFACE-style target — CMake refuses both the
@@ -390,6 +412,7 @@ set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_testing r
 # corrosion (cargo build) guarantee the file exists before this is linked.
 set(RY_NATIVE_LIBS_LINK
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_base64${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}"
     ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
@@ -397,16 +420,21 @@ set(RY_NATIVE_LIBS_LINK
 # via find_native_library() + DynamicLibrarySearchGenerator::Load() (see main.cpp).
 add_executable(ry src/app/main.cpp)
 add_dependencies(ry ${RY_NATIVE_LIBS})
-# emit is referenced at compile time by ry_lib's shim layer (#1949),
-# so it must be linked explicitly into the executable (unlike RY_NATIVE_LIBS
-# which the JIT loads on demand).
+# emit is referenced at compile time by ry_lib's shim layer (#1949), so
+# it must be linked explicitly into the executable (unlike RY_NATIVE_LIBS
+# which the JIT loads on demand). ry_xid follows the same process-link
+# model for the reasons in the xid corrosion block above (#2314); its
+# absolute artifact path is required because corrosion's IMPORTED target
+# rejects -Wl,--no-as-needed and the $<TARGET_FILE:> generator expression.
+set(RY_XID_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}")
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit)
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit ${RY_XID_LINK})
 else()
-    # --no-as-needed for atomic: JIT-generated code may reference __atomic_load
-    # (from LLVM atomicrmw lowering), so libatomic must stay linked even though
-    # ry_lib has no direct references to it.
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit -Wl,--no-as-needed atomic -Wl,--as-needed)
+    # --no-as-needed keeps both atomic (LLVM atomicrmw lowering reaches
+    # __atomic_load at JIT time) and ry_xid (no static caller in ry_lib —
+    # libry_json5 references __ry_xid_* but is dlopen'd later) from being
+    # dropped despite no link-time references.
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit -Wl,--no-as-needed ${RY_XID_LINK} atomic -Wl,--as-needed)
     # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)

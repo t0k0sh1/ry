@@ -1,0 +1,31 @@
+# Rust cdylib exposing ECMAScript IdentifierName predicates for the json5
+# unquoted-key parser (#2314).
+#
+# Two FFI symbols only — `__ry_xid_start(u32) -> bool` and
+# `__ry_xid_continue(u32) -> bool` — backed by the `unicode-ident` crate's
+# compile-time XID_Start / XID_Continue tables. The C++ caller
+# (`src/runtime/native/json5.cpp`) decodes UTF-8, applies an ASCII fast
+# path, then hands non-ASCII codepoints to these predicates.
+#
+# Unlike `crates/native_base64` (#2282), this crate is NOT a JIT-callable
+# stdlib module — it's pure C++ runtime support. There is no
+# `@native("xid")` declaration, no codegen dispatcher, and no
+# module_loader registration. Output filename is `libry_xid.{dylib,so}`
+# via `[lib].name = "ry_xid"`, matching the host's static-link expectation
+# in CMakeLists.txt.
+
+[package]
+name = "xid"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ry_xid"
+crate-type = ["cdylib"]
+
+[dependencies]
+unicode-ident = "1"
+
+[lints]
+workspace = true

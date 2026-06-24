@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,6 +22,80 @@
 
 
 namespace ry {
+
+// ECMAScript IdentifierName predicates for unquoted object keys (#2314).
+// Implementation lives in `crates/xid/` (libry_xid.{dylib,so}). The C++
+// callers (`is_id_start` / `is_id_part`) apply an ASCII fast path first
+// and only invoke these for cp >= 0x80.
+extern "C" bool __ry_xid_start(uint32_t cp);
+extern "C" bool __ry_xid_continue(uint32_t cp);
+
+// Decode one UTF-8 codepoint from `p[0..avail]`. Returns bytes consumed
+// (1-4) on success and writes the scalar to `cp_out`; returns 0 on
+// incomplete / invalid input (RFC 3629 strict — rejects overlong forms,
+// surrogate halves U+D800..U+DFFF, and codepoints above U+10FFFF). The
+// caller must treat a 0 return as "no valid codepoint here" without
+// advancing.
+static size_t decode_utf8_cp(const char *p, size_t avail, uint32_t &cp_out) {
+    if (avail == 0) return 0;
+    uint32_t b0 = static_cast<unsigned char>(p[0]);
+    if (b0 < 0x80) { cp_out = b0; return 1; }
+    if ((b0 & 0xE0) == 0xC0) {
+        if (avail < 2) return 0;
+        uint32_t b1 = static_cast<unsigned char>(p[1]);
+        if ((b1 & 0xC0) != 0x80) return 0;
+        uint32_t cp = ((b0 & 0x1F) << 6) | (b1 & 0x3F);
+        if (cp < 0x80) return 0;
+        cp_out = cp;
+        return 2;
+    }
+    if ((b0 & 0xF0) == 0xE0) {
+        if (avail < 3) return 0;
+        uint32_t b1 = static_cast<unsigned char>(p[1]);
+        uint32_t b2 = static_cast<unsigned char>(p[2]);
+        if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) return 0;
+        uint32_t cp = ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
+        if (cp < 0x800) return 0;
+        if (cp >= 0xD800 && cp <= 0xDFFF) return 0;
+        cp_out = cp;
+        return 3;
+    }
+    if ((b0 & 0xF8) == 0xF0) {
+        if (avail < 4) return 0;
+        uint32_t b1 = static_cast<unsigned char>(p[1]);
+        uint32_t b2 = static_cast<unsigned char>(p[2]);
+        uint32_t b3 = static_cast<unsigned char>(p[3]);
+        if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) return 0;
+        uint32_t cp = ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12)
+                    | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
+        if (cp < 0x10000) return 0;
+        if (cp > 0x10FFFF) return 0;
+        cp_out = cp;
+        return 4;
+    }
+    return 0;
+}
+
+// Append the UTF-8 encoding of `cp` to `out`. Caller guarantees `cp` is
+// a valid scalar (0..=0x10FFFF, not in the surrogate range) — typically
+// from `decode_utf8_cp` or a fully-combined `\uHHHH(\uHHHH)?` escape.
+static void append_utf8(std::string &out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
 
 // ===== JSON5 string escape helper (used by stringify_any) =====
 //
@@ -219,20 +294,100 @@ struct Json5AnyParser {
         return true;
     }
 
-    // ECMAScript IdentifierStart (ASCII subset): letter, underscore, dollar.
-    static bool is_id_start(char c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-            || c == '_' || c == '$';
+    // ECMAScript IdentifierStart: '$' | '_' | UnicodeLetter.
+    // UnicodeLetter is approximated by XID_Start (#2314) — the NFKC-stable
+    // subset of ID_Start that other JSON5 implementations effectively use.
+    static bool is_id_start(uint32_t cp) {
+        if (cp == '$' || cp == '_') return true;
+        if (cp < 0x80) {
+            return (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z');
+        }
+        return __ry_xid_start(cp);
     }
-    // ECMAScript IdentifierPart (ASCII subset): id_start or digit.
-    static bool is_id_part(char c) {
-        return is_id_start(c) || (c >= '0' && c <= '9');
+    // ECMAScript IdentifierPart: IdentifierStart | UnicodeDigit
+    // | UnicodeCombiningMark | UnicodeConnectorPunctuation | <ZWNJ> | <ZWJ>.
+    // XID_Continue covers letter / digit / combining mark / connector
+    // punctuation; ZWNJ (U+200C) and ZWJ (U+200D) are Cf (Format) and must
+    // be added explicitly.
+    static bool is_id_part(uint32_t cp) {
+        if (cp == '$' || cp == '_') return true;
+        if (cp == 0x200C || cp == 0x200D) return true;
+        if (cp < 0x80) {
+            return (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')
+                || (cp >= '0' && cp <= '9');
+        }
+        return __ry_xid_continue(cp);
+    }
+    // Decode the codepoint at byte offset `p` and return whether it is an
+    // IdentifierPart. False at end-of-input or on invalid UTF-8 — both
+    // cases mean "no identifier-continuation here", which is what every
+    // trailing-guard caller (parse_bool / parse_null / parse_number hex)
+    // wants.
+    bool trailing_codepoint_is_id_part(size_t p) const {
+        if (p >= src_len) return false;
+        uint32_t cp;
+        size_t step = decode_utf8_cp(src + p, src_len - p, cp);
+        return step != 0 && is_id_part(cp);
     }
     static int hex_digit_value(char c) {
         if (c >= '0' && c <= '9') return c - '0';
         if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
         if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
         return -1;
+    }
+
+    // Parse 4 hex digits starting at `pos` (caller has already consumed
+    // the `\u` prefix). Advances `pos` past the digits on success.
+    bool parse_hex4(uint32_t &cp_out) {
+        if (pos + 4 > src_len) {
+            error = "incomplete unicode escape at ";
+            error += formatPosition(pos);
+            return false;
+        }
+        uint32_t v = 0;
+        for (size_t i = 0; i < 4; i++) {
+            int d = hex_digit_value(src[pos + i]);
+            if (d < 0) {
+                error = "invalid hex digit in unicode escape at ";
+                error += formatPosition(pos + i);
+                return false;
+            }
+            v = (v << 4) | static_cast<uint32_t>(d);
+        }
+        pos += 4;
+        cp_out = v;
+        return true;
+    }
+
+    // Parse `\uHHHH` (caller has already consumed `\u`); join a following
+    // `\uHHHH` low surrogate if the first half is a high surrogate.
+    // Rejects unpaired surrogates on either side. Returns the combined
+    // scalar in `cp_out`.
+    bool parse_unicode_escape(uint32_t &cp_out) {
+        uint32_t cp;
+        if (!parse_hex4(cp)) return false;
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            if (pos + 2 > src_len || src[pos] != '\\' || src[pos + 1] != 'u') {
+                error = "unpaired high surrogate in unicode escape at ";
+                error += formatPosition(pos);
+                return false;
+            }
+            pos += 2;
+            uint32_t low;
+            if (!parse_hex4(low)) return false;
+            if (low < 0xDC00 || low > 0xDFFF) {
+                error = "invalid low surrogate in unicode escape at ";
+                error += formatPosition(pos);
+                return false;
+            }
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            error = "unpaired low surrogate in unicode escape at ";
+            error += formatPosition(pos);
+            return false;
+        }
+        cp_out = cp;
+        return true;
     }
 
     bool parse_value(RyAny &out) {
@@ -349,64 +504,9 @@ struct Json5AnyParser {
                         break;
                     }
                     case 'u': {
-                        auto parse_hex4 = [&](unsigned &cp_out) -> bool {
-                            if (pos + 4 > src_len) {
-                                error = "incomplete unicode escape at ";
-                                error += formatPosition(pos);
-                                return false;
-                            }
-                            unsigned v = 0;
-                            for (size_t hi = 0; hi < 4; hi++) {
-                                int d = hex_digit_value(src[pos + hi]);
-                                if (d < 0) {
-                                    error = "invalid hex digit in unicode escape at ";
-                                    error += formatPosition(pos + static_cast<size_t>(hi));
-                                    return false;
-                                }
-                                v = (v << 4) | (unsigned)d;
-                            }
-                            pos += 4;
-                            cp_out = v;
-                            return true;
-                        };
-                        unsigned cp;
-                        if (!parse_hex4(cp)) return false;
-                        // Surrogate pair handling — identical to json.cpp.
-                        if (cp >= 0xD800 && cp <= 0xDBFF) {
-                            if (pos + 2 > src_len || src[pos] != '\\' || src[pos + 1] != 'u') {
-                                error = "unpaired high surrogate in unicode escape at ";
-                                error += formatPosition(pos);
-                                return false;
-                            }
-                            pos += 2;
-                            unsigned low;
-                            if (!parse_hex4(low)) return false;
-                            if (low < 0xDC00 || low > 0xDFFF) {
-                                error = "invalid low surrogate in unicode escape at ";
-                                error += formatPosition(pos);
-                                return false;
-                            }
-                            cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
-                        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
-                            error = "unpaired low surrogate in unicode escape at ";
-                            error += formatPosition(pos);
-                            return false;
-                        }
-                        if (cp < 0x80) {
-                            out += (char)cp;
-                        } else if (cp < 0x800) {
-                            out += (char)(0xC0 | (cp >> 6));
-                            out += (char)(0x80 | (cp & 0x3F));
-                        } else if (cp < 0x10000) {
-                            out += (char)(0xE0 | (cp >> 12));
-                            out += (char)(0x80 | ((cp >> 6) & 0x3F));
-                            out += (char)(0x80 | (cp & 0x3F));
-                        } else {
-                            out += (char)(0xF0 | (cp >> 18));
-                            out += (char)(0x80 | ((cp >> 12) & 0x3F));
-                            out += (char)(0x80 | ((cp >> 6) & 0x3F));
-                            out += (char)(0x80 | (cp & 0x3F));
-                        }
+                        uint32_t cp;
+                        if (!parse_unicode_escape(cp)) return false;
+                        append_utf8(out, cp);
                         break;
                     }
                     default:
@@ -443,22 +543,62 @@ struct Json5AnyParser {
         return true;
     }
 
-    // Read an ECMAScript ASCII IdentifierName into `out`. Caller has
-    // already verified the next character is a valid id_start.
-    void scan_identifier(std::string &out) {
-        size_t start = pos;
-        pos++; // consume id_start
-        while (!at_end() && is_id_part(src[pos])) pos++;
-        out.assign(src + start, pos - start);
-    }
-
+    // Parse an unquoted object key as an ECMAScript IdentifierName (#2314).
+    // Accepts UTF-8 codepoints classified by IdentifierStart / Part as
+    // well as `\uHHHH` escapes (with surrogate-pair joining) that resolve
+    // to such codepoints. Raw bytes between escapes are bulk-copied as
+    // a single slice instead of being decoded and re-encoded per
+    // codepoint — the ASCII-only common case becomes a memcpy of the
+    // whole key.
     bool parse_identifier_key(std::string &out) {
-        if (at_end() || !is_id_start(src[pos])) {
+        out.clear();
+        if (at_end()) {
             error = "expected object key at ";
             error += formatPosition(pos);
             return false;
         }
-        scan_identifier(out);
+        bool first = true;
+        size_t run_start = pos;
+        while (true) {
+            if (!at_end() && src[pos] == '\\') {
+                // Flush the pending raw run before consuming the escape.
+                if (pos > run_start) out.append(src + run_start, pos - run_start);
+                if (pos + 1 >= src_len || src[pos + 1] != 'u') {
+                    error = "invalid escape in object key at ";
+                    error += formatPosition(pos);
+                    return false;
+                }
+                size_t esc_start = pos;
+                pos += 2;
+                uint32_t cp;
+                if (!parse_unicode_escape(cp)) return false;
+                if (first ? !is_id_start(cp) : !is_id_part(cp)) {
+                    error = "escape \\u resolves to non-identifier codepoint at ";
+                    error += formatPosition(esc_start);
+                    return false;
+                }
+                append_utf8(out, cp);
+                run_start = pos;
+                first = false;
+                continue;
+            }
+            if (at_end()) break;
+            // Decode for validation only — raw bytes are bulk-copied at flush.
+            uint32_t cp;
+            size_t step = decode_utf8_cp(src + pos, src_len - pos, cp);
+            bool ok = step != 0 && (first ? is_id_start(cp) : is_id_part(cp));
+            if (!ok) {
+                if (first) {
+                    error = "expected object key at ";
+                    error += formatPosition(pos);
+                    return false;
+                }
+                break;
+            }
+            pos += step;
+            first = false;
+        }
+        if (pos > run_start) out.append(src + run_start, pos - run_start);
         return true;
     }
 
@@ -511,8 +651,8 @@ struct Json5AnyParser {
             if (pos == hex_start) return fail("invalid hex literal at ");
             // Reject identifier-trailing characters (e.g. 0xZZ already caught by
             // hex_digit_value; an alphanumeric immediately after hex is a syntax
-            // error).
-            if (!at_end() && is_id_part(src[pos])) return fail("invalid hex literal at ");
+            // error). Unicode identifier chars after the hex digits also reject.
+            if (trailing_codepoint_is_id_part(pos)) return fail("invalid hex literal at ");
             // 64-bit u64 fits in at most 16 hex digits. Anything longer would
             // silently wrap during the shift-accumulate loop below (matches the
             // decimal path's `strtoll` ERANGE check).
@@ -604,13 +744,13 @@ struct Json5AnyParser {
 
     bool parse_bool(RyAny &out) {
         if (src_len - pos >= 4 && memcmp(src + pos, "true", 4) == 0 &&
-            (pos + 4 >= src_len || !is_id_part(src[pos + 4]))) {
+            !trailing_codepoint_is_id_part(pos + 4)) {
             pos += 4;
             out = anyFromBool(1);
             return true;
         }
         if (src_len - pos >= 5 && memcmp(src + pos, "false", 5) == 0 &&
-            (pos + 5 >= src_len || !is_id_part(src[pos + 5]))) {
+            !trailing_codepoint_is_id_part(pos + 5)) {
             pos += 5;
             out = anyFromBool(0);
             return true;
@@ -622,7 +762,7 @@ struct Json5AnyParser {
 
     bool parse_null(RyAny &out) {
         if (src_len - pos >= 4 && memcmp(src + pos, "null", 4) == 0 &&
-            (pos + 4 >= src_len || !is_id_part(src[pos + 4]))) {
+            !trailing_codepoint_is_id_part(pos + 4)) {
             pos += 4;
             out = anyFromUnit();
             return true;
@@ -747,13 +887,11 @@ struct Json5AnyParser {
             char kc = peek();
             if (kc == '"' || kc == '\'') {
                 if (!parse_string_bytes(keybuf)) { cleanup(); return false; }
-            } else if (is_id_start(kc)) {
-                if (!parse_identifier_key(keybuf)) { cleanup(); return false; }
             } else {
-                error = "expected object key at ";
-                error += formatPosition(pos);
-                cleanup();
-                return false;
+                // Identifier key: UTF-8 codepoint or `\uHHHH` escape.
+                // parse_identifier_key emits "expected object key" if the
+                // input cannot start one.
+                if (!parse_identifier_key(keybuf)) { cleanup(); return false; }
             }
             char *key = makeString(keybuf.data(), keybuf.size());
 
