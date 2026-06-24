@@ -2214,6 +2214,19 @@ llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
         {">", "__ry_any_gt"},  {">=", "__ry_any_ge"},
     };
 
+    // #2316: arithmetic and ordering comparison on any are deprecated; use
+    // asType[T] to narrow first. == / != are intentionally retained because
+    // __ry_any_eq returns 0 on type mismatch (safe), while orderCompare traps.
+    const bool isArith = arithOps.count(op) > 0;
+    const bool isOrdering =
+        (op == "<" || op == "<=" || op == ">" || op == ">=");
+    if (isArith || isOrdering) {
+        warnAnyOpDeprecated(op,
+            "warning: operator '" + op + "' on 'any' is deprecated; "
+            "use asType[T] to unwrap before operating "
+            "(see docs/reference/types.md 'Explicit any conversion')");
+    }
+
     auto ait = arithOps.find(op);
     if (ait != arithOps.end()) {
         llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.result");
@@ -2395,7 +2408,18 @@ llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
     return phi;
 }
 
+void CodeGen::warnAnyOpDeprecated(std::string opKey, std::string message) {
+    if (warned_any_ops_.insert(std::move(opKey)).second)
+        warnings_.push_back(std::move(message));
+}
+
 llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
+    // #2316: unary `-` on any is deprecated; use asType[int] / asType[float]
+    // to narrow first. Keyed as "unary -" to avoid colliding with binary `-`.
+    warnAnyOpDeprecated("unary -",
+        "warning: unary operator '-' on 'any' is deprecated; "
+        "use asType[int] or asType[float] to unwrap before negating "
+        "(see docs/reference/types.md 'Explicit any conversion')");
     llvm::AllocaInst *opPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.op");
     builder_.CreateStore(operand, opPtr);
     llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.result");
