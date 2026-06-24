@@ -528,7 +528,6 @@ add_executable(ry_tests
     tests/test_any_usage_warnings.cpp
     tests/test_strict_any.cpp
     tests/test_ry_namespace_warning.cpp
-    tests/test_any_op_warnings.cpp
     tests/test_codegen_call_json_reject.cpp
     tests/test_codegen_call_json5_reject.cpp
     tests/test_spec_timeout.cpp

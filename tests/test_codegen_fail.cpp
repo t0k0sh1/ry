@@ -644,6 +644,12 @@ TEST_F(CodeGenTest, ListIndexRejectsFloatIndex) {
 // legitimate (covered by any.test.ry "should implicit-unwrap any back to
 // List<int>") and are not blocked.
 TEST_F(CodeGenTest, AnyUnwrapToListIntInGenericRejected) {
+    // After #2322, the `v: T = a` inside `convert<T>(a: any) -> T` is rejected
+    // by the `any-implicit-unwrap` rule before generic substitution can
+    // surface the typed-collection corruption hazard. The new error tag
+    // supersedes the substitution-time "unwrapping 'any' to 'List<int>' is
+    // not supported" message — the unsafe pattern is still rejected, just
+    // earlier in the pipeline.
     expectCompileError(
         "fn convert<T>(a: any) -> T:\n"
         "  v: T = a\n"
@@ -652,7 +658,7 @@ TEST_F(CodeGenTest, AnyUnwrapToListIntInGenericRejected) {
         "boxed: any = xs\n"
         "out: List<int> = convert[List<int>](boxed)\n"
         "print(out[0])\n",
-        "unwrapping 'any' to 'List<int>' is not supported");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyUnwrapToMapStrIntInGenericRejected) {
@@ -665,7 +671,7 @@ TEST_F(CodeGenTest, AnyUnwrapToMapStrIntInGenericRejected) {
         "boxed: any = m\n"
         "out: Map<str, int> = convert[Map<str, int>](boxed)\n"
         "print(out[\"x\"])\n",
-        "unwrapping 'any' to 'Map<str,int>' is not supported");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyUnwrapToSetIntInGenericRejected) {
@@ -678,18 +684,14 @@ TEST_F(CodeGenTest, AnyUnwrapToSetIntInGenericRejected) {
         "boxed: any = s\n"
         "out: Set<int> = convert[Set<int>](boxed)\n"
         "print(1 in out)\n",
-        "unwrapping 'any' to 'Set<int>' is not supported");
+        "[strict-any/any-implicit-unwrap]");
 }
 
-TEST_F(CodeGenTest, AnyUnwrapToListAnyInGenericAccepted) {
-    EXPECT_NO_THROW(compileSource(
-        "fn convert<T>(a: any) -> T:\n"
-        "  v: T = a\n"
-        "  return v\n"
-        "xs: List<any> = []\n"
-        "boxed: any = xs\n"
-        "out: List<any> = convert[List<any>](boxed)\n"));
-}
+// AnyUnwrapToListAnyInGenericAccepted (the previously-allowed `v: T = a`
+// shape where T resolves to `List<any>`) was deleted in #2322: the
+// `any-implicit-unwrap` rule fires regardless of whether the destination
+// collection is parameterised by `any`. Users must drive the cast
+// explicitly via `case asType[List<any>](a):` and friends.
 
 // ============================================================
 // fold(): seed/return-type mismatch must still fire for typed lambda

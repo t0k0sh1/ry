@@ -15,9 +15,15 @@ bool CodeGen::canAnyHoldType(llvm::Type *ty) const {
 }
 
 bool CodeGen::isAnyArithOp(const std::string &op) {
-    // Keep this list in sync with emitAnyBinaryOp's `arithOps` map below.
+    // Binary operators rejected by the `[strict-any/any-arithmetic]` rule:
+    // the seven arithmetic ops plus the four ordering comparisons. The rule
+    // fires at the call site in emitBinaryOp before any operand is wrapped
+    // in any, so emitAnyBinaryOp never sees them. Equality (`==`, `!=`) is
+    // intentionally absent — `__ry_any_eq` returns 0 on type mismatch
+    // (safe), and is the only operator emitAnyBinaryOp still handles.
     return op == "+" || op == "-" || op == "*" || op == "/" ||
-           op == "%" || op == "//" || op == "**";
+           op == "%" || op == "//" || op == "**" ||
+           op == "<" || op == "<=" || op == ">" || op == ">=";
 }
 
 int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
@@ -2203,58 +2209,23 @@ llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal, bool inCollection) {
 
 llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
                                        llvm::Value *lhs, llvm::Value *rhs) {
+    // Only equality comparisons reach this function: arithmetic and
+    // ordering operators are rejected upstream by the `any-arithmetic`
+    // rule (see isAnyArithOp; the guard fires in emitBinaryOp before any
+    // operand is wrapped in any). The runtime entry points take pointer
+    // arguments, so wrap each operand in an alloca.
+    if (op != "==" && op != "!=")
+        codegenError("operator '" + op + "' not supported for any type");
+
     llvm::AllocaInst *lhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.lhs");
     builder_.CreateStore(lhs, lhsPtr);
     llvm::AllocaInst *rhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.rhs");
     builder_.CreateStore(rhs, rhsPtr);
 
-    // Operator keys must match isAnyArithOp() above (#2319 strict-any guard).
-    static const std::unordered_map<std::string, std::string> arithOps = {
-        {"+", "__ry_any_add"}, {"-", "__ry_any_sub"},
-        {"*", "__ry_any_mul"}, {"/", "__ry_any_div"},
-        {"%", "__ry_any_mod"}, {"//", "__ry_any_floordiv"},
-        {"**", "__ry_any_pow"},
-    };
-    static const std::unordered_map<std::string, std::string> cmpOps = {
-        {"==", "__ry_any_eq"}, {"!=", "__ry_any_ne"},
-        {"<", "__ry_any_lt"},  {"<=", "__ry_any_le"},
-        {">", "__ry_any_gt"},  {">=", "__ry_any_ge"},
-    };
-
-    // #2316: arithmetic and ordering comparison on any are deprecated; use
-    // asType[T] to narrow first. == / != are intentionally retained because
-    // __ry_any_eq returns 0 on type mismatch (safe), while orderCompare traps.
-    const bool isArith = arithOps.count(op) > 0;
-    const bool isOrdering =
-        (op == "<" || op == "<=" || op == ">" || op == ">=");
-    if (isArith || isOrdering) {
-        warnAnyOpDeprecated(op,
-            "warning: operator '" + op + "' on 'any' is deprecated; "
-            "use asType[T] to unwrap before operating "
-            "(see docs/reference/types.md 'Explicit any conversion')");
-    }
-
-    auto ait = arithOps.find(op);
-    if (ait != arithOps.end()) {
-        llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.result");
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
-            builder_.getVoidTy(), {ptrTy_, ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction(ait->second, fnTy);
-        builder_.CreateCall(fn, {resultPtr, lhsPtr, rhsPtr});
-        return builder_.CreateLoad(anyTy_, resultPtr, "any.binop");
-    }
-
-    auto cit = cmpOps.find(op);
-    if (cit != cmpOps.end()) {
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
-            i64Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction(cit->second, fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {lhsPtr, rhsPtr}, "any.cmp");
-        llvm::Value *zero = builder_.getInt64(0);
-        return builder_.CreateICmpNE(result, zero, "any.cmp.bool");
-    }
-
-    codegenError("operator '" + op + "' not supported for any type");
+    const char *runtimeFn = (op == "==") ? "__ry_any_eq" : "__ry_any_ne";
+    llvm::FunctionCallee fn = getRuntimeFn(runtimeFn, i64Ty_, {ptrTy_, ptrTy_});
+    llvm::Value *result = builder_.CreateCall(fn, {lhsPtr, rhsPtr}, "any.cmp");
+    return builder_.CreateICmpNE(result, builder_.getInt64(0), "any.cmp.bool");
 }
 
 llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
@@ -2415,26 +2386,5 @@ llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
     return phi;
 }
 
-void CodeGen::warnAnyOpDeprecated(std::string opKey, std::string message) {
-    if (warned_any_ops_.insert(std::move(opKey)).second)
-        warnings_.push_back(std::move(message));
-}
-
-llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
-    // #2316: unary `-` on any is deprecated; use asType[int] / asType[float]
-    // to narrow first. Keyed as "unary -" to avoid colliding with binary `-`.
-    warnAnyOpDeprecated("unary -",
-        "warning: unary operator '-' on 'any' is deprecated; "
-        "use asType[int] or asType[float] to unwrap before negating "
-        "(see docs/reference/types.md 'Explicit any conversion')");
-    llvm::AllocaInst *opPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.op");
-    builder_.CreateStore(operand, opPtr);
-    llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.result");
-
-    llvm::FunctionCallee fn = getRuntimeFn("__ry_any_neg", builder_.getVoidTy(),
-                                            {ptrTy_, ptrTy_});
-    builder_.CreateCall(fn, {resultPtr, opPtr});
-    return builder_.CreateLoad(anyTy_, resultPtr, "any.neg");
-}
 
 } // namespace ry

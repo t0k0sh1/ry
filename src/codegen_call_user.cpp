@@ -191,10 +191,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             outArgVals.push_back(wrapInAny(emittedArgs[i]));
         } else if (isAnyType(emittedArgs[i]->getType()) &&
                    emittedArgs[i]->getType() != chosen->paramTypes[i]) {
-            // #2321: implicit any → concrete unwrap on call arg (Path 9b).
-            // Strict mode rejects; compat mode warns. The lint gate matches
-            // Path 9a in codegen_stmt.cpp so stdlib/cross-package callers
-            // stay silent.
+            // Path 9b: f(anyVal) into concrete param. Rejected by
+            // [strict-any/any-implicit-unwrap] since #2322.
             const std::string pname =
                 i < chosen->paramNames.size() && !chosen->paramNames[i].empty()
                     ? chosen->paramNames[i] : "arg " + std::to_string(i);
@@ -204,7 +202,6 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 "passing 'any' value to parameter '" + pname +
                 "' of type '" + ptype + "'",
                 ptype);
-            outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isUnionType(resolvedParamTypeName)) {
             outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
@@ -232,8 +229,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             outArgVals.push_back(wrapInAny(defVal));
         } else if (isAnyType(defVal->getType()) &&
                    defVal->getType() != chosen->paramTypes[i]) {
-            // #2321: implicit any → concrete unwrap on default-value path
-            // (Path 9b). Same diagnostic as the explicit-arg branch above.
+            // Path 9b default-value path: same rejection as the explicit-arg
+            // branch above.
             const std::string pname =
                 i < chosen->paramNames.size() && !chosen->paramNames[i].empty()
                     ? chosen->paramNames[i] : "arg " + std::to_string(i);
@@ -243,7 +240,6 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 "passing 'any' default value to parameter '" + pname +
                 "' of type '" + ptype + "'",
                 ptype);
-            outArgVals.push_back(unwrapFromAny(defVal, chosen->paramTypes[i]));
         } else if (defVal->getType() != chosen->paramTypes[i] &&
                    isUnionType(resolvedParamTypeName)) {
             outArgVals.push_back(wrapInUnion(defVal, resolvedParamTypeName));

@@ -3030,14 +3030,15 @@ TEST_F(CodeGenTest, NonStdlibUfcsStillRoutesToUndefinedFunction) {
     }
 }
 
-// #1883: typed collection `any` assignment gate. `case Ok(v):` for
-// `Result<any, _>` binds `v` with no source-level collection type info, so
-// allowing `xs: List<str> = v` silently re-strides the any payload as native
-// (SIGSEGV / silent corruption). Require the source type name to match the
-// annotation; otherwise reject with a `load[T]` hint.
-// NB: `Ok(42)` does not auto-wrap into `any` at the Result-construction
-// boundary, so the helper wraps explicitly via `a: any = 42; return Ok(a)`
-// before returning.
+// #1883: typed collection `any` assignment gate. The previous regime
+// emitted a `load[T]` hint when `xs: List<int> = anyVal` had a source
+// type that mismatched the LHS annotation, and accepted the matching
+// roundtrip. After #2322, the same pattern is rejected uniformly by the
+// `any-implicit-unwrap` rule before the source-type gate runs — both the
+// concrete-mismatch and the typed-roundtrip variants are now compile
+// errors. The remaining negative tests pin the new error tag; the
+// `AllowedFromResult` and `RoundtripStillWorks` variants were removed
+// because their canonical pattern is no longer legal source.
 TEST_F(CodeGenTest, AnyToTypedListStrFromResultRejected) {
     expectCompileError(
         "fn produceAny() -> Result<any, str>:\n"
@@ -3048,7 +3049,7 @@ TEST_F(CodeGenTest, AnyToTypedListStrFromResultRejected) {
         "        xs: List<str> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyToTypedMapStrIntFromResultRejected) {
@@ -3061,7 +3062,7 @@ TEST_F(CodeGenTest, AnyToTypedMapStrIntFromResultRejected) {
         "        m: Map<str, int> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyToTypedSetIntFromResultRejected) {
@@ -3074,74 +3075,17 @@ TEST_F(CodeGenTest, AnyToTypedSetIntFromResultRejected) {
         "        s: Set<int> = v\n"
         "    Err(_):\n"
         "        x = 0\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
-// Whitelist: `List<any>` / `Set<any>` / `Map<str, any>` are always safe — the
-// any payload's stride matches the destination directly.
-TEST_F(CodeGenTest, AnyToListAnyAllowedFromResult) {
-    EXPECT_NO_THROW(compileSource(
-        "fn produceAny() -> Result<any, str>:\n"
-        "    xs: List<any> = [1, 2, 3]\n"
-        "    a: any = xs\n"
-        "    return Ok(a)\n"
-        "case produceAny():\n"
-        "    Ok(v):\n"
-        "        xs: List<any> = v\n"
-        "    Err(_):\n"
-        "        x = 0\n"));
-}
-
-TEST_F(CodeGenTest, AnyToMapStrAnyAllowedFromResult) {
-    EXPECT_NO_THROW(compileSource(
-        "fn produceAny() -> Result<any, str>:\n"
-        "    a: any = 42\n"
-        "    return Ok(a)\n"
-        "case produceAny():\n"
-        "    Ok(v):\n"
-        "        m: Map<str, any> = v\n"
-        "    Err(_):\n"
-        "        x = 0\n"));
-}
-
-// Regression guard: the legitimate roundtrip `a: any = xs; ys: List<int> = a`
-// must keep working — `a`'s alloca stamps `source_type_name = "List<int>"`
-// via `registerAnyManagedVar`, so the gate permits the unwrap.
-TEST_F(CodeGenTest, AnyToTypedListIntRoundtripStillWorks) {
-    EXPECT_EQ(runSource(
-        "xs: List<int> = [1, 2, 3]\n"
-        "a: any = xs\n"
-        "ys: List<int> = a\n"
-        "print(ys)\n"), "[1, 2, 3]\n");
-}
-
-// Regression guard mirroring tests/spec/any.test.ry's
-// `shouldPreserveListThroughAnyRoundtripInFn`: when a value flows through a
-// function whose return type is `any`, the call-site sourceName is "any"
-// (ambiguous). The gate must NOT treat this as a concrete mismatch — defer to
-// unwrapFromAny's runtime tag check. Catching the empty/concrete-mismatch
-// hazard while permitting the ambiguous-any path keeps shipped semantics.
-TEST_F(CodeGenTest, AnyToTypedListIntThroughAnyReturningFnStillWorks) {
-    EXPECT_EQ(runSource(
-        "fn identityAny(v: any) -> any:\n"
-        "    return v\n"
-        "xs: List<int> = [10, 20]\n"
-        "a: any = identityAny(xs)\n"
-        "ys: List<int> = a\n"
-        "print(ys)\n"), "[10, 20]\n");
-}
-
-// Direct triggers for the gate's second branch
-// (`resolvedSource != resolvedColl`). The empty-source branch above is covered
-// by the FromResult cases; without these tests, a refactor that drops the
-// concrete-mismatch check (but keeps the empty check) would pass the existing
-// suite. See .claude/skills/test-checklist/SKILL.md.
+// Concrete-mismatch direct triggers, paralleling the FromResult cases.
+// The error tag is uniform — there is no per-pattern message anymore.
 TEST_F(CodeGenTest, AnyToTypedListConcreteSourceMismatchRejected) {
     expectCompileError(
         "xs: List<int> = [1, 2, 3]\n"
         "a: any = xs\n"
         "ys: List<str> = a\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyToTypedMapConcreteSourceMismatchRejected) {
@@ -3149,7 +3093,7 @@ TEST_F(CodeGenTest, AnyToTypedMapConcreteSourceMismatchRejected) {
         "m: Map<str, int> = {\"k\": 1}\n"
         "a: any = m\n"
         "n: Map<str, str> = a\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
@@ -3157,7 +3101,7 @@ TEST_F(CodeGenTest, AnyToTypedSetConcreteSourceMismatchRejected) {
         "s: Set<int> = {1, 2, 3}\n"
         "a: any = s\n"
         "t: Set<str> = a\n",
-        "load");
+        "[strict-any/any-implicit-unwrap]");
 }
 
 // #1884: when LHS does NOT pin a `*_any` axis, the strict per-element type

@@ -79,81 +79,49 @@ fn anyReassignmentTests():
     x = "world"
     expect(true).toEq(true)
 
-@describe("any arithmetic operators")
-fn anyArithmeticOperatorsTests():
-  @it("should support int + int")
-  fn shouldSupportIntInt():
-    x: any = 10
-    y: any = 20
-    z: any = x + y
-    expect(z == 30).toEq(true)
-  @it("should support int - int")
-  fn shouldSupportIntInt2():
-    x: any = 30
-    y: any = 10
-    z: any = x - y
-    expect(z == 20).toEq(true)
-  @it("should support int * int")
-  fn shouldSupportIntInt3():
-    x: any = 5
-    y: any = 6
-    z: any = x * y
-    expect(z == 30).toEq(true)
-  @it("should support int / int")
-  fn shouldSupportIntInt4():
-    x: any = 10
-    y: any = 2
-    z: any = x / y
-    expect(z == 5.0).toEq(true)
-  @it("should support int % int")
-  fn shouldSupportIntInt5():
-    x: any = 10
-    y: any = 3
-    z: any = x % y
-    expect(z == 1).toEq(true)
-  @it("should support int // int")
-  fn shouldSupportIntInt6():
-    x: any = 7
-    y: any = 2
-    z: any = x // y
-    expect(z == 3).toEq(true)
-  @it("should support int ** int")
-  fn shouldSupportIntInt7():
-    x: any = 2
-    y: any = 10
-    z: any = x ** y
-    expect(z == 1024.0).toEq(true)
-  @it("should support float + float")
-  fn shouldSupportFloatFloat():
-    x: any = 1.5
-    y: any = 2.5
-    z: any = x + y
-    expect(z == 4.0).toEq(true)
-  @it("should support int + float (mixed)")
-  fn shouldSupportIntFloatMixed():
-    x: any = 10
-    y: any = 3.14
-    z: any = x + y
-    expect(z == 13.14).toEq(true)
-  @it("should support str + str (concat)")
-  fn shouldSupportStrStrConcat():
-    x: any = "hello"
-    y: any = " world"
-    z: any = x + y
-    expect(z == "hello world").toEq(true)
-  @it("should support concrete + any (auto-wrap lhs)")
-  fn shouldSupportConcreteAnyAutoWrapLhs():
-    y: any = 20
-    z: any = 10 + y
-    expect(z == 30).toEq(true)
-  @it("should support any + concrete (auto-wrap rhs)")
-  fn shouldSupportAnyConcreteAutoWrapRhs():
-    x: any = 10
-    z: any = x + 20
-    expect(z == 30).toEq(true)
+@describe("any arithmetic via asType[T] narrowing")
+fn anyArithmeticViaAsTypeTests():
+  # Direct arithmetic on `any` is rejected by `[strict-any/any-arithmetic]`
+  # since #2322. The canonical recovery is `case asType[T](v):` narrowing —
+  # one block per representative op covers the runtime side. Per-op
+  # rejection is locked in by tests/test_strict_any.cpp.
+  @it("should compute int + int after asType[int] narrowing")
+  fn shouldComputeIntPlusIntAfterAsType():
+    a: any = 10
+    b: any = 20
+    case asType[int](a):
+      Ok(ai):
+        case asType[int](b):
+          Ok(bi): expect(ai + bi).toEq(30)
+          Err(_): fail("b not int")
+      Err(_): fail("a not int")
+  @it("should compute float + float after asType[float] narrowing")
+  fn shouldComputeFloatPlusFloatAfterAsType():
+    a: any = 1.5
+    b: any = 2.5
+    case asType[float](a):
+      Ok(af):
+        case asType[float](b):
+          Ok(bf): expect(af + bf == 4.0).toEq(true)
+          Err(_): fail("b not float")
+      Err(_): fail("a not float")
+  @it("should concat str + str after asType[str] narrowing")
+  fn shouldConcatStrPlusStrAfterAsType():
+    a: any = "hello"
+    b: any = " world"
+    case asType[str](a):
+      Ok(astr):
+        case asType[str](b):
+          Ok(bstr): expect(astr + bstr).toEq("hello world")
+          Err(_): fail("b not str")
+      Err(_): fail("a not str")
 
-@describe("any comparison operators")
-fn anyComparisonOperatorsTests():
+@describe("any equality operators")
+fn anyEqualityOperatorsTests():
+  # Equality (`==`, `!=`) stays permitted on `any` because `__ry_any_eq`
+  # returns 0 on type mismatch (safe). Ordering (`<`, `<=`, `>`, `>=`) was
+  # promoted to the `any-arithmetic` rule in #2322; use `asType[T]` to
+  # narrow first when ordering is required (covered above).
   @it("should compare int == int (true)")
   fn shouldCompareIntIntTrue():
     x: any = 42
@@ -169,26 +137,6 @@ fn anyComparisonOperatorsTests():
     x: any = 1
     y: any = 2
     expect(x != y).toEq(true)
-  @it("should support int < int")
-  fn shouldSupportIntInt9():
-    x: any = 1
-    y: any = 2
-    expect(x < y).toEq(true)
-  @it("should support int <= int")
-  fn shouldSupportIntInt10():
-    x: any = 2
-    y: any = 2
-    expect(x <= y).toEq(true)
-  @it("should support int > int")
-  fn shouldSupportIntInt11():
-    x: any = 3
-    y: any = 2
-    expect(x > y).toEq(true)
-  @it("should support int >= int")
-  fn shouldSupportIntInt12():
-    x: any = 2
-    y: any = 2
-    expect(x >= y).toEq(true)
   @it("should compare str == str")
   fn shouldCompareStrStr():
     x: any = "hello"
@@ -204,72 +152,11 @@ fn anyComparisonOperatorsTests():
     y: any = 42
     expect(42 == y).toEq(true)
 
-@describe("any unwrap in function call")
-fn anyUnwrapInFunctionCallTests():
-  @it("should pass any(int) to int param")
-  fn shouldPassAnyIntToIntParam():
-    fn typedInt(x: int) -> int:
-      return x + 1
-    v: any = 42
-    expect(typedInt(v)).toEq(43)
-  @it("should pass any(float) to float param")
-  fn shouldPassAnyFloatToFloatParam():
-    fn typedFloat(x: float) -> float:
-      return x + 1.0
-    v: any = 2.5
-    expect(typedFloat(v)).toEq(3.5)
-  @it("should pass any(str) to str param")
-  fn shouldPassAnyStrToStrParam():
-    fn typedStr(x: str) -> str:
-      return x
-    v: any = "hello"
-    expect(typedStr(v)).toEq("hello")
-  @it("should pass any(bool) to bool param")
-  fn shouldPassAnyBoolToBoolParam():
-    fn typedBool(x: bool) -> bool:
-      return x
-    v: any = true
-    expect(typedBool(v)).toEq(true)
-
-@describe("any unwrap in lambda call")
-fn anyUnwrapInLambdaCallTests():
-  @it("should pass any(int) to int param of lambda")
-  fn shouldPassAnyIntToIntParamOfLambda():
-    f = (x: int) -> int => x + 1
-    v: any = 42
-    expect(f(v)).toEq(43)
-  @it("should pass any(float) to float param of lambda")
-  fn shouldPassAnyFloatToFloatParamOfLambda():
-    f = (x: float) -> float => x + 1.0
-    v: any = 2.5
-    expect(f(v)).toEq(3.5)
-  @it("should pass any(str) to str param of lambda")
-  fn shouldPassAnyStrToStrParamOfLambda():
-    f = (x: str) -> str => x
-    v: any = "hello"
-    expect(f(v)).toEq("hello")
-  @it("should pass any(bool) to bool param of lambda")
-  fn shouldPassAnyBoolToBoolParamOfLambda():
-    f = (x: bool) -> bool => x
-    v: any = true
-    expect(f(v)).toEq(true)
-
-@describe("any unwrap into Result slot")
-fn anyUnwrapIntoResultSlotTests():
-  @it("should unwrap any(int) into Ok slot of Result<int, str>")
-  fn shouldUnwrapAnyIntIntoOkSlot():
-    a: any = 42
-    r: Result<int, str> = Ok(a)
-    case r:
-      Ok(v): expect(v).toEq(42)
-      Err(_): fail("expected Ok")
-  @it("should unwrap any(str) into Err slot of Result<int, str>")
-  fn shouldUnwrapAnyStrIntoErrSlot():
-    a: any = "boom"
-    r: Result<int, str> = Err(a)
-    case r:
-      Ok(_): fail("expected Err")
-      Err(e): expect(e).toEq("boom")
+# `any -> concrete` implicit unwrap into named-fn / lambda parameters and
+# Result / Option slots is rejected by `[strict-any/any-implicit-unwrap]`
+# since #2322 (Path 9b-9d). Per-site rejection is locked in by
+# tests/test_strict_any.cpp::AnyImplicitUnwrap*RejectedByDefault; canonical
+# recovery is `case asType[T](v):` narrowing before the boundary.
 
 @describe("overload resolution: concrete preferred over any")
 fn overloadResolutionConcretePreferredOverAnyTests():
@@ -333,41 +220,10 @@ fn anyTostrFStringTests():
     x: any = unitFn()
     expect(f"{x}").toEq("Unit")
 
-@describe("any unary negation")
-fn anyUnaryNegationTests():
-  @it("should negate int")
-  fn shouldNegateInt():
-    x: any = 42
-    y: any = -x
-    expect(y == -42).toEq(true)
-  @it("should negate float")
-  fn shouldNegateFloat():
-    x: any = 3.14
-    y: any = -x
-    expect(y == -3.14).toEq(true)
-
-@describe("any parameter computation")
-fn anyParameterComputationTests():
-  @it("should compute int addition via any params")
-  fn shouldComputeIntAdditionViaAnyParams():
-    fn add(a: any, b: any):
-      return a + b
-    expect(add(1, 2)).toEq(3)
-  @it("should concatenate strings via any params")
-  fn shouldConcatenateStringsViaAnyParams():
-    fn concat(a: any, b: any):
-      return a + b
-    expect(concat("hello", " world")).toEq("hello world")
-  @it("should multiply mixed int/float")
-  fn shouldMultiplyMixedIntFloat():
-    fn mul(a: any, b: any):
-      return a * b
-    expect(mul(3, 2.0)).toEq(6.0)
-  @it("should compare via any params")
-  fn shouldCompareViaAnyParams():
-    fn greater(a: any, b: any):
-      return a > b
-    expect(greater(5, 3)).toEq(true)
+# Unary `-` on `any` and direct arithmetic / ordering inside fn bodies
+# whose parameters are typed `any` are rejected by the
+# `[strict-any/any-arithmetic]` rule since #2322. Per-op rejection lives
+# in tests/test_strict_any.cpp.
 
 @describe("any identity / round-trip")
 fn anyIdentityRoundTripTests():
@@ -392,18 +248,11 @@ fn anyIdentityRoundTripTests():
       return x
     expect(identityB(true)).toEq(true)
 
-@describe("any lambda computation")
-fn anyLambdaComputationTests():
-  @it("should support lambda with explicit any param and inferred return")
-  fn shouldSupportLambdaWithExplicitAnyParamAndInferredReturn():
-    f = (x: any):
-      return x + 1
-    expect(f(10)).toEq(11)
-  @it("should return any from lambda computation")
-  fn shouldReturnAnyFromLambdaComputation():
-    f = (a: any, b: any):
-      return a * b
-    expect(f(3, 4)).toEq(12)
+# Lambdas with `any`-typed params can no longer compute on those params
+# directly: the body's `a + b` / `a * b` hit the `any-arithmetic` rule
+# (#2322). The lambda surface itself still supports `(x: any)` as an
+# explicit type-erasure intake — see "any identity / round-trip" tests
+# below for the canonical pattern.
 
 @describe("any default return type")
 fn anyDefaultReturnTypeTests():
@@ -413,85 +262,88 @@ fn anyDefaultReturnTypeTests():
       return x * 2
     expect(doubleVal(5)).toEq(10)
 
-@describe("any to concrete conversion")
-fn anyToConcreteConversionTests():
-  @it("should unwrap any(int) to int variable")
-  fn shouldUnwrapAnyIntToIntVariable():
+@describe("any to concrete via asType[T]")
+fn anyToConcreteViaAsTypeTests():
+  # `x: int = anyVal` is rejected by `[strict-any/any-implicit-unwrap]`
+  # (#2322). Per-site rejection is in tests/test_strict_any.cpp; the
+  # blocks below cover the canonical recovery `case asType[T](v):` for
+  # each scalar payload type.
+  @it("should narrow any(int) to int via asType")
+  fn shouldNarrowAnyIntToIntViaAsType():
     fn getInt() -> any:
       return 42
-    x: int = getInt()
-    expect(x).toEq(42)
-  @it("should unwrap any(str) to str variable")
-  fn shouldUnwrapAnyStrToStrVariable():
+    case asType[int](getInt()):
+      Ok(x): expect(x).toEq(42)
+      Err(_): fail("expected int")
+  @it("should narrow any(str) to str via asType")
+  fn shouldNarrowAnyStrToStrViaAsType():
     fn getStr() -> any:
       return "hello"
-    x: str = getStr()
-    expect(x).toEq("hello")
-  @it("should unwrap any(float) to float variable")
-  fn shouldUnwrapAnyFloatToFloatVariable():
+    case asType[str](getStr()):
+      Ok(x): expect(x).toEq("hello")
+      Err(_): fail("expected str")
+  @it("should narrow any(float) to float via asType")
+  fn shouldNarrowAnyFloatToFloatViaAsType():
     fn getFloat() -> any:
       return 3.14
-    x: float = getFloat()
-    expect(x).toEq(3.14)
-  @it("should unwrap any(bool) to bool variable")
-  fn shouldUnwrapAnyBoolToBoolVariable():
+    case asType[float](getFloat()):
+      Ok(x): expect(x == 3.14).toEq(true)
+      Err(_): fail("expected float")
+  @it("should narrow any(bool) to bool via asType")
+  fn shouldNarrowAnyBoolToBoolViaAsType():
     fn getBool() -> any:
       return true
-    x: bool = getBool()
-    expect(x).toEq(true)
-  @it("should auto-promote int to float in unwrap")
-  fn shouldAutoPromoteIntToFloatInUnwrap():
-    fn getIntAny() -> any:
-      return 42
-    x: float = getIntAny()
-    expect(x).toEq(42.0)
-  @it("should reassign concrete variable from any value")
-  fn shouldReassignConcreteVariableFromAnyValue():
-    fn getAny() -> any:
-      return 99
-    x: int = 0
-    x = getAny()
-    expect(x).toEq(99)
+    case asType[bool](getBool()):
+      Ok(x): expect(x).toEq(true)
+      Err(_): fail("expected bool")
+  @it("should surface Err from asType on type mismatch")
+  fn shouldSurfaceErrFromAsTypeOnTypeMismatch():
+    fn getStr() -> any:
+      return "not a number"
+    case asType[int](getStr()):
+      Ok(_): fail("expected Err for str -> int")
+      Err(_): expect(true).toEq(true)
 
 @describe("any element in Map")
 fn anyElementInMapTests():
-  @it("should accept str value in Map<str, any>")
-  fn shouldAcceptStrValueInMapStrAny():
+  # `v: T = m[key]` on `Map<str, any>` is rejected by
+  # `[strict-any/any-implicit-unwrap]` since #2322 — the indexed access
+  # surfaces an `any` value, and the variable assignment is Path 9a.
+  # Map insertion and `in` membership are unaffected and stay covered.
+  @it("should narrow str value in Map<str, any> via asType")
+  fn shouldNarrowStrValueInMapStrAnyViaAsType():
     m: Map<str, any> = {}
     m["name"] = "Alice"
-    v: str = m["name"]
-    expect(v).toEq("Alice")
-  @it("should accept int value in Map<str, any>")
-  fn shouldAcceptIntValueInMapStrAny():
+    case asType[str](m["name"]):
+      Ok(v): expect(v).toEq("Alice")
+      Err(_): fail("expected str")
+  @it("should narrow int value in Map<str, any> via asType")
+  fn shouldNarrowIntValueInMapStrAnyViaAsType():
     m: Map<str, any> = {}
     m["age"] = 30
-    v: int = m["age"]
-    expect(v).toEq(30)
-  @it("should accept float value in Map<str, any>")
-  fn shouldAcceptFloatValueInMapStrAny():
+    case asType[int](m["age"]):
+      Ok(v): expect(v).toEq(30)
+      Err(_): fail("expected int")
+  @it("should accept float value in Map<str, any> (membership only)")
+  fn shouldAcceptFloatValueInMapStrAnyMembershipOnly():
     m: Map<str, any> = {}
     m["pi"] = 3.14
-    v: float = m["pi"]
-    expect(v).toEq(3.14)
-  @it("should accept bool value in Map<str, any>")
-  fn shouldAcceptBoolValueInMapStrAny():
+    expect("pi" in m).toEq(true)
+  @it("should narrow bool value in Map<str, any> via asType")
+  fn shouldNarrowBoolValueInMapStrAnyViaAsType():
     m: Map<str, any> = {}
     m["flag"] = true
-    v: bool = m["flag"]
-    expect(v).toEq(true)
+    case asType[bool](m["flag"]):
+      Ok(v): expect(v).toEq(true)
+      Err(_): fail("expected bool")
   @it("should update existing key with new concrete value")
   fn shouldUpdateExistingKeyWithNewConcreteValue():
     m: Map<str, any> = {}
     m["x"] = 1
     m["x"] = "updated"
-    v: str = m["x"]
-    expect(v).toEq("updated")
-  @it("should unwrap any value into Map<str, int>")
-  fn shouldUnwrapAnyValueIntoMapStrInt():
-    v: any = 42
-    m: Map<str, int> = {}
-    m["x"] = v
-    expect(m["x"]).toEq(42)
+    case asType[str](m["x"]):
+      Ok(v): expect(v).toEq("updated")
+      Err(_): fail("expected str")
   @it("should support 'in' with str key on Map<str, any>")
   fn shouldSupportInWithStrKeyOnMapStrAny():
     m: Map<str, any> = {}
@@ -505,75 +357,65 @@ fn anyElementInMapTests():
     m["x"] = 1
     k: any = "x"
     expect(k in m).toEq(true)
-  @it("should accept mixed value types in Map<str, any> literal")
-  fn shouldAcceptMixedValueTypesInMapStrAnyLiteral():
+  @it("should narrow mixed value types in Map<str, any> literal via asType")
+  fn shouldNarrowMixedValueTypesInMapStrAnyLiteralViaAsType():
     m: Map<str, any> = {"a": 1, "b": "two", "c": true}
-    vi: int = m["a"]
-    vs: str = m["b"]
-    vb: bool = m["c"]
-    expect(vi).toEq(1)
-    expect(vs).toEq("two")
-    expect(vb).toEq(true)
+    case asType[int](m["a"]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("a not int")
+    case asType[str](m["b"]):
+      Ok(vs): expect(vs).toEq("two")
+      Err(_): fail("b not str")
+    case asType[bool](m["c"]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("c not bool")
 
 @describe("any element in List")
 fn anyElementInListTests():
-  @it("should append! str to List<any>")
-  fn shouldAppendStrToListAny():
+  # `v: T = xs[0]` on `List<any>` is Path 9a and rejected by
+  # `[strict-any/any-implicit-unwrap]` (#2322). Tests below use
+  # `case asType[T](xs[0])` for narrowing; mutation paths
+  # (append!/insert/assign) and `in` membership stay unchanged.
+  @it("should append! str and narrow back via asType")
+  fn shouldAppendStrAndNarrowViaAsType():
     xs: List<any> = []
     append!(xs, "hello")
-    v: str = xs[0]
-    expect(v).toEq("hello")
-  @it("should append! int to List<any>")
-  fn shouldAppendIntToListAny():
+    case asType[str](xs[0]):
+      Ok(v): expect(v).toEq("hello")
+      Err(_): fail("expected str")
+  @it("should append! int and narrow back via asType")
+  fn shouldAppendIntAndNarrowViaAsType():
     xs: List<any> = []
     append!(xs, 42)
-    v: int = xs[0]
-    expect(v).toEq(42)
-  @it("should append! float to List<any>")
-  fn shouldAppendFloatToListAny():
-    xs: List<any> = []
-    append!(xs, 3.14)
-    v: float = xs[0]
-    expect(v).toEq(3.14)
-  @it("should append! bool to List<any>")
-  fn shouldAppendBoolToListAny():
+    case asType[int](xs[0]):
+      Ok(v): expect(v).toEq(42)
+      Err(_): fail("expected int")
+  @it("should append! bool and narrow back via asType")
+  fn shouldAppendBoolAndNarrowViaAsType():
     xs: List<any> = []
     append!(xs, true)
-    v: bool = xs[0]
-    expect(v).toEq(true)
+    case asType[bool](xs[0]):
+      Ok(v): expect(v).toEq(true)
+      Err(_): fail("expected bool")
   @it("should use appended with concrete value on List<any>")
   fn shouldUseAppendedWithConcreteValueOnListAny():
     xs: List<any> = []
     ys = appended(xs, "new")
-    v: str = ys[0]
-    expect(v).toEq("new")
-  @it("should insert concrete value into List<any>")
-  fn shouldInsertConcreteValueIntoListAny():
+    case asType[str](ys[0]):
+      Ok(v): expect(v).toEq("new")
+      Err(_): fail("expected str")
+  @it("should insert and assign concrete values into List<any>")
+  fn shouldInsertAndAssignConcreteValuesInListAny():
     xs: List<any> = []
     append!(xs, 99)
     insert(xs, 0, "first")
-    v: str = xs[0]
-    expect(v).toEq("first")
-  @it("should assign concrete value at index in List<any>")
-  fn shouldAssignConcreteValueAtIndexInListAny():
-    xs: List<any> = []
-    append!(xs, 0)
-    xs[0] = 99
-    v: int = xs[0]
-    expect(v).toEq(99)
-  @it("should unwrap any value into List<int>")
-  fn shouldUnwrapAnyValueIntoListInt():
-    v: any = 7
-    xs: List<int> = [1, 2, 3]
-    xs[0] = v
-    expect(xs[0]).toEq(7)
-  @it("should support compound assign += on List<any>")
-  fn shouldSupportCompoundAssignOnListAny():
-    xs: List<any> = []
-    append!(xs, 10)
-    xs[0] += 5
-    v: int = xs[0]
-    expect(v).toEq(15)
+    case asType[str](xs[0]):
+      Ok(v): expect(v).toEq("first")
+      Err(_): fail("expected str")
+    xs[1] = 7
+    case asType[int](xs[1]):
+      Ok(v): expect(v).toEq(7)
+      Err(_): fail("expected int")
   @it("should support 'in' with str on List<any>")
   fn shouldSupportInWithStrOnListAny():
     xs: List<any> = []
@@ -599,25 +441,18 @@ fn anyElementInListTests():
     xs: List<int> = [1, 2, 3]
     v: any = 2
     expect(v in xs).toEq(true)
-  @it("should accept mixed element types in List<any> literal")
-  fn shouldAcceptMixedElementTypesInListAnyLiteral():
+  @it("should narrow mixed element types from List<any> literal via asType")
+  fn shouldNarrowMixedElementTypesFromListAnyLiteralViaAsType():
     xs: List<any> = [1, "x", true]
-    vi: int = xs[0]
-    vs: str = xs[1]
-    vb: bool = xs[2]
-    expect(vi).toEq(1)
-    expect(vs).toEq("x")
-    expect(vb).toEq(true)
-  @it("should accept already-any element mixed with concrete values in List<any> literal")
-  fn shouldAcceptAlreadyAnyElementInListAnyLiteral():
-    a: any = 42
-    xs: List<any> = [a, "x", true]
-    vi: int = xs[0]
-    vs: str = xs[1]
-    vb: bool = xs[2]
-    expect(vi).toEq(42)
-    expect(vs).toEq("x")
-    expect(vb).toEq(true)
+    case asType[int](xs[0]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("xs[0] not int")
+    case asType[str](xs[1]):
+      Ok(vs): expect(vs).toEq("x")
+      Err(_): fail("xs[1] not str")
+    case asType[bool](xs[2]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("xs[2] not bool")
 
 @describe("any element in Set")
 fn anyElementInSetTests():
@@ -647,11 +482,13 @@ fn anyElementInSetTests():
     add(s, "x")
     add(s, 1)
     expect(s).toHaveLen(2)
-  @it("should unwrap any value into Set<int>")
-  fn shouldUnwrapAnyValueIntoSetInt():
+  @it("should narrow any value before adding into Set<int>")
+  fn shouldNarrowAnyValueBeforeAddingIntoSetInt():
     v: any = 5
     s: Set<int> = {}
-    add(s, v)
+    case asType[int](v):
+      Ok(n): add(s, n)
+      Err(_): fail("expected int")
     expect(5 in s).toEq(true)
   @it("should support 'in' with str on Set<any>")
   fn shouldSupportInWithStrOnSetAny():
@@ -708,37 +545,15 @@ fn anyHoldsCollectionTests():
     add(s, 1)
     a: any = s
     expect(true).toEq(true)
-  @it("should implicit-unwrap any back to List<int>")
-  fn shouldImplicitUnwrapAnyBackToListInt():
-    xs: List<int> = [1, 2, 3]
-    a: any = xs
-    ys: List<int> = a
-    expect(ys[0]).toEq(1)
-    expect(ys[1]).toEq(2)
-    expect(ys[2]).toEq(3)
-  @it("should implicit-unwrap any back to Map<str, int>")
-  fn shouldImplicitUnwrapAnyBackToMapStrInt():
-    m: Map<str, int> = {}
-    m["x"] = 42
-    a: any = m
-    n: Map<str, int> = a
-    expect(n["x"]).toEq(42)
-  @it("should implicit-unwrap any back to Set<int>")
-  fn shouldImplicitUnwrapAnyBackToSetInt():
-    s: Set<int> = {}
-    add(s, 7)
-    a: any = s
-    t: Set<int> = a
-    expect(7 in t).toEq(true)
-  @it("should preserve list contents through any roundtrip in function")
-  fn shouldPreserveListThroughAnyRoundtripInFn():
-    fn identityAny(v: any) -> any:
-      return v
-    xs: List<int> = [10, 20]
-    a: any = identityAny(xs)
-    ys: List<int> = a
-    expect(ys[0]).toEq(10)
-    expect(ys[1]).toEq(20)
+  # Roundtripping a *typed* collection (`List<int>` / `Map<str, int>` /
+  # `Set<int>`) through `any` and recovering the original concrete type
+  # was previously the `xs: List<int> = anyVal` shape. After #2322 it is
+  # rejected by `[strict-any/any-implicit-unwrap]`; `asType[List<int>]`
+  # accepts only JSON-shaped (`List<any>` / `Map<str, any>` / `Set<any>`)
+  # sources via its `tryUnwrapFromAny` path. Reading back a native typed
+  # collection from `any` is intentionally not supported on v0.0.30 — use
+  # `case asType[List<any>](v)` plus per-element narrowing, or keep the
+  # value statically typed and skip the `any` round-trip entirely.
   @it("should compare two any aliasing the same list with == (pointer identity)")
   fn shouldCompareTwoAnyAliasingSameListWithEq():
     xs: List<int> = [1, 2, 3]
@@ -790,12 +605,13 @@ fn anyHoldsCollectionTests():
     expect(f"{a}").toEq("<Set>")
   @it("should retain payload across any-to-any copy (regression: #1697 double-free)")
   fn shouldRetainPayloadAcrossAnyToAnyCopy():
+    # ARC retention is the actual regression target; recovering the typed
+    # List<int> back from `any` is no longer canonical (#2322). Use the
+    # marker render to confirm the payload survives the alias chain.
     xs: List<int> = [10, 20, 30]
     a: any = xs
     b: any = a
-    ys: List<int> = b
-    expect(ys[0]).toEq(10)
-    expect(ys[2]).toEq(30)
+    expect(f"{b}").toEq("<List>")
   @it("should retain payload when an any holds a map and is copied to another any")
   fn shouldRetainPayloadOnAnyToAnyMapCopy():
     m: Map<str, int> = {"a": 1, "b": 2}
@@ -812,29 +628,32 @@ fn anyHoldsCollectionTests():
     expect(f"{b}").toEq("<Set>")
   @it("should reassign any-to-any without leaking the prior payload")
   fn shouldReassignAnyToAnyWithoutLeak():
+    # Same regression-target rationale as the previous test: assert the
+    # payload survives the reassign via the marker render.
     xs: List<int> = [1, 2]
     ys: List<int> = [3, 4, 5]
     a: any = xs
     b: any = ys
     a = b
-    zs: List<int> = a
-    expect(zs[2]).toEq(5)
+    expect(f"{a}").toEq("<List>")
   @it("should retain dynamic str payload across any-to-any copy (regression: #1799)")
   fn shouldRetainDynamicStrPayloadAcrossAnyToAnyCopy():
     s: str = "hello" + " world"
     a: any = s
     b: any = a
     s = "overwritten"
-    t: str = b
-    expect(t).toEq("hello world")
+    case asType[str](b):
+      Ok(t): expect(t).toEq("hello world")
+      Err(_): fail("expected str")
   @it("should retain dynamic str when unwrapped from a returned any (regression: #1799)")
   fn shouldRetainDynamicStrWhenUnwrappedFromReturnedAny():
     fn wrapDynStr() -> any:
       inner: str = "hello" + " world"
       result: any = inner
       return result
-    t: str = wrapDynStr()
-    expect(t).toEq("hello world")
+    case asType[str](wrapDynStr()):
+      Ok(t): expect(t).toEq("hello world")
+      Err(_): fail("expected str")
   @it("should release prior dynamic str when reassigning any to a new str (regression: #1799)")
   fn shouldReleasePriorDynamicStrWhenReassigningAny():
     s1: str = "hello" + " world"
@@ -843,8 +662,9 @@ fn anyHoldsCollectionTests():
     a = s2
     s1 = "overwritten"
     s2 = "also overwritten"
-    t: str = a
-    expect(t).toEq("foo bar")
+    case asType[str](a):
+      Ok(t): expect(t).toEq("foo bar")
+      Err(_): fail("expected str")
   @it("should preserve dynamic str content via any after source release and reuse (regression: #1799)")
   fn shouldPreserveDynamicStrContentViaAnyAfterSourceReleaseAndReuse():
     s: str = "hello" + " world"
@@ -852,8 +672,9 @@ fn anyHoldsCollectionTests():
     s = "x"
     f1: str = "AAAAA" + "BBBBBB"
     f2: str = "CCCCC" + "DDDDDD"
-    t: str = a
-    expect(t).toEq("hello world")
+    case asType[str](a):
+      Ok(t): expect(t).toEq("hello world")
+      Err(_): fail("expected str")
 
 record AnyRecPoint:
   x: int
@@ -886,18 +707,22 @@ fn anyHoldsRecordTests():
   fn shouldWrapRecordWithStrFieldInAny():
     u: any = AnyRecUser("Alice", 30)
     expect(true).toEq(true)
-  @it("should implicit-unwrap any back to plain record")
-  fn shouldImplicitUnwrapAnyBackToPlainRecord():
+  @it("should narrow any back to plain record via asType")
+  fn shouldNarrowAnyBackToPlainRecordViaAsType():
     a: any = AnyRecPoint(1, 2)
-    q: AnyRecPoint = a
-    expect(q.x).toEq(1)
-    expect(q.y).toEq(2)
-  @it("should implicit-unwrap any back to record with str field")
-  fn shouldImplicitUnwrapAnyBackToRecordWithStrField():
+    case asType[AnyRecPoint](a):
+      Ok(q):
+        expect(q.x).toEq(1)
+        expect(q.y).toEq(2)
+      Err(_): fail("expected AnyRecPoint")
+  @it("should narrow any back to record with str field via asType")
+  fn shouldNarrowAnyBackToRecordWithStrFieldViaAsType():
     a: any = AnyRecUser("Alice", 30)
-    u: AnyRecUser = a
-    expect(u.name).toEq("Alice")
-    expect(u.age).toEq(30)
+    case asType[AnyRecUser](a):
+      Ok(u):
+        expect(u.name).toEq("Alice")
+        expect(u.age).toEq(30)
+      Err(_): fail("expected AnyRecUser")
   @it("should compare two any holding records with equal fields with == (deep equality)")
   fn shouldCompareTwoAnyHoldingRecordsWithEqualFieldsWithEq():
     a: any = AnyRecPoint(1, 2)
@@ -917,62 +742,77 @@ fn anyHoldsRecordTests():
   fn shouldRenderAnyHoldingARecordAsTypeNamedMarker():
     a: any = AnyRecPoint(1, 2)
     expect(f"{a}").toEq("<AnyRecPoint>")
-  @it("should preserve record through any roundtrip in function return")
-  fn shouldPreserveRecordThroughAnyRoundtripInFnReturn():
+  @it("should preserve record through any roundtrip via asType")
+  fn shouldPreserveRecordThroughAnyRoundtripViaAsType():
     fn makeAnyRec() -> any:
       return AnyRecPoint(7, 9)
     a: any = makeAnyRec()
-    q: AnyRecPoint = a
-    expect(q.x).toEq(7)
-    expect(q.y).toEq(9)
+    case asType[AnyRecPoint](a):
+      Ok(q):
+        expect(q.x).toEq(7)
+        expect(q.y).toEq(9)
+      Err(_): fail("expected AnyRecPoint")
   @it("should preserve record with str field through any-to-any copy")
   fn shouldPreserveRecordWithStrFieldThroughAnyToAnyCopy():
     a: any = AnyRecUser("Bob" + "by", 25)
     b: any = a
     a = AnyRecUser("Replaced" + "Name", 99)
-    u: AnyRecUser = b
-    expect(u.name).toEq("Bobby")
-    expect(u.age).toEq(25)
+    case asType[AnyRecUser](b):
+      Ok(u):
+        expect(u.name).toEq("Bobby")
+        expect(u.age).toEq(25)
+      Err(_): fail("expected AnyRecUser")
   @it("should reassign any holding record to a different record")
   fn shouldReassignAnyHoldingRecordToDifferentRecord():
     a: any = AnyRecPoint(1, 2)
     a = AnyRecPlain(99)
-    q: AnyRecPlain = a
-    expect(q.value).toEq(99)
-  @it("should wrap child record in any and exact-type unwrap as child (dynamic descriptor)")
-  fn shouldWrapChildRecordInAnyAndExactTypeUnwrapAsChild():
+    case asType[AnyRecPlain](a):
+      Ok(q): expect(q.value).toEq(99)
+      Err(_): fail("expected AnyRecPlain")
+  @it("should wrap child record in any and exact-type narrow back via asType")
+  fn shouldWrapChildRecordInAnyAndExactTypeNarrowViaAsType():
     d: any = AnyRecChildDog("Rex", 4, "Labrador")
     expect(f"{d}").toEq("<AnyRecChildDog>")
-    out: AnyRecChildDog = d
-    expect(out.name).toEq("Rex")
-    expect(out.legs).toEq(4)
-    expect(out.breed).toEq("Labrador")
-  @it("should unwrap any holding child record as parent type (subtype projection)")
-  fn shouldUnwrapAnyHoldingChildRecordAsParentType():
+    case asType[AnyRecChildDog](d):
+      Ok(out):
+        expect(out.name).toEq("Rex")
+        expect(out.legs).toEq(4)
+        expect(out.breed).toEq("Labrador")
+      Err(_): fail("expected AnyRecChildDog")
+  @it("should narrow any holding child record as parent type (subtype projection)")
+  fn shouldNarrowAnyHoldingChildRecordAsParentType():
     d: any = AnyRecChildDog("Rex", 4, "Labrador")
-    a: AnyRecAnimal = d
-    expect(a.name).toEq("Rex")
-    expect(a.legs).toEq(4)
-  @it("should unwrap any holding grandchild record as grandparent type (multi-level chain walk)")
-  fn shouldUnwrapAnyHoldingGrandchildRecordAsGrandparentType():
+    case asType[AnyRecAnimal](d):
+      Ok(a):
+        expect(a.name).toEq("Rex")
+        expect(a.legs).toEq(4)
+      Err(_): fail("expected AnyRecAnimal")
+  @it("should narrow any holding grandchild record as grandparent type")
+  fn shouldNarrowAnyHoldingGrandchildRecordAsGrandparentType():
     g: any = AnyRecGuideDog("Buddy", 4, "GoldenRetriever", 42)
-    a: AnyRecAnimal = g
-    expect(a.name).toEq("Buddy")
-    expect(a.legs).toEq(4)
-  @it("should unwrap any holding grandchild record as intermediate parent type")
-  fn shouldUnwrapAnyHoldingGrandchildRecordAsIntermediateParentType():
+    case asType[AnyRecAnimal](g):
+      Ok(a):
+        expect(a.name).toEq("Buddy")
+        expect(a.legs).toEq(4)
+      Err(_): fail("expected AnyRecAnimal")
+  @it("should narrow any holding grandchild record as intermediate parent type")
+  fn shouldNarrowAnyHoldingGrandchildRecordAsIntermediateParentType():
     g: any = AnyRecGuideDog("Buddy", 4, "GoldenRetriever", 42)
-    c: AnyRecChildDog = g
-    expect(c.name).toEq("Buddy")
-    expect(c.legs).toEq(4)
-    expect(c.breed).toEq("GoldenRetriever")
-  @it("should subtype-unwrap across function boundary (any return -> parent type)")
-  fn shouldSubtypeUnwrapAcrossFunctionBoundary():
+    case asType[AnyRecChildDog](g):
+      Ok(c):
+        expect(c.name).toEq("Buddy")
+        expect(c.legs).toEq(4)
+        expect(c.breed).toEq("GoldenRetriever")
+      Err(_): fail("expected AnyRecChildDog")
+  @it("should subtype-narrow across function boundary (any return -> parent type)")
+  fn shouldSubtypeNarrowAcrossFunctionBoundary():
     fn makeAnyDog() -> any:
       return AnyRecChildDog("Spot", 4, "Beagle")
-    a: AnyRecAnimal = makeAnyDog()
-    expect(a.name).toEq("Spot")
-    expect(a.legs).toEq(4)
+    case asType[AnyRecAnimal](makeAnyDog()):
+      Ok(a):
+        expect(a.name).toEq("Spot")
+        expect(a.legs).toEq(4)
+      Err(_): fail("expected AnyRecAnimal")
 
 enum AnyEnumColor:
   Red
@@ -998,11 +838,14 @@ enum AnyEnumBag:
 
 @describe("any holds enum")
 fn anyHoldsEnumTests():
-  @it("should wrap simple enum in any and unwrap back")
-  fn shouldWrapSimpleEnumInAnyAndUnwrapBack():
-    a: any = AnyEnumColor::Red
-    c: AnyEnumColor = a
-    expect(c == AnyEnumColor::Red).toEq(true)
+  # Recovering a typed enum / `Option<T>` / `Result<T, E>` from `any` was
+  # previously the `e: Color = anyVal` shape (rejected by
+  # `[strict-any/any-implicit-unwrap]` since #2322). `asType[T]` rejects
+  # enum / Option / Result targets ("not yet supported; use case-based
+  # unwrap instead" — see codegen_call_anycast.cpp), so the canonical
+  # recovery for these payloads is not available on v0.0.30. The remaining
+  # tests below cover equality comparison and the marker render — both
+  # remain supported without recovering the concrete type.
   @it("should compare two any holding same simple enum value")
   fn shouldCompareTwoAnyHoldingSameSimpleEnumValue():
     a: any = AnyEnumColor::Green
@@ -1018,21 +861,6 @@ fn anyHoldsEnumTests():
     a: any = AnyEnumColor::Red
     b: any = AnyEnumMode::On
     expect(a == b).toEq(false)
-  @it("should wrap ADT enum (no payload variant) in any and unwrap back")
-  fn shouldWrapAdtEnumNoPayloadVariantInAnyAndUnwrapBack():
-    a: any = AnyEnumShape::Dot
-    s: AnyEnumShape = a
-    expect(s == AnyEnumShape::Dot).toEq(true)
-  @it("should wrap ADT enum with float payload in any and unwrap back")
-  fn shouldWrapAdtEnumWithFloatPayloadInAnyAndUnwrapBack():
-    a: any = AnyEnumShape::Circle(2.5)
-    s: AnyEnumShape = a
-    expect(s == AnyEnumShape::Circle(2.5)).toEq(true)
-  @it("should wrap ADT enum with int-pair payload in any and unwrap back")
-  fn shouldWrapAdtEnumWithIntPairPayloadInAnyAndUnwrapBack():
-    a: any = AnyEnumShape::Rect(3, 4)
-    s: AnyEnumShape = a
-    expect(s == AnyEnumShape::Rect(3, 4)).toEq(true)
   @it("should compare two any holding equal ADT payloads as equal")
   fn shouldCompareTwoAnyHoldingEqualAdtPayloadsAsEqual():
     a: any = AnyEnumShape::Rect(5, 7)
@@ -1043,80 +871,6 @@ fn anyHoldsEnumTests():
     a: any = AnyEnumShape::Rect(5, 7)
     b: any = AnyEnumShape::Rect(5, 8)
     expect(a == b).toEq(false)
-  @it("should wrap ADT enum with str payload in any and unwrap (ARC field)")
-  fn shouldWrapAdtEnumWithStrPayloadInAnyAndUnwrap():
-    a: any = AnyEnumLabel::Tag("hello" + "!")
-    l: AnyEnumLabel = a
-    expect(l == AnyEnumLabel::Tag("hello!")).toEq(true)
-  @it("should preserve ADT with str payload through any-to-any copy")
-  fn shouldPreserveAdtWithStrPayloadThroughAnyToAnyCopy():
-    a: any = AnyEnumLabel::Tag("orig" + "Val")
-    b: any = a
-    a = AnyEnumLabel::Tag("replaced")
-    l: AnyEnumLabel = b
-    expect(l == AnyEnumLabel::Tag("origVal")).toEq(true)
-  @it("should wrap ADT enum with List payload in any (ARC field)")
-  fn shouldWrapAdtEnumWithListPayloadInAny():
-    a: any = AnyEnumBag::Items([1, 2, 3])
-    b: AnyEnumBag = a
-    expect(b == AnyEnumBag::Items([1, 2, 3])).toEq(true)
-  @it("should reassign any holding enum to different enum value")
-  fn shouldReassignAnyHoldingEnumToDifferentEnumValue():
-    a: any = AnyEnumColor::Red
-    a = AnyEnumShape::Dot
-    s: AnyEnumShape = a
-    expect(s == AnyEnumShape::Dot).toEq(true)
-  @it("should wrap Option<int> in any and unwrap back")
-  fn shouldWrapOptionIntInAnyAndUnwrapBack():
-    a: any = Some(42)
-    o: Option<int> = a
-    case o:
-      Some(v): expect(v).toEq(42)
-      None: fail("expected Some")
-  @it("should wrap None in any and unwrap back as Option<int>")
-  fn shouldWrapNoneInAnyAndUnwrapBackAsOptionInt():
-    n: Option<int> = None
-    a: any = n
-    o: Option<int> = a
-    gotNone = false
-    case o:
-      Some(_): fail("expected None")
-      None: gotNone = true
-    expect(gotNone).toEq(true)
-  @it("should wrap Option<str> in any and unwrap back")
-  fn shouldWrapOptionStrInAnyAndUnwrapBack():
-    a: any = Some("hi" + "!")
-    o: Option<str> = a
-    case o:
-      Some(v): expect(v).toEq("hi!")
-      None: fail("expected Some")
-  @it("should wrap Result Ok int in any and unwrap back")
-  fn shouldWrapResultOkIntInAnyAndUnwrapBack():
-    r: Result<int, str> = Ok(7)
-    a: any = r
-    out: Result<int, str> = a
-    case out:
-      Ok(v): expect(v).toEq(7)
-      Err(_): fail("expected Ok")
-  @it("should wrap Result Err str in any and unwrap back")
-  fn shouldWrapResultErrStrInAnyAndUnwrapBack():
-    r: Result<int, str> = Err("oops")
-    a: any = r
-    out: Result<int, str> = a
-    case out:
-      Ok(_): fail("expected Err")
-      Err(e): expect(e).toEq("oops")
-  @it("should wrap Result<List<int>, str> in any and unwrap back (ARC payload)")
-  fn shouldWrapResultListIntStrInAnyAndUnwrapBack():
-    r: Result<List<int>, str> = Ok([10, 20, 30])
-    a: any = r
-    out: Result<List<int>, str> = a
-    case out:
-      Ok(v):
-        expect(v[0]).toEq(10)
-        expect(v[1]).toEq(20)
-        expect(v[2]).toEq(30)
-      Err(e): fail("expected Ok: " + e)
   @it("should store enum elements in List<any>")
   fn shouldStoreEnumElementsInListAny():
     xs: List<any> = []
@@ -1148,77 +902,88 @@ fn anyHoldsEnumTests():
     r: Result<int, str> = Ok(5)
     a: any = r
     expect(f"{a}").toEq("<Result<int, str>>")
-  @it("should preserve enum through any roundtrip in function return")
-  fn shouldPreserveEnumThroughAnyRoundtripInFnReturn():
-    fn makeAnyEnum() -> any:
-      return AnyEnumShape::Rect(2, 3)
-    a: any = makeAnyEnum()
-    s: AnyEnumShape = a
-    expect(s == AnyEnumShape::Rect(2, 3)).toEq(true)
-  @it("should coerce Result Ok any to Result Ok simple enum")
-  fn shouldCoerceResultOkAnyToResultOkSimpleEnum():
-    e: AnyEnumColor = AnyEnumColor::Green
-    a: any = e
-    r: Result<AnyEnumColor, str> = Ok(a)
-    case r:
-      Ok(v): expect(v == AnyEnumColor::Green).toEq(true)
-      Err(_): fail("expected Ok")
-  @it("should coerce Result Ok any to Result Ok Option")
-  fn shouldCoerceResultOkAnyToResultOkOption():
-    o: Option<int> = Some(7)
-    a: any = o
-    r: Result<Option<int>, str> = Ok(a)
-    case r:
-      Ok(v):
-        case v:
-          Some(n): expect(n).toEq(7)
+  @it("should wrap Option<int> in any and narrow back via asType")
+  fn shouldWrapOptionIntInAnyAndNarrowBackViaAsType():
+    a: any = Some(42)
+    case asType[Option<int>](a):
+      Ok(o):
+        case o:
+          Some(v): expect(v).toEq(42)
           None: fail("expected Some")
-      Err(_): fail("expected Ok")
-  @it("should coerce Result Ok any to Result Ok nested Result")
-  fn shouldCoerceResultOkAnyToResultOkNestedResult():
-    inner: Result<int, str> = Ok(42)
-    a: any = inner
-    r: Result<Result<int, str>, bool> = Ok(a)
-    case r:
-      Ok(v):
-        case v:
-          Ok(n): expect(n).toEq(42)
-          Err(_): fail("expected inner Ok")
-      Err(_): fail("expected outer Ok")
+      Err(_): fail("expected Option<int>")
+  @it("should wrap None in any and narrow back as Option<int> via asType")
+  fn shouldWrapNoneInAnyAndNarrowBackAsOptionIntViaAsType():
+    n: Option<int> = None
+    a: any = n
+    gotNone = false
+    case asType[Option<int>](a):
+      Ok(o):
+        case o:
+          Some(_): fail("expected None")
+          None: gotNone = true
+      Err(_): fail("expected Option<int>")
+    expect(gotNone).toEq(true)
+  @it("should wrap Option<str> in any and narrow back via asType")
+  fn shouldWrapOptionStrInAnyAndNarrowBackViaAsType():
+    a: any = Some("hi" + "!")
+    case asType[Option<str>](a):
+      Ok(o):
+        case o:
+          Some(v): expect(v).toEq("hi!")
+          None: fail("expected Some")
+      Err(_): fail("expected Option<str>")
+  # Result / simple enum / ADT enum recovery from `any` is not yet
+  # available: `[strict-any/any-implicit-unwrap]` rejects the implicit
+  # form, and `asType[T]` returns Err for Result / enum targets ("target
+  # not yet supported"). Tracked as a follow-up to extend `asType`
+  # coverage to those payloads.
 
 mixedAnyMapGlobal: Map<str, any> = {}
 
 @describe("mixed any literal reassignment")
 fn mixedAnyLiteralReassignmentTests():
+  # Reassigning `Map<str, any>` / `List<any>` / `Set<any>` with mixed literals
+  # still works; only the per-element narrow back to a concrete type now goes
+  # through `asType[T]`. The tests below pin the literal-reassign behaviour
+  # plus one representative narrow to keep the canonical readback covered.
   @it("should reassign local Map<str, any> with mixed value types via literal")
   fn shouldReassignLocalMapStrAnyWithMixedLiteral():
     m: Map<str, any> = {}
     m = {"a": 1, "b": "two", "c": true}
-    vi: int = m["a"]
-    vs: str = m["b"]
-    vb: bool = m["c"]
-    expect(vi).toEq(1)
-    expect(vs).toEq("two")
-    expect(vb).toEq(true)
+    case asType[int](m["a"]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("a not int")
+    case asType[str](m["b"]):
+      Ok(vs): expect(vs).toEq("two")
+      Err(_): fail("b not str")
+    case asType[bool](m["c"]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("c not bool")
   @it("should reassign local List<any> with mixed element types via literal")
   fn shouldReassignLocalListAnyWithMixedLiteral():
     xs: List<any> = []
     xs = [1, "x", true]
-    vi: int = xs[0]
-    vs: str = xs[1]
-    vb: bool = xs[2]
-    expect(vi).toEq(1)
-    expect(vs).toEq("x")
-    expect(vb).toEq(true)
+    case asType[int](xs[0]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("xs[0] not int")
+    case asType[str](xs[1]):
+      Ok(vs): expect(vs).toEq("x")
+      Err(_): fail("xs[1] not str")
+    case asType[bool](xs[2]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("xs[2] not bool")
   @it("should reassign module-global Map<str, any> with mixed value types via literal")
   fn shouldReassignModuleGlobalMapStrAnyWithMixedLiteral():
     mixedAnyMapGlobal = {"a": 1, "b": "two", "c": true}
-    vi: int = mixedAnyMapGlobal["a"]
-    vs: str = mixedAnyMapGlobal["b"]
-    vb: bool = mixedAnyMapGlobal["c"]
-    expect(vi).toEq(1)
-    expect(vs).toEq("two")
-    expect(vb).toEq(true)
+    case asType[int](mixedAnyMapGlobal["a"]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("a not int")
+    case asType[str](mixedAnyMapGlobal["b"]):
+      Ok(vs): expect(vs).toEq("two")
+      Err(_): fail("b not str")
+    case asType[bool](mixedAnyMapGlobal["c"]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("c not bool")
   @it("should reassign local Set<any> with mixed element types via literal")
   fn shouldReassignLocalSetAnyWithMixedLiteral():
     s: Set<any> = {}
@@ -1231,20 +996,25 @@ fn mixedAnyLiteralReassignmentTests():
   fn shouldCompoundAssignLocalListAnyWithMixedLiteral():
     xs: List<any> = []
     xs += [1, "x", true]
-    vi: int = xs[0]
-    vs: str = xs[1]
-    vb: bool = xs[2]
-    expect(vi).toEq(1)
-    expect(vs).toEq("x")
-    expect(vb).toEq(true)
+    case asType[int](xs[0]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("xs[0] not int")
+    case asType[str](xs[1]):
+      Ok(vs): expect(vs).toEq("x")
+      Err(_): fail("xs[1] not str")
+    case asType[bool](xs[2]):
+      Ok(vb): expect(vb).toEq(true)
+      Err(_): fail("xs[2] not bool")
   @it("should compound-assign local Map<str, any> with mixed value types via literal")
   fn shouldCompoundAssignLocalMapStrAnyWithMixedLiteral():
     m: Map<str, any> = {}
     m += {"a": 1, "b": "two"}
-    vi: int = m["a"]
-    vs: str = m["b"]
-    expect(vi).toEq(1)
-    expect(vs).toEq("two")
+    case asType[int](m["a"]):
+      Ok(vi): expect(vi).toEq(1)
+      Err(_): fail("a not int")
+    case asType[str](m["b"]):
+      Ok(vs): expect(vs).toEq("two")
+      Err(_): fail("b not str")
   @it("should compound-assign local Set<any> with mixed element types via literal")
   fn shouldCompoundAssignLocalSetAnyWithMixedLiteral():
     s: Set<any> = {}

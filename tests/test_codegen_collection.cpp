@@ -1403,22 +1403,16 @@ TEST_F(CodeGenTest, FilterBasics) {
 
 TEST_F(CodeGenTest, FilterClosureAndUntyped) {
     // FilterWithClosure
-    {
-        std::string src =
-            "threshold = 3\n"
-            "xs = [1, 2, 3, 4, 5]\n"
-            "ys = filter(xs, (x: int) => x > threshold)\n"
-            "print(ys)";
-        EXPECT_EQ(runSource(src), "[4, 5]\n");
-    }
-    // FilterUntypedLambdaParam
-    {
-        std::string src =
-            "xs = [1, 2, 3, 4, 5]\n"
-            "ys = filter(xs, (x) => x > 3)\n"
-            "print(ys)";
-        EXPECT_EQ(runSource(src), "[4, 5]\n");
-    }
+    std::string src =
+        "threshold = 3\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = filter(xs, (x: int) => x > threshold)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[4, 5]\n");
+    // FilterUntypedLambdaParam was removed in #2322: the unannotated `(x) =>
+    // x > 3` shape implies `x: any`, and `any > int` is rejected by the
+    // `any-arithmetic` rule. Lambdas must annotate their parameter type (or
+    // use the canonical inference path).
 }
 
 TEST_F(CodeGenTest, FilterUFCSAndErrors) {

@@ -48,7 +48,7 @@ class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
                      bool coverage_mode = false, int coverage_file_id_offset = 0,
-                     bool outline_mode = false, bool strict_any_mode = false);
+                     bool outline_mode = false);
     ~CodeGen();
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
@@ -1171,8 +1171,6 @@ public:
     int for_snap_counter_ = 0;   // monotonic counter for unique __for_iter_snap names (#1021)
     bool test_mode_ = false;
     bool outline_mode_ = false;
-    // #2319: opt-in strict-any semantics; see docs/reference/strict-any.md.
-    bool strict_any_mode_ = false;
     // True iff a top-level or describe-nested `@only @it` directive exists in
     // the current translation unit. Set during compile()'s pre-pass and read
     // by emitItDirective / emitEachItDirective / emitPropertyItDirective to
@@ -1237,35 +1235,27 @@ public:
     std::unordered_set<std::string> deprecated_variables_;
     std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
     std::vector<std::string> warnings_;
-    // #2316: keyed by operator spelling ("+", "<", "unary -") to avoid pushing
-    // one string per call site into warnings_ when an op repeats. jit_runner
-    // content-dedups warnings_ at surface time too, so this only prunes the
-    // per-site allocation cost — observable output is the same either way.
-    std::unordered_set<std::string> warned_any_ops_;
 
     void emitDeprecationWarning(const std::string &name);
-    // #2316: push a deprecation warning for direct `<op>` on `any`, deduped
-    // by `opKey` (operator spelling). #2322 will flip the body to codegenError.
-    void warnAnyOpDeprecated(std::string opKey, std::string message);
 
-    // Strict-any diagnostics (#2319). Each rule is identified by a short
+    // Strict-any diagnostics. Each rule is identified by a short
     // kebab-case id embedded in the message as `[strict-any/<rule>]:` so
-    // users can grep and follow-up issues can extend the catalog without
-    // changing the diagnostic shape.
+    // users can grep their output and follow-up rules slot into the same
+    // diagnostic shape. The `strict-any/` prefix is retained as the rule
+    // namespace even though strict semantics are the default since
+    // v0.0.30 (#2322).
     [[noreturn]] void strictAnyError(const SourceLocation &loc,
                                      const std::string &rule,
                                      const std::string &msg);
 
-    // #2321 `any-implicit-unwrap` rule helper. Each Path 9 call site (var
-    // decl, named-call arg, lambda-call arg, Ok/Err/Some slot) feeds the
-    // same shape: a site-specific context phrase + the target type name.
-    // The helper appends the shared remediation suffix ("performs an
-    // implicit runtime unwrap; use ...") so the wording lives at one place,
-    // and routes to `strictAnyError` or `emitAnyUsageWarning` based on
-    // `strict_any_mode_` and `shouldEmitAnyLintAt(loc.file_id)`.
-    void emitImplicitUnwrapDiag(const SourceLocation &loc,
-                                const std::string &context,
-                                const std::string &typeName);
+    // `any-implicit-unwrap` rule helper. Each Path 9 call site (var decl,
+    // named-call arg, lambda-call arg, Ok/Err/Some slot) feeds the same
+    // shape: a site-specific context phrase + the target type name. The
+    // helper appends the shared remediation suffix ("performs an implicit
+    // runtime unwrap; use ...") so the wording lives at one place.
+    [[noreturn]] void emitImplicitUnwrapDiag(const SourceLocation &loc,
+                                             const std::string &context,
+                                             const std::string &typeName);
 
     // @native let constants
     std::unordered_set<std::string> native_constants_;
@@ -2102,7 +2092,6 @@ public:
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
     // Function call helper (B4).
     // `explicitOverloads`, when non-null, bypasses findFunction() and uses
@@ -2825,9 +2814,12 @@ public:
                                     const std::string &targetTypeName);
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
-    // #2319: shared predicate for the arithmetic operators that dispatch
-    // through emitAnyBinaryOp's `arithOps` map; co-located with that map
-    // so the two cannot drift.
+    // Shared predicate for the binary operators rejected by the
+    // `[strict-any/any-arithmetic]` rule: the seven arithmetic ops plus
+    // the four ordering comparisons (`<`, `<=`, `>`, `>=`). Equality
+    // (`==`, `!=`) is intentionally excluded because `__ry_any_eq`
+    // returns 0 on type mismatch (safe), whereas ordering would trap at
+    // runtime on heterogeneous operands.
     static bool isAnyArithOp(const std::string &op);
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);

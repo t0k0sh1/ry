@@ -10,8 +10,9 @@ fn getPathTests():
       m: Map<str, any> = {"a": 1, "b": 2}
       case m.getPath("a"):
         Some(v):
-          x: int = v
-          expect(x).toEq(1)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(1)
+            Err(_): fail("expected int")
         None: fail("expected Some")
 
     @it("returns Some for existing top-level key (str)")
@@ -19,8 +20,9 @@ fn getPathTests():
       m: Map<str, any> = {"a": "hello"}
       case m.getPath("a"):
         Some(v):
-          s: str = v
-          expect(s).toEq("hello")
+          case asType[str](v):
+            Ok(s): expect(s).toEq("hello")
+            Err(_): fail("expected str")
         None: fail("expected Some")
 
     @it("returns None for missing top-level key")
@@ -41,8 +43,9 @@ fn getPathTests():
       cfg: Map<str, any> = {"server": inner}
       case cfg.getPath("server.host"):
         Some(v):
-          s: str = v
-          expect(s).toEq("localhost")
+          case asType[str](v):
+            Ok(s): expect(s).toEq("localhost")
+            Err(_): fail("expected str")
         None: fail("expected Some")
 
     @it("returns Some for 3-deep path")
@@ -52,8 +55,9 @@ fn getPathTests():
       a1: Map<str, any> = {"a": a2}
       case a1.getPath("a.b.c"):
         Some(v):
-          x: int = v
-          expect(x).toEq(42)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(42)
+            Err(_): fail("expected int")
         None: fail("expected Some")
 
     @it("returns None when intermediate key missing")
@@ -77,8 +81,9 @@ fn dotSugarTests():
       m: Map<str, any> = {"a": 42}
       case m.a:
         Some(v):
-          x: int = v
-          expect(x).toEq(42)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(42)
+            Err(_): fail("expected int")
         None: fail("expected Some")
 
     @it("returns None for missing top-level key")
@@ -94,8 +99,9 @@ fn dotSugarTests():
       cfg: Map<str, any> = {"server": inner}
       case cfg.server.host:
         Some(v):
-          s: str = v
-          expect(s).toEq("localhost")
+          case asType[str](v):
+            Ok(s): expect(s).toEq("localhost")
+            Err(_): fail("expected str")
         None: fail("expected Some")
 
     @it("returns Some(any) for 3-deep dot chain")
@@ -105,8 +111,9 @@ fn dotSugarTests():
       a1: Map<str, any> = {"a": a2}
       case a1.a.b.c:
         Some(v):
-          x: int = v
-          expect(x).toEq(99)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(99)
+            Err(_): fail("expected int")
         None: fail("expected Some")
 
     @it("returns None when intermediate key missing in chain")
@@ -131,8 +138,9 @@ fn setPathTests():
       m.setPath("a", 99)
       case m.getPath("a"):
         Some(v):
-          x: int = v
-          expect(x).toEq(99)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(99)
+            Err(_): fail("expected int")
         None: fail("expected Some")
 
     @it("inserts new top-level key with str")
@@ -141,8 +149,9 @@ fn setPathTests():
       m.setPath("new", "value")
       case m.getPath("new"):
         Some(v):
-          s: str = v
-          expect(s).toEq("value")
+          case asType[str](v):
+            Ok(s): expect(s).toEq("value")
+            Err(_): fail("expected str")
         None: fail("expected Some after insert")
 
     @it("inserts new key on empty Map")
@@ -151,8 +160,9 @@ fn setPathTests():
       m.setPath("k", 42)
       case m.getPath("k"):
         Some(v):
-          x: int = v
-          expect(x).toEq(42)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(42)
+            Err(_): fail("expected int")
         None: fail("expected Some after insert on empty")
 
   @describe("multi-segment nested write")
@@ -164,8 +174,9 @@ fn setPathTests():
       cfg.setPath("server.host", "new")
       case cfg.getPath("server.host"):
         Some(v):
-          s: str = v
-          expect(s).toEq("new")
+          case asType[str](v):
+            Ok(s): expect(s).toEq("new")
+            Err(_): fail("expected str")
         None: fail("expected Some after update")
 
     @it("inserts new leaf in existing 2-deep path")
@@ -175,8 +186,9 @@ fn setPathTests():
       cfg.setPath("server.port", 8080)
       case cfg.getPath("server.port"):
         Some(v):
-          x: int = v
-          expect(x).toEq(8080)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(8080)
+            Err(_): fail("expected int")
         None: fail("expected Some after insert")
 
     @it("updates existing leaf in 3-deep path")
@@ -187,8 +199,9 @@ fn setPathTests():
       a1.setPath("a.b.c", 999)
       case a1.getPath("a.b.c"):
         Some(v):
-          x: int = v
-          expect(x).toEq(999)
+          case asType[int](v):
+            Ok(x): expect(x).toEq(999)
+            Err(_): fail("expected int")
         None: fail("expected Some after update")
 
 @describe("end-to-end: json + getPath / setPath / dot sugar")
@@ -200,13 +213,15 @@ fn endToEndTests():
       Ok(cfg):
         case cfg.getPath("db.host"):
           Some(v):
-            host: str = v
-            expect(host).toEq("localhost")
+            case asType[str](v):
+              Ok(host): expect(host).toEq("localhost")
+              Err(_): fail("expected str")
           None: fail("getPath db.host returned None")
         case cfg.getPath("db.port"):
           Some(v):
-            port: int = v
-            expect(port).toEq(5432)
+            case asType[int](v):
+              Ok(port): expect(port).toEq(5432)
+              Err(_): fail("expected int")
           None: fail("getPath db.port returned None")
       Err(e): fail("json.load failed")
 
@@ -217,8 +232,9 @@ fn endToEndTests():
       Ok(cfg):
         case cfg.a.b:
           Some(v):
-            s: str = v
-            expect(s).toEq("deep")
+            case asType[str](v):
+              Ok(s): expect(s).toEq("deep")
+              Err(_): fail("expected str")
           None: fail("dot sugar returned None")
       Err(e): fail("json.load failed")
 
@@ -230,8 +246,9 @@ fn endToEndTests():
         cfg.setPath("k", "new")
         case cfg.getPath("k"):
           Some(v):
-            s: str = v
-            expect(s).toEq("new")
+            case asType[str](v):
+              Ok(s): expect(s).toEq("new")
+              Err(_): fail("expected str")
           None: fail("getPath after setPath returned None")
       Err(e): fail("json.load failed")
 
@@ -244,8 +261,9 @@ fn listIndexTests():
       Ok(cfg):
         case cfg.getPath("replicas.0"):
           Some(v):
-            s: str = v
-            expect(s).toEq("r1")
+            case asType[str](v):
+              Ok(s): expect(s).toEq("r1")
+              Err(_): fail("expected str")
           None: fail("expected Some")
       Err(e): fail("json.load failed")
 
@@ -256,8 +274,9 @@ fn listIndexTests():
       Ok(cfg):
         case cfg.getPath("replicas.1"):
           Some(v):
-            s: str = v
-            expect(s).toEq("r2")
+            case asType[str](v):
+              Ok(s): expect(s).toEq("r2")
+              Err(_): fail("expected str")
           None: fail("expected Some")
       Err(e): fail("json.load failed")
 
@@ -276,8 +295,9 @@ fn listIndexTests():
       Ok(cfg):
         case cfg.getPath("db.hosts.0"):
           Some(v):
-            s: str = v
-            expect(s).toEq("localhost")
+            case asType[str](v):
+              Ok(s): expect(s).toEq("localhost")
+              Err(_): fail("expected str")
           None: fail("expected Some")
       Err(e): fail("json.load failed")
 
@@ -285,12 +305,16 @@ fn listIndexTests():
 # None out of the enclosing fn (which therefore must return Option<T>),
 # matching the use case `let host: str = cfg.server.host?`.
 fn lookupHost(cfg: Map<str, any>) -> Option<str>:
-  host: str = cfg.server.host?
-  return Some(host)
+  v = cfg.server.host?
+  case asType[str](v):
+    Ok(host): return Some(host)
+    Err(_): return None
 
 fn lookupHostGetPath(cfg: Map<str, any>) -> Option<str>:
-  host: str = cfg.getPath("server.host")?
-  return Some(host)
+  v = cfg.getPath("server.host")?
+  case asType[str](v):
+    Ok(host): return Some(host)
+    Err(_): return None
 
 @describe("? operator unwrap for dot sugar and getPath")
 fn questionOpTests():
@@ -333,9 +357,10 @@ fn getPathNumericEdgeCases():
     m: Map<str, any> = {"items": items}
     case m.getPath("items.012"):
       Some(v):
-        x: int = v
-        # std::stoll("012") returns 12, NOT 10 (octal).
-        expect(x).toEq(130)
+        case asType[int](v):
+          # std::stoll("012") returns 12, NOT 10 (octal).
+          Ok(x): expect(x).toEq(130)
+          Err(_): fail("expected int")
       None: fail("expected Some(130) at items.012")
 
   @it("negative-looking segment is treated as a str key, not a reverse index")
@@ -371,10 +396,11 @@ fn setPathSharedAliasing():
     m1.setPath("a.b", 99)
     case m2.getPath("a.b"):
       Some(v):
-        x: int = v
-        # Top-level COW forks m1's outer Map but the inner Map's Arc
-        # remains shared with m2, so m2 observes the in-place write.
-        expect(x).toEq(99)
+        case asType[int](v):
+          # Top-level COW forks m1's outer Map but the inner Map's Arc
+          # remains shared with m2, so m2 observes the in-place write.
+          Ok(x): expect(x).toEq(99)
+          Err(_): fail("expected int")
       None: fail("expected Some(99) at m2.a.b")
 
 # Issue #2301: keys containing '.' are unaddressable. `splitDotPath`

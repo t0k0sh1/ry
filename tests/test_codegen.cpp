@@ -784,67 +784,14 @@ TEST_F(CodeGenTest, AnyTypeRejectionForFunctionPointer) {
         "x: any = f"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, AnyEnumUnwrapSimpleEnumTypeMismatchTraps) {
-    // #1798: simple enum wrapped in `any` must trap when unwrapped as a
-    // different simple-enum type. Descriptor-pointer equality at unwrap
-    // distinguishes Color from Mode even though both lower to `i64`.
-    EXPECT_EXIT(runSource(
-        "enum AnyMismatchColor:\n"
-        "  Red\n"
-        "  Green\n"
-        "enum AnyMismatchMode:\n"
-        "  On\n"
-        "  Off\n"
-        "a: any = AnyMismatchColor::Red\n"
-        "m: AnyMismatchMode = a\n"
-        "print(m == AnyMismatchMode::On)\n"),
-        ::testing::ExitedWithCode(1),
-        "any enum type mismatch \\(expected AnyMismatchMode");
-}
-
-TEST_F(CodeGenTest, AnyEnumUnwrapOptionGenericMismatchTraps) {
-    // #1798: Option<T> wrapped in `any` must trap when unwrapped as a
-    // different generic parameterization. The descriptor cache key
-    // includes the full inner type, so `Option<int>` and `Option<str>`
-    // resolve to distinct descriptors.
-    EXPECT_EXIT(runSource(
-        "a: any = Some(1)\n"
-        "o: Option<str> = a\n"
-        "case o:\n"
-        "  Some(v): print(v)\n"
-        "  None: print(\"none\")\n"),
-        ::testing::ExitedWithCode(1),
-        "any enum type mismatch \\(expected Option<str>");
-}
-
-TEST_F(CodeGenTest, AnyEnumUnwrapResultGenericMismatchTraps) {
-    // #1798: Result<T, E> with an ARC-managed Ok slot must trap when
-    // unwrapped as a different parameterization. Exercises the
-    // source_type_name propagation rule across the alloca for `r`.
-    EXPECT_EXIT(runSource(
-        "r: Result<int, str> = Ok(7)\n"
-        "a: any = r\n"
-        "out: Result<List<int>, str> = a\n"
-        "case out:\n"
-        "  Ok(v): print(v[0])\n"
-        "  Err(e): print(e)\n"),
-        ::testing::ExitedWithCode(1),
-        "any enum type mismatch \\(expected Result<List<int>, str>");
-}
-
-TEST_F(CodeGenTest, AnyEnumUnwrapNonEnumPayloadTraps) {
-    // #1798: a non-enum tag in `any` (here a List, tag 5) must trap when
-    // the static target is an enum type. Hits the tag-check branch
-    // before the descriptor check.
-    EXPECT_EXIT(runSource(
-        "a: any = [1, 2, 3]\n"
-        "o: Option<int> = a\n"
-        "case o:\n"
-        "  Some(v): print(v)\n"
-        "  None: print(\"none\")\n"),
-        ::testing::ExitedWithCode(1),
-        "any type mismatch \\(expected Option<int>, got non-enum\\)");
-}
+// AnyEnumUnwrap*Traps death tests (#1798) exercised the runtime
+// type-mismatch trap reached via the Path 9a implicit-unwrap pattern
+// (`m: AnyMismatchMode = a` where `a: any`). Path 9a is now rejected at
+// compile time by the `[strict-any/any-implicit-unwrap]` rule (#2322), so
+// the runtime trap from this entry point is no longer reachable. The
+// underlying runtime check is still exercised through other entry points
+// (return-type coercion, Result/Option case-destructure unwrap) covered
+// by the CoerceResult* tests below and the spec suite.
 
 TEST_F(CodeGenTest, CoerceResultOkSimpleEnumMismatchTraps) {
     // #1808: coerceResultType Ok slot dispatches to unwrapFromAny via the

@@ -335,36 +335,31 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
         }
 
         if (isAnyType(args[i]->getType()) && canAnyHoldType(info.paramTypes[i])) {
-            // #2321: implicit any → concrete unwrap on lambda-call argument
-            // (Path 9c, primitive arm). Strict mode rejects; compat mode warns.
+            // Path 9c primitive arm: lambda-call arg with any operand.
+            // Rejected by [strict-any/any-implicit-unwrap] since #2322.
             const std::string ptype =
                 i < info.paramTypeNames.size() && !info.paramTypeNames[i].empty()
                     ? info.paramTypeNames[i] : std::string{"..."};
             emitImplicitUnwrapDiag(current_loc_,
                 "passing 'any' value to lambda parameter of type '" + ptype + "'",
                 ptype);
-            args[i] = unwrapFromAny(args[i], info.paramTypes[i]);
-            continue;
         }
 
         if (isAnyType(args[i]->getType()) &&
             llvm::isa<llvm::StructType>(info.paramTypes[i]) &&
             findRecordInfoForType(
                 llvm::cast<llvm::StructType>(info.paramTypes[i]))) {
-            // #1797: any → record unwrap on function call argument coercion.
+            // Path 9c record arm: same rejection as the primitive arm —
+            // record-target unwrap is structurally identical.
             std::string paramName =
                 i < info.paramTypeNames.size() ? info.paramTypeNames[i]
                                                : findRecordTypeName(
                                                      llvm::cast<llvm::StructType>(
                                                          info.paramTypes[i]));
-            // #2321: same diagnostic as the primitive arm — record-target
-            // unwrap is structurally identical from the user's perspective.
             const std::string ptype = paramName.empty() ? std::string{"..."} : paramName;
             emitImplicitUnwrapDiag(current_loc_,
                 "passing 'any' value to lambda parameter of type '" + ptype + "'",
                 ptype);
-            args[i] = unwrapFromAny(args[i], info.paramTypes[i], paramName);
-            continue;
         }
 
         if (i < info.paramTypeNames.size()) {
