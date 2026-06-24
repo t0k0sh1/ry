@@ -76,6 +76,16 @@ public:
         return loader_warnings_;
     }
 
+    // #2317: file_ids belonging to stdlib or cross-package modules that
+    // were inlined into the resolved program. CodeGen uses this set to
+    // suppress any-usage lint warnings on definitions the importer cannot
+    // act on (third-party / stdlib). Definitions from the user's own
+    // package (intra-package multi-file projects) are NOT added here, so
+    // they remain subject to lint.
+    const std::unordered_set<int> &externalFileIds() const {
+        return external_file_ids_;
+    }
+
 private:
     struct ResolvedPath {
         std::string path;
@@ -131,6 +141,8 @@ private:
 
     // Warnings emitted during import resolution; surfaced by `loaderWarnings()`.
     std::vector<std::string> loader_warnings_;
+    // #2317: see externalFileIds() comment for usage.
+    std::unordered_set<int> external_file_ids_;
     // #1769: referrer dirs whose `ry/` shadow probe has already been performed.
     // The probe does two filesystem stats per `ry/*` import; caching by
     // referrer collapses N stats into one for files with multiple `ry.*` imports.

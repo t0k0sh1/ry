@@ -116,6 +116,25 @@ static bool isExportable(const StmtNode &stmt) {
            std::holds_alternative<DirectiveDefStmt>(stmt);
 }
 
+// #2317: file_id of an exportable definition's source location. Used to
+// register stdlib / cross-package definitions as "external" so CodeGen
+// can gate any-usage lint warnings.
+static int getStmtFileId(const StmtNode &stmt) {
+    if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
+        return std::get<std::unique_ptr<FnStmt>>(stmt)->loc.file_id;
+    if (std::holds_alternative<RecordStmt>(stmt))
+        return std::get<RecordStmt>(stmt).loc.file_id;
+    if (std::holds_alternative<EnumStmt>(stmt))
+        return std::get<EnumStmt>(stmt).loc.file_id;
+    if (std::holds_alternative<TypeAliasStmt>(stmt))
+        return std::get<TypeAliasStmt>(stmt).loc.file_id;
+    if (std::holds_alternative<AssignStmt>(stmt))
+        return std::get<AssignStmt>(stmt).loc.file_id;
+    if (std::holds_alternative<DirectiveDefStmt>(stmt))
+        return std::get<DirectiveDefStmt>(stmt).loc.file_id;
+    return -1;
+}
+
 // Get the name of an exportable definition
 static std::string getExportName(const StmtNode &stmt) {
     if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
@@ -358,7 +377,8 @@ static void extractDefinitions(Program &source, Program &dest,
                                 bool cross_package, bool from_stdlib,
                                 std::unordered_map<std::string, bool> *out_names = nullptr,
                                 std::unordered_map<std::string, ExportableKind> *out_kinds = nullptr,
-                                int file_id = 0) {
+                                int file_id = 0,
+                                std::unordered_set<int> *out_external_file_ids = nullptr) {
     // REQ-B3 (#1560): code availability is decoupled from name visibility.
     // Every exportable definition is copied to the importer's program so a
     // `@public` facade can call its non-`@public` helpers in the same JIT
@@ -371,6 +391,13 @@ static void extractDefinitions(Program &source, Program &dest,
         requested.insert(item.name);
     std::unordered_map<std::string, bool> found;
     std::unordered_map<std::string, ExportableKind> found_kinds;
+    // #2317: stdlib and cross-package definitions are inlined into the
+    // importer's program with their original file_id. Track those so
+    // CodeGen can suppress any-usage lint warnings on code the importer
+    // cannot act on. Intra-package imports propagate file_ids unchanged
+    // (no marking) so the user's multi-file project still gets warnings.
+    const bool mark_external =
+        out_external_file_ids != nullptr && (cross_package || from_stdlib);
     for (auto &stmt : source) {
         if (!isExportable(stmt)) continue;
         std::string name = getExportName(stmt);
@@ -382,6 +409,10 @@ static void extractDefinitions(Program &source, Program &dest,
         if (requested.count(name)) {
             found[name] = is_pub;
             found_kinds[name] = kind;
+        }
+        if (mark_external) {
+            int fid = getStmtFileId(stmt);
+            if (fid >= 0) out_external_file_ids->insert(fid);
         }
         dest.push_back(std::move(stmt));
     }
@@ -976,7 +1007,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                    rp.from_stdlib,
                                    &exports_cache_[abs_path],
                                    &exports_kinds_cache_[abs_path],
-                                   qimp.loc.file_id);
+                                   qimp.loc.file_id,
+                                   &external_file_ids_);
             } else {
                 loading_.insert(abs_path);
                 auto sub_prog = loadAndParse(abs_path, sm_);
@@ -990,7 +1022,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                    rp.from_stdlib,
                                    &exports_cache_[abs_path],
                                    &exports_kinds_cache_[abs_path],
-                                   qimp.loc.file_id);
+                                   qimp.loc.file_id,
+                                   &external_file_ids_);
             }
 
             result.push_back(std::move(stmt));
@@ -1138,7 +1171,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                imp.loc.line, cross_package, rp.from_stdlib,
                                &exports_cache_[abs_path],
                                &exports_kinds_cache_[abs_path],
-                               imp.loc.file_id);
+                               imp.loc.file_id,
+                               &external_file_ids_);
         } else {
             loading_.insert(abs_path);
             auto sub_prog = loadAndParse(abs_path, sm_);
@@ -1151,7 +1185,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                                imp.loc.line, cross_package, rp.from_stdlib,
                                &exports_cache_[abs_path],
                                &exports_kinds_cache_[abs_path],
-                               imp.loc.file_id);
+                               imp.loc.file_id,
+                               &external_file_ids_);
         }
     }
 

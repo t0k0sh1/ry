@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <sys/wait.h>
@@ -25,24 +26,40 @@ namespace {
 struct RunResult {
     int exit_code;
     std::string out;
+    std::string err;
 };
 
 RunResult runScript(const std::string &scriptPath) {
-    int pipefd[2];
-    if (pipe(pipefd) != 0) return {-1, ""};
+    int outPipe[2];
+    int errPipe[2];
+    if (pipe(outPipe) != 0) return {-1, "", ""};
+    if (pipe(errPipe) != 0) {
+        close(outPipe[0]);
+        close(outPipe[1]);
+        return {-1, "", ""};
+    }
 
     pid_t pid = fork();
     if (pid < 0) {
-        close(pipefd[0]);
-        close(pipefd[1]);
-        return {-1, ""};
+        close(outPipe[0]);
+        close(outPipe[1]);
+        close(errPipe[0]);
+        close(errPipe[1]);
+        return {-1, "", ""};
     }
 
     if (pid == 0) {
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
-        close(pipefd[1]);
+        close(outPipe[0]);
+        close(errPipe[0]);
+        // #2317: stdout and stderr go to separate pipes. The script uses
+        // `aLoad: any = s` / `aMap: any = m["k"]`, both of which trigger
+        // the Pattern 1 / Pattern 4 lint warnings. Splitting the streams
+        // keeps the equality assertion on stdout clean while preserving
+        // stderr (ASan / UBSan output) for failure diagnostics.
+        dup2(outPipe[1], STDOUT_FILENO);
+        dup2(errPipe[1], STDERR_FILENO);
+        close(outPipe[1]);
+        close(errPipe[1]);
         close(STDIN_FILENO);
 
         // `RY_BINARY_PATH` is the absolute path to the built `ry` binary
@@ -58,14 +75,27 @@ RunResult runScript(const std::string &scriptPath) {
         _exit(127);
     }
 
-    close(pipefd[1]);
+    close(outPipe[1]);
+    close(errPipe[1]);
+    auto readAll = [](int fd) -> std::string {
+        std::string s;
+        std::array<char, 4096> buf;
+        ssize_t n;
+        while ((n = read(fd, buf.data(), buf.size())) > 0)
+            s.append(buf.data(), static_cast<size_t>(n));
+        close(fd);
+        return s;
+    };
+    // Drain both pipes concurrently. Sequential draining would deadlock
+    // if the child fills the unread pipe's kernel buffer (~64 KB) while
+    // the parent is blocked on the other — same pattern as
+    // tests/test_any_usage_warnings.cpp / test_deprecated_warnings.cpp.
     std::string out;
-    std::array<char, 4096> buf;
-    ssize_t n;
-    while ((n = read(pipefd[0], buf.data(), buf.size())) > 0) {
-        out.append(buf.data(), static_cast<size_t>(n));
-    }
-    close(pipefd[0]);
+    std::string err;
+    std::thread outReader([&]() { out = readAll(outPipe[0]); });
+    std::thread errReader([&]() { err = readAll(errPipe[0]); });
+    outReader.join();
+    errReader.join();
 
     int status = 0;
     pid_t wp;
@@ -75,7 +105,7 @@ RunResult runScript(const std::string &scriptPath) {
     int code = -1;
     if (wp != -1 && WIFEXITED(status))
         code = WEXITSTATUS(status);
-    return {code, out};
+    return {code, out, err};
 }
 
 } // namespace
@@ -126,7 +156,8 @@ TEST_F(Regression2248PositiveStrPredicate,
         auto r = runScript(scriptPath_.string());
         if (r.exit_code != 0) {
             ++fails;
-            if (sample_fail_output.empty()) sample_fail_output = r.out;
+            if (sample_fail_output.empty())
+                sample_fail_output = r.out + "\n--- stderr ---\n" + r.err;
         } else if (r.out != "ab\nef\na=3\n") {
             ++mismatches;
             if (sample_mismatch_output.empty())

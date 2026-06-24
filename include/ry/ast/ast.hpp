@@ -46,6 +46,14 @@ struct TypeNode {
 
     std::string toString() const;
 
+    // #2317: source-level "is the user-written type the bare name 'any'?".
+    // Returns false for type aliases that resolve to any, generics, etc. —
+    // intentionally syntactic for any-usage lint, not semantic.
+    bool isBareAnyName() const {
+        const auto *b = std::get_if<BasicType>(&data);
+        return b && b->name == "any";
+    }
+
     static TypeNodePtr makeBasic(std::string name); // NOLINT(performance-unnecessary-value-param)
     static TypeNodePtr makeGeneric(std::string name, std::vector<TypeNodePtr> args); // NOLINT(performance-unnecessary-value-param)
     static TypeNodePtr makeArray(TypeNodePtr elem, uint64_t size);
@@ -260,7 +268,7 @@ struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<N
 struct ExprStmt   { ExprPtr expr; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
-struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; };
+struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; bool has_explicit_type = false; };
 
 struct ImportName {
     std::string name;                       // original symbol name from the module
