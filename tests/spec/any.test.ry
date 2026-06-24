@@ -1213,3 +1213,205 @@ fn mixedAnyLiteralReassignmentTests():
     expect(1 in s).toEq(true)
     expect("x" in s).toEq(true)
     expect(true in s).toEq(true)
+
+@describe("asType checked cast from any")
+fn asTypeTests():
+  @it("should convert any holding int to Ok(int)")
+  fn shouldAsTypeIntOk():
+    v: any = 42
+    case asType[int](v):
+      Ok(n): expect(n).toEq(42)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should return Err when any tag does not match target int")
+  fn shouldAsTypeIntErrOnMismatch():
+    v: any = "hello"
+    case asType[int](v):
+      Ok(_): fail("expected Err")
+      Err(e):
+        expect(e.message == "asType[int]: expected int").toEq(true)
+  @it("should convert any holding str to Ok(str)")
+  fn shouldAsTypeStrOk():
+    v: any = "hello"
+    case asType[str](v):
+      Ok(s): expect(s).toEq("hello")
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding bool to Ok(bool)")
+  fn shouldAsTypeBoolOk():
+    v: any = true
+    case asType[bool](v):
+      Ok(b): expect(b).toEq(true)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding float to Ok(float)")
+  fn shouldAsTypeFloatOk():
+    v: any = 3.14
+    case asType[float](v):
+      Ok(f): expect(f).toEq(3.14)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should promote any holding int to Ok(float) matching load[float]")
+  fn shouldAsTypeFloatPromoteFromInt():
+    v: any = 7
+    case asType[float](v):
+      Ok(f): expect(f).toEq(7.0)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding record to Ok(record)")
+  fn shouldAsTypeRecordOk():
+    v: any = AnyRecPoint(3, 4)
+    case asType[AnyRecPoint](v):
+      Ok(p):
+        expect(p.x).toEq(3)
+        expect(p.y).toEq(4)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should accept subtype unwrap via descriptor walk (asType[Parent](child))")
+  fn shouldAsTypeRecordSubtype():
+    v: any = AnyRecChildDog("Rex", 4, "Labrador")
+    case asType[AnyRecAnimal](v):
+      Ok(a):
+        expect(a.name).toEq("Rex")
+        expect(a.legs).toEq(4)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should return Err when record types mismatch")
+  fn shouldAsTypeRecordErrOnMismatch():
+    v: any = AnyRecPoint(1, 2)
+    case asType[AnyRecPlain](v):
+      Ok(_): fail("expected Err")
+      Err(e):
+        expect(e.message == "asType[AnyRecPlain]: expected record AnyRecPlain, got a different record type").toEq(true)
+  @it("should convert any holding Option<int> to Ok(Option<int>)")
+  fn shouldAsTypeOptionIntOk():
+    v: any = Some(42)
+    case asType[Option<int>](v):
+      Ok(o):
+        case o:
+          Some(n): expect(n).toEq(42)
+          None: fail("expected Some")
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding List<any> to Ok(List<any>)")
+  fn shouldAsTypeListAnyOk():
+    xs: List<any> = []
+    xs += [1, "two", true]
+    v: any = xs
+    case asType[List<any>](v):
+      Ok(out):
+        expect(out).toHaveLen(3)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding Map<str, any> to Ok(Map<str, any>)")
+  fn shouldAsTypeMapStrAnyOk():
+    m: Map<str, any> = {"k": 1}
+    v: any = m
+    case asType[Map<str, any>](v):
+      Ok(out):
+        expect(out).toHaveLen(1)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should convert any holding Set<any> to Ok(Set<any>)")
+  fn shouldAsTypeSetAnyOk():
+    s: Set<any> = {}
+    s += {1, "x", true}
+    v: any = s
+    case asType[Set<any>](v):
+      Ok(out):
+        expect(out).toHaveLen(3)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should return Err when any tag mismatches target collection")
+  fn shouldAsTypeCollectionErrOnMismatch():
+    v: any = 42
+    case asType[List<any>](v):
+      Ok(_): fail("expected Err")
+      Err(e):
+        expect(e.message == "asType[List<any>]: expected List<any>").toEq(true)
+  @it("should extract typed values from json5-shaped Map<str, any>")
+  fn shouldAsTypeFromJsonShape():
+    m: Map<str, any> = {"age": 30, "name": "Alice"}
+    case asType[int](m["age"]):
+      Ok(n): expect(n).toEq(30)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+    case asType[str](m["name"]):
+      Ok(s): expect(s).toEq("Alice")
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should reject native typed List<int> source (typed-coll guard)")
+  fn shouldAsTypeRejectNativeTypedList():
+    xs: List<int> = [1, 2, 3]
+    v: any = xs
+    case asType[List<int>](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
+  @it("should reject native typed Map<str, int> source (typed-coll guard)")
+  fn shouldAsTypeRejectNativeTypedMap():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    v: any = m
+    case asType[Map<str, int>](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
+  @it("should reject native typed Map source when target is record")
+  fn shouldAsTypeRejectNativeTypedMapForRecord():
+    m: Map<str, int> = {"x": 1, "y": 2}
+    v: any = m
+    case asType[AnyRecPoint](v):
+      Ok(_): fail("expected Err on native typed-coll source")
+      Err(e):
+        expect(e.message.contains("native typed collection")).toEq(true)
+
+@describe("isType type-test on any")
+fn isTypeTests():
+  @it("should return true for matching int tag")
+  fn shouldIsTypeIntTrue():
+    v: any = 42
+    expect(isType[int](v)).toEq(true)
+  @it("should return false for non-matching int tag")
+  fn shouldIsTypeIntFalse():
+    v: any = "hello"
+    expect(isType[int](v)).toEq(false)
+  @it("should return true for matching str tag")
+  fn shouldIsTypeStrTrue():
+    v: any = "hello"
+    expect(isType[str](v)).toEq(true)
+  @it("should return true for matching bool tag")
+  fn shouldIsTypeBoolTrue():
+    v: any = true
+    expect(isType[bool](v)).toEq(true)
+  @it("should return true for matching float tag")
+  fn shouldIsTypeFloatTrue():
+    v: any = 3.14
+    expect(isType[float](v)).toEq(true)
+  @it("should return true for matching List<any> tag")
+  fn shouldIsTypeListAnyTrue():
+    xs: List<any> = []
+    xs += [1, 2, 3]
+    v: any = xs
+    expect(isType[List<any>](v)).toEq(true)
+  @it("should return true for matching Map<str, any> tag")
+  fn shouldIsTypeMapStrAnyTrue():
+    m: Map<str, any> = {"k": 1}
+    v: any = m
+    expect(isType[Map<str, any>](v)).toEq(true)
+  @it("should return true for matching Set<any> tag")
+  fn shouldIsTypeSetAnyTrue():
+    s: Set<any> = {}
+    s += {1, 2}
+    v: any = s
+    expect(isType[Set<any>](v)).toEq(true)
+  @it("should return true for exact record type match")
+  fn shouldIsTypeRecordExactTrue():
+    v: any = AnyRecPoint(1, 2)
+    expect(isType[AnyRecPoint](v)).toEq(true)
+  @it("should return false for different record type")
+  fn shouldIsTypeRecordFalse():
+    v: any = AnyRecPoint(1, 2)
+    expect(isType[AnyRecPlain](v)).toEq(false)
+  @it("should return true for record subtype via descriptor walk")
+  fn shouldIsTypeRecordSubtypeTrue():
+    v: any = AnyRecChildDog("Rex", 4, "Labrador")
+    expect(isType[AnyRecAnimal](v)).toEq(true)
+  @it("should return false when parent record is held but child requested")
+  fn shouldIsTypeRecordParentNotChild():
+    v: any = AnyRecAnimal("Cat", 4)
+    expect(isType[AnyRecChildDog](v)).toEq(false)
+  @it("should return true for isType[any] regardless of held value")
+  fn shouldIsTypeAnyAlwaysTrue():
+    v1: any = 42
+    v2: any = "hello"
+    v3: any = AnyRecPoint(1, 2)
+    expect(isType[any](v1)).toEq(true)
+    expect(isType[any](v2)).toEq(true)
+    expect(isType[any](v3)).toEq(true)

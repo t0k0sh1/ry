@@ -185,6 +185,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinIterator(*e))    return v;
         if (auto *v = emitBuiltinString(*e))      return v;
         if (auto *v = emitBuiltinConversion(*e))  return v;
+        if (auto *v = emitBuiltinAnyCast(*e))     return v;
         if (auto *v = emitBuiltinQuery(*e))       return v;
         if (auto *v = emitBuiltinCore(*e))        return v;
         if (auto *v = emitBuiltinHigherOrder(*e)) return v;
