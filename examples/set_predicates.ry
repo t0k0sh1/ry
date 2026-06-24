@@ -1,0 +1,25 @@
+# Setの対称差、部分集合判定、in-placeの追加と削除を示す
+a = {1, 2, 3}
+b = {2, 3, 4}
+
+# symmetricDifferenceは両側の片方だけにある要素
+print(symmetricDifference(a, b))
+
+# isSubset / isSuperset で集合関係を判定
+small = {1, 2}
+big = {1, 2, 3}
+print(isSubset(small, big))
+print(isSubset(big, small))
+print(isSuperset(big, small))
+
+# add でin-placeで要素追加。既存要素の追加はno-op
+s = {1, 2, 3}
+add(s, 4)
+add(s, 1)
+print(s)
+print(len(s))
+
+# remove でin-placeで要素削除。存在しない要素のremoveはno-op
+remove(s, 2)
+remove(s, 999)
+print(s)

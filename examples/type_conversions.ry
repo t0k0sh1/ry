@@ -1,0 +1,26 @@
+# int(str)/float(str)/str(v) のcall形式の変換と ?? 既定値を示す
+# `as` キーワードによるキャストは examples/type_cast_as.ry を参照
+
+# 文字列をパース: 成功はOk、失敗はErr
+case int("42"):
+  Ok(v):
+    print(v)
+  Err(e):
+    print(e.message)
+
+case float("3.14"):
+  Ok(v):
+    print(v)
+  Err(e):
+    print(e.message)
+
+# ?? でデフォルト値にフォールバック
+print(int("abc") ?? -1)
+
+# 値の文字列表示 (int/float/boolなどに対応)
+print(str(42))
+print(str(true))
+
+# 第1級関数として扱える: List<str>に対してintを map で適用
+texts: List<str> = ["1", "2", "3"]
+print(map(texts, int))

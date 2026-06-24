@@ -1,0 +1,18 @@
+# threadSpawn/threadJoinとAtomicIntによる並列処理を示す
+from ry.thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
+
+# 並列処理の本体は内側のlambdaにできる
+# AtomicIntへの加算はrace-freeなので、joinを取れば合計値は決定的
+fn runParallelSum() -> int:
+  counter = atomicIntNew(0)
+  t1 = threadSpawn(():
+    atomicIntAdd(counter, 10)
+  )
+  t2 = threadSpawn(():
+    atomicIntAdd(counter, 20)
+  )
+  threadJoin(t1)
+  threadJoin(t2)
+  return atomicIntLoad(counter)
+
+print(runParallelSum())

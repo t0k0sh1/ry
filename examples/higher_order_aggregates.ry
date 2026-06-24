@@ -1,0 +1,44 @@
+# sum/min/maxとany/all、sequenceによるList<Result>の集約を示す
+
+# List全体に対する集約
+print(sum([1, 2, 3, 4, 5]))
+print(min([3, 1, 4, 1, 5]))
+print(max([3, 1, 4, 1, 5]))
+
+# floatのListも同じ関数で集約できる
+print(sum([1.0, 2.0, 3.0]))
+print(min([3.0, 1.0, 2.0]))
+
+# variadic形式: 同じ関数名でスカラーをそのまま並べる
+print(sum(1, 2, 3))
+print(min(3, 5, 1))
+print(max(3, 1, 5))
+
+# 述語ベースの判定
+print(any([1, 2, 3, 4, 5], (n: int) => n > 4))
+print(all([2, 4, 6], (n: int) => n > 0))
+print(all([2, 4, 6], (n: int) => n > 3))
+
+# sequence: List<Result<int, Error>>を1つのResult<List<int>, Error>に畳む
+fn parsePositive(n: int) -> Result<int, Error>:
+  if n > 0:
+    return Ok(n)
+  return Err(Error("non-positive: " + str(n)))
+
+allOk = [parsePositive(1), parsePositive(2), parsePositive(3)]
+print(sequence(allOk))
+
+withErr = [parsePositive(1), parsePositive(-2), parsePositive(3)]
+print(sequence(withErr))
+
+# Optionについても同じくsequenceできる
+fn maybe(n: int, isNone: bool) -> Option<int>:
+  if isNone:
+    return None
+  return Some(n)
+
+allSome = [maybe(10, false), maybe(20, false)]
+print(sequence(allSome))
+
+withNone = [maybe(10, false), maybe(0, true), maybe(30, false)]
+print(sequence(withNone))

@@ -1,0 +1,29 @@
+# getPath/setPathでネストしたMap<str, any>をjq風のドットパスで操作する
+# json.load[Map<str, any>] で取得したJSONデータの操作に有用
+
+# 入れ子のMap<str, any>を準備
+inner: Map<str, any> = {"host": "localhost", "port": 8080}
+config: Map<str, any> = {"server": inner, "debug": true}
+
+# getPathはdot区切りで深い値をたどり、Option<any>を返す
+# any値を具体型に絞り込むには asType[T] でチェック付きcastする
+case getPath(config, "server.host"):
+  Some(v):
+    case asType[str](v):
+      Ok(host):
+        print(host)
+      Err(e):
+        print(e.message)
+  None:
+    print("missing")
+
+# 中間/leaf keyが欠けていれば None。Option<any>のままで判定可能
+print(getPath(config, "missing.host"))
+print(getPath(config, "server.unknown"))
+
+# setPathで既存leafを更新、または新しいleaf keyを追加 (any値に自動昇格)
+setPath(config, "server.port", 9090)
+setPath(config, "server.tls", true)
+
+print(getPath(config, "server.port"))
+print(getPath(config, "server.tls"))

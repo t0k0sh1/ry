@@ -1,0 +1,46 @@
+# walk による再帰的なディレクトリ走査と glob によるパターンマッチを示す
+from ry.filesystem import mkdirAll, walk, glob, removeAll
+from ry.io import writeText
+from ry.path import join
+
+# fixture: 入れ子のディレクトリと数個のファイルを準備
+fn setup(root: str) -> Result<Unit, Error>:
+  removeAll(root)
+  mkdirAll(join(root, "sub", "deep")?)
+  writeText(join(root, "a.log")?, "alpha")
+  writeText(join(root, "sub", "b.log")?, "beta")
+  writeText(join(root, "sub", "deep", "c.txt")?, "gamma")
+  return Ok(0 as u8)
+
+root = "/tmp/ry_examples_walk"
+case setup(root):
+  Ok(_):
+
+    # walk は配下のすべてのエントリ (ファイル・ディレクトリ) を Result で返す
+    case walk(root):
+      Ok(entries):
+        print(len(entries) >= 5)
+      Err(e):
+        print(e.message)
+
+    # glob は1ディレクトリ内でパターンに合うpathをListで返す
+    case join(root, "*.log"):
+      Ok(pattern):
+        case glob(pattern):
+          Ok(matches):
+            print(len(matches))
+          Err(e):
+            print(e.message)
+      Err(e):
+        print(e.message)
+
+    # 該当なしなら空List
+    case glob("/tmp/ry_examples_no_match_*.zzz"):
+      Ok(matches):
+        print(len(matches))
+      Err(e):
+        print(e.message)
+  Err(e):
+    print(e.message)
+
+removeAll(root)

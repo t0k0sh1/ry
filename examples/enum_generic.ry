@@ -1,0 +1,19 @@
+# 型パラメータを持つジェネリックenumと、そのパターンマッチを示す
+enum MyOption<T>:
+  MySome(T)
+  MyNone
+
+fn unwrapOrDefault(opt: MyOption<int>, fallback: int) -> int:
+  return case opt:
+    MyOption::MySome(v) : v
+    MyOption::MyNone : fallback
+
+a = MyOption<int>::MySome(42)
+b = MyOption<int>::MyNone
+
+print(unwrapOrDefault(a, -1))
+print(unwrapOrDefault(b, -1))
+
+# 同じバリアントで同じpayloadなら等しい
+print(MyOption<int>::MySome(42) == MyOption<int>::MySome(42))
+print(MyOption<int>::MySome(1) == MyOption<int>::MyNone)

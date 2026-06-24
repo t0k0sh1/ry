@@ -1,0 +1,25 @@
+# List/Map/Setを引数に取るジェネリック関数と、型推論および明示型引数を示す
+# 単一型引数の基本形は examples/generic_functions.ry を参照
+fn lastOf<T>(items: List<T>) -> T:
+  return items[len(items) - 1]
+
+fn mapHas<K, V>(m: Map<K, V>, key: K) -> bool:
+  return contains(m, key)
+
+fn setSize<T>(s: Set<T>) -> int:
+  return len(s)
+
+# 型推論: 引数からTを推論する
+print(lastOf([10, 20, 30]))
+print(lastOf(["alpha", "beta"]))
+
+# 明示的に[T]を指定する形式
+print(lastOf[int]([10, 20, 30]))
+
+# 複数の型引数を持つジェネリック
+print(mapHas({"a": 1, "b": 2}, "a"))
+print(mapHas[str,int]({"a": 1, "b": 2}, "z"))
+
+# Set<T>も同様
+print(setSize({1, 2, 3}))
+print(setSize[int]({4, 5, 6, 4}))

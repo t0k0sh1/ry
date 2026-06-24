@@ -1,0 +1,24 @@
+# 正規表現の (?i) ケースフラグ、\b 単語境界、{n,m} 量指定子、lazy修飾子を示す
+
+# (?i) でパターン全体を大文字小文字を区別しない判定にする
+print(regexMatch("HELLO", "(?i)hello"))
+print(regexMatch("HELLO", "hello"))
+
+# \b は単語境界。単語の途中ではマッチしない
+print(regexMatch("hello world", "\\bworld\\b"))
+print(regexMatch("helloworld", "\\bworld\\b"))
+
+# (?i) と \b を組み合わせると単語境界つきの大小無視マッチ
+print(regexFindAll("Hello HELLO hello", "(?i)\\bhello\\b"))
+
+# {n} は厳密にn回、{n,m} はn〜m回、{n,} はn回以上の繰り返し
+print(regexMatch("aaa", "a{3}"))
+print(regexMatch("aa", "a{3}"))
+print(regexMatch("aaa", "a{2,4}"))
+print(regexMatch("aaaaa", "a{2,4}"))
+print(regexMatch("aa", "a{2,}"))
+print(regexMatch("a", "a{2,}"))
+
+# lazy修飾子 *? / +? は最短マッチ
+print(regexReplace("\"a\" and \"b\"", "\".*?\"", "X"))
+print(regexReplace("aaa", "a+?", "X"))

@@ -1,0 +1,24 @@
+# 文字列リテラルでの主要なエスケープシーケンスを示す
+# 表示文字数 (Unicode code point数) は examples/string_unicode.ry を参照
+
+# 改行・タブ・バックスラッシュ・引用符
+print("line1\nline2")
+print("col1\tcol2")
+print("path: C:\\Users\\name")
+print("quote: \"hello\"")
+
+# Unicode文字はそのままUTF-8でリテラルに書ける
+print("あいう")
+print("こんにちは")
+
+# raw NUL は文字列内に保持され、Ry の str は byte-safe
+withNul = "a\0b"
+print(byteLen(withNul))
+
+# blockstring (3連引用符) はエスケープ不要で複数行を保持
+multi = """
+  line A
+  line B
+  """
+
+print(multi)

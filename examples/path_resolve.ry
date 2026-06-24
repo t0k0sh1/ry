@@ -1,0 +1,22 @@
+# path モジュールの resolve と isAbsolute を示す
+# 結合や basename/dirname/ext は examples/path_components.ry を参照
+from ry.path import resolve, isAbsolute
+
+# isAbsolute は path が絶対pathかどうかを判定する
+print(isAbsolute("/tmp"))
+print(isAbsolute("tmp/file"))
+print(isAbsolute(""))
+
+# resolve は path を絶対pathに解決する (実体が存在する場合)
+case resolve("/tmp"):
+  Ok(absolute):
+    print(isAbsolute(absolute))
+  Err(e):
+    print(e.message)
+
+# 存在しないpathはErrを返す
+case resolve("/nonexistent_path_xyz_12345_ry_example"):
+  Ok(_):
+    print("unexpected ok")
+  Err(e):
+    print(e.message)

@@ -1,0 +1,25 @@
+# f-stringによる値式の埋め込みとrecord表示を示す
+record Point:
+  x: int
+  y: int
+
+n = 42
+pi = 3.14
+flag = true
+p = Point(3, 4)
+
+# 各プリミティブを {} で埋め込み
+print(f"value: {n}")
+print(f"pi: {pi}")
+print(f"flag: {flag}")
+
+# 中括弧内に式
+a = 1
+b = 2
+print(f"{a} + {b} = {a + b}")
+
+# recordも自動でstr変換
+print(f"point = {p}")
+
+# エスケープではなく文字列リテラルの中括弧
+print("{braces}")

@@ -1,0 +1,33 @@
+# filesystem の copy / move によるファイル操作を示す
+from ry.filesystem import mkdirAll, copy, move, removeAll, isFile
+from ry.io import readText, writeText
+from ry.path import join
+
+# 全工程をResult-valuedな関数にまとめ、? でフラットに書き下す
+fn demo(root: str) -> Result<Unit, Error>:
+  removeAll(root)
+  mkdirAll(root)
+  src = join(root, "source.txt")?
+  writeText(src, "original content")?
+
+  # copy は内容を複製し、元ファイルは残る
+  copyDst = join(root, "copy.txt")?
+  copy(src, copyDst)?
+  print(readText(copyDst)?)
+  print(isFile(src)?)
+
+  # move は元ファイルを別名に移動。元ファイルは消える
+  moveDst = join(root, "moved.txt")?
+  move(src, moveDst)?
+  print(isFile(moveDst)?)
+  print(isFile(src)?)
+  return Ok(0 as u8)
+
+root = "/tmp/ry_examples_copy_move"
+case demo(root):
+  Ok(_):
+    0
+  Err(e):
+    print(e.message)
+
+removeAll(root)

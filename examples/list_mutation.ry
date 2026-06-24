@@ -1,0 +1,38 @@
+# Listの挿入・削除・取得系の操作を示す
+xs = [1, 2, 3]
+
+# insert(list, index, value) で指定位置に挿入
+insert(xs, 1, 99)
+print(xs)
+
+# removeAt(list, index) でindex位置の要素を取り除いて返す
+v = removeAt(xs, 1)
+print(v)
+print(xs)
+
+# pop はOption<T>を返す。空Listに対してNone
+stack = [10, 20, 30]
+print(pop(stack))
+print(stack)
+
+empty: List<int> = []
+print(pop(empty))
+
+# first / last はOptionで安全に取得
+print(first([100, 200, 300]))
+print(last([100, 200, 300]))
+print(first(empty))
+
+# isEmpty で空判定
+print(isEmpty(empty))
+print(isEmpty([0]))
+
+# tap は元のListを返しつつ、副作用関数を要素に適用
+nums = [1, 2, 3]
+echoed = tap(nums, (x: int) => x * 10)
+print(echoed)
+
+# reverse! はin-placeで反転
+ys = [1, 2, 3]
+reverse!(ys)
+print(ys)

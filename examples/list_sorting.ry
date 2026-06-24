@@ -1,0 +1,26 @@
+# Listの並び替え、スライス、distinct、flatを示す
+xs = [5, 3, 1, 4, 2]
+
+# 既定の昇順ソート (非破壊的にコピーを返す)
+print(sort(xs))
+
+# カスタム比較関数で降順
+print(sort(xs, (a: int, b: int) => a > b))
+
+# in-place版のsort!は元のListを書き換える
+mutable = [3, 1, 2]
+sort!(mutable)
+print(mutable)
+
+# slice(start, end) で部分List
+print(slice([10, 20, 30, 40, 50], 1, 4))
+
+# take(n) で先頭から最大n個
+print(take([1, 2, 3, 4, 5], 3))
+print(take([1, 2, 3], 10))
+
+# distinct で重複を除去 (順序は最初の出現順を保つ)
+print(distinct([1, 2, 3, 2, 1, 4]))
+
+# flat で1段の入れ子を平らに
+print(flat([[1, 2], [3, 4], [5]]))

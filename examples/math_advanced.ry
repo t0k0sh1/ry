@@ -1,0 +1,30 @@
+# mathモジュールの三角関数、log/exp/pow、特殊値判定を示す
+from ry.math import PI, E, INF, NAN, sin, cos, tan, atan2, hypot, log, log2, log10, exp, pow, isNan, isInf
+
+# 三角関数 — 引数はラジアン
+print(sin(0.0))
+print(cos(0.0))
+print(tan(0.0))
+
+# 2次元の角度と斜辺
+print(atan2(0.0, 1.0))
+print(hypot(3.0, 4.0))
+
+# 自然対数、底2対数、底10対数
+print(log(1.0))
+print(log2(8.0))
+print(log10(100.0))
+
+# 任意の底を取る log
+print(log(81.0, 3.0))
+
+# 指数関数 e^x、整数版 pow
+print(exp(0.0))
+print(pow(2, 10))
+print(pow(-2, 3))
+
+# 特殊値判定: NAN は自身とも等しくない
+print(isNan(NAN))
+print(NAN == NAN)
+print(isInf(INF))
+print(isNan(log(-1.0)))

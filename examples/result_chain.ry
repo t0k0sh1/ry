@@ -1,0 +1,20 @@
+# ResultをandThenとmapで連結し、Errで短絡することを示す
+# `?` による短絡形式は examples/result_propagation.ry を参照
+fn safeDivide(a: int, b: int) -> Result<int, Error>:
+  if b == 0:
+    return Err(Error("division by zero"))
+  return Ok(a // b)
+
+# andThenはOkなら次の呼び出しに進み、Errならそのまま伝播する
+print(andThen(safeDivide(100, 2), (v: int) => safeDivide(v, 5)))
+print(andThen(safeDivide(10, 0), (v: int) => safeDivide(v, 1)))
+
+# 複数のandThenを連結できる
+print(andThen(andThen(safeDivide(100, 2), (v: int) => safeDivide(v, 5)), (v: int) => safeDivide(v, 2)))
+
+# mapは中身を変換するだけでErrは保持される
+print(map(safeDivide(10, 2), (v: int) => v * 10))
+print(map(safeDivide(10, 0), (v: int) => v * 10))
+
+# andThen → map の混在チェーンも自然に書ける
+print(map(andThen(safeDivide(100, 10), (v: int) => safeDivide(v, 2)), (v: int) => v + 100))
