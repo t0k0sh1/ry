@@ -6,6 +6,13 @@ raw = "{\"name\": \"Alice\", \"age\": 30, \"items\": [1, 2, 3]}"
 case load[Map<str,any>](raw):
   Ok(v):
     print(f"parsed (map): {v}")
+    # 取り出した値は asType[T] で型安全に narrowing する
+    case asType[str](v["name"]):
+      Ok(name): print(f"name: {name}")
+      Err(e):   print(f"name err: {e.message}")
+    case asType[int](v["age"]):
+      Ok(age): print(f"age: {age}")
+      Err(e):  print(f"age err: {e.message}")
   Err(e):
     print(f"parse err: {e.message}")
 
