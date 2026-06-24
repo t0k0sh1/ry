@@ -43,17 +43,21 @@ accepts, plus the JSON5 spec extensions below:
 | Trailing commas in arrays / objects | `[1, 2, 3,]`, `{a: 1,}` |
 | Single-quoted strings | `'hello'` |
 | Multi-line strings (line continuation) | `'foo\<LF>bar'` → `"foobar"` |
-| Unquoted object keys (ASCII identifier) | `{x: 1, _foo: 2, $ref: 3}` |
+| Unquoted object keys (ECMAScript IdentifierName) | `{x: 1, _foo: 2, $ref: 3, 名前: "ry"}` |
 | Hex integer literals | `0xFF`, `-0xDEADBEEF` |
 | Leading / trailing decimal point | `.5`, `5.` |
 | IEEE 754 special values | `Infinity`, `-Infinity`, `NaN` |
 | Explicit positive sign | `+5`, `+3.14`, `+Infinity` |
 
-Unquoted keys are restricted to the ASCII subset of ECMAScript
-`IdentifierName` in this release: first character is a letter,
-underscore, or dollar sign; following characters add digits. Unicode
-identifier characters are accepted only inside single- or
-double-quoted keys.
+Unquoted keys accept ECMAScript `IdentifierName`. The first character
+is a Unicode letter, `_`, `$`, or a `\uHHHH` escape resolving to one;
+subsequent characters add Unicode digits, combining marks, connector
+punctuation, and `<ZWNJ>` / `<ZWJ>`. Surrogate-pair
+`\uHHHH\uHHHH` escapes resolve to non-BMP codepoints. The classifier
+follows XID_Start / XID_Continue (the NFKC-stable subset of
+ID_Start / ID_Continue); the difference from strict ECMAScript ID is a
+handful of obscure characters with no practical impact, and matches the
+behavior of common JSON5 implementations in other languages.
 
 ## Stringify Output Format
 

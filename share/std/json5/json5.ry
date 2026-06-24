@@ -7,7 +7,9 @@
 #   - Trailing commas in arrays and objects
 #   - Single-quoted strings in addition to double-quoted
 #   - Multi-line strings via `\<newline>` line continuation
-#   - Unquoted object keys (ASCII IdentifierName: [a-zA-Z_$][a-zA-Z0-9_$]*)
+#   - Unquoted object keys (ECMAScript IdentifierName; Unicode letters
+#     and digits via XID_Start/XID_Continue plus ZWNJ/ZWJ; `\uHHHH`
+#     escapes and surrogate pairs accepted)
 #   - Hex integer literals (`0xABCDEF`)
 #   - Leading and trailing decimal points (`.5`, `5.`)
 #   - IEEE 754 special values: `Infinity`, `-Infinity`, `NaN`

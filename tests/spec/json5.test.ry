@@ -456,6 +456,113 @@ fn json5UnquotedKeyTests():
       Err(e): expect(byteLen(e.message) > 0).toEq(true)
 
 # ============================================================================
+# JSON5-specific feature: unquoted object keys — Unicode (#2314)
+# ============================================================================
+
+@describe("json5 — unquoted object keys — Unicode")
+fn json5UnicodeUnquotedKeyTests():
+  @it("should accept Japanese CJK unquoted key")
+  fn shouldAcceptJapaneseKey():
+    case load[Map<str, any>]("{名前: \"John\"}"):
+      Ok(v): expect(stringify(v)).toEq("{\"名前\":\"John\"}")
+      Err(e): fail("Japanese key failed: " + e.message)
+
+  @it("should accept Chinese CJK unquoted key")
+  fn shouldAcceptChineseKey():
+    case load[Map<str, any>]("{姓名: \"Li\"}"):
+      Ok(v): expect(stringify(v)).toEq("{\"姓名\":\"Li\"}")
+      Err(e): fail("Chinese key failed: " + e.message)
+
+  @it("should accept Korean Hangul unquoted key")
+  fn shouldAcceptKoreanKey():
+    case load[Map<str, any>]("{이름: \"Kim\"}"):
+      Ok(v): expect(stringify(v)).toEq("{\"이름\":\"Kim\"}")
+      Err(e): fail("Korean key failed: " + e.message)
+
+  @it("should accept Greek-letter unquoted key")
+  fn shouldAcceptGreekKey():
+    case load[Map<str, any>]("{αλφα: 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"αλφα\":1}")
+      Err(e): fail("Greek key failed: " + e.message)
+
+  @it("should accept Arabic-Indic digit in middle position")
+  fn shouldAcceptArabicIndicDigitInMiddle():
+    case load[Map<str, any>]("{a١b: 1}"):
+      Ok(v): expect(stringify(v)).toEq("{\"a١b\":1}")
+      Err(e): fail("Arabic digit in middle failed: " + e.message)
+
+  @it("should accept combining-mark in middle position")
+  fn shouldAcceptCombiningMarkInMiddle():
+    # ́ = combining acute (XID_Continue). JSON5 escape decodes to
+    # UTF-8 bytes 0xCC 0x81. Output key bytes: e (0x65) + combining (0xCC 0x81).
+    case load[Map<str, any>]("{e\\u0301: 1}"):
+      Ok(v): expect(toBytes(stringify(v))).toEq([0x7Bu8, 0x22u8, 0x65u8, 0xCCu8, 0x81u8, 0x22u8, 0x3Au8, 0x31u8, 0x7Du8])
+      Err(e): fail("combining-mark key failed: " + e.message)
+
+  @it("should accept \\uHHHH escape in unquoted key")
+  fn shouldAcceptUnicodeEscapeInKey():
+    # 名 = 名, 前 = 前. Output key is the raw UTF-8 of 名前.
+    case load[Map<str, any>]("{\\u540D\\u524D: \"x\"}"):
+      Ok(v): expect(stringify(v)).toEq("{\"名前\":\"x\"}")
+      Err(e): fail("\\uHHHH escape in key failed: " + e.message)
+
+  @it("should accept ZWNJ (U+200C) in middle position")
+  fn shouldAcceptZwnjInKey():
+    # ZWNJ encodes as UTF-8 0xE2 0x80 0x8C.
+    case load[Map<str, any>]("{a\\u200Cb: 1}"):
+      Ok(v): expect(toBytes(stringify(v))).toEq([0x7Bu8, 0x22u8, 0x61u8, 0xE2u8, 0x80u8, 0x8Cu8, 0x62u8, 0x22u8, 0x3Au8, 0x31u8, 0x7Du8])
+      Err(e): fail("ZWNJ key failed: " + e.message)
+
+  @it("should accept ZWJ (U+200D) in middle position")
+  fn shouldAcceptZwjInKey():
+    # ZWJ encodes as UTF-8 0xE2 0x80 0x8D.
+    case load[Map<str, any>]("{a\\u200Db: 1}"):
+      Ok(v): expect(toBytes(stringify(v))).toEq([0x7Bu8, 0x22u8, 0x61u8, 0xE2u8, 0x80u8, 0x8Du8, 0x62u8, 0x22u8, 0x3Au8, 0x31u8, 0x7Du8])
+      Err(e): fail("ZWJ key failed: " + e.message)
+
+  @it("should accept surrogate-pair \\uHHHH\\uHHHH for non-BMP letter")
+  fn shouldAcceptSurrogatePairInKey():
+    # 𠀋 joins to U+2000B (CJK Extension B letter, XID_Start).
+    # UTF-8 encoding: 0xF0 0xA0 0x80 0x8B.
+    case load[Map<str, any>]("{\\uD840\\uDC0B: 1}"):
+      Ok(v): expect(toBytes(stringify(v))).toEq([0x7Bu8, 0x22u8, 0xF0u8, 0xA0u8, 0x80u8, 0x8Bu8, 0x22u8, 0x3Au8, 0x31u8, 0x7Du8])
+      Err(e): fail("surrogate-pair key failed: " + e.message)
+
+  @it("should reject Unicode digit at key start")
+  fn shouldRejectUnicodeDigitFirstKey():
+    # ١ (Arabic-Indic digit one, U+0661) is XID_Continue but not XID_Start.
+    case load[Map<str, any>]("{١abc: 1}"):
+      Ok(_): fail("expected Err for Unicode-digit-first key")
+      Err(e): expect(e.message).toContain("expected object key")
+
+  @it("should reject punctuation at key start")
+  fn shouldRejectPunctuationStartKey():
+    case load[Map<str, any>]("{,abc: 1}"):
+      Ok(_): fail("expected Err for punctuation-first key")
+      Err(e): expect(e.message).toContain("expected object key")
+
+  @it("should reject malformed \\u escape in key")
+  fn shouldRejectMalformedUnicodeEscape():
+    case load[Map<str, any>]("{\\uZZZZ: 1}"):
+      Ok(_): fail("expected Err for malformed \\u escape")
+      Err(e): expect(e.message).toContain("invalid hex digit")
+
+  @it("should reject \\u escape that resolves to a digit at key start")
+  fn shouldRejectEscapeResolvingToDigit():
+    # 1 = '1' — IdentifierStart rejects it just like a literal '1'.
+    case load[Map<str, any>]("{\\u0031abc: 1}"):
+      Ok(_): fail("expected Err for escape-to-digit at start")
+      Err(e): expect(e.message).toContain("non-identifier codepoint")
+
+  @it("should reject 'true' followed by Unicode identifier character")
+  fn shouldRejectTrueWithUnicodeSuffix():
+    # '名' (U+540D, XID_Continue) is identifier-continuation, so 'true名'
+    # is not the boolean literal — parse_bool's trailing guard rejects it.
+    case load[Map<str, any>]("{a: true名}"):
+      Ok(_): fail("expected Err for true+Unicode-suffix")
+      Err(e): expect(e.message).toContain("invalid literal")
+
+# ============================================================================
 # JSON5-specific feature: hex literals
 # ============================================================================
 
