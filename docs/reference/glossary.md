@@ -93,4 +93,4 @@ The stdlib provides core types, conversion helpers (`int`, `float`, `str`), buil
 
 The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 
-See [Module Reference — Standard Library](modules.md#standard-library-std) for the full list of stdlib sub-modules and import semantics.
+See [Module Reference — Standard Library](modules.md#standard-library) for the full list of stdlib sub-modules and import semantics.

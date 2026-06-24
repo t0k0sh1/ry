@@ -1722,6 +1722,13 @@ inline std::string testingStdlibSearchPath() {
     return (std::filesystem::path(__FILE__).parent_path().parent_path()
             / "share" / "std").string();
 }
+// Derive the repo's share/ path. Needed for legacy `std/X` / `std` resolution
+// tests, which the `ry` binary supports by adding both share/ and share/std/
+// to search_paths (jit_runner.cpp).
+inline std::string testingShareSearchPath() {
+    return (std::filesystem::path(__FILE__).parent_path().parent_path()
+            / "share").string();
+}
 } // namespace
 
 // AC #1: `from testing import expect` resolves and `expect` does not appear
@@ -1847,6 +1854,10 @@ TEST_F(ImportTest, FromLocalTestingShadowDoesNotBypassIntrinsicCheck) {
     writeFile("testing.ry", "fn unrelated() -> int:\n    return 1\n");
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     try {
+        // Bare `from testing import` is intentional: this exercises the
+        // local-shadow path (`from_stdlib=false`), bypassing the #2351
+        // legacy-form rejection. Canonicalizing would resolve the stdlib
+        // testing module instead and miss the shadow regression.
         resolveImportsOnly(
             "from testing import expect\n",
             tmp_dir_.string(),
@@ -2285,6 +2296,8 @@ TEST_F(ImportTest, FromIoImportErrorStillRejected) {
 TEST_F(ImportTest, FromLocalIoShadowDoesNotBypassCppTypeCheck) {
     writeFile("io.ry", "fn dummy() -> int:\n    return 0\n");
     EXPECT_THROW({
+        // Bare `from io import` is intentional: exercises the local-shadow
+        // path (`from_stdlib=false`), bypassing #2351 legacy-form rejection.
         resolveImportsOnly(
             "from io import File\n",
             tmp_dir_.string(),
@@ -2347,7 +2360,112 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
     });
 }
 
-// ===== type alias =====
+// ===== #2351: legacy stdlib import forms rejected as hard errors =====
+//
+// Promoted from #2350 deprecation warnings. Each rejection site lives in
+// ModuleLoader::resolveImports() under the `rp.from_stdlib` guard, so a
+// user-defined module sharing a stdlib name (resolved with from_stdlib=false)
+// must continue to import successfully — see UserDefinedModuleDoesNotTrigger
+// below, the most important regression guard for this change.
+
+TEST_F(ImportTest, LegacyFlatFormIsRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from math import sqrt\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy flat form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'from math import"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyStdDottedFormIsRejected) {
+    // `std/X` resolves via `share/` (the `ry` binary adds both share/std/ AND
+    // share/ to search_paths; jit_runner.cpp).
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from std.math import NAN\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy std.dotted form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'from std.math import"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyFlatStdFormIsRejected) {
+    auto search_paths = std::vector<std::string>{
+        testingStdlibSearchPath(), testingShareSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from std import print\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy flat-std form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.lang"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyQualifiedFlatFormIsRejected) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "import math\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy qualified flat form to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'import math'"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyAliasedImportIsRejected) {
+    // Alias (`as flatPI`) does not affect detection — module_path is still "math".
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from math import PI as flatPI\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected legacy aliased import to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("legacy stdlib import form"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("ry.math"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, LegacyUserDefinedModuleDoesNotTrigger) {
+    // A user-defined `math.ry` shadows the stdlib name. Loader resolves to the
+    // local file (rp.from_stdlib == false) — rejection must NOT fire. A false
+    // positive here would break every project that happens to have a local
+    // module sharing a stdlib name; this is the key regression guard for #2351.
+    writeFile("math.ry",
+        "@public\nfn add(a: int, b: int) -> int:\n    return a + b\n");
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_EQ(runWithImports(
+        "from math import add\n"
+        "print(add(2, 3))",
+        tmp_dir_.string(),
+        search_paths),
+        "5\n");
+}
 
 TEST_F(CodeGenTest, TypeAlias) {
     std::string src =

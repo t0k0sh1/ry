@@ -87,7 +87,7 @@ comma-separated form:
 from ry.math import { PI as p, E }
 ```
 
-The empty form `from math import {}` is rejected as a parse error.
+The empty form `from ry.math import {}` is rejected as a parse error.
 Symbol resolution, visibility, and alias limitations are identical to
 the comma-separated form — the braces are purely syntactic. Editor
 support (tree-sitter): single-line braced imports are recognized; brace-
@@ -282,7 +282,7 @@ The leading segment `ry` is reserved. A user-defined top-level `ry/` directory o
 
 ---
 
-## Standard Library (`std`)
+## Standard Library
 
 The standard library is a collection of built-in modules accessible under the canonical namespace [`ry`](#canonical-module-paths). Legacy `std` and bare forms are rejected as of #2351. It provides:
 - Built-in functions (`print`, `len`, `range`, etc.)

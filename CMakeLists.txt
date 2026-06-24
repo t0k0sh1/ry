@@ -526,7 +526,6 @@ add_executable(ry_tests
     tests/test_emit_llvm_ir.cpp
     tests/test_deprecated_warnings.cpp
     tests/test_ry_namespace_warning.cpp
-    tests/test_legacy_import_errors.cpp
     tests/test_codegen_call_json_reject.cpp
     tests/test_codegen_call_json5_reject.cpp
     tests/test_spec_timeout.cpp
