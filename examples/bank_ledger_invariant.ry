@@ -1,0 +1,110 @@
+# 残高 invariant 付き口座台帳 — 構築前に validation し invariant 違反パスは実行時に踏まない設計
+
+record Account:
+  id: int
+  balance: int
+  invariant:
+    balance >= 0
+
+enum Op:
+  Deposit(int)
+  Withdraw(int)
+
+record JournalEntry:
+  accountId: int
+  op: Op
+  resultBalance: int
+
+record TransferOutcome:
+  src: Account
+  dst: Account
+
+fn opLabel(op: Op) -> str:
+  return case op:
+    Op::Deposit(amount) : f"deposit {amount}"
+    Op::Withdraw(amount) : f"withdraw {amount}"
+
+fn deposit(account: Account, amount: int) -> Result<Account, Error>:
+  if amount <= 0:
+    return Err(Error(f"deposit amount {amount} must be positive"))
+  return Ok(Account(account.id, account.balance + amount))
+
+fn withdraw(account: Account, amount: int) -> Result<Account, Error>:
+  if amount <= 0:
+    return Err(Error(f"withdraw amount {amount} must be positive"))
+  if amount > account.balance:
+    return Err(Error(f"withdraw {amount} exceeds balance {account.balance}"))
+  return Ok(Account(account.id, account.balance - amount))
+
+fn apply(account: Account, op: Op) -> Result<Account, Error>:
+  return case op:
+    Op::Deposit(amount) : deposit(account, amount)
+    Op::Withdraw(amount) : withdraw(account, amount)
+
+fn runAll(account: Account, ops: List<Op>, journal: List<JournalEntry>) -> Result<Account, Error>:
+  current = account
+  for op in ops:
+    case apply(current, op):
+      Ok(next):
+        append!(journal, JournalEntry(current.id, op, next.balance))
+        current = next
+      Err(e):
+        return Err(e)
+  return Ok(current)
+
+fn transfer(src: Account, dst: Account, amount: int) -> Result<TransferOutcome, Error>:
+  srcAfter = apply(src, Op::Withdraw(amount))?
+  dstAfter = apply(dst, Op::Deposit(amount))?
+  return Ok(TransferOutcome(srcAfter, dstAfter))
+
+fn printJournal(account: Account, journal: List<JournalEntry>):
+  print(f"journal for account #{account.id}:")
+  for e in journal:
+    print(f"  {opLabel(e.op)} -> balance={e.resultBalance}")
+  print(f"  final balance = {account.balance}")
+
+# --- demo: successful chain ---
+
+alice = Account(1, 100)
+ops: List<Op> = [Op::Deposit(50), Op::Withdraw(30), Op::Deposit(20), Op::Withdraw(40)]
+
+aliceJournal: List<JournalEntry> = []
+case runAll(alice, ops, aliceJournal):
+  Ok(finalAcct):
+    printJournal(finalAcct, aliceJournal)
+  Err(e):
+    print(f"unexpected error: {e.message}")
+
+# --- demo: overdraft is rejected as Err (never reaches invariant) ---
+
+bob = Account(2, 10)
+badOps: List<Op> = [Op::Withdraw(20)]
+
+print("\noverdraft attempt:")
+bobJournal: List<JournalEntry> = []
+case runAll(bob, badOps, bobJournal):
+  Ok(_):
+    print("  unexpected: overdraft succeeded")
+  Err(e):
+    print(f"  rejected before construct: {e.message}")
+
+# --- demo: transfer between two accounts ---
+
+print("\ntransfer:")
+carol = Account(3, 200)
+dave = Account(4, 50)
+case transfer(carol, dave, 75):
+  Ok(out):
+    print(f"  carol #{out.src.id}: {out.src.balance}")
+    print(f"  dave  #{out.dst.id}: {out.dst.balance}")
+  Err(e):
+    print(f"  unexpected transfer error: {e.message}")
+
+# --- demo: non-positive amount rejected ---
+
+print("\nnon-positive deposit:")
+case apply(alice, Op::Deposit(0)):
+  Ok(_):
+    print("  unexpected: zero deposit accepted")
+  Err(e):
+    print(f"  rejected: {e.message}")

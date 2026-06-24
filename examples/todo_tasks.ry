@@ -1,0 +1,94 @@
+# Todo タスク管理 — record + enum + Result でドメインモデルを表現する小プログラム
+
+enum Status:
+  Pending
+  InProgress(str)
+  Done(str)
+
+record Task:
+  id: int
+  title: str
+  status: Status
+  priority: int
+
+fn statusLabel(s: Status) -> str:
+  return case s:
+    Status::Pending : "pending"
+    Status::InProgress(who) : f"in_progress (assigned to {who})"
+    Status::Done(when) : f"done ({when})"
+
+fn findIndex(tasks: List<Task>, id: int) -> Option<int>:
+  for i, t in enumerate(tasks):
+    if t.id == id:
+      return Some(i)
+  return None
+
+fn addTask(tasks: List<Task>, t: Task) -> List<Task>:
+  return appended(tasks, t)
+
+fn updateTaskStatus(tasks: List<Task>, id: int, newStatus: Status) -> Result<List<Task>, Error>:
+  case findIndex(tasks, id):
+    Some(i):
+      old = tasks[i]
+      tasks[i] = Task(old.id, old.title, newStatus, old.priority)
+      return Ok(tasks)
+    None:
+      return Err(Error(f"task id {id} not found"))
+
+fn assign(tasks: List<Task>, id: int, who: str) -> Result<List<Task>, Error>:
+  return updateTaskStatus(tasks, id, Status::InProgress(who))
+
+fn markDone(tasks: List<Task>, id: int, when: str) -> Result<List<Task>, Error>:
+  return updateTaskStatus(tasks, id, Status::Done(when))
+
+fn isPending(t: Task) -> bool:
+  return case t.status:
+    Status::Pending : true
+    Status::InProgress(_) : false
+    Status::Done(_) : false
+
+fn filterPending(tasks: List<Task>) -> List<Task>:
+  return filter(tasks, isPending)
+
+fn countByStatus(tasks: List<Task>) -> Map<str, int>:
+  counts: Map<str, int> = {"pending": 0, "in_progress": 0, "done": 0}
+  for t in tasks:
+    key = case t.status:
+      Status::Pending : "pending"
+      Status::InProgress(_) : "in_progress"
+      Status::Done(_) : "done"
+    counts[key] = counts[key] + 1
+  return counts
+
+fn printAll(tasks: List<Task>):
+  for t in tasks:
+    print(f"  #{t.id} [p{t.priority}] {t.title} — {statusLabel(t.status)}")
+
+# --- demo ---
+
+initial: List<Task> = []
+initial = addTask(initial, Task(1, "write spec", Status::Pending, 2))
+initial = addTask(initial, Task(2, "draft PR", Status::Pending, 1))
+initial = addTask(initial, Task(3, "review notes", Status::Pending, 3))
+
+print("initial tasks:")
+printAll(initial)
+
+stage1 = assign(initial, 2, "alice")?
+stage2 = markDone(stage1, 1, "2026-06-25")?
+print("\nafter assign(2)/markDone(1):")
+printAll(stage2)
+
+print("\npending only:")
+printAll(filterPending(stage2))
+
+print("\nstatus counts:")
+for k, v in countByStatus(stage2):
+  print(f"  {k}: {v}")
+
+# error path: missing id
+case markDone(stage2, 99, "now"):
+  Ok(_):
+    print("\nunexpected: missing-id update succeeded")
+  Err(e):
+    print(f"\nexpected error path: {e.message}")

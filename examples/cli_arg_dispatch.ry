@@ -1,0 +1,58 @@
+# CLI 引数を typed Command enum に dispatch する完全関数 (total) のサンプル
+
+enum Command:
+  Hello(str)
+  Echo(List<str>)
+  Help
+  Unknown(str)
+
+fn parseArgs(argv: List<str>) -> Command:
+  if len(argv) == 0:
+    return Command::Help
+  head = argv[0]
+  if head == "help":
+    return Command::Help
+  if head == "hello":
+    if len(argv) >= 2:
+      return Command::Hello(argv[1])
+    return Command::Hello("world")
+  if head == "echo":
+    return Command::Echo(slice(argv, 1, len(argv)))
+  return Command::Unknown(head)
+
+fn formatCommand(cmd: Command) -> str:
+  return case cmd:
+    Command::Help : "help"
+    Command::Hello(name) : f"hello {name}"
+    Command::Echo(words) : "echo [" + join(words, ", ") + "]"
+    Command::Unknown(token) : f"unknown '{token}'"
+
+fn runCommand(cmd: Command):
+  case cmd:
+    Command::Help:
+      print("usage: hello [name] | echo [words...] | help")
+    Command::Hello(name):
+      print(f"Hello, {name}!")
+    Command::Echo(words):
+      print(join(words, " "))
+    Command::Unknown(token):
+      print(f"error: unknown command '{token}'")
+
+fn dispatch(label: str, argv: List<str>):
+  cmd = parseArgs(argv)
+  print(f"[{label}] argv={argv} -> {formatCommand(cmd)}")
+  runCommand(cmd)
+  print("")
+
+# --- demo ---
+
+# 1) live argv from process: empty under `ry run examples/cli_arg_dispatch.ry`
+dispatch("live", args())
+
+# 2) hardcoded samples (covers every Command variant)
+emptyArgv: List<str> = []
+dispatch("sample-hello-default", emptyArgv)
+dispatch("sample-hello-name", ["hello", "Alice"])
+dispatch("sample-echo", ["echo", "the", "quick", "fox"])
+dispatch("sample-help", ["help"])
+dispatch("sample-bogus", ["frobnicate", "--flag"])

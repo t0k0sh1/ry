@@ -1,0 +1,85 @@
+# Validation pipeline — 全 field を検証し List<FieldError> に集める Result-based 例
+
+record UserForm:
+  username: str
+  email: str
+  age: int
+  password: str
+
+enum FieldError:
+  UsernameTooShort(int)
+  EmailMissingAt
+  TooYoung(int)
+  PasswordWeak(int)
+
+fn fieldErrorLabel(err: FieldError) -> str:
+  return case err:
+    FieldError::UsernameTooShort(actual) : f"username too short (got {actual}, min 3)"
+    FieldError::EmailMissingAt : "email missing '@'"
+    FieldError::TooYoung(age) : f"too young (got {age}, min 13)"
+    FieldError::PasswordWeak(actual) : f"password too short (got {actual}, min 8)"
+
+fn validateUsername(name: str) -> Result<int, FieldError>:
+  n = len(name)
+  if n < 3:
+    return Err(FieldError::UsernameTooShort(n))
+  return Ok(n)
+
+fn validateEmail(email: str) -> Result<int, FieldError>:
+  if not contains(email, "@"):
+    return Err(FieldError::EmailMissingAt)
+  return Ok(len(email))
+
+fn validateAge(age: int) -> Result<int, FieldError>:
+  if age < 13:
+    return Err(FieldError::TooYoung(age))
+  return Ok(age)
+
+fn validatePassword(pw: str) -> Result<int, FieldError>:
+  n = len(pw)
+  if n < 8:
+    return Err(FieldError::PasswordWeak(n))
+  return Ok(n)
+
+fn collectErr(result: Result<int, FieldError>, errors: List<FieldError>) -> bool:
+  case result:
+    Ok(_):
+      return true
+    Err(e):
+      append!(errors, e)
+      return false
+
+fn validateAll(form: UserForm, errors: List<FieldError>) -> bool:
+  a = collectErr(validateUsername(form.username), errors)
+  b = collectErr(validateEmail(form.email), errors)
+  c = collectErr(validateAge(form.age), errors)
+  d = collectErr(validatePassword(form.password), errors)
+  return a and b and c and d
+
+fn report(label: str, form: UserForm):
+  print(f"--- {label} ---")
+  print(f"  username='{form.username}' email='{form.email}' age={form.age} password=({len(form.password)} chars)")
+  errors: List<FieldError> = []
+  if validateAll(form, errors):
+    print("  result: OK")
+  else:
+    print(f"  result: {len(errors)} error(s):")
+    for e in errors:
+      print(f"    - {fieldErrorLabel(e)}")
+
+# --- demo ---
+
+valid = UserForm("alice", "alice@example.com", 30, "s3cretP@ss")
+report("valid", valid)
+
+shortUser = UserForm("al", "al@x.com", 22, "longenough1")
+report("short-username", shortUser)
+
+badEmail = UserForm("bobby", "no-at-sign", 22, "longenough1")
+report("bad-email", badEmail)
+
+young = UserForm("carol", "carol@x.com", 9, "longenough1")
+report("too-young", young)
+
+multiBad = UserForm("d", "no-at", 5, "x")
+report("multiple-errors", multiBad)
