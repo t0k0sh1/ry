@@ -197,6 +197,12 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test
+      - name: 'Test (canonical examples, #2329)'
+        # Run every examples/*.ry (non-recursive — future negative/review
+        # subdirs are excluded by construction; see examples/README.md).
+        # Exit-code only, no golden output matching. Catches drift between
+        # the LoRA-source examples and current language semantics.
+        run: bash scripts/check-examples.sh
       - name: 'Test (export-run-logs JSONL schema, #2300)'
         # `jq` is not in `ry-ci:llvm-21` (gcc:14-trixie base); install a
         # prebuilt binary inline, verified against the project's published
