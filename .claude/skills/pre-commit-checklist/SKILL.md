@@ -24,6 +24,7 @@ Also evaluate when relevant:
 - Rust lint when `crates/` changed.
 - Prompt-reference lint when `.claude/`, `AGENTS.md`, or `CLAUDE.md` changed.
 - Export-run-logs JSONL schema test when `scripts/export-run-logs.sh`, `tests/scripts/`, or the `__ry_test_summary` output format in `src/test_runtime.cpp` changed.
+- Examples check when `examples/` or `scripts/check-examples.sh` changed.
 - tree-sitter check when grammar, scanner, query, or EBNF changed.
 - Label cleanup policy.
 
@@ -49,6 +50,7 @@ Update a rule or skill when work reveals a reusable constraint, a new rejection-
 ./.claude/skills/pre-commit-checklist/run-rust-lint.sh
 ./.claude/skills/pre-commit-checklist/run-prompt-refs-lint.sh
 ./.claude/skills/pre-commit-checklist/run-export-run-logs-tests.sh
+./.claude/skills/pre-commit-checklist/run-examples-check.sh
 ./.claude/skills/pre-commit-checklist/run-fuzz.sh
 ./.claude/skills/pre-commit-checklist/run-tree-sitter.sh
 ```

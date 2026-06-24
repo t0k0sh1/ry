@@ -18,6 +18,7 @@ cmake --build <build-dir>
 ./<build-dir>/ry_tests
 ./<build-dir>/ry test -p
 ./<build-dir>/ry test tests/spec/<file>.test.ry
+bash scripts/check-examples.sh
 ```
 
 - Requires Rust 1.83+ and shared libLLVM. If corrosion misses Rust, configure with `-DRust_COMPILER=$(rustup which rustc)`.
