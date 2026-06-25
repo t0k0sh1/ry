@@ -398,12 +398,14 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     // pointer invalidation from unordered_map rehash inside propagateTypeMeta/getOrCreateMeta.
     std::string elemTypeName;
     std::optional<FnTypeInfo> elemFnTypeInfo;
+    bool listElemIsStr = false;
     if (auto *iterMeta = getMeta(iterable)) {
         if (headerTy == setHeaderTy_ && !iterMeta->set_elem_type_name.empty())
             elemTypeName = iterMeta->set_elem_type_name;
         else
             elemTypeName = iterMeta->list_elem_type_name;
         elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
+        listElemIsStr   = iterMeta->list_elem_is_str;
     }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
         llvm::Value *dataPtr;
@@ -418,6 +420,12 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         }
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
+        // Stamp str_elem on the loaded element so the binding can route
+        // through the StringHeader (-24) retain/release path. Mirrors the
+        // IndexExpr stamp at codegen_expr_literal.cpp:1226 used by the
+        // `k = list[i]` form (#2375).
+        if (listElemIsStr && elemTy == ptrTy_)
+            getOrCreateMeta(elem).str_elem = true;
         emitForBindingPattern(s->binding, elem, elemTy, elemTypeName);
         if (elemFnTypeInfo) {
             std::string loopVarName;
@@ -440,6 +448,33 @@ void CodeGen::emitForBindingPattern(const Pattern &pattern, llvm::Value *value,
         builder_.CreateStore(value, loopVar);
         if (!valueTypeName.empty())
             propagateTypeMeta(valueTypeName, loopVar);
+        // ARC tracking for a str loop variable. Without this, `for k in
+        // list<str>: m[k] = v` retains/releases at ArcHeader (-16) instead
+        // of StringHeader (-24), corrupting weak_count and (in optimised
+        // builds) faulting on a UB write into the literal constant in
+        // .rodata that the optimiser left dynamic (#2375). Mirrors the
+        // destructure path at codegen_stmt_misc.cpp:757-763 — the retain
+        // emitted by tryRetainArcSource Case 4 is balanced by the release
+        // popScope() will emit for arc_str_managed_vars_ at loop-body exit.
+        // Also treat `valueTypeName == "str"` paths (Map `for k, v in m:`
+        // ExtractValue, Set<str> iteration, str-aliased element types) as
+        // str-managed even without a pre-existing str_elem stamp — the
+        // emitForListLoop site only stamps List<str> elements (CodeRabbit,
+        // PR #2386).
+        if (valueTy == ptrTy_) {
+            bool isStrElem = false;
+            if (auto *meta = getMeta(value))
+                isStrElem = meta->str_elem;
+            if (!isStrElem && !valueTypeName.empty() &&
+                resolveTypeAlias(valueTypeName) == "str") {
+                getOrCreateMeta(value).str_elem = true;
+                isStrElem = true;
+            }
+            if (isStrElem && tryRetainArcSource(value)) {
+                arc_str_managed_vars_.insert(loopVar);
+                markArcManaged(loopVar);
+            }
+        }
         return;
     }
 
