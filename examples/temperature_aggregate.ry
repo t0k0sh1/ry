@@ -1,4 +1,4 @@
-# 温度サンプル集計 — 観測値を location 別に List<Stats> へ集約し min/max/avg と分類を計算する
+# Temperature sample aggregation - group observations by location into List<Stats> and compute min/max/avg plus classification
 
 enum TempBand:
   Cold

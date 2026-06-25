@@ -1,8 +1,8 @@
-# threadSpawn/threadJoinとAtomicIntによる並列処理を示す
+# Shows parallel processing with threadSpawn/threadJoin and AtomicInt
 from ry.thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
-# 並列処理の本体は内側のlambdaにできる
-# AtomicIntへの加算はrace-freeなので、joinを取れば合計値は決定的
+# The parallel work body can be an inner lambda
+# AtomicInt addition is race-free, so the total is deterministic after joining
 fn runParallelSum() -> int:
   counter = atomicIntNew(0)
   t1 = threadSpawn(():

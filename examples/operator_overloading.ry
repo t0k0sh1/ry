@@ -1,4 +1,4 @@
-# recordに加算と文字列変換の独自動作を定義する
+# Define custom addition and string conversion behavior for a record
 record Vec2:
   x: int
   y: int

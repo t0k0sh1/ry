@@ -1,4 +1,4 @@
-# 単語カウント (Map 活用、テキスト処理)
+# Word count (Map usage and text processing)
 text = "the quick brown fox jumps over the lazy dog the cat is on the mat"
 words = split(text, " ")
 
@@ -10,11 +10,11 @@ for w in words:
     None:
       counts[w] = 1
 
-# 出力: 単語数順 (Map は順序保存だが、ソートしたい)
+# Output: by word count (Map preserves order, but we want sorted output)
 pairs = items(counts)
 
-# pairs は List<(str, int)>。降順ソート
-# sort の比較関数は bool 返り (a < b の意)
+# pairs is List<(str, int)>. Sort descending
+# The sort comparator returns bool (meaning a < b)
 sorted = sort(pairs, (a: (str, int), b: (str, int)) => a.1 > b.1)
 
 print("Word frequency (descending):")

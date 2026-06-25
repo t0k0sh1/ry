@@ -1,9 +1,9 @@
-# async関数、await、同期コードからのblockOnを示す
+# Shows async functions, await, and blockOn from synchronous code
 async fn add(a: int, b: int) -> int:
   return a + b
 
 async fn doubledSum(a: int, b: int) -> int:
-  # async関数の内部ではawaitでTaskの結果を受け取る
+  # Inside an async function, await receives the Task result
   total = await add(a, b)
   return total * 2
 

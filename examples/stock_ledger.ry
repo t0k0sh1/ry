@@ -1,4 +1,4 @@
-# 在庫台帳 — SKU ごとの在庫移動を List<StockMovement> で記録し Result で不正操作を拒否する
+# Stock ledger - record stock movements per SKU as List<StockMovement> and reject invalid operations with Result
 
 enum MovementKind:
   Receive(int)

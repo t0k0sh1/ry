@@ -1,4 +1,4 @@
-# モジュールレベル@constと、それを関数から参照する例 (issue #817)
+# Module-level @const and references to it from functions (issue #817)
 @const
 PI: float = 3.14
 
@@ -21,7 +21,7 @@ record Point:
 @const
 ORIGIN: Point = Point(0, 0)
 
-# 関数からはこれらの定数を直接参照できる
+# Functions can refer to these constants directly
 fn circleArea(radius: float) -> float:
   return PI * radius * radius
 

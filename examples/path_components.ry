@@ -1,10 +1,10 @@
-# pathモジュールでpathの結合と構成要素の抽出を行う
+# Join paths and extract path components with the path module
 from ry.path import join, basename, dirname, ext
 
 case join("/tmp", "reports", "summary.txt"):
   Ok(path):
 
-    # path関数はNUL文字などの不正入力をErrとして返す
+    # Path functions return Err for invalid input such as NUL characters
     print(basename(path)?)
     print(dirname(path)?)
     print(ext(path)?)

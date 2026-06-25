@@ -1,15 +1,15 @@
-# 正規表現を文字列パターンとして渡すregex* 系の関数を示す
-# Regexリテラル `/.../` は examples/regex_literals.ry を参照
+# Shows regex* functions that take regular expressions as string patterns
+# See examples/regex_literals.ry for Regex literals like `/.../`
 
-# regexMatchはパターンが部分マッチするかを返す
+# regexMatch returns whether the pattern matches a substring
 print(regexMatch("hello", "[a-z]+"))
 print(regexMatch("HELLO", "[a-z]+"))
 
-# regexReplaceはマッチした全箇所を置換する
+# regexReplace replaces all matched occurrences
 print(regexReplace("abc123def456", "[0-9]+", "X"))
 
-# regexSplitはパターンで分割する
+# regexSplit splits by the pattern
 print(regexSplit("a1b2c3", "[0-9]"))
 
-# regexFindAllはマッチした全部分文字列をListで返す
+# regexFindAll returns every matched substring as a List
 print(regexFindAll("a1b2c3", "[0-9]"))

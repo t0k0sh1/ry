@@ -1,22 +1,22 @@
-# Option上のmapで値を変換し、Noneは自動で伝播することを示す
-# `?` による短絡形式は examples/option_safe_access.ry を参照
+# Shows transforming values with map on Option while None propagates automatically
+# See examples/option_safe_access.ry for the `?` short-circuit form
 
-# SomeにmapするとSomeのまま値が変換される
+# Mapping over Some transforms the value and keeps Some
 some: int? = Some(42)
 doubled = map(some, (x: int) => x * 2)
 print(doubled)
 
-# Noneにmapしても結果はNone (関数は呼ばれない)
+# Mapping over None still returns None (the function is not called)
 empty: int? = None
 print(map(empty, (x: int) => x * 2))
 
-# 連続するmapは前段の結果に対して順番に適用される
+# Chained map calls apply in order to the previous result
 chained = map(map(some, (x: int) => x + 5), (x: int) => x * 2)
 print(chained)
 
-# mapで型を変えられる: int? を bool? に
+# map can change the type: int? to bool?
 predicate = map(some, (x: int) => x > 40)
 print(predicate)
 
-# Noneは長いチェーンでも保持される
+# None is preserved even through a long chain
 print(map(map(empty, (x: int) => x + 5), (x: int) => x * 2))

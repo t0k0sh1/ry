@@ -1,4 +1,4 @@
-# Setの重複除去と集合演算を示す
+# Shows Set deduplication and set operations
 left = {1, 2, 3, 3}
 right = {3, 4, 5}
 

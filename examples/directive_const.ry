@@ -1,4 +1,4 @@
-# @constで変数とrecordの変更を禁止する方法を示す
+# Shows how @const prevents variable and record mutation
 record Point:
   x: int
   y: int
@@ -6,5 +6,5 @@ record Point:
 @const
 origin = Point(0, 0)
 
-# originとそのfieldは再代入できない
+# origin and its fields cannot be reassigned
 print(origin)

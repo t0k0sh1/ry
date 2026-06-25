@@ -1,14 +1,14 @@
-# ファイル IO
+# File I/O
 from ry.io import readText, writeText
 
-# ファイル書き込み
+# Write a file
 case writeText("/tmp/ry_test.txt", "hello from ry\nline 2\n"):
   Ok(_):
     print("written")
   Err(e):
     print(f"err: {e.message}")
 
-# ファイル読み込み
+# Read a file
 case readText("/tmp/ry_test.txt"):
   Ok(text):
     print(f"read: {text}")

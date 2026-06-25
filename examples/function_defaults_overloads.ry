@@ -1,4 +1,4 @@
-# 関数のデフォルト引数と引数数によるオーバーロードを示す
+# Shows default function arguments and arity-based overloads
 fn greet(name: str, punctuation: str = "!") -> str:
   return "Hello, " + name + punctuation
 

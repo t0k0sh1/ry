@@ -1,7 +1,7 @@
-# JSON 書き出し (stdlib の json モジュール)
+# JSON output using the stdlib json module
 from ry.json import stringify
 
-# Map<str, any> リテラル: 値はリテラル位置で any に自動ラップされる
+# Map<str, any> literal: values are automatically wrapped as any at literal positions
 m: Map<str, any> = {"x": 1, "y": "hello"}
 s = stringify(m)
 print(f"stringified: {s}")

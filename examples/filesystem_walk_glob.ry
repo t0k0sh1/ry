@@ -1,9 +1,9 @@
-# walk による再帰的なディレクトリ走査と glob によるパターンマッチを示す
+# Shows recursive directory traversal with walk and pattern matching with glob
 from ry.filesystem import mkdirAll, walk, glob, removeAll
 from ry.io import writeText
 from ry.path import join
 
-# fixture: 入れ子のディレクトリと数個のファイルを準備
+# Fixture: prepare nested directories and a few files
 fn setup(root: str) -> Result<Unit, Error>:
   removeAll(root)
   mkdirAll(join(root, "sub", "deep")?)
@@ -16,14 +16,14 @@ root = "/tmp/ry_examples_walk"
 case setup(root):
   Ok(_):
 
-    # walk は配下のすべてのエントリ (ファイル・ディレクトリ) を Result で返す
+    # walk returns every entry below the path (files and directories) as a Result
     case walk(root):
       Ok(entries):
         print(len(entries) >= 5)
       Err(e):
         print(e.message)
 
-    # glob は1ディレクトリ内でパターンに合うpathをListで返す
+    # glob returns matching paths in one directory as a List
     case join(root, "*.log"):
       Ok(pattern):
         case glob(pattern):
@@ -34,7 +34,7 @@ case setup(root):
       Err(e):
         print(e.message)
 
-    # 該当なしなら空List
+    # No matches produce an empty List
     case glob("/tmp/ry_examples_no_match_*.zzz"):
       Ok(matches):
         print(len(matches))

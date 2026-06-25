@@ -1,8 +1,8 @@
-# Listのコピーオンライトにより別名への変更が分離されることを示す
+# Shows how List copy-on-write isolates changes made through aliases
 original = [[1, 2], [3, 4]]
 copy = original
 
-# ネストした要素の書き換えでも必要な経路だけが複製される
+# When rewriting nested elements, only the required path is copied
 copy[0][1] = 99
 
 print(f"original = {original}")

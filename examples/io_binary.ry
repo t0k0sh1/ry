@@ -1,9 +1,9 @@
-# バイナリI/O — readBytes / writeBytes / toBytes / bytesToStr / appendText を示す
+# Binary I/O - shows readBytes / writeBytes / toBytes / bytesToStr / appendText
 from ry.io import readBytes, writeBytes, toBytes, bytesToStr, writeText, readText, appendText, deleteFile
 
 path = "/tmp/ry_examples_binary.bin"
 
-# writeBytes は List<u8> をそのままファイルへ書き出す
+# writeBytes writes a List<u8> directly to a file
 bytes: List<u8> = [72u8, 105u8, 0u8, 33u8]
 case writeBytes(path, bytes):
   Ok(_):
@@ -11,21 +11,21 @@ case writeBytes(path, bytes):
   Err(e):
     print(e.message)
 
-# readBytes は List<u8> を返す
+# readBytes returns List<u8>
 case readBytes(path):
   Ok(b):
     print(b)
   Err(e):
     print(e.message)
 
-# toBytes / bytesToStr で str ↔ List<u8> 変換
+# Convert between str and List<u8> with toBytes / bytesToStr
 encoded = toBytes("hello")
 print(encoded)
 
 decoded = bytesToStr([104u8, 105u8])
 print(decoded)
 
-# appendText は writeText (上書き) と違い既存内容の末尾に追記する
+# appendText appends to existing content, unlike writeText which overwrites
 textPath = "/tmp/ry_examples_text_append.txt"
 writeText(textPath, "first\n")
 appendText(textPath, "second\n")

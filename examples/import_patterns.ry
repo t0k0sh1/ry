@@ -1,7 +1,7 @@
-# selective import (from ry.<module> import <name>) のcanonical形式を示す
-# preludeの暗黙利用と明示importの両方を扱う
+# Shows the canonical selective import form: from ry.<module> import <name>
+# Covers both implicit prelude use and explicit imports
 
-# モジュールから特定の名前だけを取り込む
+# Import only specific names from a module
 from ry.math import PI, sqrt
 from ry.base64 import encode
 
@@ -9,13 +9,13 @@ print(sqrt(2.0))
 print(PI)
 print(encode("hi"))
 
-# 同じモジュールの別のシンボルを別行のimportで取り込んでもよい
+# Another symbol from the same module may be imported on a separate line
 from ry.math import abs, round
 
 print(abs(-3))
 print(round(3.7))
 
-# prelude (ry.lang) はimport不要で利用可能。明示的にimportもできる
+# The prelude (ry.lang) is available without imports. It can also be imported explicitly
 from ry.lang import map, filter
 
 nums: List<int> = [1, 2, 3, 4, 5]

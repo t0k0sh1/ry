@@ -1,6 +1,6 @@
-# クロージャの値キャプチャと高階関数への受け渡しを示す
+# Shows closure value capture and passing closures to higher-order functions
 fn makeAdder(base: int) -> fn(int) -> int:
-  # 内側の関数はbaseの値をキャプチャする
+  # The inner function captures the value of base
   fn add(value: int) -> int:
     return base + value
   return add
@@ -8,5 +8,5 @@ fn makeAdder(base: int) -> fn(int) -> int:
 add10 = makeAdder(10)
 values = [1, 2, 3]
 
-# mapは各要素にクロージャを適用した新しいListを返す
+# map returns a new List by applying the closure to each element
 print(map(values, add10))

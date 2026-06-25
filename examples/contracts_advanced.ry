@@ -1,7 +1,7 @@
-# require複数節、ensure後置条件、record invariantの継承を示す
-# 基本的な単一節は examples/contracts.ry を参照
+# Shows multiple require clauses, ensure postconditions, and inherited record invariants
+# See examples/contracts.ry for the basic single-clause form
 
-# 複数のrequire節は全てtrueでなければならない
+# All require clauses must be true
 fn deposit(amount: int, balance: int) -> int:
   require:
     amount > 0
@@ -10,7 +10,7 @@ fn deposit(amount: int, balance: int) -> int:
 
 print(deposit(100, 50))
 
-# ensure v: は戻り値 v を参照する後置条件
+# ensure v: is a postcondition that refers to return value v
 fn absVal(x: int) -> int:
   ensure v:
     v >= 0
@@ -21,7 +21,7 @@ fn absVal(x: int) -> int:
 print(absVal(-5))
 print(absVal(3))
 
-# ensureで引数も参照できる
+# ensure clauses can also reference arguments
 fn increment(x: int) -> int:
   ensure v:
     v == x + 1
@@ -29,7 +29,7 @@ fn increment(x: int) -> int:
 
 print(increment(10))
 
-# 親recordの invariant は子recordにも継承される
+# Parent record invariants are inherited by child records
 record Positive:
   value: int
   invariant:

@@ -1,12 +1,12 @@
-# フィボナッチ - 再帰、メモ化、反復、 list comprehension 風
+# Fibonacci - recursion, memoization, iteration, and list-comprehension style
 
-# 純再帰
+# Pure recursion
 fn fibRec(n: int) -> int:
   if n < 2:
     return n
   return fibRec(n - 1) + fibRec(n - 2)
 
-# 反復
+# Iteration
 fn fibIter(n: int) -> int:
   if n < 2:
     return n
@@ -18,7 +18,7 @@ fn fibIter(n: int) -> int:
     b = next
   return b
 
-# メモ化
+# Memoization
 fn fibMemo(n: int) -> int:
   memo: Map<int, int> = {0: 0, 1: 1}
   fn helper(k: int) -> int:
@@ -36,7 +36,7 @@ print("fibRec(10) =", fibRec(10))
 print("fibIter(30) =", fibIter(30))
 print("fibMemo(40) =", fibMemo(40))
 
-# 最初の 10 項を List で
+# The first 10 terms as a List
 nums: List<int> = []
 for i in range(0, 10):
   append!(nums, fibIter(i))

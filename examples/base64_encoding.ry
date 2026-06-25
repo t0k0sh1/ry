@@ -1,10 +1,10 @@
-# base64モジュールによる文字列のエンコードとデコードを示す
+# Shows string encoding and decoding with the base64 module
 from ry.base64 import encode, decode
 
 encoded = encode("Hello, Ry!")
 print(encoded)
 
-# decodeは不正入力を扱えるResultを返す
+# decode returns a Result so invalid input can be handled
 case decode(encoded):
   Ok(text):
     print(text)

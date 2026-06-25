@@ -1,4 +1,4 @@
-# recordのフィールド型としてOptionを使い、欠損値を表現する
+# Uses Option as a record field type to represent missing values
 record UserWithAvatar:
   name: str
   avatar: Option<str>
@@ -7,12 +7,12 @@ record MixOptInt:
   id: int
   opt: Option<str>
 
-# Some(...) で値あり、None() または none で値なし
+# Some(...) means present; None() or none means absent
 withFace = UserWithAvatar("bob", Some("face.png"))
 withoutFace = UserWithAvatar("alice", None())
 shorthand = UserWithAvatar("carol", none)
 
-# caseで値の有無に応じて分岐
+# Branch on presence with case
 fn describeAvatar(u: UserWithAvatar) -> str:
   return case u.avatar:
     Some(path) : u.name + " -> " + path
@@ -22,7 +22,7 @@ print(describeAvatar(withFace))
 print(describeAvatar(withoutFace))
 print(describeAvatar(shorthand))
 
-# 非先頭位置のフィールドにもOptionが使える
+# Option can also be used for fields that are not first
 m = MixOptInt(42, None())
 print(m.id)
 print(m.opt)

@@ -1,4 +1,4 @@
-# 関連データを持つenumで状態と値をまとめて表現する
+# Use an enum with associated data to represent state and values together
 enum Shape:
   Circle(float)
   Rectangle(float, float)

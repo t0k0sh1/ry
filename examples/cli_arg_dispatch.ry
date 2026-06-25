@@ -1,4 +1,4 @@
-# CLI 引数を typed Command enum に dispatch する完全関数 (total) のサンプル
+# Sample total function that dispatches CLI arguments to a typed Command enum
 
 enum Command:
   Hello(str)

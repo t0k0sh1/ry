@@ -1,20 +1,20 @@
-# ResultをandThenとmapで連結し、Errで短絡することを示す
-# `?` による短絡形式は examples/result_propagation.ry を参照
+# Shows chaining Result with andThen and map, short-circuiting on Err
+# See examples/result_propagation.ry for the `?` short-circuit form
 fn safeDivide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-# andThenはOkなら次の呼び出しに進み、Errならそのまま伝播する
+# andThen continues to the next call on Ok and propagates Err unchanged
 print(andThen(safeDivide(100, 2), (v: int) => safeDivide(v, 5)))
 print(andThen(safeDivide(10, 0), (v: int) => safeDivide(v, 1)))
 
-# 複数のandThenを連結できる
+# Multiple andThen calls can be chained
 print(andThen(andThen(safeDivide(100, 2), (v: int) => safeDivide(v, 5)), (v: int) => safeDivide(v, 2)))
 
-# mapは中身を変換するだけでErrは保持される
+# map transforms the inner value and preserves Err
 print(map(safeDivide(10, 2), (v: int) => v * 10))
 print(map(safeDivide(10, 0), (v: int) => v * 10))
 
-# andThen → map の混在チェーンも自然に書ける
+# Mixed andThen -> map chains are natural to write
 print(map(andThen(safeDivide(100, 10), (v: int) => safeDivide(v, 2)), (v: int) => v + 100))

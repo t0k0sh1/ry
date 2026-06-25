@@ -1,4 +1,4 @@
-# 簡易 log 解析 — "TIMESTAMP LEVEL message" 形式の行を typed entry に変換し集計する
+# Simple log parsing - convert "TIMESTAMP LEVEL message" lines to typed entries and aggregate them
 
 enum Level:
   Debug
@@ -34,7 +34,7 @@ fn parseLine(line: str) -> Result<LogEntry, Error>:
   if len(parts) < 3:
     return Err(Error(f"too few tokens: '{line}'"))
   level = parseLevel(parts[1])?
-  # message は 3 番目以降のトークンを再結合 (slice + join)
+  # message rejoins tokens from the third one onward (slice + join)
   return Ok(LogEntry(parts[0] + "", level, join(slice(parts, 2, len(parts)), " ")))
 
 fn countByLevel(entries: List<LogEntry>) -> Map<str, int>:

@@ -1,21 +1,21 @@
-# 文字列リテラルでの主要なエスケープシーケンスを示す
-# 表示文字数 (Unicode code point数) は examples/string_unicode.ry を参照
+# Shows the main escape sequences in string literals
+# See examples/string_unicode.ry for display length (Unicode code point count)
 
-# 改行・タブ・バックスラッシュ・引用符
+# Newline, tab, backslash, and quotes
 print("line1\nline2")
 print("col1\tcol2")
 print("path: C:\\Users\\name")
 print("quote: \"hello\"")
 
-# Unicode文字はそのままUTF-8でリテラルに書ける
+# Unicode characters can be written directly in UTF-8 literals
 print("あいう")
 print("こんにちは")
 
-# raw NUL は文字列内に保持され、Ry の str は byte-safe
+# Raw NUL is preserved inside strings; Ry str is byte-safe
 withNul = "a\0b"
 print(byteLen(withNul))
 
-# blockstring (3連引用符) はエスケープ不要で複数行を保持
+# Block strings (triple quotes) keep multiple lines without escapes
 multi = """
   line A
   line B

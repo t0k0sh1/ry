@@ -1,26 +1,26 @@
-# @inlineディレクティブで関数のinlining方針を指示する
+# Use the @inline directive to request a function inlining policy
 
-# 引数なしの@inlineは既定 (always相当)
+# @inline without arguments is the default, equivalent to always
 @inline
 fn add(a: int, b: int) -> int:
   return a + b
 
-# mode="always" は呼び出し箇所すべてでinlineする
+# mode="always" inlines at every call site
 @inline(mode="always")
 fn mul(a: int, b: int) -> int:
   return a * b
 
-# mode="hint" はinline候補だが最終判断はコンパイラに委ねる
+# mode="hint" marks an inline candidate but leaves the final decision to the compiler
 @inline(mode="hint")
 fn sub(a: int, b: int) -> int:
   return a - b
 
-# mode="never" はinlineしないことを明示する
+# mode="never" explicitly requests no inlining
 @inline(mode="never")
 fn negate(a: int) -> int:
   return -a
 
-# 再帰関数にも適用できる (展開深度は実装依存)
+# Can also be applied to recursive functions; expansion depth is implementation-dependent
 @inline
 fn factorial(n: int) -> int:
   if n <= 1:

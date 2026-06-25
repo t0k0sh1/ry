@@ -1,4 +1,4 @@
-# caseによるADTのパターンマッチ、ガード、式形式を示す
+# Shows ADT pattern matching, guards, and expression form with case
 enum Temperature:
   Celsius(int)
   Unknown

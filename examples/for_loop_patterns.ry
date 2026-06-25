@@ -1,11 +1,11 @@
-# forループのさまざまな反復対象とdestructuringを示す
-# enumerate / zip による反復は examples/builtins_enumerate_zip.ry を参照
+# Shows different for-loop iterables and destructuring
+# See examples/builtins_enumerate_zip.ry for iteration with enumerate / zip
 
-# List<int> を反復
+# Iterate over List<int>
 for x in [10, 20, 30]:
   print(x)
 
-# range(N)、range(start, end, step)、負のstep
+# range(N), range(start, end, step), and negative steps
 for i in range(5):
   print(i)
 
@@ -15,20 +15,20 @@ for i in range(0, 10, 3):
 for i in range(10, 0, -3):
   print(i)
 
-# `1..3` 範囲シンタックス (両端含む)
+# `1..3` range syntax (inclusive endpoints)
 for i in 1..3:
   print(i)
 
-# Mapを key, value のペアで反復
+# Iterate over a Map as key, value pairs
 scores = {"alice": 90, "bob": 80}
 for k, v in scores:
   print(k, v)
 
-# tupleのListをそのままdestructureできる
+# A List of tuples can be destructured directly
 triples = [(1, 2, 3), (4, 5, 6)]
 for a, b, c in triples:
   print(a, b, c)
 
-# 不要要素は `_` で受ける
+# Use `_` for unused elements
 for a, _, c in triples:
   print(a + c)

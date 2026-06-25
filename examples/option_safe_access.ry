@@ -1,6 +1,6 @@
-# Optionと?による安全な値取得と早期returnを示す
+# Shows safe value lookup and early return with Option and ?
 fn firstTwoSum(values: List<int>) -> Option<int>:
-  # 1つ目の?はOptionを返し、空白後の?はNoneを早期returnする
+  # The first ? returns Option; the ? after whitespace early-returns None
   first = values[0]? ?
   second = values[1]? ?
   return Some(first + second)
@@ -8,6 +8,6 @@ fn firstTwoSum(values: List<int>) -> Option<int>:
 print(firstTwoSum([10, 20]))
 print(firstTwoSum([10]))
 
-# 空Listは要素型を推論できないため型注釈が必要
+# An empty List needs a type annotation because the element type cannot be inferred
 empty: List<int> = []
 print(firstTwoSum(empty))

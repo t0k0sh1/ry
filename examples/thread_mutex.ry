@@ -1,7 +1,7 @@
-# Lock (mutex) と RWLock による排他制御を示す
+# Shows mutual exclusion with Lock (mutex) and RWLock
 from ry.thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, rwlockNew, rwlockReadLock, rwlockWriteLock, rwlockUnlock, atomicIntNew, atomicIntLoad, atomicIntAdd
 
-# Mutex: 1つのthreadだけがcritical sectionに入れる
+# Mutex: only one thread can enter the critical section
 lock = lockNew()
 counter = atomicIntNew(0)
 
@@ -22,7 +22,7 @@ threadJoin(t1)
 threadJoin(t2)
 print(atomicIntLoad(counter))
 
-# RWLock: 複数reader同時、writerは排他
+# RWLock: multiple readers can enter together; writers are exclusive
 rw = rwlockNew()
 readCount = atomicIntNew(0)
 

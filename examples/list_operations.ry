@@ -1,11 +1,11 @@
-# Listの安全なindexアクセスと非破壊・破壊操作を示す
+# Shows safe List index access plus non-mutating and mutating operations
 values = [10, 20, 30]
 
-# getは範囲外でNone、default付きgetは指定した値を返す
+# get returns None out of range; get with a default returns the supplied value
 print(get(values, 1))
 print(get(values, 100, -1))
 
-# ?付きindexも安全なOption取得に利用できる
+# The ? index form can also be used for safe Option lookup
 print(values[-1]?)
 
 copy = appended(values, 40)

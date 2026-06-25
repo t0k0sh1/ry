@@ -1,4 +1,4 @@
-# JSON objectを型付きrecordへ復元する方法を示す
+# Shows how to restore a JSON object into a typed record
 from ry.json import load
 
 record Person:

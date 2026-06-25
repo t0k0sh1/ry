@@ -1,4 +1,4 @@
-# ifを文と値を返す式の両方として使う方法を示す
+# Shows using if as both a statement and a value-producing expression
 score = 85
 
 if score >= 60:
@@ -6,6 +6,6 @@ if score >= 60:
 else:
   print("failed")
 
-# if式は選ばれた分岐の値を返す
+# An if expression returns the value of the selected branch
 grade = if score >= 90 => "A" else if score >= 80 => "B" else "C"
 print(grade)

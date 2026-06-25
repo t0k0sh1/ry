@@ -1,4 +1,4 @@
-# require、ensure、record invariantによる契約プログラミングを示す
+# Shows contract programming with require, ensure, and record invariant
 record Account:
   balance: int
   invariant:

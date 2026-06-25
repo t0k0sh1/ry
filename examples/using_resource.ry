@@ -1,9 +1,9 @@
-# using ブロックでファイルハンドル等のリソースを確実に解放する
+# Use a using block to reliably release resources such as file handles
 from ry.io import open, writeText, readAll, close, deleteFile
 
 path = "/tmp/ry_examples_using.txt"
 
-# using f = open(...)?: の形でハンドルをbind、blockを抜けるとcloseが自動実行
+# Bind a handle with `using f = open(...)?:`; close runs automatically when the block exits
 fn writeViaUsing(p: str, content: str) -> Result<Unit, Error>:
   using f = open(p, "w")?:
     case writeText(f, content):
@@ -19,7 +19,7 @@ case writeViaUsing(path, "hello via using\n"):
   Err(e):
     print(e.message)
 
-# usingブロックの内側で ? による早期 return も close を確実に呼ぶ
+# Early return with ? inside a using block still calls close reliably
 fn readViaUsing(p: str) -> Result<str, Error>:
   using f = open(p, "r")?:
     case readAll(f):
@@ -35,8 +35,8 @@ case readViaUsing(path):
   Err(e):
     print(e.message)
 
-# nestedな using は内側から外側の順で close される
-# 内側のwriteText(...)? は失敗時に自動でErrを伝播しつつ外側のusingも閉じる
+# Nested using blocks close from the inside out
+# An inner writeText(...)? propagates Err on failure while still closing the outer using resource
 fn writeTwo(a: str, b: str) -> Result<Unit, Error>:
   using fa = open(a, "w")?:
     using fb = open(b, "w")?:

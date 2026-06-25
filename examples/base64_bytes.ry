@@ -1,19 +1,19 @@
-# バイナリデータ (List<u8>) を base64 でラウンドトリップする
-# URL-safeアルファベットそのものの比較は examples/base64_url_safe.ry を参照
+# Round-trip binary data (List<u8>) through base64
+# See examples/base64_url_safe.ry for comparison of the URL-safe alphabet itself
 from ry.base64 import encodeBytes, decodeBytes
 
-# JPEGファイルのマジックバイト 0xFF 0xD8 0xFF 0xE0
+# JPEG file magic bytes: 0xFF 0xD8 0xFF 0xE0
 jpegMagic: List<u8> = [255u8, 216u8, 255u8, 224u8]
 encoded = encodeBytes(jpegMagic)
 print(encoded)
 
-# encodeBytes → decodeBytes でラウンドトリップ
+# Round trip with encodeBytes -> decodeBytes
 case decodeBytes(encoded):
   Ok(bytes):
     print(bytes == jpegMagic)
   Err(e):
     print(e.message)
 
-# 0x00 を含むバイト列もそのまま扱える (str-baseのencode/decodeはNUL前で切れる)
+# Byte arrays containing 0x00 are preserved; str-based encode/decode stops before NUL
 withNul: List<u8> = [0u8, 255u8, 0u8]
 print(encodeBytes(withNul))

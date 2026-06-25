@@ -1,21 +1,21 @@
-# 文字列の検索、文字単位アクセス、出現回数、繰り返し、反転、部分抽出を示す
+# Shows string search, character access, counts, repetition, reversal, and substring extraction
 text = "the quick brown fox"
 
-# find: 部分文字列の最初の位置をOption<int>で返す
+# find: returns the first substring position as Option<int>
 print(find(text, "quick"))
 print(find(text, "missing"))
 
-# charAt は指定位置の1文字をstrで返す (Unicode code point単位)
+# charAt returns the character at the given position as str (Unicode code point units)
 print(charAt("abc", 1))
 print(charAt("日本語", 1))
 
-# count: 出現回数 (ignoreCase付きversion)
+# count: number of occurrences, including ignoreCase versions
 print(count("banana", "a"))
 print(count("Banana", "a", true))
 
-# repeat と reverse
+# repeat and reverse
 print(repeat("ab", 4))
 print(reverse("hello"))
 
-# substr(start, end) で部分文字列 (Unicode code point単位)
+# substr(start, end) extracts a substring (Unicode code point units)
 print(substr("greeting", 0, 5))

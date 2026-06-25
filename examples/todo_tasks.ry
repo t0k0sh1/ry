@@ -1,4 +1,4 @@
-# Todo タスク管理 — record + enum + Result でドメインモデルを表現する小プログラム
+# Todo task manager - small program modeling a domain with record + enum + Result
 
 enum Status:
   Pending

@@ -1,7 +1,7 @@
-# int(str)/float(str)/str(v) のcall形式の変換と ?? 既定値を示す
-# `as` キーワードによるキャストは examples/type_cast_as.ry を参照
+# Shows call-form conversions int(str)/float(str)/str(v) and ?? defaults
+# See examples/type_cast_as.ry for casts using the `as` keyword
 
-# 文字列をパース: 成功はOk、失敗はErr
+# Parse strings: success is Ok, failure is Err
 case int("42"):
   Ok(v):
     print(v)
@@ -14,13 +14,13 @@ case float("3.14"):
   Err(e):
     print(e.message)
 
-# ?? でデフォルト値にフォールバック
+# Fall back to a default value with ??
 print(int("abc") ?? -1)
 
-# 値の文字列表示 (int/float/boolなどに対応)
+# String display for values, including int/float/bool
 print(str(42))
 print(str(true))
 
-# 第1級関数として扱える: List<str>に対してintを map で適用
+# Can be treated as a first-class function: apply int to List<str> with map
 texts: List<str> = ["1", "2", "3"]
 print(map(texts, int))

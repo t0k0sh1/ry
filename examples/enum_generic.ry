@@ -1,4 +1,4 @@
-# 型パラメータを持つジェネリックenumと、そのパターンマッチを示す
+# Shows a generic enum with type parameters and pattern matching on it
 enum MyOption<T>:
   MySome(T)
   MyNone
@@ -14,6 +14,6 @@ b = MyOption<int>::MyNone
 print(unwrapOrDefault(a, -1))
 print(unwrapOrDefault(b, -1))
 
-# 同じバリアントで同じpayloadなら等しい
+# Values are equal when the variant and payload are both equal
 print(MyOption<int>::MySome(42) == MyOption<int>::MySome(42))
 print(MyOption<int>::MySome(1) == MyOption<int>::MyNone)
