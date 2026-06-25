@@ -23,6 +23,7 @@ manually delete them.
 # libFuzzer (mirrors CI fuzz job)
 ./docker/run.sh fuzz fuzz_parser  -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/parser/       tests/fuzz/corpus/parser
 ./docker/run.sh fuzz fuzz_json    -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/json/         tests/fuzz/corpus/json
+./docker/run.sh fuzz fuzz_json5   -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/json5/        tests/fuzz/corpus/json5
 ./docker/run.sh fuzz fuzz_utf8    -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/utf8/         tests/fuzz/corpus/utf8
 ./docker/run.sh fuzz fuzz_io_open -max_total_time=30 -artifact_prefix=tests/fuzz/regressions/fuzz_io_open/ tests/fuzz/corpus/fuzz_io_open
 

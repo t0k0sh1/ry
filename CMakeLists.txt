@@ -618,8 +618,16 @@ if(ENABLE_FUZZER)
     add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime/native/json.cpp src/runtime/native/io.cpp)
     # fuzz_json5 mirrors fuzz_json (#1855). json5's parser embeds io references
     # via __ry_json5_load_file / __ry_json5_dump_file just like json, so the
-    # same source-embedding pattern is required.
+    # same source-embedding pattern is required. Additionally, json5.cpp's
+    # identifier-name predicates reference __ry_xid_start / __ry_xid_continue
+    # from libry_xid (#2314); since json5.cpp is compiled directly into the
+    # harness those become real undefined references at link time (unlike `ry`
+    # where the reference lives only in the dlopen'd libry_json5). Link the
+    # xid cdylib explicitly — only this harness needs it, so the shared
+    # add_ry_fuzz_target helper is left untouched.
     add_ry_fuzz_target(fuzz_json5 tests/fuzz/fuzz_json5.cpp src/runtime/native/json5.cpp src/runtime/native/io.cpp)
+    add_dependencies(fuzz_json5 ry_xid)
+    target_link_libraries(fuzz_json5 PRIVATE ${RY_XID_LINK})
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
     # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
     # not ry_lib) so the File handle symbols are available without dlopen.

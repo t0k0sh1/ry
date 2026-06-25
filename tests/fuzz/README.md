@@ -8,6 +8,7 @@ Coverage-guided fuzzing for the ry compiler and runtime using [LLVM libFuzzer](h
 |---|---|---|
 | `fuzz_parser` | `ry::Lexer` + `ry::Parser::parseProgram()` | Lexer + parser pipeline on arbitrary byte sequences |
 | `fuzz_json` | `__ry_json_parse` | JSON parser on arbitrary byte sequences |
+| `fuzz_json5` | `__ry_json5_parse` | JSON5 parser (comments, trailing commas, unquoted keys, hex/Inf/NaN) on arbitrary byte sequences |
 | `fuzz_utf8` | `__ry_utf8_len_n`, `__ry_utf8_char_at_checked`, `__ry_utf8_reverse`, `__ry_utf8_substring` | Bounded UTF-8 walker functions |
 | `fuzz_io_open` | `__ry_io_file_open` | I/O file-open path-string handling on arbitrary byte sequences across `"r"` / `"w"` / `"a"` / invalid modes |
 
@@ -53,7 +54,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
     -artifact_prefix=tests/fuzz/regressions/parser/ \
     tests/fuzz/corpus/parser
 
-# Same pattern for fuzz_json, fuzz_utf8, and fuzz_io_open
+# Same pattern for fuzz_json, fuzz_json5, fuzz_utf8, and fuzz_io_open
 ```
 
 `-rss_limit_mb=512` prevents OOM — compiler-input harnesses can peak high.
@@ -64,16 +65,19 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 tests/fuzz/
 ├── fuzz_parser.cpp          # Harness: lexer + parser
 ├── fuzz_json.cpp            # Harness: JSON parser
+├── fuzz_json5.cpp           # Harness: JSON5 parser
 ├── fuzz_utf8.cpp            # Harness: bounded UTF-8 walkers
 ├── fuzz_io_open.cpp         # Harness: __ry_io_file_open path-string handling
 ├── corpus/
 │   ├── parser/              # Seed inputs for fuzz_parser (*.ry snippets)
 │   ├── json/                # Seed inputs for fuzz_json
+│   ├── json5/               # Seed inputs for fuzz_json5 (seed-* covering each spec extension)
 │   ├── utf8/                # Seed inputs for fuzz_utf8 (text + binary)
 │   └── fuzz_io_open/        # Seed inputs for fuzz_io_open (arbitrary path bytes)
 └── regressions/
     ├── parser/              # Saved crash inputs for fuzz_parser
     ├── json/                # Saved crash inputs for fuzz_json
+    ├── json5/               # Saved crash inputs for fuzz_json5
     ├── utf8/                # Saved crash inputs for fuzz_utf8
     └── fuzz_io_open/        # Saved crash inputs for fuzz_io_open
 ```
