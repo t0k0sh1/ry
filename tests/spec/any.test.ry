@@ -548,12 +548,12 @@ fn anyHoldsCollectionTests():
   # Roundtripping a *typed* collection (`List<int>` / `Map<str, int>` /
   # `Set<int>`) through `any` and recovering the original concrete type
   # was previously the `xs: List<int> = anyVal` shape. After #2322 it is
-  # rejected by `[strict-any/any-implicit-unwrap]`; `asType[List<int>]`
-  # accepts only JSON-shaped (`List<any>` / `Map<str, any>` / `Set<any>`)
-  # sources via its `tryUnwrapFromAny` path. Reading back a native typed
-  # collection from `any` is intentionally not supported on v0.0.30 — use
-  # `case asType[List<any>](v)` plus per-element narrowing, or keep the
-  # value statically typed and skip the `any` round-trip entirely.
+  # rejected by `[strict-any/any-implicit-unwrap]`. The canonical
+  # recovery is `case asType[List<int>](v)` (#2378), which accepts both
+  # JSON-shape (`List<any>`) sources via per-element narrowing and
+  # native-typed sources via the typed-coll side table passthrough. The
+  # roundtrip cases live in the `asType checked cast from any` describe
+  # block further below.
   @it("should compare two any aliasing the same list with == (pointer identity)")
   fn shouldCompareTwoAnyAliasingSameListWithEq():
     xs: List<int> = [1, 2, 3]
@@ -838,14 +838,14 @@ enum AnyEnumBag:
 
 @describe("any holds enum")
 fn anyHoldsEnumTests():
-  # Recovering a typed enum / `Option<T>` / `Result<T, E>` from `any` was
-  # previously the `e: Color = anyVal` shape (rejected by
-  # `[strict-any/any-implicit-unwrap]` since #2322). `asType[T]` rejects
-  # enum / Option / Result targets ("not yet supported; use case-based
-  # unwrap instead" — see codegen_call_anycast.cpp), so the canonical
-  # recovery for these payloads is not available on v0.0.30. The remaining
-  # tests below cover equality comparison and the marker render — both
-  # remain supported without recovering the concrete type.
+  # The `e: Color = anyVal` implicit-unwrap shape is rejected by
+  # `[strict-any/any-implicit-unwrap]` since #2322. The canonical
+  # recovery is `case asType[T](v)` narrowing — `asType[T]` now covers
+  # simple enums, ADT enums, `Option<T>`, and `Result<T, E>` (#2378).
+  # The asType roundtrip cases live in the `asType[Enum]` and
+  # `asType[Result<T, E>]` describe blocks further below. The tests
+  # below cover equality comparison and the marker render — both remain
+  # supported and do not need to recover the concrete type.
   @it("should compare two any holding same simple enum value")
   fn shouldCompareTwoAnyHoldingSameSimpleEnumValue():
     a: any = AnyEnumColor::Green
@@ -932,11 +932,10 @@ fn anyHoldsEnumTests():
           Some(v): expect(v).toEq("hi!")
           None: fail("expected Some")
       Err(_): fail("expected Option<str>")
-  # Result / simple enum / ADT enum recovery from `any` is not yet
-  # available: `[strict-any/any-implicit-unwrap]` rejects the implicit
-  # form, and `asType[T]` returns Err for Result / enum targets ("target
-  # not yet supported"). Tracked as a follow-up to extend `asType`
-  # coverage to those payloads.
+  # Result / simple enum / ADT enum recovery from `any` is covered in
+  # the `asType[Result<T, E>] roundtrip recovery` and
+  # `asType[Enum] roundtrip recovery` describe blocks further below
+  # (#2378).
 
 mixedAnyMapGlobal: Map<str, any> = {}
 
@@ -1137,30 +1136,93 @@ fn asTypeTests():
     case asType[str](m["name"]):
       Ok(s): expect(s).toEq("Alice")
       Err(e): fail("expected Ok, got Err: " + e.message)
-  @it("should reject native typed List<int> source (typed-coll guard)")
-  fn shouldAsTypeRejectNativeTypedList():
+  @it("should recover native typed List<int> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedList():
     xs: List<int> = [1, 2, 3]
     v: any = xs
     case asType[List<int>](v):
-      Ok(_): fail("expected Err on native typed-coll source")
-      Err(e):
-        expect(e.message.contains("native typed collection")).toEq(true)
-  @it("should reject native typed Map<str, int> source (typed-coll guard)")
-  fn shouldAsTypeRejectNativeTypedMap():
+      Ok(out):
+        expect(out).toHaveLen(3)
+        expect(out[0]).toEq(1)
+        expect(out[1]).toEq(2)
+        expect(out[2]).toEq(3)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should recover native typed Map<str, int> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedMap():
     m: Map<str, int> = {"a": 1, "b": 2}
     v: any = m
     case asType[Map<str, int>](v):
-      Ok(_): fail("expected Err on native typed-coll source")
-      Err(e):
-        expect(e.message.contains("native typed collection")).toEq(true)
-  @it("should reject native typed Map source when target is record")
+      Ok(out):
+        expect(out).toHaveLen(2)
+        expect(out["a"]).toEq(1)
+        expect(out["b"]).toEq(2)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should recover native typed Set<int> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedSet():
+    s: Set<int> = {}
+    s += {1, 2, 3}
+    v: any = s
+    case asType[Set<int>](v):
+      Ok(out):
+        expect(out).toHaveLen(3)
+        expect(1 in out).toEq(true)
+        expect(2 in out).toEq(true)
+        expect(3 in out).toEq(true)
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should return Err when native typed List<int> source is requested as List<str>")
+  fn shouldAsTypeReturnErrWhenTypedListTargetMismatch():
+    xs: List<int> = [1, 2, 3]
+    v: any = xs
+    case asType[List<str>](v):
+      Ok(_): fail("expected Err on typed-coll target mismatch")
+      Err(_): expect(true).toEq(true)
+  @it("should return Err when native typed Map<str,int> source is requested as Map<str,str>")
+  fn shouldAsTypeReturnErrWhenTypedMapTargetMismatch():
+    m: Map<str, int> = {"a": 1}
+    v: any = m
+    case asType[Map<str, str>](v):
+      Ok(_): fail("expected Err on typed-coll target mismatch")
+      Err(_): expect(true).toEq(true)
+  @it("should still Err on native typed Map source when target is record")
   fn shouldAsTypeRejectNativeTypedMapForRecord():
     m: Map<str, int> = {"x": 1, "y": 2}
     v: any = m
     case asType[AnyRecPoint](v):
-      Ok(_): fail("expected Err on native typed-coll source")
-      Err(e):
-        expect(e.message.contains("native typed collection")).toEq(true)
+      Ok(_): fail("expected Err on native typed-coll source for record target")
+      Err(_): expect(true).toEq(true)
+  @it("should recover native typed List<str> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedListOfStr():
+    xs: List<str> = ["alpha", "beta", "gamma"]
+    v: any = xs
+    case asType[List<str>](v):
+      Ok(out):
+        expect(out).toHaveLen(3)
+        expect(out[0]).toEq("alpha")
+        expect(out[1]).toEq("beta")
+        expect(out[2]).toEq("gamma")
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should recover native typed Map<str, str> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedMapOfStr():
+    m: Map<str, str> = {"hello": "world", "foo": "bar"}
+    v: any = m
+    case asType[Map<str, str>](v):
+      Ok(out):
+        expect(out).toHaveLen(2)
+        expect(out["hello"]).toEq("world")
+        expect(out["foo"]).toEq("bar")
+      Err(e): fail("expected Ok, got Err: " + e.message)
+  @it("should recover native typed Set<str> roundtrip via asType")
+  fn shouldAsTypeRecoverNativeTypedSetOfStr():
+    s: Set<str> = {}
+    s += {"a", "b", "c"}
+    v: any = s
+    case asType[Set<str>](v):
+      Ok(out):
+        expect(out).toHaveLen(3)
+        expect("a" in out).toEq(true)
+        expect("b" in out).toEq(true)
+        expect("c" in out).toEq(true)
+      Err(e): fail("expected Ok, got Err: " + e.message)
 
 @describe("isType type-test on any")
 fn isTypeTests():
@@ -1225,3 +1287,191 @@ fn isTypeTests():
     expect(isType[any](v1)).toEq(true)
     expect(isType[any](v2)).toEq(true)
     expect(isType[any](v3)).toEq(true)
+
+@describe("asType[Result<T, E>] roundtrip recovery")
+fn asTypeResultRoundtripTests():
+  # #2378 extends `asType[T]` to recover `Result<T, E>` values that were
+  # wrapped via `v: any = someResult`. The descriptor stored at the enum
+  # box's descriptor slot disambiguates `Result<int, str>` from other
+  # enum-tagged sources at runtime.
+  @it("should recover Ok variant of Result<int, str> via asType")
+  fn shouldAsTypeRecoverResultOkVariant():
+    r: Result<int, str> = Ok(42)
+    v: any = r
+    case asType[Result<int, str>](v):
+      Ok(out):
+        case out:
+          Ok(n): expect(n).toEq(42)
+          Err(_): fail("expected Ok inner")
+      Err(e): fail("expected Result<int, str>, got Err: " + e.message)
+  @it("should recover Err variant of Result<int, str> via asType")
+  fn shouldAsTypeRecoverResultErrVariant():
+    r: Result<int, str> = Err("boom")
+    v: any = r
+    case asType[Result<int, str>](v):
+      Ok(out):
+        case out:
+          Ok(_): fail("expected Err inner")
+          Err(msg): expect(msg).toEq("boom")
+      Err(e): fail("expected Result<int, str>, got Err: " + e.message)
+  @it("should return Err when source is not an enum tag")
+  fn shouldAsTypeResultErrOnNonEnumSource():
+    v: any = 7
+    case asType[Result<int, str>](v):
+      Ok(_): fail("expected Err for non-enum source")
+      Err(_): expect(true).toEq(true)
+  @it("should return Err when source is a different Result type")
+  fn shouldAsTypeResultErrOnDifferentResult():
+    r: Result<str, int> = Ok("hi")
+    v: any = r
+    case asType[Result<int, str>](v):
+      Ok(_): fail("expected Err for different Result type")
+      Err(_): expect(true).toEq(true)
+  @it("should return Err when source is a Result with different Ok type")
+  fn shouldAsTypeResultErrOnDifferentOkType():
+    r: Result<int, str> = Ok(1)
+    v: any = r
+    case asType[Result<str, str>](v):
+      Ok(_): fail("expected Err for different Ok type")
+      Err(_): expect(true).toEq(true)
+  @it("should recover Result<List<int>, str> Ok variant via asType")
+  fn shouldAsTypeRecoverResultWithListPayload():
+    r: Result<List<int>, str> = Ok([7, 8, 9])
+    v: any = r
+    case asType[Result<List<int>, str>](v):
+      Ok(out):
+        case out:
+          Ok(xs):
+            expect(xs).toHaveLen(3)
+            expect(xs[0]).toEq(7)
+            expect(xs[2]).toEq(9)
+          Err(_): fail("expected Ok inner")
+      Err(e): fail("expected Result<List<int>, str>, got Err: " + e.message)
+
+enum AsTypeRTColor:
+  Red
+  Green
+  Blue
+
+enum AsTypeRTMode:
+  On
+  Off
+
+enum AsTypeRTShape:
+  Circle(float)
+  Rect(int, int)
+  Dot
+
+enum AsTypeRTBag:
+  Items(List<int>)
+  Nothing
+
+enum AsTypeRTLabel:
+  Tag(str)
+  Empty
+
+@describe("asType[Enum] roundtrip recovery")
+fn asTypeEnumRoundtripTests():
+  # #2378 extends `asType[T]` to recover simple and ADT enum values
+  # (including payload-carrying variants) that were wrapped via
+  # `v: any = enumVal`. The descriptor identity disambiguates one
+  # enum type from another at runtime.
+  @it("should recover simple enum variant via asType")
+  fn shouldAsTypeRecoverSimpleEnumVariant():
+    v: any = AsTypeRTColor::Green
+    case asType[AsTypeRTColor](v):
+      Ok(c):
+        expect(c == AsTypeRTColor::Green).toEq(true)
+      Err(e): fail("expected AsTypeRTColor, got Err: " + e.message)
+  @it("should recover all simple enum variants via asType")
+  fn shouldAsTypeRecoverAllSimpleEnumVariants():
+    a: any = AsTypeRTColor::Red
+    b: any = AsTypeRTColor::Green
+    c: any = AsTypeRTColor::Blue
+    case asType[AsTypeRTColor](a):
+      Ok(v): expect(v == AsTypeRTColor::Red).toEq(true)
+      Err(_): fail("expected Red")
+    case asType[AsTypeRTColor](b):
+      Ok(v): expect(v == AsTypeRTColor::Green).toEq(true)
+      Err(_): fail("expected Green")
+    case asType[AsTypeRTColor](c):
+      Ok(v): expect(v == AsTypeRTColor::Blue).toEq(true)
+      Err(_): fail("expected Blue")
+  @it("should return Err when source holds a different simple enum")
+  fn shouldAsTypeSimpleEnumErrOnDifferentType():
+    v: any = AsTypeRTMode::On
+    case asType[AsTypeRTColor](v):
+      Ok(_): fail("expected Err on different simple enum type")
+      Err(_): expect(true).toEq(true)
+  @it("should return Err when simple enum target source is non-enum")
+  fn shouldAsTypeSimpleEnumErrOnNonEnumSource():
+    v: any = 1
+    case asType[AsTypeRTColor](v):
+      Ok(_): fail("expected Err on non-enum source")
+      Err(_): expect(true).toEq(true)
+  @it("should recover ADT enum variant with payload via asType")
+  fn shouldAsTypeRecoverAdtEnumVariantWithPayload():
+    v: any = AsTypeRTShape::Rect(3, 4)
+    case asType[AsTypeRTShape](v):
+      Ok(s):
+        case s:
+          AsTypeRTShape::Circle(_): fail("expected Rect")
+          AsTypeRTShape::Rect(w, h):
+            expect(w).toEq(3)
+            expect(h).toEq(4)
+          AsTypeRTShape::Dot: fail("expected Rect")
+      Err(e): fail("expected AsTypeRTShape, got Err: " + e.message)
+  @it("should recover ADT enum variant without payload via asType")
+  fn shouldAsTypeRecoverAdtEnumVariantWithoutPayload():
+    v: any = AsTypeRTShape::Dot
+    case asType[AsTypeRTShape](v):
+      Ok(s):
+        case s:
+          AsTypeRTShape::Circle(_): fail("expected Dot")
+          AsTypeRTShape::Rect(_, _): fail("expected Dot")
+          AsTypeRTShape::Dot: expect(true).toEq(true)
+      Err(e): fail("expected AsTypeRTShape, got Err: " + e.message)
+  @it("should recover ADT enum variant with float payload via asType")
+  fn shouldAsTypeRecoverAdtEnumVariantWithFloatPayload():
+    v: any = AsTypeRTShape::Circle(1.5)
+    case asType[AsTypeRTShape](v):
+      Ok(s):
+        case s:
+          AsTypeRTShape::Circle(r): expect(r).toEq(1.5)
+          AsTypeRTShape::Rect(_, _): fail("expected Circle")
+          AsTypeRTShape::Dot: fail("expected Circle")
+      Err(e): fail("expected AsTypeRTShape, got Err: " + e.message)
+  @it("should recover ADT enum variant with List<int> payload via asType")
+  fn shouldAsTypeRecoverAdtEnumVariantWithListPayload():
+    v: any = AsTypeRTBag::Items([10, 20, 30])
+    case asType[AsTypeRTBag](v):
+      Ok(b):
+        case b:
+          AsTypeRTBag::Items(xs):
+            expect(xs).toHaveLen(3)
+            expect(xs[0]).toEq(10)
+            expect(xs[1]).toEq(20)
+            expect(xs[2]).toEq(30)
+          AsTypeRTBag::Nothing: fail("expected Items")
+      Err(e): fail("expected AsTypeRTBag, got Err: " + e.message)
+  @it("should return Err when source holds a different ADT enum")
+  fn shouldAsTypeAdtEnumErrOnDifferentType():
+    v: any = AsTypeRTBag::Nothing
+    case asType[AsTypeRTShape](v):
+      Ok(_): fail("expected Err on different ADT enum type")
+      Err(_): expect(true).toEq(true)
+  @it("should return Err when ADT enum target source is non-enum")
+  fn shouldAsTypeAdtEnumErrOnNonEnumSource():
+    v: any = "hello"
+    case asType[AsTypeRTShape](v):
+      Ok(_): fail("expected Err on non-enum source")
+      Err(_): expect(true).toEq(true)
+  @it("should recover ADT enum variant with str payload via asType")
+  fn shouldAsTypeRecoverAdtEnumVariantWithStrPayload():
+    v: any = AsTypeRTLabel::Tag("hello")
+    case asType[AsTypeRTLabel](v):
+      Ok(l):
+        case l:
+          AsTypeRTLabel::Tag(s): expect(s).toEq("hello")
+          AsTypeRTLabel::Empty: fail("expected Tag")
+      Err(e): fail("expected AsTypeRTLabel, got Err: " + e.message)
