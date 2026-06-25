@@ -67,7 +67,7 @@ The kickoff pilot is **`emitExprVariant(BoolExpr)`** (`src/codegen_expr.cpp:122-
 - **No CodeGen state read**. Only inputs: the boolean `e.value` and the `i1Ty_` LLVM type (already a `RyTypeRef` candidate). No `value_metadata_`, no ARC caches, no `named_values_`, no error path.
 - **No type registry crossing**. The `i1` type is a primitive; the lowering decision does not consult `record_types_` / `enum_types_` / `type_aliases_`. Stage 5's type-registry move is not a prerequisite.
 - **Verifiable**. The emitted IR is a single LLVM `ConstantInt` (`i1 0` / `i1 1`) that is grep-confirmable in `--emit-llvm-ir` output before diffing.
-- **Vacuous-diff trap avoidance**. A bare `let x = true; if x { … }` sema-folds the conditional, bypassing emission of the constant entirely. The pilot uses a probe (see §"Verification") that stores `e.value` into an `alloca` so the constant survives sema and is observable as `store i1 1` / `store i1 0`.
+- **Vacuous-diff trap avoidance**. A bare `let x = true; if x { … }` sema-folds the conditional, bypassing emission of the constant entirely. The pilot uses a probe (see §"Verification") that stores `e.value` into an `alloca` so the constant survives sema and is observable as `store i1 true` / `store i1 false`.
 
 ### Why not the alternatives the issue named
 
@@ -136,11 +136,16 @@ fn boolPilotProbe() -> int {
 }
 ```
 
-The `let t = true` and `let f = false` initializations emit `store i1 1, ptr %t` / `store i1 0, ptr %f` — these are the markers grep-confirmed in step 2.
+The `let t = true` and `let f = false` initializations emit `store i1 true, ptr %t` / `store i1 false, ptr %f` — these are the markers grep-confirmed in step 2.
 
 ### Coverage in both build presets
 
-Both `default` (Linux / CI, `LLVM_DIR=/usr/local/llvm`) and `rust-emit` (macOS, `LLVM_DIR=/opt/homebrew/opt/llvm@21`) presets exercise the same Rust `emit` crate (since #1993; both link the same cdylib via corrosion). The pilot adds the same `lower` cdylib to both presets via the same CMake `corrosion_import_crate` mechanism, so cross-preset IR consistency is structural, not a separately enforced invariant. The byte-exact regression in step 4 is the empirical check; running it on the local platform suffices for the pilot.
+Both `default` (Linux / CI, `LLVM_DIR=/usr/local/llvm`) and `rust-emit` (macOS, `LLVM_DIR=/opt/homebrew/opt/llvm@21`) presets exercise the same Rust `emit` crate (since #1993; both link the same cdylib via corrosion). The pilot adds the same `lower` cdylib to both presets via the same CMake `corrosion_import_crate` mechanism, so cross-preset IR consistency is structural, not a separately enforced invariant. The byte-exact regression is verified on **each preset independently**:
+
+- **macOS `rust-emit` (local)**: the one-shot ASLR-normalized `--emit-llvm-ir` diff in step 4 proves the migration is byte-equivalent at the cutover. This is the migration-path proof — it certifies the C++ and Rust paths agree at the moment they switch.
+- **Linux `default` (CI)**: the FileCheck golden `tests/filecheck/bool_const_pilot_2397.ry` runs on every PR via the `filecheck` job and asserts the post-migration IR shape continuously. Any platform-specific loader / LLVM-output drift that would break the migrated path on `default` breaks the golden first.
+
+Together the two preset paths cover the cross-preset proof scope item 3 calls for; neither alone is sufficient (one-shot diff proves equivalence at one moment; FileCheck proves shape continuously).
 
 ## CI
 
