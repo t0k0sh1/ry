@@ -1514,6 +1514,20 @@ void CodeGen::emitStmt(DirectiveDefStmt &s) {
     if (user_directive_registry_.count(s.name))
         codegenError("@directive '" + s.name + "' is already defined");
 
+    // Pattern 3 (#2317, #2323, #2380): unannotated `@directive def` params are
+    // the same implicit-any hazard as named-fn / lambda params — emit the
+    // shared warning via emitImplicitAnyParamWarning so wording stays unified
+    // across all three forms. shouldEmitAnyLintAt exempts stdlib / cross-
+    // package files, matching the named-fn / lambda gate.
+    if (shouldEmitAnyLintAt(s.loc.file_id)) {
+        for (const auto &p : s.params) {
+            if (!p.has_explicit_type) {
+                emitImplicitAnyParamWarning(p.name,
+                    "@directive '" + s.name + "'");
+            }
+        }
+    }
+
     user_directive_registry_.emplace(s.name, fromDirectiveDef(s));
 }
 

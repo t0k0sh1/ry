@@ -52,7 +52,7 @@ fn identity(x: any) -> any:    # Parameter type any (explicit)
 
 When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime.
 
-> **Deprecated (#2317, #2323)**: Omitting a parameter type annotation emits a compile-time warning. Write `: any` explicitly to suppress it, or prefer a concrete type. See [Untyped Parameters (Deprecated)](types.md#untyped-parameters-deprecated) for migration guidance. As of v0.0.30 (#2322) the body of an unannotated function can no longer perform arithmetic / ordering or implicit unwrap on the implicit-any parameter — those operations are rejected by the `[strict-any/<rule>]` rule set. Add an explicit type annotation to make the parameter usable.
+> **Deprecated (#2317, #2323, #2380)**: Omitting a parameter type annotation emits a compile-time warning. Write `: any` explicitly to suppress it, or prefer a concrete type. See [Untyped Parameters (Deprecated)](types.md#untyped-parameters-deprecated) for migration guidance. As of v0.0.30 (#2322) the body of an unannotated function can no longer perform arithmetic / ordering or implicit unwrap on the implicit-any parameter — those operations are rejected by the `[strict-any/<rule>]` rule set. Add an explicit type annotation to make the parameter usable. The same warning applies to lambda parameters (`(x) => ...`, `x => ...`) and to `@directive def` parameter declarations.
 
 ```ry
 # Deprecated: implicit any from omitted annotation
@@ -60,6 +60,14 @@ fn add(a, b):
     return a + b
 # `a + b` is rejected by [strict-any/any-arithmetic] — add `: any` or a
 # concrete type to make the body compile.
+
+# Deprecated: implicit any on a @directive def parameter (#2380)
+@directive(target=["function"])
+fn myDir(x)
+# warning: parameter 'x' of @directive 'myDir' has no type annotation
+# and defaults to 'any'; add an explicit annotation, a union, or a generic
+# type parameter. Use `x: str` for a concrete contract or `x: any` to opt
+# into intentional type-erasure.
 ```
 
 You can also use `any` explicitly in type annotations (no warning):
