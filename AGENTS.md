@@ -55,7 +55,7 @@ bash scripts/check-examples.sh
 
 - No direct commits to `main`; feature branch names must not contain `main` after lowercasing and removing non-letters.
 - Bring `main` into feature branches with `git rebase origin/main`; after rebase, push with `--force-with-lease` and no extra fetch.
-- `/git-push`, `/git-create-pr`, and `/git-finalize-pr` run only when the user directly invokes that exact command.
+- `/git-create-pr` and `/git-finalize-pr` run only when the user directly invokes that exact command.
 - `/git-resolve-conflicts` handles PR conflicts.
 - Before merge, stop and report uncommitted / untracked files.
 - External reviews, `git add` / commit / push / PR creation, and GitHub issue creation require explicit user direction.
