@@ -120,7 +120,7 @@ Future stages add `crates/lower/src/{expr,stmt,call,arc,…}.rs` as the surface 
 The pilot follows the #2026 ASLR-normalized `--emit-llvm-ir` discipline ([Codegen Layering Plan](codegen-layering-plan.md), referenced from each #2072 onward installment):
 
 1. **Baseline.** Capture `--emit-llvm-ir` output for a probe program on the pre-migration tree.
-2. **Marker grep.** Confirm `store i1 1` and `store i1 0` appear in the baseline (so a vacuous diff cannot pass — see "Vacuous-diff trap" below).
+2. **Marker grep.** Confirm `store i1 true` and `store i1 false` appear in the baseline (so a vacuous diff cannot pass — see "Vacuous-diff trap" below).
 3. **Migrate.** Apply the pilot diff.
 4. **Compare.** Re-capture `--emit-llvm-ir` and diff against the baseline. The diff must be empty after ASLR / SSA-name normalization.
 
