@@ -312,64 +312,11 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Register test runtime symbols if in test mode
-    if (test_mode) {
-        auto &es = jit->getExecutionSession();
-        SymbolMap testSymbols;
-        testSymbols[es.intern("__ry_test_describe_begin")] =
-            {ExecutorAddr::fromPtr(&__ry_test_describe_begin), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_describe_end")] =
-            {ExecutorAddr::fromPtr(&__ry_test_describe_end), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_it_begin")] =
-            {ExecutorAddr::fromPtr(&__ry_test_it_begin), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_it_end")] =
-            {ExecutorAddr::fromPtr(&__ry_test_it_end), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_expect_fail")] =
-            {ExecutorAddr::fromPtr(&__ry_test_expect_fail), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_summary")] =
-            {ExecutorAddr::fromPtr(&__ry_test_summary), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_set")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_set), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_set_closure")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_set_closure), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_register_once")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_register_once), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_get")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_get), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_get_env")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_get_env), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_get_call_count")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_get_call_count), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_increment_call")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_increment_call), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_begin_call_record")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_begin_call_record), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_store_arg")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_store_arg), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_count_matching_calls")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_count_matching_calls), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_mock_clear_all")] =
-            {ExecutorAddr::fromPtr(&__ry_mock_clear_all), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_prop_init_rng")] =
-            {ExecutorAddr::fromPtr(&__ry_test_prop_init_rng), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_rand_int")] =
-            {ExecutorAddr::fromPtr(&__ry_test_rand_int), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_rand_float")] =
-            {ExecutorAddr::fromPtr(&__ry_test_rand_float), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_rand_bool")] =
-            {ExecutorAddr::fromPtr(&__ry_test_rand_bool), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_rand_str")] =
-            {ExecutorAddr::fromPtr(&__ry_test_rand_str), JITSymbolFlags::Exported};
-        testSymbols[es.intern("__ry_test_it_is_failed")] =
-            {ExecutorAddr::fromPtr(&__ry_test_it_is_failed), JITSymbolFlags::Exported};
-        if (auto err = mainJD.define(absoluteSymbols(std::move(testSymbols)))) {
-            errs() << "Failed to define test symbols: ";
-            logAllUnhandledErrors(std::move(err), errs());
-            ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
-                               {ry::TraceField("detail", "Failed to define test symbols")});
-            return 1;
-        }
-    }
+    // Test-runtime symbols (__ry_test_* / __ry_mock_*) live in libry_testing,
+    // which is process-linked into `ry` / `ry_tests` (see CMakeLists.txt
+    // #2395). The JIT resolves them through the process search generator
+    // installed above — no explicit absoluteSymbols registration is needed,
+    // unifying the loader path with every other stdlib module.
 
     // Register coverage runtime symbols if in coverage mode
     if (coverage_mode) {
