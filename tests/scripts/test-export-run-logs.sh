@@ -234,3 +234,30 @@ if [[ "$sym_target" != "$LINK_DIR/linked.test.ry" ]]; then
 fi
 
 echo "OK: tests/scripts/test-export-run-logs.sh — symlinked .test.ry discovery (#2403)"
+
+# ---- RUN_NONCE in-process uniqueness (#2402) ------------------------------
+# Source the helper and call gen_run_nonce many times within this same shell
+# (constant PID / $$). A nonce derived from $$ alone would yield the same
+# value for every call here and fail this check; a wall-clock-only nonce with
+# microsecond resolution can also collide under tight in-process loops. The
+# real /dev/urandom-backed helper trivially passes.
+
+# shellcheck source=../../scripts/lib/run-nonce.sh
+source "scripts/lib/run-nonce.sh"
+
+NONCE_ITERATIONS=50
+nonces=()
+for ((i = 0; i < NONCE_ITERATIONS; i++)); do
+  nonces+=("$(gen_run_nonce)")
+done
+
+unique_nonce_count="$(printf '%s\n' "${nonces[@]}" | sort -u | wc -l | tr -d ' ')"
+if [[ "$unique_nonce_count" != "$NONCE_ITERATIONS" ]]; then
+  echo "error: gen_run_nonce produced duplicates within a single shell —" >&2
+  echo "       expected $NONCE_ITERATIONS unique values, got $unique_nonce_count." >&2
+  echo "       this catches regressions where RUN_NONCE depends on per-process state" >&2
+  echo "       like \$\$ (PID) instead of a true entropy source (#2402)." >&2
+  exit 1
+fi
+
+echo "OK: tests/scripts/test-export-run-logs.sh — ${NONCE_ITERATIONS} in-process nonces unique (#2402)"
