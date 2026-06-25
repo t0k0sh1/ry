@@ -38,16 +38,21 @@ if [[ ! -f "$FIXTURE" ]]; then
 fi
 
 # ---- Run the script under test ---------------------------------------------
+# Baseline runs go in their own subdir so later sub-tests (e.g. the symlink
+# regression below) can use sibling subdirs without breaking the
+# "exactly one run dir" glob.
 
-RY_LOG_DIR="$SCRATCH" bash scripts/export-run-logs.sh "$FIXTURE" >/dev/null
+BASELINE_LOG_DIR="$SCRATCH/baseline"
+mkdir -p "$BASELINE_LOG_DIR"
+RY_LOG_DIR="$BASELINE_LOG_DIR" bash scripts/export-run-logs.sh "$FIXTURE" >/dev/null
 
 # ---- Locate the produced run.jsonl -----------------------------------------
 
 shopt -s nullglob
-candidates=("$SCRATCH"/*/)
+candidates=("$BASELINE_LOG_DIR"/*/)
 shopt -u nullglob
 if (( ${#candidates[@]} != 1 )); then
-  echo "error: expected exactly one run dir under $SCRATCH, found ${#candidates[@]}" >&2
+  echo "error: expected exactly one run dir under $BASELINE_LOG_DIR, found ${#candidates[@]}" >&2
   exit 1
 fi
 RUN_DIR="${candidates[0]%/}"
@@ -171,3 +176,61 @@ if [[ "$passed_count" != "1" ]]; then
 fi
 
 echo "OK: tests/scripts/test-export-run-logs.sh — ${#records[@]} JSONL records validated ($cmd_count command)"
+
+# ---- Regression: symlinked .test.ry must be discovered (#2403) ------------
+# Reproduce the discovery bug where `find` (without -L) skips symlinks pointing
+# at .test.ry files. The fix is `find -L` in scripts/export-run-logs.sh's
+# target-expansion loop. This sub-test asserts *discovery*, not ry execution:
+# it only requires that a directory containing a symlinked .test.ry produces
+# >= 1 command record. Don't assert summary.passed here — that couples the
+# discovery test to ry's open()-follows-symlinks behavior.
+
+LINK_DIR="$SCRATCH/symlink-fixture"
+SYMLINK_LOG_DIR="$SCRATCH/symlink-runs"
+mkdir -p "$LINK_DIR" "$SYMLINK_LOG_DIR"
+# Use an absolute path so the symlink resolves regardless of $PWD at use time.
+# $PWD is the repo root (set by the cd above); $FIXTURE is repo-relative.
+ln -s "$PWD/$FIXTURE" "$LINK_DIR/linked.test.ry"
+
+set +e
+RY_LOG_DIR="$SYMLINK_LOG_DIR" \
+  bash scripts/export-run-logs.sh "$LINK_DIR" \
+  >"$SCRATCH/symlink.stdout" 2>"$SCRATCH/symlink.stderr"
+sym_exit_code=$?
+set -e
+
+if [[ "$sym_exit_code" != "0" ]]; then
+  echo "error: export-run-logs.sh failed on a dir whose only .test.ry is a symlink (exit_code=$sym_exit_code, #2403)" >&2
+  echo "       find in scripts/export-run-logs.sh's target-expansion loop must use -L to follow symlinks." >&2
+  echo "       stderr from the failed invocation:" >&2
+  sed 's/^/         /' "$SCRATCH/symlink.stderr" >&2
+  exit 1
+fi
+
+shopt -s nullglob
+sym_candidates=("$SYMLINK_LOG_DIR"/*/)
+shopt -u nullglob
+if (( ${#sym_candidates[@]} != 1 )); then
+  echo "error: expected exactly one run dir under $SYMLINK_LOG_DIR, found ${#sym_candidates[@]}" >&2
+  exit 1
+fi
+SYM_RUN_JSONL="${sym_candidates[0]%/}/run.jsonl"
+
+if ! jq -e 'select(.record_type=="command")' "$SYM_RUN_JSONL" >/dev/null; then
+  echo "error: no command record produced from symlinked .test.ry target (#2403)" >&2
+  echo "       symlinked .test.ry under $LINK_DIR was not discovered by export-run-logs.sh." >&2
+  exit 1
+fi
+
+# The discovered target's repo-relative path must match the symlink we placed,
+# not the resolved fixture path. This guards against a future "-L combined with
+# real-path resolution" regression that would change the recorded target. Use
+# --slurp + .[0] instead of `jq … | head -1` to avoid an early-close SIGPIPE
+# turning jq into a failure under `pipefail`.
+sym_target="$(jq -rs 'map(select(.record_type=="command") | .target) | .[0]' "$SYM_RUN_JSONL")"
+if [[ "$sym_target" != "$LINK_DIR/linked.test.ry" ]]; then
+  echo "error: command.target=$sym_target, expected $LINK_DIR/linked.test.ry (#2403)" >&2
+  exit 1
+fi
+
+echo "OK: tests/scripts/test-export-run-logs.sh — symlinked .test.ry discovery (#2403)"
