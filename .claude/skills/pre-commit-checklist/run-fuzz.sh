@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# §3.6 libFuzzer (fuzz_parser / fuzz_json / fuzz_utf8 / fuzz_io_open — 60s each, via Docker)
-# fuzz_json5 (#1855) is built and validated locally but not yet in the docker
-# allowlist — re-add the docker/run.sh call after the next /ci-image-workflow.
+# §3.6 libFuzzer (fuzz_parser / fuzz_json / fuzz_json5 / fuzz_utf8 / fuzz_io_open — 60s each, via Docker)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
@@ -26,6 +24,9 @@ done
 
 ./docker/run.sh fuzz fuzz_json -max_total_time=60 -rss_limit_mb=2048 \
     -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
+
+./docker/run.sh fuzz fuzz_json5 -max_total_time=60 -rss_limit_mb=2048 \
+    -artifact_prefix=tests/fuzz/regressions/json5/ tests/fuzz/corpus/json5
 
 ./docker/run.sh fuzz fuzz_utf8 -max_total_time=60 -rss_limit_mb=2048 \
     -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8

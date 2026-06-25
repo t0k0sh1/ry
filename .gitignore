@@ -69,6 +69,7 @@ target/
 # Already-tracked named seeds (*.ry, *.json, *.txt, *.bin, crash-*) are unaffected.
 tests/fuzz/corpus/parser/*
 tests/fuzz/corpus/json/*
+tests/fuzz/corpus/json5/*
 tests/fuzz/corpus/utf8/*
 tests/fuzz/corpus/fuzz_io_open/*
 !tests/fuzz/corpus/**/*.ry
@@ -76,3 +77,4 @@ tests/fuzz/corpus/fuzz_io_open/*
 !tests/fuzz/corpus/**/*.txt
 !tests/fuzz/corpus/**/*.bin
 !tests/fuzz/corpus/**/crash-*
+!tests/fuzz/corpus/**/seed-*
