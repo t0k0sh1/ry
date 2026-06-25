@@ -658,6 +658,95 @@ fn verifyCalledWithTests():
 - `int` argument literals are widened to `float` automatically when the parameter type is `float` (matching ordinary call-site coercion).
 - Returns `0` when no recorded call matches the supplied arguments.
 
+### calledWith(name, args...)
+
+Returns `bool`: `true` iff at least one recorded call to the mocked or spied function matches the supplied `args...` (as `int` for the count is conceptually `verifyCalledWith(name, args...) > 0`). Like `verifyCalledWith`, the function name must be a **string literal** and is resolved at compile time.
+
+```ry
+from ry.testing import it, describe, mock, spy, calledWith, expect
+
+fn compute(x: int) -> int:
+    return x * 2
+
+@describe("calledWith")
+fn calledWithTests():
+    @it("should return true when arg matches")
+    fn matchesArg():
+        spy("compute")
+        compute(5)
+        compute(7)
+        expect(calledWith("compute", 5)).toBeTrue()
+        expect(calledWith("compute", 7)).toBeTrue()
+        expect(calledWith("compute", 99)).toBeFalse()
+```
+
+- Requires `from testing import calledWith` (since v0.0.30, #2396)
+- Same compile-time validation rules as `verifyCalledWith`: function must exist, must be mocked or spied, and supplied `args...` must match the original function's parameter list by arity and type
+- Supported argument types are identical to `verifyCalledWith` (`int`, `float`, `bool`, `str`, `List<T>`, `Set<T>`, `Map<K, V>`, record / tuple, `fn(...) -> R`)
+- Returns `false` when no recorded call matches (including the "never called" case)
+- Overload semantics are identical to `verifyCalledWith`: bare-name on an overloaded function dispatches to the arity-matching overload (compile error on ambiguity); signature form (`"compute(int)"`) selects a specific overload
+
+### calledTimes(name, n)
+
+Returns `bool`: `true` iff the mocked or spied function has been called exactly `n` times.
+
+```ry
+from ry.testing import it, describe, spy, calledTimes, expect
+
+fn compute(x: int) -> int:
+    return x * 2
+
+@describe("calledTimes")
+fn calledTimesTests():
+    @it("should match exact count")
+    fn matchesCount():
+        spy("compute")
+        compute(1)
+        compute(2)
+        expect(calledTimes("compute", 2)).toBeTrue()
+        expect(calledTimes("compute", 0)).toBeFalse()
+
+    @it("should return true with zero count when never called")
+    fn matchesZero():
+        spy("compute")
+        expect(calledTimes("compute", 0)).toBeTrue()
+```
+
+- Requires `from testing import calledTimes` (since v0.0.30, #2396)
+- The first argument must be a **string literal** function name (same convention as `calledWith` / `verifyCalledWith`)
+- The function must exist and must be mocked or spied (compile error otherwise — catches stale or misspelled names that `verify(name)` silently treats as zero)
+- The second argument may be any `int` expression (literal, variable, or computed)
+- Overload semantics: bare-name aggregates counts across all overloads (matches `verify(bareName)` parity); signature form (`"compute(int)"`) counts only that overload
+- Equivalent to `verify(name) == n`, returned as `bool` so it composes with `expect(...).toBeTrue()` directly
+
+### lastCalledWith(name, args...)
+
+Returns `bool`: `true` iff the **most recent** recorded call to the mocked or spied function matches the supplied `args...`. Unlike `calledWith` (which scans the entire history), `lastCalledWith` checks only the latest call — useful for assertions on the final state of a retry loop or paginated request.
+
+```ry
+from ry.testing import it, describe, spy, lastCalledWith, expect
+
+fn compute(x: int) -> int:
+    return x * 2
+
+@describe("lastCalledWith")
+fn lastCalledWithTests():
+    @it("should match only the most recent call")
+    fn matchesLast():
+        spy("compute")
+        compute(1)
+        compute(2)
+        compute(3)
+        expect(lastCalledWith("compute", 3)).toBeTrue()
+        expect(lastCalledWith("compute", 1)).toBeFalse()
+        expect(lastCalledWith("compute", 2)).toBeFalse()
+```
+
+- Requires `from testing import lastCalledWith` (since v0.0.30, #2396)
+- Same compile-time validation rules and supported argument types as `verifyCalledWith` / `calledWith`
+- Returns `false` when there are no recorded calls
+- Overload semantics are identical to `verifyCalledWith`: bare-name on an overloaded function dispatches to the arity-matching overload (compile error on ambiguity); signature form selects a specific overload. "Last" always refers to the last call recorded against the resolved overload — there is no cross-overload aggregation
+
 ### spy(name)
 
 Records calls to a function without replacing its implementation. Unlike `mock`, the original function body still executes — `spy` only adds call-count and argument-recording instrumentation around it.

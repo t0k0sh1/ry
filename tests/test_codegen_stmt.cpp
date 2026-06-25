@@ -1902,9 +1902,12 @@ TEST_F(ImportTest, FromTestingWildcardRecordsAllIntrinsics) {
     // #1677 adds `verifyCalledWith` as an intrinsic.
     // #1683 adds `spy` as an intrinsic.
     // #1681 adds `mockReturnValueOnce` as an intrinsic.
+    // #2396 adds `calledWith`, `calledTimes`, `lastCalledWith` as bool-form
+    // matcher intrinsics.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "mockReturnValueOnce", "spy", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 6u);
+        "expect", "mock", "mockReturnValueOnce", "spy", "fail",
+        "verifyCalledWith", "calledWith", "calledTimes", "lastCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 9u);
     EXPECT_EQ(intrinsics, expected);
 }
 
@@ -1973,9 +1976,12 @@ TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
     // #1677 adds `verifyCalledWith` as an intrinsic.
     // #1683 adds `spy` as an intrinsic.
     // #1681 adds `mockReturnValueOnce` as an intrinsic.
+    // #2396 adds `calledWith`, `calledTimes`, `lastCalledWith` as bool-form
+    // matcher intrinsics.
     std::unordered_set<std::string> expected = {
-        "expect", "mock", "mockReturnValueOnce", "spy", "fail", "verifyCalledWith"};
-    EXPECT_EQ(intrinsics.size(), 6u);
+        "expect", "mock", "mockReturnValueOnce", "spy", "fail",
+        "verifyCalledWith", "calledWith", "calledTimes", "lastCalledWith"};
+    EXPECT_EQ(intrinsics.size(), 9u);
     EXPECT_EQ(intrinsics, expected);
 }
 

@@ -1348,6 +1348,69 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     return matched;
 }
 
+// #2396: returns 1 iff the most-recently-recorded call across all entries
+// resolved for `name` matches (kinds, values). Aggregation across overloads
+// mirrors __ry_mock_count_matching_calls — when a bare name maps to multiple
+// canonical-sig entries (bare-name index), the entry's last call is compared
+// against the expected args. If multiple entries are present and at least one
+// has a last call that matches, we return 1; we do NOT track a global
+// timestamp across entries because individual entry ordering is sufficient
+// for the verifyCalledWith-style use case (the user supplies a name and
+// expects "the last invocation of THAT thing"). Snapshot ownership is
+// transferred identically to __ry_mock_count_matching_calls.
+int64_t __ry_mock_last_call_matches(const char *name, int64_t numArgs,
+                                     const int64_t *kinds,
+                                     const int64_t *values) {
+    std::vector<MockEntry *> entries;
+    auto exactIt = g_mock_registry.find(name);
+    if (exactIt != g_mock_registry.end()) {
+        entries.push_back(&exactIt->second);
+    } else {
+        auto idxIt = g_mock_name_index.find(name);
+        if (idxIt != g_mock_name_index.end()) {
+            for (const auto &sig : idxIt->second) {
+                auto sigIt = g_mock_registry.find(sig);
+                if (sigIt != g_mock_registry.end())
+                    entries.push_back(&sigIt->second);
+            }
+        }
+    }
+    int64_t result = 0;
+    for (MockEntry *entry : entries) {
+        if (entry->calls.empty()) continue;
+        const auto &last = entry->calls.back();
+        if (static_cast<int64_t>(last.args.size()) != numArgs) continue;
+        bool ok = true;
+        for (int64_t i = 0; i < numArgs; ++i) {
+            if (!mockArgEqual(last.args[static_cast<size_t>(i)],
+                              kinds[i], values[i])) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) { result = 1; break; }
+    }
+    for (int64_t i = 0; i < numArgs; ++i) {
+        if (kinds[i] == 6 || kinds[i] == 7) {
+            freeMockListSnapshot(
+                reinterpret_cast<MockListSnapshot *>(values[i]));
+        } else if (kinds[i] == 8) {
+            freeMockMapSnapshot(
+                reinterpret_cast<MockMapSnapshot *>(values[i]));
+        } else if (kinds[i] == 9) {
+            freeMockRecordSnapshot(
+                reinterpret_cast<MockRecordSnapshot *>(values[i]));
+        } else if (kinds[i] == 10) {
+            freeMockTupleSnapshot(
+                reinterpret_cast<MockTupleSnapshot *>(values[i]));
+        } else if (kinds[i] == 11) {
+            freeMockFnSnapshot(
+                reinterpret_cast<MockFnSnapshot *>(values[i]));
+        }
+    }
+    return result;
+}
+
 void __ry_mock_clear_all() {
     for (auto &kv : g_mock_registry) {
         auto &entry = kv.second;

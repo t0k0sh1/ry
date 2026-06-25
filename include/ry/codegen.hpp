@@ -1847,7 +1847,18 @@ public:
     void emitMockReturnValueOnceCall(CallStmt &s);
     void emitSpyCall(CallStmt &s);
     void emitFailCall(CallStmt &s);
+    // Mode for the shared called-matcher implementation (#2396). CountInt is
+    // the original verifyCalledWith semantics (i64 count). HasMatchingBool
+    // returns i1 from `count > 0` (calledWith). LastMatchesBool calls the
+    // last-call runtime helper and returns i1 (lastCalledWith).
+    enum class CalledMatcherMode { CountInt, HasMatchingBool, LastMatchesBool };
     llvm::Value *emitVerifyCalledWithCall(const CallExpr &e);
+    llvm::Value *emitCalledWithCall(const CallExpr &e);
+    llvm::Value *emitLastCalledWithCall(const CallExpr &e);
+    llvm::Value *emitCalledTimesCall(const CallExpr &e);
+    llvm::Value *emitCalledMatcherImpl(const CallExpr &e,
+                                        const std::string &intrinsicName,
+                                        CalledMatcherMode mode);
     void emitMockArgRecording(llvm::Value *nameStr,
                                const std::vector<llvm::Value *> &argVals,
                                OverloadEntry *matchedEntry);

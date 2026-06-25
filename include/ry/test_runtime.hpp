@@ -92,6 +92,15 @@ extern "C" {
     int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
                                             const int64_t *kinds,
                                             const int64_t *values);
+    // #2396: returns 1 iff the most-recently-recorded call to `name` matches
+    // the expected (kinds, values) tuple (same comparison rules as
+    // __ry_mock_count_matching_calls). Returns 0 when there are no recorded
+    // calls or when the last call does not match. Consumes snapshot ownership
+    // for kinds 6/7/8/9/10/11 identically to __ry_mock_count_matching_calls,
+    // so callers do not need a separate free path.
+    int64_t __ry_mock_last_call_matches(const char *name, int64_t numArgs,
+                                         const int64_t *kinds,
+                                         const int64_t *values);
     void    __ry_mock_clear_all();
     void    __ry_mock_clear(const char *name);
     void    __ry_mock_reset(const char *name);
