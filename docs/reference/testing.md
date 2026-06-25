@@ -179,7 +179,7 @@ fn shouldNotReachHere():
 - `fail(msg)` — marks the test as failed with a custom message
 - Execution continues after `fail()` (does not abort the test)
 - Only available in `ry test` mode
-- Requires `from testing import fail`
+- Requires `from ry.testing import fail`
 
 ### Test selection: `@skip`, `@only`, `@todo`
 
@@ -546,7 +546,7 @@ fn mockingTests():
 - The replacement must have the same parameter types and return type as the original function
 - `require` and `ensure` contracts on the original function are still enforced when the mock is called
 - Mocks are automatically restored at the end of each `it` block
-- Requires `from testing import mock`
+- Requires `from ry.testing import mock`
 
 ### verify(name)
 
@@ -565,7 +565,7 @@ fn verifyTests():
         expect(verify("fetchData")).toEq(2)
 ```
 
-- Requires `from testing import verify`
+- Requires `from ry.testing import verify`
 - Returns `0` when no call has been recorded for that name (including unknown function names) — there is no compile-time check that the string corresponds to a real function.
 
 ### verifyCalledWith(name, args...)
@@ -644,7 +644,7 @@ fn verifyCalledWithTests():
         expect(verifyCalledWith("takesFn", other)).toEq(0)
 ```
 
-- Requires `from testing import verifyCalledWith`
+- Requires `from ry.testing import verifyCalledWith`
 - The first argument must be a string literal — variables / runtime strings are rejected at compile time. This restriction lets the compiler validate the remaining argument types against the original function's signature.
 - The function must already be mocked via `mock(...)` or spied via `spy(...)` before `verifyCalledWith` is called; calling on a function that has neither is a compile error.
 - The number and types of `args...` must exactly match the original function's parameter list. Arity mismatch and type mismatch are compile errors.
@@ -775,7 +775,7 @@ fn spyTests():
         expect(verifyCalledWith("compute", 8)).toEq(1)
 ```
 
-- Requires `from testing import spy` (since v0.0.24, #1683)
+- Requires `from ry.testing import spy` (since v0.0.24, #1683)
 - The argument is the **string literal** name of the function (same convention as `verifyCalledWith`)
 - The function must exist (compile error otherwise). Overloaded functions are supported since v0.0.24 (#1682): the bare name registers spies for **all** overloads aggregately, and a signature form (`spy("foo(int)")`) targets a single overload — see "Mocking overloaded functions" below
 - Spy registrations are automatically cleared at the end of each `it` block (same lifecycle as `mock`)
@@ -813,7 +813,7 @@ fn mockReturnValueOnceTests():
         expect(fetchUser()).toEq("fallback")   # default mock (stays)
 ```
 
-- Requires `from testing import mockReturnValueOnce` (since v0.0.24, #1681)
+- Requires `from ry.testing import mockReturnValueOnce` (since v0.0.24, #1681)
 - The first argument is the **string literal** name of the function (same convention as `spy` / `verifyCalledWith`, unlike `mock` which takes an identifier); non-literal first arguments are rejected at compile time
 - The function must exist and must not return `Unit` (both are compile errors). Overloaded functions are supported since v0.0.24 (#1682) only via signature form (`mockReturnValueOnce("foo(int)", 1)`) — the bare name is a compile error on overloaded functions because the return value alone cannot disambiguate
 - The second argument's type must match the function's declared return type. Supported types: primitives (`int` / `float` / `bool`), `str`, `List` / `Map` / `Set`, records, `Result`, and `Option` (including bare `None` for `Option`-returning functions)
@@ -845,7 +845,7 @@ fn mockClearTests():
         expect(verify("fetchData")).toEq(1)
 ```
 
-- Requires `from testing import mockClear`
+- Requires `from ry.testing import mockClear`
 - The argument is the **string name** of the mocked or spied function (same convention as `verify`)
 - No-op when `name` is not currently mocked or spied (no error)
 - Affects `verify(name)` and `verifyCalledWith(name, args...)` identically — both observe the cleared call list
@@ -873,7 +873,7 @@ fn mockResetTests():
         expect(verify("fetchData")).toEq(0)
 ```
 
-- Requires `from testing import mockReset`
+- Requires `from ry.testing import mockReset`
 - The argument is the **string name** of the mocked or spied function
 - No-op when `name` is not currently mocked or spied (no error)
 - Releases the replacement closure environment (capturing closures' captured variables are dropped immediately, equivalent to `it`-block end auto-cleanup for this single mock)
@@ -908,7 +908,7 @@ fn mockResetAllTests():
         expect(verify("fb")).toEq(0)
 ```
 
-- Requires `from testing import mockResetAll`
+- Requires `from ry.testing import mockResetAll`
 - Takes no arguments
 - No-op when no mock or spy is currently registered
 - Clears spied functions identically — the registry is shared between mock and spy (#1683)
