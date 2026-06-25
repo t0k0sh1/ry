@@ -378,6 +378,169 @@ TEST(NativeCallDescriptor, ErrorChannelOverride_TcpStreamUsesPackageDefault) {
     EXPECT_STREQ(info->errorChannelLibrary, "net");
 }
 
+// =============================================================================
+// Installment 2-c (#2381): per-overload override table tests
+//
+// kOverrides in src/codegen_native_call_descriptor.cpp encodes
+// exported_symbol / nul_checks / iterator_elem / wrapping_override for
+// the handle-coupled / NUL-checked / file-coupled entries that pre-2-c
+// kept custom emitters. The lookups below exercise the populate-side
+// path so a regression in either the table literal or the
+// lookupNativeOverloadOverride matcher is caught at unit-test granularity.
+// =============================================================================
+
+TEST(NativeCallDescriptor, Override_LookupReturnsNulloptForUnknownEntry) {
+    EXPECT_FALSE(lookupNativeOverloadOverride("http", "nonExistent", {"str"})
+                 .has_value());
+    // Matched (package, callee) but mismatched param types still returns
+    // nullopt — same-name overloads under a different signature shape
+    // (e.g. a hypothetical method(HttpClientResponse) that isn't declared)
+    // do not pick up sibling overrides.
+    EXPECT_FALSE(lookupNativeOverloadOverride("http", "method", {"HttpClientResponse"})
+                 .has_value());
+}
+
+TEST(NativeCallDescriptor, Override_IoOpenExportedSymbol) {
+    auto ov = lookupNativeOverloadOverride("io", "open", {"str", "str"});
+    ASSERT_TRUE(ov.has_value());
+    EXPECT_EQ(ov->exported_symbol, "__ry_io_file_open");
+    EXPECT_TRUE(ov->nul_checks.empty());
+    EXPECT_FALSE(ov->wrapping_overridden);
+}
+
+TEST(NativeCallDescriptor, Override_IoLinesIteratorWrappingAndSymbol) {
+    auto ov = lookupNativeOverloadOverride("io", "lines", {"File"});
+    ASSERT_TRUE(ov.has_value());
+    EXPECT_EQ(ov->exported_symbol, "__ry_io_file_read_line");
+    EXPECT_EQ(ov->iterator_elem_type_name, "str");
+    ASSERT_TRUE(ov->wrapping_overridden);
+    EXPECT_EQ(ov->wrapping_override, CodeGenReturnWrapping::IteratorFromHandle);
+}
+
+TEST(NativeCallDescriptor, Override_IoReadLineFileResultOutParamOption) {
+    auto ov = lookupNativeOverloadOverride("io", "readLine", {"File"});
+    ASSERT_TRUE(ov.has_value());
+    EXPECT_EQ(ov->exported_symbol, "__ry_io_file_read_line");
+    ASSERT_TRUE(ov->wrapping_overridden);
+    EXPECT_EQ(ov->wrapping_override,
+              CodeGenReturnWrapping::ResultOutParamOption);
+}
+
+TEST(NativeCallDescriptor, Override_HttpHeaderNulCheckMaskAndMessage) {
+    auto ov = lookupNativeOverloadOverride("http", "header",
+                                            {"HttpRequest", "str"});
+    ASSERT_TRUE(ov.has_value());
+    EXPECT_EQ(ov->exported_symbol, "__ry_http_header");
+    ASSERT_EQ(ov->nul_checks.size(), 1u);
+    EXPECT_EQ(ov->nul_checks[0].param_index, 1);
+    EXPECT_EQ(ov->nul_checks[0].hint, "hdr_key");
+    EXPECT_EQ(ov->nul_checks[0].err_global_prefix, "http_hdr_nul");
+    EXPECT_EQ(ov->nul_checks[0].err_message,
+              "header: key contains embedded NUL");
+    ASSERT_TRUE(ov->wrapping_overridden);
+    EXPECT_EQ(ov->wrapping_override,
+              CodeGenReturnWrapping::OptionFromNullablePtr);
+}
+
+TEST(NativeCallDescriptor, Override_HttpRequestTwoNestedNulChecks) {
+    // httpRequest checks method (idx 0) then url (idx 1). The vector
+    // order drives the nesting in emitGenericNativeCall's NUL-check
+    // chain (outer = method, inner = url) so the customEmitter's
+    // pre-migration nested emitResultBranch shape is preserved.
+    auto ov = lookupNativeOverloadOverride("http", "httpRequest",
+        {"str", "str", "Map<str, str>", "str"});
+    ASSERT_TRUE(ov.has_value());
+    ASSERT_EQ(ov->nul_checks.size(), 2u);
+    EXPECT_EQ(ov->nul_checks[0].param_index, 0);
+    EXPECT_EQ(ov->nul_checks[0].err_global_prefix, "http_req_method_nul");
+    EXPECT_EQ(ov->nul_checks[1].param_index, 1);
+    EXPECT_EQ(ov->nul_checks[1].err_global_prefix, "http_req_url_nul");
+}
+
+TEST(NativeCallDescriptor, Override_NetSetTimeoutDisambiguatesByHandleType) {
+    auto tcp = lookupNativeOverloadOverride("net", "setTimeout",
+                                             {"TcpStream", "int"});
+    ASSERT_TRUE(tcp.has_value());
+    EXPECT_EQ(tcp->exported_symbol, "__ry_tcp_set_timeout");
+
+    auto tls = lookupNativeOverloadOverride("net", "setTimeout",
+                                             {"TlsStream", "int"});
+    ASSERT_TRUE(tls.has_value());
+    EXPECT_EQ(tls->exported_symbol, "__ry_tls_set_timeout");
+}
+
+TEST(NativeCallDescriptor, InferHandleParamIndex_FirstResourceParam) {
+    // listen(TcpListener, int) -> handle idx 0
+    EXPECT_EQ(inferHandleParamIndex({"TcpListener", "int"}), 0);
+    // header(HttpRequest, str) -> handle idx 0
+    EXPECT_EQ(inferHandleParamIndex({"HttpRequest", "str"}), 0);
+    // open(str, str) -> no handle
+    EXPECT_EQ(inferHandleParamIndex({"str", "str"}), -1);
+    // Hypothetical 2-resource shape: returns the FIRST one (matches
+    // current dispatcher convention where the handle is always the lead).
+    EXPECT_EQ(inferHandleParamIndex({"File", "TcpStream"}), 0);
+}
+
+TEST(NativeCallDescriptor, DescriptorStorage_HandleParamIndexPopulatedForBody) {
+    // body(HttpRequest) populates handle_param_index = 0 and
+    // handle_resource_kind = rk_http_request via inferHandleParamIndex.
+    std::string src =
+        "@native(\"http\")\n"
+        "fn body(req: HttpRequest) -> str\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("http::body");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.handle_param_index, 0);
+    EXPECT_NE(desc.handle_resource_kind, ResourceKindRegistry::NONE);
+    const auto *info = ResourceKindRegistry::instance().getInfo(
+        desc.handle_resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->typeName, "HttpRequest");
+    // exported_symbol comes from the kOverrides table — body(HttpRequest)
+    // → __ry_http_body; the convention-derived "__ry_http_body" happens
+    // to match here, but the explicit override makes the contract durable
+    // against future changes to the derivation.
+    EXPECT_EQ(desc.exported_symbol, "__ry_http_body");
+}
+
+TEST(NativeCallDescriptor, DescriptorStorage_NulChecksPopulatedForHttpHeader) {
+    std::string src =
+        "@native(\"http\")\n"
+        "fn header(req: HttpRequest, key: str) -> Result<Option<str>, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("http::header");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    ASSERT_EQ(desc.nul_checks.size(), 1u);
+    EXPECT_EQ(desc.nul_checks[0].param_index, 1);
+    EXPECT_EQ(desc.nul_checks[0].err_global_prefix, "http_hdr_nul");
+    EXPECT_EQ(desc.return_wrapping,
+              CodeGenReturnWrapping::OptionFromNullablePtr);
+}
+
 TEST(NativeCallDescriptor, ErrorChannelOverride_HttpResponseUsesPackageDefault) {
     // @native("http") response(...) -> Result<HttpResponse, Error>:
     // rk_http_response's errorChannelLibrary defaults to "http" so the

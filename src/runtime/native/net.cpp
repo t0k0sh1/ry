@@ -95,6 +95,14 @@ extern "C" void *__ry_net_bind(const char *host, int64_t port) {
 extern "C" int64_t __ry_listen(void *listener, int64_t backlog) {
     auto *handle = (TcpListenerHandle *)listener;
     if (::listen(handle->fd, (int)backlog) < 0) {
+        // #2381 (Installment 2-c): set net's last_error buffer so the
+        // descriptor-driven Result<Unit, Error> wrapping in
+        // emitGenericNativeCall reports a meaningful message instead of
+        // a stale/empty channel. Pre-2-c emitNetTcpListen used a static
+        // "listen failed" string baked into IR; the runtime now owns the
+        // message so the @native("net") listen(TcpListener, int)
+        // descriptor consumer doesn't need a static-error carve-out.
+        setLastError("listen failed: %s", strerror(errno));
         return -1;
     }
     return 0;

@@ -2,8 +2,151 @@
 #include "ry/native_call_descriptor.hpp"  // extractResultOkType
 #include "ry/stdlib_registry.hpp"
 
+#include <functional>
+#include <unordered_map>
+
 
 namespace ry {
+
+// Installment 2-c (#2381): NUL-check static-global counter, keyed by
+// the per-overload err_global_prefix encoded in NativeOverloadOverride.
+// Counters live for the whole process — matches the pre-migration
+// pattern where each customEmitter held its own `static int <X>Ctr`,
+// so byte-exact verification against a baseline IR diff holds when the
+// descriptor path replays the same sequence.
+static std::unordered_map<std::string, int> &nulErrCounters() {
+    static std::unordered_map<std::string, int> counters;
+    return counters;
+}
+
+int CodeGen::nextNulErrCounter(const std::string &prefix) {
+    return nulErrCounters()[prefix]++;
+}
+
+llvm::Value *CodeGen::emitHttpStrNulCheckInternal(llvm::Value *strVal,
+                                                   const std::string &hint) {
+    auto nulFn = getRuntimeFn("__ry_http_str_has_nul", i64Ty_, {ptrTy_});
+    llvm::Value *hasNul = builder_.CreateCall(nulFn, {strVal},
+                                              hint + "_has_nul");
+    return builder_.CreateICmpNE(hasNul,
+        llvm::ConstantInt::get(i64Ty_, 0), hint + "_is_nul");
+}
+
+llvm::Value *CodeGen::emitIteratorFromHandleNative(const CallExpr &e,
+                                                    const NativeCallDescriptor &desc,
+                                                    const std::vector<llvm::Value *> &args,
+                                                    const std::string &rtName) {
+    // Today's sole consumer is io::lines (handle = File, next-fn target =
+    // __ry_io_file_read_line). Replicates emitFileLines's SSA-name pattern
+    // ("file" / "fl_out" / "fl_status" / "fl_isline" / "fl_line" /
+    // "lines_state" / "lines_header") so byte-exact verification against
+    // the pre-migration baseline holds.
+    if (args.empty() || desc.handle_param_index != 0
+        || desc.handle_resource_kind == ResourceKindRegistry::NONE) {
+        codegenError(e.callee + "(): IteratorFromHandle requires arg 0 as a handle");
+    }
+    llvm::Value *fileHandle = args[0];
+    int fileRk = desc.handle_resource_kind;
+
+    llvm::StructType *stateTy = llvm::StructType::get(*ctx_,
+        llvm::ArrayRef<llvm::Type *>{ptrTy_});
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+    llvm::StructType *optTy = getOptionType(ptrTy_);
+    static int file_lines_counter = 0;
+    std::string fnName = "__iter_file_lines_next." + std::to_string(file_lines_counter++);
+    llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+    llvm::Function *nextFn = llvm::Function::Create(
+        nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+    {
+        FnScope guard(*this);
+        fn_ = nextFn;
+        pushScope();
+        llvm::BasicBlock *entry = createBBInFn("entry", nextFn);
+        builder_.SetInsertPoint(entry);
+
+        llvm::Value *statePtr = nextFn->getArg(0);
+        llvm::Value *file = builder_.CreateLoad(ptrTy_,
+            builder_.CreateStructGEP(stateTy, statePtr, 0), "file");
+
+        llvm::Value *outAlloca = builder_.CreateAlloca(ptrTy_, nullptr, "fl_out");
+        builder_.CreateStore(
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            outAlloca);
+
+        auto readLineFn = getRuntimeFn(rtName.c_str(), i64Ty_, {ptrTy_, ptrTy_});
+        llvm::Value *status = builder_.CreateCall(
+            readLineFn, {file, outAlloca}, "fl_status");
+        llvm::Value *isLine = builder_.CreateICmpEQ(
+            status, llvm::ConstantInt::get(i64Ty_, 0), "fl_isline");
+
+        llvm::BasicBlock *someBB = createBBInFn("some", nextFn);
+        llvm::BasicBlock *noneBB = createBBInFn("none", nextFn);
+        emitBranchCond(isLine, someBB, noneBB);
+
+        builder_.SetInsertPoint(someBB);
+        llvm::Value *line = builder_.CreateLoad(ptrTy_, outAlloca, "fl_line");
+        builder_.CreateRet(buildSomeValue(line, optTy));
+
+        builder_.SetInsertPoint(noneBB);
+        builder_.CreateRet(buildNoneValue(optTy));
+        popScope();
+    }
+
+    auto mallocFn = getStdlibMalloc();
+    llvm::Value *stateAlloc = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "lines_state");
+    iterator_malloc_stack_.back().push_back(stateAlloc);
+
+    // ARC retain: the iterator must outlive the user's handle binding.
+    llvm::Value *fileHdr = emitArcGetHeaderFromData(fileHandle);
+    bool atomic = isArcAtomic(fileHandle);
+    emitArcRetain(fileHdr, atomic);
+    iterator_release_hooks_.back().push_back({fileHandle, fileRk});
+
+    builder_.CreateStore(fileHandle,
+        builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+
+    llvm::Value *header = nullptr;
+    {
+        uint64_t headerSize = dl.getTypeAllocSize(iteratorHeaderTy_);
+        header = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "lines_header");
+        builder_.CreateStore(nextFn,
+            builder_.CreateStructGEP(iteratorHeaderTy_, header, 0));
+        builder_.CreateStore(stateAlloc,
+            builder_.CreateStructGEP(iteratorHeaderTy_, header, 1));
+        setTypeMeta(TypeMeta::IteratorElem, header, ptrTy_);
+        iterator_malloc_stack_.back().push_back(header);
+    }
+    if (!desc.iterator_elem_type_name.empty())
+        getOrCreateMeta(header).list_elem_type_name = desc.iterator_elem_type_name;
+    return header;
+}
+
+llvm::StructType *CodeGen::getResultTypeForNativeReturn(
+    const std::string &returnTypeName) {
+    // For Result<Option<T>, Error> the NUL-check chain's emitResultBranch
+    // needs the outer Result struct type. Today the only inner Option type
+    // we surface through descriptor dispatch is Option<str> (header / query
+    // / cookie / formField / formFile / readLine variants), which is
+    // Option<ptr>. Other inner types (Option<Map<str,str>>, Option<List>,
+    // ...) also have a ptr-stored carrier so the same Option<ptr> struct
+    // applies — the element-stride metadata is carried separately via
+    // propagateTypeMeta on the merged PHI.
+    std::string okType = extractResultOkType(returnTypeName);
+    if (okType.size() > 7 && okType.compare(0, 7, "Option<") == 0) {
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        return getResultType(optTy, errorTy_);
+    }
+    // Default: Result<T, Error> where T is a single-word ptr-typed
+    // resource (HttpClientResponse, etc.) or a primitive that resolves
+    // to a known type.
+    llvm::Type *okLlvmTy = okType.empty() ? ptrTy_ : resolveType(okType);
+    return getResultType(okLlvmTy, errorTy_);
+}
 
 llvm::Value *CodeGen::emitTableDrivenNativeCall(
     const CallExpr &e,
@@ -358,6 +501,14 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         paramLLVMTypes.push_back(ptrTy_);
         cRetTy = i64Ty_;
         break;
+    // Installment 2-c (#2381): these wrappings only come from the
+    // descriptor populate path and are dispatched via
+    // emitGenericNativeCall, never via emitTableDrivenNativeCall. The
+    // unreachable arms here exist to satisfy -Wswitch.
+    case ReturnWrapping::OptionFromNullablePtr:
+    case ReturnWrapping::ResultOutParamOption:
+    case ReturnWrapping::IteratorFromHandle:
+        llvm_unreachable("descriptor-only wrapping reached emitTableDrivenNativeCall");
     }
 
     // For ResultOutParam, create alloca and add to args
@@ -444,6 +595,12 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
                     buildErrorFromRuntime(errFn.c_str()), resTy);
             });
     }
+    // Installment 2-c (#2381): descriptor-only wrappings. See cRetTy
+    // switch above for the rationale.
+    case ReturnWrapping::OptionFromNullablePtr:
+    case ReturnWrapping::ResultOutParamOption:
+    case ReturnWrapping::IteratorFromHandle:
+        llvm_unreachable("descriptor-only wrapping reached emitTableDrivenNativeCall");
     }
 
     llvm_unreachable("unhandled ReturnWrapping variant");
@@ -499,6 +656,34 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                     typesMatch = false;
                     break;
                 }
+                // Installment 2-c (#2381): resource-kind disambiguation.
+                // Two @native overloads with identical LLVM signatures
+                // but different declared resource types (e.g. body(HttpRequest)
+                // vs body(HttpClientResponse), both `(ptr) -> ptr`) must
+                // be disambiguated by the arg's resource_kind annotation.
+                // Two symmetric rules:
+                //   (a) param IS a resource type: arg must carry the
+                //       matching kind (rejects str/int args on File slots).
+                //   (b) param is a primitive type: arg must NOT carry a
+                //       resource_kind annotation (rejects File args on str
+                //       slots — without this, writeText(file, "x") would
+                //       ambiguously match writeText(File, str) AND the
+                //       legacy writeText(str, str) overload).
+                int expectedRk =
+                    ResourceKindRegistry::instance().lookupByTypeName(
+                        sig.params[i].typeName);
+                if (expectedRk != ResourceKindRegistry::NONE) {
+                    if (!isResourceKind(expectedRk, args[i])) {
+                        typesMatch = false;
+                        break;
+                    }
+                } else {
+                    const auto *meta = getMeta(args[i]);
+                    if (meta && meta->hasAnyResourceKind()) {
+                        typesMatch = false;
+                        break;
+                    }
+                }
                 candidateTypes.push_back(expectedTy);
             }
             if (typesMatch) {
@@ -542,6 +727,24 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                     } else {
                         typesMatch = false;
                         break;
+                    }
+                    // Installment 2-c (#2381): resource-kind disambiguation
+                    // mirrored from Pass 1. Same two-rule structure; see
+                    // Pass 1 comment for the full rationale.
+                    int expectedRk =
+                        ResourceKindRegistry::instance().lookupByTypeName(
+                            sig.params[i].typeName);
+                    if (expectedRk != ResourceKindRegistry::NONE) {
+                        if (!isResourceKind(expectedRk, args[i])) {
+                            typesMatch = false;
+                            break;
+                        }
+                    } else {
+                        const auto *meta = getMeta(args[i]);
+                        if (meta && meta->hasAnyResourceKind()) {
+                            typesMatch = false;
+                            break;
+                        }
                     }
                     candidateTypes.push_back(expectedTy);
                 }
@@ -614,14 +817,23 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         }
     }
 
-    // Derive runtime function name: __ry_<module>_<fn_name>.
-    // Apply per-module naming convention (snake_case for legacy modules
-    // whose C runtime predates Ry's camelCase identifiers, e.g. base64).
-    const auto *pkgEntry = StdlibRegistry::instance().findPackage(matchedPackage);
-    std::string symbolName = (pkgEntry && pkgEntry->snake_case_symbols)
-        ? ry::util::camelToSnakeCase(e.callee)
-        : e.callee;
-    std::string rtName = ry::util::deriveRuntimeFnName(matchedPackage, symbolName);
+    // Derive runtime function name. Three sources, in precedence order:
+    //   (1) descriptor.exported_symbol (Installment 2-c #2381 override
+    //       for entries whose runtime symbol predates the convention,
+    //       e.g. io::open -> __ry_io_file_open)
+    //   (2) convention: __ry_<matchedPackage>_<snake_case_when_flagged>(callee)
+    //   (3) arity-suffix for path::join
+    std::string rtName;
+    std::string symbolName;  // for arity-suffix decision below
+    if (!desc.exported_symbol.empty()) {
+        rtName = desc.exported_symbol;
+    } else {
+        const auto *pkgEntry = StdlibRegistry::instance().findPackage(matchedPackage);
+        symbolName = (pkgEntry && pkgEntry->snake_case_symbols)
+            ? ry::util::camelToSnakeCase(e.callee)
+            : e.callee;
+        rtName = ry::util::deriveRuntimeFnName(matchedPackage, symbolName);
+    }
 
     // Arity-suffix runtime symbol for path::join's __ry_path_join2/3/4
     // convention. The gate is intentionally scoped to (matchedPackage,
@@ -629,8 +841,9 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // silently break any future @native overload whose runtime side does
     // NOT use the suffix convention (caught by CodeRabbit on PR #2342).
     // When another module adopts the same convention, extend the gate
-    // here or migrate to an explicit descriptor field.
-    {
+    // here or migrate to an explicit descriptor field. The exported_symbol
+    // override path skips the suffix because it's an explicit override.
+    if (desc.exported_symbol.empty()) {
         const bool usesAritySuffixedRuntimeSymbol =
             matchedPackage == "path" && symbolName == "join";
         if (usesAritySuffixedRuntimeSymbol) {
@@ -661,7 +874,30 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         ? ry::util::deriveRuntimeFnName(matchedPackage, "get_last_error")
         : desc.error_channel;
 
-    // Build C-level return type and handle out-param
+    // Installment 2-c (#2381): handle-coupled overload library linkage.
+    // For non-ResultPtr returns (e.g. setTimeout(TlsStream) -> Unit), the
+    // handle param's resource library must still be linked because the
+    // runtime function lives there (`__ry_tls_set_timeout` is in libry_http
+    // even though @native("net")). For ResultPtr returns, the existing
+    // resource_kind path already links — see the post-wrap branch below.
+    if (desc.handle_param_index >= 0
+        && desc.handle_resource_kind != ResourceKindRegistry::NONE) {
+        if (const auto *info = ResourceKindRegistry::instance().getInfo(
+                desc.handle_resource_kind))
+            used_native_libraries_.insert(info->library);
+    }
+
+    // Installment 2-c (#2381): IteratorFromHandle — synthesize an iterator
+    // whose next-fn calls exported_symbol(handle, &out) per next(). Today
+    // only io::lines uses this; the synthesis lives inline below so the
+    // descriptor consumption stays one well-scoped switch arm.
+    if (wrapping == ReturnWrapping::IteratorFromHandle) {
+        return emitIteratorFromHandleNative(e, desc, args, rtName);
+    }
+
+    // Build C-level return type and handle out-param. For OptionFromNullablePtr
+    // / ResultOutParamOption / IteratorFromHandle we synthesize the wrapping
+    // shape inside the call emit; cRetTy is the runtime fn's bare return.
     llvm::Type *outTy = nullptr;
     llvm::Type *cRetTy;
 
@@ -670,6 +906,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         cRetTy = resolveType(matchedSig->returnTypeName);
         break;
     case ReturnWrapping::ResultPtr:
+    case ReturnWrapping::OptionFromNullablePtr:
         cRetTy = ptrTy_;
         break;
     case ReturnWrapping::ResultStatus:
@@ -681,85 +918,177 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         paramTypes.push_back(ptrTy_);
         cRetTy = i64Ty_;
         break;
+    case ReturnWrapping::ResultOutParamOption:
+        outTy = ptrTy_;  // out-param is always a ptr; loaded into Option<ptr>
+        paramTypes.push_back(ptrTy_);
+        cRetTy = i64Ty_;
+        break;
     case ReturnWrapping::ResultPtrWithListMeta:
         llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
+    case ReturnWrapping::IteratorFromHandle:
+        llvm_unreachable("IteratorFromHandle handled above (early return)");
     }
 
-    // Create alloca for out-param
+    // Create alloca for out-param (ResultOutParam / ResultOutParamOption)
     llvm::AllocaInst *outSlot = nullptr;
-    if (wrapping == ReturnWrapping::ResultOutParam) {
+    if (wrapping == ReturnWrapping::ResultOutParam
+        || wrapping == ReturnWrapping::ResultOutParamOption) {
         outSlot = builder_.CreateAlloca(outTy, nullptr, e.callee + "_out");
+        if (wrapping == ReturnWrapping::ResultOutParamOption) {
+            // Mirror emitFileReadLine: pre-store null so a runtime that
+            // forgets to write the out-param produces None, not garbage.
+            builder_.CreateStore(
+                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+                outSlot);
+        }
         args.push_back(outSlot);
     }
 
-    // Emit the call
-    auto *fnTy = llvm::FunctionType::get(cRetTy, paramTypes, false);
-    auto fn = mod_->getOrInsertFunction(rtName, fnTy);
-    llvm::Value *callResult;
-    if (cRetTy->isVoidTy())
-        callResult = builder_.CreateCall(fn, args);
-    else
-        callResult = builder_.CreateCall(fn, args, e.callee);
-
-    // Apply return wrapping
-    llvm::Value *result;
-    switch (wrapping) {
-    case ReturnWrapping::Direct:
+    // Helper: emit the runtime call + apply return wrapping. Used both
+    // directly (no NUL check) and inside a NUL-check chain (when
+    // desc.nul_checks is non-empty).
+    auto emitCallAndWrap = [&]() -> llvm::Value * {
+        auto *fnTy = llvm::FunctionType::get(cRetTy, paramTypes, false);
+        auto fn = mod_->getOrInsertFunction(rtName, fnTy);
+        llvm::Value *callResult;
         if (cRetTy->isVoidTy())
-            return llvm::ConstantInt::get(i8Ty_, 0);
-        result = callResult;
-        break;
+            callResult = builder_.CreateCall(fn, args);
+        else
+            callResult = builder_.CreateCall(fn, args, e.callee);
 
-    case ReturnWrapping::ResultPtr:
-        result = wrapPtrAsResult(callResult, errFnName.c_str());
-        // Installment 2-a (#2338): resource-coupled natives (e.g.
-        // io::open returning Result<File, Error>) tag the wrapped result
-        // with the descriptor's resource kind so ARC sees it correctly.
-        if (desc.resource_kind != ResourceKindRegistry::NONE) {
-            addResourceKind(result, desc.resource_kind);
-            // Installment 2-b (#2339): when the resource's owning library
-            // differs from matchedPackage (e.g. @native("net") tlsConnect
-            // returns TlsStream whose dtor / cleanup live in the http
-            // library), link that library in addition to matchedPackage.
-            // Idempotent with the matchedPackage insert at line 564.
-            // `registerKind` rejects empty/null library, so the inner null
-            // check on info->library would be dead — getInfo guards OOB ids.
-            if (const auto *info =
-                    ResourceKindRegistry::instance().getInfo(desc.resource_kind))
-                used_native_libraries_.insert(info->library);
+        llvm::Value *res;
+        switch (wrapping) {
+        case ReturnWrapping::Direct:
+            if (cRetTy->isVoidTy())
+                return llvm::ConstantInt::get(i8Ty_, 0);
+            res = callResult;
+            break;
+
+        case ReturnWrapping::ResultPtr:
+            res = wrapPtrAsResult(callResult, errFnName.c_str());
+            // Installment 2-a (#2338): resource-coupled natives (e.g.
+            // io::open returning Result<File, Error>) tag the wrapped
+            // result with the descriptor's resource kind so ARC sees it
+            // correctly.
+            if (desc.resource_kind != ResourceKindRegistry::NONE) {
+                addResourceKind(res, desc.resource_kind);
+                // Installment 2-b (#2339): when the resource's owning
+                // library differs from matchedPackage, link that library
+                // too. Idempotent with the matchedPackage insert.
+                if (const auto *info =
+                        ResourceKindRegistry::instance().getInfo(desc.resource_kind))
+                    used_native_libraries_.insert(info->library);
+            }
+            break;
+
+        case ReturnWrapping::OptionFromNullablePtr: {
+            // wrapPtrAsOption(ptr) — null -> None, else Some(ptr). Then
+            // buildOkValue wraps into the final Result<Option<T>, Error>.
+            llvm::StructType *optTy = getOptionType(ptrTy_);
+            llvm::StructType *resTy = getResultType(optTy, errorTy_);
+            llvm::Value *opt = wrapPtrAsOption(callResult, e.callee);
+            res = buildOkValue(opt, resTy);
+            break;
         }
-        break;
 
-    case ReturnWrapping::ResultStatus:
-        result = wrapStatusAsResult(callResult, errFnName.c_str());
-        break;
+        case ReturnWrapping::ResultStatus:
+            res = wrapStatusAsResult(callResult, errFnName.c_str());
+            break;
 
-    case ReturnWrapping::BoolFromI64:
-        return builder_.CreateTrunc(callResult, i1Ty_, e.callee + "_bool");
+        case ReturnWrapping::BoolFromI64:
+            return builder_.CreateTrunc(callResult, i1Ty_, e.callee + "_bool");
 
-    case ReturnWrapping::ResultOutParam: {
-        llvm::Value *isErr = builder_.CreateICmpNE(callResult,
-            llvm::ConstantInt::get(i64Ty_, 0), e.callee + "_err");
+        case ReturnWrapping::ResultOutParam: {
+            llvm::Value *isErr = builder_.CreateICmpNE(callResult,
+                llvm::ConstantInt::get(i64Ty_, 0), e.callee + "_err");
 
-        bool isBoolResult = (matchedSig->returnTypeName.find("Result<bool") == 0);
-        llvm::Type *okTy = isBoolResult ? i1Ty_ : outTy;
-        llvm::StructType *resTy = getResultType(okTy, errorTy_);
-        result = emitResultBranch(isErr, resTy,
-            [&]() {
-                llvm::Value *loaded = builder_.CreateLoad(outTy, outSlot, e.callee + "_val");
-                if (isBoolResult)
-                    loaded = builder_.CreateTrunc(loaded, i1Ty_, e.callee + "_bool");
-                return buildOkValue(loaded, resTy);
-            },
-            [&]() {
-                return buildErrValue(
-                    buildErrorFromRuntime(errFnName.c_str()), resTy);
-            });
-        break;
-    }
+            bool isBoolResult =
+                (matchedSig->returnTypeName.find("Result<bool") == 0);
+            llvm::Type *okTy = isBoolResult ? i1Ty_ : outTy;
+            llvm::StructType *resTy = getResultType(okTy, errorTy_);
+            res = emitResultBranch(isErr, resTy,
+                [&]() {
+                    llvm::Value *loaded = builder_.CreateLoad(outTy, outSlot,
+                        e.callee + "_val");
+                    if (isBoolResult)
+                        loaded = builder_.CreateTrunc(loaded, i1Ty_,
+                            e.callee + "_bool");
+                    return buildOkValue(loaded, resTy);
+                },
+                [&]() {
+                    return buildErrValue(
+                        buildErrorFromRuntime(errFnName.c_str()), resTy);
+                });
+            break;
+        }
 
-    case ReturnWrapping::ResultPtrWithListMeta:
-        llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
+        case ReturnWrapping::ResultOutParamOption: {
+            // status < 0 -> Err(runtime); else load+Option+Ok. Mirrors
+            // emitFileReadLine / emitStdinReadLine in codegen_call_io.cpp.
+            llvm::Value *isErr = builder_.CreateICmpSLT(callResult,
+                llvm::ConstantInt::get(i64Ty_, 0), e.callee + "_iserr");
+            llvm::StructType *optTy = getOptionType(ptrTy_);
+            llvm::StructType *resTy = getResultType(optTy, errorTy_);
+            res = emitResultBranch(isErr, resTy,
+                [&]() {
+                    llvm::Value *linePtr = builder_.CreateLoad(ptrTy_, outSlot,
+                        e.callee + "_line");
+                    return buildOkValue(
+                        wrapPtrAsOption(linePtr, e.callee), resTy);
+                },
+                [&]() {
+                    return buildErrValue(
+                        buildErrorFromRuntime(errFnName.c_str()), resTy);
+                });
+            break;
+        }
+
+        case ReturnWrapping::ResultPtrWithListMeta:
+            llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
+        case ReturnWrapping::IteratorFromHandle:
+            llvm_unreachable("IteratorFromHandle handled above (early return)");
+        }
+        return res;
+    };
+
+    // Installment 2-c (#2381): NUL-check wrapping. When non-empty, wrap
+    // the entire call+wrap chain in nested emitResultBranch — outer-to-
+    // inner ordering matches desc.nul_checks's vector order (httpRequest
+    // checks method first, url second). Each NUL-branch's err side builds
+    // a static error global named with a per-prefix counter that matches
+    // the pre-migration customEmitter counter sequence so the byte-exact
+    // IR diff stays empty.
+    llvm::Value *result;
+    if (!desc.nul_checks.empty()) {
+        llvm::StructType *finalResTy = getResultTypeForNativeReturn(
+            matchedSig->returnTypeName);
+
+        std::function<llvm::Value *(size_t)> emitChain;
+        emitChain = [&](size_t i) -> llvm::Value * {
+            if (i == desc.nul_checks.size()) return emitCallAndWrap();
+
+            const NativeNulCheckSpec &nc = desc.nul_checks[i];
+            llvm::Value *strVal = args[static_cast<size_t>(nc.param_index)];
+            llvm::Value *isNul = emitHttpStrNulCheckInternal(strVal, nc.hint);
+
+            const std::string globName = "." + nc.err_global_prefix + "_"
+                + std::to_string(nextNulErrCounter(nc.err_global_prefix));
+
+            return emitResultBranch(isNul, finalResTy,
+                [&]() { return emitChain(i + 1); },
+                [&]() {
+                    return buildErrValue(
+                        buildStaticError(nc.err_message, globName), finalResTy);
+                });
+        };
+        result = emitChain(0);
+    } else {
+        result = emitCallAndWrap();
+        // BoolFromI64 returns early from emitCallAndWrap; the value here
+        // is already the i1 truncation. Skip the metadata-propagation
+        // pass below — there is no return-type Map/List meta to lift.
+        if (wrapping == ReturnWrapping::BoolFromI64)
+            return result;
     }
 
     // Propagate collection type metadata from the Ry return type annotation.

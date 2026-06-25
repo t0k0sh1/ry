@@ -769,6 +769,44 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 }
             }
 
+            // Installment 2-c (#2381): populate handle-coupled / NUL-checked /
+            // file-coupled metadata so dispatchIO / dispatchNet / dispatchHttp's
+            // remaining custom emitters can retire. handle_param_index is
+            // inferred (first resource-typed param); the other fields require
+            // a per-(package, callee, param-types) lookup against the static
+            // override table because (a) runtime symbols predate the
+            // `__ry_<lib>_<snake>(callee)` convention for several entries
+            // (open / readAll / accept / listenerPort / shutdown / setTimeout
+            // / method / path / body / ...), (b) NUL-check policy varies per-
+            // entry and is not derivable from param types (httpPost url-only;
+            // header / formField etc. key-only), and (c) two return shapes
+            // (Result<Option<T>, Error> via ptr-null check; Iterator<T> via
+            // synthesized next-fn) need a wrapping override that
+            // inferReturnWrapping cannot pick up because the same Ry return
+            // type maps to different runtime conventions.
+            std::vector<std::string> paramTypeNames;
+            paramTypeNames.reserve(sig.params.size());
+            for (const auto &p : sig.params)
+                paramTypeNames.push_back(p.typeName);
+
+            desc.handle_param_index = inferHandleParamIndex(paramTypeNames);
+            if (desc.handle_param_index >= 0) {
+                desc.handle_resource_kind =
+                    ResourceKindRegistry::instance().lookupByTypeName(
+                        paramTypeNames[static_cast<std::size_t>(
+                            desc.handle_param_index)]);
+            }
+
+            if (auto ov = lookupNativeOverloadOverride(effectivePackage,
+                                                       sig.name,
+                                                       paramTypeNames)) {
+                desc.exported_symbol         = ov->exported_symbol;
+                desc.nul_checks              = ov->nul_checks;
+                desc.iterator_elem_type_name = ov->iterator_elem_type_name;
+                if (ov->wrapping_overridden)
+                    desc.return_wrapping = ov->wrapping_override;
+            }
+
             native_call_descriptors_[sigKey].push_back(std::move(desc));
 
             sigVec.push_back(std::move(sig));
