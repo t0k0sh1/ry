@@ -168,7 +168,14 @@ void Formatter::formatImport(const ImportStmt &s) {
 
 void Formatter::formatQualifiedImport(const QualifiedImportStmt &s) {
     emit("import ");
-    emit(s.module_name);
+    if (!s.import_path.empty()) {
+        std::string dotted = s.import_path;
+        for (auto &c : dotted)
+            if (c == '/') c = '.';
+        emit(dotted);
+    } else {
+        emit(s.module_name);
+    }
     if (s.alias.has_value()) {
         emit(" as ");
         emit(*s.alias);

@@ -225,6 +225,12 @@ TEST(Formatter, StatementFormatting) {
     // Alias propagates through qualified const access.
     EXPECT_EQ(fmt("import math as m\nx = m.PI\n"),
               "import math as m\nx = m.PI\n");
+    // #2423: `import ry.<mod>` canonical form must be preserved by fmt.
+    EXPECT_EQ(fmt("import ry.math\n"), "import ry.math\n");
+    EXPECT_EQ(fmt("import ry.math as m\n"), "import ry.math as m\n");
+    EXPECT_EQ(fmt("import ry.json5\n"), "import ry.json5\n");
+    EXPECT_EQ(fmt("from ry.net import open as net_open\n"),
+              "from ry.net import open as net_open\n");
     // Return
     {
         auto src = "fn f() -> int:\n    return 42\n";
