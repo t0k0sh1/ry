@@ -1,0 +1,29 @@
+# FileCheck golden for #2397 — upper-codegen Rust migration kickoff pilot.
+#
+# `emitExprVariant(BoolExpr)` is the kickoff pilot: the Ry-semantic
+# decision (`bool → i1 0/1`) moved from C++ (direct `ConstantInt::get`)
+# to `crates/lower/`'s `ry_lower_bool_const`, which calls
+# `ry_emit_const_int(ctx, i1Ty, value, 0)`. Both paths must produce
+# byte-identical `i1 true` / `i1 false` constants — this golden locks
+# that invariant.
+#
+# The probe stores each literal into a named local so the constants
+# outlive sema (a bare `if true { ... }` would be sema-folded and never
+# reach the migrated path — the vacuous-diff trap called out in
+# docs/architecture/upper-codegen-migration.md §"Verification").
+#
+# CHECK-LABEL: define i64 @boolPilotProbe()
+# CHECK: store i1 true, ptr %t
+# CHECK: store i1 false, ptr %f
+
+fn boolPilotProbe() -> int:
+    t = true
+    f = false
+    if t:
+        return 1
+    if f:
+        return 2
+    return 3
+
+fn main():
+    _ = boolPilotProbe()

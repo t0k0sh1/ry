@@ -375,6 +375,26 @@ if(NOT DEFINED ENV{LLVM_SYS_211_PREFIX})
     unset(_emit_llvm_prefix)
 endif()
 
+# ===== lower: upper-codegen Rust pilot (#2397) =====
+# Sister crate to `emit` (lower codegen): C++ caller → ry_lower_*
+# (this cdylib) → ry_emit_* (emit cdylib) → LLVM IR. NO `llvm-sys`
+# dependency — the `ry_emit_*` symbols are resolved at runtime from the
+# loaded `emit` cdylib via the host process's symbol table (same
+# `-undefined dynamic_lookup` / `-rdynamic` mechanism that resolves
+# __ry_set_last_error for the @native libs).
+#
+# Process-linked into `ry` / `ry_tests` (same model as `emit` / `ry_xid`)
+# because the caller-side C++ in `src/codegen_*.cpp` references
+# `ry_lower_*` at compile time. Absolute artifact path used for the same
+# reason as `RY_XID_LINK` — corrosion's IMPORTED CMake target rejects
+# `-Wl,--no-as-needed` and the `$<TARGET_FILE:>` generator expression.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/lower/Cargo.toml"
+    CRATES lower
+)
+set_target_properties(lower PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 # ===== native_base64: Rust port of @native("base64") (#2282) =====
 # Package = `native_base64` (Cargo workspace member); cdylib output =
 # `libry_base64.{dylib,so}` via `[lib].name = "ry_base64"` so the JIT's
@@ -449,20 +469,27 @@ add_dependencies(ry ${RY_NATIVE_LIBS})
 # ry_testing is process-linked because ry_lib references its test-runtime
 # symbols at C++ link time (#2395).
 set(RY_XID_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}")
+# lower cdylib: process-linked alongside emit for the #2397 kickoff. Its
+# `ry_lower_*` symbols are referenced statically from ry_lib (the
+# emitExprVariant(BoolExpr) shim), so DT_NEEDED is established naturally
+# on Linux and no --no-as-needed guard is required.
+set(RY_LOWER_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}lower${CMAKE_SHARED_LIBRARY_SUFFIX}")
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit ${RY_XID_LINK} ry_testing)
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit ${RY_LOWER_LINK} ${RY_XID_LINK} ry_testing)
 else()
     # --no-as-needed keeps both atomic (LLVM atomicrmw lowering reaches
     # __atomic_load at JIT time) and ry_xid (no static caller in ry_lib —
     # libry_json5 references __ry_xid_* but is dlopen'd later) from being
     # dropped despite no link-time references. ry_testing has static
     # callers in ry_lib (jit_runner.cpp's signal handler) so DT_NEEDED is
-    # established naturally.
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit -Wl,--no-as-needed ${RY_XID_LINK} ry_testing atomic -Wl,--as-needed)
+    # established naturally. lower has a static caller too (the
+    # BoolExpr shim), so it sits outside the --no-as-needed group.
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit ${RY_LOWER_LINK} -Wl,--no-as-needed ${RY_XID_LINK} ry_testing atomic -Wl,--as-needed)
     # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
 endif()
+add_dependencies(ry lower)
 target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
 
 # Distribution rpath (#2005): bundle libLLVM/libemit next to ry so the
@@ -566,6 +593,7 @@ if(APPLE)
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
         emit
+        ${RY_LOWER_LINK}
         ${RY_NATIVE_LIBS_LINK}
         GTest::gtest_main
         GTest::gmock
@@ -574,6 +602,7 @@ else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         emit
+        ${RY_LOWER_LINK}
         -Wl,--no-as-needed ${RY_NATIVE_LIBS_LINK} atomic -Wl,--as-needed
         GTest::gtest_main
         GTest::gmock
@@ -581,6 +610,7 @@ else()
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
+add_dependencies(ry_tests lower)
 
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_compile_definitions(ry_tests PRIVATE RY_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")

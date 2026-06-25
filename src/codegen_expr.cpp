@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
+#include "ry/lower/api.h"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic/diagnostic.hpp"
 #include <climits>
@@ -120,7 +121,14 @@ llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
-    return llvm::ConstantInt::get(i1Ty_, e.value ? 1 : 0, false);
+    // Upper-codegen Rust pilot (#2397): the Ry-semantic decision
+    // (`bool → i1 0/1`) moves to `crates/lower/`. The shim survives only
+    // to feed `i1Ty_` across the boundary as `RyTypeRef`; the prior
+    // direct `ConstantInt::get` call is now `ry_emit_const_int` reached
+    // via `ry_lower_bool_const`.
+    RyValueId id = ry_lower_bool_const(
+        emit_ctx_, ry::llvm_emit::asRyType(i1Ty_), e.value ? 1 : 0);
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
 llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
