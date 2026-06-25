@@ -72,7 +72,7 @@ darwin)
     RY="$DIST_DIR/ry"
     LIB="$DIST_DIR/lib"
 
-    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libzstd.1.dylib" "$LIB/libemit.dylib"; do
+    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libzstd.1.dylib" "$LIB/libemit.dylib" "$LIB/liblower.dylib"; do
         [[ -f "$f" ]] && echo "  ok: present $(basename "$f")" || { echo "  FAIL: missing $f" >&2; fail=1; }
     done
 
@@ -124,7 +124,7 @@ darwin)
     want "libzstd id = @rpath/libzstd.1.dylib" '@rpath/libzstd\.1\.dylib' "$(otool -D "$LIB/libzstd.1.dylib" 2>/dev/null || true)"
 
     # ad-hoc signatures must be valid after install_name_tool rewrites
-    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libemit.dylib" "$LIB/libzstd.1.dylib"; do
+    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libemit.dylib" "$LIB/libzstd.1.dylib" "$LIB/liblower.dylib"; do
         if codesign --verify "$f" 2>/dev/null; then
             echo "  ok: codesign $(basename "$f")"
         else
@@ -147,6 +147,7 @@ linux)
         fail=1
     fi
     ls "$LIB"/libemit.so >/dev/null 2>&1 && echo "  ok: present libemit.so" || { echo "  FAIL: missing libemit.so" >&2; fail=1; }
+    ls "$LIB"/liblower.so >/dev/null 2>&1 && echo "  ok: present liblower.so" || { echo "  FAIL: missing liblower.so" >&2; fail=1; }
 
     # Orphan cdylib guard (#2041): see the darwin branch. On Linux the cdylib NEEDs
     # libLLVM.so.X (stdlib libry_* do not); libzstd is a system lib (not bundled), so

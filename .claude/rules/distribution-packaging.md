@@ -36,13 +36,22 @@ The right-hand side of a pipe runs in a subshell, so `fail=1` set inside a helpe
 
 A shell helper that mutates a parent-scope flag must NOT be invoked via `cmd | helper`. Pass the data as an argument (`helper "desc" "pattern" "$haystack"`) or via a here-string (`helper "desc" "pattern" <<<"$haystack"`) so the helper runs in the current shell. Applies to any `|`-fed function that sets a variable the caller reads later.
 
-### The emit cdylib is NOT a `libry_*` file — every lib-selection glob must list it explicitly
+### Bundled cdylibs that are NOT `libry_*` files — every lib-selection glob must list each one explicitly
 
-**Tags**: packaging, install, self-update, cdylib, glob, libemit, rename, blind-spot
+**Tags**: packaging, install, self-update, cdylib, glob, libemit, liblower, rename, blind-spot
 
-While named `libry_codegen` the cdylib incidentally matched the `libry_*` selector. Renaming to `libemit` dropped it from every selector silently: the cdylib vanished from the bundle/install. The regression hides in a semantic coupling (old name happened to start with `libry_`), not a textual one — a string-sweep on `ry_codegen` cannot catch it.
+While named `libry_codegen` the emit cdylib incidentally matched the `libry_*` selector. Renaming to `libemit` (#2040) dropped it from every selector silently: the cdylib vanished from the bundle/install. The regression hides in a semantic coupling (old name happened to start with `libry_`), not a textual one — a string-sweep on `ry_codegen` cannot catch it. #2397's `liblower` cdylib reproduced the same shape: a new upper-codegen cdylib whose `[lib].name` was `lower` (not `ry_lower`), so the `libry_*` glob skipped it and CI's `clean-room startup` step failed with `liblower.so: cannot open shared object file` until each selector was updated.
 
-`libemit.*` is the ONE bundled native lib whose name does not start with `libry_`. Any lib-selection mechanism that ships native libs must enumerate it separately from the `libry_*` selector. Three call sites, keep them in sync: `scripts/bundle-dist.sh` (copy glob), `install.sh` (install loop), `src/cli/self_update.cpp` (`is_bundled_lib` predicate). When renaming the cdylib again, or adding any new bundled lib whose name is not `libry_<x>`, update all three. Note this is distinct from `src/project/paths.cpp`'s `"libry_" + mod` construction, which is for JIT `@native` stdlib module loading and correctly never references the cdylib (the cdylib is link-time, not dlopen'd by module name).
+Bundled native libs whose names do NOT start with `libry_` today: **`libemit.*`** (#2040), **`liblower.*`** (#2397). Any lib-selection mechanism that ships native libs must enumerate **each** explicitly alongside the `libry_*` selector. Four call sites, keep them in sync:
+
+- `scripts/bundle-dist.sh` (copy glob)
+- `install.sh` (install loop)
+- `src/cli/self_update.cpp` (`is_bundled_lib` predicate)
+- `scripts/verify-bundle.sh` (presence check in both the darwin and linux branches)
+
+When renaming a cdylib again, or adding any new bundled lib whose name is not `libry_<x>`, update all four. The verify-bundle presence check is the structural net — it FAILs the release if any expected cdylib is missing, catching a forgotten bundle-dist update before the tarball ships.
+
+Note this is distinct from `src/project/paths.cpp`'s `"libry_" + mod` construction, which is for JIT `@native` stdlib module loading and correctly never references these cdylibs (they are link-time, not dlopen'd by module name).
 
 ### Orphan cdylib after a crate rename: exclude via the libLLVM-linkage discriminator, not `ADDITIONAL_CLEAN_FILES`
 

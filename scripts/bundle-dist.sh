@@ -11,7 +11,7 @@
 #
 # Layout produced (consumed by scripts/verify-bundle.sh and install.sh):
 #   DIST_DIR/ry
-#   DIST_DIR/lib/{libLLVM.*,libzstd.1.dylib(macOS),libemit.*,libry_*.*}
+#   DIST_DIR/lib/{libLLVM.*,libzstd.1.dylib(macOS),libemit.*,liblower.*,libry_*.*}
 #   DIST_DIR/share/std/
 #   DIST_DIR/LICENSE-LLVM.txt
 #
@@ -47,11 +47,15 @@ mkdir -p "$DIST_DIR/lib" "$DIST_DIR/share"
 [[ -f "$BUILD_DIR/ry" ]] || { echo "bundle-dist: $BUILD_DIR/ry not found — build first" >&2; exit 1; }
 cp "$BUILD_DIR/ry" "$DIST_DIR/ry"
 
-# The Rust cdylib (libemit) + stdlib native libs (libry_*) ship as-is from the
-# build tree. libemit is matched separately from the libry_* glob: it was renamed
-# from libry_codegen to libemit (#2040), so it no longer starts with libry_.
+# The Rust cdylibs (libemit, liblower) + stdlib native libs (libry_*) ship as-is
+# from the build tree. The cdylibs are matched separately from the libry_* glob
+# because their names do not start with libry_: libemit was renamed from
+# libry_codegen (#2040), and liblower was added by #2397 as the upper-codegen
+# Rust kickoff. Any future Rust cdylib whose name doesn't start with libry_ must
+# be added here (and to install.sh / self_update.cpp / verify-bundle.sh — see
+# .claude/rules/distribution-packaging.md).
 shopt -s nullglob
-candidate_libs=("$BUILD_DIR"/lib/libemit.* "$BUILD_DIR"/lib/libry_*.*)
+candidate_libs=("$BUILD_DIR"/lib/libemit.* "$BUILD_DIR"/lib/liblower.* "$BUILD_DIR"/lib/libry_*.*)
 shopt -u nullglob
 
 # Drop orphan cdylibs (#2041): a corrosion crate rename (libry_codegen -> libemit,
@@ -132,9 +136,20 @@ darwin)
     [[ -n "$emit_llvm_ref" ]] && install_name_tool -change "$emit_llvm_ref" '@loader_path/libLLVM.dylib' "$LIB/libemit.dylib"
     codesign --force --sign - "$LIB/libemit.dylib"
 
-    # ry: point libLLVM / libemit at @rpath, drop build-tree rpaths, add the two.
+    # liblower (#2397): same treatment as libemit, but it has NO libLLVM
+    # dependency to chain-rewrite. Only the self-id needs to become @rpath.
+    if [[ -f "$LIB/liblower.dylib" ]]; then
+        install_name_tool -id '@rpath/liblower.dylib' "$LIB/liblower.dylib"
+        codesign --force --sign - "$LIB/liblower.dylib"
+    fi
+
+    # ry: point libLLVM / libemit / liblower at @rpath, drop build-tree rpaths,
+    # add the two. liblower may not be present in legacy build trees (#2397 is the
+    # crate's introducing PR), so the awk match guards against an empty ref.
     install_name_tool -change "$llvm_ref" '@rpath/libLLVM.dylib' "$RY"
     install_name_tool -change "$emit_ref" '@rpath/libemit.dylib' "$RY"
+    lower_ref="$(otool -L "$RY" | awk '/liblower\.dylib/{print $1; exit}')"
+    [[ -n "$lower_ref" ]] && install_name_tool -change "$lower_ref" '@rpath/liblower.dylib' "$RY"
     while IFS= read -r r; do
         [[ -n "$r" ]] && install_name_tool -delete_rpath "$r" "$RY" 2>/dev/null || true
     done < <(otool -l "$RY" | awk '/LC_RPATH/{getline; getline; print $2}')
