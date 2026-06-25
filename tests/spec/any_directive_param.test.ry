@@ -1,0 +1,34 @@
+from ry.testing import it, describe, expect
+
+# #2380: `@directive def` parameters without a type annotation now emit the
+# Pattern 3 warning (`parameter '...' of @directive '...' has no type
+# annotation`), matching named-fn (#2317) and lambda (#2323) behavior.
+# Warn-firing coverage lives in C++
+# (`tests/test_any_usage_warnings.cpp` —
+# `Pattern3DirectiveDefUnannotatedParamFires` etc.) so this spec file stays
+# stderr-noise-free per the #2369 precedent. The cases below lock in the
+# two suppress paths (annotated / explicit-`: any`) end-to-end through
+# directive registration and application.
+
+@directive(target=["function"])
+fn myExplicitAny(x: any)
+
+@directive(target=["function"])
+fn myAnnotated(label: str)
+
+@myExplicitAny("ignored")
+fn targetExplicitAny() -> int:
+  return 2
+
+@myAnnotated("ignored")
+fn targetAnnotated() -> int:
+  return 3
+
+@describe("@directive def parameter annotations (#2380)")
+fn directiveDefParamAnnotationsTests():
+  @it("should register and apply @directive with explicit any param (suppressed)")
+  fn shouldApplyExplicitAny():
+    expect(targetExplicitAny()).toEq(2)
+  @it("should register and apply @directive with annotated param (suppressed)")
+  fn shouldApplyAnnotated():
+    expect(targetAnnotated()).toEq(3)

@@ -280,6 +280,64 @@ TEST_F(AnyUsageWarningsTest, Pattern3AnnotatedParamSuppressed) {
         << "stderr was: " << r.err;
 }
 
+TEST_F(AnyUsageWarningsTest, Pattern3DirectiveDefUnannotatedParamFires) {
+    // #2380: @directive def params are structurally identical to fn / lambda
+    // params w.r.t. the implicit-any hazard. Mirror the warning emit so users
+    // get one consistent message across all three forms.
+    auto p = writeTmp("p3_directive_def.ry",
+        "@directive(target=[\"function\"])\n"
+        "fn myDir(x)\n"
+        "print(\"ok\")\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: parameter 'x' of @directive 'myDir' has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("defaults to 'any'"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3DirectiveDefExplicitAnyParamSuppressed) {
+    // Explicit `: any` opts into intentional type-erasure (mirrors
+    // Pattern3ExplicitAnyParamSuppressed and Pattern3LambdaExplicitAnySuppressed).
+    auto p = writeTmp("p3_directive_def_explicit_any.ry",
+        "@directive(target=[\"function\"])\n"
+        "fn myDir(x: any)\n"
+        "print(\"ok\")\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_EQ(r.err.find("has no type annotation"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3DirectiveDefAnnotatedParamSuppressed) {
+    auto p = writeTmp("p3_directive_def_annotated.ry",
+        "@directive(target=[\"function\"])\n"
+        "fn myDir(label: str)\n"
+        "print(\"ok\")\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_EQ(r.err.find("has no type annotation"), std::string::npos)
+        << "stderr was: " << r.err;
+}
+
+TEST_F(AnyUsageWarningsTest, Pattern3DirectiveDefMultiParamFires) {
+    // Each unannotated param produces its own warning, matching the
+    // multi-param lambda case (Pattern3ParenLambdaMultiParamFires).
+    auto p = writeTmp("p3_directive_def_multi.ry",
+        "@directive(target=[\"function\"])\n"
+        "fn myDir(x, y)\n"
+        "print(\"ok\")\n");
+    auto r = runRy({"run", p.string().c_str()});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.err.find("warning: parameter 'x' of @directive 'myDir' has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+    EXPECT_NE(r.err.find("warning: parameter 'y' of @directive 'myDir' has no type annotation"),
+              std::string::npos)
+        << "stderr was: " << r.err;
+}
+
 // Pattern 4 (implicit any → concrete unwrap across all four Path 9 sub-cases)
 // was promoted from a warning to a hard error in #2322; coverage now lives
 // entirely in `tests/test_strict_any.cpp` (AnyImplicitUnwrap*RejectedByDefault).
