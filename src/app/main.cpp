@@ -65,21 +65,22 @@ int main(int argc, char *argv[]) {
     bool emit_llvm_ir = false;
     ry::cli::parseGlobalFlags(argc, argv, trace_enabled, trace_out, emit_llvm_ir);
     ry::configureTrace(trace_enabled, trace_out);
-    bool sessionStarted = false;
-    if (ry::traceEnabled()) {
-        ry::emitTraceEvent("session.start", "session", nullptr,
-                           {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
-        sessionStarted = true;
-    }
+    const char *argv0 = (argc > 0 && argv[0]) ? argv[0] : "ry";
     struct SessionTraceGuard {
-        bool &started;
-        explicit SessionTraceGuard(bool &s) : started(s) {}
+        bool started = false;
+        void start(const char *argv0) {
+            if (started || !ry::traceEnabled()) return;
+            ry::emitTraceEvent("session.start", "session", nullptr,
+                               {ry::TraceField("argv0", argv0)});
+            started = true;
+        }
         ~SessionTraceGuard() {
             if (started && ry::traceEnabled()) {
                 ry::emitTraceEvent("session.end", "session");
             }
         }
-    } sessionTraceGuard(sessionStarted);
+    } sessionTraceGuard;
+    sessionTraceGuard.start(argv0);
 
     // Help flag handling: -h/--help takes priority over other options
     if (argc >= 2) {
@@ -262,18 +263,7 @@ int main(int argc, char *argv[]) {
         }
         if (trace_enabled) {
             ry::configureTrace(true, test_trace_out);
-            if (ry::traceEnabled() && !sessionStarted) {
-                ry::emitTraceEvent("session.start", "session", nullptr,
-                                   {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
-                // SessionTraceGuard (declared above) captures sessionStarted
-                // by reference and reads it in its destructor to emit
-                // session.end. The clang analyzer does not model the
-                // ref-capturing destructor read, producing a false-positive
-                // dead-store warning. Suppressed locally; surfaced by #2319's
-                // CLI / header changes triggering re-analysis of this TU.
-                [[clang::suppress]]
-                sessionStarted = true;
-            }
+            sessionTraceGuard.start(argv0);
         }
         // -p semantics finalisation (#2234): `-p` absent → 1 worker (uniform with
         // the no-`-p` default sequential semantics). `-p` alone keeps parallel_workers

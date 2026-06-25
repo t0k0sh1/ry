@@ -169,6 +169,18 @@ TEST_F(TraceModeTest, TraceCanBeRedirectedToFile) {
     EXPECT_NE(trace.find("\"event\":\"exec.end\""), std::string::npos);
 }
 
+// #2399: session.end is emitted only on non-JIT exit paths because
+// finalizeAfterPossibleJit() short-circuits via _exit() once the JIT
+// initialised, bypassing the SessionTraceGuard destructor. `ry --trace
+// --version` returns normally before any LLVM init, so the destructor
+// runs and both session.start and session.end appear.
+TEST_F(TraceModeTest, NonJitPathEmitsSessionStartAndEnd) {
+    auto result = runRy({"--trace", "--version"});
+    EXPECT_EQ(result.exit_code, 0);
+    EXPECT_NE(result.err.find("\"event\":\"session.start\""), std::string::npos);
+    EXPECT_NE(result.err.find("\"event\":\"session.end\""), std::string::npos);
+}
+
 // #2234: multi-file `--trace` is no longer aggregated across subprocesses;
 // the runner warns and disables it. The pre-#2234 "falls back to sequential"
 // path is gone — every multi-file invocation goes through subprocess fan-out.
