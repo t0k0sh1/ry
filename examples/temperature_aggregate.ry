@@ -1,0 +1,123 @@
+# 温度サンプル集計 — 観測値を location 別に List<Stats> へ集約し min/max/avg と分類を計算する
+
+enum TempBand:
+  Cold
+  Mild
+  Hot
+
+record Reading:
+  location: str
+  celsius: float
+
+record Stats:
+  location: str
+  count: int
+  minC: float
+  maxC: float
+  sumC: float
+
+record Classification:
+  location: str
+  band: TempBand
+  avgC: float
+
+fn bandLabel(b: TempBand) -> str:
+  return case b:
+    TempBand::Cold : "cold"
+    TempBand::Mild : "mild"
+    TempBand::Hot : "hot"
+
+fn classifyAvg(avg: float) -> TempBand:
+  if avg < 18.0:
+    return TempBand::Cold
+  if avg < 25.0:
+    return TempBand::Mild
+  return TempBand::Hot
+
+fn avgC(s: Stats) -> float:
+  if s.count == 0:
+    return 0.0
+  return s.sumC / (s.count as float)
+
+fn findStats(acc: List<Stats>, loc: str) -> Option<int>:
+  for i, s in enumerate(acc):
+    if s.location == loc:
+      return Some(i)
+  return None
+
+fn includeReading(prev: Stats, c: float) -> Stats:
+  newMin = if c < prev.minC => c else prev.minC
+  newMax = if c > prev.maxC => c else prev.maxC
+  return Stats(prev.location, prev.count + 1, newMin, newMax, prev.sumC + c)
+
+fn recordReading(acc: List<Stats>, r: Reading) -> List<Stats>:
+  case findStats(acc, r.location):
+    Some(i):
+      next: List<Stats> = []
+      for j, s in enumerate(acc):
+        if j == i:
+          append!(next, includeReading(s, r.celsius))
+        else:
+          append!(next, s)
+      return next
+    None:
+      next: List<Stats> = []
+      for s in acc:
+        append!(next, s)
+      append!(next, Stats(r.location, 1, r.celsius, r.celsius, r.celsius))
+      return next
+
+fn aggregate(readings: List<Reading>) -> Result<List<Stats>, Error>:
+  if len(readings) == 0:
+    return Err(Error("aggregate requires at least one reading"))
+  acc: List<Stats> = []
+  for r in readings:
+    acc = recordReading(acc, r)
+  return Ok(acc)
+
+fn classifyAll(stats: List<Stats>) -> List<Classification>:
+  result: List<Classification> = []
+  for s in stats:
+    avg = avgC(s)
+    append!(result, Classification(s.location, classifyAvg(avg), avg))
+  return result
+
+fn printStats(stats: List<Stats>):
+  for s in stats:
+    print(f"  {s.location}: count={s.count} min={s.minC} max={s.maxC} avg={avgC(s)}")
+
+fn printClassifications(items: List<Classification>):
+  for c in items:
+    print(f"  {c.location}: {bandLabel(c.band)} (avg={c.avgC})")
+
+# --- demo: aggregation across multiple locations ---
+
+readings: List<Reading> = [
+  Reading("tokyo", 23.5),
+  Reading("osaka", 25.1),
+  Reading("tokyo", 22.8),
+  Reading("sapporo", 17.3),
+  Reading("osaka", 26.4),
+  Reading("tokyo", 24.0),
+  Reading("sapporo", 16.1),
+  Reading("osaka", 24.9)
+]
+
+case aggregate(readings):
+  Ok(stats):
+    print("readings by location:")
+    printStats(stats)
+    print("\nclassification by avg band:")
+    printClassifications(classifyAll(stats))
+  Err(e):
+    print(f"unexpected error: {e.message}")
+
+# --- demo: error path — empty input is rejected ---
+
+print("\nerror path:")
+empty: List<Reading> = []
+case aggregate(empty):
+  Ok(_):
+    print("  unexpected: empty aggregate succeeded")
+  Err(e):
+    print(f"  rejected: {e.message}")
