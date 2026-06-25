@@ -1396,43 +1396,54 @@ void CodeGen::emitStmt(AssignStmt &s) {
             newTy = val->getType();
             didWrapToAny = true;
         } else if (isAnyType(newTy) && ptr->getAllocatedType() == i64Ty_) {
-            // #1798 / #1697: any → i64 unwrap. unwrapFromAny dispatches
-            // internally: a destTypeName naming a simple enum routes to the
-            // descriptor-checked Enum path, otherwise it falls back to the
-            // standard Int unwrap (canAnyHoldType(i64) is always true).
+            // Path 9-reassign (#2379, was #1798/#1697 any → i64 unwrap):
+            // rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(ptr);
-            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-            newTy = val->getType();
+            if (destTypeName.empty()) destTypeName = "int";
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(ptr->getAllocatedType()) &&
                    (isOptionType(ptr->getAllocatedType()) ||
                     isResultType(ptr->getAllocatedType()) ||
                     !findAdtEnumName(llvm::cast<llvm::StructType>(
                         ptr->getAllocatedType())).empty())) {
-            // #1798: any → enum (Option/Result/ADT) unwrap on reassignment.
+            // Path 9-reassign (#2379, was #1798 any → enum unwrap):
+            // rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(ptr);
-            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-            newTy = val->getType();
+            if (destTypeName.empty())
+                destTypeName = reverseResolveTypeName(ptr->getAllocatedType());
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
-            // #1697: Thread the destination's source-level type name so the
-            // unwrap can pick the correct collection tag (List/Map/Set) and
-            // emit a retain when the target is a collection. Without this,
-            // reassigning an `any`-carrying-List back into a `List<int>`
-            // variable would mismatch on the str tag at runtime.
+            // Path 9-reassign (#2379, was #1697 any → primitive/collection
+            // unwrap): rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(ptr);
-            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-            newTy = val->getType();
+            if (destTypeName.empty())
+                destTypeName = reverseResolveTypeName(ptr->getAllocatedType());
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(ptr->getAllocatedType()) &&
                    findRecordInfoForType(llvm::cast<llvm::StructType>(
                        ptr->getAllocatedType()))) {
-            // #1797: any → record unwrap on reassignment.
+            // Path 9-reassign (#2379, was #1797 any → record unwrap):
+            // rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = findRecordTypeName(
                 llvm::cast<llvm::StructType>(ptr->getAllocatedType()));
-            val = unwrapFromAny(val, ptr->getAllocatedType(), destTypeName);
-            newTy = val->getType();
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
+            auto *srcResTy = llvm::cast<llvm::StructType>(newTy);
             // #1808: read source-level type name from metadata so the Ok/Err
             // slot enum-aware unwrap path can dispatch through the descriptor
             // check. buildTypeNameFromMeta does NOT read source_type_name on
@@ -1442,6 +1453,28 @@ void CodeGen::emitStmt(AssignStmt &s) {
                 (ptrMeta && !ptrMeta->source_type_name.empty())
                     ? ptrMeta->source_type_name
                     : std::string();
+            // Path 9-reassign Result-slot widening (#2379): any-typed Ok or
+            // Err slot in the source widened to a concrete-typed slot in the
+            // destination performs an implicit per-slot unwrap inside
+            // coerceResultType. Reject before the call to keep the rule
+            // uniform with the raw `any → concrete` reassignment branches.
+            llvm::Type *srcOkTy  = srcResTy->getElementType(1);
+            llvm::Type *srcErrTy = srcResTy->getElementType(2);
+            llvm::Type *dstOkTy  = dstResTy->getElementType(1);
+            llvm::Type *dstErrTy = dstResTy->getElementType(2);
+            const bool okSlotWidens  = isAnyType(srcOkTy)  && !isAnyType(dstOkTy);
+            const bool errSlotWidens = isAnyType(srcErrTy) && !isAnyType(dstErrTy);
+            if (okSlotWidens || errSlotWidens) {
+                std::string diagName = !dstResName.empty()
+                    ? dstResName
+                    : reverseResolveTypeName(dstResTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "reassigning Result with 'any' " +
+                    std::string(okSlotWidens ? "Ok" : "Err") +
+                    " slot to variable '" + s.name +
+                    "' of type '" + diagName + "'",
+                    diagName);
+            }
             llvm::Value *resCoerced =
                 coerceResultType(val, dstResTy, dstResName);
             if (resCoerced)
@@ -1694,35 +1727,53 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             val = wrapInAny(val);
             didWrapToAny = true;
         } else if (isAnyType(newTy) && valueTy == i64Ty_) {
-            // #1798 / #1697: any → i64 unwrap on module-global reassignment.
-            // unwrapFromAny dispatches internally: destTypeName naming a
-            // simple enum routes to the descriptor-checked Enum path,
-            // otherwise the standard Int unwrap (canAnyHoldType(i64) holds).
+            // Path 9-reassign module-global (#2379, was #1798/#1697
+            // any → i64): rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(anchor);
-            val = unwrapFromAny(val, valueTy, destTypeName);
+            if (destTypeName.empty()) destTypeName = "int";
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to module-global variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(valueTy) &&
                    (isOptionType(valueTy) || isResultType(valueTy) ||
                     !findAdtEnumName(llvm::cast<llvm::StructType>(valueTy))
                          .empty())) {
-            // #1798: any → enum (Option/Result/ADT) unwrap on module-global
-            // reassignment.
+            // Path 9-reassign module-global (#2379, was #1798 any → enum):
+            // rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(anchor);
-            val = unwrapFromAny(val, valueTy, destTypeName);
+            if (destTypeName.empty())
+                destTypeName = reverseResolveTypeName(valueTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to module-global variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
-            // #1697: Thread the destination's source-level type name so the
-            // unwrap picks the matching collection tag and emits the retain.
+            // Path 9-reassign module-global (#2379, was #1697 any →
+            // primitive/collection): rejected by
+            // [strict-any/any-implicit-unwrap].
             std::string destTypeName = buildTypeNameFromMeta(anchor);
-            val = unwrapFromAny(val, valueTy, destTypeName);
+            if (destTypeName.empty())
+                destTypeName = reverseResolveTypeName(valueTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to module-global variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isAnyType(newTy) &&
                    llvm::isa<llvm::StructType>(valueTy) &&
                    findRecordInfoForType(llvm::cast<llvm::StructType>(valueTy))) {
-            // #1797: any → record unwrap on reassignment / compound dst.
+            // Path 9-reassign module-global (#2379, was #1797 any → record):
+            // rejected by [strict-any/any-implicit-unwrap].
             std::string destTypeName =
                 findRecordTypeName(llvm::cast<llvm::StructType>(valueTy));
-            val = unwrapFromAny(val, valueTy, destTypeName);
+            emitImplicitUnwrapDiag(current_loc_,
+                "reassigning 'any' to module-global variable '" + s.name +
+                "' of type '" + destTypeName + "'",
+                destTypeName);
         } else if (isResultType(valueTy) && isResultType(newTy)) {
             auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
+            auto *srcResTy = llvm::cast<llvm::StructType>(newTy);
             // #1808: see paired function-local reassign site above for
             // rationale — propagate source_type_name from the anchor's
             // metadata for enum-aware Ok/Err unwrap.
@@ -1731,6 +1782,25 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
                 (anchorMeta && !anchorMeta->source_type_name.empty())
                     ? anchorMeta->source_type_name
                     : std::string();
+            // Path 9-reassign module-global Result-slot widening (#2379):
+            // mirror of the function-local Result-coerce reject branch above.
+            llvm::Type *srcOkTy  = srcResTy->getElementType(1);
+            llvm::Type *srcErrTy = srcResTy->getElementType(2);
+            llvm::Type *dstOkTy  = dstResTy->getElementType(1);
+            llvm::Type *dstErrTy = dstResTy->getElementType(2);
+            const bool okSlotWidens  = isAnyType(srcOkTy)  && !isAnyType(dstOkTy);
+            const bool errSlotWidens = isAnyType(srcErrTy) && !isAnyType(dstErrTy);
+            if (okSlotWidens || errSlotWidens) {
+                std::string diagName = !dstResName.empty()
+                    ? dstResName
+                    : reverseResolveTypeName(dstResTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "reassigning Result with 'any' " +
+                    std::string(okSlotWidens ? "Ok" : "Err") +
+                    " slot to module-global variable '" + s.name +
+                    "' of type '" + diagName + "'",
+                    diagName);
+            }
             llvm::Value *resCoerced =
                 coerceResultType(val, dstResTy, dstResName);
             if (resCoerced)

@@ -152,11 +152,57 @@ fn anyEqualityOperatorsTests():
     y: any = 42
     expect(42 == y).toEq(true)
 
-# `any -> concrete` implicit unwrap into named-fn / lambda parameters and
-# Result / Option slots is rejected by `[strict-any/any-implicit-unwrap]`
-# since #2322 (Path 9b-9d). Per-site rejection is locked in by
-# tests/test_strict_any.cpp::AnyImplicitUnwrap*RejectedByDefault; canonical
-# recovery is `case asType[T](v):` narrowing before the boundary.
+# `any -> concrete` implicit unwrap is rejected by
+# `[strict-any/any-implicit-unwrap]` across all Path 9 sites: variable
+# decl + named-fn / lambda parameters + Result / Option slots
+# (#2322, Path 9a-9d), plus reassign of typed variables, return from
+# typed fn / lambda, and typed-collection mutation paths
+# (#2379, Path 9e-9g — append!/appended/insert/set add/set remove/
+# m[k]=/xs[i]=). Per-site rejection is locked in by
+# tests/test_strict_any.cpp::AnyImplicitUnwrap*RejectedByDefault;
+# canonical recovery is `case asType[T](v):` narrowing before the
+# boundary. Read-only `any → concrete` paths (the `in` / `not in`
+# operator and the `get(list, idx, default)` fallback) continue to
+# unwrap silently — see docs/reference/strict-any.md.
+
+@describe("any-implicit-unwrap (#2379) canonical recovery at new surfaces")
+fn anyImplicitUnwrapExtendedRecoveryTests():
+  # Lock in that `case asType[T](v): Ok(n): ...` works at the three
+  # surfaces extended in #2379. The narrowed binding (`n`) is concrete,
+  # so the downstream reassign / return / collection mutation does NOT
+  # re-trigger the rule.
+  @it("should reassign typed variable from any after asType narrowing")
+  fn shouldReassignTypedVariableAfterAsType():
+    x: int = 1
+    v: any = 42
+    case asType[int](v):
+      Ok(n): x = n
+      Err(_): fail("expected int")
+    expect(x).toEq(42)
+  @it("should return from typed fn after asType narrowing of any")
+  fn shouldReturnFromTypedFnAfterAsType():
+    fn f(v: any) -> int:
+      case asType[int](v):
+        Ok(n): return n
+        Err(_): return -1
+    expect(f(7)).toEq(7)
+    expect(f("not int")).toEq(-1)
+  @it("should append! after asType narrowing of any")
+  fn shouldAppendAfterAsType():
+    xs: List<int> = []
+    v: any = 9
+    case asType[int](v):
+      Ok(n): append!(xs, n)
+      Err(_): fail("expected int")
+    expect(xs[0]).toEq(9)
+  @it("should map index assign after asType narrowing of any")
+  fn shouldMapIndexAssignAfterAsType():
+    m: Map<str, int> = {"a": 1}
+    v: any = 5
+    case asType[int](v):
+      Ok(n): m["a"] = n
+      Err(_): fail("expected int")
+    expect(m["a"]).toEq(5)
 
 @describe("overload resolution: concrete preferred over any")
 fn overloadResolutionConcretePreferredOverAnyTests():
@@ -374,8 +420,11 @@ fn anyElementInMapTests():
 fn anyElementInListTests():
   # `v: T = xs[0]` on `List<any>` is Path 9a and rejected by
   # `[strict-any/any-implicit-unwrap]` (#2322). Tests below use
-  # `case asType[T](xs[0])` for narrowing; mutation paths
-  # (append!/insert/assign) and `in` membership stay unchanged.
+  # `case asType[T](xs[0])` for narrowing. Mutation on a `List<any>`
+  # receiver with concrete-typed values (wrap-into-any direction) is
+  # unaffected; the reverse direction — mutating a concrete-typed
+  # collection with an `any` value — is rejected as of #2379. `in`
+  # membership stays unchanged (read-only path).
   @it("should append! str and narrow back via asType")
   fn shouldAppendStrAndNarrowViaAsType():
     xs: List<any> = []

@@ -99,16 +99,23 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     if (elemTy) {
         setPtr = emitCowCheck(setPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
+        std::string addElemName = getSetElemName(setPtr);
         if (elem->getType() != elemTy) {
             if (isAnyType(elemTy))
                 elem = wrapInAny(elem);
-            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
-                elem = unwrapFromAny(elem, elemTy);
-            else
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy)) {
+                // Path 9-collection-mutation (#2379):
+                // rejected by [strict-any/any-implicit-unwrap].
+                std::string setElemTypeName = !addElemName.empty()
+                    ? addElemName
+                    : reverseResolveTypeName(elemTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "adding 'any' value to set of type '" + setElemTypeName + "'",
+                    setElemTypeName);
+            } else
                 codegenError("add() element type mismatch");
         }
 
-        std::string addElemName = getSetElemName(setPtr);
         validateSetElemType(addElemName, elem, "add()");
         llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy, addElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
@@ -349,9 +356,16 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
         if (elem->getType() != elemTy) {
             if (isAnyType(elemTy))
                 elem = wrapInAny(elem);
-            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
-                elem = unwrapFromAny(elem, elemTy);
-            else
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy)) {
+                // Path 9-collection-mutation (#2379):
+                // rejected by [strict-any/any-implicit-unwrap].
+                std::string setElemTypeName = getSetElemName(containerPtr);
+                if (setElemTypeName.empty())
+                    setElemTypeName = reverseResolveTypeName(elemTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "removing 'any' value from set of type '" + setElemTypeName + "'",
+                    setElemTypeName);
+            } else
                 codegenError("remove() element type mismatch");
         }
         return emitSetRemove(containerPtr, elem, elemTy);
@@ -387,9 +401,19 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
         if (val->getType() != elemTy) {
             if (isAnyType(elemTy))
                 val = wrapInAny(val);
-            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
-                val = unwrapFromAny(val, elemTy);
-            else
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy)) {
+                // Path 9-collection-mutation (#2379):
+                // rejected by [strict-any/any-implicit-unwrap].
+                auto *appMetaForDiag = getMeta(listPtr);
+                std::string listElemName = appMetaForDiag
+                    ? appMetaForDiag->list_elem_type_name
+                    : std::string{};
+                if (listElemName.empty())
+                    listElemName = reverseResolveTypeName(elemTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "appending 'any' value to list of type '" + listElemName + "'",
+                    listElemName);
+            } else
                 codegenError("append() element type mismatch");
         }
 
@@ -435,9 +459,19 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         if (val->getType() != elemTy) {
             if (isAnyType(elemTy))
                 val = wrapInAny(val);
-            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
-                val = unwrapFromAny(val, elemTy);
-            else
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy)) {
+                // Path 9-collection-mutation (#2379, functional appended):
+                // rejected by [strict-any/any-implicit-unwrap].
+                auto *apdMetaForDiag = getMeta(listPtr);
+                std::string listElemName = apdMetaForDiag
+                    ? apdMetaForDiag->list_elem_type_name
+                    : std::string{};
+                if (listElemName.empty())
+                    listElemName = reverseResolveTypeName(elemTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "appending 'any' value to list of type '" + listElemName + "'",
+                    listElemName);
+            } else
                 codegenError("appended() element type mismatch");
         }
 
@@ -738,9 +772,19 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         if (val->getType() != elemTy) {
             if (isAnyType(elemTy))
                 val = wrapInAny(val);
-            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
-                val = unwrapFromAny(val, elemTy);
-            else
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy)) {
+                // Path 9-collection-mutation (#2379):
+                // rejected by [strict-any/any-implicit-unwrap].
+                auto *insMetaForDiag = getMeta(listPtr);
+                std::string listElemName = insMetaForDiag
+                    ? insMetaForDiag->list_elem_type_name
+                    : std::string{};
+                if (listElemName.empty())
+                    listElemName = reverseResolveTypeName(elemTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "inserting 'any' value into list of type '" + listElemName + "'",
+                    listElemName);
+            } else
                 codegenError("insert() element type mismatch");
         }
 
