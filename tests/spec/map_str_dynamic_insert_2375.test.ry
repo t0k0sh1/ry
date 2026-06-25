@@ -184,3 +184,51 @@ fn mapStrDynamicInsertViaLoopVariable2375Tests():
     expect(len(m)).toEq(3)
     expect(m.contains("heap_21")).toEq(true)
     expect(m.contains("heap_23")).toEq(true)
+
+  @it("should accept str-aliased record field as Map key")
+  fn shouldAcceptStrAliasedRecordFieldAsMapKey():
+    # `type Alias = str` is sugar over str; the field's toString() returns
+    # "Alias", so codegen_expr_literal.cpp must resolve the alias before
+    # deciding whether to stamp str_elem. Without the resolveTypeAlias()
+    # call, the alias path skipped the stamp and the wrong-offset retain
+    # corrupted weak_count again (CodeRabbit, PR #2386 review).
+    type StrAlias = str
+    record AliasRec:
+      tag: StrAlias
+    items: List<AliasRec> = [AliasRec(heapKey(31)), AliasRec(heapKey(32)), AliasRec(heapKey(33))]
+    m: Map<str, int> = {}
+    for it in items:
+      m[it.tag] = 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("heap_31")).toEq(true)
+    expect(m.contains("heap_33")).toEq(true)
+
+  @it("should accept Map<str, int> tuple-destructure iteration with dynamic re-insert")
+  fn shouldAcceptMapStrIntTupleDestructureIterationWithDynamicReInsert():
+    # `for k, v in m:` reaches emitForBindingPattern via TuplePattern; the
+    # recursive call binds `k` from an ExtractValueInst with
+    # valueTypeName="str" but no pre-existing str_elem stamp (since the
+    # iter elem is a tuple, not the str itself). The loop binding must
+    # still register `k` as str-managed (CodeRabbit, PR #2386 review).
+    src: Map<str, int> = {}
+    keys: List<str> = [heapKey(41), heapKey(42), heapKey(43)]
+    for k in keys:
+      src[k] = 1
+    dst: Map<str, int> = {}
+    for k, v in src:
+      dst[k] = v
+    expect(len(dst)).toEq(3)
+    expect(dst.contains("heap_41")).toEq(true)
+    expect(dst.contains("heap_43")).toEq(true)
+
+  @it("should accept Set<str> iteration variable as Map key")
+  fn shouldAcceptSetStrIterationVariableAsMapKey():
+    # Set<str> iteration: emitForListLoop fetches set_elem_type_name="str"
+    # but the elem load has no str_elem stamp (the IndexExpr stamp targets
+    # List<str>). The loop binding falls back to valueTypeName == "str"
+    # detection (CodeRabbit, PR #2386 review).
+    s: Set<str> = {heapKey(51), heapKey(52), heapKey(53)}
+    m: Map<str, int> = {}
+    for item in s:
+      m[item] = 1
+    expect(len(m)).toEq(3)

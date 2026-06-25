@@ -346,7 +346,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
                 // literal/heap str (#2375). propagateTypeMeta intentionally
                 // does NOT set this for "str" — the str→str_elem mapping is
                 // an opt-in per-call-site discriminant (#1266, #1576).
-                if (fieldTypeStr == "str")
+                // resolveTypeAlias so `type Key = str; record R { k: Key }`
+                // also stamps (CodeRabbit, PR #2386).
+                if (resolveTypeAlias(fieldTypeStr) == "str")
                     getOrCreateMeta(fieldVal).str_elem = true;
             }
             return fieldVal;

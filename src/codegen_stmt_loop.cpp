@@ -456,12 +456,23 @@ void CodeGen::emitForBindingPattern(const Pattern &pattern, llvm::Value *value,
         // destructure path at codegen_stmt_misc.cpp:757-763 — the retain
         // emitted by tryRetainArcSource Case 4 is balanced by the release
         // popScope() will emit for arc_str_managed_vars_ at loop-body exit.
+        // Also treat `valueTypeName == "str"` paths (Map `for k, v in m:`
+        // ExtractValue, Set<str> iteration, str-aliased element types) as
+        // str-managed even without a pre-existing str_elem stamp — the
+        // emitForListLoop site only stamps List<str> elements (CodeRabbit,
+        // PR #2386).
         if (valueTy == ptrTy_) {
-            if (auto *meta = getMeta(value); meta && meta->str_elem) {
-                if (tryRetainArcSource(value)) {
-                    arc_str_managed_vars_.insert(loopVar);
-                    markArcManaged(loopVar);
-                }
+            bool isStrElem = false;
+            if (auto *meta = getMeta(value))
+                isStrElem = meta->str_elem;
+            if (!isStrElem && !valueTypeName.empty() &&
+                resolveTypeAlias(valueTypeName) == "str") {
+                getOrCreateMeta(value).str_elem = true;
+                isStrElem = true;
+            }
+            if (isStrElem && tryRetainArcSource(value)) {
+                arc_str_managed_vars_.insert(loopVar);
+                markArcManaged(loopVar);
             }
         }
         return;
