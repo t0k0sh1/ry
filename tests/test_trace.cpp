@@ -167,13 +167,19 @@ TEST_F(TraceModeTest, TraceCanBeRedirectedToFile) {
                       std::istreambuf_iterator<char>());
     EXPECT_NE(trace.find("\"event\":\"session.start\""), std::string::npos);
     EXPECT_NE(trace.find("\"event\":\"exec.end\""), std::string::npos);
+    // `ry run` JITs and exits via finalizeAfterPossibleJit()'s `_exit()`
+    // shortcut; the explicit flushSessionEnd() before `_exit` pairs
+    // `session.end` with `session.start` (#2429).
+    EXPECT_NE(trace.find("\"event\":\"session.end\""), std::string::npos);
 }
 
-// #2399: session.end is emitted only on non-JIT exit paths because
-// finalizeAfterPossibleJit() short-circuits via _exit() once the JIT
-// initialised, bypassing the SessionTraceGuard destructor. `ry --trace
-// --version` returns normally before any LLVM init, so the destructor
-// runs and both session.start and session.end appear.
+// #2399: session.start/end pairing originally relied solely on
+// SessionTraceGuard's destructor, which `finalizeAfterPossibleJit()`'s
+// `_exit()` shortcut bypassed on every JIT path. #2429 added an explicit
+// pre-`_exit` `flushSessionEnd()` so JIT paths now also pair the events
+// (see TraceCanBeRedirectedToFile, MultiFileTraceEmitsPairedSessionStartAndEnd,
+// SingleFileTestTraceEmitsPairedSessionStartAndEnd). This test still guards
+// the destructor branch via the LLVM-init-free `--trace --version` exit.
 TEST_F(TraceModeTest, NonJitPathEmitsSessionStartAndEnd) {
     auto result = runRy({"--trace", "--version"});
     EXPECT_EQ(result.exit_code, 0);
@@ -207,4 +213,70 @@ TEST_F(TraceModeTest, TraceWithMultiFileTestsEmitsWarningAndDisables) {
     // The parent emitted session.start before disabling but produces no
     // exec.start of its own (no JIT runs in the parent on this path).
     EXPECT_EQ(result.err.find("\"event\":\"exec.start\""), std::string::npos);
+}
+
+namespace {
+// Count non-overlapping occurrences of `needle` in `haystack`.
+size_t countOccurrences(const std::string &haystack, const std::string &needle) {
+    if (needle.empty()) return 0;
+    size_t n = 0;
+    for (size_t pos = haystack.find(needle); pos != std::string::npos;
+         pos = haystack.find(needle, pos + needle.size())) {
+        ++n;
+    }
+    return n;
+}
+}  // namespace
+
+// #2429: multi-file `ry test --trace <dir>` previously emitted session.start
+// (before warnAndDisableMultiFileFlags suppressed trace) but never the
+// matching session.end, leaving an unpaired record in the JSONL.
+TEST_F(TraceModeTest, MultiFileTraceEmitsPairedSessionStartAndEnd) {
+    fs::create_directories(tmp_dir_ / "tests");
+    std::ofstream manifestFile(tmp_dir_ / "package.toml");
+    manifestFile << "[project]\nname = \"trace\"\nversion = \"0.1.0\"\nentry = \"main.ry\"\n";
+    std::ofstream mainFile(tmp_dir_ / "main.ry");
+    mainFile << "print(\"main\")\n";
+    std::ofstream testFile(tmp_dir_ / "tests/sample.test.ry");
+    testFile << "from ry.testing import it, describe, expect\n"
+                "@describe(\"x\")\n"
+                "fn xGroup():\n"
+                "  @it(\"y\")\n"
+                "  fn y():\n"
+                "    expect(1).toEq(1)\n";
+    fs::path tracePath = tmp_dir_ / "multi.jsonl";
+
+    auto result = runRy({"test", "--trace-out=" + tracePath.string(), "tests"},
+                        tmp_dir_.string());
+    EXPECT_EQ(result.exit_code, 0);
+
+    std::ifstream in(tracePath);
+    std::string trace((std::istreambuf_iterator<char>(in)),
+                      std::istreambuf_iterator<char>());
+    EXPECT_EQ(countOccurrences(trace, "\"event\":\"session.start\""), 1u);
+    EXPECT_EQ(countOccurrences(trace, "\"event\":\"session.end\""), 1u);
+}
+
+// #2429: single-file `ry test --trace foo.test.ry` JITs and exits via
+// finalizeAfterPossibleJit()'s _exit() shortcut, so the SessionTraceGuard
+// destructor previously did not run and session.end was suppressed.
+TEST_F(TraceModeTest, SingleFileTestTraceEmitsPairedSessionStartAndEnd) {
+    auto script = writeFile(
+        "single.test.ry",
+        "from ry.testing import it, describe, expect\n"
+        "@describe(\"x\")\n"
+        "fn xGroup():\n"
+        "  @it(\"y\")\n"
+        "  fn y():\n"
+        "    expect(1).toEq(1)\n");
+    fs::path tracePath = tmp_dir_ / "single.jsonl";
+
+    auto result = runRy({"test", "--trace-out=" + tracePath.string(), script.string()});
+    EXPECT_EQ(result.exit_code, 0);
+
+    std::ifstream in(tracePath);
+    std::string trace((std::istreambuf_iterator<char>(in)),
+                      std::istreambuf_iterator<char>());
+    EXPECT_EQ(countOccurrences(trace, "\"event\":\"session.start\""), 1u);
+    EXPECT_EQ(countOccurrences(trace, "\"event\":\"session.end\""), 1u);
 }

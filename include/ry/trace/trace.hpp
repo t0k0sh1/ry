@@ -26,6 +26,10 @@ void emitTraceEvent(const std::string &event, const std::string &phase,
                     std::initializer_list<TraceField> fields = {});
 void emitTraceDiagnostic(const std::string &event, const std::string &phase,
                          const SourceLocation *loc, const std::string &detail);
+// Emit a single `session.end` event only if `session.start` has already been
+// emitted and `session.end` has not. Idempotent and safe to call from both
+// destructors and pre-`_exit()` JIT shortcuts (#2429).
+void flushSessionEnd();
 
 } // namespace ry
 

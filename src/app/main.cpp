@@ -39,6 +39,11 @@ namespace fs = std::filesystem;
 [[nodiscard]] static int finalizeAfterPossibleJit(int rc) {
 #if defined(__linux__) || defined(__APPLE__)
     if (ry::jitWasInitialized()) {
+        // `_exit()` skips SessionTraceGuard's destructor, so a --trace session
+        // would lose `session.end` on every JIT path. Flush it explicitly here
+        // (#2429); the call is idempotent and a no-op when no `session.start`
+        // was emitted.
+        ry::flushSessionEnd();
         std::fflush(stdout);
         std::fflush(stderr);
         _exit(rc);
@@ -74,10 +79,11 @@ int main(int argc, char *argv[]) {
                                {ry::TraceField("argv0", argv0)});
             started = true;
         }
+        // Non-JIT exit paths: destructor pairs `session.end` with the earlier
+        // `session.start`. JIT paths bypass this via `_exit()`; see
+        // finalizeAfterPossibleJit() for the parallel call (#2429).
         ~SessionTraceGuard() {
-            if (started && ry::traceEnabled()) {
-                ry::emitTraceEvent("session.end", "session");
-            }
+            ry::flushSessionEnd();
         }
     } sessionTraceGuard;
     sessionTraceGuard.start(argv0);
@@ -297,7 +303,12 @@ int main(int argc, char *argv[]) {
                           "single-file runs (e.g. `ry test foo.test.ry "
                           "--trace`). Disabling.\n";
                 trace_enabled = false;
-                ry::configureTrace(false, "");
+                // Intentionally NOT calling `ry::configureTrace(false, "")`
+                // here: the parent process emits no trace events between
+                // `session.start` and exit (children never receive --trace),
+                // so disabling the recorder only breaks `session.end` pairing
+                // — child subprocesses still get no trace because their argv
+                // omits the flag (#2429).
             }
         };
 

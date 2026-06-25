@@ -50,7 +50,24 @@ public:
               std::initializer_list<TraceField> fields) {
         std::lock_guard<std::mutex> lock(mu_);
         if (!enabled_ || !out_) return;
+        emitLocked(event, phase, loc, fields);
+    }
 
+    // Emit `session.end` iff `session.start` was emitted and `session.end` has
+    // not. Locked variant called from public flushSessionEnd(); idempotent so
+    // that both SessionTraceGuard's destructor and the `_exit()` shortcut can
+    // call it without producing a duplicate record (#2429).
+    void flushSessionEnd() {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (!enabled_ || !out_) return;
+        if (!session_start_emitted_ || session_end_emitted_) return;
+        emitLocked("session.end", "session", nullptr, {});
+    }
+
+private:
+    void emitLocked(const std::string &event, const std::string &phase,
+                    const SourceLocation *loc,
+                    std::initializer_list<TraceField> fields) {
         uint64_t seq = ++seq_;
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
@@ -78,9 +95,11 @@ public:
 
         *out_ << "}\n";
         out_->flush();
+
+        if (event == "session.start") session_start_emitted_ = true;
+        else if (event == "session.end") session_end_emitted_ = true;
     }
 
-private:
     template <typename T>
     void writeKeyValue(const std::string &key, const T &value, bool first) {
         if (!first) *out_ << ",";
@@ -135,6 +154,11 @@ private:
     std::string destination_;
     std::unique_ptr<std::ofstream> file_stream_;
     std::ostream *out_ = nullptr;
+    // Sticky for the process lifetime: re-configuring trace mid-process is not
+    // a supported flow, and resetting these on configure() would lose the
+    // `session.start` already emitted to a now-closed file (#2429).
+    bool session_start_emitted_ = false;
+    bool session_end_emitted_ = false;
 };
 
 TraceRecorder &recorder() {
@@ -163,6 +187,10 @@ void emitTraceEvent(const std::string &event, const std::string &phase,
                     const SourceLocation *loc,
                     std::initializer_list<TraceField> fields) {
     recorder().emit(event, phase, loc, fields);
+}
+
+void flushSessionEnd() {
+    recorder().flushSessionEnd();
 }
 
 void emitTraceDiagnostic(const std::string &event, const std::string &phase,
