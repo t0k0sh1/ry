@@ -1080,6 +1080,14 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (isRetainedArc) {
             if (arc_str_owned_values_.count(val) > 0) {
                 isRetainedArcStr = true;
+            } else if (auto *meta = getMeta(val); meta && meta->str_elem) {
+                // List<str>[i] / Map<*,str>[k] / record.strField — any val
+                // tryRetainArcSource handled via StringHeader (-24) must
+                // match in the alloca cleanup. Without this, implicit
+                // bindings like `k = keys[i]` or `k = rec.strField` enter
+                // arc_backed_vars_ and release at -16, corrupting str
+                // refcounts (#2375).
+                isRetainedArcStr = true;
             } else if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val)) {
                 auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
                 if (src && arc_str_managed_vars_.count(src) > 0)

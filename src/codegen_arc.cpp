@@ -823,13 +823,20 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
         return true;
     // Case 3: ExtractValueInst — record/tuple field access (CreateExtractValue).
     // Guard on collection metadata so closures, weak refs, and other non-ARC
-    // ptrTy_ values are not incorrectly retained (#999).
+    // ptrTy_ values are not incorrectly retained (#999). str fields dispatch
+    // through StringHeader (-24) like Case 4 below (#2375).
     if (llvm::isa<llvm::ExtractValueInst>(val)) {
         auto *meta = getMeta(val);
-        if (meta && (meta->list_elem || meta->map_key || meta->set_elem)) {
-            auto *hdr = emitArcGetHeaderFromData(val);
-            emitArcRetain(hdr, /*atomic=*/false);
-            return true;
+        if (meta) {
+            const bool isArcContainerElem =
+                meta->list_elem || meta->map_key || meta->set_elem;
+            const bool isStrElem = meta->str_elem;
+            if (isArcContainerElem || isStrElem) {
+                auto *hdr = isStrElem ? emitStrGetHeaderFromData(val)
+                                      : emitArcGetHeaderFromData(val);
+                emitArcRetain(hdr, /*atomic=*/false);
+                return true;
+            }
         }
     }
     // Case 4: GEP-loaded container element borrowed from a long-lived

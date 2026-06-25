@@ -1,0 +1,186 @@
+from ry.testing import it, describe, expect
+
+# Force makeString (heap-allocated str, NOT ARC_IMMORTAL literal). With
+# literal-only keys the offset bug is invisible to ARC balance checks —
+# the retain immortal-gate makes the wrong-offset retain a no-op either
+# way. Heap strs exercise the actual strong-count delta path that the
+# release walks in the Map destructor; under ASan a mismatched retain
+# turns into UAF when the map is read after the str's last source ref
+# drops. Asserting `contains` / index-read after dynamic insert is the
+# behavioural probe ASan needs. (#2375, .claude/rules/tests-arc-leak-pattern.md)
+fn heapKey(i: int) -> str:
+  return "heap_" + str(i)
+
+@describe("Map<str, V> dynamic key insertion via loop variable (#2375)")
+fn mapStrDynamicInsertViaLoopVariable2375Tests():
+  @it("should accept str keys from a for-in loop variable across 3+ inserts")
+  fn shouldAcceptStrKeysFromAForInLoopVariableAcross3PlusInserts():
+    # SIGSEGV without #2375 fix on Linux/default-emit. The for-loop's
+    # `k` alloca is not tagged as str-managed, so the map.store retain
+    # uses ArcHeader offset (-16) instead of StringHeader (-24). The
+    # corrupt write into a `constant` global's weak_count is folded
+    # away by the JIT optimiser for the inline-literal forms (#L,#M)
+    # but kept for the loop-loaded ptr form, faulting on .rodata.
+    m: Map<str, int> = {}
+    keys: List<str> = ["alpha", "beta", "gamma"]
+    for k in keys:
+      m[k] = 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("alpha")).toEq(true)
+    expect(m.contains("beta")).toEq(true)
+    expect(m.contains("gamma")).toEq(true)
+
+  @it("should accept str keys from a while-loop binding across 3+ inserts")
+  fn shouldAcceptStrKeysFromAWhileLoopBindingAcross3PlusInserts():
+    # while-loop variant — `k = keys[i]` is a plain assignment, so it
+    # goes through codegen_stmt.cpp's AssignStmt path, not
+    # emitForBindingPattern. Both forms must reach the same fix.
+    m: Map<str, int> = {}
+    keys: List<str> = ["x", "y", "z"]
+    i: int = 0
+    while i < 3:
+      k: str = keys[i]
+      m[k] = 1
+      i = i + 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("x")).toEq(true)
+    expect(m.contains("z")).toEq(true)
+
+  @it("should iterate inserted str-keyed Map without crash")
+  fn shouldIterateInsertedStrKeyedMapWithoutCrash():
+    # The original issue's surface symptom — `for k,v in m:` after
+    # dynamic insertion. Once the insert retain uses the right offset
+    # (-24), the iteration body has nothing to crash on.
+    m: Map<str, int> = {}
+    src: List<str> = ["a", "b", "c", "d"]
+    for x in src:
+      m[x] = 1
+    total: int = 0
+    for k, v in m:
+      total = total + v
+    expect(total).toEq(4)
+
+  @it("should accept str values from a for-in loop variable in Map<int, str>")
+  fn shouldAcceptStrValuesFromAForInLoopVariableInMapIntStr():
+    # Inverse: int key + str value, value coming from List<str> loop.
+    # Same retain-offset bug applies to the value path.
+    m: Map<int, str> = {}
+    vals: List<str> = ["a", "b", "c"]
+    i: int = 0
+    for v in vals:
+      m[i] = v
+      i = i + 1
+    expect(len(m)).toEq(3)
+    expect(m[0]).toEq("a")
+    expect(m[2]).toEq("c")
+
+  @it("should aggregate counts with dynamic str keys")
+  fn shouldAggregateCountsWithDynamicStrKeys():
+    # Realistic word-frequency-style aggregation: the canonical use
+    # case that motivated dropping inventory_ledger.ry /
+    # temperature_aggregate.ry. (Issue #2375 acceptance criterion 4.)
+    counts: Map<str, int> = {}
+    words: List<str> = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+    for w in words:
+      prev: int = case get(counts, w):
+        Some(n): n
+        None: 0
+      counts[w] = prev + 1
+    expect(counts["apple"]).toEq(3)
+    expect(counts["banana"]).toEq(2)
+    expect(counts["cherry"]).toEq(1)
+
+  @it("should accept str keys from a record field across 3+ inserts")
+  fn shouldAcceptStrKeysFromARecordFieldAcross3PlusInserts():
+    # FieldAccessExpr returns an ExtractValueInst; tryRetainArcSource's
+    # Case 3 previously checked only collection-elem metadata and missed
+    # str fields, dispatching through ArcHeader (-16) and corrupting
+    # weak_count on the source str. (#2375)
+    record Tag:
+      name: str
+    tags: List<Tag> = [Tag("alpha"), Tag("beta"), Tag("gamma")]
+    m: Map<str, int> = {}
+    for t in tags:
+      m[t.name] = 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("alpha")).toEq(true)
+    expect(m.contains("gamma")).toEq(true)
+
+  @it("should aggregate by record field with conditional insert")
+  fn shouldAggregateByRecordFieldWithConditionalInsert():
+    # Mirrors the temperature_aggregate.ry pattern: read record str
+    # field, use it as Map key, insert if absent / update if present.
+    # This is exactly what the dropped example tried to do.
+    record Reading:
+      location: str
+      v: int
+    readings: List<Reading> = [
+      Reading("tokyo", 23),
+      Reading("osaka", 25),
+      Reading("tokyo", 22),
+      Reading("sapporo", 17),
+    ]
+    counts: Map<str, int> = {}
+    for r in readings:
+      prev: int = case get(counts, r.location):
+        Some(n): n
+        None: 0
+      counts[r.location] = prev + 1
+    expect(counts["tokyo"]).toEq(2)
+    expect(counts["osaka"]).toEq(1)
+    expect(counts["sapporo"]).toEq(1)
+
+  @it("should accept heap-str keys from for-loop variable (ASan probe)")
+  fn shouldAcceptHeapStrKeysFromForLoopVariableAsanProbe():
+    # Heap-allocated keys (concat forces makeString) — the only form that
+    # exercises strong_count balance. Pre-fix on Linux/default-emit: retain
+    # at -16 bumped weak, release at -24 decremented strong 1→0 → premature
+    # free. The post-insert reads below give ASan a buffer to catch the
+    # UAF; without the read, the freed memory might never be accessed.
+    m: Map<str, int> = {}
+    keys: List<str> = [heapKey(1), heapKey(2), heapKey(3), heapKey(4)]
+    for k in keys:
+      m[k] = 1
+    # Read after insert — ASan dependency: if a key was prematurely freed,
+    # this contains() reads through a dangling pointer.
+    expect(m.contains("heap_1")).toEq(true)
+    expect(m.contains("heap_4")).toEq(true)
+    expect(len(m)).toEq(4)
+    total: int = 0
+    for k, v in m:
+      total = total + len(k)
+    expect(total).toBeGreaterThan(0)
+
+  @it("should accept unannotated implicit-binding heap-str (codegen_stmt.cpp path)")
+  fn shouldAcceptUnannotatedImplicitBindingHeapStr():
+    # Targets the codegen_stmt.cpp `str_elem`→`isRetainedArcStr` branch
+    # specifically: `k = keys[i]` (no `: str` annotation) is the only form
+    # that reaches the new metadata-based detection. An annotated
+    # `k: str = ...` would pass via the pre-existing `strByAnnot` path even
+    # if this branch were reverted.
+    m: Map<str, int> = {}
+    keys: List<str> = [heapKey(11), heapKey(12), heapKey(13)]
+    i: int = 0
+    while i < 3:
+      k = keys[i]
+      m[k] = i
+      i = i + 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("heap_11")).toEq(true)
+    expect(m["heap_13"]).toEq(2)
+
+  @it("should accept record-field heap-str key (codegen_arc.cpp Case 3 path)")
+  fn shouldAcceptRecordFieldHeapStrKey():
+    # Targets codegen_arc.cpp Case 3 + codegen_expr_literal.cpp str_elem
+    # stamp specifically. The Record + heap str path crashes hardest under
+    # the old code because the wrong-offset retain on the str field
+    # corrupts weak_count while the strong path is freed on map drop.
+    record HK:
+      name: str
+    tags: List<HK> = [HK(heapKey(21)), HK(heapKey(22)), HK(heapKey(23))]
+    m: Map<str, int> = {}
+    for t in tags:
+      m[t.name] = 1
+    expect(len(m)).toEq(3)
+    expect(m.contains("heap_21")).toEq(true)
+    expect(m.contains("heap_23")).toEq(true)
