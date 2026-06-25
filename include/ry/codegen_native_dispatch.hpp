@@ -18,7 +18,12 @@ enum class CodeGenReturnWrapping : uint8_t {
     ResultStatus,         // wrapStatusAsResult(status, errFn)
     ResultOutParam,       // alloca + out-param + emitResultBranch
     BoolFromI64,          // i64 -> trunc to i1
-    ResultPtrWithListMeta // ResultPtr + type_meta_[ListElem] annotation
+    ResultPtrWithListMeta,// ResultPtr + type_meta_[ListElem] annotation
+
+    // #2381 (Installment 2-c): handle-coupled and NUL-checked overloads.
+    OptionFromNullablePtr,// wrapPtrAsOption(ptr): null -> None, else Some(ptr)
+    ResultOutParamOption, // status<0 -> Err(runtime); status>=0 -> Ok(Option<loaded ptr>)
+    IteratorFromHandle,   // synthesize Iterator<T> with next-fn calling exported_symbol(handle, &out)
 };
 
 using CodeGenCustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);

@@ -2635,6 +2635,36 @@ public:
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, int rk);
+
+    // Installment 2-c (#2381): NUL-check helper used by emitGenericNativeCall
+    // when descriptor.nul_checks is non-empty. Calls __ry_http_str_has_nul
+    // and returns an i1 (true = NUL present, branches to Err). Exposed as
+    // a CodeGen method so codegen_call_native.cpp can reach it without
+    // including codegen_call_io.cpp's anonymous-namespace helpers.
+    llvm::Value *emitHttpStrNulCheckInternal(llvm::Value *strVal,
+                                              const std::string &hint);
+
+    // Installment 2-c (#2381): per-prefix static counter used to name
+    // NUL-check static error globals (e.g. ".http_hdr_nul_0",
+    // ".http_hdr_nul_1") so the generic descriptor path stays byte-exact
+    // against the pre-migration customEmitter counter sequence.
+    int nextNulErrCounter(const std::string &prefix);
+
+    // Installment 2-c (#2381): synthesize Iterator<T> with a next-fn that
+    // calls desc.exported_symbol(handle, &out) per next() invocation.
+    // Today only io::lines uses this; factored as a method so the
+    // synthesis lives next to its existing helpers (ARC retain, header
+    // alloc).
+    llvm::Value *emitIteratorFromHandleNative(const CallExpr &e,
+                                              const NativeCallDescriptor &desc,
+                                              const std::vector<llvm::Value *> &args,
+                                              const std::string &rtName);
+
+    // Installment 2-c (#2381): map a Ry return-type spelling to its
+    // matching Result struct type for the NUL-check chain's
+    // emitResultBranch resTy parameter. Handles Result<Option<T>, Error>
+    // by spelling out the inner Option<ptr> as well.
+    llvm::StructType *getResultTypeForNativeReturn(const std::string &returnTypeName);
     llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitBuiltinOption(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);

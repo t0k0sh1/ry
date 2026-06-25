@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "ry/codegen_native_dispatch.hpp"  // CodeGenReturnWrapping
 #include "ry/stdlib_registry.hpp"  // ResourceKindRegistry::NONE
@@ -23,6 +25,27 @@ namespace ry {
 // Installment 2-a (#2338) adds `resource_kind` for resource-coupled
 // modules (io, filesystem, net, http, thread). When non-NONE the consume
 // path attaches the kind to the wrapped result via addResourceKind.
+//
+// Installment 2-c (#2381) adds more fields so the remaining
+// handle-coupled / NUL-checked / file-coupled custom emitters in
+// dispatchIO / dispatchNet / dispatchHttp can retire and consume the
+// descriptor-driven path. See struct fields for the per-field intent.
+
+// Installment 2-c (#2381): per-NUL-check spec. A descriptor's `nul_checks`
+// vector orders them outer-to-inner (the first entry becomes the outer
+// emitResultBranch). httpRequest needs two nested checks (method first,
+// url second) so a vector — not a bitmask — is required to control the
+// nesting order. The static-global counter for `err_global_prefix` is
+// shared across callees that reuse the same prefix (e.g. query / cookie
+// / formField all use "http_opt_nul") so byte-exact regressions hold
+// against the pre-migration customEmitter IR.
+struct NativeNulCheckSpec {
+    int param_index = -1;        // 0-based arg idx; must be < arity
+    std::string hint;            // SSA name hint, e.g. "hdr_key"
+    std::string err_global_prefix;  // static-global symbol prefix (NO leading dot)
+    std::string err_message;     // full Ry-visible error message
+};
+
 struct NativeCallDescriptor {
     std::optional<std::string> library_name;
 
@@ -39,6 +62,25 @@ struct NativeCallDescriptor {
     // descriptor carries rk_file so the consume path tags the wrapped
     // result automatically). NONE (-1) means "not a resource".
     int resource_kind = ResourceKindRegistry::NONE;
+
+    // Installment 2-c (#2381): handle-coupled / NUL-checked / file-coupled
+    // overload metadata.
+    //
+    // - `handle_param_index`: first parameter typed as a registered
+    //   ResourceKind (-1 = no handle). Drives the emit-time type check
+    //   and resource-library linkage for non-ResultPtr returns.
+    // - `handle_resource_kind`: cached ResourceKindRegistry id for the
+    //   handle param's declared type so emit-time avoids a second lookup.
+    // - `exported_symbol`: override for the convention-derived runtime
+    //   symbol (e.g. io::open -> "__ry_io_file_open"). Empty = derive.
+    // - `nul_checks`: ordered NUL-check specs (see NativeNulCheckSpec).
+    // - `iterator_elem_type_name`: Iterator<T>'s element type spelling
+    //   used when wrapping == IteratorFromHandle.
+    int handle_param_index = -1;
+    int handle_resource_kind = ResourceKindRegistry::NONE;
+    std::string exported_symbol;
+    std::vector<NativeNulCheckSpec> nul_checks;
+    std::string iterator_elem_type_name;
 };
 
 // inferLibraryName: derives the descriptor's library_name from the
@@ -95,5 +137,41 @@ int inferResourceKind(const std::string &returnTypeName);
 // See tests/test_native_call_descriptor.cpp's KnownNativeLibsLocalLiteral
 // test for the local-only consistency guard.
 const std::unordered_set<std::string> &knownNativeLibs();
+
+// Installment 2-c (#2381): per-overload override carrying the runtime
+// symbol name, NUL-check param bitmask, wrapping override, iterator
+// element type, and static-global naming prefix for handle-coupled /
+// NUL-checked / file-coupled `@native` declarations whose default
+// convention-derivation in emitGenericNativeCall does not match the
+// hand-written customEmitter shape. The table lives in
+// src/codegen_native_call_descriptor.cpp.
+struct NativeOverloadKey {
+    std::string package;       // e.g. "io"
+    std::string callee;        // e.g. "open"
+    std::vector<std::string> param_types;  // e.g. {"str", "str"}
+};
+
+struct NativeOverloadOverride {
+    std::string exported_symbol;
+    std::vector<NativeNulCheckSpec> nul_checks;
+    std::string iterator_elem_type_name;
+    CodeGenReturnWrapping wrapping_override = CodeGenReturnWrapping::Direct;
+    bool wrapping_overridden = false;
+};
+
+// lookupNativeOverloadOverride: returns the override entry matching
+// (package, callee, param_types) exactly, or nullopt when no override is
+// registered. Matching is by full param-type list because some entries
+// (setTimeout, body, header, ...) overload on resource type so arity-
+// only matching is ambiguous.
+std::optional<NativeOverloadOverride> lookupNativeOverloadOverride(
+    const std::string &package, const std::string &callee,
+    const std::vector<std::string> &paramTypes);
+
+// inferHandleParamIndex: returns the first parameter index whose declared
+// type spelling resolves to a registered ResourceKind, or -1 when none.
+// Used by the descriptor populator to flag handle-coupled overloads
+// without an explicit annotation.
+int inferHandleParamIndex(const std::vector<std::string> &paramTypes);
 
 }  // namespace ry

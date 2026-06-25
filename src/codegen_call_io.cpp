@@ -178,268 +178,15 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     return nullptr;
 }
 
-// ===== File handle emitters =====
-
-static llvm::Value *emitFileOpen(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *path = cg.emitExpr(*e.args[0]);
-    llvm::Value *mode = cg.emitExpr(*e.args[1]);
-    if (!cg.isStrLike(path) || !cg.isStrLike(mode))
-        cg.codegenError("open() requires str arguments (path, mode)");
-    auto fn = cg.getRuntimeFn("__ry_io_file_open", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *ptr = cg.builder_.CreateCall(fn, {path, mode}, "file_open_ptr");
-    llvm::Value *res = cg.wrapPtrAsResult(ptr, "__ry_io_get_last_error");
-    cg.addResourceKind(res, rk_file);
-    return res;
-}
-
-static llvm::Value *emitFileReadAll(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
-    auto fn = cg.getRuntimeFn("__ry_io_file_read_all", cg.ptrTy_, {cg.ptrTy_});
-    llvm::Value *ptr = cg.builder_.CreateCall(fn, {fileHandle}, "file_read_all_ptr");
-    return cg.wrapPtrAsResult(ptr, "__ry_io_get_last_error");
-}
-
-static llvm::Value *emitFileReadLine(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle) {
-    llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "rl_out");
-    cg.builder_.CreateStore(
-        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
-    auto fn = cg.getRuntimeFn("__ry_io_file_read_line", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, outAlloca}, "rl_status");
-    llvm::Value *isErr = cg.builder_.CreateICmpSLT(
-        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "rl_iserr");
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
-    return cg.emitResultBranch(isErr, resTy,
-        [&]() -> llvm::Value * {
-            llvm::Value *linePtr = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "rl_line");
-            return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
-        },
-        [&]() -> llvm::Value * {
-            return cg.buildErrValue(cg.buildErrorFromRuntime("__ry_io_get_last_error"), resTy);
-        });
-}
-
-static llvm::Value *emitStdinReadLine(CodeGen &cg, const CallExpr & /*e*/) {
-    llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "srl_out");
-    cg.builder_.CreateStore(
-        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), outAlloca);
-    auto fn = cg.getRuntimeFn("__ry_io_read_line", cg.i64Ty_, {cg.ptrTy_});
-    llvm::Value *status = cg.builder_.CreateCall(fn, {outAlloca}, "srl_status");
-    llvm::Value *isErr = cg.builder_.CreateICmpSLT(
-        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "srl_iserr");
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
-    return cg.emitResultBranch(isErr, resTy,
-        [&]() -> llvm::Value * {
-            llvm::Value *linePtr = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "srl_line");
-            return cg.buildOkValue(cg.wrapPtrAsOption(linePtr, "readLine"), resTy);
-        },
-        [&]() -> llvm::Value * {
-            return cg.buildErrValue(cg.buildErrorFromRuntime("__ry_io_get_last_error"), resTy);
-        });
-}
-
-static llvm::Value *emitFileLines(CodeGen &cg, const CallExpr & /*e*/, llvm::Value *fileHandle, int fileRk) {
-    // State struct: { ptr file } — iterator holds a retained reference to the
-    // File handle so the underlying FILE* stays alive even if the user lets
-    // their `f` binding go out of scope before iteration finishes.
-    llvm::StructType *stateTy = llvm::StructType::get(*cg.ctx_,
-        llvm::ArrayRef<llvm::Type *>{cg.ptrTy_});
-    const llvm::DataLayout &dl = cg.mod_->getDataLayout();
-    uint64_t stateSize = dl.getTypeAllocSize(stateTy);
-
-    // Emit the next function: reads one line via __ry_io_file_read_line,
-    // returns Some(line) on status==0, None on EOF / error / closed.
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    static int file_lines_counter = 0;
-    std::string fnName = "__iter_file_lines_next." + std::to_string(file_lines_counter++);
-    llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {cg.ptrTy_}, false);
-    llvm::Function *nextFn = llvm::Function::Create(
-        nextFnTy, llvm::Function::ExternalLinkage, fnName, *cg.mod_);
-
-    {
-        CodeGen::FnScope guard(cg);
-        cg.fn_ = nextFn;
-        cg.pushScope();
-        llvm::BasicBlock *entry = cg.createBBInFn("entry", nextFn);
-        cg.builder_.SetInsertPoint(entry);
-
-        llvm::Value *statePtr = nextFn->getArg(0);
-        llvm::Value *file = cg.builder_.CreateLoad(cg.ptrTy_,
-            cg.builder_.CreateStructGEP(stateTy, statePtr, 0), "file");
-
-        llvm::Value *outAlloca = cg.builder_.CreateAlloca(cg.ptrTy_, nullptr, "fl_out");
-        cg.builder_.CreateStore(
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)),
-            outAlloca);
-
-        auto readLineFn = cg.getRuntimeFn("__ry_io_file_read_line", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
-        llvm::Value *status = cg.builder_.CreateCall(
-            readLineFn, {file, outAlloca}, "fl_status");
-        llvm::Value *isLine = cg.builder_.CreateICmpEQ(
-            status, llvm::ConstantInt::get(cg.i64Ty_, 0), "fl_isline");
-
-        llvm::BasicBlock *someBB = cg.createBBInFn("some", nextFn);
-        llvm::BasicBlock *noneBB = cg.createBBInFn("none", nextFn);
-        cg.emitBranchCond(isLine, someBB, noneBB);
-
-        cg.builder_.SetInsertPoint(someBB);
-        llvm::Value *line = cg.builder_.CreateLoad(cg.ptrTy_, outAlloca, "fl_line");
-        cg.builder_.CreateRet(cg.buildSomeValue(line, optTy));
-
-        cg.builder_.SetInsertPoint(noneBB);
-        cg.builder_.CreateRet(cg.buildNoneValue(optTy));
-        cg.popScope();
-    }
-
-    // Allocate the iterator state and retain the File handle into it.
-    auto mallocFn = cg.getStdlibMalloc();
-    llvm::Value *stateAlloc = cg.builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(cg.i64Ty_, stateSize)}, "lines_state");
-    cg.iterator_malloc_stack_.back().push_back(stateAlloc);
-
-    // ARC retain: the iterator must outlive the user's `f` binding.
-    llvm::Value *fileHdr = cg.emitArcGetHeaderFromData(fileHandle);
-    bool atomic = cg.isArcAtomic(fileHandle);
-    cg.emitArcRetain(fileHdr, atomic);
-    cg.iterator_release_hooks_.back().push_back({fileHandle, fileRk});
-
-    cg.builder_.CreateStore(fileHandle,
-        cg.builder_.CreateStructGEP(stateTy, stateAlloc, 0));
-
-    llvm::Value *header = nullptr;
-    {
-        uint64_t headerSize = dl.getTypeAllocSize(cg.iteratorHeaderTy_);
-        header = cg.builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(cg.i64Ty_, headerSize)}, "lines_header");
-        cg.builder_.CreateStore(nextFn,
-            cg.builder_.CreateStructGEP(cg.iteratorHeaderTy_, header, 0));
-        cg.builder_.CreateStore(stateAlloc,
-            cg.builder_.CreateStructGEP(cg.iteratorHeaderTy_, header, 1));
-        cg.setTypeMeta(CodeGen::TypeMeta::IteratorElem, header, cg.ptrTy_);
-        cg.iterator_malloc_stack_.back().push_back(header);
-    }
-    // Tag the iterator's element type as str so downstream consumers
-    // (`for line in ...`, `toList`) treat each value as a Ry string handle.
-    cg.getOrCreateMeta(header).list_elem_type_name = "str";
-    return header;
-}
-
-static llvm::Value *emitFileWriteText(CodeGen &cg, const CallExpr &e, llvm::Value *fileHandle) {
-    llvm::Value *s = cg.emitExpr(*e.args[1]);
-    if (!cg.isStrLike(s))
-        cg.codegenError("writeText(file, s): second argument must be str");
-    auto fn = cg.getRuntimeFn("__ry_io_file_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *status = cg.builder_.CreateCall(fn, {fileHandle, s}, "file_wt_status");
-    return cg.wrapStatusAsResult(status, "__ry_io_get_last_error");
-}
-
-// ===== Builtin IO =====
-
-// Sig-presence gate for dispatchIO. Prefix scan over native_fn_sigs_ for
-// "io::*" — the canonical key populated both by `from io import ...`
-// (ModuleLoader path) and `@native("io") fn ...` declarations. Post-#2338
-// the bare-name fallback list that #2332 originally added is no longer
-// needed: declarative entries dispatch through emitGenericNativeCall
-// (which does its own sig-key lookup), all C++ test harnesses inline
-// io @native decls with the explicit `@native("io")` tag, and the
-// remaining custom-emitter branches below do their own arity/callee
-// matching that is harmless when the gate over-passes for unrelated
-// callees.
-static bool isIoImported(CodeGen &cg) {
-    const auto &sigs = cg.getNativeFnSigs();
-    for (const auto &kv : sigs) {
-        if (kv.first.rfind("io::", 0) == 0)  // C++17 prefix-check idiom
-            return true;
-    }
-    return false;
-}
-
+// Stub: io dispatch is fully descriptor-driven via emitGenericNativeCall
+// after #2381's Installment 2-c. The pre-2-c file-coupled custom emitters
+// (open / readAll(File) / readLine variants / writeText(File) / lines)
+// consume per-overload exported_symbol overrides + wrapping overrides
+// (ResultOutParamOption, IteratorFromHandle) from kOverrides in
+// src/codegen_native_call_descriptor.cpp. See
+// `docs/architecture/native-call-boundary.md` §"Installment 2-c".
 RY_REGISTER_STDLIB_PACKAGE_NAMING(io, "share/std/io/io.ry", dispatchIO, /*snake_case=*/true)
-static llvm::Value *dispatchIO(CodeGen &cg, const CallExpr &e) {
-    // Gate: skip when io isn't in the program's import set, so a sibling
-    // dispatcher fall-through (e.g. base64-only program reaching dispatchIO
-    // through the StdlibRegistry loop) returns nullptr without side effects
-    // (#2299 close criterion 2).
-    if (!isIoImported(cg))
-        return nullptr;
-
-    // Per-emit insert for the remaining custom branches (open and the
-    // File-coupled overloads). The Group A declarative entries that #2338
-    // migrated to descriptor-driven dispatch register the library
-    // automatically inside emitGenericNativeCall's matched-sig branch —
-    // this lambda covers only the paths that bypass that consume site.
-    auto markIo = [&](llvm::Value *v) -> llvm::Value * {
-        if (v) cg.used_native_libraries_.insert("io");
-        return v;
-    };
-
-    const auto &n = e.callee;
-    const auto sz = e.args.size();
-
-    // open(path, mode) — runtime symbol is __ry_io_file_open, which does
-    // not follow the __ry_io_<snake>(callee) convention emitGenericNativeCall
-    // derives. Stays a custom emitter pending the future @native("io",
-    // symbol="...") descriptor field (architecture doc §"Pilot"). The
-    // descriptor's resource_kind is still populated at @native registration
-    // time (rk_file via inferResourceKind) but is not read on this path —
-    // emitFileOpen continues the manual addResourceKind call.
-    if (n == "open" && sz == 2)
-        return markIo(emitFileOpen(cg, e));
-
-    // readAll(f: File) — 1-arg (0-arg stdin is descriptor-driven post-#2338)
-    if (n == "readAll" && sz == 1) {
-        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
-        if (!cg.isFile(arg0))
-            cg.codegenError("readAll(f): argument must be a File handle; "
-                            "use readAll() with no arguments to read from stdin");
-        return markIo(emitFileReadAll(cg, e, arg0));
-    }
-
-    // readLine() — 0-arg stdin reader, returns Result<Option<str>, Error>
-    if (n == "readLine" && sz == 0)
-        return markIo(emitStdinReadLine(cg, e));
-
-    // readLine(f: File) — 1-arg
-    if (n == "readLine" && sz == 1) {
-        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
-        if (!cg.isFile(arg0))
-            cg.codegenError("readLine(f): argument must be a File handle; "
-                            "use readLine() with no arguments to read from stdin");
-        return markIo(emitFileReadLine(cg, e, arg0));
-    }
-
-    // lines(f: File) -> Iterator<str>
-    if (n == "lines" && sz == 1) {
-        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
-        if (!cg.isFile(arg0))
-            cg.codegenError("lines(f): argument must be a File handle");
-        return markIo(emitFileLines(cg, e, arg0, rk_file));
-    }
-
-    // writeText — 2-arg: dispatch the File overload here; inline the
-    // str/str overload too, because the type-check requires emitting arg0
-    // and returning nullptr would force emitGenericNativeCall to re-emit
-    // all args (double side effect on the str payload). Both branches go
-    // through __ry_io_<snake>(callee) so the runtime symbol matches what
-    // emitGenericNativeCall would derive — keeping the inline path here
-    // is purely a side-effect-preservation choice.
-    if (n == "writeText" && sz == 2) {
-        llvm::Value *arg0 = cg.emitExpr(*e.args[0]);
-        if (cg.isFile(arg0))
-            return markIo(emitFileWriteText(cg, e, arg0));
-        // Non-File: inline str-based writeText (arg0 already emitted)
-        llvm::Value *content = cg.emitExpr(*e.args[1]);
-        if (!cg.isStrLike(arg0) || !cg.isStrLike(content))
-            cg.codegenError("writeText(path, content) requires str arguments");
-        auto fn = cg.getRuntimeFn("__ry_io_write_text", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
-        llvm::Value *status = cg.builder_.CreateCall(fn, {arg0, content}, "write_text_status");
-        return markIo(cg.wrapStatusAsResult(status, "__ry_io_get_last_error"));
-    }
-
-    // readText / appendText / writeBytes / deleteFile / exists / readBytes /
-    // bytesToStr / toBytes / readAll() (0-arg) — all declarative entries
-    // fall through to emitGenericNativeCall (descriptor-driven path).
+static llvm::Value *dispatchIO(CodeGen &, const CallExpr &) {
     return nullptr;
 }
 
@@ -457,340 +204,46 @@ llvm::Value *CodeGen::emitPtrToResult(llvm::Value *ptr, const std::string &name,
     return res;
 }
 
-// ===== Net custom emitters =====
-
-// bind / connect / tlsConnect were migrated to descriptor-driven dispatch in
-// #2339 (Installment 2-b); their static emitters were deleted along with
-// net_table[]. The handle-coupled overloads below remain custom because
-// emitGenericNativeCall has no typed-handle check at consume time (#2338
-// kept io's File-coupled overloads custom for the same reason).
-
-static llvm::Value *emitNetTcpListen(CodeGen &cg, const CallExpr &e) {
-    // Guard: TCP listen is 2-arg only; 3+ arg calls are HTTP listen
-    if (e.args.size() != 2) return nullptr;
-    llvm::Value *listener = cg.emitExpr(*e.args[0]);
-    if (!cg.isTcpListener(listener))
-        cg.codegenError("listen() requires TcpListener as first argument");
-    llvm::Value *backlog = cg.emitExpr(*e.args[1]);
-    auto fn = cg.getRuntimeFn("__ry_listen", cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
-    llvm::Value *status = cg.builder_.CreateCall(fn, {listener, backlog}, "listen_status");
-    llvm::Value *isErr = cg.emitICmpNE(status,
-        llvm::ConstantInt::get(cg.i64Ty_, 0), "listen_err");
-    llvm::StructType *resTy = cg.getResultType(cg.i8Ty_, cg.errorTy_);
-    llvm::Value *okVal = cg.buildOkValue(llvm::ConstantInt::get(cg.i8Ty_, 0), resTy);
-    llvm::Value *errVal = cg.buildErrValue(cg.buildStaticError("listen failed", ".listen_err_msg"), resTy);
-    return cg.emitSelect(isErr, errVal, okVal, "listen_result");
-}
-
-static llvm::Value *emitNetAccept(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *listener = cg.emitExpr(*e.args[0]);
-    if (!cg.isTcpListener(listener))
-        cg.codegenError("accept() requires TcpListener argument");
-    auto fn = cg.getRuntimeFn("__ry_accept", cg.ptrTy_, {cg.ptrTy_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {listener}, "accept_result");
-    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
-    cg.addResourceKind(res, rk_tcp_stream);
-    return res;
-}
-
-static llvm::Value *emitNetListenerPort(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *listener = cg.emitExpr(*e.args[0]);
-    if (!cg.isTcpListener(listener))
-        cg.codegenError("listenerPort() requires TcpListener argument");
-    auto fn = cg.getRuntimeFn("__ry_listener_port", cg.i64Ty_, {cg.ptrTy_});
-    return cg.builder_.CreateCall(fn, {listener}, "listener_port");
-}
-
-static llvm::Value *emitNetShutdown(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *val = cg.emitExpr(*e.args[0]);
-    if (!cg.isTcpListener(val))
-        cg.codegenError("shutdown() requires TcpListener argument");
-    auto fn = cg.getRuntimeFn("__ry_tcp_listener_shutdown", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_});
-    return cg.builder_.CreateCall(fn, {val});
-}
-
-static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *stream = cg.emitExpr(*e.args[0]);
-    llvm::Value *ms = cg.emitExpr(*e.args[1]);
-    if (!cg.isTcpStream(stream) && !cg.isTlsStream(stream))
-        cg.codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
-    bool isTls = cg.isTlsStream(stream);
-    std::string prefix = isTls ? "__ry_tls_" : "__ry_tcp_";
-    cg.used_native_libraries_.insert(isTls ? "http" : "net");
-    std::string rtName;
-    if (e.callee == "setTimeout")             rtName = "set_timeout";
-    else if (e.callee == "setReceiveTimeout") rtName = "set_recv_timeout";
-    else if (e.callee == "setSendTimeout")    rtName = "set_send_timeout";
-    else                                      rtName = e.callee;
-    auto fn = cg.getRuntimeFn((prefix + rtName).c_str(),
-                              llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
-    return cg.builder_.CreateCall(fn, {stream, ms});
-}
-
 // ===== Net dispatcher =====
-
-// Gate: skip when net isn't in the program's import set, so a sibling
-// dispatcher fall-through (e.g. http-only program reaching dispatchNet
-// through the StdlibRegistry loop) returns nullptr without side effects.
-// Mirrors dispatchIO's gate (#2338).
-static bool isNetImported(CodeGen &cg) {
-    const auto &sigs = cg.getNativeFnSigs();
-    for (const auto &kv : sigs) {
-        if (kv.first.rfind("net::", 0) == 0)  // C++17 prefix-check idiom
-            return true;
-    }
-    return false;
-}
+//
+// All net handle-coupled entries (listen-2-arg / accept / listenerPort /
+// shutdown / setTimeout / setReceiveTimeout / setSendTimeout on TcpStream
+// and TlsStream) are descriptor-driven via emitGenericNativeCall after
+// #2381's Installment 2-c — see src/codegen_native_call_descriptor.cpp's
+// kOverrides table for the exported_symbol overrides (the runtime symbols
+// predate the `__ry_net_<callee>` convention: `__ry_listen` / `__ry_accept`
+// / `__ry_tcp_set_timeout` / `__ry_tls_set_timeout` / …) and
+// handle_resource_kind that selects the right library to link (TlsStream
+// → http, TcpStream → net).
 
 // Priority 50: net must dispatch before http (priority 100) because
-// net::listen (2-arg) falls through to http::listen (3+-arg).
-// snake_case=true: tlsConnect → __ry_net_tls_connect for the descriptor-
-// driven entries (#2339). The handle-coupled custom branches below use
-// hand-named symbols (__ry_listen / __ry_accept / __ry_tcp_set_timeout
-// etc.) and bypass the symbol derivation entirely.
+// net::listen (2-arg) falls through to http::listen (3+-arg). Stub
+// after #2381 — handle-coupled entries (listen-2-arg / accept /
+// listenerPort / shutdown / setTimeout / setReceiveTimeout /
+// setSendTimeout on TcpStream + TlsStream) carry exported_symbol +
+// handle_resource_kind in kOverrides (src/codegen_native_call_descriptor.cpp)
+// and emit through emitGenericNativeCall. snake_case=true preserves
+// the #2339 derivation for the bare-runtime-symbol entries (bind /
+// connect / tlsConnect).
 RY_REGISTER_STDLIB_PACKAGE_FULL(net, "share/std/net/net.ry", dispatchNet, 50, true)
-static llvm::Value *dispatchNet(CodeGen &cg, const CallExpr &e) {
-    if (!isNetImported(cg))
-        return nullptr;
-
-    // Per-emit insert for the remaining custom branches (handle-coupled
-    // overloads). The Group A declarative entries that #2339 migrated to
-    // descriptor-driven dispatch register the library automatically inside
-    // emitGenericNativeCall — this lambda covers only the paths that
-    // bypass that consume site.
-    auto markNet = [&](llvm::Value *v) -> llvm::Value * {
-        if (v) cg.used_native_libraries_.insert("net");
-        return v;
-    };
-
-    const auto &n = e.callee;
-    const auto sz = e.args.size();
-
-    // listen(listener: TcpListener, backlog: int) — TcpListener handle
-    // check + static error string. 3+ arg `listen` (the HTTP overload)
-    // returns nullptr below to fall through to dispatchHttp.
-    if (n == "listen" && sz == 2)
-        return markNet(emitNetTcpListen(cg, e));
-
-    // accept / listenerPort / shutdown — TcpListener handle check.
-    if (n == "accept" && sz == 1)
-        return markNet(emitNetAccept(cg, e));
-    if (n == "listenerPort" && sz == 1)
-        return markNet(emitNetListenerPort(cg, e));
-    if (n == "shutdown" && sz == 1)
-        return markNet(emitNetShutdown(cg, e));
-
-    // setTimeout / setReceiveTimeout / setSendTimeout — overload + library
-    // switching (TcpStream → net, TlsStream → http). emitNetTimeout does
-    // its own `used_native_libraries_` insert; do not double-mark.
-    if ((n == "setTimeout" || n == "setReceiveTimeout" || n == "setSendTimeout")
-        && sz == 2)
-        return emitNetTimeout(cg, e);
-
-    // bind / connect / tlsConnect — descriptor-driven; fall through to
-    // emitGenericNativeCall. tlsConnect's TlsStream resource_kind drives
-    // the error_channel override to __ry_tls_get_last_error and adds the
-    // http library to used_native_libraries_ at consume time (#2339).
+static llvm::Value *dispatchNet(CodeGen &, const CallExpr &) {
     return nullptr;
 }
 
-// ===== Http custom emitters =====
-
-// Emit a NUL check on a Ry str value. Returns an i1: true if NUL found (= Err path).
-static llvm::Value *emitHttpNulCheck(CodeGen &cg, llvm::Value *strVal, const std::string &hint) {
-    auto nulFn = cg.getRuntimeFn("__ry_http_str_has_nul", cg.i64Ty_, {cg.ptrTy_});
-    llvm::Value *hasNul = cg.builder_.CreateCall(nulFn, {strVal}, hint + "_has_nul");
-    return cg.builder_.CreateICmpNE(hasNul, llvm::ConstantInt::get(cg.i64Ty_, 0), hint + "_is_nul");
-}
-
-// `response` was migrated to descriptor-driven dispatch in #2339; its
-// static emitter was deleted along with http_table[]. The runtime symbol
-// was renamed `__ry_http_response_create` → `__ry_http_response` to match
-// the `__ry_<module>_<snake>(callee)` convention emitGenericNativeCall
-// derives. The descriptor populates rk_http_response from the return type
-// (Result<HttpResponse, Error>) automatically.
-
-static llvm::Value *emitHttpRequestStr(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *req = cg.emitExpr(*e.args[0]);
-    if (!cg.isHttpRequest(req))
-        cg.codegenError(e.callee + "() requires HttpRequest argument");
-    auto fn = cg.getRuntimeFn(("__ry_http_" + e.callee).c_str(), cg.ptrTy_, {cg.ptrTy_});
-    return cg.builder_.CreateCall(fn, {req}, e.callee);
-}
-
-static llvm::Value *emitHttpBody(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *arg = cg.emitExpr(*e.args[0]);
-    if (cg.isHttpRequest(arg)) {
-        auto fn = cg.getRuntimeFn("__ry_http_body", cg.ptrTy_, {cg.ptrTy_});
-        return cg.builder_.CreateCall(fn, {arg}, "body");
-    }
-    if (cg.isHttpClientResponse(arg)) {
-        auto fn = cg.getRuntimeFn("__ry_http_client_body", cg.ptrTy_, {cg.ptrTy_});
-        return cg.builder_.CreateCall(fn, {arg}, "body");
-    }
-    cg.codegenError("body() requires HttpRequest or HttpClientResponse argument");
-}
-
-static llvm::Value *emitHttpBodyBytes(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *arg = cg.emitExpr(*e.args[0]);
-    const char *rtName;
-    if (cg.isHttpRequest(arg))
-        rtName = "__ry_http_body_bytes";
-    else if (cg.isHttpClientResponse(arg))
-        rtName = "__ry_http_client_body_bytes";
-    else
-        cg.codegenError("bodyBytes() requires HttpRequest or HttpClientResponse argument");
-    auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {cg.ptrTy_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {arg}, "body_bytes");
-    cg.setTypeMeta(CodeGen::TypeMeta::ListElem, result, cg.i8Ty_);
-    return result;
-}
-
-static llvm::Value *emitHttpHeader(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *arg = cg.emitExpr(*e.args[0]);
-    llvm::Value *key = cg.emitExpr(*e.args[1]);
-    if (key->getType() != cg.ptrTy_)
-        cg.codegenError("header() key must be str");
-
-    llvm::Value *isNul = emitHttpNulCheck(cg, key, "hdr_key");
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
-    static int hdrNulCtr = 0;
-
-    if (cg.isHttpRequest(arg)) {
-        return cg.emitResultBranch(isNul, resTy,
-            [&]() {
-                auto fn = cg.getRuntimeFn("__ry_http_header", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
-                llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_hdr");
-                return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_hdr"), resTy);
-            },
-            [&]() {
-                return cg.buildErrValue(
-                    cg.buildStaticError("header: key contains embedded NUL",
-                                        ".http_hdr_nul_" + std::to_string(hdrNulCtr++)), resTy);
-            });
-    }
-    if (cg.isHttpClientResponse(arg)) {
-        return cg.emitResultBranch(isNul, resTy,
-            [&]() {
-                auto fn = cg.getRuntimeFn("__ry_http_client_header", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
-                llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_client_hdr");
-                return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_client_hdr"), resTy);
-            },
-            [&]() {
-                return cg.buildErrValue(
-                    cg.buildStaticError("header: key contains embedded NUL",
-                                        ".http_hdr_nul_" + std::to_string(hdrNulCtr++)), resTy);
-            });
-    }
-    cg.codegenError("header() requires HttpRequest or HttpClientResponse argument");
-}
-
-static llvm::Value *emitHttpOptionField(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *req = cg.emitExpr(*e.args[0]);
-    llvm::Value *key = cg.emitExpr(*e.args[1]);
-    if (!cg.isHttpRequest(req))
-        cg.codegenError(e.callee + "() requires HttpRequest argument");
-    if (key->getType() != cg.ptrTy_) {
-        std::string param = (e.callee == "cookie") ? "name" : "key";
-        cg.codegenError(e.callee + "() " + param + " must be str");
-    }
-    std::string hint = (e.callee == "query") ? "http_qry"
-                     : (e.callee == "cookie") ? "http_ck" : "http_ff";
-    // Map camelCase callee to snake_case runtime symbol name.
-    std::string rtName = (e.callee == "formField") ? "form_field" : e.callee;
-
-    llvm::Value *isNul = emitHttpNulCheck(cg, key, hint);
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
-    static int optNulCtr = 0;
-    std::string errMsg = e.callee + ": key contains embedded NUL";
-    std::string errName = ".http_opt_nul_" + std::to_string(optNulCtr++);
-
-    auto fn = cg.getRuntimeFn(("__ry_http_" + rtName).c_str(), cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
-    return cg.emitResultBranch(isNul, resTy,
-        [&]() {
-            llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, hint);
-            return cg.buildOkValue(cg.wrapPtrAsOption(r, hint), resTy);
-        },
-        [&]() {
-            return cg.buildErrValue(cg.buildStaticError(errMsg, errName), resTy);
-        });
-}
-
-static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *req = cg.emitExpr(*e.args[0]);
-    if (!cg.isHttpRequest(req))
-        cg.codegenError(e.callee + "() requires HttpRequest argument");
-    // Map camelCase callee to snake_case runtime symbol name.
-    std::string rtName;
-    if (e.callee == "queryAll")        rtName = "query_all";
-    else if (e.callee == "formFields") rtName = "form_fields";
-    else                               rtName = e.callee;
-    auto fn = cg.getRuntimeFn(("__ry_http_" + rtName).c_str(), cg.ptrTy_, {cg.ptrTy_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + rtName);
-    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, result, cg.ptrTy_);
-    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, result, cg.ptrTy_);
-    return result;
-}
-
-static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 2);
-    llvm::Value *req = cg.emitExpr(*e.args[0]);
-    llvm::Value *key = cg.emitExpr(*e.args[1]);
-    if (!cg.isHttpRequest(req))
-        cg.codegenError("formFile() requires HttpRequest argument");
-    if (key->getType() != cg.ptrTy_)
-        cg.codegenError("formFile() name must be str");
-
-    llvm::Value *isNul = emitHttpNulCheck(cg, key, "ff_key");
-    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
-    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
-    static int ffNulCtr = 0;
-
-    auto fn = cg.getRuntimeFn("__ry_http_form_file", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *res = cg.emitResultBranch(isNul, resTy,
-        [&]() {
-            llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
-            cg.setTypeMeta(CodeGen::TypeMeta::MapKey, r, cg.ptrTy_);
-            cg.setTypeMeta(CodeGen::TypeMeta::MapValue, r, cg.ptrTy_);
-            llvm::Value *opt = cg.wrapPtrAsOption(r, "http_ffile");
-            return cg.buildOkValue(opt, resTy);
-        },
-        [&]() {
-            return cg.buildErrValue(
-                cg.buildStaticError("formFile: name contains embedded NUL",
-                                    ".http_ff_nul_" + std::to_string(ffNulCtr++)), resTy);
-        });
-    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, res, cg.ptrTy_);
-    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, res, cg.ptrTy_);
-    return res;
-}
-
-static llvm::Value *emitResultBranchWithMeta(
-    CodeGen &cg,
-    llvm::Value *isErr,
-    llvm::StructType *resTy,
-    llvm::function_ref<llvm::Value *(llvm::Value *&)> buildOk,
-    llvm::function_ref<llvm::Value *()> buildErr) {
-    llvm::Value *okIncoming = nullptr;
-    llvm::Value *merged = cg.emitResultBranch(isErr, resTy,
-        [&]() { return buildOk(okIncoming); },
-        [&]() { return buildErr(); });
-    if (okIncoming)
-        cg.propagateMeta(okIncoming, merged);
-    return merged;
-}
+// ===== Http control-flow synthesizer (listen 3+ arg) =====
+//
+// All other http handle-coupled / NUL-checked entries (method / path /
+// body / bodyBytes / header / query / cookie / formField / queryAll /
+// cookies / formFields / formFile / httpGet / httpPost / httpRequest /
+// status / httpClientResponseFree) are descriptor-driven through
+// emitGenericNativeCall after #2381's Installment 2-c, with their
+// per-overload exported_symbol / nul_checks / OptionFromNullablePtr
+// wrapping picked up from kOverrides (src/codegen_native_call_descriptor.cpp).
+//
+// `listen` 3+ arg stays custom: it synthesizes a multi-block control
+// flow (bind → listen → accept loop → per-request handler dispatch →
+// send_response → close) that the declarative descriptor model does not
+// cover. This entry inserts its own `net` + `http` library deps inline.
 
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     cg.used_native_libraries_.insert("net");
@@ -1025,128 +478,6 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     return cg.builder_.CreateLoad(unitResTy, resultAlloca, "listen_final");
 }
 
-static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
-    if (e.callee == "httpGet") {
-        cg.requireArgs(e, 1);
-        llvm::Value *url = cg.emitExpr(*e.args[0]);
-        if (url->getType() != cg.ptrTy_)
-            cg.codegenError("httpGet() url must be str");
-        {
-            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "get_url");
-            llvm::StructType *getResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
-            static int getUrlNulCtr = 0;
-            return emitResultBranchWithMeta(cg, urlNul, getResTy,
-                [&](llvm::Value *&okIncoming) {
-                    auto fn = cg.getRuntimeFn("__ry_http_get", cg.ptrTy_, {cg.ptrTy_});
-                    llvm::Value *result = cg.builder_.CreateCall(fn, {url}, "http_get_result");
-                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
-                    cg.addResourceKind(res, rk_http_client_response);
-                    okIncoming = res;
-                    return res;
-                },
-                [&]() {
-                    return cg.buildErrValue(
-                        cg.buildStaticError("httpGet: url contains embedded NUL",
-                            ".http_get_url_nul_" + std::to_string(getUrlNulCtr++)), getResTy);
-                });
-        }
-    }
-    if (e.callee == "httpPost") {
-        cg.requireArgs(e, 3);
-        llvm::Value *url = cg.emitExpr(*e.args[0]);
-        llvm::Value *body = cg.emitExpr(*e.args[1]);
-        llvm::Value *headers = cg.emitExpr(*e.args[2]);
-        if (url->getType() != cg.ptrTy_)
-            cg.codegenError("httpPost() url must be str");
-        if (body->getType() != cg.ptrTy_)
-            cg.codegenError("httpPost() body must be str");
-        if (headers->getType() != cg.ptrTy_)
-            cg.codegenError("httpPost() headers must be Map<str, str>");
-        {
-            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "post_url");
-            llvm::StructType *postResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
-            static int postUrlNulCtr = 0;
-            return emitResultBranchWithMeta(cg, urlNul, postResTy,
-                [&](llvm::Value *&okIncoming) {
-                    auto fn = cg.getRuntimeFn("__ry_http_post", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.ptrTy_});
-                    llvm::Value *result = cg.builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
-                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
-                    cg.addResourceKind(res, rk_http_client_response);
-                    okIncoming = res;
-                    return res;
-                },
-                [&]() {
-                    return cg.buildErrValue(
-                        cg.buildStaticError("httpPost: url contains embedded NUL",
-                            ".http_post_url_nul_" + std::to_string(postUrlNulCtr++)), postResTy);
-                });
-        }
-    }
-    // httpRequest
-    if (e.callee != "httpRequest") return nullptr;
-    cg.requireArgs(e, 4);
-    llvm::Value *method = cg.emitExpr(*e.args[0]);
-    llvm::Value *url = cg.emitExpr(*e.args[1]);
-    llvm::Value *headers = cg.emitExpr(*e.args[2]);
-    llvm::Value *body = cg.emitExpr(*e.args[3]);
-    if (method->getType() != cg.ptrTy_)
-        cg.codegenError("httpRequest() method must be str");
-    if (url->getType() != cg.ptrTy_)
-        cg.codegenError("httpRequest() url must be str");
-    if (headers->getType() != cg.ptrTy_)
-        cg.codegenError("httpRequest() headers must be Map<str, str>");
-    if (body->getType() != cg.ptrTy_)
-        cg.codegenError("httpRequest() body must be str");
-    // NUL check for method (user-supplied Ry str); __ry_http_post/__ry_http_get
-    // pass C literals so the check lives here, not in the runtime.
-    llvm::Value *methodNul = emitHttpNulCheck(cg, method, "req_method");
-    llvm::StructType *reqResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
-    static int reqMethodNulCtr = 0;
-    static int reqUrlNulCtr = 0;
-    return emitResultBranchWithMeta(cg, methodNul, reqResTy,
-        [&](llvm::Value *&okIncoming) {
-            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "req_url");
-            return cg.emitResultBranch(urlNul, reqResTy,
-                [&]() {
-                    auto fn = cg.getRuntimeFn("__ry_http_client_request", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.ptrTy_, cg.ptrTy_});
-                    llvm::Value *result = cg.builder_.CreateCall(fn, {method, url, headers, body}, "http_request_result");
-                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
-                    cg.addResourceKind(res, rk_http_client_response);
-                    okIncoming = res;
-                    return res;
-                },
-                [&]() {
-                    return cg.buildErrValue(
-                        cg.buildStaticError("httpRequest: url contains embedded NUL",
-                            ".http_req_url_nul_" + std::to_string(reqUrlNulCtr++)), reqResTy);
-                });
-        },
-        [&]() {
-            return cg.buildErrValue(
-                cg.buildStaticError("httpRequest: method contains embedded NUL",
-                    ".http_req_method_nul_" + std::to_string(reqMethodNulCtr++)), reqResTy);
-        });
-}
-
-static llvm::Value *emitHttpStatus(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *resp = cg.emitExpr(*e.args[0]);
-    if (!cg.isHttpClientResponse(resp))
-        cg.codegenError("status() requires HttpClientResponse argument");
-    auto fn = cg.getRuntimeFn("__ry_http_client_status", cg.i64Ty_, {cg.ptrTy_});
-    return cg.builder_.CreateCall(fn, {resp}, "http_client_status");
-}
-
-static llvm::Value *emitHttpClientFree(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *resp = cg.emitExpr(*e.args[0]);
-    if (!cg.isHttpClientResponse(resp))
-        cg.codegenError("httpClientResponseFree() requires HttpClientResponse argument");
-    auto fn = cg.getRuntimeFn("__ry_http_client_response_free", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_});
-    cg.builder_.CreateCall(fn, {resp});
-    return llvm::ConstantInt::get(cg.i64Ty_, 0);
-}
-
 // ===== Http dispatcher =====
 
 // Gate: skip when http isn't in the program's import set, so a sibling
@@ -1161,71 +492,26 @@ static bool isHttpImported(CodeGen &cg) {
     return false;
 }
 
+// Installment 2-c (#2381): handle-coupled / NUL-checked / Option-Result
+// entries (method / path / body / bodyBytes / header / query / cookie /
+// formField / queryAll / cookies / formFields / formFile / httpGet /
+// httpPost / httpRequest / status / httpClientResponseFree) are
+// descriptor-driven via emitGenericNativeCall. The descriptor's
+// exported_symbol / nul_checks / handle_resource_kind / wrapping_override
+// fields encode the per-overload metadata; see
+// src/codegen_native_call_descriptor.cpp's kOverrides table. listen 3+
+// arg (control-flow synthesis: bind / listen / accept loop / handler
+// dispatch / send_response) stays custom because the synthesized control
+// flow does not fit the declarative descriptor model — emitHttpListen
+// inserts "net" + "http" into used_native_libraries_ itself.
 RY_REGISTER_STDLIB_PACKAGE(http, "share/std/http/http.ry", dispatchHttp)
 static llvm::Value *dispatchHttp(CodeGen &cg, const CallExpr &e) {
     if (!isHttpImported(cg))
         return nullptr;
 
-    // Per-emit insert for the remaining custom branches. Descriptor-driven
-    // entries (response) register the library automatically via
-    // emitGenericNativeCall; this lambda covers only the bypass paths.
-    auto markHttp = [&](llvm::Value *v) -> llvm::Value * {
-        if (v) cg.used_native_libraries_.insert("http");
-        return v;
-    };
+    if (e.callee == "listen" && e.args.size() >= 3)
+        return emitHttpListen(cg, e);
 
-    const auto &n = e.callee;
-    const auto sz = e.args.size();
-
-    // listen — 3+ args: HTTP server overload (control flow synthesis).
-    // 2-arg listen was already handled by dispatchNet's TCP listen branch
-    // and won't reach here.
-    if (n == "listen" && sz >= 3)
-        return markHttp(emitHttpListen(cg, e));
-
-    // method / path — HttpRequest typed-handle check; Direct str return.
-    if ((n == "method" || n == "path") && sz == 1)
-        return markHttp(emitHttpRequestStr(cg, e));
-
-    // body / bodyBytes — overloaded HttpRequest vs HttpClientResponse.
-    if (n == "body" && sz == 1)
-        return markHttp(emitHttpBody(cg, e));
-    if (n == "bodyBytes" && sz == 1)
-        return markHttp(emitHttpBodyBytes(cg, e));
-
-    // header — Option<str> return + NUL check.
-    if (n == "header" && sz == 2)
-        return markHttp(emitHttpHeader(cg, e));
-
-    // query / cookie / formField — Option<str> return + NUL check.
-    if ((n == "query" || n == "cookie" || n == "formField") && sz == 2)
-        return markHttp(emitHttpOptionField(cg, e));
-
-    // queryAll / cookies / formFields — Map<str, str> return.
-    if ((n == "queryAll" || n == "cookies" || n == "formFields") && sz == 1)
-        return markHttp(emitHttpMapAll(cg, e));
-
-    // formFile — Option<Map<str, str>> return + NUL check.
-    if (n == "formFile" && sz == 2)
-        return markHttp(emitHttpFormFile(cg, e));
-
-    // httpGet / httpPost / httpRequest — URL NUL check + ResultPtr +
-    // rk_http_client_response. Stays custom for NUL check.
-    if ((n == "httpGet" && sz == 1)
-        || (n == "httpPost" && sz == 3)
-        || (n == "httpRequest" && sz == 4))
-        return markHttp(emitHttpClientCall(cg, e));
-
-    // status — HttpClientResponse typed-handle check; Direct int return.
-    if (n == "status" && sz == 1)
-        return markHttp(emitHttpStatus(cg, e));
-
-    // httpClientResponseFree — HttpClientResponse typed-handle check.
-    if (n == "httpClientResponseFree" && sz == 1)
-        return markHttp(emitHttpClientFree(cg, e));
-
-    // response — descriptor-driven; fall through to emitGenericNativeCall
-    // (#2339). The descriptor populates rk_http_response automatically.
     return nullptr;
 }
 
