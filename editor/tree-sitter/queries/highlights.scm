@@ -25,9 +25,12 @@
   "from"
 ] @keyword.import
 
-; Qualified import: `import math` — module identifier is a namespace.
+; Qualified import: `import math` / `import ry.math` — module identifier is a
+; namespace. The `module_path` wrapper covers both single-segment and dotted
+; forms; tagging each `(identifier)` inside it gives every segment the
+; `@module` highlight.
 (qualified_import_statement
-  module: (identifier) @module)
+  module: (module_path (identifier) @module))
 
 (qualified_import_statement
   alias: (identifier) @module)

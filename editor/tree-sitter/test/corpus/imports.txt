@@ -207,7 +207,8 @@ import math
 
 (source_file
   (qualified_import_statement
-    module: (identifier)))
+    module: (module_path
+      (identifier))))
 
 ==================
 qualified import with alias (#1724)
@@ -219,7 +220,8 @@ import math as m
 
 (source_file
   (qualified_import_statement
-    module: (identifier)
+    module: (module_path
+      (identifier))
     alias: (identifier)))
 
 ==================
@@ -233,7 +235,8 @@ from math import PI
 
 (source_file
   (qualified_import_statement
-    module: (identifier))
+    module: (module_path
+      (identifier)))
   (import_statement
     source: (module_path
       (identifier))

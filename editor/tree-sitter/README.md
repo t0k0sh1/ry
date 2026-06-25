@@ -154,7 +154,8 @@ entry, or is explicitly marked as covered by the smoke fixture only.
 | `lambda_expression` | `lambdas.txt` |
 | literals (`integer_literal`, `float_literal`, `string_literal`, `block_string_literal`, `boolean_literal`, `none_literal`, `list_literal`, `map_literal`, `set_literal`, `tuple_literal`) | `literals.txt` |
 | `binary_expression`, `unary_expression`, `call_expression`, `index_expression`, `field_access` | `expressions.txt` |
-| **smoke-only** (corpus 化不能 / 既知 grammar gap) | `directive_def_declaration` (※1), `tuple_destructure_statement`, top-level `@<decorator> NAME: T = ...` (`expected-fail.txt` 該当) |
+| `directive_def_declaration` | `decorators.txt` (※1) |
+| **smoke-only** (corpus 化不能 / 既知 grammar gap) | `tuple_destructure_statement`, top-level `@<decorator> NAME: T = ...` (`expected-fail.txt` 該当) |
 
 Scope of the matrix is the rules that can appear as a direct child of
 `source_file` (declarations, top-level statements, imports). The
@@ -176,7 +177,7 @@ Adding dedicated corpus entries for the interior rules above is a
 worthwhile follow-up, but they are not within the Acceptance #2 scope
 ("each *top-level* rule").
 
-※1 `directive_def_declaration` は grammar.js 側で body 必須に書かれているのに対し、`share/std/core/directive.ry` の実例は body-less で内部 `(ERROR ...)` を残すため AST shape が安定せず corpus ロック不可。grammar 側 rule 整合は別 issue 候補。
+※1 `directive_def_declaration` は #2382 で grammar 整合済み。`@directive(...)` 行末の NEWLINE を rule に明示し、後続 `function_declaration` の body-less 形 (`function_declaration` 既存の `choice(function_body, _newline)` を再利用) を許容するよう更新した。実例 (`share/std/core/directive.ry` ほか) の AST shape が安定したため `decorators.txt` に 3 ケースを追加して corpus 対象化済み。
 
 ## Smoke-check (corpus regression test)
 
