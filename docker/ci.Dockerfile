@@ -224,7 +224,35 @@ RUN set -eux; \
     rm -rf "rust-${RUST_VERSION}-${RARCH}" "${TARBALL}" "${TARBALL}.sha256"
 
 #
-# Stage 7: cppcheck-builder — source-build cppcheck.
+# Stage 7: jq-bootstrap — download jq prebuilt binary.
+#
+# Single-binary download from jqlang/jq releases. Integrity verified
+# against the project's published sig/v<ver>/sha256sum.txt companion —
+# the same channel used by the previous inline ci.yml install step
+# before #2401 baked jq into the image. Mirrors the ninja-bootstrap
+# pattern (prebuilt binary from github releases) and preserves the
+# "no apt anywhere" image invariant (#1505).
+#
+FROM gcc:14-trixie AS jq-bootstrap
+
+ARG JQ_VERSION=1.7.1
+ARG TARGETARCH
+
+WORKDIR /tmp
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64)  JARCH=amd64 ;; \
+        arm64)  JARCH=arm64 ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    wget -q "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-${JARCH}"; \
+    wget -q "https://raw.githubusercontent.com/jqlang/jq/master/sig/v${JQ_VERSION}/sha256sum.txt"; \
+    grep "jq-linux-${JARCH}\$" sha256sum.txt | sha256sum -c -; \
+    install -m 0755 "jq-linux-${JARCH}" /opt/jq; \
+    rm -f "jq-linux-${JARCH}" sha256sum.txt
+
+#
+# Stage 8: cppcheck-builder — source-build cppcheck.
 #
 FROM gcc:14-trixie AS cppcheck-builder
 
@@ -258,13 +286,14 @@ ARG LLVM_VERSION=21.1.8
 ARG GTEST_VERSION=1.17.0
 
 LABEL org.opencontainers.image.source=https://github.com/t0k0sh1/ry
-LABEL org.opencontainers.image.description="ry CI image — gcc:14-trixie + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache + cppcheck + Rust (static.rust-lang.org). Built entirely from github.com + rust-lang.org sources; no apt anywhere."
+LABEL org.opencontainers.image.description="ry CI image — gcc:14-trixie + LLVM ${LLVM_VERSION} (source-built) + OpenSSL 3 + cmake + ninja + ccache + cppcheck + jq + Rust (static.rust-lang.org). Built entirely from github.com + rust-lang.org sources; no apt anywhere."
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 # Copy artefacts from builder stages.
 COPY --from=cmake-bootstrap /opt/cmake /opt/cmake
 COPY --from=ninja-bootstrap /opt/ninja /opt/ninja
 COPY --from=ccache-bootstrap /opt/ccache /usr/local/bin/ccache
+COPY --from=jq-bootstrap /opt/jq /usr/local/bin/jq
 COPY --from=openssl-builder /opt/openssl /opt/openssl
 COPY --from=llvm-builder /usr/local/llvm /usr/local/llvm
 COPY --from=cppcheck-builder /opt/cppcheck /opt/cppcheck

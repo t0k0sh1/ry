@@ -6,7 +6,7 @@
 # .github/workflows/build-ci-image.yml). The CI image already provides:
 #   - clang/clang++ 21 (source-built, /usr/local/llvm)
 #   - cmake (/opt/cmake), ninja (/opt/ninja), ccache (/usr/local/bin/ccache)
-#   - OpenSSL 3 (/opt/openssl), cppcheck (/opt/cppcheck)
+#   - jq (/usr/local/bin/jq), OpenSSL 3 (/opt/openssl), cppcheck (/opt/cppcheck)
 #   - vendored gtest source tarball at $RY_VENDORED_GTEST_TARBALL
 #   - CC/CXX/PATH/LD_LIBRARY_PATH/OPENSSL_ROOT_DIR/LLVM_DIR pre-set
 #
