@@ -58,6 +58,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lower"
+version = "0.0.0"
+
+[[package]]
 name = "native_base64"
 version = "0.0.0"
 dependencies = [

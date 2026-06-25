@@ -1,0 +1,29 @@
+# Rust implementation of the upper-codegen (Ry semantic lowering) layer —
+# kickoff pilot for #2397. Sister crate to `emit` (lower codegen):
+#
+#   C++ caller  →  ry_lower_*  (this crate)  →  ry_emit_*  (`emit` crate)  →  LLVM IR
+#
+# Unlike `emit`, this crate has NO LLVM dependency. The `ry_emit_*`
+# symbols it calls are declared `extern "C"` and resolved at runtime
+# from the loaded `emit` cdylib via the host process's symbol table
+# (`-undefined dynamic_lookup` on macOS; `-rdynamic` on the host `ry` /
+# `ry_tests` executables on Linux — the same pattern `crates/native_base64`
+# uses for `__ry_*`). See `docs/architecture/upper-codegen-migration.md`.
+
+[package]
+name = "lower"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+# Profile settings live at the workspace root in /Cargo.toml — cargo
+# ignores `[profile.*]` blocks in workspace-member manifests.
+
+# Inherit the workspace lint policy (root /Cargo.toml [workspace.lints]).
+[lints]
+workspace = true
