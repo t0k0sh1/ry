@@ -133,3 +133,43 @@ c = filter(xs, (x) => x > 0)
               left: (qualified_identifier
                 (identifier))
               right: (integer_literal))))))))
+
+==================
+lambda with block-form if-expression body (#2394)
+==================
+
+f = (x: int) => if x > 0:
+  Some(x)
+else:
+  None()
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params
+        (lambda_param
+          name: (identifier)
+          type: (union_type
+            (primitive_type))))
+      body: (if_statement
+        condition: (binary_expression
+          left: (qualified_identifier
+            (identifier))
+          right: (integer_literal))
+        consequence: (block
+          (expression_statement
+            (call_expression
+              function: (qualified_identifier
+                (identifier))
+              arguments: (argument_list
+                (argument
+                  value: (qualified_identifier
+                    (identifier)))))))
+        alternative: (block
+          (expression_statement
+            (call_expression
+              function: (qualified_identifier
+                (identifier)))))))))

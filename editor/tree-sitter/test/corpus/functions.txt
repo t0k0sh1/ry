@@ -117,7 +117,8 @@ fn identity<T>(x: T) -> T:
     name: (function_name
       (identifier))
     generics: (generic_parameters
-      (identifier))
+      (type_parameter
+        name: (identifier)))
     parameters: (parameter_list
       (parameter
         name: (identifier)
@@ -176,3 +177,74 @@ fn factorial(n: int) -> int:
                   left: (qualified_identifier
                     (identifier))
                   right: (integer_literal))))))))))
+
+==================
+generic fn with type parameter bound (#2394)
+==================
+
+fn getName<T: Animal>(a: T) -> str:
+    return a.name
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    generics: (generic_parameters
+      (type_parameter
+        name: (identifier)
+        bound: (identifier)))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (named_type
+            (identifier)))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (field_access
+          object: (qualified_identifier
+            (identifier))
+          field: (identifier))))))
+
+==================
+generic fn with mixed bounded and unbounded type params (#2394)
+==================
+
+fn pair<T: Animal, U>(a: T, b: U) -> str:
+    return a.name
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    generics: (generic_parameters
+      (type_parameter
+        name: (identifier)
+        bound: (identifier))
+      (type_parameter
+        name: (identifier)))
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (named_type
+            (identifier))))
+      (parameter
+        name: (identifier)
+        type: (union_type
+          (named_type
+            (identifier)))))
+    return_type: (union_type
+      (primitive_type))
+    body: (function_body
+      (return_statement
+        value: (field_access
+          object: (qualified_identifier
+            (identifier))
+          field: (identifier))))))

@@ -163,7 +163,8 @@
 
 ; ---------- Identifiers ----------
 ; Generic parameter names introduce types.
-(generic_parameters (identifier) @type)
+(type_parameter name: (identifier) @type)
+(type_parameter bound: (identifier) @type)
 
 ; Bindings and fallback identifiers as variables (after more-specific rules above).
 (binding_pattern (identifier) @variable)

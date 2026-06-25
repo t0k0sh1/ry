@@ -105,3 +105,21 @@ record Pos:
         left: (qualified_identifier
           (identifier))
         right: (integer_literal)))))
+
+==================
+record declaration with parent type (record subtyping, #2394)
+==================
+
+record Dog < Animal:
+  breed: str
+
+---
+
+(source_file
+  (record_declaration
+    name: (identifier)
+    parent: (identifier)
+    (record_field
+      name: (identifier)
+      type: (union_type
+        (primitive_type)))))

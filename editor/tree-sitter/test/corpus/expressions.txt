@@ -277,3 +277,96 @@ x = load[Map<str, List<Foo>>](text)
         (argument
           value: (qualified_identifier
             (identifier)))))))
+
+==================
+tuple member access via integer literal (#2394)
+==================
+
+x = t.0
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (field_access
+      object: (qualified_identifier
+        (identifier))
+      field: (integer_literal))))
+
+==================
+chained tuple member access (#2394)
+==================
+
+x = t.0.1
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (field_access
+      object: (field_access
+        object: (qualified_identifier
+          (identifier))
+        field: (integer_literal))
+      field: (integer_literal))))
+
+==================
+generic constructor call with explicit type args (#2394)
+==================
+
+x = MyOpt<int>::MySome(42)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (call_expression
+      function: (generic_constructor
+        (identifier)
+        (type_arguments
+          (union_type
+            (primitive_type)))
+        (identifier))
+      arguments: (argument_list
+        (argument
+          value: (integer_literal))))))
+
+==================
+generic constructor without call (#2394)
+==================
+
+x = MyOpt<int>::MyNone
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (generic_constructor
+      (identifier)
+      (type_arguments
+        (union_type
+          (primitive_type)))
+      (identifier))))
+
+==================
+if expression with identifier condition (#2394)
+==================
+
+x = if cond => a else b
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (if_expression
+      condition: (qualified_identifier
+        (identifier))
+      consequence: (qualified_identifier
+        (identifier))
+      alternative: (qualified_identifier
+        (identifier)))))
