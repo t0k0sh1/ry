@@ -58,9 +58,9 @@ Update a rule or skill when work reveals a reusable constraint, a new rejection-
 - Use script `--clean` options for build-tree cleanup.
 - Sanitizer wrappers supply required runtime options; use them instead of hand-written ASan/UBSan invocations.
 - Fix test, sanitizer, race, cppcheck, Rust lint, and prompt-reference failures.
-- Fuzzer crashes follow `/triage-side-finding`; preserve crash inputs in regression and corpus directories.
+- Fuzzer crashes are fixed immediately; preserve crash inputs in regression and corpus directories.
 
 ## Completion
 
 - Do not change labels during self-verification.
-- Post-merge `wip` cleanup occurs only during a user-invoked `/git-finalize-pr`.
+- Post-merge `wip` cleanup occurs only during a user-invoked `/pr-check`.

@@ -1,16 +1,16 @@
 ---
-name: git-create-pr
+name: pr-create
 description: User-invoked slash command that ensures a feature branch, commits pending work, rebases onto main, pushes, and opens a PR.
 allowed-tools: Bash(git status:*), Bash(gh pr create:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git checkout -b:*), Read, Edit
 metadata:
   short-description: Branch, push, and open a PR
 ---
 
-# Git Create PR
+# PR Create
 
 ## Invocation Gate
 
-- Run only on direct `/git-create-pr` invocation.
+- Run only on direct `/pr-create` invocation.
 
 ## Context
 

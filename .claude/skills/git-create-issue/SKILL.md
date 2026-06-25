@@ -23,7 +23,7 @@ Before `gh issue create`, present one proposal:
 
 - Wait for explicit approval.
 - Do not present issue creation as a menu option.
-- A previously approved `/triage-side-finding` proposal satisfies this gate unless content changed.
+- A previously approved side-finding proposal satisfies this gate unless content changed.
 - `/preparing-for-release` is outside this gate.
 
 ## Validate

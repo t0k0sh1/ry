@@ -38,7 +38,7 @@ bash scripts/check-examples.sh
 - Issue flow: claim if required -> inspect -> TDD -> applicable verification.
 - Plan only when requested or when complexity warrants it.
 - TDD: add a detector test first for existing behavior changes; use Red-Green-Refactor for new features.
-- Side findings go through `/triage-side-finding`; internal behavior investigation through `/ry-trace`; releases start with `/preparing-for-release <X.Y.Z>`.
+- Side findings: fix now when the reproduction window may close, severity is high, or the fix is small; otherwise confirm a separate issue path. Internal behavior investigation uses `/ry-trace`; releases start with `/preparing-for-release <X.Y.Z>`.
 
 ## Execution Notes
 
@@ -55,11 +55,10 @@ bash scripts/check-examples.sh
 
 - No direct commits to `main`; feature branch names must not contain `main` after lowercasing and removing non-letters.
 - Bring `main` into feature branches with `git rebase origin/main`; after rebase, push with `--force-with-lease` and no extra fetch.
-- `/git-create-pr` and `/git-finalize-pr` run only when the user directly invokes that exact command.
-- `/git-resolve-conflicts` handles PR conflicts.
+- `/pr-create` and `/pr-check` run only when the user directly invokes that exact command.
 - Before merge, stop and report uncommitted / untracked files.
 - External reviews, `git add` / commit / push / PR creation, and GitHub issue creation require explicit user direction.
-- Issue creation flow: `/triage-side-finding` -> `/git-create-issue` -> user approval -> `gh issue create`.
+- Issue creation flow: decide the side finding belongs separately -> `/git-create-issue` -> user approval -> `gh issue create`.
 - Use `gh issue edit --remove-label wip` for label cleanup. Never use `gh issue edit --label wip` as a cleanup operation.
 
 ## CI And Release Constraints
@@ -78,4 +77,4 @@ bash scripts/check-examples.sh
 ## Completion
 
 - Run applicable checks before declaring work complete.
-- No label changes during self-verification; post-merge cleanup only via user-invoked `/git-finalize-pr`.
+- No label changes during self-verification; post-merge cleanup only via user-invoked `/pr-check`.

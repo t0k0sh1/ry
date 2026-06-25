@@ -10,4 +10,4 @@ paths:
 - Custom-emitter natives with heterogeneous return types should use `any` as the declaration placeholder and explain the placeholder in the `.ry` file.
 - Do not call `weak`, `None`, `Some`, `Ok`, `Err`, or `_` reserved keywords unless they are actually in `src/lexer/lexer.cpp` `keyword_map`; use "contextual identifier" when appropriate.
 - Verify multi-file or multi-package documentation with a minimal real layout under `/tmp/` and `./build/ry`; a single-snippet compile is not enough for visibility/import behavior.
-- Do not publish aspirational examples. If observed behavior diverges from intended behavior, apply `/triage-side-finding`.
+- Do not publish aspirational examples. If observed behavior diverges from intended behavior, either fix it now or propose one separate issue.
