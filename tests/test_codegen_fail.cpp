@@ -1583,12 +1583,11 @@ TEST_F(CodeGenTest, SetPathIntermediateNotMapAborts) {
         "setPath 'a\\.b': intermediate segment 'a' is not a Map");
 }
 
-// setPath cannot write into List intermediates (asymmetric with
-// getPath, which dispatches numeric segments to list indices via
-// `emitAnyPathStep`). The setPath intermediate-walk loop only checks
-// `tag == RyAnyTag::Map`, so a List-tagged intermediate falls through
-// to the "is not a Map" error path. Documented in share/std/map.ry.
-TEST_F(CodeGenTest, SetPathListIntermediateAborts) {
+// setPath cannot perform a LEAF write into a List index. The walk loop
+// allows List intermediates (#2398), but the final-container check at
+// the end of the walk requires a Map tag; List-leaf writes fall through
+// to the "is not a Map" error. Documented in share/std/map.ry.
+TEST_F(CodeGenTest, SetPathListLeafWriteAborts) {
     EXPECT_EXIT(
         runSource(
             "items: List<any> = [1]\n"
@@ -1596,4 +1595,79 @@ TEST_F(CodeGenTest, SetPathListIntermediateAborts) {
             "m.setPath(\"items.0\", 9)\n"),
         ::testing::ExitedWithCode(1),
         "setPath 'items\\.0': intermediate segment 'items' is not a Map");
+}
+
+// #2398: trailing backslash and unknown escape are compile-time errors
+// in splitDotPath. Both getPath and setPath share the splitter so the
+// rejection fires identically regardless of callee.
+TEST_F(CodeGenTest, GetPathTrailingBackslashRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.getPath(\"a\\\\\")\n",
+        "getPath() path has trailing backslash");
+}
+
+TEST_F(CodeGenTest, SetPathTrailingBackslashRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.setPath(\"a\\\\\", 1)\n",
+        "setPath() path has trailing backslash");
+}
+
+// #2398: only `\.` and `\\` are valid splitDotPath escapes. Any other
+// `\X` byte sequence is a static error. The Ry string-literal layer
+// halves user-source backslashes, so the user writes `"a\\X.b"` to
+// reach the byte sequence `a\X.b` that splitDotPath rejects.
+TEST_F(CodeGenTest, GetPathUnknownEscapeRejected) {
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m.getPath(\"a\\\\X\")\n",
+        "getPath() path has unknown escape sequence '\\X'");
+}
+
+// #2398: walking into a non-container intermediate (str / int / float)
+// aborts. The error names the parent segment (whose value is the bad
+// type). For non-numeric next-segments only Map would have worked so
+// the legacy "is not a Map" phrasing stays; numeric next-segments get
+// "is not a Map or List" because either container would have matched.
+TEST_F(CodeGenTest, SetPathWalkNonContainerAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "m: Map<str, any> = {\"a\": \"xyz\"}\n"
+            "m.setPath(\"a.b.c\", 1)\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'a\\.b\\.c': intermediate segment 'a' is not a Map");
+}
+
+TEST_F(CodeGenTest, SetPathWalkNonContainerNumericAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "m: Map<str, any> = {\"a\": 42}\n"
+            "m.setPath(\"a.0.c\", 1)\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'a\\.0\\.c': intermediate segment 'a' is not a Map or List");
+}
+
+// #2398: List intermediate index out of range aborts. Both positive
+// over-index and negative under-wrap trip the same dual-bounds check.
+TEST_F(CodeGenTest, SetPathListIntermediateOobAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "a: Map<str, any> = {\"name\": \"alice\"}\n"
+            "users: List<any> = [a]\n"
+            "m: Map<str, any> = {\"users\": users}\n"
+            "m.setPath(\"users.5.name\", \"x\")\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'users\\.5\\.name': intermediate segment '5' index out of range");
+}
+
+TEST_F(CodeGenTest, SetPathListIntermediateNegOobAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "a: Map<str, any> = {\"name\": \"alice\"}\n"
+            "users: List<any> = [a]\n"
+            "m: Map<str, any> = {\"users\": users}\n"
+            "m.setPath(\"users.-5.name\", \"x\")\n"),
+        ::testing::ExitedWithCode(1),
+        "setPath 'users\\.-5\\.name': intermediate segment '-5' index out of range");
 }

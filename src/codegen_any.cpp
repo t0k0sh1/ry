@@ -2529,12 +2529,23 @@ llvm::Value *CodeGen::emitAnyPathStep(llvm::Value *anyVal,
             listHeaderTy_, listPtr, 0, "pathstep.list.len.field");
         llvm::Value *len = builder_.CreateLoad(
             i64Ty_, lenField, "pathstep.list.len");
-        // `*intSegment` is non-negative by `tryParseSegmentInt`'s
-        // invariant (src/codegen_call_collection.cpp), so a negative-
-        // wrap + `idx < 0` check would be dead — only the upper bound
-        // can fire (#2301).
-        llvm::Value *idxVal = llvm::ConstantInt::getSigned(i64Ty_, *intSegment);
-        llvm::Value *oob = builder_.CreateICmpSGE(idxVal, len, "pathstep.list.oob");
+        // #2398: `*intSegment` may be negative — `len + idx` wraps so
+        // that `-1` resolves to the last element and `-len` to the
+        // first. Both bounds need a runtime check: the wrap can still
+        // overshoot below zero (idx < -len) or the original index can
+        // overshoot above `len`.
+        llvm::Value *idxRaw = llvm::ConstantInt::getSigned(i64Ty_, *intSegment);
+        llvm::Value *isNeg = builder_.CreateICmpSLT(
+            idxRaw, llvm::ConstantInt::get(i64Ty_, 0), "pathstep.list.is_neg");
+        llvm::Value *wrapped = builder_.CreateAdd(
+            len, idxRaw, "pathstep.list.wrapped");
+        llvm::Value *idxVal = builder_.CreateSelect(
+            isNeg, wrapped, idxRaw, "pathstep.list.idx");
+        llvm::Value *under = builder_.CreateICmpSLT(
+            idxVal, llvm::ConstantInt::get(i64Ty_, 0), "pathstep.list.under");
+        llvm::Value *over = builder_.CreateICmpSGE(
+            idxVal, len, "pathstep.list.over");
+        llvm::Value *oob = builder_.CreateOr(under, over, "pathstep.list.oob");
         auto *listHitBB = createBBInFn("pathstep.list_hit", fn);
         emitBranchCond(oob, missBB, listHitBB);
 

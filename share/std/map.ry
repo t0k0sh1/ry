@@ -32,10 +32,10 @@ fn merge(firstMap: Map<str, int>, secondMap: Map<str, int>) -> Map<str, int>
 fn remove(map: Map<str, int>, key: str) -> Unit
 
 # Nested-path access for Map<str, any> values produced by json.load
-# (issue #1701). Path is dot-separated str segments; missing intermediate
-# or leaf returns None. Numeric segments resolve to List<any> int indexes
-# when the intermediate any holds a List, or to str keys when it holds a
-# Map (runtime tag dispatch).
+# (issue #1701, extended by #2398). Path is dot-separated str segments;
+# missing intermediate or leaf returns None. Numeric segments resolve
+# to List<any> int indexes when the intermediate any holds a List, or
+# to str keys when it holds a Map (runtime tag dispatch).
 #
 # Path constraints (compile-time errors): the `path` argument must be
 # a string literal — variable-bound paths are rejected. Empty paths
@@ -43,34 +43,47 @@ fn remove(map: Map<str, int>, key: str) -> Unit
 # dots (`"a..b"`) are rejected as malformed.
 #
 # Numeric segments use base-10 parsing only: `"items.012"` resolves to
-# index 12 (no octal handling). Segments containing a minus sign
-# (`"items.-1"`) are NOT reverse indexes — they fall back to str-key
-# lookup, which yields None on List intermediates.
+# index 12 (no octal handling). A leading '-' is accepted (#2398):
+# `"items.-1"` is the last List element, `"items.-2"` the next-last,
+# down to `"items.-len"` (the first). Negatives below `-len` and
+# positives at-or-above `len` return None. The bare '-' segment (no
+# digits after the sign) is not numeric and falls back to str-key
+# lookup. On a Map intermediate, `-1` is the literal str key, not a
+# reverse index.
 #
-# Keys containing '.' are unaddressable: there is no escape syntax,
-# so a Map<str, any> loaded from JSON whose key is `"server.host"`
-# cannot be reached via getPath (the path is always split on '.').
+# Keys containing '.' (or '\') are reached via backslash escape (#2398):
+# `getPath(m, "a\\.b")` resolves the literal key `"a.b"`, and
+# `getPath(m, "a\\\\b")` resolves `"a\b"`. The Ry string-literal layer
+# halves user-source backslashes, so the user writes `"a\\.b"` for one
+# literal backslash before the dot at codegen time. Unrecognised
+# escapes (`\X` for any other X) and trailing bare backslashes are
+# compile-time errors.
 @public
 @native
 fn getPath(map: Map<str, any>, path: str) -> Option<any>
 
-# Nested-path write for Map<str, any> (issue #1701). Walks dot-separated
-# str segments; each intermediate must be a Map<str, any> at runtime —
-# missing intermediates or non-Map intermediates raise a runtime error.
-# The leaf segment is inserted (if new) or updated (if existing).
-# Top-level receiver is COW-checked; intermediate Maps mutate in place,
-# so callers sharing references to a nested Map see the change.
+# Nested-path write for Map<str, any> (issue #1701, extended by #2398).
+# Walks dot-separated str segments. Each intermediate must resolve to a
+# Map<str, any> (str-key lookup) or a List<any> (int-index lookup with
+# the same negative-wrap rules as getPath) at runtime; any other tag,
+# a missing Map key, or an out-of-range List index raises a runtime
+# error. The leaf segment is inserted (if new) or updated (if existing).
+# Top-level receiver is COW-checked; intermediate Map / List values
+# mutate in place, so callers sharing references to a nested container
+# see the change.
 #
 # Path constraints (compile-time errors) match getPath: the `path`
 # argument must be a string literal; empty / leading-dot / trailing-dot /
-# consecutive-dot paths are rejected.
+# consecutive-dot paths are rejected; the same backslash escape syntax
+# applies (`\.` → literal '.', `\\` → literal '\').
 #
-# Unlike getPath, setPath cannot write through a List intermediate:
-# every intermediate segment must be a Map<str, any> at runtime, so a
-# List value at any non-leaf segment aborts with "intermediate segment
-# 'X' is not a Map" (e.g. `setPath(m, "items.0", v)` fails on "items",
-# not on the numeric leaf). Reach List elements via direct index
-# assignment instead (`m["items"][0] = v`).
+# Leaf writes into a List index remain out of scope: the FINAL segment
+# of the path is always a Map key write, so the immediately-enclosing
+# container must be a Map at runtime. `setPath(m, "items.0", v)` where
+# `items` is a List aborts with `intermediate segment 'items' is not a
+# Map` — reach List elements via direct index assignment instead
+# (`m["items"][0] = v`). Negative-index applies to List intermediates
+# only (e.g. `setPath(m, "users.-1.name", "Alice")` is supported).
 @public
 @native
 fn setPath(map: Map<str, any>, path: str, value: any) -> Unit

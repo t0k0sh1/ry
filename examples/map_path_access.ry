@@ -27,3 +27,23 @@ setPath(config, "server.tls", true)
 
 print(getPath(config, "server.port"))
 print(getPath(config, "server.tls"))
+
+# 負数 index: List<any> arm で末尾要素アクセス (#2398)
+items: List<any> = [10, 20, 30]
+holder: Map<str, any> = {"items": items}
+print(getPath(holder, "items.-1"))    # Some(30)
+print(getPath(holder, "items.-3"))    # Some(10)
+print(getPath(holder, "items.-4"))    # None  (範囲外)
+
+# List intermediate を経由した Map leaf への書き込み (#2398)
+alice: Map<str, any> = {"name": "alice"}
+bob: Map<str, any> = {"name": "bob"}
+users: List<any> = [alice, bob]
+m: Map<str, any> = {"users": users}
+setPath(m, "users.-1.name", "BOB!")
+print(getPath(m, "users.1.name"))     # Some(BOB!)
+
+# キーに '.' を含む Map (#2398): "\." で literal dot として扱う
+dotted: Map<str, any> = {"a.b": 42}
+print(getPath(dotted, "a\\.b"))       # Some(42)
+print(getPath(dotted, "a.b"))         # None  (unescaped は分割される)
