@@ -98,6 +98,12 @@ export default grammar({
     // start a lambda param list, a tuple type, or a parenthesized expr). (#1906)
     [$.named_type, $.qualified_identifier],
     [$.named_type, $.qualified_identifier, $.lambda_param],
+    // `f[Foo<T>::Variant, ...]` — bracket contents can look like either a
+    // type list (named_type with `::` chain + type args) OR an expression
+    // list (generic_constructor primary expression). Resolved at the
+    // closing `]` based on the next token (`(args)` → expression, no `(`
+    // → type list).
+    [$.named_type, $.generic_constructor],
   ],
 
   rules: {
@@ -184,8 +190,14 @@ export default grammar({
     decorator: $ => seq(
       '@',
       field('name', $.identifier),
+      // `token.immediate('(')` requires no whitespace between the
+      // decorator name and the `(`. This mirrors the C++ parser's
+      // `looksLikeParenthesizedTupleDestructure` lookahead — `@const(...)`
+      // is decorator-with-args, while `@const (a, b) = expr` is the
+      // decorator followed by a parenthesized tuple-destructure statement
+      // (#1189; see src/parser/parser.cpp:387-393).
       optional(seq(
-        '(',
+        alias(token.immediate('('), '('),
         optional($.decorator_arguments),
         ')',
       )),
@@ -245,8 +257,13 @@ export default grammar({
 
     generic_parameters: $ => seq(
       '<',
-      sep1($.identifier, ','),
+      sep1($.type_parameter, ','),
       '>',
+    ),
+
+    type_parameter: $ => seq(
+      field('name', $.identifier),
+      optional(seq(':', field('bound', $.identifier))),
     ),
 
     // Live-editing tolerance (#1623): the INDENT body is optional so that
@@ -290,6 +307,7 @@ export default grammar({
       'record',
       field('name', $.identifier),
       optional(field('generics', $.generic_parameters)),
+      optional(seq('<', field('parent', $.identifier))),
       ':',
       $._indent,
       repeat($._record_member),
@@ -407,7 +425,11 @@ export default grammar({
     )),
 
     type_arguments: $ => seq(
-      '<',
+      // `token.immediate('<')` keeps `Foo<T>` from colliding with the
+      // comparison operator `a < b` — type args must directly follow the
+      // identifier with no intervening whitespace. Mirrors the C++
+      // parser's `couldBeGenericEnum` lookahead and the EBNF spec.
+      alias(token.immediate('<'), '<'),
       sep1($._type, ','),
       '>',
     ),
@@ -486,18 +508,28 @@ export default grammar({
       field('right', $._expression),
     )),
 
-    /* `name: Type = value` — implicit-binding form (no `let` keyword) */
+    /* `name: Type = value` — implicit-binding form (no `let` keyword).
+     * The value slot accepts either a regular expression or a block-form
+     * `if_statement` / `case_statement`. The block-form admission lets
+     * `x: T = if cond:\n  (e1)\nelse:\n  (e2)` parse cleanly (Ry's
+     * IfBlockExpr / CaseBlockExpr surfaces — see #1154). */
     typed_binding_statement: $ => seq(
       field('name', $.identifier),
       ':',
       field('type', $._type),
       '=',
-      field('value', $._expression),
+      field('value', choice($._expression, $.if_statement, $.case_statement)),
     ),
 
-    /* Both forms: `(a, b) = expr`  and  `a, b = expr` */
+    /* Both forms: `(a, b) = expr`  and  `a, b = expr`
+     * Leading decorators (`@const (a, b) = expr`, etc.) are allowed on the
+     * parenthesized form so directives like `@const` can attach to a
+     * tuple-destructure binding (#1189 — see src/parser/parser.cpp:387-393).
+     * The decorator sits on the same line as the `(` so the inter-decorator
+     * NEWLINE seen in `_declaration` is intentionally NOT required here. */
     tuple_destructure_statement: $ => choice(
       seq(
+        repeat($.decorator),
         '(',
         sep1($.identifier, ','),
         ')',
@@ -566,13 +598,13 @@ export default grammar({
     // expected interpretation.
     if_statement: $ => prec.right(seq(
       'if',
-      field('condition', $._expression),
+      field('condition', $._conditional_expression),
       ':',
       optional(field('consequence', $.block)),
       repeat(seq(
         'else',
         'if',
-        field('alt_condition', $._expression),
+        field('alt_condition', $._conditional_expression),
         ':',
         optional(field('alt_consequence', $.block)),
       )),
@@ -740,6 +772,22 @@ export default grammar({
       repeat(seq('::', $.identifier)),
     )),
 
+    /* `Foo<T, U>::Variant` — explicit-type-args constructor for generic
+     * enums / records. Requires `::IDENT` after the type-arguments closing
+     * `>` so the parser does not mistake the leading `<` for a comparison
+     * operator. Mirrors src/parser/parser_expr.cpp:634 `couldBeGenericEnum`.
+     * The pair conflicts with `qualified_identifier` (both start with
+     * `identifier`); the conflict declaration in `conflicts:` tells GLR
+     * to keep both interpretations alive until the lookahead beyond IDENT
+     * (`<type>::IDENT` vs comparison `<expr>`) disambiguates. */
+    generic_constructor: $ => seq(
+      $.identifier,
+      $.type_arguments,
+      '::',
+      $.identifier,
+      repeat(seq('::', $.identifier)),
+    ),
+
     range_pattern: $ => seq(
       $.literal_pattern,
       '..',
@@ -791,12 +839,28 @@ export default grammar({
       optional(seq('=', field('default', $._expression))),
     ),
 
-    _lambda_body: $ => choice($._expression, $.block),
+    /* Lambda body can be:
+     *   - any expression (`x => x + 1`, `() => 42`)
+     *   - an indented block (`(x) -> int: <indent> stmts <dedent>`)
+     *   - an `if_statement` so the Ry IfBlockExpr form (`=> if cond: …
+     *     else: …`) parses cleanly inside a lambda. The C++ parser models
+     *     this as `IfBlockExpr`; surface-syntactically it shares the
+     *     `if_statement` shape, so we reuse that rule rather than carry a
+     *     second copy of the block grammar (#1154). */
+    _lambda_body: $ => choice($._expression, $.block, $.if_statement),
 
-    /* if-expression: `if cond => then else else_expr` (single-line sugar) */
+    /* if-expression: `if cond => then else else_expr` (single-line sugar).
+     * The condition uses `_conditional_expression` rather than the broader
+     * `_expression` because `_expression` includes the bare-paren
+     * single-param lambda (`x => body`), and the parser would otherwise
+     * commit to `cond => body` as a lambda before noticing the surrounding
+     * `if … else …` shape. The C++ parser narrows the same way (`parseIf`
+     * calls `parseConditional` for the condition). The block form
+     * (`if cond:\n  expr\nelse:\n  expr`) is reached via `if_statement`
+     * appearing in `_lambda_body` — see the `_lambda_body` rule. */
     if_expression: $ => prec.right(PREC.conditional, seq(
       'if',
-      field('condition', $._expression),
+      field('condition', $._conditional_expression),
       '=>',
       field('consequence', $._expression),
       'else',
@@ -832,13 +896,20 @@ export default grammar({
       $._postfix_expression,
     ),
 
+    /* Binary expression operands use `_conditional_expression`, not the
+     * broader `_expression`. `_expression` reaches `lambda_expression` /
+     * `bare_lambda` / `if_expression` / `case_expression`, none of which
+     * make sense as a sub-expression of an arithmetic / comparison / etc.
+     * operator at the surface level — wrapping is required (`(x => x+1)
+     * ?? defaultFn`). Narrowing here also keeps the LR table for if /
+     * lambda disambiguation from leaking through binary expressions. */
     binary_expression: $ => choice(
       prec.right(PREC.coalesce,
-        seq(field('left', $._expression), field('operator', '??'),  field('right', $._expression))),
+        seq(field('left', $._conditional_expression), field('operator', '??'),  field('right', $._conditional_expression))),
       prec.left(PREC.or,
-        seq(field('left', $._expression), field('operator', 'or'),  field('right', $._expression))),
+        seq(field('left', $._conditional_expression), field('operator', 'or'),  field('right', $._conditional_expression))),
       prec.left(PREC.and,
-        seq(field('left', $._expression), field('operator', 'and'), field('right', $._expression))),
+        seq(field('left', $._conditional_expression), field('operator', 'and'), field('right', $._conditional_expression))),
       ...[
         ['==', PREC.comparison],
         ['!=', PREC.comparison],
@@ -860,16 +931,16 @@ export default grammar({
         ['//', PREC.multiplicative],
         ['%',  PREC.multiplicative],
       ].map(([op, p]) => prec.left(p,
-        seq(field('left', $._expression), field('operator', op), field('right', $._expression)),
+        seq(field('left', $._conditional_expression), field('operator', op), field('right', $._conditional_expression)),
       )),
       // 'in' / 'not in' membership test
       prec.left(PREC.comparison,
-        seq(field('left', $._expression),
+        seq(field('left', $._conditional_expression),
             field('operator', choice('in', seq('not', 'in'))),
-            field('right', $._expression))),
+            field('right', $._conditional_expression))),
       // power is right-associative
       prec.right(PREC.power,
-        seq(field('left', $._expression), field('operator', '**'), field('right', $._expression))),
+        seq(field('left', $._conditional_expression), field('operator', '**'), field('right', $._conditional_expression))),
     ),
 
     unary_expression: $ => prec.right(PREC.unary, seq(
@@ -910,7 +981,7 @@ export default grammar({
     field_access: $ => prec(PREC.postfix, seq(
       field('object', $._postfix_expression),
       '.',
-      field('field', $.identifier),
+      field('field', choice($.identifier, $.integer_literal)),
     )),
 
     unwrap_expression: $ => prec(PREC.postfix, seq(
@@ -939,6 +1010,7 @@ export default grammar({
     /* ------- Primary ------- */
     _primary_expression: $ => choice(
       $._literal,
+      $.generic_constructor,
       $.qualified_identifier,
       $._parenthesized,
       $.tuple_literal,
@@ -953,8 +1025,8 @@ export default grammar({
     tuple_literal: $ => choice(
       // 1-tuple `(e,)`
       seq('(', $._expression, ',', ')'),
-      // n-tuple `(e1, e2, ...)`  (n >= 2)
-      seq('(', $._expression, ',', sep1($._expression, ','), ')'),
+      // n-tuple `(e1, e2, ...)`  (n >= 2), optional trailing comma
+      seq('(', $._expression, ',', sep1($._expression, ','), optional(','), ')'),
     ),
 
     // Multi-line brace tolerance (#1727): see import_list note above.
@@ -1024,13 +1096,24 @@ export default grammar({
       optional(choice('i8','i16','i32','i64','u8','u16','u32','u64')),
     )),
 
-    /* ------- Float ------- */
+    /* ------- Float -------
+     * Four shapes (with optional `f32` / `f64` suffix):
+     *   N.M[eE±N]     digits, dot, digits, optional exponent
+     *   NeE±N         digits, exponent (no dot)
+     *   .M[eE±N]      leading-dot float (`.5`, `.5e2`) — context-aware
+     *                 lexing keeps it out of postfix `.` positions where
+     *                 only `'.' IDENT|INTEGER` is valid (tuple/field
+     *                 access). See lexer.cpp:483-498's prev_kind_ guard
+     *                 for the same disambiguation in the C++ parser.
+     *   N f32|f64     bare digits with float suffix (`42f32`) — forces
+     *                 float interpretation even without dot or exponent. */
     float_literal: $ => token(seq(
       choice(
-        seq(/[0-9][0-9_]*/, '.', /[0-9][0-9_]*/, optional(/[eE][+-]?[0-9][0-9_]*/)),
-        seq(/[0-9][0-9_]*/, /[eE][+-]?[0-9][0-9_]*/),
+        seq(/[0-9][0-9_]*/, '.', /[0-9][0-9_]*/, optional(/[eE][+-]?[0-9][0-9_]*/), optional(choice('f32', 'f64'))),
+        seq(/[0-9][0-9_]*/, /[eE][+-]?[0-9][0-9_]*/, optional(choice('f32', 'f64'))),
+        seq('.', /[0-9][0-9_]*/, optional(/[eE][+-]?[0-9][0-9_]*/), optional(choice('f32', 'f64'))),
+        seq(/[0-9][0-9_]*/, choice('f32', 'f64')),
       ),
-      optional(choice('f32', 'f64')),
     )),
 
     /* ------- String -------

@@ -103,3 +103,26 @@ fn t():
           (identifier))
         matcher: (identifier)
         (integer_literal)))))
+
+==================
+decorated tuple destructure binding (#2394)
+==================
+
+fn foo():
+  @const (a, b) = (1, 2)
+
+---
+
+(source_file
+  (function_declaration
+    name: (function_name
+      (identifier))
+    body: (function_body
+      (tuple_destructure_statement
+        (decorator
+          name: (identifier))
+        (identifier)
+        (identifier)
+        value: (tuple_literal
+          (integer_literal)
+          (integer_literal))))))

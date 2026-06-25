@@ -137,7 +137,7 @@ entry, or is explicitly marked as covered by the smoke fixture only.
 | Top-level rule | Corpus file |
 |---|---|
 | `function_declaration` | `functions.txt`, `decorators.txt` |
-| `record_declaration`, `record_invariant` | `records.txt` |
+| `record_declaration`, `record_invariant`, `record_declaration` w/ `parent` (subtyping, #2394) | `records.txt` |
 | `enum_declaration`, `variant_payload` (named / unnamed) | `enums.txt` |
 | `type_alias_declaration` | `type_aliases.txt` |
 | `import_statement`, `qualified_import_statement` | `imports.txt` |
@@ -151,20 +151,23 @@ entry, or is explicitly marked as covered by the smoke fixture only.
 | `f_string` | `f_strings.txt` |
 | `regex_literal` | `regex.txt` |
 | `_indent` / `_dedent` / `_newline` edge cases | `indent.txt` |
-| `lambda_expression` | `lambdas.txt` |
-| literals (`integer_literal`, `float_literal`, `string_literal`, `block_string_literal`, `boolean_literal`, `none_literal`, `list_literal`, `map_literal`, `set_literal`, `tuple_literal`) | `literals.txt` |
-| `binary_expression`, `unary_expression`, `call_expression`, `index_expression`, `field_access` | `expressions.txt` |
+| `lambda_expression` (single-param / parens / block-body), block-form `if_expression` body (#2394) | `lambdas.txt` |
+| literals (`integer_literal`, `float_literal`, `string_literal`, `block_string_literal`, `boolean_literal`, `none_literal`, `list_literal`, `map_literal`, `set_literal`, `tuple_literal`); leading-dot / suffix / underscore numeric forms (#2394) | `literals.txt` |
+| `binary_expression`, `unary_expression`, `call_expression`, `index_expression`, `field_access` (incl. numeric tuple-member access `t.0`, #2394), `generic_constructor` (`Foo<T>::Variant`, #2394), single-line `if_expression` (#2394) | `expressions.txt` |
 | `directive_def_declaration` | `decorators.txt` (※1) |
-| **smoke-only** (corpus 化不能 / 既知 grammar gap) | `tuple_destructure_statement`, top-level `@<decorator> NAME: T = ...` (`expected-fail.txt` 該当) |
+| `tuple_destructure_statement` (incl. decorated `@const (a, b) = ...`, #2394), `generic_parameters` with `type_parameter` bounds (#2394) | `statements.txt`, `functions.txt` |
+| **smoke-only** (corpus 化不能 / 既知 grammar gap) | top-level `@<decorator> NAME: T = ...` (`expected-fail.txt` 該当)、nested block-body lambda (`mid = () -> int: leaf = () -> int: …` 二重ネスト時に内側 DEDENT 後の outer `_simple_statement` 用 NEWLINE が emit されない問題 — scanner 側の別 issue として継続) |
 
 Scope of the matrix is the rules that can appear as a direct child of
 `source_file` (declarations, top-level statements, imports). The
 following rules surface only inside another corpus entry's expression
 or type and are validated indirectly when that parent entry is parsed:
 
-- `cast_expression`, `unwrap_expression`, `update_expression`,
-  `if_expression` — expression-interior; appear inside `_expression`
-  but never at top level.
+- `cast_expression`, `unwrap_expression`, `update_expression` —
+  expression-interior; appear inside `_expression` but never at top
+  level. (`if_expression` single-line is now covered directly in
+  `expressions.txt` via #2394's "if expression with identifier
+  condition" entry.)
 - `weak_type` — type-interior; only meaningful inside `_primary_type`.
 - `contract_clause` — appears only inside `function_body` after the
   introducing `:`. Indirectly exercised via `functions.txt` if a

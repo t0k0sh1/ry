@@ -305,3 +305,83 @@ fn foo():
         (call_expression
           function: (qualified_identifier
             (identifier)))))))
+
+==================
+leading-dot float literal (#2394)
+==================
+
+x = .5
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (float_literal)))
+
+==================
+integer literal with float suffix (#2394)
+==================
+
+x = 42f32
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (float_literal)))
+
+==================
+integer literal with integer suffix (#2394)
+==================
+
+x = 42i32
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (integer_literal)))
+
+==================
+underscore separator in decimal literal (#2394)
+==================
+
+x = 1_000_000
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (integer_literal)))
+
+==================
+hex literal with underscore and suffix (#2394)
+==================
+
+x = 0xFF_FFu16
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (integer_literal)))
+
+==================
+tuple literal with trailing comma in multi-element form (#2394)
+==================
+
+x = (1, 2,)
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (tuple_literal
+      (integer_literal)
+      (integer_literal))))
