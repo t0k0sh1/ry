@@ -1,16 +1,16 @@
-# open / readAll / readLine / lines によるファイルハンドルAPIを示す
+# Shows the file-handle API with open / readAll / readLine / lines
 from ry.io import open, readAll, readLine, writeText, close, deleteFile, lines
 
 path = "/tmp/ry_examples_file_handle.txt"
 
-# 書き出し: writeText は path 直接呼び出しで一発書き
+# Writing: writeText writes directly to a path in one call
 case writeText(path, "alpha\nbeta\ngamma\n"):
   Ok(_):
     0
   Err(e):
     print(e.message)
 
-# 一括読み込み: open でハンドルを得て readAll
+# Read all: open a handle, then call readAll
 case open(path, "r"):
   Ok(f):
     case readAll(f):
@@ -22,8 +22,8 @@ case open(path, "r"):
   Err(e):
     print(e.message)
 
-# 1行ずつ読む: readLine は Result<Option<str>, Error> を返す
-# EOF では Ok(None)、まだ行があれば Ok(Some(line))
+# Read one line at a time: readLine returns Result<Option<str>, Error>
+# EOF returns Ok(None); an available line returns Ok(Some(line))
 case open(path, "r"):
   Ok(f):
     case readLine(f):
@@ -39,7 +39,7 @@ case open(path, "r"):
   Err(e):
     print(e.message)
 
-# lines() は行のイテレータを返し、for ... in でそのまま回せる
+# lines() returns a line iterator that can be used directly with for ... in
 case open(path, "r"):
   Ok(f):
     for line in lines(f):

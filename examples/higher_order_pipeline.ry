@@ -1,17 +1,17 @@
-# filter → map → fold/reduceの連鎖で数値Listを集約する
-# 単体のmapによるcaptureは examples/closures_higher_order.ry を参照
+# Aggregates a numeric List with a filter -> map -> fold/reduce chain
+# See examples/closures_higher_order.ry for captures with a standalone map
 values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-# 偶数だけ残し、それぞれを2乗してから合計する
+# Keep only even numbers, square each one, then sum them
 evens = filter(values, (n: int) => n % 2 == 0)
 squared = map(evens, (n: int) => n * n)
 total = fold(squared, 0, (acc: int, n: int) => acc + n)
 print(total)
 
-# reduceは初期値なしの集約。要素ゼロなら None
+# reduce aggregates without an initial value. It returns None for an empty list
 print(reduce([3, 1, 4, 1, 5, 9, 2, 6], (a: int, b: int) => a + b))
 empty: List<int> = []
 print(reduce(empty, (a: int, b: int) => a + b))
 
-# 1段で書き下した形 — 中間Listを変数に置かなくてもよい
+# Written as one chain - no need to store intermediate Lists in variables
 print(fold(map(filter(values, (n: int) => n > 5), (n: int) => n * 10), 0, (acc: int, n: int) => acc + n))

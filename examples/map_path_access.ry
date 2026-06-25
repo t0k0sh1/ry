@@ -1,12 +1,12 @@
-# getPath/setPathでネストしたMap<str, any>をjq風のドットパスで操作する
-# json.load[Map<str, any>] で取得したJSONデータの操作に有用
+# Use getPath/setPath to manipulate nested Map<str, any> values with jq-style dot paths
+# Useful for JSON data loaded with json.load[Map<str, any>]
 
-# 入れ子のMap<str, any>を準備
+# Prepare a nested Map<str, any>
 inner: Map<str, any> = {"host": "localhost", "port": 8080}
 config: Map<str, any> = {"server": inner, "debug": true}
 
-# getPathはdot区切りで深い値をたどり、Option<any>を返す
-# any値を具体型に絞り込むには asType[T] でチェック付きcastする
+# getPath follows dot-separated deep values and returns Option<any>
+# Use the checked cast asType[T] to narrow an any value to a concrete type
 case getPath(config, "server.host"):
   Some(v):
     case asType[str](v):
@@ -17,25 +17,25 @@ case getPath(config, "server.host"):
   None:
     print("missing")
 
-# 中間/leaf keyが欠けていれば None。Option<any>のままで判定可能
+# Missing intermediate or leaf keys return None, which can be checked as Option<any>
 print(getPath(config, "missing.host"))
 print(getPath(config, "server.unknown"))
 
-# setPathで既存leafを更新、または新しいleaf keyを追加 (any値に自動昇格)
+# setPath updates an existing leaf or adds a new leaf key, automatically promoting the value to any
 setPath(config, "server.port", 9090)
 setPath(config, "server.tls", true)
 
 print(getPath(config, "server.port"))
 print(getPath(config, "server.tls"))
 
-# 負数 index: List<any> arm で末尾要素アクセス (#2398)
+# Negative index: access tail elements through a List<any> arm (#2398)
 items: List<any> = [10, 20, 30]
 holder: Map<str, any> = {"items": items}
 print(getPath(holder, "items.-1"))    # Some(30)
 print(getPath(holder, "items.-3"))    # Some(10)
-print(getPath(holder, "items.-4"))    # None  (範囲外)
+print(getPath(holder, "items.-4"))    # None (out of range)
 
-# List intermediate を経由した Map leaf への書き込み (#2398)
+# Write to a Map leaf through a List intermediate (#2398)
 alice: Map<str, any> = {"name": "alice"}
 bob: Map<str, any> = {"name": "bob"}
 users: List<any> = [alice, bob]
@@ -43,7 +43,7 @@ m: Map<str, any> = {"users": users}
 setPath(m, "users.-1.name", "BOB!")
 print(getPath(m, "users.1.name"))     # Some(BOB!)
 
-# キーに '.' を含む Map (#2398): "\." で literal dot として扱う
+# Map keys containing '.' (#2398): use "\." to treat it as a literal dot
 dotted: Map<str, any> = {"a.b": 42}
 print(getPath(dotted, "a\\.b"))       # Some(42)
-print(getPath(dotted, "a.b"))         # None  (unescaped は分割される)
+print(getPath(dotted, "a.b"))         # None (unescaped dot is split)

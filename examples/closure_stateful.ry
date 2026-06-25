@@ -1,14 +1,14 @@
-# パラメータをキャプチャするclosure、関数合成、カリー化を示す
-# 兄弟スコープと相互再帰は examples/nested_functions.ry を参照
+# Shows closures that capture parameters, function composition, and currying
+# See examples/nested_functions.ry for sibling scopes and mutual recursion
 
-# 2つのパラメータをキャプチャするclosure: a*x + b
+# A closure that captures two parameters: a*x + b
 fn makeLinear(a: int, b: int) -> fn(int) -> int:
   return (x: int) => a * x + b
 
 threeXPlusTen = makeLinear(3, 10)
 print(threeXPlusTen(5))
 
-# 関数合成: 2つの fn(int) -> int を1つの新しいclosureに
+# Function composition: combine two fn(int) -> int values into one new closure
 fn compose(f: fn(int) -> int, g: fn(int) -> int) -> fn(int) -> int:
   return (x: int) => f(g(x))
 
@@ -17,7 +17,7 @@ inc = (x: int) => x + 1
 doubleThenInc = compose(inc, double)
 print(doubleThenInc(5))
 
-# closureを返すclosureを返す: 各レベルでパラメータをcaptureする
+# Return a closure that returns a closure; each level captures parameters
 fn outer(a: int) -> fn(int) -> fn(int) -> int:
   fn middle(b: int) -> fn(int) -> int:
     fn inner(c: int) -> int:
@@ -25,7 +25,7 @@ fn outer(a: int) -> fn(int) -> fn(int) -> int:
     return inner
   return middle
 
-# 1段ずつ呼び出すことで各レベルのcaptureが解決される
+# Calling one level at a time resolves each level of capture
 f = outer(10)
 g = f(20)
 print(g(30))

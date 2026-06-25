@@ -1,5 +1,5 @@
-# JSON テキストから型付き config record を復元する小プログラム
-# `load[Record]` を nested record と `List<str>` field 込みで使う。
+# Small program that restores a typed config record from JSON text
+# Uses `load[Record]` with nested records and a `List<str>` field.
 from ry.json import load
 
 record DbConfig:

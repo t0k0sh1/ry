@@ -1,4 +1,4 @@
-# mathモジュールの定数、平方根、丸め、無限値判定を示す
+# Shows constants, square root, rounding, and infinity checks from the math module
 from ry.math import PI, INF, sqrt, round, isInf
 
 radius = 3.0

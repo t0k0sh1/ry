@@ -1,17 +1,17 @@
-# ??演算子でOptionから値またはデフォルト値を取り出す
+# Use the ?? operator to extract a value from Option or use a default
 
-# Mapのindexは存在しないキーに対しNoneを返す。?でOptionに、?? でデフォルト値に
+# Map indexing returns None for missing keys. Use ? for Option, then ?? for a default
 prices: Map<str, int> = {"apple": 100, "banana": 80}
 print(prices["apple"]? ?? -1)
 print(prices["pear"]? ?? -1)
 
-# Listのindexも同様。負のindexは末尾からの参照に
+# List indexing works the same way. Negative indices refer from the end
 nums = [10, 20, 30]
 print(nums[1]? ?? 0)
 print(nums[100]? ?? 0)
 print(nums[-1]? ?? 0)
 
-# Optionを返す関数の戻り値にもそのまま使える
+# This can also be used directly on return values from functions that return Option
 fn firstPositive(values: List<int>) -> Option<int>:
   for n in values:
     if n > 0:

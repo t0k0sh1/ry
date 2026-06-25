@@ -1,4 +1,4 @@
-# 信号機 state machine — Light × Event → Light の transition table を Result で表す
+# Traffic-light state machine - represent a Light x Event -> Light transition table with Result
 
 enum Light:
   Red

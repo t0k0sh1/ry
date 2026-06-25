@@ -1,17 +1,17 @@
-# 正規表現の (?i) ケースフラグ、\b 単語境界、{n,m} 量指定子、lazy修飾子を示す
+# Shows regex (?i) case flags, \b word boundaries, {n,m} quantifiers, and lazy modifiers
 
-# (?i) でパターン全体を大文字小文字を区別しない判定にする
+# (?i) makes the whole pattern case-insensitive
 print(regexMatch("HELLO", "(?i)hello"))
 print(regexMatch("HELLO", "hello"))
 
-# \b は単語境界。単語の途中ではマッチしない
+# \b is a word boundary. It does not match inside a word
 print(regexMatch("hello world", "\\bworld\\b"))
 print(regexMatch("helloworld", "\\bworld\\b"))
 
-# (?i) と \b を組み合わせると単語境界つきの大小無視マッチ
+# Combining (?i) and \b gives case-insensitive matching with word boundaries
 print(regexFindAll("Hello HELLO hello", "(?i)\\bhello\\b"))
 
-# {n} は厳密にn回、{n,m} はn〜m回、{n,} はn回以上の繰り返し
+# {n} repeats exactly n times, {n,m} repeats n to m times, and {n,} repeats at least n times
 print(regexMatch("aaa", "a{3}"))
 print(regexMatch("aa", "a{3}"))
 print(regexMatch("aaa", "a{2,4}"))
@@ -19,6 +19,6 @@ print(regexMatch("aaaaa", "a{2,4}"))
 print(regexMatch("aa", "a{2,}"))
 print(regexMatch("a", "a{2,}"))
 
-# lazy修飾子 *? / +? は最短マッチ
+# Lazy modifiers *? / +? choose the shortest match
 print(regexReplace("\"a\" and \"b\"", "\".*?\"", "X"))
 print(regexReplace("aaa", "a+?", "X"))

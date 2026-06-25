@@ -1,4 +1,4 @@
-# 在庫台帳 — Map<str, int> への動的キー挿入で SKU 別在庫を更新し Result で不正操作を拒否する
+# Inventory ledger - update per-SKU inventory with dynamic Map<str, int> keys and reject invalid operations with Result
 
 record Item:
   sku: str

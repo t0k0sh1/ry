@@ -1,4 +1,4 @@
-# CSV テキストから Person record を復元する — split / trim / int() を組み合わせた解析
+# Restore Person records from CSV text - parse with split / trim / int()
 
 record Person:
   name: str

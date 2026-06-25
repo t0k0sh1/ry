@@ -1,10 +1,10 @@
-# =>形式とブロック本体形式の2つのlambdaスタイル、fn型注釈を示す
+# Shows the two lambda styles, => form and block-body form, plus fn type annotations
 
-# =>形式: 1式のlambda
+# => form: a single-expression lambda
 double = (x: int) => x * 2
 print(double(7))
 
-# ブロック本体形式: 複数の式や文を含められる
+# Block-body form: can contain multiple expressions and statements
 classify = (x: int) -> str:
   if x < 0:
     return "negative"
@@ -15,14 +15,14 @@ print(classify(-3))
 print(classify(0))
 print(classify(5))
 
-# fn型を関数の引数にする
+# Use an fn type as a function parameter
 fn apply(f: fn(int) -> int, value: int) -> int:
   return f(value)
 
 print(apply(double, 10))
 print(apply((x: int) => x + 100, 5))
 
-# fn() -> int の0引数版もそのまま渡せる
+# A zero-argument fn() -> int value can be passed directly too
 fn invoke(f: fn() -> int) -> int:
   return f()
 

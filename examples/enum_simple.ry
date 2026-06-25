@@ -1,18 +1,18 @@
-# 関連データを持たないenumのバリアント、等値性、caseマッチを示す
+# Shows variants, equality, and case matching for enums without associated data
 enum Color:
   Red
   Green
   Blue
 
-# 同じバリアントは等しく、異なるバリアントは等しくない
+# The same variant is equal; different variants are not equal
 print(Color::Red == Color::Red)
 print(Color::Red != Color::Green)
 
-# str()はバリアント名を返す
+# str() returns the variant name
 print(str(Color::Red))
 print(str(Color::Blue))
 
-# caseでバリアントを分岐する
+# Branch on variants with case
 fn name(c: Color) -> str:
   return case c:
     Color::Red : "red"

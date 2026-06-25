@@ -1,4 +1,4 @@
-# Resultと?によるエラーの早期returnを示す
+# Shows early error return with Result and ?
 fn divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))

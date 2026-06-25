@@ -1,4 +1,4 @@
-# for、while、break、continueの基本動作を示す
+# Shows basic behavior of for, while, break, and continue
 total = 0
 for n in range(1, 6):
   total += n

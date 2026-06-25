@@ -1,4 +1,4 @@
-# ジェネリック関数の型推論と明示的な型引数を示す
+# Shows type inference and explicit type arguments for generic functions
 fn firstOf<T>(values: List<T>) -> T:
   return values[0]
 

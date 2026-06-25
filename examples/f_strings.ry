@@ -1,4 +1,4 @@
-# f-stringによる値式の埋め込みとrecord表示を示す
+# Shows embedding value expressions and displaying records with f-strings
 record Point:
   x: int
   y: int
@@ -8,18 +8,18 @@ pi = 3.14
 flag = true
 p = Point(3, 4)
 
-# 各プリミティブを {} で埋め込み
+# Embed each primitive with {}
 print(f"value: {n}")
 print(f"pi: {pi}")
 print(f"flag: {flag}")
 
-# 中括弧内に式
+# Expressions inside braces
 a = 1
 b = 2
 print(f"{a} + {b} = {a + b}")
 
-# recordも自動でstr変換
+# Records are automatically converted to str too
 print(f"point = {p}")
 
-# エスケープではなく文字列リテラルの中括弧
+# Literal braces in a string, not escapes
 print("{braces}")

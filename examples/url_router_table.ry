@@ -1,4 +1,4 @@
-# 簡易 HTTP router — メソッド + path の組を typed MatchResult に解決する
+# Simple HTTP router - resolve method + path pairs to a typed MatchResult
 
 record Route:
   method: str

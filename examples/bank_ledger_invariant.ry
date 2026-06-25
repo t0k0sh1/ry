@@ -1,4 +1,4 @@
-# 残高 invariant 付き口座台帳 — 構築前に validation し invariant 違反パスは実行時に踏まない設計
+# Account ledger with balance invariant - validate before construction so invariant-violating paths are not executed at runtime
 
 record Account:
   id: int

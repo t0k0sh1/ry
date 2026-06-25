@@ -1,7 +1,7 @@
-# Iteratorによる遅延filter、map、takeパイプラインを示す
+# Shows a lazy filter, map, take pipeline with Iterator
 values = [1, 2, 3, 4, 5, 6]
 
-# toListを呼ぶまで中間Listは作られない
+# No intermediate List is created until toList is called
 result = toList(take(map(filter(iter(values), (n: int) => n % 2 == 0), (n: int) => n * n), 2))
 
 print(result)

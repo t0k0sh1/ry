@@ -1,68 +1,49 @@
 # Codegen Terminology
 
-This page is the canonical vocabulary for the **codegen** stack of the Ry compiler — the layers between the AST/sema front end and executable machine code. It was established by #2022 to remove the multiply-defined terms (notably the overloaded word "ABI") that were a source of confusion when planning the LLVM IR emission work (theme C; see [Codegen Layering Plan](codegen-layering-plan.md) / [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md)). Other architecture pages assume these definitions; if any reads ambiguously, this page wins.
-
-> User-facing *language* terminology (module / package / visibility / stdlib) lives in [`docs/reference/glossary.md`](../reference/glossary.md). This page is contributor-internal and covers only the codegen stack.
+This page is the canonical vocabulary for the compiler codegen stack. User-facing language terms such as module, package, visibility, and stdlib live in [Glossary](../reference/glossary.md).
 
 ## Layers
 
-The codegen stack is the `ry::codegen::*` namespace in C++ plus the Rust crate `emit` that implements the emission boundary (renamed from `ry_codegen` in #2040; itself renamed from `ry_llvm_emit` in #2027①). It is organized into layers:
+| Term | Meaning | Current home |
+|---|---|---|
+| codegen | The whole AST/sema-to-LLVM-IR stack | `src/codegen_*.cpp`, `include/ry/codegen.hpp`, Rust `emit` crate |
+| lowering | Ry-semantic decision code that prepares what should be emitted | caller-side C++ in `src/codegen_*.cpp` |
+| lowered IR / lowered op | Plain operation data naming what should happen | local values passed to `ry_emit_*`; no standalone C++ shim namespace remains |
+| emission | LLVM IR construction behind the boundary | `crates/emit/src/` |
+| composite emission | Ry-layout-aware emission | `crates/emit/src/composite/**.rs` |
+| primitive emission | LLVM-near reusable operations with no Ry semantic dispatch | `crates/emit/src/primitive/**.rs` |
 
-| Term | Definition | Where it lives |
-| --- | --- | --- |
-| **codegen** | The whole code-generation stack: AST + sema → LLVM IR. | C++ `ry::codegen::*`, Rust crate `emit` |
-| **lowering** | Translates Ry semantics into **lowered IR** ops. Owns the per-op semantic decisions (ARC retain/release, metadata, element sizes). | caller-side C++ in `src/codegen_*.cpp` (inline at each call site; no dedicated `lowering::` namespace or `codegen_lowering_*.cpp` file — the standalone shim layer was removed in #2229) |
-| **lowered IR** | The op vocabulary — plain-data structs naming *what* should happen, not *how* to express it in LLVM. | caller-side local values prepared inline in `src/codegen_*.cpp` then interned across the boundary (no dedicated `lowered::` namespace or `include/ry/codegen/lowered_*.hpp` header — removed in #2229) |
-| **emission** | Turns lowered ops into LLVM IR. Owns the basic-block / PHI / `Create*` plumbing. | Rust crate `emit` (`crates/emit/src/{composite,primitive}/*.rs`) behind the `ry_emit_*` boundary |
-| **composite emission** | Emission code that encodes a Ry ABI / layout decision — ARC retain/release, bounds check, checked FP→int, Option / Result construction, Any wrap/unwrap, collection mutations, CoW ensure-unique, reduce, and shared header struct construction. Expressed as a fixed LLVM-instruction sequence keyed on the lowered op (#2109). | `crates/emit/src/composite/**.rs` |
-| **primitive emission** | Emission code that is LLVM 1:1 with no Ry-layout knowledge — type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, the inline runtime-error exit, scalar / memory ops, function creation / indirect call / intrinsic call, control flow, and generic `__ry_*` runtime calls (#2109). | `crates/emit/src/primitive/**.rs` |
+Use **lowered IR** for the data model and **lowered op** for one operation. Avoid phrases that bake in an operation count; the surface changes over time.
 
-The full op list lives in [Codegen Layering Plan](codegen-layering-plan.md) §"Lowered IR vocabulary"; the composite / primitive split inside the `emit` crate is documented in §"Composite and primitive emission sub-layers (#2109)". Use the noun **lowered IR** (the data) and **lowered op** (one struct); retire the floating phrase "N-op vocabulary" — the op count changes over time.
+## Boundaries
 
-## The two boundaries
+Ry has two C-only boundaries:
 
-Ry has two C-only `extern "C"` boundaries, **named after their layer**:
+| Boundary | Symbol family | Crossed when | Implemented by |
+|---|---|---|---|
+| runtime boundary | `__ry_*` | generated program runs | runtime libraries; see [Runtime Boundary](runtime-abi-boundary.md) |
+| emission boundary | `ry_emit_*` | compiler constructs LLVM IR | Rust `emit` crate; see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) |
 
-| Boundary | Symbols | Crossed | Implemented by |
-| --- | --- | --- | --- |
-| **runtime boundary** | `__ry_*` ("runtime calls") | at **program run time**, by JIT-executed code | the runtime — see [Runtime Boundary](runtime-abi-boundary.md) |
-| **emission boundary** | `ry_emit_*` ("emission entry points") | at **compile time**, to construct LLVM IR | the emission layer (the `emit` crate) — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) |
+The lowering side calls `ry_emit_*` at compile time. The IR it produces may call `__ry_*` at run time.
 
-The two are orthogonal: lowering drives IR construction through the *emission entry points*; the IR it builds resolves, at run time, to *runtime calls*.
+## Handle Names
 
-## Handle naming (emission boundary types)
-
-The emission boundary passes LLVM objects across as opaque handles, in **two** categories:
+Emission boundary types use two suffixes:
 
 | Suffix | Representation | Meaning | Examples |
-| --- | --- | --- | --- |
-| **`Id`** | interned `uint32_t` (sentinel `0` = invalid) | a value the emission layer **creates and owns**, round-tripped via the per-context intern table | `RyValueId` |
-| **`Ref`** | opaque pointer (`struct X *`) | an LLVM object **passed across by pointer** (types, the per-compile singleton objects, source-side values) — `reinterpret_cast` on both sides, no interning | `RyTypeRef`, `RyFuncTypeRef`, `RyValueRef`, `RyBasicBlockRef`; and, after #2027, `RyModuleRef` / `RyBuilderRef` / `RyContextRef` / `RyFunctionRef` |
+|---|---|---|---|
+| `Id` | interned `uint32_t`; `0` is invalid | value created and owned by the emission context | `RyValueId` |
+| `Ref` | opaque pointer | LLVM object shared across the boundary by pointer cast | `RyTypeRef`, `RyValueRef`, `RyFunctionRef`, `RyBasicBlockRef` |
 
-The earlier third suffix `Handle` (for the per-compile singletons `RyModuleHandle` / `RyBuilderHandle` / `RyContextHandle` / `RyFunctionHandle`) folds into `Ref`: it was representationally identical (an opaque LLVM pointer), and the singleton nature is already obvious from the type name. The `ry_emit_*` function prefix and the `Ry*` type prefix are kept — an `extern "C"` symbol needs a project prefix to avoid collisions with `__ry_*` / libc / the LLVM C API.
+The old `Handle` suffix was folded into `Ref` for pointer-shaped handles. `ry_emit_*` function names and `Ry*` type names stay project-prefixed to avoid collisions with runtime and libc symbols.
 
-## Migration (#2027)
+## Historical Note
 
-This page is the naming **decision** (#2022, docs-only). The physical rename is executed atomically across `api.h` ↔ C++ ↔ Rust by #2027 (the boundary cannot change on one side alone):
+After the Rust cutover, the C++ side briefly had `codegen_emission_*`, `codegen_lowering_*`, and `lowered_*` shim files under `ry::codegen::{emission,lowering,lowered}`. #2229 removed that layer. Current caller-side C++ constructs per-op inputs inline and calls `ry_emit_*` directly.
 
-- **Crate** `ry_llvm_emit` → `ry_codegen` (#2027①; the bare name `codegen` is a reserved CMake target name, CMP0171).
-- **Crate** `ry_codegen` → `emit` (#2040; the `ry_` prefix was redundant. Unlike `codegen`, the bare name `emit` is **not** a reserved CMake target name, so it needs no prefix and trips no CMP0171 warning — a clean behavior-preserving rename).
-- **Keep** the 28 `ry_emit_*` functions and the `Ry*` type prefix unchanged.
-- **`Handle` → `Ref`** (4 typedefs): `RyModuleHandle`→`RyModuleRef`, `RyBuilderHandle`→`RyBuilderRef`, `RyContextHandle`→`RyContextRef`, `RyFunctionHandle`→`RyFunctionRef`, plus the matching `cast_helpers.hpp` accessors.
-- **Remove** `RyBasicBlockId` — declared and layout-asserted but used in no public signature (the ControlFlow entries use `RyBasicBlockRef`).
-- **Purge the "ABI" label** from code comments, `.claude/`, and the `api.h` header comment — using the vocabulary above. (Superseded for the emission crate by the #2057 `abi` / `ffi` / `core` module split — see [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) §"Layer structure (#2057)".)
-- **Keep** `std::ffi`.
-- **Do not touch**: `CHANGELOG.md` (frozen), and artifact names that contain "abi" — `runtime-abi-boundary.md`, `scripts/check-llvm-emit-abi-header.sh`, `tests/test_abi_layout.cpp`, `tests/test_emit_abi_guards.cpp`.
+## Related Documents
 
-## C++ shim layer removal (#2229)
-
-After the Rust cutover (#1993), the C++ side carried a thin shim layer that paired each `ry_emit_*` boundary call with a small set of files: `src/codegen_emission_*.cpp` (9 files), `src/codegen_lowering_*.cpp`, and `include/ry/codegen/lowered_*.hpp` headers under `ry::codegen::{emission,lowering,lowered}` namespaces. The shim translated between caller-side `llvm::Value*` and the `RyValueId` boundary handles and held per-op `lowered::XxxOp` POD structs as an internal C++ contract.
-
-#2229 removed the shim layer entirely: caller-side C++ in `src/codegen_*.cpp` (e.g. `codegen_arc.cpp`, `codegen_any.cpp`, `codegen_call_collection.cpp`) now constructs the per-op values inline and calls `ry_emit_*` directly. The `ry::codegen::{emission,lowering,lowered}` namespaces, the `codegen_emission_*.cpp` / `codegen_lowering_*.cpp` files, and the `include/ry/codegen/lowered_*.hpp` header set were all deleted. `CodeGen::*` wrapper methods (`emitArcRetain`, `emitResultBranch`, `emitCowCheckSlot`, `wrapInAny`, etc.) survive as thin direct callers of `ry_emit_*` and continue to carry the Ry-semantic side effects (`propagateMeta`, `tryRetainArcSource`, ARC retain decisions). The Stage 2-A / 2-B / 2-C narrative in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) describes the pre-#2229 shim layer as it stood during the migration.
-
-## Related documents
-
-- [Compiler Layers](compiler-layers.md) — layer ordering and dependency direction.
-- [Codegen Layering Plan](codegen-layering-plan.md) — the lowering / emission split and the lowered IR vocabulary.
-- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the emission boundary (`ry_emit_*`) inside the codegen layer.
-- [Runtime Boundary](runtime-abi-boundary.md) — the orthogonal `__ry_*` boundary on the runtime side.
+- [Compiler Layers](compiler-layers.md)
+- [Codegen Layering Plan](codegen-layering-plan.md)
+- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md)
+- [Runtime Boundary](runtime-abi-boundary.md)

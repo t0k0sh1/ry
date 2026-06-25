@@ -1,29 +1,29 @@
-# mathモジュールの三角関数、log/exp/pow、特殊値判定を示す
+# Shows trigonometric functions, log/exp/pow, and special-value checks from the math module
 from ry.math import PI, E, INF, NAN, sin, cos, tan, atan2, hypot, log, log2, log10, exp, pow, isNan, isInf
 
-# 三角関数 — 引数はラジアン
+# Trigonometric functions - arguments are radians
 print(sin(0.0))
 print(cos(0.0))
 print(tan(0.0))
 
-# 2次元の角度と斜辺
+# 2D angle and hypotenuse
 print(atan2(0.0, 1.0))
 print(hypot(3.0, 4.0))
 
-# 自然対数、底2対数、底10対数
+# Natural log, base-2 log, and base-10 log
 print(log(1.0))
 print(log2(8.0))
 print(log10(100.0))
 
-# 任意の底を取る log
+# Log with an arbitrary base
 print(log(81.0, 3.0))
 
-# 指数関数 e^x、整数版 pow
+# Exponential e^x and integer pow
 print(exp(0.0))
 print(pow(2, 10))
 print(pow(-2, 3))
 
-# 特殊値判定: NAN は自身とも等しくない
+# Special-value checks: NAN is not equal even to itself
 print(isNan(NAN))
 print(NAN == NAN)
 print(isInf(INF))

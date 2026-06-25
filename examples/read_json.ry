@@ -1,12 +1,12 @@
-# JSON 読み込み (stdlib の json モジュール)
+# JSON input using the stdlib json module
 from ry.json import load
 
-# パース: Map<str, any> として型付きで取得
+# Parse as a typed Map<str, any>
 raw = "{\"name\": \"Alice\", \"age\": 30, \"items\": [1, 2, 3]}"
 case load[Map<str,any>](raw):
   Ok(v):
     print(f"parsed (map): {v}")
-    # 取り出した値は asType[T] で型安全に narrowing する
+    # Narrow extracted values type-safely with asType[T]
     case asType[str](v["name"]):
       Ok(name): print(f"name: {name}")
       Err(e):   print(f"name err: {e.message}")
@@ -16,7 +16,7 @@ case load[Map<str,any>](raw):
   Err(e):
     print(f"parse err: {e.message}")
 
-# プリミティブ値のパース
+# Parse primitive values
 case load[int]("42"):
   Ok(n):
     print(f"int from json: {n}")

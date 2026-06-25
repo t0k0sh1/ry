@@ -1,22 +1,22 @@
-# asキーワードによる明示的な型変換 (int/float/bool/str/u8)
-# call形式の変換 (int("42")など) は examples/type_conversions.ry を参照
+# Explicit type conversion with the as keyword (int/float/bool/str/u8)
+# See examples/type_conversions.ry for call-form conversions such as int("42")
 
-# 数値同士
+# Between numeric values
 print(42 as float)
 print(3.14 as int)
 print(-3.7 as int)
 print(-0.5 as int)
 
-# bool との往復
+# Round trip with bool
 print(1 as bool)
 print(0 as bool)
 print(true as int)
 print(false as int)
 
-# str への変換
+# Convert to str
 print(42 as str)
 
-# u8 との往復
+# Round trip with u8
 b: u8 = 200u8
 print(b as int)
 roundTrip: u8 = 255 as u8

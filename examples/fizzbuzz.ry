@@ -1,4 +1,4 @@
-# FizzBuzz (case-when 風: case without subject)
+# FizzBuzz (case-when style: case without a subject)
 for n in range(1, 21):
   msg = case:
     n % 15 == 0 : "FizzBuzz"

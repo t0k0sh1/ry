@@ -1,23 +1,23 @@
-# Mapのkeys/values/hasKey/merge/removeを示す
+# Shows Map keys/values/hasKey/merge/remove
 scores = {"alice": 90, "bob": 80, "carol": 75}
 
-# keysはkey一覧、valuesはvalue一覧をListで返す
+# keys returns a List of keys; values returns a List of values
 print(keys(scores))
 print(values(scores))
 
-# hasKey で存在判定
+# Use hasKey to check presence
 print(hasKey(scores, "alice"))
 print(hasKey(scores, "dave"))
 
-# merge: 第2Mapで第1Mapの同keyを上書きしながら統合
+# merge: combine maps while values from the second map overwrite matching keys from the first
 defaults = {"alice": 0, "dave": 50}
 updated = merge(defaults, scores)
 print(updated)
 
-# remove はin-placeでkeyを削除
+# remove deletes a key in place
 remove(scores, "bob")
 print(scores)
 
-# 存在しないkeyのremoveは何もしない
+# Removing a missing key is a no-op
 remove(scores, "nonexistent")
 print(len(scores))

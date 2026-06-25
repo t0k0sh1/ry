@@ -58,5 +58,7 @@ Internal architecture references for working on the Ry compiler and runtime. The
 |------|----------|
 | [Compiler Layers](architecture/compiler-layers.md) | lexer → parser → AST → module → sema → codegen → runtime boundary dependency direction |
 | [Codegen Terminology](architecture/codegen-terminology.md) | Canonical vocabulary for the codegen stack: layers, the runtime / emission boundaries, and handle naming |
-| [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | The shared-library boundary for the LLVM IR emission layer, now implemented in Rust (#1949 / #1950 / #1993) |
+| [Codegen Layering Plan](architecture/codegen-layering-plan.md) | Current lowering / emission responsibility split and migration discipline |
+| [LLVM IR Emission Boundary](architecture/llvm-ir-emission-boundary.md) | Current `ry_emit_*` shared-library boundary contract |
+| [Native Call Boundary](architecture/native-call-boundary.md) | Lowering-side `@native` descriptor and runtime-symbol selection boundary |
 | [Runtime Boundary](architecture/runtime-abi-boundary.md) | `__ry_*` `extern "C"` surface categorized by core/native for Rust migration planning |

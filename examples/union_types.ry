@@ -1,5 +1,5 @@
-# 匿名union型を関数の引数と戻り値で扱い、str()でディスパッチする
-# numeric_type_constraints.ryが型注釈側を扱うのに対し、本例はディスパッチを示す
+# Use anonymous union types in function parameters and returns, then dispatch with str()
+# numeric_type_constraints.ry covers annotations; this example shows dispatch
 fn show(x: int | str) -> str:
   return str(x)
 
@@ -16,11 +16,11 @@ print(show("hello"))
 print(showWithFloat(100))
 print(showWithFloat(2.5))
 
-# 戻り値もunion型として扱える
+# Return values can also be union types
 print(show(pickByFlag(true)))
 print(show(pickByFlag(false)))
 
-# CollectionをunionのバリアントにできるためListやMapも保持できる
+# Collections can be union variants, so List and Map values can be held too
 listOrInt: int | List<int> = [1, 2, 3]
 mapOrStr: str | Map<str, int> = {"a": 1}
 print(str(listOrInt))

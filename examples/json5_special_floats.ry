@@ -1,8 +1,8 @@
-# json5は strict JSON が拒否する Infinity / NaN を読み書きできる
+# json5 can read and write Infinity / NaN, which strict JSON rejects
 from ry.json5 import load, stringify, stringifySafe
 from ry.math import INF, NAN, isInf, isNan
 
-# strict JSONがErrを返す特殊な float も json5 は受け付ける
+# json5 accepts special float values that strict JSON returns Err for
 case load[float]("Infinity"):
   Ok(v):
     print(isInf(v))
@@ -21,7 +21,7 @@ case load[float]("NaN"):
   Err(e):
     print(e.message)
 
-# stringify はそのまま "Infinity" / "-Infinity" / "NaN" を出力する
+# stringify outputs "Infinity" / "-Infinity" / "NaN" as-is
 posInf: any = INF
 print(stringify(posInf))
 
@@ -31,7 +31,7 @@ print(stringify(negInf))
 nan: any = NAN
 print(stringify(nan))
 
-# stringifySafe も非有限値を許容する (strict json との違い)
+# stringifySafe also allows non-finite values, unlike strict json
 case stringifySafe(posInf):
   Ok(s):
     print(s)

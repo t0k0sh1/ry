@@ -1,12 +1,12 @@
-# type aliasで型に意味のある名前を与え、union aliasや入れ子aliasも示す
+# Give types meaningful names with type aliases; also shows union and nested aliases
 
-# 基本: プリミティブのエイリアス
+# Basic primitive alias
 type Meters = float
 
 distance: Meters = 3.14
 print(distance)
 
-# 2つのプリミティブのunion alias
+# Union alias of two primitives
 type Pair = int | str
 
 a: Pair = 42
@@ -14,7 +14,7 @@ b: Pair = "hello"
 print(str(a))
 print(str(b))
 
-# 入れ子aliasは平坦化される
+# Nested aliases are flattened
 type Inner = int | str
 
 type Outer = Inner | bool
@@ -24,7 +24,7 @@ v2: Outer = "ok"
 v3: Outer = true
 print(str(v1), str(v2), str(v3))
 
-# union aliasを関数の引数と戻り値で使う
+# Use a union alias in function parameters and return values
 type Tagged = int | str
 
 fn show(v: Tagged) -> str:

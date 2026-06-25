@@ -1,17 +1,17 @@
-# digitsで整数を桁のList<int>に分解する (リトルエンディアン順)
+# Use digits to split an integer into a List<int> of digits (little-endian order)
 from ry.math import digits
 
-# 10進: 1234 -> [4, 3, 2, 1] (最下位桁が先頭)
+# Base 10: 1234 -> [4, 3, 2, 1] (least-significant digit first)
 d = digits(1234)
 print(d)
 print(sum(d))
 print(digits(0))
 print(digits(1))
 
-# 2進数: 8 -> [0, 0, 0, 1]
+# Base 2: 8 -> [0, 0, 0, 1]
 print(digits(8, 2))
 print(digits(13, 2))
 
-# 16進数: 255 -> [15, 15]
+# Base 16: 255 -> [15, 15]
 print(digits(255, 16))
 print(digits(4095, 16))

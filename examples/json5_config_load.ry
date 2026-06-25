@@ -1,10 +1,10 @@
-# json5.loadはJSONを超える設定ファイル向け拡張を受け付ける
+# json5.load accepts config-file extensions beyond JSON
 from ry.json5 import load, stringify
 
-# JSON5は次のように strict JSON が拒否する入力を受け付ける:
-# - // と /* */ コメント
-# - unquoted な keyや単一引用符
-# - 末尾カンマ、16進整数、リーディング小数点
+# JSON5 accepts inputs that strict JSON rejects, such as:
+# - // and /* */ comments
+# - unquoted keys and single quotes
+# - trailing commas, hexadecimal integers, and leading-decimal numbers
 src = "{\n  // tool config\n  name: 'ry',\n  port: 0xFF,\n  ratio: .5,\n}"
 
 case load[Map<str,any>](src):
@@ -13,7 +13,7 @@ case load[Map<str,any>](src):
   Err(e):
     print(e.message)
 
-# strict JSONに変換しても元の意味は保たれる (round trip)
+# Converting back to strict JSON preserves the original meaning (round trip)
 src2 = "{ a: 1, b: [1, 2, 3,], }"
 case load[Map<str,any>](src2):
   Ok(v):

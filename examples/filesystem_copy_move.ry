@@ -1,22 +1,22 @@
-# filesystem の copy / move によるファイル操作を示す
+# Shows file operations with filesystem copy / move
 from ry.filesystem import mkdirAll, copy, move, removeAll, isFile
 from ry.io import readText, writeText
 from ry.path import join
 
-# 全工程をResult-valuedな関数にまとめ、? でフラットに書き下す
+# Wrap the whole flow in a Result-valued function and keep it flat with ?
 fn demo(root: str) -> Result<Unit, Error>:
   removeAll(root)
   mkdirAll(root)
   src = join(root, "source.txt")?
   writeText(src, "original content")?
 
-  # copy は内容を複製し、元ファイルは残る
+  # copy duplicates contents and leaves the source file in place
   copyDst = join(root, "copy.txt")?
   copy(src, copyDst)?
   print(readText(copyDst)?)
   print(isFile(src)?)
 
-  # move は元ファイルを別名に移動。元ファイルは消える
+  # move renames/moves the source file. The original path disappears
   moveDst = join(root, "moved.txt")?
   move(src, moveDst)?
   print(isFile(moveDst)?)

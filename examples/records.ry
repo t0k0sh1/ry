@@ -1,4 +1,4 @@
-# recordの構築、fieldアクセス、構造的等値性、更新を示す
+# Shows record construction, field access, structural equality, and updates
 record Point:
   x: int
   y: int

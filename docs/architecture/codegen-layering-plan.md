@@ -1,248 +1,70 @@
 # Codegen Layering Plan
 
-This document is the working hypothesis for splitting the codegen layer into two conceptual sub-layers — **Ry semantic lowering** and **LLVM IR emission**. It is the stage-3 design deliverable of v0.0.26 (issue #1824) and the design reference that #1949 (LLVM IR emission shared-library extraction) and #1950 (Rust reimplementation) will implement.
+This document records the current codegen responsibility split. It is a compact orientation page for contributors; canonical vocabulary lives in [Codegen Terminology](codegen-terminology.md), and the C boundary contract lives in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md).
 
-This is a **working hypothesis, not a graduation document**. The codegen layer is explicitly **not graduated** by this issue. The final responsibility / I/O / contract for each sub-layer is written only after the refactor in #1949 lands, per [Layer Graduation Workflow](layer-graduation-workflow.md) §"When to write the graduation document".
+## Split
 
-## Why split codegen at all
+The codegen stack has two conceptual sub-layers:
 
-The `CodeGen` class (`include/ry/codegen.hpp`, ~2,400 lines) currently mixes two distinct responsibilities:
+| Layer | Owns | Must not own |
+|---|---|---|
+| Ry semantic lowering | Type and ownership decisions, stdlib/native dispatch selection, ARC intent, metadata, diagnostics, source-aware behavior | LLVM instruction construction |
+| LLVM IR emission | Basic blocks, PHIs, LLVM instructions, runtime-symbol declaration, low-level LLVM type construction | Ry type aliases, overload policy, visibility, import resolution, user diagnostics |
 
-- **Ry semantic** state and decisions: type registries (`record_types_`, `enum_types_`, `type_aliases_`), ARC bookkeeping, ownership, stdlib dispatch, module-namespace state, type inference hints.
-- **LLVM IR construction**: `IRBuilder<>`, `llvm::Module&`, primitive type accessors (`i64Ty_`, `ptrTy_`, …), block layout, PHI construction, intrinsic emission.
+The lowering side prepares operation inputs and calls `ry_emit_*`. The emission side maps those inputs to LLVM IR.
 
-These are coupled through a single class. Replacing the LLVM-touching side with a different implementation language (#1950's Rust target) requires the surface that crosses the boundary to be free of LLVM-owned types, which the current single-class shape prevents. The split is the critical path to #1949 / #1950, which is the stated v0.0.26 milestone goal.
+## Lowered Operation Surface
 
-## Two conceptual sub-layers
+The stable mental model is "lowering decides what; emission decides how to build the IR." Important lowered operation families include:
 
-### Ry semantic lowering
+| Family | Lowering decision | Emission responsibility |
+|---|---|---|
+| Runtime calls | selected `__ry_*` symbol, signature, wrapping policy | declare/call the symbol and return the LLVM value |
+| Bounds checks | index, length, error kind | negative-index handling, range branch, runtime error IR |
+| Option / Result | active variant and payload | aggregate construction and branch/PHI shape |
+| Any | tag, descriptor, target type, retain policy | box/unbox/check IR |
+| ARC / CoW | atomicity, destructor, element retain policy | counter updates, clone/copy paths, release calls |
+| Collections | operation kind, element/key metadata, sizes | allocation, copy, header updates, mutation IR |
+| Control flow | semantic branch condition and merge intent | blocks, branches, PHIs |
 
-- **Owns**: Ry-level type understanding (Ry types, ownership/ARC intent, stdlib operation semantics, type inference state, qualified-import resolution).
-- **Reads**: AST, sema results, module loader output, source manager.
-- **Produces**: a **lowered IR** — an operation plan that names what should happen, not how to express it in LLVM. The vocabulary is defined below.
-- **Does not call**: `IRBuilder<>::Create*`, `llvm::Module::getOrInsertFunction`, `llvm::Function::Create`. The lowering layer should not need to construct any `llvm::Value` directly.
+Primitive LLVM operations such as load/store/GEP/arithmetic/function creation also cross the boundary as generic `ry_emit_*` primitives. They are not Ry semantic ops; they exist to keep LLVM construction concentrated in the emission crate.
 
-### LLVM IR emission
+## Current Layout
 
-- **Owns**: every `IRBuilder<>::Create*` call, basic-block construction, PHI nodes, intrinsic emission, runtime-symbol declaration.
-- **Reads**: lowered IR ops from the semantic lowering layer.
-- **Produces**: LLVM IR (the `llvm::Module` that the JIT or AOT path consumes).
-- **Does not know**: Ry type aliases, ARC ownership rules, stdlib dispatch semantics, qualified-import state. If it needs to make a Ry-semantic decision, the lowering side did not produce the right op.
+The old C++ shim layer (`codegen_lowering_*`, `codegen_emission_*`, `lowered_*` headers) has been removed. Current code is organized as:
 
-The boundary the two sides share is the lowered IR vocabulary in §"Lowered IR vocabulary" plus the `extern "C"` boundary in [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) (which already documents the five access categories the extraction will narrow through).
+- caller-side C++ in `src/codegen_*.cpp` prepares inputs inline
+- `CodeGen::*` helpers survive where they carry semantic side effects such as metadata propagation, ARC retain decisions, or type-name resolution
+- Rust `crates/emit/src/{abi,composite,primitive,context}` owns IR construction behind `ry_emit_*`
 
-## Lowered IR vocabulary
+## Design Rules
 
-The vocabulary is kept small so the LLVM IR emission layer can map each op to a near-1:1 sequence of LLVM API calls — required by issue #1824 AC. "Near-1:1" here means each op expands via a fixed playbook keyed on op kind plus its parameters — not one LLVM call per op. The emission side must not need to introspect Ry-level semantics to decide what playbook to run; if it does, the lowering side did not produce the right op. The working set is 10 ops; the final shape may shrink during the pilot.
+- Do not add LLVM C++ types to the public emission boundary.
+- Keep diagnostics and source-aware semantic checks on the lowering side.
+- Keep Ry layout knowledge in composite emission; keep generic LLVM calls in primitive emission.
+- Prefer reusable primitive capabilities over coarse descriptors when the descriptor would encode caller-side semantics.
+- Add a composite op only when it names a real Ry layout/runtime invariant and avoids duplicated IR shape.
+- Avoid line-count-only splits; split by responsibility.
 
-> **Historical note (post-#2229).** The "Current implementation site" column below describes the C++ shim layer (`src/codegen_emission_*.cpp`, `src/codegen_lowering_*.cpp`, `include/ry/codegen/lowered_*.hpp`, `ry::codegen::{emission,lowering,lowered}` namespaces) that existed between the Rust cutover (#1993) and the shim removal (#2229). After #2229 the shim layer is gone — the current implementation is the Rust `emit` crate (`crates/emit/src/{composite,primitive}/*.rs`) behind `ry_emit_*`, called from caller-side C++ in `codegen_*.cpp` (no dedicated `lowering::` / `emission::` namespace or file group). Each cell below ends with a `→ ...` coda pointing at the live implementation.
+## Migration Discipline
 
-| Op | Lowering input (Ry intent) | Emission output (LLVM API sequence) | Current implementation site |
-|---|---|---|---|
-| `RuntimeCall` | A Ry-level call resolved to a `__ry_*` runtime symbol with a structured signature and return-wrapping policy. | `mod_->getOrInsertFunction("__ry_…", funcType)` + `CreateCall`. | Scattered across `codegen_call_*.cpp` (no central helper today; see `codegen_any.cpp:199,362,912`, `codegen_call_user.cpp:392-767`). |
-| `BoundsCheck` | An index expression, a length expression, and a structured error spec (error kind + source position). | `CreateICmpSLT` + `CreateICmpSGE` + `CreateCondBr` + `emitBoundsError` (exit IR). | Extracted in #1961: `lowering::lowerBoundsCheck` in `codegen_lowering_bounds_check.cpp` (constant fold + classification), `emission::emitBoundsCheck` in `codegen_emission_bounds_check.cpp` (LLVM IR). Op type in `include/ry/codegen/lowered_bounds_check.hpp`. → C++ shim removed in #2229; current home: `crates/emit/src/composite/bounds.rs` behind `ry_emit_bounds_check`, called directly from caller-side C++. |
-| `ResultWrap` / `ResultUnwrap` | Wrap a value or runtime-error query as `Result<T, Error>`, or unwrap on a known path. | `CreateInsertValue` for the `Result` struct, or BB split + PHI for unwrap. | Already centralized: `emitResultBranch`, `wrapPtrAsResult`, `wrapStatusAsResult`, `buildErrorFromRuntime` at `codegen_call_dispatch.cpp:430-481`. |
-| `OptionWrap` | Wrap a value as `Some` / `None`. | `CreateInsertValue` for the `Option` struct. | Extracted in #1967: `lowering::lowerOptionWrap` in `codegen_lowering_option_wrap.cpp` (trivial pack), `emission::emitOptionWrap` in `codegen_emission_option_wrap.cpp` (LLVM IR via `ry_emit_option_wrap_some` / `ry_emit_option_wrap_none`). Op type in `include/ry/codegen/lowered_option_wrap.hpp`. `CodeGen::buildSomeValue` / `buildNoneValue` survive as thin shims that retain `propagateMeta` + `tryRetainArcSource` side effects. → C++ shim removed in #2229; current home: `crates/emit/src/composite/option.rs` behind `ry_emit_option_wrap_some` / `_none`, called directly by `CodeGen::buildSomeValue` / `buildNoneValue`. |
-| `AnyWrap` / `AnyUnwrap` | Decide the runtime type tag from value metadata and wrap; or unwrap to a concrete type with a tag check. | `CreateInsertValue` / `CreateExtractValue` for the `{i64 tag, [8 x i8] data}` struct + runtime helper calls. | Extracted in #1972: `lowering::lowerAnyWrap` / `lowerAnyUnwrap` / `lowerAnyTryUnwrap` in `codegen_lowering_any.cpp` (passthrough), `emission::emitAnyWrap` / `emitAnyUnwrap` / `emitAnyTryUnwrap` in `codegen_emission_any.cpp` (LLVM IR via `ry_emit_any_wrap` / `ry_emit_any_unwrap` / `ry_emit_any_try_unwrap` emission entries). Op types in `include/ry/codegen/lowered_any.hpp`. `wrapInAny` / `unwrapFromAny` / `tryUnwrapFromAny` in `codegen_any.cpp` survive as thin shims that retain type-name resolution / descriptor lookup / layout-type construction / tag computation / typed-collection registration / field-wise ARC retain / generic-substitution rejection / sub-helper dispatch (`unwrapEnumFromAny` / `tryUnwrapRecordFromAny` / `tryUnwrapListFromAny` / `tryUnwrapMapFromAny` / `tryUnwrapOptionFromAny`) / post-unwrap field-wise retain. → C++ shim removed in #2229; current home: `crates/emit/src/composite/any.rs` behind `ry_emit_any_wrap` / `_unwrap` / `_try_unwrap`, called directly by the surviving `CodeGen::wrapInAny` / `unwrapFromAny` / `tryUnwrapFromAny` Ry-semantic shims. |
-| `ArcRetain` / `ArcRelease` | Increment / decrement the ARC count of an owned value. | `CreateAtomicRMW` + load/store of the header word. | Extracted in #1968: `lowered::ArcRetainOp` / `ArcReleaseOp` C++ structs and `codegen_emission_arc.cpp` shim. `CodeGen::emitArcRetain` / `emitArcRelease` in `codegen_arc.cpp` survive as thin shims. → C++ shim removed in #2229; current home: `crates/emit/src/composite/arc.rs` behind `ry_emit_arc_retain` / `_release`, called directly by `CodeGen::emitArcRetain` / `emitArcRelease`. |
-| `CowEnsureUnique` | Ensure a shared collection slot is private before mutation. | Strong-count atomic load + `CreateCondBr` to a clone path that does malloc + memcpy. | Extracted in #1970: `lowering::lowerCowEnsureUnique` in `codegen_lowering_cow.cpp` (DataLayout-driven element-size resolution + ARC metadata collection), `emission::emitCowEnsureUnique` in `codegen_emission_cow.cpp` (LLVM IR via `ry_emit_cow_ensure_unique`). Op type in `include/ry/codegen/lowered_cow.hpp`. `CodeGen::emitCowCheckSlot` survives as a thin shim collecting per-kind sizes and ARC flags; `emitCowCheck` retains only the `arc_backed_vars_` guard. → C++ shim removed in #2229; current home: `crates/emit/src/composite/cow.rs` behind `ry_emit_cow_ensure_unique`, called directly by the surviving `CodeGen::emitCowCheckSlot` Ry-semantic shim. |
-| `CollectionMutate` | A list/map/set mutation request (`append`, `insert`, `removeAt`, `slice`, …) with element-type metadata. | malloc/memcpy chains, header GEP/load/store, ARC retain calls for owned elements. | Extracted in #1971 (list append / insert / removeAt / slice): `lowering::lowerCollection{Append,Insert,RemoveAt}` / `lowerListSlice` in `codegen_lowering_collection_mutate.cpp` (passthrough), `emission::emitCollection{Append,Insert,RemoveAt}` / `emitListSlice` in `codegen_emission_collection_mutate.cpp` (LLVM IR via `ry_emit_collection_append` / `_insert` / `_remove_at` / `_list_slice` emission entries). Op types in `include/ry/codegen/lowered_collection_mutate.hpp`. `emitCollOp_append` / `emitCollOp_insert` / `emitCollOp_remove_at` / `emitListSlice` in `codegen_call_collection.cpp` survive as thin shims that retain `emitCowCheck` / coercion / ARC-retain-decision / `emitArcAllocCollectionHeader` / `setTypeMeta` / `propagateMeta` side effects. #2093 extends the same discipline to the copy-generation ops `emitCollOp_appended` / `emitCollOp_take_impl` (`codegen_call_collection.cpp`), `keys` / `values` (`codegen_call.cpp`), and `emitListConcat` (`codegen_expr.cpp`): the malloc+memcpy chain moves to `emission::emitListCopyFull` / `emitListAppendedCopy` / `emitListConcatCopy` (no `lowered::` op struct — the call sites hold the C++-loaded length/data Values, so the wrappers just intern → call → resolve, mirroring the #2092 reduce shape) via `ry_emit_list_copy_full` / `_appended` / `_concat`. The header load stays C++-side (sidestepping the interleaved-load order trap and keeping the length live for the retain loop), and `emitArcAllocCollectionHeader` / the ARC retain loop / `storeListHeaderFields` / metadata propagation stay above and below the boundary call (IR byte-identical, verified by ASLR-normalized `--emit-llvm-ir` diff). Map / Set mutations and `take_back!` / `take_front!` remain pending. → C++ shim removed in #2229; current home: `crates/emit/src/composite/collection.rs` (the `ry_emit_collection_*` / `ry_emit_list_*` entries listed above), called directly by the surviving caller-side shims in `codegen_call_collection.cpp` / `codegen_call.cpp` / `codegen_expr.cpp`. |
-| `ControlFlow` | A structured branch / loop / match-arm decision. | Basic block creation, `CreateCondBr` / `CreateBr`, PHI assembly. | Extracted in #1973: `ry_emit_create_basic_block` / `ry_emit_branch_cond` / `ry_emit_branch_uncond` / `ry_emit_create_phi` emission entries + CodeGen-side `createBB` / `createBBInFn` / `emitBranchCond` / `emitBranchUncond` / `createPhi` wrappers. No `lowered_control_flow.hpp` struct layer is introduced (primitive CF is "passthrough" per §"Explicit non-inclusion" — the lowering side has no semantic decision). Sweep covers every `src/codegen_*.cpp` TU, not just the originally enumerated 4. |
+For behavior-preserving codegen migrations:
 
-**Explicit non-inclusion** (the surface is intentionally not extended to keep emission near-1:1):
+1. Build a probe that actually reaches the path being migrated.
+2. Capture baseline `--emit-llvm-ir` output before changing the path.
+3. Confirm path markers in the baseline so the diff is not vacuous.
+4. Migrate the implementation.
+5. Require an ASLR-normalized before/after IR diff to be empty, unless the PR explicitly changes IR shape.
+6. Add or update FileCheck coverage for the post-migration invariant when appropriate.
 
-- **Low-level primitive arithmetic** (`i32 + i32` → `CreateAdd`, `f64 * f64` → `CreateFMul`, integer comparisons, bit ops). These are **passthrough**: the lowering layer forwards them as a thin "primitive op" without inventing a vocabulary entry. Adding a `PrimitiveOp` op would inflate the vocabulary without giving the lowering layer anything to decide. (Coarse numeric reductions — `sum` / `min` / `max`, migrated whole into the emission crate in #2092 — are a separate case: they are semantic list / variadic ops whose *implementation* internally uses `CreateAdd` / `CreateFAdd` / `CreateSelect`, so that arithmetic crosses the boundary as part of a whole op, not as the standalone binary-arithmetic passthrough excluded here.)
-- **Lexical scope and SSA bookkeeping**. These belong inside the emission layer; the lowering layer treats variable bindings as Ry-level names and lets emission map them to allocas / `Value*`.
-- **Module-level symbol declarations** (`@native` symbol registration, global variable emission). The lowering layer states "this call resolves to symbol X with signature S"; the emission layer is responsible for the `getOrInsertFunction` / `GlobalVariable` plumbing.
+## Graduation
 
-If a candidate op cannot be expressed as a 1:1 sequence of LLVM API calls on the emission side, it belongs in the lowering layer, not the vocabulary. The vocabulary's purpose is to give emission a stable, narrow surface; if it grows past ~10 ops or any op expands to a deep branching IR construction, the split is leaking.
+Layer graduation documents should be written only when a layer has a stable responsibility contract, inputs/outputs, invariants, error behavior, dependency direction, and verification story. Do not write graduation docs for speculative or pilot-only shapes.
 
-**Decision (#2072, 2026-06-11) — [C] = (ii) boundary move supersedes the primitive carve-out above for the migration *direction*.** This document is a "working hypothesis, not a graduation document" (see the top), and issue #2072 was chartered to record the until-then-unrecorded direction. The (i) rationale above — keep primitive arithmetic / integer comparison / bit ops / Alloca-Load-Store as a C++ carve-out, vocabulary ≤ ~10 ops, to keep emission near-1:1 — is the correct reasoning for a **semantic** boundary and is **retained** as the record of why the hypothesis existed. #2072 chooses the alternative **physical** boundary: the emission layer owns *every* `IRBuilder<>::Create*`, including the semantically-trivial primitives this section reserved for C++. The motivation is complete C++/LLVM separation (the #2023 Rust-native end-state) over a near-1:1 vocabulary; the accepted cost is a larger, non-semantic op surface (`ry_emit_alloca` / `load` / `store` / `gep` / `icmp` / `and` / `or` / `add` / `sub` / `select` / `const_int`, added to `include/ry/llvm_emit/api.h`) plus a per-instruction FFI + intern/resolve hop. The "~10 ops or the split is leaking" line is a *semantic*-boundary metric and does not bound the (ii) primitive surface.
+## Related Documents
 
-Scope of the decision: #2072 is **installment #1** — it establishes the primitive vocabulary and the bit-exact migration discipline on the five string byte-ops (`toUpper` / `toLower` / `trim` / `trimStart` / `trimEnd`) only. It does **not** achieve complete separation: those ops still thread `llvm::Value*` through CodeGen-side wrappers, orchestrate their own loops, call `builder_.SetInsertPoint` (a builder-state op, not a `Create*`), and obtain `len` from the shared `emitStringByteLen` (which still emits `Create*`). Complete separation arrives only once the whole codebase is swept and the intermediate `Value*` handles become `RyValueId` throughout; the full sweep and the migration of shared helpers (`emitStringByteLen`, etc.) are future work. Verification discipline established by the pilot: capture baseline IR on unmodified `main`, grep each op's markers to confirm the path actually emits, migrate, then require an ASLR-normalized before/after `--emit-llvm-ir` diff to be empty (byte-for-byte SSA-name preservation, per #2026).
-
-**Decision (#2098) — the emission layer acquires the function-CREATION capability via (ii) boundary move with GENERIC primitives.** This is a *capability* decision, orthogonal to #2072's *style* decision: #2072 settled "who owns `IRBuilder<>::Create*`" (the emission layer), but every `ry_emit_*` op still operated *inside* a function the C++ side already had open — `ry_emit_create_basic_block` took an explicit parent handle, and the only way to *make* that parent was C++'s `llvm::Function::Create` (33 sites: iterator-next / tostring(ADT) / closure / ARC & GC destructors / thunks). That missing "create a function definition" mechanism is the root cause iterator and `tostring` are out of emission's reach. #2098 closes it. **Note the contrast with §"Explicit non-inclusion" → "Module-level symbol declarations"**: that carve-out is about *declaring an external symbol* (`getOrInsertFunction`, the `RuntimeCall` plumbing); this decision is about *creating a new internal function definition* that then receives a body — a distinct capability not covered there.
-
-The two ways to acquire it were (i) a coarse per-op descriptor (`ry_emit_iter_take_next(RyIterTakeDesc*)`, one bespoke op per construction) vs (ii) generic, reusable primitives. **(ii) is chosen**, on the same axis #2072 settled and reinforced by *generalization*: a coarse op leaks Ry-level "iterator/take" semantics into emission (the very thing this document forbids — "emission must not introspect Ry-level semantics") and would require 30+ bespoke `core` functions for the other `Function::Create` sites — a logic port, not the mechanical sweep the #2023 end-state wants. Five generic primitives — `create_function` (`LLVMAddFunction` + linkage = the `Function::Create` equivalent), `get_param`, `struct_gep` (compile-time field-index GEP, distinct from the runtime-index `gep`), `call_indirect` (call through a loaded fn-pointer value, distinct from the name-keyed `runtime_call`), and `ret` — generalize to all 33 sites (end-state ≈ a handful of reused primitives). The "atomic builder save/restore" argument for (i) is void: `builder_.SetInsertPoint` is a C++-side IR-neutral op (it stays C++, as it already does in #2072's string-loop bodies), so the nested-function build interleaves the same way.
-
-Scope (settle ≠ unlock): #2098 proves the capability by moving the **`take` iterator's next-fn construction** (`src/codegen_call_iterator.cpp`, the simplest next-fn — no closure / `FnTypeInfo` dependency) so its body carries zero `builder_.Create*`, verified bit-exact (the same `#2026` discipline). It deliberately does **not** unlock the dependent areas: the iterator's header-alloc + `setTypeMeta(IteratorElem)` + malloc-stack tracking (the `ValueMetadata` crossing) stays C++ — that is #2100's domain; closure / `FnTypeInfo` crossing (`filter` / `map`) is #2099; `list`/`set`/`map` dense iterators and the other 32 sites are the follow-on sweep.
-
-**Decision (#2099) — the closure / `FnTypeInfo` call crosses the boundary WITHOUT a `FnTypeInfo` descriptor; the calling-convention dispatch stays a C++ lowering decision.** This is the *surface complement* of #2098 (same capability — the emission layer building & calling functions — a different surface), not a new decision axis. The settle question was whether a closure must cross via a coarse `RyFnCallDesc` (calling convention + capture flag) feeding a per-op `ry_emit_iter_filter_next` / `map_next` (option (i)), or whether the call can be expressed in the existing generic primitives (option (ii)). **(ii) is chosen**, for the same reason #2098 rejected `ry_emit_iter_take_next`: `emitLambdaCall`'s three calling-convention layouts — uniform `{thunk, env}`, plain (no-capture), captured `{fn_ptr, caps…}` — are each just `struct_gep` + `load` + `call_indirect` (a loaded fn-pointer call), all primitives that already exist (`call_indirect` from #2098). The `FnTypeInfo` is consumed **entirely C++-side** to *select* which primitives to emit (how many GEPs, the `FunctionType`, the arg/capture count); it never crosses the boundary. A `RyFnCallDesc` would leak Ry closure semantics into emission for zero capability gain. Only **one** new generic primitive is needed — `ry_emit_extract_value` (`LLVMBuildExtractValue`, an in-register aggregate read) — for the `Option` destructure in the `filter` / `map` next-fn (`buildSomeValue` / `buildNoneValue` already route through `emitOptionWrap`). **`coerceCallArgs` stays lowering-side**: its `wrapInAny` / `unwrapFromAny` / subtype coercion is a *semantic* type decision, not closure-call emission, so it does not move (and for a same-type representative like `filter` over `List<int>` it emits nothing).
-
-Scope (settle ≠ unlock): #2099 proves it by migrating `emitLambdaCall` (all three layouts) **and** the `filter` / `map` iterator next-fn bodies (`src/codegen_call_iterator.cpp`) so both carry zero `builder_.Create*`, verified bit-exact across a probe forcing every layout + a 2-arg lambda + List higher-order call sites (the shared-helper blast radius — `emitLambdaCall` has ~15 callers across higher-order / iterator / result / option / io). Claim split per the `#2026` discipline: "next-fn body carries zero `builder_.Create*`" holds cleanly only for a **primitive-element** representative (a ptr element pulls in `buildSomeValue`'s `tryRetainArcSource` ARC IR), while "IR byte-identical" holds for **all** layouts and element types. It does **not** unlock the remaining `emitLambdaCall` next-fn migrations, the outer iterator state-setup (`malloc` + the three closure-state stores + header alloc — held at #2098's exact line, #2100's `ValueMetadata` domain), or the `list`/`set`/`map` dense iterators — those are the follow-on sweep.
-
-**Decision (#2100) — the per-element `ValueMetadata` does NOT cross the boundary, and `switch` construction crosses via GENERIC primitives.** This is pilot **[B]** — two orthogonal *capability* questions settled together (orthogonal to #2072's *style* axis, like #2098 / #2099). (1) **Type-meta crossing**: `value_metadata_` is keyed by `llvm::Value*` (cannot cross), and the representative `str(List<enum>)` needs the loaded list element re-stamped with its `enum_value_type` so the recursive `valueToString` reaches the variant-name switch — the settle question was whether that metadata must cross via a descriptor (option (i)) or stay C++-side (option (ii)). **(ii) is chosen**: the migrated List-loop element load round-trips the boundary (`intern → ry_emit_load → resolve`) and the returned SSA value is still a valid `value_metadata_` key C++-side, so `propagateElemMeta` / `getMeta` / the `valueToString` recursion stay C++ exactly as `ry_emit_list_slice`'s "type-metadata copy stays on the codegen side" already established — no descriptor, no crossing. (2) **Switch construction**: `CreateSwitch` + `addCase` had no emission entry; the settle was a coarse `ry_emit_tostring_list(RyToStringDesc*)` carrying the variant case set (option (i)) vs generic switch primitives (option (ii)). **(ii) is chosen**, same axis as #2098 / #2099: `ry_emit_create_switch` (`LLVMBuildSwitch` → opaque `RySwitchRef`, not interned, like `create_basic_block`) + `ry_emit_switch_add_case` (`LLVMAddCase`) are generic — the `EnumInfo`-driven case values / name-array index stay C++-side selecting *what* to emit and never cross. One more generic primitive, `ry_emit_array_gep` (the two-index `{i64 0, idx}` name-array GEP, distinct from the single-index `gep` and field-index `struct_gep`), completes the migration. A `RyToStringDesc` would leak Ry enum/tostring semantics into emission for zero capability gain.
-
-Scope (settle ≠ unlock): #2100 proves both on `str(List<enum>)` (`src/codegen_tostring.cpp` — the explicit-value non-ADT enum-switch branch + the List-loop scaffold) carrying zero `builder_.Create*` except the carved-out **variadic** `__ry_sprint_printf` call (the shared sprint-buffer mechanism — `ry_emit_runtime_call` is non-variadic, so varargs crossing is an orthogonal capability deferred to a follow-on), verified bit-exact (the `#2026` discipline; the switch path is coverage-gated in the baseline because a non-explicit-value enum would fall to the direct-GEP branch and never emit the switch). It does **not** unlock: deep ADT tostring (`getOrCreateADTToStringFn` via `Function::Create`, #2098's domain), the non-explicit-value direct-GEP enum branch (a separate sub-capability, also a two-index array GEP but no switch), or Map / Set tostring and the other metadata-driven switch sites — those reuse this discipline in the follow-on sweep.
-
-**Decision (#2101) — hash-table LOOKUP crosses the boundary via GENERIC primitives, with no `RyHashTableDesc` descriptor.** This is pilot **[C]** — a *capability* decision (orthogonal to #2072's *style* axis, like #2098 / #2099 / #2100). The settle question for the `isSubset` representative was whether the hash-table lookup must cross via a coarse `RyHashTableDesc` (header_ty / key_ty / key_type_name / elem_size / layout_kind) op (option (i)) or is expressible in the existing generic primitives (option (ii)). **(ii) is chosen**, same axis as the prior pilots: the unified `emitHashTableLookup` is `struct_gep` + `load` for the bucket / len / keys header reads + `sub` for the bucket mask, plus the **fixed-arity** 5-operand `__ry_ht_find_str` / `_f64` / `_i64` call routed through the existing non-variadic `ry_emit_runtime_call`. `keyTy` stays C++-side selecting *which* `__ry_ht_find_*` symbol and key-arg type to emit; it never crosses. A `RyHashTableDesc` would leak Ry collection-layout semantics into emission for zero capability gain. The composite-element linear-scan path (`emitSetElementLookup`'s `Set<record>` / `Set<List<…>>` / `Set<any>` branch) is the same generic scaffold — its element comparison (`emitComparisonOp`) and `propagateTypeMeta` stay C++-side (type meta does not cross, the #2100 rule); only the fixed-arity `__ry_any_eq` call crosses. One new generic primitive — `ry_emit_zext` (`LLVMBuildZExt`, the conditional i1→i64 key widening for `Set<bool>` / `Map<bool, V>`) — is a #2072 scalar-vocabulary completion (`LLVMBuildZExt` was already used internally in `bounds.rs` / `any.rs`), not a new capability; carving out `Set<bool>` would leave the widening as an isolated C++ residue.
-
-Scope (settle ≠ unlock): #2101 proves the capability on `isSubset` / `isSuperset` (`src/codegen_call_set_ops.cpp` `emitSubsetCheck` + the shared `emitSetElementLookup` / `emitHashTableLookup`, `src/codegen_builtin.cpp`) carrying zero `builder_.Create*` in the lookup scaffold + hash-find — with the element comparison (`emitComparisonOp`) named as the out-of-scope carve-out, the same way #2100 carved out the variadic `__ry_sprint_printf`. Verified bit-exact across the shared-helper blast radius (set literal / `add` / `remove` / `in` / `contains` / `union` / `intersection` / `difference` + `Map` lookup, whose lookup portion is now boundary-emitted), the hash and linear-scan paths each coverage-gated in the baseline. It does **not** unlock insert+rehash (`emitBucketInsertAndRehashCheck`'s rehash-BB generation / `coerceHashKey`), `emitMapKeyLookup`'s linear-scan scaffold, `loadSetHeader` / `loadMapHeader`'s header read (a separate header-load capability, like `loadListHeader`), or the set/map op bodies built on top of lookup — those are the follow-on sweep using this discipline. The pending collection-hash items are folded into this decision (no separate issue), but the representative implementation reaches only the lookup, not insert+rehash.
-
-**Decision (#2102) — LLVM intrinsic declaration + call crosses the boundary as a SINGLE GENERIC primitive; aggregate `{T, i1}` results are decomposed via the existing #2099 `ry_emit_extract_value`.** This is pilot **[D]** — a *capability* decision (orthogonal to #2072's *style* axis, like #2098 / #2099 / #2100 / #2101). The settle question for the `emitIntOverflowCheck` representative was whether the LLVM intrinsic emission (`Intrinsic::getOrInsertDeclaration` + `CreateCall` + `CreateExtractValue` × 2) must cross via a coarse `RyOverflowIntrinsicDesc` (intrinsic kind + signed/unsigned + operand type + label scheme) op (option (i)) or is expressible in generic primitives (option (ii)). **(ii) is chosen**, same axis as the prior pilots: a `RyOverflowIntrinsicDesc` would leak Ry arithmetic semantics (signed/unsigned × add/sub/mul × panic/Result/saturating, the `overflow_err_counter_` label scheme) into emission for zero capability gain. Within (ii), the further sub-decision was a *single* `ry_emit_intrinsic_call` (acquires declaration + emits call in one engine call) vs. a *2-step* `ry_emit_get_intrinsic_decl` + reuse-`ry_emit_call_indirect` split — **the single primitive is chosen**: the 2-step split would force the C++ caller to call `getFunctionType()` on the returned `RyFunctionRef` to feed `ry_emit_call_indirect`'s `fn_ty` parameter, which is exactly the `llvm::Function`-side manipulation this pilot exists to move across. The single primitive derives the FunctionType engine-side (`LLVMIntrinsicGetType`) so nothing about the returned `llvm::Function*` leaks back to C++ — *complete boundary ownership*. One new generic primitive: `ry_emit_intrinsic_call` (the engine method `build_intrinsic_call` makes three LLVM C-API calls — `LLVMGetIntrinsicDeclaration` + `LLVMIntrinsicGetType` + `LLVMBuildCall2` — so it lives in `crates/emit/src/primitive/function.rs` next to `call_indirect`, not `primitive/ops.rs`, whose doc contracts 1:1 `LLVMBuild*` wrappers); aggregate `{T, i1}` extraction reuses the existing `ry_emit_extract_value` (#2099). The constant-fold path (`llvm::APInt` compile-time evaluation) stays C++-side as a recognised carve-out — APInt operations do not lower to IR. `intrinsic_id` is `llvm::Intrinsic::ID` cast to `uint32_t`; the `llvm-sys` `force-dynamic` shared-libLLVM design makes the value identical across the process so no serialization or cross-version drift arises.
-
-Scope (settle ≠ unlock): #2102 proves the capability on `emitIntOverflowCheck`'s non-constant path (`src/codegen_arith.cpp:156–160`) carrying zero `builder_.Create*` / `Intrinsic::getOrInsertDeclaration` after migration; because `emitIntOverflowCheck` is a *shared helper*, all 10 call sites — `codegen_expr.cpp` signed `sadd/ssub/smul`/unary-neg and `codegen_call_higher_order.cpp` × 5 unsigned `umul_with_overflow` for collection-alloc — are *implicitly migrated* (same helper body). Verified bit-exact across both classes (signed and unsigned probes with non-constant operands, markers `sadd_with_overflow` / `ssub_with_overflow` / `smul_with_overflow` / `umul_with_overflow` / `_ov` / `_val` / `_flag` / `.overflow_err` each grep-confirmed in the baseline before diffing — constant-fold operands would silently bypass the migrated path and produce an empty diff for the wrong reason). It does **not** unlock: `emitCheckedArithmetic` (`src/codegen_arith.cpp:50–72`, its own inline `getOrInsertDeclaration + CreateCall + 2 × ExtractValue` for `checkedAdd/Sub/Mul`), `emitSaturatingArithmetic` mul path (lines 96–101, the same inline shape for `saturatingMul`), and the `*_sat` add/sub paths (`sadd_sat` / `usub_sat` etc., scalar result — same capability but a separate carve-out). Those sibling functions migrate in the follow-on sweep using this discipline.
-
-## Relationship to `llvm-ir-emission-boundary.md`
-
-The two documents are **complementary**, not overlapping:
-
-- `llvm-ir-emission-boundary.md` defines the **`extern "C"` boundary** that the shared library (#1949) and the Rust reimplementation (#1950) will expose. It classifies the existing custom-emitter access patterns into five categories and identifies category 3 (runtime wrapper helpers, already centralized in `codegen_call_dispatch.cpp:430-481`) as the most-narrowed candidate for the first extraction step.
-- This document (`codegen-layering-plan.md`) defines the **conceptual responsibility split** (lowering vs emission) and the **lowered IR vocabulary** that the split is built around.
-
-The emission-boundary document is the implementation surface; this document is the conceptual split that gives the boundary its shape. The two are co-maintained: changes to the vocabulary here imply changes to which categories cross the boundary there.
-
-The AC item "LLVM IR emission layer's `extern "C"` boundary is sketched and shown to be free of LLVM-owned types" is satisfied jointly by these two documents — the emission boundary and the LLVM-type-exclusion constraint live in `llvm-ir-emission-boundary.md`, and this document specifies what travels across it.
-
-## Pilot area: bounds-check intent
-
-The pilot for the lowering / emission split is the **`BoundsCheck`** op.
-
-### Why bounds-check is the pilot
-
-- **Smallest demonstrator**. `emitBoundsCheck` is ~35 lines with 6 call sites (`codegen_stmt_misc.cpp:428,1082,1320`, `codegen_expr_literal.cpp:927,1145`, `codegen_arc_cow.cpp:433`). The full extraction can be reviewed in a single small PR.
-- **Clear lowering / emission boundary**. The lowering side computes `BoundsCheck { idx, len, error_spec }` from the index expression, the collection length, and a position-tagged error specification. The emission side is fixed shape: `CreateICmpSLT` + `CreateICmpSGE` + `CreateCondBr` + an exit-IR call to `emitBoundsError`. Nothing on the emission side requires Ry semantic knowledge.
-- **Lowest risk**. Behavior is bit-exact preserved (bounds-check IR is well-tested by `tests/spec/`), the runtime error wiring is already centralized via `emitRuntimeError` / exit IR, and the change is observable in a narrow test surface.
-- **Demonstrator value**. Validates that the lowered-IR ↔ LLVM-emission shape works without committing to the wider extraction.
-
-### What the pilot validates
-
-- The lowered IR can carry a structured error spec without leaking `Diagnostic` types into the emission side.
-- The emission side accepts the op via an `EmitterContext`-shaped interface (the narrowing direction documented in `llvm-ir-emission-boundary.md` §"Narrowing direction").
-- The call-site rewrite at the 6 callers is mechanical — i.e. the split does not require redesigning callers.
-
-### Post-extraction op shape (recorded after #1961)
-
-The pilot landed as #1961. At the time the actual `BoundsCheck` op shape, declared in `include/ry/codegen/lowered_bounds_check.hpp` (file removed in #2229 — the standalone C++ shim layer no longer exists; current caller-side code constructs the equivalent values inline before calling `ry_emit_bounds_check`), was:
-
-```cpp
-namespace ry::codegen::lowered {
-
-enum class BoundsKind { List, Array };
-
-struct BoundsCheckErrorSpec {
-    BoundsKind kind;          // the only two error-message variants
-                              // observed across the 6 call sites
-    std::string global_name;  // cachedGlobalString dedup key
-                              // (e.g. ".idx_assign_err")
-    // SourceLocation loc;    // reserved; emitBoundsError does not yet
-                              // consume position metadata
-};
-
-struct BoundsCheckOp {
-    llvm::Value *idx;
-    llvm::Value *len;
-    BoundsCheckErrorSpec error_spec;
-};
-
-} // namespace ry::codegen::lowered
-```
-
-Notes on what was kept vs. cut against the original vocabulary intent (§"Lowered IR vocabulary"):
-
-- **Error format string → enum**: the 6 call sites use exactly two `fprintf` format strings (list vs. array). Carrying a free-form format string in the op was rejected; `BoundsKind` is sufficient. The emission helper reconstructs the format string from `kind`.
-- **`SourceLocation` reserved as a comment**: the doc text named "source position" as part of the error spec, but the current `emitBoundsError` → `emitRuntimeError` chain emits `fprintf(stderr, ...) + exit(1)` without consuming a position. The field is left as a comment placeholder so a future PR that threads position into the runtime error channel does not have to renegotiate the op shape.
-- **`bb_prefix` stays outside the op**: the LLVM block-label hint (e.g. `"idx_assign"`, `"pcow_list"`) is an emission concern only and was not promoted into the op. The emission helper takes it as a separate parameter.
-- **Constant fold stays in lowering**: the compile-time `codegenError` path uses a Ry-semantic diagnostic and so cannot live on the emission side. Lowering returns `std::nullopt` for the constant-fold path; the helper writes the folded constant back into the caller's `Value *&idx` in place. The runtime path returns a `BoundsCheckOp` carrying the un-wrapped index; emission performs `emitNegativeIndexWrap` itself so that lowering contains no `IRBuilder<>::Create*` call.
-- **`emitNegativeIndexWrap` and `emitBoundsError` remain `CodeGen` methods**: the former is shared with `slice` / substring / range-index; the latter is a one-line shim over `emitRuntimeError`. Both are reachable from the emission helper as `cg.emitNegativeIndexWrap(...)` / `cg.emitBoundsError(...)`.
-
-A separate graduation document for the lowering / emission sub-layers is **not** written at this step; that comes only after step 2 per §"When the codegen layers earn their graduation document". Writing per-layer graduation docs at the pilot stage would be exactly the aspirational anti-pattern the workflow exists to prevent.
-
-### Alternatives considered (not selected)
-
-- **`Result` / `Option` construction**. Helpers (`emitResultBranch`, `wrapPtrAsResult`, …) are already consolidated in `codegen_call_dispatch.cpp:430-481`, making the **extraction** the lowest risk. However, the lowering side has very little to compute (the wrap intent is already determined upstream by the time these helpers are called), so the demonstrator value of the lowering / emission split is weaker than bounds-check.
-- **`any` wrap/unwrap**. `codegen_any.cpp` is ~2,116 lines with deep coupling to type metadata. The split has good semantic clarity (tag determination is lowering; struct construction is emission), but the size is too large for a pilot. This is a strong candidate for a wider extraction once the bounds-check pilot validates the shape.
-- **Runtime call specs**. `mod_->getOrInsertFunction("__ry_…")` is scattered across `codegen_call_*.cpp` with no central helper. A `RuntimeCall` op consolidation would be high-value but high-scope; not suitable as a first pilot.
-- **`typename` utilities**. Already addressed by #1821 (pure-utility extraction); not a codegen-split pilot.
-
-## Staged migration plan
-
-The codegen split proceeds in stages. Each stage has a stop condition; the next stage does not start until the current stage's stop condition is met.
-
-| Step | Scope | Stop condition | Tracking |
-|---|---|---|---|
-| **0** | Workflow + plan + pilot area selected. | This document and `layer-graduation-workflow.md` merged. | This issue (#1824). |
-| **1** | Pilot extraction of `BoundsCheck` into lowering + emission split. Minimal `LoweredOp::BoundsCheck` plumbing; the 6 callers updated to lower-then-emit. No other ops touched. | The 6 call-site updates land; existing tests pass; the lowering / emission separation is observable in the file layout (header + cpp boundary). | Follow-up issue (TBD; see issue #1824 §"Proposed Deliverables" follow-up implementation issues). |
-| **2-A** | Scaffolding under #1949: stand up `emit` as a `SHARED` CMake target, sketch the `extern "C"` boundary in `include/ry/llvm_emit/api.h` (opaque `RyValueId` handles, `RyEmitCtx`, `RyEmitCallbacks` for the unmigrated helpers), and migrate three category-3 helpers (`getRuntimeFn`, `buildErrorFromRuntime`, `bounds_check`). Existing call sites unchanged — the helpers are shimmed by routing their bodies through the boundary. | The shared library builds and links; three category-3 helpers cross the boundary; BoundsCheck pilot's emission side dispatches through the boundary; existing C++ + Ry tests pass. | #1949 (landed). |
-| **2-B** | Migrate the remaining category-3 helpers (`wrapPtrAsResult`, `wrapStatusAsResult`, `emitResultBranch`) together with the `ResultBranch` lowered op. Replace `emitNegativeIndexWrap` / `emitBoundsError` callbacks with proper boundary functions; `RyEmitCallbacks` is removed entirely. `CodeGen::emitResultBranch` survives only as a thin shim that bridges `llvm::function_ref<>`-style call sites to the C-fnptr boundary via a trampoline. `getResultType`'s `StructType` cache stays on the CodeGen side (its reverse map is consumed by ARC and Any wrapping); `resTy` crosses as `void*`, mirroring `errorTy_`. | All five category-3 helpers cross the boundary; BoundsCheck has no remaining `CodeGen` callbacks; `RyEmitCallbacks` is gone. | #1964 (landed). |
-| **2-C** | Successively migrate the remaining lowered IR ops (`RuntimeCall`, `AnyWrap` / `Unwrap`, `CollectionMutate`, `CowEnsureUnique`, `ControlFlow`). Cross category 1 (LLVM context handles) and category 2 (primitive type accessors) so the transitional `void*` parameters become typed opaque handles. **Landed**: `OptionWrap` via #1967; `ArcRetain` / `ArcRelease` via #1968; `RuntimeCall` via #1969; `CowEnsureUnique` via #1970; `CollectionMutate` via #1971; `AnyWrap` / `AnyUnwrap` / `AnyTryUnwrap` via #1972; `ControlFlow` + category 1/2 opaque handles + 22-entry sweep via #1973 (final Stage 2-C PR; api.h now exposes only opaque pointer typedefs `RyValueRef` / `RyTypeRef` / `RyModuleHandle` / `RyBuilderHandle` / `RyContextHandle` / `RyFunctionHandle` / `RyFuncTypeRef` / `RyBasicBlockRef`, no `llvm::*` or transitional `void *` survives except the documented `void *user_ctx` carve-out in `RyBuildValueFn` / `ry_emit_result_branch`; CodeGen-side cast helpers in `include/ry/llvm_emit/cast_helpers.hpp` bridge per-site without scattering `reinterpret_cast`; header-level lint at `scripts/check-llvm-emit-abi-header.sh` is wired into the CI `lint` job to enforce the AC). | The codegen call sites no longer call `IRBuilder<>::Create{CondBr,Br,PHI}` / `BasicBlock::Create` directly within the ControlFlow / 10-op vocabulary. `IRBuilder<>::Create*` calls remain for the primitive arithmetic / Alloca/Store/Load / module-level symbol carve-outs per §"Explicit non-inclusion". | #1965 (Stage 2-C umbrella, closed by #1973); #1967 (OptionWrap); #1968 (ARC); #1969 (RuntimeCall); #1970 (CowEnsureUnique); #1971 (CollectionMutate); #1972 (AnyWrap/Unwrap); #1973 (ControlFlow + category 1/2 + header lint). |
-| **3** | Reimplement the shared library in Rust behind the same boundary. | All existing tests pass with the Rust implementation; the C++ implementation is removed (or feature-flagged for the brief transition). | #1950 (scaffolding); #1993 (cutover, landed). |
-
-Each stage produces evidence that the next stage can start. A graduation document for the codegen sub-layers (lowering / emission) is **not** written at step 1 — the lowering and emission sides have not stabilized yet. The graduation document is written at the end of step 2, after the shared-library shape settles.
-
-## SRP and file-size goals
-
-The pilot (step 1) and the wider extraction (step 2) follow the [Layer Graduation Workflow](layer-graduation-workflow.md) §"SRP and file-size policy":
-
-- Newly created files in step 1 stay at or under 500 lines.
-- Once the lowering and emission sides graduate (end of step 2), target 200–300 lines per file where it improves navigability.
-- No line-count-only splits. Splitting the current `codegen_call_*.cpp` files by filename prefix without a responsibility split is explicitly forbidden by #1819's milestone policy and by the workflow doc.
-
-### Composite and primitive emission sub-layers (#2109)
-
-After the migration installments above (#2072 / #2092–#2097 / #2098–#2102) all landed, the Rust `emit` crate carried a flat module layout in which `EmitCtx` state, Ry-semantic combined emission (ARC counter delta, list-header load, inline ARC alloc, …), and LLVM-1:1 primitive emission (libc emitters, type constructors, name builders, …) shared `core.rs` and a flat set of sibling modules. The `abi → core` one-way discipline was already gated (`scripts/check-emit-abi-no-ir.sh`), but the next boundary — between LLVM-near primitive emission and Ry-semantic composite emission — was a convention, not a structural invariant.
-
-Issue #2109 captures that boundary as a directory layout and adds two CI gates. The emit crate is reorganised into four roles, in dependency order:
-
-| Sub-layer | Owns | Imports | Where it lives |
-|---|---|---|---|
-| `abi` | C/C++ emission boundary: opaque handle types, scalar / enum typedefs, descriptor structs, layout assertions, plumbing. IR-free per #2069. | `context`, `composite`, `primitive` | `crates/emit/src/abi.rs` + `abi/**.rs` |
-| `composite` | Ry-semantic emission with layout / ABI knowledge — ARC retain/release, bounds check, checked FP→int, Option/Result construction, Any wrap/unwrap, collection mutations, CoW ensure-unique, reduce, and the shared header struct construction. | `context`, `primitive`, sibling `composite::*` modules | `crates/emit/src/composite/**.rs` |
-| `primitive` | LLVM 1:1 emission with no Ry semantics — type constructors, name builders, module-symbol lookup, plain string globals, libc emitters, inline runtime-error, scalar / memory ops, function creation / indirect call / intrinsic call, control flow, generic `__ry_*` runtime calls. This sub-layer is the LLVM C API concentration target. | `context`, sibling `primitive::*` modules | `crates/emit/src/primitive/**.rs` |
-| `context` | Layer-neutral state, handle wrappers, enum selectors, layout constants, and the pure-data `HdrField` / `HeaderKind` / `header_fields` table. The `EmitCtx` struct itself plus its dedup caches. | `llvm_sys::prelude` (handle types only — IR-free) | `crates/emit/src/context.rs` |
-
-**Discriminating principle**: a function or type belongs in `composite` if it encodes a Ry ABI decision (e.g. the list-header field order, the StringHeader-prefixed `.arc` global shape, the ARC ref-count GEP indices). It belongs in `primitive` if it is a generic LLVM / libc operation that any consumer with no Ry knowledge could use (e.g. `LLVMBuildAdd`, `emit_malloc`, `get_or_insert_function`).
-
-**Enforcement**:
-
-1. `scripts/check-emit-composite-no-primitive.sh` enforces `primitive ⇏ composite` and `context ⇏ {abi, primitive, composite}` by grepping for forbidden `use crate::...` paths. Blind spot: `self.composite_method()` dispatch is invisible at the import-path layer because both sub-layers `impl` methods on the same `EmitCtx`; the future physical crate split (#2023) turns the gate into a Cargo-enforced constraint.
-2. `scripts/check-emit-llvm-ir-gen-concentration.sh` enforces AC #5 (composite expresses its op as a sequence of primitive method calls) and AC #7 (LLVM C IR-gen API is confined to declared sites) via an explicit allowlist of composite files permitted to call `llvm_sys::core` / `LLVMBuild*` directly.
-
-**AC #5/#7 transitional carve-out**: The #2109 refactor is a verbatim file move chosen to preserve byte-exact LLVM IR. Migrating every composite op to call `primitive::*` methods (instead of `LLVMBuild*` directly) would risk the IR-byte-exact guarantee and is out of scope for a single PR. The following composite files are therefore allowlisted to keep their direct LLVM C API calls; each is a migration target for a follow-on issue:
-
-| File | Direct LLVM call site count (approximate) | Reason allowlisted | Migration target |
-|---|---|---|---|
-| `composite/any.rs` | many | verbatim move; Any wrap/unwrap composite Ry-ABI ops | follow-on issue |
-| `composite/arc.rs` | many | verbatim move; ARC retain/release + ARC msg global | follow-on issue |
-| `composite/bounds.rs` | several | verbatim move; bounds check + bounds error | follow-on issue |
-| `composite/cast.rs` | several | verbatim move; checked FP→int + runtime_error_with_value_arg | follow-on issue |
-| `composite/collection.rs` | very many | verbatim move; list/map/set full op surface | follow-on issue |
-| `composite/cow.rs` | many | verbatim move; CoW ensure-unique | follow-on issue |
-| `composite/header.rs` | several | header struct construction (Ry layout knowledge stays here) | stays in composite — terminal |
-| `composite/option.rs` | few | verbatim move; Option construction | follow-on issue |
-| `composite/reduce.rs` | several | verbatim move; sum / min / max | follow-on issue |
-| `composite/result.rs` | several | verbatim move; build_error_from_runtime + `emit_result_branch` free fn (#2069 re-entrant discipline) | partial migration; the re-entrant free fn shape stays |
-
-New composite files must express their op via primitive methods (`self.build_load(...)` etc.) rather than direct `LLVMBuild*` calls; the gate fails closed for any addition outside ALLOWLIST.
-
-**Scope of #2109**: a pure architectural reorganisation. No new emission capability, no IR optimisation, no public C API change. Out of scope: C++ side's residual direct LLVM calls (`codegen_*.cpp`), the per-composite-file migration to primitive method sequences, and the physical crate split (#2023).
-
-### Atomic primitives added (#2190, pilot E (ii))
-
-After pilots A-D each chose (ii) (primitive capability over coarse op), pilot E continues the trajectory: `ry_emit_atomic_rmw` / `ry_emit_atomic_load` / `ry_emit_atomic_cmpxchg` are added to `primitive/ops.rs` to enable weak ARC migration (`emitWeakRetain` / `emitWeakRelease` / `emitWeakUpgrade` / `emitWeakReleaseVar`, `src/codegen_arc.cpp:618 / 640 / 680 / 751`) without introducing coarse `ry_emit_weak_*` composite ops.
-
-The new primitives' signatures take `RyAtomicBinOp` (Add/Sub) and `RyAtomicOrdering` (NotAtomic/Monotonic/Acquire/Release/AcquireRelease/SeqCst) — LLVM-native enums that name no Ry concept. The C++ caller picks the ordering (`SeqCst` for retain/release weak_count, `AcquireRelease/Monotonic` for the upgrade CAS, `Acquire` for the strong_count race-safe read) keeping the Ry semantic decision C++-side, mirroring pilot D's `intrinsic_call` shape (`Intrinsic::ID` selected by C++, declaration acquisition + call + aggregate result hidden in the primitive).
-
-A single composite helper `ry_emit_arc_counter_delta` is added to `composite/arc.rs` (the weak release free path's live-count bump). It owns the `__ry_arc_counter` global selection and the ASLR-baked-address inttoptr — both Ry concepts — so it belongs in composite, not primitive. The existing composite-internal `emit_atomic_i64_load` and `emit_arc_counter_delta` helpers stay `pub(crate)` and continue serving the inline ARC retain/release paths; routing them through the new primitives is a follow-on opportunity, not in scope for #2190.
-
-`#2118` (FP→int) chose (i) but does not establish (i) as a default — that PR followed the `bounds_check` pattern (one-shot helper, no reusable generic instruction). Weak ARC introduces three reusable generic atomic ops, so it follows the (ii)-favouring discipline this section records.
-
-## When the codegen layers earn their graduation document
-
-The two sub-layers (`codegen-semantic-lowering-graduation.md` and `codegen-llvm-emission-graduation.md`) are written after **all** of the following hold:
-
-1. Step 2 (#1949) has landed — the shared library is built and the codegen call sites dispatch through the boundary. Step 3 (#1950 scaffolding, #1993 cutover) has also landed — the shared library is now implemented in Rust (`crates/emit/`) and the C++ implementation is removed.
-2. The lowered IR vocabulary has converged (the working list above may shrink during the pilot; the final list is recorded in the graduation doc, not predicted here).
-3. Existing tests pass against the post-extraction shape — behavior is preserved end-to-end.
-4. The emission layer's `extern "C"` boundary carries no LLVM-owned types (enforced by a header-level lint of `api.h`).
-
-Until then, the lowering / emission sides have a working hypothesis (this document) but are explicitly **not graduated**.
-
-## Related documents
-
-- [Layer Graduation Workflow](layer-graduation-workflow.md) — the workflow this plan operates inside; defines graduation criteria, the document template, and the "write the doc after the refactor" rule.
-- [Compiler Layers](compiler-layers.md) — the lightweight layer-ordering hypothesis the codegen row of which this plan refines.
-- [Codegen Terminology](codegen-terminology.md) — canonical vocabulary (codegen / lowering / lowered IR / emission; the runtime / emission boundaries; handle naming).
-- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md) — the `extern "C"` boundary that the wider extraction (step 2 / #1949) will implement.
-- [Runtime Boundary](runtime-abi-boundary.md) — the orthogonal `__ry_*` boundary; codegen's `RuntimeCall` op routes through it, so the lowered IR vocabulary and the runtime boundary categorization stay aligned.
-- [Native Call Boundary](native-call-boundary.md) — the lowering-side dispatch / descriptor selection boundary that consumes the `RuntimeCall` op and decides which `__ry_*` symbol to call with what wrapping; design issue #2231 records the descriptor-vs-(ii) reconciliation.
+- [Codegen Terminology](codegen-terminology.md)
+- [LLVM IR Emission Boundary](llvm-ir-emission-boundary.md)
+- [Layer Graduation Workflow](layer-graduation-workflow.md)
+- [Native Call Boundary](native-call-boundary.md)
+- [Runtime Boundary](runtime-abi-boundary.md)

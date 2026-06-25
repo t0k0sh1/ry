@@ -1,25 +1,25 @@
-# sum/min/maxとany/all、sequenceによるList<Result>の集約を示す
+# Shows sum/min/max, any/all, and List<Result> aggregation with sequence
 
-# List全体に対する集約
+# Aggregate over the whole List
 print(sum([1, 2, 3, 4, 5]))
 print(min([3, 1, 4, 1, 5]))
 print(max([3, 1, 4, 1, 5]))
 
-# floatのListも同じ関数で集約できる
+# Lists of floats can be aggregated with the same functions
 print(sum([1.0, 2.0, 3.0]))
 print(min([3.0, 1.0, 2.0]))
 
-# variadic形式: 同じ関数名でスカラーをそのまま並べる
+# Variadic form: pass scalar values directly to the same function name
 print(sum(1, 2, 3))
 print(min(3, 5, 1))
 print(max(3, 1, 5))
 
-# 述語ベースの判定
+# Predicate-based checks
 print(any([1, 2, 3, 4, 5], (n: int) => n > 4))
 print(all([2, 4, 6], (n: int) => n > 0))
 print(all([2, 4, 6], (n: int) => n > 3))
 
-# sequence: List<Result<int, Error>>を1つのResult<List<int>, Error>に畳む
+# sequence: fold List<Result<int, Error>> into one Result<List<int>, Error>
 fn parsePositive(n: int) -> Result<int, Error>:
   if n > 0:
     return Ok(n)
@@ -31,7 +31,7 @@ print(sequence(allOk))
 withErr = [parsePositive(1), parsePositive(-2), parsePositive(3)]
 print(sequence(withErr))
 
-# Optionについても同じくsequenceできる
+# Option values can be sequenced the same way
 fn maybe(n: int, isNone: bool) -> Option<int>:
   if isNone:
     return None
