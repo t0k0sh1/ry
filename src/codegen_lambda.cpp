@@ -414,14 +414,28 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             llvm::Value *val = emitExpr(*e->expr_body);
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
-            else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy))
-                val = unwrapFromAny(val, retTy);
-            else if (isAnyType(val->getType()) && !isAnyType(retTy) &&
+            else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy)) {
+                // Path 9-return (#2379): rejected by [strict-any/any-implicit-unwrap].
+                const std::string &resolvedRetName = !retTypeStr.empty()
+                    ? resolveTypeAlias(retTypeStr)
+                    : std::string{};
+                const std::string retName = !resolvedRetName.empty()
+                    ? resolvedRetName
+                    : reverseResolveTypeName(retTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "returning 'any' value from lambda with return type '" + retName + "'",
+                    retName);
+            } else if (isAnyType(val->getType()) && !isAnyType(retTy) &&
                      llvm::isa<llvm::StructType>(retTy) &&
-                     findRecordInfoForType(llvm::cast<llvm::StructType>(retTy)))
-                val = unwrapFromAny(
-                    val, retTy,
-                    findRecordTypeName(llvm::cast<llvm::StructType>(retTy)));
+                     findRecordInfoForType(llvm::cast<llvm::StructType>(retTy))) {
+                // Path 9-return (#2379, was #1797 any → record on lambda return):
+                // rejected by [strict-any/any-implicit-unwrap].
+                const std::string recName = findRecordTypeName(
+                    llvm::cast<llvm::StructType>(retTy));
+                emitImplicitUnwrapDiag(current_loc_,
+                    "returning 'any' value from lambda with return type '" + recName + "'",
+                    recName);
+            }
             else if (val->getType() != retTy) {
                 std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
                 if (isUnionType(resolvedRetTypeStr))

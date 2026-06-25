@@ -286,3 +286,147 @@ TEST_F(StrictAnyTest, AnyImplicitUnwrapSomeSlotRejectedByDefault) {
         "    None: print(\"none\")\n",
         kImplicitUnwrapTag);
 }
+
+// ---------------------------------------------------------------------------
+// any-implicit-unwrap rule extension (#2379). Extends the rule to three
+// structurally similar hazards previously carved out by strict-any.md:73:
+//   - reassignment: `x = anyVal` where x is a previously-declared typed var
+//   - return:       `return anyVal` from a typed function (incl. lambda)
+//   - collection mutation: append! / appended / insert / set add / set
+//                          remove / map[k]= / list[i]= of an `any` value
+//                          into a typed collection slot
+// Each test mirrors the Path 9 pattern: minimal source, hard-rejected with
+// the `[strict-any/any-implicit-unwrap]` tag.
+// ---------------------------------------------------------------------------
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapReassignLocalRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_reassign_local.ry",
+        "x: int = 1\n"
+        "v: any = 2\n"
+        "x = v\n"
+        "print(x)\n",
+        kImplicitUnwrapTag);
+}
+
+// Module-global reassignment routes through emitModuleGlobalWriteThrough
+// rather than the function-local AssignStmt path. Pin the mirror branches.
+TEST_F(StrictAnyTest, AnyImplicitUnwrapReassignModuleGlobalRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_reassign_global.ry",
+        "x: int = 1\n"
+        "fn touch():\n"
+        "    v: any = 2\n"
+        "    x = v\n"
+        "touch()\n"
+        "print(x)\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapFnReturnRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_return.ry",
+        "fn f() -> int:\n"
+        "    v: any = 1\n"
+        "    return v\n"
+        "print(f())\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapLambdaReturnRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_lambda_return.ry",
+        "v: any = 1\n"
+        "g = () -> int => v\n"
+        "print(g())\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapMapIndexAssignRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_map_idx.ry",
+        "m: Map<str, int> = {\"a\": 1}\n"
+        "v: any = 2\n"
+        "m[\"a\"] = v\n"
+        "print(m[\"a\"])\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapListIndexAssignRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_list_idx.ry",
+        "xs: List<int> = [1, 2, 3]\n"
+        "v: any = 9\n"
+        "xs[0] = v\n"
+        "print(xs[0])\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapAppendRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_append.ry",
+        "xs: List<int> = []\n"
+        "v: any = 1\n"
+        "append!(xs, v)\n"
+        "print(xs[0])\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapAppendedRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_appended.ry",
+        "xs: List<int> = []\n"
+        "v: any = 1\n"
+        "ys = appended(xs, v)\n"
+        "print(ys[0])\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapInsertRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_insert.ry",
+        "xs: List<int> = [1]\n"
+        "v: any = 9\n"
+        "insert(xs, 0, v)\n"
+        "print(xs[0])\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapSetAddRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_set_add.ry",
+        "s: Set<int> = {1, 2}\n"
+        "v: any = 3\n"
+        "add(s, v)\n"
+        "print(3 in s)\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapSetRemoveRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_set_remove.ry",
+        "s: Set<int> = {1, 2}\n"
+        "v: any = 1\n"
+        "remove(s, v)\n"
+        "print(1 in s)\n",
+        kImplicitUnwrapTag);
+}
+
+// Reassignment with a Result<any, X> source widening to Result<int, X>
+// (or symmetrically the Err slot): the per-slot any → concrete unwrap
+// inside coerceResultType is the same hazard class as the raw
+// `x = anyVal` case, just at the Result Ok/Err slot granularity.
+TEST_F(StrictAnyTest, AnyImplicitUnwrapResultOkSlotReassignRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_result_ok_reassign.ry",
+        "fn produce() -> Result<any, str>:\n"
+        "    v: any = 42\n"
+        "    return Ok(v)\n"
+        "r: Result<int, str> = Ok(0)\n"
+        "r = produce()\n"
+        "case r:\n"
+        "    Ok(n): print(n)\n"
+        "    Err(e): print(e)\n",
+        kImplicitUnwrapTag);
+}
+
+TEST_F(StrictAnyTest, AnyImplicitUnwrapResultErrSlotReassignRejectedByDefault) {
+    expectRejectedWithTag("any_unwrap_result_err_reassign.ry",
+        "fn produce() -> Result<int, any>:\n"
+        "    v: any = \"oops\"\n"
+        "    return Err(v)\n"
+        "r: Result<int, str> = Ok(0)\n"
+        "r = produce()\n"
+        "case r:\n"
+        "    Ok(n): print(n)\n"
+        "    Err(e): print(e)\n",
+        kImplicitUnwrapTag);
+}

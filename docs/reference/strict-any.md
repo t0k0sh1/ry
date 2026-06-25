@@ -46,12 +46,15 @@ case asType[int](a):
 
 ### `any-implicit-unwrap`
 
-Implicit conversion of an `any`-typed value to a concrete type — the four Path 9 sites enumerated in [`docs/architecture/implicit-any-paths.md`](../architecture/implicit-any-paths.md) — is rejected:
+Implicit conversion of an `any`-typed value to a concrete type — the Path 9 sites enumerated in [`docs/architecture/implicit-any-paths.md`](../architecture/implicit-any-paths.md) — is rejected. As of #2379 the rule covers seven structurally similar hazard categories:
 
 - Variable declaration: `n: int = v` where `v: any` (Path 9a).
 - Named function-call argument: `f(v)` (and the default-value branch) where the parameter is concrete (Path 9b).
 - Lambda-call argument: `g(v)` where `g: (int) -> int` (Path 9c).
 - `Ok(v)` / `Err(v)` / `Some(v)` flowing into a `Result<T, E>` / `Option<T>` slot whose payload type is concrete (Path 9d).
+- Reassignment of a previously-declared typed variable (local or module-global): `x: int = 1; x = v` where `v: any` (Path 9e, #2379). Also covers `Result` slot widening on reassignment — `r: Result<int, str> = Ok(0); r = produce()` where `produce()` returns `Result<any, str>` (or `Result<int, any>`) — because the per-slot `any → concrete` coercion inside `coerceResultType` is the same hazard class.
+- Returning `any` from a typed function or lambda: `fn f() -> int: return v` where `v: any` (Path 9f, #2379).
+- Mutating a typed collection with an `any` value: `append!`, `appended`, `insert`, `add` (Set), `remove` (Set), `m[k] = v` (Map index assign), and `xs[i] = v` (List index assign) — all rejected when the receiver has a concrete element type and the value is `any` (Path 9g, #2379).
 
 Example rejection:
 
@@ -70,7 +73,7 @@ case asType[int](v):
     Err(_): print("not int")
 ```
 
-The rule does not affect explicit `any` boundaries (`v: any = ...`, `from ry.json import load`, FFI `@extern` returns) — those remain valid. Reassignment to a previously-declared variable, `return v` from a typed function, and collection mutation paths are structurally similar hazards but are out of scope for the rule and tracked separately.
+The rule does not affect explicit `any` boundaries (`v: any = ...`, `from ry.json import load`, FFI `@extern` returns) — those remain valid. Read-only `any → concrete` paths whose surface is not insertion or assignment — the `in` / `not in` membership query and the `get(list, idx, default)` fallback — also remain valid; the runtime unwrap they perform is internal to the operator rather than a slot-bound coercion the user introduced.
 
 ## Migration cookbook
 

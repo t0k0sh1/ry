@@ -211,14 +211,23 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 if (isAnyType(retTy)) {
                     val = wrapInAny(val);
                 } else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy)) {
-                    val = unwrapFromAny(val, retTy);
+                    // Path 9-return (#2379): rejected by [strict-any/any-implicit-unwrap].
+                    const std::string retName = !resolvedRetName.empty()
+                        ? resolvedRetName
+                        : reverseResolveTypeName(retTy);
+                    emitImplicitUnwrapDiag(current_loc_,
+                        "returning 'any' value from function with return type '" + retName + "'",
+                        retName);
                 } else if (isAnyType(val->getType()) && !isAnyType(retTy) &&
                            llvm::isa<llvm::StructType>(retTy) &&
                            findRecordInfoForType(llvm::cast<llvm::StructType>(retTy))) {
-                    // #1797: any → record unwrap on return.
-                    val = unwrapFromAny(val, retTy,
-                                        findRecordTypeName(
-                                            llvm::cast<llvm::StructType>(retTy)));
+                    // Path 9-return (#2379, was #1797 any → record on return):
+                    // rejected by [strict-any/any-implicit-unwrap].
+                    const std::string recName = findRecordTypeName(
+                        llvm::cast<llvm::StructType>(retTy));
+                    emitImplicitUnwrapDiag(current_loc_,
+                        "returning 'any' value from function with return type '" + recName + "'",
+                        recName);
                 } else if (isUnionType(resolvedRetName)) {
                     val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {

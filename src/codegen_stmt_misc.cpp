@@ -1199,9 +1199,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         if (rhsVal->getType() != mapValTy) {
             if (isAnyType(mapValTy))
                 rhsVal = wrapInAny(rhsVal);
-            else if (isAnyType(rhsVal->getType()) && canAnyHoldType(mapValTy))
-                rhsVal = unwrapFromAny(rhsVal, mapValTy);
-            else
+            else if (isAnyType(rhsVal->getType()) && canAnyHoldType(mapValTy)) {
+                // Path 9-collection-mutation (#2379):
+                // rejected by [strict-any/any-implicit-unwrap].
+                std::string valName = !mapValTypeName.empty()
+                    ? mapValTypeName
+                    : reverseResolveTypeName(mapValTy);
+                emitImplicitUnwrapDiag(current_loc_,
+                    "assigning 'any' value to map slot of type '" + valName + "'",
+                    valName);
+            } else
                 codegenError("map value type mismatch");
         }
 
@@ -1386,9 +1393,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             finalVal = sliced;
         else if (isAnyType(elemTy))
             finalVal = wrapInAny(finalVal);
-        else if (isAnyType(finalVal->getType()) && canAnyHoldType(elemTy))
-            finalVal = unwrapFromAny(finalVal, elemTy);
-        else
+        else if (isAnyType(finalVal->getType()) && canAnyHoldType(elemTy)) {
+            // Path 9-collection-mutation (#2379):
+            // rejected by [strict-any/any-implicit-unwrap].
+            std::string listElemName = !elemTypeName.empty()
+                ? elemTypeName
+                : reverseResolveTypeName(elemTy);
+            emitImplicitUnwrapDiag(current_loc_,
+                "assigning 'any' value to list element of type '" + listElemName + "'",
+                listElemName);
+        } else
             codegenError("list element type mismatch in index assignment");
     }
 
