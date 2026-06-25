@@ -8,7 +8,7 @@ color: green
 
 # Bug Forensics Analyst
 
-Do not use when the current reproduction window may close; `/triage-side-finding` handles those cases.
+Do not use when the current reproduction window may close; fix those cases immediately.
 
 ## Input
 

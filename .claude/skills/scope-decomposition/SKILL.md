@@ -37,9 +37,16 @@ Do not split only to reduce apparent task size.
 
 - Re-sweep the target issue for omitted symmetric work.
 - Do not shrink or split the target issue after implementation scope is committed.
-- Route orthogonal discoveries through `/triage-side-finding`.
+- For orthogonal discoveries, fix now when the reproduction window may close, severity is high, or the fix is small; otherwise propose one separate issue.
 
-## REQ-5: Oversized Issue Before Scope Commitment
+## REQ-5: Side Findings
+
+- Crash, corruption, race, leak, sanitizer, or fuzzer finding: fix now.
+- Non-crash finding estimated at 1000 changed lines or less: fix now.
+- Larger non-crash finding: present one recommended action and request user direction.
+- Separate issue proposals must satisfy REQ-1 and REQ-2, check duplicates, and use `/git-create-issue` only after user approval.
+
+## REQ-6: Oversized Issue Before Scope Commitment
 
 - Determine all proposed pieces before filing.
 - Present one combined split preview.

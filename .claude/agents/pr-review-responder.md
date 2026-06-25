@@ -23,7 +23,7 @@ color: purple
   - correct but scope-sensitive
 - Evaluate user-visible behavior, invariants, type safety, performance, and scope.
 - Search matching rules and tagged knowledge entries.
-- Use `/triage-side-finding` for side findings.
+- For side findings, fix severe or small issues now; otherwise propose one separate issue.
 
 ## Output
 
