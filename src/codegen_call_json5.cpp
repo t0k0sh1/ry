@@ -177,10 +177,9 @@ static llvm::Value *dispatchJson5(CodeGen &cg, const CallExpr &e) {
     if (!isJson5Imported(cg))
         return nullptr;
 
-    // Register libry_json5.dylib for JIT loading. See codegen-stdlib-dispatcher.md
-    // (#1856): every dispatcher MUST insert at the top so partial single-symbol
-    // imports work — table-fallthrough alone misses every custom-emitter early-return.
-    cg.used_native_libraries_.insert("json5");
+    // libry_json5.dylib registration is auto-derived inside `getRuntimeFn`
+    // via the symbol→library auto-link (#2393) — every `__ry_json5_*` runtime
+    // symbol the emitters issue registers "json5" automatically.
 
     // Intercept `load[T](...)` calls. The parser uses `[T]` syntax for generic
     // function calls but constructs the internal callee as `load<T>` (e.g.

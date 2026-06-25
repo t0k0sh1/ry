@@ -490,83 +490,29 @@ static llvm::Value *emitThreadJoin(CodeGen &cg, const CallExpr &e) {
         });
 }
 
-// lockNew, rwlockNew: 0-arg → ptr + resource tracking
-static llvm::Value *emitThreadSyncNew(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 0);
-    const char *rtName;
-    int rk;
-    if (e.callee == "lockNew") { rtName = "__ry_lock_new"; rk = rk_lock; }
-    else { rtName = "__ry_rwlock_new"; rk = rk_rwlock; }
-    llvm::Value *result = cg.emitRuntimeCallDirect(
-        rtName, cg.ptrTy_, {}, {}, e.callee.c_str());
-    cg.addResourceKind(result, rk);
-    return result;
-}
-
-// semaphoreNew, barrierNew: 1-arg → wrapPtrAsResult + resource tracking
-static llvm::Value *emitThreadSyncResultNew(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *count = cg.emitExpr(*e.args[0]);
-    const char *rtName;
-    int rk;
-    if (e.callee == "semaphoreNew") { rtName = "__ry_semaphore_new"; rk = rk_semaphore; }
-    else { rtName = "__ry_barrier_new"; rk = rk_barrier; }
-    llvm::Value *ptr = cg.emitRuntimeCallDirect(
-        rtName, cg.ptrTy_, {cg.i64Ty_}, {count}, e.callee.c_str());
-    llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.addResourceKind(result, rk);
-    return result;
-}
-
-// Status-returning operations: acquire, release, lock, unlock, wait
-static llvm::Value *emitThreadSyncOp(CodeGen &cg, const CallExpr &e) {
+// #2393: emitThreadSyncNew / emitThreadSyncResultNew / emitThreadSyncOp
+// were inlined into the descriptor-driven path. Their constructor/op IR
+// shape is reproduced by emitGenericNativeCall's Direct + resource_kind /
+// ResultPtr + resource_kind / ResultStatus paths, with the "_status"
+// SSA-name suffix preserved by the thread-package gate so the byte-exact
+// diff stays empty. See `kOverrides` in codegen_native_call_descriptor.cpp.
+//
+// emitThreadSyncFree is only reached by the atomic*Free Pattern B entries
+// below (lockFree / rwlockFree / semaphoreFree / barrierFree are
+// descriptor-driven via the new `ResourceFree` wrapping).
+static llvm::Value *emitThreadAtomicFree(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *arg = cg.emitExpr(*e.args[0]);
 
-    // Type-check and derive runtime name
-    struct OpInfo { const char *rt; bool (CodeGen::*check)(llvm::Value*); const char *type; };
-    static const std::unordered_map<std::string, OpInfo> ops = {
-        {"lockAcquire",     {"__ry_lock_acquire",     &CodeGen::isLock,      "Lock"}},
-        {"lockRelease",     {"__ry_lock_release",     &CodeGen::isLock,      "Lock"}},
-        {"rwlockReadLock",  {"__ry_rwlock_read_lock", &CodeGen::isRWLock,    "RWLock"}},
-        {"rwlockWriteLock", {"__ry_rwlock_write_lock",&CodeGen::isRWLock,    "RWLock"}},
-        {"rwlockUnlock",    {"__ry_rwlock_unlock",    &CodeGen::isRWLock,    "RWLock"}},
-        {"semaphoreAcquire",{"__ry_semaphore_acquire",&CodeGen::isSemaphore, "Semaphore"}},
-        {"semaphoreRelease",{"__ry_semaphore_release",&CodeGen::isSemaphore, "Semaphore"}},
-        {"barrierWait",     {"__ry_barrier_wait",     &CodeGen::isBarrier,   "Barrier"}},
-    };
+    int rk = -1;
+    const char *typeName = nullptr;
+    if (e.callee == "atomicIntFree")  { rk = rk_atomic_int;  typeName = "AtomicInt"; }
+    if (e.callee == "atomicBoolFree") { rk = rk_atomic_bool; typeName = "AtomicBool"; }
+    if (rk == -1) return nullptr;
 
-    auto it = ops.find(e.callee);
-    if (it == ops.end()) return nullptr;
-    if (!(cg.*(it->second.check))(arg))
-        cg.codegenError(e.callee + "() requires " + it->second.type + " argument");
-    std::string statusName = e.callee + "_status";
-    llvm::Value *status = cg.emitRuntimeCallDirect(
-        it->second.rt, cg.i64Ty_, {cg.ptrTy_}, {arg}, statusName.c_str());
-    return cg.wrapStatusAsResult(status);
-}
-
-// All *_free operations: type-check + emitResourceFree
-static llvm::Value *emitThreadSyncFree(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
-    llvm::Value *arg = cg.emitExpr(*e.args[0]);
-
-    struct FreeInfo { int rk; const char *type; };
-    // rk_* are populated during static init, before any codegen runs.
-    static const std::unordered_map<std::string, FreeInfo> frees = {
-        {"lockFree",        {rk_lock,        "Lock"}},
-        {"rwlockFree",      {rk_rwlock,      "RWLock"}},
-        {"semaphoreFree",   {rk_semaphore,   "Semaphore"}},
-        {"barrierFree",     {rk_barrier,     "Barrier"}},
-        {"atomicIntFree",   {rk_atomic_int,  "AtomicInt"}},
-        {"atomicBoolFree",  {rk_atomic_bool, "AtomicBool"}},
-    };
-
-    auto it = frees.find(e.callee);
-    if (it == frees.end()) return nullptr;
-    if (!cg.isResourceKind(it->second.rk, arg))
-        cg.codegenError(e.callee + "() requires " + it->second.type + " argument");
-    return cg.emitResourceFree(arg, it->second.rk, *e.args[0]);
+    if (!cg.isResourceKind(rk, arg))
+        cg.codegenError(e.callee + "() requires " + typeName + " argument");
+    return cg.emitResourceFree(arg, rk, *e.args[0]);
 }
 
 static llvm::Value *emitThreadAtomicIntNew(CodeGen &cg, const CallExpr &e) {
@@ -661,90 +607,124 @@ static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
         {cg.ptrTy_, cg.i64Ty_}, {atom, extended}, "");
 }
 
-// ===== Thread dispatch table =====
+// ===== Thread dispatch =====
 //
-// threadSpawn / threadJoin were carved out to emitBuiltinThread (Pattern B)
-// per #2340 — both synthesize an `llvm::Function` from the worker body, which
-// no declarative descriptor can express. The remaining sync / atomic entries
-// stay here as table-driven customEmitters; their `libry_thread` registration
-// is now handled by dispatchThread itself (see below).
-static const CodeGen::NativeDispatchEntry thread_table[] = {
-    // Sync primitives: new
-    {"lockNew",          nullptr, {}, 0, nullptr, emitThreadSyncNew},
-    {"rwlockNew",        nullptr, {}, 0, nullptr, emitThreadSyncNew},
-    {"semaphoreNew",     nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
-    {"barrierNew",       nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
-    // Sync primitives: operations
-    {"lockAcquire",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"lockRelease",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlockReadLock",   nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlockWriteLock",  nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlockUnlock",     nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"semaphoreAcquire", nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"semaphoreRelease", nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"barrierWait",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    // Sync primitives: free
-    {"lockFree",         nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"rwlockFree",       nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"semaphoreFree",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"barrierFree",      nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    // AtomicInt
-    {"atomicIntNew",     nullptr, {}, 0, nullptr, emitThreadAtomicIntNew},
-    {"atomicIntLoad",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomicIntStore",   nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomicIntAdd",     nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomicIntSub",     nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomicIntCas",     nullptr, {}, 0, nullptr, emitThreadAtomicIntCas},
-    {"atomicIntFree",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    // AtomicBool
-    {"atomicBoolNew",    nullptr, {}, 0, nullptr, emitThreadAtomicBoolNew},
-    {"atomicBoolLoad",   nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
-    {"atomicBoolStore",  nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
-    {"atomicBoolFree",   nullptr, {}, 0, nullptr, emitThreadSyncFree},
-};
+// #2393: thread is now descriptor-driven for sync primitives + Pattern B
+// for value-transform atomics.
+//   - threadSpawn / threadJoin: Pattern B carve-out per #2340 (synthesize
+//     an `llvm::Function` from the worker body — no declarative descriptor
+//     captures that).
+//   - lock* / rwlock* / semaphore* / barrier* (sync new / op / free):
+//     descriptor-driven via emitGenericNativeCall with the per-overload
+//     entries in `kOverrides` (codegen_native_call_descriptor.cpp).
+//     `lockNew` / `rwlockNew` use `Direct` + `resource_kind` (bare-resource
+//     return tagging, via inferResourceKind's #2393 extension);
+//     `semaphoreNew` / `barrierNew` use the existing `ResultPtr` +
+//     `resource_kind` shape; `*Acquire` / `*Release` / `*ReadLock` /
+//     `*WriteLock` / `*Unlock` / `*Wait` use `ResultStatus` (with the
+//     "_status" SSA-name suffix preserved by emitGenericNativeCall's
+//     thread-package gate so the IR byte-exact diff stays empty); `*Free`
+//     use the new `ResourceFree` wrapping that delegates to emitResourceFree.
+//   - atomic* (atomicIntNew/Load/Store/Add/Sub/Cas/Free and
+//     atomicBoolNew/Load/Store/Free): Pattern B carve-out
+//     (`emitBuiltinThread`) — every entry threads value-transform IR (bool
+//     i1↔i64 zext/trunc, CAS i64→i1 trunc, or a non-callee SSA name like
+//     "atomic_int") that the declarative descriptor cannot express
+//     byte-exactly. Mirrors the #2340 precedent that carved
+//     `threadSpawn`/`threadJoin` out of thread_table.
+//
+// `thread_table` is intentionally empty: `dispatchThread` returns nullptr,
+// letting the descriptor-driven path (`emitGenericNativeCall`) handle every
+// sync-primitive callee. Atomics short-circuit earlier in
+// `emitExprVariant`'s Pattern B chain (`emitBuiltinThread`) before the
+// stdlib dispatcher loop runs.
+static const CodeGen::NativeDispatchEntry thread_table[] = {};
 
-// Gate the dispatcher: only proceed if any thread sig is actually registered,
-// and in that case register `libry_thread` up-front so the JIT loads it before
-// any customEmitter in the table runs. The previous regime registered the
-// library from emitTableDrivenNativeCall's customEmitter branch; after the
-// generic auto-register lands (see codegen_call_native.cpp) the explicit
-// insert here remains as the dispatcher-level guarantee that JSON / JSON5
-// already provide (codegen_call_json.cpp / codegen_call_json5.cpp).
-//
+// Gate the dispatcher: only proceed if any thread sig is actually registered.
 // Probe two representative anchors covering the carved-out (threadSpawn) and
 // table-driven (lockNew) sides of the module; a single sig from either side
 // is enough to confirm the user imported `thread`. Mirrors the O(1)
 // `sigs.count(...)` shape used by `isJsonImported` / `isJson5Imported`.
+//
+// `libry_thread` registration: emitTableDrivenNativeCall registers the
+// library from the sig's library field on entry (#2340), and the auto-link
+// in `getRuntimeFn` / `emitRuntimeCallDirect` covers downstream paths whose
+// runtime symbols carry a `__ry_thread_*` / `__ry_lock_*` / etc. prefix
+// (#2393). The previous explicit `_.insert("thread")` was redundant with
+// both layers.
 static bool isThreadImported(CodeGen &cg) {
     const auto &sigs = cg.getNativeFnSigs();
     return sigs.count("thread::threadSpawn") || sigs.count("thread::lockNew");
 }
 
 RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
-static llvm::Value *dispatchThread(CodeGen &cg, const CallExpr &e) {
-    if (!isThreadImported(cg))
-        return nullptr;
-    cg.used_native_libraries_.insert("thread");
-    return cg.emitTableDrivenNativeCall(e, "thread", thread_table, std::size(thread_table));
+static llvm::Value *dispatchThread(CodeGen &, const CallExpr &) {
+    // #2393: thread_table is empty (see above). Returning nullptr lets the
+    // dispatch chain proceed to `emitGenericNativeCall`, which consumes the
+    // per-overload kOverrides entries for lock / rwlock / semaphore /
+    // barrier. Atomics are handled by `emitBuiltinThread` earlier in
+    // `emitExprVariant`'s Pattern B chain.
+    return nullptr;
 }
 
-// ===== Builtin Thread (Pattern B carve-out, #2340) =====
+// ===== Builtin Thread (Pattern B carve-out, #2340 + #2393) =====
 //
-// threadSpawn synthesizes an `llvm::Function` from the worker lambda body;
-// threadJoin reads back through a ThreadResult-tagged slot. Neither maps to a
-// declarative descriptor field. Sig gate mirrors emitBuiltinJson so a same-
-// named identifier bound to a variable / lambda still reaches the indirect-
-// call path when `thread` was not imported.
+// Pattern B entries:
+//   - threadSpawn / threadJoin (#2340): synthesize an `llvm::Function` from
+//     the worker lambda body / read back through a ThreadResult-tagged slot.
+//   - atomicIntNew / atomicBoolNew (#2393): use SSA names like "atomic_int"
+//     / "atomic_bool_ext" that don't match the descriptor's callee-derived
+//     naming, plus the AtomicBool path zexts i1→i64 before the runtime call.
+//   - atomicIntCas (#2393): truncates an i64 runtime result to i1, a value
+//     transform the descriptor's wrappings don't express.
+//   - atomicIntLoad/Store/Add/Sub, atomicBoolLoad/Store (#2393): mixed bool
+//     widening / value naming. Kept together for parity with the rest of
+//     the atomic surface.
+//   - atomicIntFree / atomicBoolFree (#2393): the *Free thread-sync entries
+//     (lockFree etc.) migrated to descriptor-driven ResourceFree, but the
+//     atomic ones stay here so they share `emitThreadAtomicFree`'s
+//     resource-kind type-check with the rest of the atomic family.
+//
+// Sig gate mirrors emitBuiltinJson so a same-named identifier bound to a
+// variable / lambda still reaches the indirect-call path when `thread` was
+// not imported. `libry_thread` registration is auto-derived from the
+// downstream `__ry_thread_*` / `__ry_atomic_*` calls these emitters issue
+// through `emitRuntimeCallDirect` (#2393, via the symbol→library auto-link).
 llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
+    // threadSpawn / threadJoin — #2340 carve-out.
     if (e.callee == "threadSpawn" &&
         native_fn_sigs_.count("thread::threadSpawn")) {
-        used_native_libraries_.insert("thread");
         return emitBuiltinNativeOrMock(e, "thread", &emitThreadSpawn);
     }
     if (e.callee == "threadJoin" &&
         native_fn_sigs_.count("thread::threadJoin")) {
-        used_native_libraries_.insert("thread");
         return emitBuiltinNativeOrMock(e, "thread", &emitThreadJoin);
+    }
+    // Atomic family — #2393 carve-out.
+    if (e.callee == "atomicIntNew" &&
+        native_fn_sigs_.count("thread::atomicIntNew")) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicIntNew);
+    }
+    if (e.callee == "atomicBoolNew" &&
+        native_fn_sigs_.count("thread::atomicBoolNew")) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicBoolNew);
+    }
+    if (e.callee == "atomicIntCas" &&
+        native_fn_sigs_.count("thread::atomicIntCas")) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicIntCas);
+    }
+    if ((e.callee == "atomicIntLoad" || e.callee == "atomicIntStore"
+            || e.callee == "atomicIntAdd" || e.callee == "atomicIntSub")
+        && native_fn_sigs_.count("thread::" + e.callee)) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicIntOp);
+    }
+    if ((e.callee == "atomicBoolLoad" || e.callee == "atomicBoolStore")
+        && native_fn_sigs_.count("thread::" + e.callee)) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicBoolOp);
+    }
+    if ((e.callee == "atomicIntFree" || e.callee == "atomicBoolFree")
+        && native_fn_sigs_.count("thread::" + e.callee)) {
+        return emitBuiltinNativeOrMock(e, "thread", &emitThreadAtomicFree);
     }
     return nullptr;
 }

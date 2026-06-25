@@ -131,8 +131,11 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
                               llvm::FunctionCallee destructor,
                               llvm::Function *gcVisitFn) {
     // ry_emit_arc_release emits __ry_gc_track / __ry_gc_untrack calls; the
-    // runtime requires libry_gc to be registered.
-    used_native_libraries_.insert("gc");
+    // runtime requires libry_gc to be registered. These symbols are emitted
+    // through the C-ABI emit boundary, not getRuntimeFn, so the symbol→library
+    // auto-link in `linkNativeLibraryForSymbol` cannot see them — hand-link via
+    // the descriptor-derived helper here.
+    linkNativeLibrary("gc");
     llvm::Value *dtorCallee = destructor
         ? llvm::cast<llvm::Value>(destructor.getCallee())
         : nullptr;
@@ -266,7 +269,7 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
     const char *dtorName = info->dtorName;
     const char *cleanupFnName = info->cleanupFnName;
     if (info->library)
-        used_native_libraries_.insert(info->library);
+        linkNativeLibrary(info->library);
 
     auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     auto *dtorFn = llvm::Function::Create(

@@ -243,11 +243,13 @@ static llvm::Value *dispatchNet(CodeGen &, const CallExpr &) {
 // `listen` 3+ arg stays custom: it synthesizes a multi-block control
 // flow (bind → listen → accept loop → per-request handler dispatch →
 // send_response → close) that the declarative descriptor model does not
-// cover. This entry inserts its own `net` + `http` library deps inline.
+// cover. `net` + `http` library registration is handled by the symbol→
+// library auto-link in `getRuntimeFn`: every `__ry_net_bind` / `__ry_listen`
+// / `__ry_accept` / `__ry_tcp_*` / `__ry_http_*` call below routes through
+// the auto-link table (see codegen.cpp::kRuntimeSymbolLibraries), so this
+// synthesizer no longer hand-names libraries.
 
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
-    cg.used_native_libraries_.insert("net");
-    cg.used_native_libraries_.insert("http");
     if (e.args.size() < 3 || e.args.size() > 5)
         cg.codegenError("listen() takes 3 to 5 arguments");
     llvm::Value *host = cg.emitExpr(*e.args[0]);
@@ -502,8 +504,9 @@ static bool isHttpImported(CodeGen &cg) {
 // src/codegen_native_call_descriptor.cpp's kOverrides table. listen 3+
 // arg (control-flow synthesis: bind / listen / accept loop / handler
 // dispatch / send_response) stays custom because the synthesized control
-// flow does not fit the declarative descriptor model — emitHttpListen
-// inserts "net" + "http" into used_native_libraries_ itself.
+// flow does not fit the declarative descriptor model — emitHttpListen's
+// `net` + `http` library registration is auto-derived inside `getRuntimeFn`
+// from each emitted runtime symbol (#2393).
 RY_REGISTER_STDLIB_PACKAGE(http, "share/std/http/http.ry", dispatchHttp)
 static llvm::Value *dispatchHttp(CodeGen &cg, const CallExpr &e) {
     if (!isHttpImported(cg))

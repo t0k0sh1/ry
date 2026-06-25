@@ -88,7 +88,9 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
 
     // ry_emit_cow_ensure_unique internally calls ry_emit_arc_release which
     // emits __ry_gc_track / __ry_gc_untrack; libry_gc must be registered.
-    used_native_libraries_.insert("gc");
+    // The emit goes through the C-ABI boundary, not getRuntimeFn, so the
+    // symbol→library auto-link cannot see these symbols — hand-link here.
+    linkNativeLibrary("gc");
 
     // Element-retention decision uses metadata stamped on the *old*
     // container — the cloned buffer the boundary returns does not carry

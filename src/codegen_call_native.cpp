@@ -173,7 +173,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // / normal paths and ensures the JIT loads `libry_<module>` before any
     // early codegenError aborts the rest of the dispatch.
     if (!sigItHead->second.empty() && !sigItHead->second[0].library.empty())
-        used_native_libraries_.insert(sigItHead->second[0].library);
+        linkNativeLibrary(sigItHead->second[0].library);
 
     // Lookup entry in dispatch table
     const NativeDispatchEntry *entry = nullptr;
@@ -508,6 +508,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     case ReturnWrapping::OptionFromNullablePtr:
     case ReturnWrapping::ResultOutParamOption:
     case ReturnWrapping::IteratorFromHandle:
+    case ReturnWrapping::ResourceFree:
         llvm_unreachable("descriptor-only wrapping reached emitTableDrivenNativeCall");
     }
 
@@ -600,6 +601,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     case ReturnWrapping::OptionFromNullablePtr:
     case ReturnWrapping::ResultOutParamOption:
     case ReturnWrapping::IteratorFromHandle:
+    case ReturnWrapping::ResourceFree:
         llvm_unreachable("descriptor-only wrapping reached emitTableDrivenNativeCall");
     }
 
@@ -772,7 +774,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // No library matched both arity and types — fall through to user functions
     if (!matchedSig) return nullptr;
 
-    used_native_libraries_.insert(matchedPackage);
+    linkNativeLibrary(matchedPackage);
 
     // Look up the descriptor populated alongside this sig in codegen_fn.cpp.
     // Descriptors and sigs are pushed in lock-step under the same sigKey, so
@@ -866,12 +868,18 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     const std::string &outParamType = desc.out_param_type_name;
 
     // Error function name for Result wrappings. The descriptor pre-computes
-    // it from library_name; for descriptors without a library (bare @native
-    // outside knownNativeLibs), fall back to deriving from matchedPackage
-    // to preserve current behavior for any non-Pattern-C consumer that ever
-    // reaches this path.
+    // it from library_name for packages that own a per-module
+    // `__ry_<pkg>_get_last_error` symbol (see codegen_fn.cpp's
+    // kHasModuleLastError list). Packages without one (thread / gc /
+    // testing / json / json5) fall through here to the default
+    // `__ry_get_last_error` channel, matching what the pre-2393 thread
+    // customEmitters consumed via `wrapStatusAsResult(status)` (the helper's
+    // default param). Bare @native fns outside knownNativeLibs that never
+    // declare an error channel similarly land here, which is the only
+    // existing behavior they could have relied on (no runtime defines
+    // `__ry_<unknown_pkg>_get_last_error`).
     std::string errFnName = desc.error_channel.empty()
-        ? ry::util::deriveRuntimeFnName(matchedPackage, "get_last_error")
+        ? "__ry_get_last_error"
         : desc.error_channel;
 
     // Installment 2-c (#2381): handle-coupled overload library linkage.
@@ -884,7 +892,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         && desc.handle_resource_kind != ResourceKindRegistry::NONE) {
         if (const auto *info = ResourceKindRegistry::instance().getInfo(
                 desc.handle_resource_kind))
-            used_native_libraries_.insert(info->library);
+            linkNativeLibrary(info->library);
     }
 
     // Installment 2-c (#2381): IteratorFromHandle — synthesize an iterator
@@ -893,6 +901,26 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // descriptor consumption stays one well-scoped switch arm.
     if (wrapping == ReturnWrapping::IteratorFromHandle) {
         return emitIteratorFromHandleNative(e, desc, args, rtName);
+    }
+
+    // #2393: ResourceFree — thread *Free entries (lockFree / rwlockFree /
+    // semaphoreFree / barrierFree / atomicIntFree / atomicBoolFree) emit
+    // a null-check + ARC-release sequence via emitResourceFree. No runtime
+    // fn is dialed. The handle arg lives at desc.handle_param_index (must
+    // be 0 — all six *Free entries take the resource as their sole arg)
+    // with desc.handle_resource_kind selecting the destructor. The arg has
+    // already been emit-checked against the registered resource kind by
+    // overload resolution, so we go straight to emitResourceFree.
+    if (wrapping == ReturnWrapping::ResourceFree) {
+        if (desc.handle_param_index < 0
+            || desc.handle_resource_kind == ResourceKindRegistry::NONE
+            || args.empty()) {
+            codegenError(e.callee +
+                "(): ResourceFree requires handle_param_index=0 and a "
+                "registered handle_resource_kind");
+        }
+        return emitResourceFree(args[0], desc.handle_resource_kind,
+                                *e.args[0]);
     }
 
     // Build C-level return type and handle out-param. For OptionFromNullablePtr
@@ -927,6 +955,8 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
     case ReturnWrapping::IteratorFromHandle:
         llvm_unreachable("IteratorFromHandle handled above (early return)");
+    case ReturnWrapping::ResourceFree:
+        llvm_unreachable("ResourceFree handled above (early return)");
     }
 
     // Create alloca for out-param (ResultOutParam / ResultOutParamOption)
@@ -950,11 +980,23 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     auto emitCallAndWrap = [&]() -> llvm::Value * {
         auto *fnTy = llvm::FunctionType::get(cRetTy, paramTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
+        // #2393: the pre-migration thread customEmitters named the i64
+        // status call `<callee>_status` (see emitThreadSyncOp). Mirror that
+        // so the descriptor migration's IR byte-exact diff stays empty for
+        // the `lockAcquire` / `rwlockReadLock` / `semaphoreAcquire` /
+        // `barrierWait` / etc. chain. Other Pattern C consumers (io / net /
+        // http ResultStatus entries) use the bare callee name; the gate
+        // on (matchedPackage == "thread") preserves their existing IR.
+        std::string callNameHint = e.callee;
+        if (wrapping == ReturnWrapping::ResultStatus
+            && matchedPackage == "thread") {
+            callNameHint = e.callee + "_status";
+        }
         llvm::Value *callResult;
         if (cRetTy->isVoidTy())
             callResult = builder_.CreateCall(fn, args);
         else
-            callResult = builder_.CreateCall(fn, args, e.callee);
+            callResult = builder_.CreateCall(fn, args, callNameHint);
 
         llvm::Value *res;
         switch (wrapping) {
@@ -962,6 +1004,20 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             if (cRetTy->isVoidTy())
                 return llvm::ConstantInt::get(i8Ty_, 0);
             res = callResult;
+            // #2393: bare-resource returns (e.g. lockNew() -> Lock,
+            // atomicIntNew() -> AtomicInt). Tag the value with the
+            // descriptor's resource kind so ARC sees it correctly, mirroring
+            // the pre-migration thread customEmitters' `addResourceKind`
+            // call. Stdlib audit confirmed no existing Pattern C consumer
+            // returns a bare resource via Direct wrapping, so adding the
+            // tag here is IR-neutral outside the newly-migrated thread
+            // constructors.
+            if (desc.resource_kind != ResourceKindRegistry::NONE) {
+                addResourceKind(res, desc.resource_kind);
+                if (const auto *info =
+                        ResourceKindRegistry::instance().getInfo(desc.resource_kind))
+                    linkNativeLibrary(info->library);
+            }
             break;
 
         case ReturnWrapping::ResultPtr:
@@ -977,7 +1033,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 // too. Idempotent with the matchedPackage insert.
                 if (const auto *info =
                         ResourceKindRegistry::instance().getInfo(desc.resource_kind))
-                    used_native_libraries_.insert(info->library);
+                    linkNativeLibrary(info->library);
             }
             break;
 

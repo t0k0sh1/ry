@@ -198,13 +198,10 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     if (!isJsonImported(cg))
         return nullptr;
 
-    // Register libry_json.dylib for JIT loading.  The custom emitters reached
-    // through this dispatcher bypass the sig.library-driven insert that
-    // happens inside emitTableDrivenNativeCall's customEmitter branch only
-    // after arg type / arity checks succeed — registering here ensures the
-    // library is loaded before any early codegenError path can fire (per
-    // codegen-stdlib-dispatcher.md #1856).
-    cg.used_native_libraries_.insert("json");
+    // libry_json.dylib registration is auto-derived inside `getRuntimeFn` via
+    // the symbol→library auto-link (#2393) — `__ry_json_*` runtime symbols
+    // emitted by `emitJsonLoad` / `emitJsonDumpFile` / `emitBuiltinJson*`
+    // register "json" automatically before any call reaches the JIT.
 
     // Intercept `load[T](...)` calls (#1852, #1887). The parser uses `[T]`
     // syntax for generic function calls at user-facing call sites, but
@@ -264,15 +261,16 @@ llvm::Value *CodeGen::emitBuiltinJsonModuleStringify(
     const char *package,
     CodeGenCustomEmitterFn stringifyEmitter,
     CodeGenCustomEmitterFn stringifySafeEmitter) {
+    // `libry_<package>` registration is auto-derived inside `getRuntimeFn`
+    // from the `__ry_json_*` / `__ry_json5_*` runtime symbols the emitters
+    // issue (#2393, symbol→library auto-link).
     const std::string pkgPrefix = std::string(package) + "::";
     if (e.callee == "stringify" &&
         native_fn_sigs_.count(pkgPrefix + "stringify")) {
-        used_native_libraries_.insert(package);
         return emitBuiltinNativeOrMock(e, package, stringifyEmitter);
     }
     if (e.callee == "stringifySafe" &&
         native_fn_sigs_.count(pkgPrefix + "stringifySafe")) {
-        used_native_libraries_.insert(package);
         return emitBuiltinNativeOrMock(e, package, stringifySafeEmitter);
     }
     return nullptr;
