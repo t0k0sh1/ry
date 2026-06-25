@@ -13,14 +13,32 @@ namespace {
 // Empty path or any empty segment is a static error (matches the issue
 // #1701 grammar: every segment must be a non-empty identifier-like str).
 // `callee` flows into the diagnostic ("getPath" / "setPath").
-// The "no escape syntax for '.' in keys" limitation falls out of this
-// unconditional split — see share/std/map.ry for the user-facing contract.
+//
+// Issue #2398: `\.` escapes a literal '.' inside a segment and `\\`
+// escapes a literal backslash. Any other escape (`\X`) and a trailing
+// bare `\` are static errors. The string literal pipeline already
+// halves user-source backslashes (`"a\\.b"` → bytes `a\.b`), so the
+// user writes `"a\\.b"` to address a Map key spelt `"a.b"`.
 std::vector<std::string> splitDotPath(CodeGen &cg, const std::string &pathStr,
                                        const char *callee) {
     std::vector<std::string> segments;
     std::string cur;
-    for (char c : pathStr) {
-        if (c == '.') {
+    for (size_t i = 0; i < pathStr.size(); ++i) {
+        char c = pathStr[i];
+        if (c == '\\') {
+            if (i + 1 >= pathStr.size())
+                cg.codegenError(std::string(callee) +
+                                "() path has trailing backslash");
+            char next = pathStr[i + 1];
+            if (next == '.' || next == '\\') {
+                cur.push_back(next);
+                ++i;
+            } else {
+                cg.codegenError(std::string(callee) +
+                                "() path has unknown escape sequence '\\" +
+                                std::string(1, next) + "'");
+            }
+        } else if (c == '.') {
             if (cur.empty())
                 cg.codegenError(std::string(callee) + "() path has empty segment");
             segments.push_back(std::move(cur));
@@ -36,19 +54,25 @@ std::vector<std::string> splitDotPath(CodeGen &cg, const std::string &pathStr,
 }
 
 // Compile-time numeric-segment parser for issue #1701 List-index dispatch.
-// Returns the segment's int form when it is a non-empty all-digits str;
-// nullopt otherwise. Shared between getPath now and setPath when its
-// List-index support lands.
+// Returns the segment's int form when it is a non-empty all-digits str
+// with an optional leading '-'; nullopt otherwise. Shared between
+// getPath and setPath; both dispatch to List-index logic in
+// emitAnyPathStep when the intermediate any holds a List.
 //
-// Invariant: the returned value is always >= 0. The all-digits filter
-// excludes '-', so negative inputs are rejected (downstream codegen
-// relies on this — see emitAnyPathStep in src/codegen_any.cpp). Base-10
-// only via std::stoll: "012" → 12, not 10 (no octal handling). User-
-// facing contract is documented at share/std/map.ry.
+// Negative results are accepted (#2398): downstream codegen wraps them
+// (`len + idx`) and bounds-checks against `[0, len)`. Base-10 only via
+// std::stoll: "012" → 12, not 10 (no octal handling); a bare "-" is
+// rejected (no digit body). User-facing contract is documented at
+// share/std/map.ry / docs/reference/collections.md.
 std::optional<int64_t> tryParseSegmentInt(const std::string &s) {
     if (s.empty()) return std::nullopt;
-    for (char c : s)
-        if (!std::isdigit(static_cast<unsigned char>(c)))
+    size_t digitStart = 0;
+    if (s[0] == '-') {
+        if (s.size() == 1) return std::nullopt;
+        digitStart = 1;
+    }
+    for (size_t i = digitStart; i < s.size(); ++i)
+        if (!std::isdigit(static_cast<unsigned char>(s[i])))
             return std::nullopt;
     try { return std::stoll(s); } catch (...) { return std::nullopt; }
 }
@@ -1557,12 +1581,16 @@ llvm::Value *CodeGen::emitCollOp_getPath(const CallExpr &e) {
     return phi;
 }
 
-// setPath (issue #1701): jq-style nested Map<str, any> write.
-// `m.setPath("a.b.c", v)` walks the dot path; intermediate segments must
-// resolve to Map<str, any> at runtime (otherwise runtime error). The
-// leaf segment is inserted or updated. Top-level receiver is COW-checked;
-// intermediate Maps mutate in place (callers sharing references to a
-// nested Map see the change). Returns Unit.
+// setPath (issue #1701, extended #2398): jq-style nested Map<str, any>
+// write. `m.setPath("a.b.c", v)` walks the dot path. Intermediates may
+// resolve to either Map<str, any> (Map-key lookup) or List<any> (int
+// index, with negative-index wrap — #2398); other tags raise a runtime
+// error. The leaf segment is inserted or updated as a Map key write —
+// leaf writes into a List index remain out of scope, so the final
+// container must still be a Map at runtime. Top-level receiver is
+// COW-checked; intermediate Map / List values mutate in place (callers
+// sharing references to a nested container see the change). Returns
+// Unit.
 llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
     if (e.args.size() != 3) return nullptr;
 
@@ -1600,10 +1628,10 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
 
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
 
-    // Walk-down through intermediates: lookup each segment, verify Map
-    // tag, advance currentMap. Hoist the `any → data ptr` scratch slot
-    // out of the loop so depth-N paths emit one alloca instead of N-1.
-    llvm::AllocaInst *anyTmp = segments.size() > 1
+    const size_t N = segments.size();
+    // Scratch slot to read raw container ptr out of an `any`. Hoisted
+    // out of the walk loop so the depth-N path emits one alloca.
+    llvm::AllocaInst *anyTmp = N > 1
         ? builder_.CreateAlloca(anyTy_, nullptr, "sp.any.tmp")
         : nullptr;
     // String-concat-free intermediate error builder (avoids
@@ -1619,52 +1647,209 @@ llvm::Value *CodeGen::emitCollOp_setPath(const CallExpr &e) {
         msg += suffix;
         return msg;
     };
+
+    // currentMap stays as recv (statically a Map<str, any>) until the
+    // walk loop replaces it with the final container's Map ptr. For
+    // N == 1 the leaf write below targets recv directly.
     llvm::Value *currentMap = recv;
-    for (size_t i = 0; i + 1 < segments.size(); ++i) {
-        const std::string &seg = segments[i];
-        llvm::Value *segStr = cachedGlobalString(seg);
-        llvm::Value *slot = emitHashTableLookup(
-            currentMap, mapHeaderTy_, kMapLayout, segStr, ptrTy_);
-        llvm::Value *found = builder_.CreateICmpSGE(
-            slot, llvm::ConstantInt::get(i64Ty_, 0), "sp.found");
+    if (N >= 2) {
+        // First hop: lookup segments[0] in recv (Map-keyed). The result
+        // becomes the "current any" for the subsequent walk dispatch.
+        llvm::Value *interAny = nullptr;
+        {
+            const std::string &seg = segments[0];
+            llvm::Value *segStr = cachedGlobalString(seg);
+            llvm::Value *slot = emitHashTableLookup(
+                recv, mapHeaderTy_, kMapLayout, segStr, ptrTy_);
+            llvm::Value *found = builder_.CreateICmpSGE(
+                slot, llvm::ConstantInt::get(i64Ty_, 0), "sp.h0.found");
 
-        auto *hitBB  = createBBInFn("sp.hit", fn);
-        auto *missBB = createBBInFn("sp.miss", fn);
-        emitBranchCond(found, hitBB, missBB);
+            auto *hitBB  = createBBInFn("sp.h0.hit", fn);
+            auto *missBB = createBBInFn("sp.h0.miss", fn);
+            emitBranchCond(found, hitBB, missBB);
 
-        builder_.SetInsertPoint(missBB);
-        emitRuntimeError(intermediateErr(seg, "not found"),
-                         "err.setpath.miss");
+            builder_.SetInsertPoint(missBB);
+            emitRuntimeError(intermediateErr(seg, "not found"),
+                             "err.setpath.miss");
 
-        builder_.SetInsertPoint(hitBB);
-        llvm::Value *valsField = builder_.CreateStructGEP(
-            mapHeaderTy_, currentMap, 3, "sp.vals.field");
-        llvm::Value *valsPtr = builder_.CreateLoad(
-            ptrTy_, valsField, "sp.vals.ptr");
-        llvm::Value *elemPtr = builder_.CreateGEP(
-            anyTy_, valsPtr, slot, "sp.elem.ptr");
-        llvm::Value *interAny = builder_.CreateLoad(
-            anyTy_, elemPtr, "sp.elem");
+            builder_.SetInsertPoint(hitBB);
+            llvm::Value *valsField = builder_.CreateStructGEP(
+                mapHeaderTy_, recv, 3, "sp.h0.vals.field");
+            llvm::Value *valsPtr = builder_.CreateLoad(
+                ptrTy_, valsField, "sp.h0.vals.ptr");
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                anyTy_, valsPtr, slot, "sp.h0.elem.ptr");
+            interAny = builder_.CreateLoad(anyTy_, elemPtr, "sp.h0.elem");
+        }
 
-        llvm::Value *tag = builder_.CreateExtractValue(interAny, 0, "sp.tag");
-        llvm::Value *isMap = builder_.CreateICmpEQ(
-            tag,
-            llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Map)),
-            "sp.is_map");
-        auto *tagOkBB  = createBBInFn("sp.tag_ok", fn);
-        auto *tagErrBB = createBBInFn("sp.tag_err", fn);
-        emitBranchCond(isMap, tagOkBB, tagErrBB);
+        // Walk hops: for each i from 1 to N-2, dispatch on `interAny`'s
+        // tag. Map → str-key lookup; List → int-index lookup (with
+        // negative-index wrap). Any other tag aborts. Error messages
+        // blame the segment whose value (= interAny) failed the type
+        // requirement — i.e. segments[i-1] from the previous hop.
+        for (size_t i = 1; i + 1 < N; ++i) {
+            const std::string &seg = segments[i];
+            const std::string &prevSeg = segments[i - 1];
+            std::optional<int64_t> intSeg = tryParseSegmentInt(seg);
 
-        builder_.SetInsertPoint(tagErrBB);
-        emitRuntimeError(intermediateErr(seg, "is not a Map"),
-                         "err.setpath.tag");
+            llvm::Value *tag =
+                builder_.CreateExtractValue(interAny, 0, "sp.w.tag");
+            llvm::Value *isMap = builder_.CreateICmpEQ(
+                tag,
+                llvm::ConstantInt::get(i64Ty_,
+                                       static_cast<int64_t>(RyAnyTag::Map)),
+                "sp.w.is_map");
+            llvm::Value *isList = builder_.CreateICmpEQ(
+                tag,
+                llvm::ConstantInt::get(i64Ty_,
+                                       static_cast<int64_t>(RyAnyTag::List)),
+                "sp.w.is_list");
 
-        builder_.SetInsertPoint(tagOkBB);
-        builder_.CreateStore(interAny, anyTmp);
-        llvm::Value *anyDataSlot = builder_.CreateStructGEP(
-            anyTy_, anyTmp, 1, "sp.any.data.slot");
-        currentMap = builder_.CreateLoad(
-            ptrTy_, anyDataSlot, "sp.next.map");
+            auto *mapBB      = createBBInFn("sp.w.map", fn);
+            auto *listCheckBB= createBBInFn("sp.w.list_check", fn);
+            auto *listBB     = intSeg ? createBBInFn("sp.w.list", fn) : nullptr;
+            auto *errBB      = createBBInFn("sp.w.err", fn);
+            auto *mergeBB    = createBBInFn("sp.w.merge", fn);
+            emitBranchCond(isMap, mapBB, listCheckBB);
+
+            builder_.SetInsertPoint(listCheckBB);
+            if (intSeg)
+                emitBranchCond(isList, listBB, errBB);
+            else
+                emitBranchUncond(errBB);
+
+            builder_.SetInsertPoint(errBB);
+            // For numeric segments either Map or List would have worked;
+            // for non-numeric only Map. The error names the parent
+            // container's segment (prevSeg) and matches the existing
+            // "is not a Map" phrasing when only Map was valid, so the
+            // legacy diagnostic stays stable for non-numeric segments.
+            emitRuntimeError(
+                intermediateErr(prevSeg, intSeg ? "is not a Map or List"
+                                                : "is not a Map"),
+                "err.setpath.walk_tag");
+
+            // Map arm: lookup `seg` as a str key on the Map ptr inside
+            // interAny. Miss aborts; hit loads next interAny.
+            builder_.SetInsertPoint(mapBB);
+            builder_.CreateStore(interAny, anyTmp);
+            llvm::Value *mapAnyDataSlot = builder_.CreateStructGEP(
+                anyTy_, anyTmp, 1, "sp.w.map.any.data");
+            llvm::Value *mapPtr = builder_.CreateLoad(
+                ptrTy_, mapAnyDataSlot, "sp.w.map.ptr");
+            llvm::Value *segStr = cachedGlobalString(seg);
+            llvm::Value *mapSlot = emitHashTableLookup(
+                mapPtr, mapHeaderTy_, kMapLayout, segStr, ptrTy_);
+            llvm::Value *mapFound = builder_.CreateICmpSGE(
+                mapSlot, llvm::ConstantInt::get(i64Ty_, 0), "sp.w.map.found");
+            auto *mapHitBB  = createBBInFn("sp.w.map.hit", fn);
+            auto *mapMissBB = createBBInFn("sp.w.map.miss", fn);
+            emitBranchCond(mapFound, mapHitBB, mapMissBB);
+
+            builder_.SetInsertPoint(mapMissBB);
+            emitRuntimeError(intermediateErr(seg, "not found"),
+                             "err.setpath.walk_miss");
+
+            builder_.SetInsertPoint(mapHitBB);
+            llvm::Value *mapValsField = builder_.CreateStructGEP(
+                mapHeaderTy_, mapPtr, 3, "sp.w.map.vals.field");
+            llvm::Value *mapValsPtr = builder_.CreateLoad(
+                ptrTy_, mapValsField, "sp.w.map.vals.ptr");
+            llvm::Value *mapElemPtr = builder_.CreateGEP(
+                anyTy_, mapValsPtr, mapSlot, "sp.w.map.elem.ptr");
+            llvm::Value *mapNextAny = builder_.CreateLoad(
+                anyTy_, mapElemPtr, "sp.w.map.elem");
+            llvm::BasicBlock *mapEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(mergeBB);
+
+            // List arm (only emitted when seg parses as int): wrap
+            // negative indexes via `len + idx`, dual-bounds-check, GEP
+            // the element, load next interAny.
+            llvm::BasicBlock *listEndBB = nullptr;
+            llvm::Value *listNextAny = nullptr;
+            if (intSeg) {
+                builder_.SetInsertPoint(listBB);
+                builder_.CreateStore(interAny, anyTmp);
+                llvm::Value *listAnyDataSlot = builder_.CreateStructGEP(
+                    anyTy_, anyTmp, 1, "sp.w.list.any.data");
+                llvm::Value *listPtr = builder_.CreateLoad(
+                    ptrTy_, listAnyDataSlot, "sp.w.list.ptr");
+                llvm::Value *lenField = builder_.CreateStructGEP(
+                    listHeaderTy_, listPtr, 0, "sp.w.list.len.field");
+                llvm::Value *len = builder_.CreateLoad(
+                    i64Ty_, lenField, "sp.w.list.len");
+                llvm::Value *idxRaw =
+                    llvm::ConstantInt::getSigned(i64Ty_, *intSeg);
+                llvm::Value *isNeg = builder_.CreateICmpSLT(
+                    idxRaw, llvm::ConstantInt::get(i64Ty_, 0),
+                    "sp.w.list.is_neg");
+                llvm::Value *wrapped = builder_.CreateAdd(
+                    len, idxRaw, "sp.w.list.wrapped");
+                llvm::Value *idxVal = builder_.CreateSelect(
+                    isNeg, wrapped, idxRaw, "sp.w.list.idx");
+                llvm::Value *under = builder_.CreateICmpSLT(
+                    idxVal, llvm::ConstantInt::get(i64Ty_, 0),
+                    "sp.w.list.under");
+                llvm::Value *over = builder_.CreateICmpSGE(
+                    idxVal, len, "sp.w.list.over");
+                llvm::Value *oob = builder_.CreateOr(
+                    under, over, "sp.w.list.oob");
+                auto *listHitBB = createBBInFn("sp.w.list.hit", fn);
+                auto *listOobBB = createBBInFn("sp.w.list.oob", fn);
+                emitBranchCond(oob, listOobBB, listHitBB);
+
+                builder_.SetInsertPoint(listOobBB);
+                emitRuntimeError(intermediateErr(seg, "index out of range"),
+                                 "err.setpath.walk_list_oob");
+
+                builder_.SetInsertPoint(listHitBB);
+                llvm::Value *dataField = builder_.CreateStructGEP(
+                    listHeaderTy_, listPtr, 2, "sp.w.list.data.field");
+                llvm::Value *dataPtr = builder_.CreateLoad(
+                    ptrTy_, dataField, "sp.w.list.data.ptr");
+                llvm::Value *listElemPtr = builder_.CreateGEP(
+                    anyTy_, dataPtr, idxVal, "sp.w.list.elem.ptr");
+                listNextAny = builder_.CreateLoad(
+                    anyTy_, listElemPtr, "sp.w.list.elem");
+                listEndBB = builder_.GetInsertBlock();
+                emitBranchUncond(mergeBB);
+            }
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = createPhi(anyTy_, {}, "sp.w.next");
+            phi->addIncoming(mapNextAny, mapEndBB);
+            if (listEndBB) phi->addIncoming(listNextAny, listEndBB);
+            interAny = phi;
+        }
+
+        // Final-container check: the leaf write requires a Map. Any
+        // other tag (including List) aborts — leaf writes into a List
+        // index are out of scope for #2398. Blame segments[N-2], the
+        // segment whose value resolves to this final container.
+        {
+            const std::string &finalParentSeg = segments[N - 2];
+            llvm::Value *finalTag =
+                builder_.CreateExtractValue(interAny, 0, "sp.fin.tag");
+            llvm::Value *finalIsMap = builder_.CreateICmpEQ(
+                finalTag,
+                llvm::ConstantInt::get(i64Ty_,
+                                       static_cast<int64_t>(RyAnyTag::Map)),
+                "sp.fin.is_map");
+            auto *finOkBB  = createBBInFn("sp.fin.ok", fn);
+            auto *finErrBB = createBBInFn("sp.fin.err", fn);
+            emitBranchCond(finalIsMap, finOkBB, finErrBB);
+
+            builder_.SetInsertPoint(finErrBB);
+            emitRuntimeError(intermediateErr(finalParentSeg, "is not a Map"),
+                             "err.setpath.tag");
+
+            builder_.SetInsertPoint(finOkBB);
+            builder_.CreateStore(interAny, anyTmp);
+            llvm::Value *anyDataSlot = builder_.CreateStructGEP(
+                anyTy_, anyTmp, 1, "sp.fin.any.data.slot");
+            currentMap = builder_.CreateLoad(
+                ptrTy_, anyDataSlot, "sp.fin.next.map");
+        }
     }
 
     // Leaf insert-or-update on currentMap. Inlined Map<str, any> insert

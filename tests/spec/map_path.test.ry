@@ -344,10 +344,11 @@ fn questionOpTests():
     cfg: Map<str, any> = {}
     expect(lookupHostGetPath(cfg)).toBeNone()
 
-# Issue #2301: numeric-segment edge cases for `tryParseSegmentInt`
-# (src/codegen_call_collection.cpp:40). The helper uses `std::isdigit`
-# to filter then `std::stoll` for parsing — base-10 only, no negative
-# sign acceptance.
+# Issue #2398: numeric-segment edge cases for `tryParseSegmentInt`
+# (src/codegen_call_collection.cpp). The helper accepts an optional
+# leading '-' for List negative-index dispatch; non-numeric segments
+# (including the bare '-' and >int64 overflow) fall through to str-key
+# lookup on Map intermediates.
 @describe("getPath: numeric segment edge cases")
 fn getPathNumericEdgeCases():
   @it("leading zero is parsed as base-10 integer (no octal handling)")
@@ -363,15 +364,6 @@ fn getPathNumericEdgeCases():
           Err(_): fail("expected int")
       None: fail("expected Some(130) at items.012")
 
-  @it("negative-looking segment is treated as a str key, not a reverse index")
-  fn negativeIsStrKey():
-    # tryParseSegmentInt rejects '-' (not a std::isdigit char), so "-1"
-    # falls through to str-key lookup. List<any> has no str-key path, so
-    # getPath returns None — there is no Python-style xs[-1] semantics here.
-    items: List<any> = [10, 20, 30]
-    m: Map<str, any> = {"items": items}
-    expect(m.getPath("items.-1")).toBeNone()
-
   @it("integer segment exceeding int64 range falls back to str key (None for List)")
   fn hugeIntegerIsStrKey():
     # All-digit segment passes the isdigit gate but std::stoll throws
@@ -381,12 +373,83 @@ fn getPathNumericEdgeCases():
     m: Map<str, any> = {"items": items}
     expect(m.getPath("items.99999999999999999999")).toBeNone()
 
-# Issue #2301: COW shared-receiver semantics. The top-level receiver
-# is COW-checked at src/codegen_call_collection.cpp:1547, but the
-# intermediate-walk loop (lines 1571-1616) mutates inner Maps in
-# place. When two aliases share the outer Map, setPath on one writes
-# through to the other's view of the inner Map.
-@describe("setPath: shared-receiver aliasing through intermediate Map")
+  @it("bare '-' falls through to str-key lookup, returning None for List")
+  fn bareMinusIsStrKey():
+    # tryParseSegmentInt rejects bare '-' (no digit after sign), so it
+    # falls through to str-key lookup. List<any> has no str-key path,
+    # so getPath returns None.
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    expect(m.getPath("items.-")).toBeNone()
+
+# Issue #2398: negative-index spec for List arms of getPath.
+# `-1` resolves to the last element, `-2` to the next-last, etc. Out-of-
+# range negatives (`-len-1` or beyond) yield None in tryMode, matching
+# the upper-bound miss semantics. Numeric segments are still dispatched
+# only when the intermediate any holds a List; on a Map intermediate
+# they are str-keys (`getPath({"-1": 9}, "-1")` returns Some(9)).
+@describe("getPath: negative-index on List arms")
+fn getPathNegativeIndex():
+  @it("returns last List element for -1 leaf")
+  fn lastLeaf():
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    case m.getPath("items.-1"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(30)
+          Err(_): fail("expected int")
+      None: fail("expected Some(30)")
+
+  @it("returns first List element for -len leaf")
+  fn firstNegLeaf():
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    case m.getPath("items.-3"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(10)
+          Err(_): fail("expected int")
+      None: fail("expected Some(10)")
+
+  @it("returns None for negative below -len")
+  fn negOob():
+    items: List<any> = [10, 20, 30]
+    m: Map<str, any> = {"items": items}
+    expect(m.getPath("items.-4")).toBeNone()
+
+  @it("walks through List intermediate with negative index to Map leaf")
+  fn negIntermediate():
+    a: Map<str, any> = {"name": "alice"}
+    b: Map<str, any> = {"name": "bob"}
+    users: List<any> = [a, b]
+    m: Map<str, any> = {"users": users}
+    case m.getPath("users.-1.name"):
+      Some(v):
+        case asType[str](v):
+          Ok(s): expect(s).toEq("bob")
+          Err(_): fail("expected str")
+      None: fail("expected Some(bob)")
+
+  @it("negative-index on Map intermediate still resolves as str-key")
+  fn negativeOnMapIsKey():
+    # When the container is a Map, the numeric segment is dispatched as
+    # a str-key lookup (tag-driven), so `-1` matches the literal key "-1".
+    m: Map<str, any> = {"-1": 99}
+    case m.getPath("-1"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(99)
+          Err(_): fail("expected int")
+      None: fail("expected Some(99)")
+
+# Issue #2301 + #2398: COW shared-receiver semantics. The top-level
+# receiver is COW-checked, but the intermediate-walk loop mutates inner
+# Maps in place. When two aliases share the outer Map, setPath on one
+# writes through to the other's view of the inner Map. #2398 extends
+# the in-place rule to List intermediates: walking through a List to
+# reach a Map element does not CoW the List or the Map.
+@describe("setPath: shared-receiver aliasing through intermediate container")
 fn setPathSharedAliasing():
   @it("intermediate Map is mutated in place even when the outer Map is aliased")
   fn intermediateSharedAcrossAliases():
@@ -403,15 +466,139 @@ fn setPathSharedAliasing():
           Err(_): fail("expected int")
       None: fail("expected Some(99) at m2.a.b")
 
-# Issue #2301: keys containing '.' are unaddressable. `splitDotPath`
-# has no escape syntax, so a Map<str, any> loaded from JSON whose key
-# contains '.' (e.g. "server.host") is never reachable via getPath
-# or dot-sugar — it is always treated as a nested path.
-@describe("getPath: dotted keys in Map are unaddressable")
-fn getPathDottedKeyUnaddressable():
-  @it("Map key containing '.' is never matched by getPath")
-  fn dottedKeyIsSplit():
+  @it("List intermediate's Map element is mutated in place across aliases")
+  fn listIntermediateSharedAcrossAliases():
+    inner: Map<str, any> = {"name": "alice"}
+    users: List<any> = [inner]
+    m1: Map<str, any> = {"users": users}
+    m2 = m1
+    m1.setPath("users.0.name", "BOB")
+    case m2.getPath("users.0.name"):
+      Some(v):
+        case asType[str](v):
+          # The walk reads through the List element (no CoW on the List
+          # itself) and mutates the inner Map in place; the Map's Arc is
+          # still shared with m2's view.
+          Ok(s): expect(s).toEq("BOB")
+          Err(_): fail("expected str")
+      None: fail("expected Some(BOB) at m2.users.0.name")
+
+# Issue #2398: dotted-key escape syntax. `splitDotPath` recognises `\.`
+# as a literal '.' inside a segment and `\\` as a literal '\'. An
+# unescaped '.' still acts as a segment separator (the pre-#2398
+# contract); only the escape form opts into the literal interpretation.
+@describe("getPath: dotted-key escape")
+fn getPathDottedKeyEscape():
+  @it("unescaped dot still splits (existing key with '.' stays unreachable)")
+  fn unescapedSplits():
     # The key "a.b" exists as a top-level entry, but getPath("a.b")
     # splits into ["a", "b"] and walks — there is no top-level "a".
     m: Map<str, any> = {"a.b": 1}
     expect(m.getPath("a.b")).toBeNone()
+
+  @it("escaped dot reaches a Map key containing literal '.'")
+  fn escapedDotHit():
+    m: Map<str, any> = {"a.b": 42}
+    case m.getPath("a\\.b"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(42)
+          Err(_): fail("expected int")
+      None: fail("expected Some(42)")
+
+  @it("escape composes with unescaped separator")
+  fn escapeComposes():
+    # path: bytes `a\.b.c` → segments ["a.b", "c"]
+    inner: Map<str, any> = {"c": 7}
+    m: Map<str, any> = {"a.b": inner}
+    case m.getPath("a\\.b.c"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(7)
+          Err(_): fail("expected int")
+      None: fail("expected Some(7)")
+
+  @it("escaped backslash reaches a Map key containing literal '\\'")
+  fn escapedBackslash():
+    # User writes "a\\\\b" → bytes `a\\b` → segment "a\b" (one literal
+    # backslash in the key).
+    m: Map<str, any> = {"a\\b": 1}
+    case m.getPath("a\\\\b"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(1)
+          Err(_): fail("expected int")
+      None: fail("expected Some(1)")
+
+# Issue #2398: setPath gains List-intermediate traversal so the path
+# `users.0.name` (and the negative form `users.-1.name`) writes through
+# a List-of-Map intermediate. Leaf writes to a List index (e.g.
+# `setPath(m, "items.0", v)` when `items` is a List) remain out of scope
+# — the leaf segment must still resolve to a Map. The escape syntax
+# applies to both getPath and setPath.
+@describe("setPath: List intermediate and negative-index")
+fn setPathListIntermediate():
+  @it("walks through List intermediate to update Map leaf")
+  fn listIntermediateUpdate():
+    a: Map<str, any> = {"name": "alice"}
+    b: Map<str, any> = {"name": "bob"}
+    users: List<any> = [a, b]
+    m: Map<str, any> = {"users": users}
+    m.setPath("users.0.name", "ALICE")
+    case m.getPath("users.0.name"):
+      Some(v):
+        case asType[str](v):
+          Ok(s): expect(s).toEq("ALICE")
+          Err(_): fail("expected str")
+      None: fail("expected Some after set")
+
+  @it("negative-index on List intermediate writes to last Map")
+  fn negativeIntermediateUpdate():
+    a: Map<str, any> = {"name": "alice"}
+    b: Map<str, any> = {"name": "bob"}
+    users: List<any> = [a, b]
+    m: Map<str, any> = {"users": users}
+    m.setPath("users.-1.name", "BOB!")
+    case m.getPath("users.1.name"):
+      Some(v):
+        case asType[str](v):
+          Ok(s): expect(s).toEq("BOB!")
+          Err(_): fail("expected str")
+      None: fail("expected Some after set")
+
+  @it("inserts a new key on the Map at a List negative index")
+  fn negativeIntermediateInsert():
+    a: Map<str, any> = {"name": "alice"}
+    users: List<any> = [a]
+    m: Map<str, any> = {"users": users}
+    m.setPath("users.-1.role", "admin")
+    case m.getPath("users.0.role"):
+      Some(v):
+        case asType[str](v):
+          Ok(s): expect(s).toEq("admin")
+          Err(_): fail("expected str")
+      None: fail("expected Some after set")
+
+@describe("setPath: dotted-key escape")
+fn setPathDottedKeyEscape():
+  @it("escaped dot writes to a Map key containing literal '.'")
+  fn escapedDotWrite():
+    m: Map<str, any> = {"a.b": 1}
+    m.setPath("a\\.b", 99)
+    case m.getPath("a\\.b"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(99)
+          Err(_): fail("expected int")
+      None: fail("expected Some after set")
+
+  @it("escaped dot inserts a new Map key containing literal '.'")
+  fn escapedDotInsert():
+    m: Map<str, any> = {"x": 1}
+    m.setPath("y\\.z", 5)
+    case m.getPath("y\\.z"):
+      Some(v):
+        case asType[int](v):
+          Ok(x): expect(x).toEq(5)
+          Err(_): fail("expected int")
+      None: fail("expected Some(5)")

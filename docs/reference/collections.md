@@ -928,6 +928,40 @@ case load[Map<str, any>]("{\"db\":{\"host\":\"localhost\",\"port\":5432}}"):
 
 The path is a string literal at the call site (compile-time split on `.`). Returns `None` on the first missing segment or when an intermediate segment resolves to neither a `Map` nor a `List` `any`. Numeric segments (e.g. `"0"`) act as `List<any>` int indexes when the intermediate any holds a `List` and as str keys when it holds a `Map` (runtime tag dispatch). The returned `any` payload borrows from the receiver; assigning into a typed binding (`let host: str = v`) emits the standard `unwrapFromAny` retain.
 
+#### Negative-index segments
+
+A numeric segment may carry a leading `-`. On a `List<any>` arm `-1` resolves to the last element, `-2` to the next-last, down to `-len` (the first). Negatives below `-len` or positives at-or-above `len` return `None`. The bare `-` segment (with no digits after the sign) is not numeric and falls back to str-key lookup. On a `Map` arm `-1` is the literal string key `"-1"`, not a reverse index — the dispatch is driven by the container's runtime tag, not the segment's spelling.
+
+```ry
+items: List<any> = [10, 20, 30]
+m: Map<str, any> = {"items": items}
+print(m.getPath("items.-1"))     # Some(30)
+print(m.getPath("items.-3"))     # Some(10)
+print(m.getPath("items.-4"))     # None
+
+# Walk through a List intermediate to a Map leaf.
+a: Map<str, any> = {"name": "alice"}
+b: Map<str, any> = {"name": "bob"}
+users: List<any> = [a, b]
+cfg: Map<str, any> = {"users": users}
+print(cfg.getPath("users.-1.name"))   # Some(bob)
+```
+
+#### Dotted-key escape
+
+A Map key that itself contains `.` (or `\`) is reached via backslash escape. `\.` matches a literal `.` inside a segment and `\\` matches a literal `\`. Any other escape (`\X`) and a trailing bare `\` are compile-time errors. The Ry string-literal layer already halves user-source backslashes, so the user writes `"a\\.b"` for the byte string `a\.b`, which splits into the single segment `a.b`.
+
+```ry
+m: Map<str, any> = {"server.host": "localhost"}
+print(m.getPath("server.host"))     # None  — unescaped '.' still splits
+print(m.getPath("server\\.host"))   # Some("localhost")
+
+# Escape composes with unescaped separators.
+inner: Map<str, any> = {"c": 7}
+n: Map<str, any> = {"a.b": inner}
+print(n.getPath("a\\.b.c"))         # Some(7)
+```
+
 ### Dot sugar for Map<str, any>
 
 When the receiver is `Map<str, any>` (or `any` itself, or `Option<any>`), `recv.field` desugars to a try-mode lookup that returns `Option<any>`. Chained access (`cfg.server.host`) auto-propagates `None` through every hop. Combine with the trailing `?` operator to unwrap the final value or propagate `None` out of the enclosing fn/case.
@@ -952,7 +986,7 @@ Dispatch fires only when the receiver's static or runtime type matches `Map<str,
 
 ### setPath
 
-`setPath(map, path, value) -> Unit`. Walks `path` through the receiver and writes `value` into the leaf segment, inserting the key if missing. The top-level receiver is COW-checked (`add` / `remove` parity); intermediate `Map<str, any>` values mutate in place, so other variables that share a reference to a nested `Map` see the change.
+`setPath(map, path, value) -> Unit`. Walks `path` through the receiver and writes `value` into the leaf segment, inserting the key if missing. The top-level receiver is COW-checked (`add` / `remove` parity); intermediate `Map<str, any>` and `List<any>` values mutate in place, so other variables that share a reference to a nested container see the change.
 
 ```ry
 inner: Map<str, any> = {"host": "old"}
@@ -965,7 +999,28 @@ case cfg.getPath("server.host"):
   None: print("unreachable")
 ```
 
-The path is a string literal at the call site. Intermediate segments must already exist and resolve to `Map<str, any>` — a missing intermediate or a non-`Map` intermediate raises a runtime error (`setPath '...': intermediate segment '...' not found` / `... is not a Map`). The leaf segment is inserted when absent and updated when present. Compound assignment (`setPath` with `+=` etc.) is not supported. `value` may be any type wrap-eligible by `any` (primitives, str, collections, records, enums).
+The path is a string literal at the call site. Intermediate segments must already exist and resolve to `Map<str, any>` (str-key lookup) or `List<any>` (int-index lookup, with the same negative-index wrap as [getPath](#getpath)) — a missing intermediate, a non-container intermediate, or an out-of-range List index raises a runtime error (`setPath '...': intermediate segment '...' not found` / `... is not a Map` / `... is not a Map or List` / `... index out of range`). The leaf segment is inserted when absent and updated when present. Compound assignment (`setPath` with `+=` etc.) is not supported. `value` may be any type wrap-eligible by `any` (primitives, str, collections, records, enums).
+
+The same backslash escape applies (`\.` → literal `.`, `\\` → literal `\`), and the same compile-time path-validation rules as `getPath` apply.
+
+#### Negative-index on List intermediates
+
+`setPath` walks negative indexes through List intermediates with the wrap rules described in [getPath](#negative-index-segments). The motivating shape is mutating a record inside a List-of-Map structure without indexing through it manually:
+
+```ry
+a: Map<str, any> = {"name": "alice"}
+b: Map<str, any> = {"name": "bob"}
+users: List<any> = [a, b]
+m: Map<str, any> = {"users": users}
+m.setPath("users.-1.name", "BOB!")
+print(m.getPath("users.1.name"))   # Some(BOB!)
+```
+
+A negative index whose wrap is still out of range raises `intermediate segment '<X>' index out of range`.
+
+#### Leaf write into a List index is out of scope
+
+`setPath`'s LEAF write is always a Map-key write: the final container reached by the walk must be a Map at runtime. `setPath(m, "items.0", v)` where `items` is a `List<any>` aborts with `intermediate segment 'items' is not a Map` — reach List elements via direct index assignment (`m["items"][0] = v`) instead. The asymmetry with `getPath` (which DOES dispatch numeric leaves through Lists) is intentional and tracked separately if List-leaf writes are ever needed.
 
 ### Merge with `+` and `+=`
 
