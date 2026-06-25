@@ -132,9 +132,13 @@ export default grammar({
     // The `as` alias form registers the alias as the effective name
     // (Python-style: `import math as m` makes `m.sqrt(...)` valid and
     // bare `math` undefined). Same-effective-name collisions are rejected.
+    // The module accepts a dotted path (`import ry.math`, `import ry.math as m`)
+    // to match the C++ parser; the canonical EBNF lists `IDENT` only but the
+    // tree-sitter grammar is intentionally more permissive (see README §
+    // "Live-editing tolerance" and the `_top_level_statement` rule comment).
     qualified_import_statement: $ => seq(
       'import',
-      field('module', $.identifier),
+      field('module', $.module_path),
       optional(seq('as', field('alias', $.identifier))),
       $._newline,
     ),
@@ -354,11 +358,19 @@ export default grammar({
     ),
 
     /* ------- @directive definition (#708) ------- */
+    // The body-less `fn` form (no `:` body, terminated by NEWLINE) is the only
+    // shape in actual stdlib usage (`share/std/core/directive.ry`,
+    // `share/std/testing/testing.ry`). `function_declaration` already supports
+    // both body-ful and body-less forms via its trailing
+    // `choice(function_body, _newline)`. The NEWLINE between `@directive(...)`
+    // and the `fn` keyword is required so the parser can absorb the line
+    // terminator at the end of the directive header line.
     directive_def_declaration: $ => seq(
       '@directive',
       '(',
       $.decorator_arguments,
       ')',
+      $._newline,
       $.function_declaration,
     ),
 

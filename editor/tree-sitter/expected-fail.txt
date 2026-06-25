@@ -15,7 +15,7 @@
 #     存在しないため file path 登録は無し。spec が追加されたら追記する。
 
 # === Tuple member access (`.0`, `.1`, ..., `.N`) ===
-tests/spec/arc_set_map_tuple_2226.test.ry  # pre-existing, registered in #1618
+tests/spec/arc_set_map_tuple_2226.test.ry  # triage(#2382): persistent — shares the tuple member-access (`.0`, `.1`) gap with the rest of this bucket
 tests/spec/collections.test.ry
 tests/spec/combinatorial/collection_element_tuple_access.test.ry
 tests/spec/combinatorial/collection_element_tuple_iterate.test.ry
@@ -26,7 +26,7 @@ tests/spec/combinatorial/nested_types.test.ry
 tests/spec/combinatorial/syntax_combinations.test.ry
 tests/spec/generic_infer_container.test.ry
 tests/spec/tuple_destructure_assign_parens.test.ry
-tests/spec/tuple_nested_generic_2264.test.ry  # pre-existing, registered in #1618
+tests/spec/tuple_nested_generic_2264.test.ry  # triage(#2382): persistent — shares the tuple member-access (`.0`, `.1`) gap with the rest of this bucket
 tests/spec/tuple_single_element.test.ry
 tests/spec/types.test.ry
 
@@ -51,9 +51,8 @@ tests/spec/concurrency.test.ry
 tests/spec/concurrency_stress.test.ry
 tests/spec/functions.test.ry
 tests/spec/http.test.ry
-tests/spec/implicit_widening.test.ry
 tests/spec/list_destructure_assign.test.ry
-tests/spec/nested_fn_loop_capture.test.ry  # pre-existing (@const top-level), registered in #1618
+tests/spec/nested_fn_loop_capture.test.ry  # triage(#2382): persistent — top-level `@const NAME: T = value` form not yet covered (same gap as `top_level_bindings.test.ry`)
 tests/spec/net.test.ry
 tests/spec/top_level_bindings.test.ry
 

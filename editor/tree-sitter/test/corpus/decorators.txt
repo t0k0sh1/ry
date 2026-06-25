@@ -288,3 +288,81 @@ fn abs(x: int) -> int:
       (return_statement
         value: (qualified_identifier
           (identifier))))))
+
+==================
+@directive definition with single target (body-less)
+==================
+
+@directive(target=["function"])
+fn inline(mode: str = "always")
+
+---
+
+(source_file
+  (directive_def_declaration
+    (decorator_arguments
+      (decorator_argument
+        name: (identifier)
+        value: (list_literal
+          (string_literal))))
+    (function_declaration
+      name: (function_name
+        (identifier))
+      parameters: (parameter_list
+        (parameter
+          name: (identifier)
+          type: (union_type
+            (primitive_type))
+          default: (string_literal))))))
+
+==================
+@directive definition with multi-target list and no parameters
+==================
+
+@directive(target=["function", "record", "field", "statement"])
+fn deprecated(reason: str = "")
+
+---
+
+(source_file
+  (directive_def_declaration
+    (decorator_arguments
+      (decorator_argument
+        name: (identifier)
+        value: (list_literal
+          (string_literal)
+          (string_literal)
+          (string_literal)
+          (string_literal))))
+    (function_declaration
+      name: (function_name
+        (identifier))
+      parameters: (parameter_list
+        (parameter
+          name: (identifier)
+          type: (union_type
+            (primitive_type))
+          default: (string_literal))))))
+
+==================
+@public preceded @directive definition (body-less)
+==================
+
+@public
+@directive(target=["for"])
+fn parallel()
+
+---
+
+(source_file
+  (decorator
+    name: (identifier))
+  (directive_def_declaration
+    (decorator_arguments
+      (decorator_argument
+        name: (identifier)
+        value: (list_literal
+          (string_literal))))
+    (function_declaration
+      name: (function_name
+        (identifier)))))
