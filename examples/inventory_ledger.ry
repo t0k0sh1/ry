@@ -1,0 +1,115 @@
+# 在庫台帳 — Map<str, int> への動的キー挿入で SKU 別在庫を更新し Result で不正操作を拒否する
+
+record Item:
+  sku: str
+  name: str
+  category: str
+
+enum InventoryOp:
+  Receive(int)
+  Ship(int)
+  Adjust(int)
+
+record Transaction:
+  sku: str
+  op: InventoryOp
+
+fn applyOp(stock: Map<str, int>, tx: Transaction) -> Result<Map<str, int>, Error>:
+  current = case get(stock, tx.sku):
+    Some(n) : n
+    None : 0
+  case tx.op:
+    InventoryOp::Receive(n):
+      if n <= 0:
+        return Err(Error(f"receive qty must be positive for {tx.sku}"))
+      stock[tx.sku] = current + n
+      return Ok(stock)
+    InventoryOp::Ship(n):
+      if n <= 0:
+        return Err(Error(f"ship qty must be positive for {tx.sku}"))
+      if n > current:
+        return Err(Error(f"insufficient stock for {tx.sku}: have {current}, need {n}"))
+      stock[tx.sku] = current - n
+      return Ok(stock)
+    InventoryOp::Adjust(n):
+      next = current + n
+      if next < 0:
+        return Err(Error(f"adjust would make {tx.sku} negative ({next})"))
+      stock[tx.sku] = next
+      return Ok(stock)
+
+fn runAll(stock: Map<str, int>, txs: List<Transaction>) -> Result<Map<str, int>, Error>:
+  current = stock
+  for tx in txs:
+    case applyOp(current, tx):
+      Ok(updated):
+        current = updated
+      Err(e):
+        return Err(e)
+  return Ok(current)
+
+fn totalsByCategory(items: List<Item>, stock: Map<str, int>) -> Map<str, int>:
+  totals: Map<str, int> = {}
+  for it in items:
+    qty = case get(stock, it.sku):
+      Some(n) : n
+      None : 0
+    prev = case get(totals, it.category):
+      Some(n) : n
+      None : 0
+    totals[it.category] = prev + qty
+  return totals
+
+fn printStock(items: List<Item>, stock: Map<str, int>):
+  for it in items:
+    qty = case get(stock, it.sku):
+      Some(n) : n
+      None : 0
+    print(f"  {it.sku} {it.name} ({it.category}): {qty}")
+
+# --- demo: opening stock and successful transaction sequence ---
+
+catalog: List<Item> = [
+  Item("BOOK-01", "Hitchhiker's Guide", "books"),
+  Item("BOOK-02", "Crime and Punishment", "books"),
+  Item("MUG-01", "Coffee mug", "kitchenware"),
+  Item("PEN-01", "Ballpoint pen", "stationery")
+]
+
+initial: Map<str, int> = {"BOOK-01": 10, "BOOK-02": 5, "MUG-01": 20, "PEN-01": 50}
+
+transactions: List<Transaction> = [
+  Transaction("BOOK-01", InventoryOp::Receive(7)),
+  Transaction("MUG-01", InventoryOp::Ship(3)),
+  Transaction("PEN-01", InventoryOp::Ship(10)),
+  Transaction("BOOK-02", InventoryOp::Adjust(2))
+]
+
+print("opening stock:")
+printStock(catalog, initial)
+
+case runAll(initial, transactions):
+  Ok(final):
+    print("\nafter transactions:")
+    printStock(catalog, final)
+    print("\ncategory totals:")
+    for k, v in totalsByCategory(catalog, final):
+      print(f"  {k}: {v}")
+  Err(e):
+    print(f"unexpected error: {e.message}")
+
+# --- demo: error path — each guard exercised independently ---
+
+errCases: List<Transaction> = [
+  Transaction("PEN-01", InventoryOp::Ship(9999)),
+  Transaction("BOOK-01", InventoryOp::Receive(0)),
+  Transaction("MUG-01", InventoryOp::Adjust(-9999))
+]
+
+print("\nerror paths:")
+for tx in errCases:
+  case applyOp(initial, tx):
+    Ok(_):
+      print(f"  unexpected: {tx.sku} succeeded")
+    Err(e):
+      print(f"  rejected: {e.message}")
