@@ -106,6 +106,21 @@ public:
     // only includes libraries for functions actually called during codegen).
     const std::unordered_set<std::string>& getRequiredLibraries() const;
 
+    // #2393: descriptor-derived library registration. The two entries below
+    // are the ONLY ways the codebase records a required library — manual
+    // modification of the underlying set is intentionally absent per close
+    // criterion 2.
+    // - `linkNativeLibrary(<lib>)`: callers already in possession of the lib
+    //   name (descriptor population sites, ResourceKind info lookups, the
+    //   gc-emission internal sites that bypass `getRuntimeFn`).
+    // - `linkNativeLibraryForSymbol(<runtime_symbol>)`: invoked inside the
+    //   runtime-call entry points (`getRuntimeFn` / `emitRuntimeCallDirect`)
+    //   to auto-derive the library from a prefix table covering Pattern B
+    //   carve-outs (convert / io built-ins) and `emitHttpListen`'s synthesized
+    //   net/http calls.
+    void linkNativeLibrary(std::string library);
+    void linkNativeLibraryForSymbol(const char *runtimeSymbol);
+
     // Testing intrinsics (`expect`, `mock`, `fail`)
     // that the program imported via `from testing import ...` (named or wildcard).
     // Populated by the caller (jit_runner) from ModuleLoader::importedTestingIntrinsics().
@@ -1332,6 +1347,18 @@ public:
 
     // Libraries actually used during codegen (populated by dispatch functions).
     // Only these libraries need to be loaded at JIT startup.
+    //
+    // Manual `.add(...)` (insertion) on this field is intentionally absent
+    // from the codebase per #2393 close criterion 2. Entry points are:
+    //   - `linkNativeLibrary(<lib>)`: descriptor-derived (Pattern A/C) and
+    //     Pattern B internal-emission sites that bypass `getRuntimeFn` (the
+    //     gc inserts in `emitArcRelease` / `emitCowCheckSlot`, which emit
+    //     `__ry_gc_*` from the C-ABI emit boundary).
+    //   - `linkNativeLibraryForSymbol(<runtime_symbol>)` (called inside
+    //     `getRuntimeFn` / `emitRuntimeCallDirect`): auto-derives the library
+    //     from the runtime symbol prefix table for Pattern B carve-outs
+    //     (convert / io built-ins) and synthesized control flow
+    //     (`emitHttpListen`) so those sites do not hand-name a library.
     std::unordered_set<std::string> used_native_libraries_;
 
     // Secondary index: fn_name → library names, for @native("libname") functions.

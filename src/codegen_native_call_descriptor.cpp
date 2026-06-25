@@ -189,6 +189,85 @@ static const OverrideEntry kOverrides[] = {
     {"http", "httpClientResponseFree", {"HttpClientResponse"},
      "__ry_http_client_response_free", {}, "",
      CodeGenReturnWrapping::Direct, false},
+
+    // -------- thread: sync-primitive new (bare resource return) --------
+    // #2393: replaces emitThreadSyncNew (0-arg) custom emitters. The
+    // `Direct` wrapping + descriptor.resource_kind (populated via
+    // inferResourceKind's bare-return arm) drives the addResourceKind tag
+    // in emitGenericNativeCall's Direct path. exported_symbol overrides
+    // the convention-derived `__ry_thread_<callee>` (the runtime symbols
+    // predate the package prefix — they live under `__ry_lock_*` /
+    // `__ry_rwlock_*` directly).
+    {"thread", "lockNew",        {},
+     "__ry_lock_new", {}, "",
+     CodeGenReturnWrapping::Direct, false},
+    {"thread", "rwlockNew",      {},
+     "__ry_rwlock_new", {}, "",
+     CodeGenReturnWrapping::Direct, false},
+
+    // -------- thread: sync-primitive new (Result<resource> return) -----
+    // semaphoreNew / barrierNew take an int and return Result<resource,
+    // Error>. The descriptor's wrapping stays ResultPtr (auto-derived from
+    // inferReturnWrapping on `Result<Semaphore, Error>`) and resource_kind
+    // is auto-set via inferResourceKind's existing Result<T,Error> arm —
+    // the override carries only the runtime-symbol mapping (the convention-
+    // derived `__ry_thread_semaphoreNew` does not match the actual
+    // `__ry_semaphore_new`).
+    {"thread", "semaphoreNew",   {"int"},
+     "__ry_semaphore_new", {}, "",
+     CodeGenReturnWrapping::Direct, false},
+    {"thread", "barrierNew",     {"int"},
+     "__ry_barrier_new", {}, "",
+     CodeGenReturnWrapping::Direct, false},
+
+    // -------- thread: sync-primitive ops (Result<Unit, Error>) ---------
+    // Status-returning sync ops route through ResultStatus +
+    // wrapStatusAsResult. The default `__ry_get_last_error` channel (set
+    // via codegen_fn.cpp's kHasModuleLastError exclusion + the
+    // emitGenericNativeCall fallback) matches the pre-migration call to
+    // `wrapStatusAsResult(status)` with no explicit errFn arg.
+    {"thread", "lockAcquire",      {"Lock"},
+     "__ry_lock_acquire", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "lockRelease",      {"Lock"},
+     "__ry_lock_release", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "rwlockReadLock",   {"RWLock"},
+     "__ry_rwlock_read_lock", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "rwlockWriteLock",  {"RWLock"},
+     "__ry_rwlock_write_lock", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "rwlockUnlock",     {"RWLock"},
+     "__ry_rwlock_unlock", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "semaphoreAcquire", {"Semaphore"},
+     "__ry_semaphore_acquire", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "semaphoreRelease", {"Semaphore"},
+     "__ry_semaphore_release", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+    {"thread", "barrierWait",      {"Barrier"},
+     "__ry_barrier_wait", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true},
+
+    // -------- thread: sync-primitive *Free (ResourceFree wrapping) ----
+    // The *Free entries don't dial a runtime fn — they emit emitResourceFree's
+    // null-check + ARC-release sequence. `exported_symbol` is unused by the
+    // ResourceFree path; the destructor lives in ResourceKindRegistry under
+    // the rk_<resource> kind, looked up via desc.handle_resource_kind.
+    {"thread", "lockFree",        {"Lock"},
+     "", {}, "",
+     CodeGenReturnWrapping::ResourceFree, true},
+    {"thread", "rwlockFree",      {"RWLock"},
+     "", {}, "",
+     CodeGenReturnWrapping::ResourceFree, true},
+    {"thread", "semaphoreFree",   {"Semaphore"},
+     "", {}, "",
+     CodeGenReturnWrapping::ResourceFree, true},
+    {"thread", "barrierFree",     {"Barrier"},
+     "", {}, "",
+     CodeGenReturnWrapping::ResourceFree, true},
 };
 
 bool paramListMatches(std::initializer_list<const char *> expected,
@@ -275,12 +354,25 @@ inferReturnWrapping(const std::string &returnType) {
 }
 
 int inferResourceKind(const std::string &returnType) {
-    // Only Result<T, Error> carriers are considered today. A bare resource
-    // return type (e.g. `fn open() -> File`) is not in stdlib use; gating
-    // on Result<...> keeps the inference's blast radius narrow.
+    // Two carriers populate `resource_kind`:
+    //
+    // (1) `Result<T, Error>` where `T` is a registered resource — the
+    //     wrapped Ok value is tagged after `wrapPtrAsResult` (the pre-2393
+    //     net/http/io constructor pattern).
+    //
+    // (2) #2393: bare resource return (e.g. `lockNew() -> Lock`,
+    //     `atomicIntNew() -> AtomicInt`). Used by thread constructors whose
+    //     runtime symbols return the resource pointer directly without a
+    //     Result wrapper. The Direct path in `emitGenericNativeCall` consumes
+    //     this to call `addResourceKind` after the call. Stdlib audit
+    //     (2026-06-25): only the thread package's *New entries hit this arm
+    //     — no other @native fn returns a bare resource type today, so the
+    //     extension is IR-neutral for existing Pattern C consumers.
+    auto &registry = ResourceKindRegistry::instance();
     std::string okType = extractResultOkType(returnType);
-    if (okType.empty()) return ResourceKindRegistry::NONE;
-    return ResourceKindRegistry::instance().lookupByTypeName(okType);
+    if (!okType.empty())
+        return registry.lookupByTypeName(okType);
+    return registry.lookupByTypeName(returnType);
 }
 
 // Installment 2-c (#2381): scan declared params for the first resource

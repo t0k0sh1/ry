@@ -563,3 +563,142 @@ TEST(NativeCallDescriptor, ErrorChannelOverride_HttpResponseUsesPackageDefault) 
     EXPECT_EQ(info->typeName, "HttpResponse");
     EXPECT_STREQ(info->errorChannelLibrary, "http");
 }
+
+// =============================================================================
+// #2393: bare-resource return tagging via inferResourceKind, error-channel
+// allow-list (thread / gc / testing / json / json5 fall through to the default
+// `__ry_get_last_error`), and the new ResourceFree wrapping for thread *Free.
+// =============================================================================
+
+TEST(NativeCallDescriptor, InferResourceKind_BareReturnsAreNowTagged) {
+    // #2393 extended inferResourceKind to bare resource returns (in addition
+    // to the pilot's Result<T, Error> arm) so the thread package's *New
+    // constructors get auto-tagged. Stdlib audit confirmed no existing
+    // Pattern C consumer returns a bare resource type, so this is IR-neutral
+    // for io / net / http / base64 / path callers.
+    int rkLock = ResourceKindRegistry::instance().lookupByTypeName("Lock");
+    EXPECT_NE(rkLock, ResourceKindRegistry::NONE)
+        << "Lock must be registered (thread static init)";
+    EXPECT_EQ(inferResourceKind("Lock"), rkLock);
+
+    int rkAtomicInt = ResourceKindRegistry::instance().lookupByTypeName(
+        "AtomicInt");
+    EXPECT_NE(rkAtomicInt, ResourceKindRegistry::NONE);
+    EXPECT_EQ(inferResourceKind("AtomicInt"), rkAtomicInt);
+
+    // Result<T, Error> arm still works (regression).
+    int rkFile = ResourceKindRegistry::instance().lookupByTypeName("File");
+    EXPECT_NE(rkFile, ResourceKindRegistry::NONE);
+    EXPECT_EQ(inferResourceKind("Result<File, Error>"), rkFile);
+
+    // Non-resource returns stay NONE.
+    EXPECT_EQ(inferResourceKind("int"), ResourceKindRegistry::NONE);
+    EXPECT_EQ(inferResourceKind("str"), ResourceKindRegistry::NONE);
+    EXPECT_EQ(inferResourceKind("Result<int, Error>"),
+              ResourceKindRegistry::NONE);
+}
+
+TEST(NativeCallDescriptor, DescriptorStorage_LockNewBareResourceKind) {
+    // lockNew() -> Lock: the descriptor populates resource_kind via the
+    // bare-return arm. The Direct path in emitGenericNativeCall consumes
+    // this to call addResourceKind after the call, mirroring the pre-2393
+    // customEmitter emitThreadSyncNew.
+    std::string src =
+        "@native(\"thread\")\n"
+        "fn lockNew() -> Lock\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("thread::lockNew");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.return_wrapping, CodeGenReturnWrapping::Direct);
+    EXPECT_NE(desc.resource_kind, ResourceKindRegistry::NONE);
+    const auto *info = ResourceKindRegistry::instance().getInfo(desc.resource_kind);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->typeName, "Lock");
+    // The override table provides the runtime symbol.
+    EXPECT_EQ(desc.exported_symbol, "__ry_lock_new");
+}
+
+TEST(NativeCallDescriptor, ErrorChannel_ThreadFallsThroughToDefault) {
+    // #2393: thread / gc / testing / json / json5 lack a per-module
+    // `__ry_<pkg>_get_last_error` runtime symbol, so codegen_fn.cpp's
+    // error_channel derivation skips them via the kHasModuleLastError
+    // allow-list. emitGenericNativeCall's fallback then uses the default
+    // `__ry_get_last_error` channel at dispatch time, matching what the
+    // pre-2393 customEmitter `wrapStatusAsResult(status)` consumed.
+    std::string src =
+        "@native(\"thread\")\n"
+        "fn lockAcquire(lock: Lock) -> Result<Unit, Error>\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("thread::lockAcquire");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.return_wrapping, CodeGenReturnWrapping::ResultStatus);
+    EXPECT_TRUE(desc.error_channel.empty())
+        << "thread is not in kHasModuleLastError; channel must stay empty "
+           "so emitGenericNativeCall falls back to __ry_get_last_error";
+    EXPECT_EQ(desc.exported_symbol, "__ry_lock_acquire");
+}
+
+TEST(NativeCallDescriptor, Override_LockFreeIsResourceFree) {
+    // #2393: the thread sync *Free entries (lockFree / rwlockFree /
+    // semaphoreFree / barrierFree) use the new ResourceFree wrapping. No
+    // runtime fn is dialed; the destructor lives in ResourceKindRegistry
+    // and emitResourceFree handles the null-check + ARC-release.
+    auto ov = lookupNativeOverloadOverride("thread", "lockFree", {"Lock"});
+    ASSERT_TRUE(ov.has_value());
+    ASSERT_TRUE(ov->wrapping_overridden);
+    EXPECT_EQ(ov->wrapping_override, CodeGenReturnWrapping::ResourceFree);
+}
+
+TEST(NativeCallDescriptor, Testing_DescriptorPopulatesForMockNative) {
+    // #2393: testing's @native fns dispatch via Pattern C (no
+    // RY_REGISTER_STDLIB_PACKAGE for testing). Descriptor population mirrors
+    // any other library-tagged @native; the default error channel applies
+    // since testing has no `__ry_testing_get_last_error` runtime symbol.
+    std::string src =
+        "@native(\"testing\")\n"
+        "fn _mockGetCallCount(name: str) -> int\n"
+        "print(\"setup only\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    const auto &descs = cg.getNativeCallDescriptors();
+    auto it = descs.find("testing::_mockGetCallCount");
+    ASSERT_NE(it, descs.end());
+    ASSERT_EQ(it->second.size(), 1u);
+
+    const auto &desc = it->second[0];
+    EXPECT_EQ(desc.return_wrapping, CodeGenReturnWrapping::Direct);
+    ASSERT_TRUE(desc.library_name.has_value());
+    EXPECT_EQ(*desc.library_name, "testing");
+    EXPECT_TRUE(desc.error_channel.empty())
+        << "testing is not in kHasModuleLastError; channel must stay empty";
+}

@@ -13,9 +13,12 @@ namespace ry {
 // builtins, not @native dispatched. The descriptor-driven library auto-
 // registration in emitTableDrivenNativeCall / emitGenericNativeCall never
 // reaches them — the reserved-name guard claims the callee before any
-// descriptor lookup runs — so the `libry_convert` load has to be expressed
-// directly with `used_native_libraries_.insert("convert")` here. The same
-// rationale applies to input() / close() in emitBuiltinCore below.
+// descriptor lookup runs. After #2393 the `libry_convert` link is auto-
+// derived from the `__ry_str_to_int` / `__ry_str_to_float` runtime symbols
+// inside `getRuntimeFn` (the symbol→library auto-link in
+// `linkNativeLibraryForSymbol`), so this dispatcher no longer hand-names
+// the library. The same auto-link covers `input()` / `close()` (libry_io)
+// in `emitBuiltinCore` below.
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // int(s) → Result<int, Error>.  Parses a str; for number→int use `x as int`.
     if (e.callee == "int") {
@@ -25,9 +28,6 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             codegenError("int() requires a str argument; use 'value as int' to convert a number to int");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fn = getRuntimeFn("__ry_str_to_int", i64Ty_, {ptrTy_, ptrTy_});
-        // Pattern B carve-out: see the file-header comment above for why this
-        // insert is not removed by the descriptor-driven consolidation.
-        used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
             llvm::ConstantInt::get(i64Ty_, 0), "to_int_err");
@@ -48,8 +48,6 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             codegenError("float() requires a str argument; use 'value as float' to convert a number to float");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
         auto fn = getRuntimeFn("__ry_str_to_float", i64Ty_, {ptrTy_, ptrTy_});
-        // Pattern B carve-out: see emitBuiltinConversion header comment above.
-        used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_float_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
             llvm::ConstantInt::get(i64Ty_, 0), "to_float_err");
@@ -619,11 +617,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() > 1)
             codegenError("input() takes 0 or 1 arguments");
         // Pattern B carve-out (#2340): `input` is a reserved compiler builtin,
-        // not @native("io"). The descriptor-driven library auto-registration
-        // never reaches this name, so the JIT load of libry_io has to be
-        // expressed directly so that __ry_io_read_line / __ry_io_input_prompt
-        // resolve for programs that never `import` io.
-        used_native_libraries_.insert("io");
+        // not @native("io"). After #2393 the libry_io link is auto-derived
+        // from `__ry_io_read_line` / `__ry_io_input_prompt` inside
+        // `emitRuntimeCallDirect`'s symbol→library auto-link.
 
         llvm::Value *outAlloca = emitAlloca(ptrTy_, "inp_out");
         emitStore(emitConstNull(ptrTy_), outAlloca);
@@ -733,10 +729,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             // the user-facing close from refcount-drop keeps lines()/readLine()
             // iterators valid after close (they observe fp==nullptr and finish).
             // Pattern B carve-out (#2340): `close` is a reserved compiler
-            // builtin, not @native("io"). The descriptor-driven library
-            // auto-registration never reaches this name, so the libry_io load
-            // for __ry_io_file_close is expressed directly here.
-            used_native_libraries_.insert("io");
+            // builtin, not @native("io"). After #2393 the libry_io link is
+            // auto-derived from `__ry_io_file_close` inside `getRuntimeFn`.
             auto fn = getRuntimeFn("__ry_io_file_close", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
             builder_.CreateCall(fn, {val});
             return llvm::ConstantInt::get(i8Ty_, 0); // Unit

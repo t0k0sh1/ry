@@ -24,6 +24,15 @@ enum class CodeGenReturnWrapping : uint8_t {
     OptionFromNullablePtr,// wrapPtrAsOption(ptr): null -> None, else Some(ptr)
     ResultOutParamOption, // status<0 -> Err(runtime); status>=0 -> Ok(Option<loaded ptr>)
     IteratorFromHandle,   // synthesize Iterator<T> with next-fn calling exported_symbol(handle, &out)
+
+    // #2393: thread sync-primitive *Free entries (lockFree / rwlockFree /
+    // semaphoreFree / barrierFree / atomicIntFree / atomicBoolFree). No
+    // runtime fn is called; the destructor lives in ResourceKindRegistry
+    // and emitResourceFree emits the null-check + ARC-release sequence.
+    // The handle arg is at `desc.handle_param_index` (must be 0 — the
+    // *Free customEmitters all take the resource as the sole arg) with
+    // `desc.handle_resource_kind` selecting the destructor.
+    ResourceFree,
 };
 
 using CodeGenCustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);

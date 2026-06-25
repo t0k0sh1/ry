@@ -36,12 +36,15 @@ The descriptor's field-level shape (intent, not C++ representation — concrete 
 |---|---|---|
 | `module_name` | string | derived from the declaration's containing module (filesystem-driven) |
 | `library_name` | optional string | `@native("<lib>")` tag if present (rule (a) below); else inferred per rule (b); absent for `ry_lib`-resolved symbols |
-| `exported_symbol` | string | currently the `rtSuffix` field in `NativeDispatchEntry`, or `__ry_<pkg>_<name>` for Pattern C |
+| `exported_symbol` | string | per-overload override from `kOverrides` (`src/codegen_native_call_descriptor.cpp`) for the entries whose runtime symbols predate the `__ry_<pkg>_<snake_callee>` convention (`__ry_io_file_open`, `__ry_listen`, `__ry_lock_acquire`, `__ry_tcp_set_timeout`, `__ry_http_body`, …); empty = derive from convention |
 | `signature` | reuse existing `NativeFnSignature` | already defined in `include/ry/codegen.hpp` — keep the field, do not duplicate |
-| `return_wrapping` | `ReturnWrapping` enum | already exists; `Direct` / `ResultPtr` / `ResultStatus` / `ResultOutParam` / `BoolFromI64` / `ResultPtrWithListMeta` |
-| `error_channel` | string | currently per-emitter (`__ry_get_last_error` default; 6 module-specific channels enumerated below) |
-| `resource_kind` | optional registry index | currently a per-emitter call to `addResourceKind(res, rk_X)` after `wrapPtrAsResult` |
+| `return_wrapping` | `CodeGenReturnWrapping` enum (see `include/ry/codegen_native_dispatch.hpp`) | `Direct` / `ResultPtr` / `ResultStatus` / `ResultOutParam` / `BoolFromI64` / `ResultPtrWithListMeta` (pilot, #2337); + `OptionFromNullablePtr` / `ResultOutParamOption` / `IteratorFromHandle` (Installment 2-c, #2381); + `ResourceFree` (Installment 3, #2393 — thread `lockFree` / `rwlockFree` / `semaphoreFree` / `barrierFree`, emits `emitResourceFree`'s null-check + ARC-release sequence with no runtime fn call) |
+| `error_channel` | string | derived from `library_name` for packages with a per-module `__ry_<pkg>_get_last_error` symbol (the `kHasModuleLastError` allow-list in `codegen_fn.cpp`: `base64` / `convert` / `filesystem` / `io` / `net` / `http` / `path` / `regex`); empty otherwise (consumed as `__ry_get_last_error` default at dispatch time — covers `thread` / `gc` / `testing` / `json` / `json5`); overridden by the resource's `errorChannelLibrary` when the resource is declared with one (today only TlsStream → `__ry_tls_get_last_error`) |
+| `resource_kind` | optional registry index | auto-derived from the declared return type: `Result<T, Error>` (pilot, #2338) and bare resource returns (#2393 — `lockNew() -> Lock`, `rwlockNew() -> RWLock`, `atomicIntNew(int) -> AtomicInt`, `atomicBoolNew(bool) -> AtomicBool`). The `Direct` and `ResultPtr` paths in `emitGenericNativeCall` consume it to tag the result via `addResourceKind` |
 | `require_list_u8_arg` | optional arg index | already exists in `NativeDispatchEntry` |
+| `handle_param_index` / `handle_resource_kind` | optional index + registry id | Installment 2-c (#2381). First declared param whose type names a registered resource. Drives emit-time type checks, ResourceFree's destructor lookup (#2393), and `emitGenericNativeCall`'s resource-kind disambiguation for same-LLVM-signature overloads (`body(HttpRequest)` vs `body(HttpClientResponse)`) |
+| `nul_checks` | ordered specs | Installment 2-c (#2381). Per-overload NUL-check specs (param index + hint + per-prefix `err_global_prefix` for byte-exact static-global counters + Ry-visible error message). The vector ordering controls emit-time nesting (httpRequest: outer = method, inner = url) |
+| `iterator_elem_type_name` | string | Installment 2-c (#2381). Iterator<T> element type spelling for `IteratorFromHandle` wrapping; empty otherwise |
 | `mockable` | bool | currently inferred from `test_mode_` + customEmitter path |
 | `overload_group_id` | optional group id | enables multi-arity grouping (current `math_table` ad-hoc) |
 
@@ -105,7 +108,7 @@ The migration follows this discriminator entry-by-entry; the audit deliverable i
 
 ## Pattern B carve-out: hand-written handlers calling into separate libraries
 
-A small set of Pattern B handlers (compiler builtins, no descriptor) calls into a `libry_<mod>` symbol that lives outside `ry_lib`. Today this is expressed as a hand-written `used_native_libraries_.insert("<mod>")` at the top of the relevant branch:
+A small set of Pattern B handlers (compiler builtins, no descriptor) calls into a `libry_<mod>` symbol that lives outside `ry_lib`:
 
 | Caller | Library registered | Why Pattern B intercepts |
 |---|---|---|
@@ -113,14 +116,13 @@ A small set of Pattern B handlers (compiler builtins, no descriptor) calls into 
 | `emitBuiltinConversion`'s `float(s)` → `__ry_str_to_float` (`src/codegen_call.cpp:42`) | `convert` | same |
 | `emitBuiltinCore`'s `input(...)` → `__ry_io_read_line` / `__ry_io_input_prompt` (`src/codegen_call.cpp:615`) | `io` | bare builtin; no `import io` required, so library registration must happen here |
 | `emitBuiltinCore`'s `close(f)` → `__ry_io_file_close` (`src/codegen_call.cpp:726`) | `io` | bare builtin; same |
+| `emitArcRelease` / `emitCowCheckSlot` → `__ry_gc_track` / `__ry_gc_untrack` | `gc` | emitted through the `ry_emit_arc_release` / `ry_emit_cow_ensure_unique` C-ABI boundary (not `getRuntimeFn`) — gc lives in a `libry_gc` shared library but the codegen-side caller has no symbol name to look up |
+| `emitHttpListen` (synthesized 3+-arg HTTP `listen`) → `__ry_net_bind` / `__ry_listen` / `__ry_accept` / `__ry_tcp_*` / `__ry_http_*` | `net` + `http` | declaratively-inexpressible control-flow synthesis (bind / listen / accept loop / dispatch / send_response / close) |
+| `emitBuiltinThread` atomics (`atomicIntNew` etc.) → `__ry_atomic_int_*` / `__ry_atomic_bool_*` | `thread` | value-transform IR (i1↔i64 zext/trunc, CAS i64→i1 trunc, non-callee SSA names like "atomic_int") that the descriptor's wrapping enum does not express |
 
-These four sites are **not** removable by the descriptor-driven inference rule above, because Pattern B handlers never build a descriptor for the call. Three resolutions are possible; none are chosen here:
+**Resolution chosen (#2393, supersedes the v1 "preferred carve-out" stance):** the symbol → library reverse map (formerly described as a deferred alternative). The map lives in `codegen.cpp::kRuntimeSymbolLibraries` as a static prefix table; `getRuntimeFn` and `emitRuntimeCallDirect` consult it on every runtime-symbol reference and call `linkNativeLibrary(<lib>)` for any match. Pattern B carve-outs (the `convert` / `io` rows above, plus `emitHttpListen`'s synthesized `__ry_net_*` / `__ry_http_*` calls and `emitBuiltinThread`'s atomic family) no longer hand-name their library: they emit through `getRuntimeFn` / `emitRuntimeCallDirect` and the auto-link covers them. The `gc` row stays a hand-call because its emit goes through the `ry_emit_arc_release` / `ry_emit_cow_ensure_unique` C-ABI boundary, which the symbol → library hook cannot see — those two sites call `linkNativeLibrary("gc")` directly.
 
-- **Keep as carve-out (preferred for v1).** Pattern B remains hand-written. Retire the general dispatcher-registration rule when descriptor-driven dispatch lands, but keep the carve-out clause for these four sites.
-- **Add a symbol → library reverse map.** Build a `__ry_*` symbol-to-library index from descriptor registration data so Pattern B handlers can call `registerLibraryForSymbol("__ry_str_to_int")` instead of hard-coding "convert". This is a separate mechanism, not a descriptor consumer.
-- **Promote `int` / `float` / `input` / `close` into descriptor scope.** Re-route the Pattern B intercepts through the descriptor-driven dispatch path. This requires the descriptor to support the `int`/`float` Result-out-param wrapping shape and the `close` resource-kind dispatch shape, both of which are already in scope of the descriptor's `return_wrapping` / `resource_kind` fields — but it crosses the "reserved builtin" boundary and risks user-visible behavior differences.
-
-The carve-out is recorded so that follow-on issues do not inherit the false assumption that descriptor consolidation removes these inserts automatically.
+Hand-written `used_native_libraries_.insert(...)` is structurally banned from the codebase after #2393 (close criterion 2). The only ways to add a library are `linkNativeLibrary(<lib>)` (descriptor-derived: descriptor population, ResourceKind info lookups, the two `gc` boundary sites) and `linkNativeLibraryForSymbol(<runtime_symbol>)` (auto-called inside `getRuntimeFn` / `emitRuntimeCallDirect`).
 
 ## Pilot (landed in #2337)
 
@@ -148,8 +150,7 @@ The coarse sequence; §"Follow-up implementation issues" below refines this into
 - `@native` first-class thunk Rust migration.
 - Mock/spy v2 argument recording across customEmitter callers (current v1 limitation at `src/codegen_call_native.cpp:797`).
 - `http`'s `src/runtime/core/hash.cpp` duplication in `libry_http`.
-- `testing`'s `absoluteSymbols` loader path (intentional carve-out, no descriptor coverage needed).
-- Cleanup of the Pattern B → `libry_<mod>` carve-out's four hand-written `used_native_libraries_` inserts (resolution choice deferred to the cleanup-stage implementation issue, see §"Pattern B carve-out").
+- `testing`'s `absoluteSymbols` loader path: testing's `@native("testing")` calls go through `emitGenericNativeCall` (Pattern C) like any other library-tagged native; the `absoluteSymbols` is a runtime-loader detail, not a codegen-side dispatcher concern.
 
 ## Follow-up implementation issues
 
@@ -167,9 +168,10 @@ These issues are **drafts**, not yet filed. Per the AGENTS.md "User Permission G
 9. Installment 3-a carve-out: math A2 type-driven entries → `emitBuiltinMath` (Pattern B). **(#2340)**
 10. Installment 3-b carve-out: `json::stringify` / `json::stringifySafe` (and the json5 mirrors) → `emitBuiltinJson` / `emitBuiltinJson5`. **(#2340)**
 11. Installment 3-c carve-out: `thread::threadSpawn` / `threadJoin` → `emitBuiltinThread`. **(#2340)**
-12. `used_native_libraries_` consolidation (descriptor-driven registration, retire the general dispatcher-registration rule, keep the §"Pattern B carve-out" exception). **(#2340)** — the auto-register lives at `src/codegen_call_native.cpp` `emitTableDrivenNativeCall` entry; the previous customEmitter mock dispatch helper was generalised to accept any `NativeEmitterFn` so Pattern B carve-outs keep #1682 mock/spy semantics.
-13. Mock / spy v2 argument recording across customEmitter callers (current v1 limitation at `src/codegen_call_native.cpp:797`); separate from descriptor work.
-14. Upper codegen migration kickoff: descriptor consumers move to Rust; native knowledge stays in C++ descriptor producers only. This is the issue that #2231 protects, and it is **out of scope of this design**.
+12. `used_native_libraries_` consolidation: first half landed with **(#2340)** — descriptor-driven auto-register at `src/codegen_call_native.cpp` `emitTableDrivenNativeCall` entry; the customEmitter mock dispatch helper was generalised to accept any `NativeEmitterFn`. Final half (the §"Pattern B carve-out" cleanup) landed with **(#2393)** — the symbol → library reverse map (`codegen.cpp::kRuntimeSymbolLibraries`) replaces hand-named library inserts in `emitBuiltinConversion` / `emitBuiltinCore` / `emitHttpListen` / `emitBuiltinJsonModuleStringify` / `emitBuiltinThread`. The only remaining hand-call is `linkNativeLibrary("gc")` in `emitArcRelease` / `emitCowCheckSlot` (C-ABI boundary, no symbol for the auto-link to inspect).
+13. Installment 3-d carve-out: thread sync primitives (`lockNew` / `rwlockNew` / `semaphoreNew` / `barrierNew` / `lock*` / `rwlock*` / `semaphore*` / `barrier*` Acquire/Release/Read/Write/Unlock/Wait/Free) → descriptor-driven via `emitGenericNativeCall`. **(#2393)** — `lockNew` / `rwlockNew` use the new `Direct` + `resource_kind` (bare-resource tagging) shape; `*Acquire` / `*Release` / `*ReadLock` / `*WriteLock` / `*Unlock` / `*Wait` use `ResultStatus` (with the "_status" SSA-name suffix preserved by a thread-package gate so IR byte-exact holds); `*Free` use the new `ResourceFree` wrapping (emits `emitResourceFree`'s null-check + ARC-release with no runtime fn call). Atomic primitives (`atomicIntNew`/`atomicBoolNew`/`atomicIntLoad`/etc.) stay Pattern B in `emitBuiltinThread` because their bool-widening / value-naming IR cannot be expressed declaratively. The `inferResourceKind` helper grew a bare-return arm (Lock / RWLock / Thread / AtomicInt / AtomicBool) — IR-neutral for existing Pattern C consumers (audit confirms no other @native returns a bare resource type today). The `error_channel` derivation in `codegen_fn.cpp` is now gated on a `kHasModuleLastError` allow-list (packages with a per-module `__ry_<pkg>_get_last_error` symbol); thread / gc / testing / json / json5 fall through to the default `__ry_get_last_error` at dispatch time. `testing`'s @native fns also benefit from this — they were already Pattern C compatible via the absence of a dispatcher registration; this issue closes the descriptor coverage by confirming the auto-derivation works end-to-end.
+14. Mock / spy v2 argument recording across customEmitter callers (current v1 limitation at `src/codegen_call_native.cpp:797`); separate from descriptor work.
+15. Upper codegen migration kickoff: descriptor consumers move to Rust; native knowledge stays in C++ descriptor producers only. This is the issue that #2231 protects, and it is **out of scope of this design**.
 
 ## Related documents
 

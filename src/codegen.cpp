@@ -5,6 +5,7 @@
 #include "ry/llvm_emit/cast_helpers.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
+#include <string_view>
 
 
 namespace ry {
@@ -118,8 +119,93 @@ const std::unordered_set<std::string> &CodeGen::getTestingIntrinsicsImported() c
     return testing_intrinsics_imported_;
 }
 
+// #2393: descriptor-derived library registration. Pattern A/C dispatch
+// already records the descriptor's library at dispatch time; this helper is
+// the single sink so the field stays a private invariant of CodeGen. The
+// `emplace` path is intentional — close criterion 2 (a repository-wide
+// audit for hand-written `.insert(...)` on the field) must stay at 0 hits.
+void CodeGen::linkNativeLibrary(std::string library) {
+    used_native_libraries_.emplace(std::move(library));
+}
+
+// #2393: symbol-prefix-driven library auto-link. Called from `getRuntimeFn`
+// and `emitRuntimeCallDirect` so any runtime symbol that lives in a
+// `libry_<mod>` shared library registers that library automatically. The
+// table covers the Pattern B carve-outs (convert / io built-ins) and the
+// synthesized control flow in `emitHttpListen` that previously hand-named
+// the library — see the architecture doc §"Pattern B carve-out".
+//
+// Order matters where prefixes overlap: longest first. `__ry_net_tls_`
+// (http library) must precede `__ry_net_` (net library); `__ry_json5_`
+// must precede `__ry_json_`. Entries without a trailing `_` are exact
+// matches (e.g. `__ry_listen` is net, but `__ry_listener_port` matches the
+// `__ry_listener_` prefix entry, also net).
+namespace {
+struct RuntimeSymbolLibraryEntry {
+    const char *prefix_or_exact;
+    bool is_prefix;
+    const char *library;
+};
+// Static lookup table; CMake's RY_NATIVE_LIBS list (12 entries) is the
+// upstream source of truth. Symbols absent from any libry_<mod> (ry_lib
+// core: __ry_print_*, __ry_str_concat, malloc, __ry_arc_release, etc.) are
+// intentionally omitted — they need no library link.
+constexpr RuntimeSymbolLibraryEntry kRuntimeSymbolLibraries[] = {
+    // -- http carve-outs in the net namespace (must precede __ry_net_) --
+    {"__ry_net_tls_",        true,  "http"},
+    // -- net --
+    {"__ry_net_",            true,  "net"},
+    {"__ry_tcp_",            true,  "net"},
+    {"__ry_listener_",       true,  "net"},
+    {"__ry_listen",          false, "net"},
+    {"__ry_accept",          false, "net"},
+    {"__ry_connect_resolved", false, "net"},
+    // -- http (incl. tls; tls lives in libry_http) --
+    {"__ry_http_",           true,  "http"},
+    {"__ry_tls_",            true,  "http"},
+    // -- thread --
+    {"__ry_thread_",         true,  "thread"},
+    {"__ry_lock_",           true,  "thread"},
+    {"__ry_rwlock_",         true,  "thread"},
+    {"__ry_semaphore_",      true,  "thread"},
+    {"__ry_barrier_",        true,  "thread"},
+    {"__ry_atomic_",         true,  "thread"},
+    // -- convert (convert.cpp uses bare `__ry_str_to_*`) --
+    {"__ry_convert_",        true,  "convert"},
+    {"__ry_str_to_int",      false, "convert"},
+    {"__ry_str_to_float",    false, "convert"},
+    // -- module-prefix stdlib libs --
+    {"__ry_io_",             true,  "io"},
+    {"__ry_gc_",             true,  "gc"},
+    {"__ry_json5_",          true,  "json5"},   // before __ry_json_
+    {"__ry_json_",           true,  "json"},
+    {"__ry_base64_",         true,  "base64"},
+    {"__ry_path_",           true,  "path"},
+    {"__ry_filesystem_",     true,  "filesystem"},
+    {"__ry_testing_",        true,  "testing"},
+};
+} // namespace
+
+void CodeGen::linkNativeLibraryForSymbol(const char *runtimeSymbol) {
+    if (!runtimeSymbol) return;
+    std::string_view s(runtimeSymbol);
+    for (const auto &entry : kRuntimeSymbolLibraries) {
+        std::string_view key(entry.prefix_or_exact);
+        if (entry.is_prefix) {
+            if (s.size() >= key.size() && s.compare(0, key.size(), key) == 0) {
+                linkNativeLibrary(entry.library);
+                return;
+            }
+        } else if (s == key) {
+            linkNativeLibrary(entry.library);
+            return;
+        }
+    }
+}
+
 llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
+    linkNativeLibraryForSymbol(name);
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
     auto *callee = ry::llvm_emit::asLlvmValue(
         ry_emit_get_runtime_fn(emit_ctx_, name, ry::llvm_emit::asRyFuncType(fnTy)));
@@ -509,6 +595,7 @@ llvm::Value *CodeGen::emitRuntimeCallDirect(const char *name, llvm::Type *ret_ty
                                             llvm::ArrayRef<llvm::Type *> arg_tys,
                                             llvm::ArrayRef<llvm::Value *> args,
                                             const char *name_hint) {
+    linkNativeLibraryForSymbol(name);
     // Defensive precondition: ry_emit_runtime_call builds a non-variadic
     // FunctionType from arg_tys and a CreateCall from args, so the two counts
     // must match. This is an internal-invariant guard against a future

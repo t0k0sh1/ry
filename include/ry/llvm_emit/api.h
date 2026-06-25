@@ -351,9 +351,10 @@ void ry_emit_arc_retain(RyEmitCtx *ctx, RyValueId header_ptr_id,
 // the `void (*)(void *)` LLVM FunctionType locally so no LLVM type identity
 // crosses the boundary.
 // Precondition: the builder must be positioned within a function before this
-// call (BBs are created inside it). The
-// caller must additionally register "gc" in CodeGen.used_native_libraries_
-// because release emits __ry_gc_track / __ry_gc_untrack calls.
+// call (BBs are created inside it). The caller must additionally call
+// `cg.linkNativeLibrary("gc")` because release emits __ry_gc_track /
+// __ry_gc_untrack calls — those symbols don't transit `getRuntimeFn`, so
+// the #2393 symbol→library auto-link cannot see them.
 void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
                          RyArcAtomic atomic, RyValueRef destructor_callee,
                          RyValueRef gc_visit_fn);
@@ -734,10 +735,10 @@ typedef struct {
 // container holds the only alias for the duration of the retain loop.
 // destructor_callee may be NULL.
 // Precondition: the builder must be positioned within a function before this
-// call (BBs are created inside it). The
-// caller must additionally register "gc" in CodeGen.used_native_libraries_
-// because the internal ry_emit_arc_release call emits __ry_gc_track /
-// __ry_gc_untrack.
+// call (BBs are created inside it). The caller must additionally call
+// `cg.linkNativeLibrary("gc")` because the internal ry_emit_arc_release
+// call emits __ry_gc_track / __ry_gc_untrack — those symbols don't transit
+// `getRuntimeFn`, so the #2393 symbol→library auto-link cannot see them.
 RyValueId ry_emit_cow_ensure_unique(RyEmitCtx *ctx,
                                     const RyCowEnsureUniqueDesc *desc);
 

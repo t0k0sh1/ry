@@ -717,15 +717,23 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // pre-computed values instead of re-inferring at dispatch.
             auto [wrapping, outParamType] = inferReturnWrapping(sig.returnTypeName);
 
-            // Error channel: __ry_<lib>_get_last_error when the descriptor
-            // resolves to a library; bare @native in unknown modules leaves
-            // it empty (the dispatch consumer falls back to deriving from
-            // matchedPackage for behavior-preservation symmetry). Using
-            // effectivePackage matches emitGenericNativeCall's matchedPackage
-            // exactly — both come from sig.library / sig.package via the
-            // same precedence ordering.
+            // Error channel: only set when the package owns a per-module
+            // `__ry_<pkg>_get_last_error` symbol (see DEFINE_LAST_ERROR in
+            // include/ry/runtime/core/error.hpp and the manual emitters in
+            // runtime/native/{io,http}.cpp). Packages without one fall
+            // through to the default `__ry_get_last_error` channel at
+            // dispatch consumption time. #2393 added thread / gc / testing /
+            // json / json5 to this fall-through set (their runtime libs
+            // never emitted DEFINE_LAST_ERROR(thread) etc., so deriving
+            // `__ry_thread_get_last_error` would resolve to an unloaded
+            // symbol at JIT time).
+            static const std::unordered_set<std::string> kHasModuleLastError = {
+                "base64", "convert", "filesystem", "io",
+                "net", "http", "path", "regex",
+            };
             std::string errCh;
-            if (!effectivePackage.empty())
+            if (!effectivePackage.empty()
+                && kHasModuleLastError.count(effectivePackage))
                 errCh = ry::util::deriveRuntimeFnName(effectivePackage,
                                                      "get_last_error");
 
