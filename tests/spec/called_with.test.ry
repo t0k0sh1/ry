@@ -1,0 +1,314 @@
+from ry.testing import it, describe, expect, spy, mock, mockClear, mockReset, mockResetAll
+from ry.testing import calledWith, calledTimes, lastCalledWith
+
+# Real implementations for spy-based scenarios.
+fn compute(x: int) -> int:
+  return x * 3
+
+fn greet(name: str) -> str:
+  return "hello " + name
+
+fn flagToInt(b: bool) -> int:
+  if b:
+    return 1
+  return 0
+
+fn floatDouble(x: float) -> float:
+  return x * 2.0
+
+fn sumList(xs: List<int>) -> int:
+  total: int = 0
+  for x in xs:
+    total = total + x
+  return total
+
+fn countStrSet(xs: Set<str>) -> int:
+  return len(xs)
+
+fn sumMapValues(m: Map<str, int>) -> int:
+  total: int = 0
+  for k, v in m:
+    total = total + v
+  return total
+
+@describe("calledWith")
+fn calledWithTests():
+  @it("should return true when at least one call matches int argument")
+  fn t1():
+    spy("compute")
+    compute(7)
+    compute(7)
+    compute(8)
+    expect(calledWith("compute", 7)).toBeTrue()
+    expect(calledWith("compute", 8)).toBeTrue()
+    expect(calledWith("compute", 999)).toBeFalse()
+
+  @it("should return true when str argument matches")
+  fn t2():
+    spy("greet")
+    greet("alice")
+    expect(calledWith("greet", "alice")).toBeTrue()
+    expect(calledWith("greet", "bob")).toBeFalse()
+
+  @it("should return true when bool argument matches")
+  fn t3():
+    spy("flagToInt")
+    flagToInt(true)
+    expect(calledWith("flagToInt", true)).toBeTrue()
+    expect(calledWith("flagToInt", false)).toBeFalse()
+
+  @it("should return true when float argument matches")
+  fn t4():
+    spy("floatDouble")
+    floatDouble(1.5)
+    expect(calledWith("floatDouble", 1.5)).toBeTrue()
+    expect(calledWith("floatDouble", 3.0)).toBeFalse()
+
+  @it("should match List<int> argument by deep snapshot")
+  fn t5():
+    spy("sumList")
+    sumList([1, 2, 3])
+    expect(calledWith("sumList", [1, 2, 3])).toBeTrue()
+    expect(calledWith("sumList", [1, 2])).toBeFalse()
+
+  @it("should match Set<str> argument unordered")
+  fn t6():
+    spy("countStrSet")
+    countStrSet({"a", "b"})
+    expect(calledWith("countStrSet", {"b", "a"})).toBeTrue()
+    expect(calledWith("countStrSet", {"c"})).toBeFalse()
+
+  @it("should match Map<str, int> argument unordered")
+  fn t7():
+    spy("sumMapValues")
+    m1: Map<str, int> = {"a": 1, "b": 2}
+    sumMapValues(m1)
+    expect(calledWith("sumMapValues", {"b": 2, "a": 1})).toBeTrue()
+    expect(calledWith("sumMapValues", {"x": 9})).toBeFalse()
+
+  @it("should return false when no calls recorded")
+  fn t8():
+    spy("compute")
+    expect(calledWith("compute", 1)).toBeFalse()
+
+  @it("should work with mock as well as spy")
+  fn t9():
+    mock(compute, (x: int) => 999)
+    compute(5)
+    expect(calledWith("compute", 5)).toBeTrue()
+    expect(calledWith("compute", 6)).toBeFalse()
+
+@describe("calledTimes")
+fn calledTimesTests():
+  @it("should return true when call count matches")
+  fn t1():
+    spy("compute")
+    compute(1)
+    compute(2)
+    expect(calledTimes("compute", 2)).toBeTrue()
+    expect(calledTimes("compute", 0)).toBeFalse()
+    expect(calledTimes("compute", 3)).toBeFalse()
+
+  @it("should return true with zero count when never called")
+  fn t2():
+    spy("compute")
+    expect(calledTimes("compute", 0)).toBeTrue()
+
+  @it("should accept an int variable as the expected count")
+  fn t3():
+    spy("compute")
+    compute(1)
+    compute(2)
+    compute(3)
+    expected: int = 3
+    expect(calledTimes("compute", expected)).toBeTrue()
+
+  @it("should reset count after mockClear")
+  fn t4():
+    spy("compute")
+    compute(1)
+    compute(2)
+    expect(calledTimes("compute", 2)).toBeTrue()
+    mockClear("compute")
+    expect(calledTimes("compute", 0)).toBeTrue()
+
+@describe("lastCalledWith")
+fn lastCalledWithTests():
+  @it("should match only the most recent call")
+  fn t1():
+    spy("compute")
+    compute(1)
+    compute(2)
+    compute(3)
+    expect(lastCalledWith("compute", 3)).toBeTrue()
+    expect(lastCalledWith("compute", 1)).toBeFalse()
+    expect(lastCalledWith("compute", 2)).toBeFalse()
+
+  @it("should return false when no calls recorded")
+  fn t2():
+    spy("compute")
+    expect(lastCalledWith("compute", 1)).toBeFalse()
+
+  @it("should match str argument on last call")
+  fn t3():
+    spy("greet")
+    greet("alice")
+    greet("bob")
+    expect(lastCalledWith("greet", "bob")).toBeTrue()
+    expect(lastCalledWith("greet", "alice")).toBeFalse()
+
+  @it("should match List<int> argument on last call")
+  fn t4():
+    spy("sumList")
+    sumList([1, 2, 3])
+    sumList([4, 5])
+    expect(lastCalledWith("sumList", [4, 5])).toBeTrue()
+    expect(lastCalledWith("sumList", [1, 2, 3])).toBeFalse()
+
+  @it("should match Set<str> argument on last call unordered")
+  fn t5():
+    spy("countStrSet")
+    countStrSet({"a", "b"})
+    countStrSet({"x", "y", "z"})
+    expect(lastCalledWith("countStrSet", {"z", "y", "x"})).toBeTrue()
+    expect(lastCalledWith("countStrSet", {"a", "b"})).toBeFalse()
+
+  @it("should match Map<str, int> argument on last call unordered")
+  fn t6():
+    spy("sumMapValues")
+    sumMapValues({"a": 1})
+    sumMapValues({"b": 2, "c": 3})
+    expect(lastCalledWith("sumMapValues", {"c": 3, "b": 2})).toBeTrue()
+    expect(lastCalledWith("sumMapValues", {"a": 1})).toBeFalse()
+
+  @it("should reset after mockClear and observe no last call")
+  fn t7():
+    spy("compute")
+    compute(7)
+    expect(lastCalledWith("compute", 7)).toBeTrue()
+    mockClear("compute")
+    expect(lastCalledWith("compute", 7)).toBeFalse()
+
+  @it("should work with mock as well as spy")
+  fn t8():
+    mock(compute, (x: int) => 999)
+    compute(5)
+    compute(6)
+    expect(lastCalledWith("compute", 6)).toBeTrue()
+    expect(lastCalledWith("compute", 5)).toBeFalse()
+
+@describe("matcher interop with mockReset / mockResetAll")
+fn matcherInteropTests():
+  @it("should observe zero state after mockReset")
+  fn t1():
+    spy("compute")
+    compute(1)
+    expect(calledTimes("compute", 1)).toBeTrue()
+    expect(calledWith("compute", 1)).toBeTrue()
+    mockReset("compute")
+    expect(calledTimes("compute", 0)).toBeTrue()
+    expect(calledWith("compute", 1)).toBeFalse()
+    expect(lastCalledWith("compute", 1)).toBeFalse()
+
+  @it("should observe zero state after mockResetAll")
+  fn t2():
+    spy("compute")
+    spy("greet")
+    compute(1)
+    greet("alice")
+    mockResetAll()
+    expect(calledTimes("compute", 0)).toBeTrue()
+    expect(calledTimes("greet", 0)).toBeTrue()
+    expect(calledWith("compute", 1)).toBeFalse()
+    expect(calledWith("greet", "alice")).toBeFalse()
+    expect(lastCalledWith("compute", 1)).toBeFalse()
+    expect(lastCalledWith("greet", "alice")).toBeFalse()
+
+# Overloaded function for overload-form tests.
+fn addNum(a: int, b: int) -> int:
+  return a + b
+
+fn addNum(a: float, b: float) -> float:
+  return a + b
+
+# Belt-and-suspenders: record / tuple / fn / zero-arg coverage. The arg-recording
+# IR is shared with verifyCalledWith (already covered for these shapes), so this
+# section locks in that the new matcher dispatch routes through the same path.
+
+record Point:
+  x: int
+  y: int
+
+fn takesPoint(p: Point) -> int:
+  return p.x + p.y
+
+fn takesPair(t: (int, str)) -> int:
+  return t.0
+
+fn takesFn(f: fn(int) -> int) -> int:
+  return f(0)
+
+fn noArgs() -> int:
+  return 42
+
+@describe("matchers cover record / tuple / fn / zero-arg")
+fn extraShapeTests():
+  @it("calledWith on record argument")
+  fn t1():
+    spy("takesPoint")
+    takesPoint(Point(1, 2))
+    expect(calledWith("takesPoint", Point(1, 2))).toBeTrue()
+    expect(calledWith("takesPoint", Point(9, 9))).toBeFalse()
+    expect(lastCalledWith("takesPoint", Point(1, 2))).toBeTrue()
+
+  @it("calledWith on tuple argument")
+  fn t2():
+    spy("takesPair")
+    takesPair((1, "a"))
+    expect(calledWith("takesPair", (1, "a"))).toBeTrue()
+    expect(calledWith("takesPair", (2, "b"))).toBeFalse()
+    expect(lastCalledWith("takesPair", (1, "a"))).toBeTrue()
+
+  @it("calledWith on fn argument (pointer equality)")
+  fn t3():
+    spy("takesFn")
+    lam = (x: int) => x + 1
+    takesFn(lam)
+    expect(calledWith("takesFn", lam)).toBeTrue()
+    expect(lastCalledWith("takesFn", lam)).toBeTrue()
+
+  @it("calledWith on zero-arg function")
+  fn t4():
+    spy("noArgs")
+    noArgs()
+    noArgs()
+    expect(calledWith("noArgs")).toBeTrue()
+    expect(calledTimes("noArgs", 2)).toBeTrue()
+    expect(lastCalledWith("noArgs")).toBeTrue()
+
+@describe("matchers on overloaded functions (signature form)")
+fn overloadedMatcherTests():
+  @it("should target int overload only with signature form")
+  fn t1():
+    spy("addNum(int, int)")
+    addNum(2, 3)
+    addNum(5, 7)
+    expect(calledWith("addNum(int, int)", 2, 3)).toBeTrue()
+    expect(calledWith("addNum(int, int)", 5, 7)).toBeTrue()
+    expect(calledWith("addNum(int, int)", 99, 99)).toBeFalse()
+
+  @it("should count only int overload calls with signature form")
+  fn t2():
+    spy("addNum(int, int)")
+    addNum(1, 1)
+    addNum(2, 2)
+    expect(calledTimes("addNum(int, int)", 2)).toBeTrue()
+    expect(calledTimes("addNum(int, int)", 1)).toBeFalse()
+
+  @it("should pick most recent call by overload with lastCalledWith")
+  fn t3():
+    spy("addNum(int, int)")
+    addNum(1, 2)
+    addNum(3, 4)
+    expect(lastCalledWith("addNum(int, int)", 3, 4)).toBeTrue()
+    expect(lastCalledWith("addNum(int, int)", 1, 2)).toBeFalse()

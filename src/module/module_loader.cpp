@@ -182,7 +182,8 @@ static std::string makeImportError(int line, const std::string &detail) {
 // through the same standard mechanism and is NOT a compiler intrinsic.
 static const std::unordered_set<std::string> &testingIntrinsics() {
     static const std::unordered_set<std::string> kSet = {
-        "expect", "mock", "mockReturnValueOnce", "spy", "fail", "verifyCalledWith"};
+        "expect", "mock", "mockReturnValueOnce", "spy", "fail",
+        "verifyCalledWith", "calledWith", "calledTimes", "lastCalledWith"};
     return kSet;
 }
 

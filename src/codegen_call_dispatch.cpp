@@ -162,6 +162,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // Testing intrinsic: verifyCalledWith (#1677)
     if (e->callee == "verifyCalledWith")
         return emitVerifyCalledWithCall(*e);
+    // Testing matcher intrinsics: calledWith / calledTimes / lastCalledWith
+    // (#2396). bool-returning siblings of verifyCalledWith / verify.
+    if (e->callee == "calledWith")
+        return emitCalledWithCall(*e);
+    if (e->callee == "calledTimes")
+        return emitCalledTimesCall(*e);
+    if (e->callee == "lastCalledWith")
+        return emitLastCalledWithCall(*e);
 
     // Fast path: pre-emit args[0] once for callee names shared by multiple
     // dispatchers, then route through the same try-chain order to avoid

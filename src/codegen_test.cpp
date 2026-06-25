@@ -2531,20 +2531,46 @@ void CodeGen::emitMockArgRecording(llvm::Value *nameStr,
     }
 }
 
-// ===== Test: verifyCalledWith(name, args...) -> int =====
+// ===== Test: verifyCalledWith / calledWith / lastCalledWith =====
+//
+// Shared implementation (#2396). verifyCalledWith returns int (call count);
+// calledWith returns bool (count > 0); lastCalledWith returns bool (last
+// recorded call matches). All three share the same signature resolution,
+// argument validation, and per-arg recording IR — only the runtime helper
+// invoked at the end and the result transformation differ. Error messages
+// are parameterized via `iname` so users see the actual intrinsic name they
+// wrote, not a stale "verifyCalledWith" prefix.
 
 llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
+    return emitCalledMatcherImpl(e, "verifyCalledWith",
+                                  CalledMatcherMode::CountInt);
+}
+
+llvm::Value *CodeGen::emitCalledWithCall(const CallExpr &e) {
+    return emitCalledMatcherImpl(e, "calledWith",
+                                  CalledMatcherMode::HasMatchingBool);
+}
+
+llvm::Value *CodeGen::emitLastCalledWithCall(const CallExpr &e) {
+    return emitCalledMatcherImpl(e, "lastCalledWith",
+                                  CalledMatcherMode::LastMatchesBool);
+}
+
+llvm::Value *CodeGen::emitCalledMatcherImpl(const CallExpr &e,
+                                             const std::string &intrinsicName,
+                                             CalledMatcherMode mode) {
+    const std::string &iname = intrinsicName;
     if (!test_mode_)
-        codegenError("'verifyCalledWith' is only allowed in test mode (use 'ry test')");
-    if (!testing_intrinsics_imported_.count("verifyCalledWith"))
-        codegenError("'verifyCalledWith' requires 'from ry.testing import verifyCalledWith'");
+        codegenError("'" + iname + "' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count(iname))
+        codegenError("'" + iname + "' requires 'from ry.testing import " + iname + "'");
 
     if (e.args.empty())
-        codegenError("verifyCalledWith() requires at least 1 argument: function name");
+        codegenError(iname + "() requires at least 1 argument: function name");
 
     auto *strExpr = std::get_if<StringExpr>(&e.args[0]->data);
     if (!strExpr)
-        codegenError("verifyCalledWith() first argument must be a function name string literal");
+        codegenError(iname + "() first argument must be a function name string literal");
     const std::string &fnNameInput = strExpr->value;
 
     // Sig form vs bare. Bare-name on an overloaded function is matched
@@ -2564,11 +2590,11 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         // still works since it goes through __ry_mock_count_matching_calls.
         auto nativeSigs = collectNativeSigsByBareName(bareName);
         if (!nativeSigs.empty())
-            codegenError("verifyCalledWith: argument recording for @native overloads "
+            codegenError(iname + ": argument recording for @native overloads "
                          "(e.g. math.digits) is not supported in v1; only count-based "
                          "verify(\"" + fnNameInput + "\") works (see "
                          "docs/reference/testing.md 'Native (@native) overloads' note)");
-        codegenError("verifyCalledWith: unknown function '" + fnNameInput + "'");
+        codegenError(iname + ": unknown function '" + fnNameInput + "'");
     }
 
     OverloadEntry *entryPtr = nullptr;
@@ -2589,7 +2615,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             if (eq) { entryPtr = &ov; break; }
         }
         if (!entryPtr) {
-            std::string msg = "verifyCalledWith: no overload of '" + bareName +
+            std::string msg = iname + ": no overload of '" + bareName +
                 "' matches signature '" + fnNameInput + "'. Available:";
             for (const auto &ov : *overloads)
                 msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
@@ -2607,13 +2633,13 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             if (ov.paramTypes.size() == suppliedArgs) { match = &ov; ++matchCount; }
         }
         if (matchCount != 1) {
-            std::string msg = "verifyCalledWith: '" + bareName +
+            std::string msg = iname + ": '" + bareName +
                 "' is overloaded; ";
             msg += (matchCount == 0)
                 ? "no overload accepts " + std::to_string(suppliedArgs) + " argument(s)."
                 : "multiple overloads accept " + std::to_string(suppliedArgs) +
                   " argument(s).";
-            msg += " Use signature form: verifyCalledWith(\"" + bareName +
+            msg += " Use signature form: " + iname + "(\"" + bareName +
                 "(T1, T2)\", ...). Available:";
             for (const auto &ov : *overloads)
                 msg += "\n  - " + buildCanonicalSig(bareName, ov.paramTypeNames);
@@ -2626,11 +2652,11 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
     const std::string &fnName = bareName;
 
     if (!mocked_functions_.count(canonicalSig) && !spied_functions_.count(canonicalSig))
-        codegenError("verifyCalledWith: '" + fnName + "' is not mocked or spied");
+        codegenError(iname + ": '" + fnName + "' is not mocked or spied");
 
     const size_t expectedNumArgs = e.args.size() - 1;
     if (expectedNumArgs != entry.paramTypes.size())
-        codegenError("verifyCalledWith: expected " +
+        codegenError(iname + ": expected " +
                      std::to_string(entry.paramTypes.size()) +
                      " argument(s) for '" + fnName + "', got " +
                      std::to_string(expectedNumArgs));
@@ -2692,7 +2718,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             paramListInner = resolveTypeAlias(
                 declaredParamName.substr(5, declaredParamName.size() - 6));
             if (!isSupportedCollElemName(paramListInner)) {
-                std::string msg = "verifyCalledWith: parameter ";
+                std::string msg = iname + ": parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -2706,7 +2732,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             paramSetInner = resolveTypeAlias(
                 declaredParamName.substr(4, declaredParamName.size() - 5));
             if (!isSupportedCollElemName(paramSetInner)) {
-                std::string msg = "verifyCalledWith: parameter ";
+                std::string msg = iname + ": parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -2727,7 +2753,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             }
             if (!isSupportedCollElemName(paramMapKeyInner) ||
                 !isSupportedCollElemName(paramMapValInner)) {
-                std::string msg = "verifyCalledWith: parameter ";
+                std::string msg = iname + ": parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -2748,7 +2774,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 else if (fldName == "bool") k = 3;
                 else if (fldName == "str") k = 4;
                 if (k == 0) {
-                    std::string msg = "verifyCalledWith: parameter ";
+                    std::string msg = iname + ": parameter ";
                     msg += std::to_string(i);
                     msg += " of '";
                     msg += fnName;
@@ -2768,7 +2794,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             // #1706: tuple params accepted iff every element is primitive or str.
             paramTupleElemNames = splitTupleSig(declaredParamName);
             if (paramTupleElemNames.empty()) {
-                std::string msg = "verifyCalledWith: parameter ";
+                std::string msg = iname + ": parameter ";
                 msg += std::to_string(i);
                 msg += " of '";
                 msg += fnName;
@@ -2785,7 +2811,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 else if (resolved == "bool") k = 3;
                 else if (resolved == "str") k = 4;
                 if (k == 0) {
-                    std::string msg = "verifyCalledWith: parameter ";
+                    std::string msg = iname + ": parameter ";
                     msg += std::to_string(i);
                     msg += " of '";
                     msg += fnName;
@@ -2812,7 +2838,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         } else if (!declaredParamName.empty() &&
                    declaredParamName != "int" && declaredParamName != "float" &&
                    declaredParamName != "bool" && declaredParamName != "str") {
-            std::string msg = "verifyCalledWith: parameter ";
+            std::string msg = iname + ": parameter ";
             msg += std::to_string(i);
             msg += " of '";
             msg += fnName;
@@ -2841,13 +2867,13 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         if (paramIsFn) {
             auto *fnInfo = lookupFnTypeInfo(argVal);
             if (!fnInfo) {
-                codegenError("verifyCalledWith: argument " +
+                codegenError(iname + ": argument " +
                              std::to_string(i + 1) +
                              " of '" + fnName +
                              "' is fn-typed but its FnTypeInfo could not be "
                              "recovered; pass a named lambda or function "
-                             "reference (e.g. `let f = (...) => ...; "
-                             "verifyCalledWith(\"...\", f)`)");
+                             "reference (e.g. `let f = (...) => ...; " +
+                             iname + "(\"...\", f)`)");
             }
 
             // #1715: enforce exact signature match between the recorded fn
@@ -2885,7 +2911,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 }
                 actualSig += ") -> ";
                 actualSig += fnInfo->returnTypeName;
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += " of '";
                 msg += fnName;
@@ -2905,7 +2931,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 argVal = builder_.CreateSIToFP(argVal, f64Ty_, "vcw_int2f");
                 argTy = f64Ty_;
             } else {
-                codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
+                codegenError(iname + ": argument " + std::to_string(i + 1) +
                              " type does not match '" + fnName + "' parameter " +
                              std::to_string(i));
             }
@@ -2931,7 +2957,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 return " has an unsupported type";
             };
             if (paramIsList && !argIsList) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += argIsSet || argIsMap ? otherShapeStr() : " is not a List";
                 msg += " but parameter ";
@@ -2944,7 +2970,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 codegenError(msg);
             }
             if (!paramIsList && !paramIsSet && !paramIsMap && argIsList) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a List but parameter ";
                 msg += std::to_string(i);
@@ -2956,7 +2982,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 codegenError(msg);
             }
             if (paramIsSet && !argIsSet) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += argIsList || argIsMap ? otherShapeStr() : " is not a Set";
                 msg += " but parameter ";
@@ -2969,7 +2995,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 codegenError(msg);
             }
             if (!paramIsSet && !paramIsList && !paramIsMap && argIsSet) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a Set but parameter ";
                 msg += std::to_string(i);
@@ -2981,7 +3007,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 codegenError(msg);
             }
             if (paramIsMap && !argIsMap) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += argIsList || argIsSet ? otherShapeStr() : " is not a Map";
                 msg += " but parameter ";
@@ -2994,7 +3020,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 codegenError(msg);
             }
             if (!paramIsSet && !paramIsList && !paramIsMap && argIsMap) {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += " is a Map but parameter ";
                 msg += std::to_string(i);
@@ -3018,7 +3044,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 }
                 std::string argElemResolved = resolveTypeAlias(argElemName);
                 if (argElemResolved != paramListInner) {
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " is List<";
                     msg += argElemName;
@@ -3050,7 +3076,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 }
                 std::string argElemResolved = resolveTypeAlias(argElemName);
                 if (argElemResolved != paramSetInner) {
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " is Set<";
                     msg += argElemName;
@@ -3083,7 +3109,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 std::string argValResolved = resolveTypeAlias(argValName);
                 if (argKeyResolved != paramMapKeyInner ||
                     argValResolved != paramMapValInner) {
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " is Map<";
                     msg += argKeyName;
@@ -3113,7 +3139,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     std::string argName =
                         argSt->hasName() ? argSt->getName().str()
                                           : std::string("<anonymous>");
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " is record '";
                     msg += argName;
@@ -3129,7 +3155,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             } else if (paramIsTuple) {
                 if (!isTupleStructType(argSt) ||
                     argSt->getNumElements() != paramTupleKinds.size()) {
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " has shape mismatch for tuple parameter ";
                     msg += std::to_string(i);
@@ -3156,7 +3182,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                 if (!argTupleSig.empty())
                     argElemNames = splitTupleSig(argTupleSig);
                 if (argElemNames.size() != paramTupleElemNames.size()) {
-                    std::string msg = "verifyCalledWith: argument ";
+                    std::string msg = iname + ": argument ";
                     msg += std::to_string(i + 1);
                     msg += " is a tuple whose element types could not be "
                            "recovered from metadata; only literal tuple "
@@ -3176,7 +3202,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     std::string paramElemResolved =
                         resolveTypeAlias(paramTupleElemNames[k]);
                     if (argElemResolved != paramElemResolved) {
-                        std::string msg = "verifyCalledWith: argument ";
+                        std::string msg = iname + ": argument ";
                         msg += std::to_string(i + 1);
                         msg += " element ";
                         msg += std::to_string(k);
@@ -3195,7 +3221,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
                     }
                 }
             } else {
-                std::string msg = "verifyCalledWith: argument ";
+                std::string msg = iname + ": argument ";
                 msg += std::to_string(i + 1);
                 msg += " has struct type but parameter ";
                 msg += std::to_string(i);
@@ -3420,7 +3446,7 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
             kind = 4;
             valI64 = builder_.CreatePtrToInt(argVal, i64Ty_, "vcw_p2i");
         } else {
-            codegenError("verifyCalledWith: argument " + std::to_string(i + 1) +
+            codegenError(iname + ": argument " + std::to_string(i + 1) +
                          " has unsupported type; only int, float, bool, str, "
                          "List<T>, Set<T>, Map<K, V>, record types whose fields "
                          "are primitives or str, and tuple types whose elements "
@@ -3441,10 +3467,177 @@ llvm::Value *CodeGen::emitVerifyCalledWithCall(const CallExpr &e) {
         builder_.CreateStore(valI64, valGEP);
     }
 
+    // #2396: dispatch on mode. CountInt / HasMatchingBool share
+    // __ry_mock_count_matching_calls (the bool form just compares count > 0).
+    // LastMatchesBool uses a dedicated runtime helper that returns 1 iff the
+    // most-recent recorded call matches; 0 means no calls or last call didn't
+    // match. Both helpers consume snapshot ownership for collection-shaped
+    // expected args identically, so the recording IR is unchanged.
+    if (mode == CalledMatcherMode::LastMatchesBool) {
+        llvm::FunctionCallee lastFn = getRuntimeFn(
+            "__ry_mock_last_call_matches", i64Ty_,
+            {ptrTy_, i64Ty_, ptrTy_, ptrTy_});
+        llvm::Value *res = builder_.CreateCall(
+            lastFn, {nameStr, numArgsConst, kindsArr, valuesArr}, "vcw_last");
+        return builder_.CreateICmpNE(
+            res, llvm::ConstantInt::get(i64Ty_, 0), "vcw_last_b");
+    }
     llvm::FunctionCallee countFn =
         getRuntimeFn("__ry_mock_count_matching_calls", i64Ty_, {ptrTy_, i64Ty_, ptrTy_, ptrTy_});
-    return builder_.CreateCall(countFn, {nameStr, numArgsConst, kindsArr, valuesArr},
-                                "vcw_count");
+    llvm::Value *count = builder_.CreateCall(
+        countFn, {nameStr, numArgsConst, kindsArr, valuesArr}, "vcw_count");
+    if (mode == CalledMatcherMode::HasMatchingBool)
+        return builder_.CreateICmpNE(
+            count, llvm::ConstantInt::get(i64Ty_, 0), "vcw_has");
+    return count;
+}
+
+// ===== Test: calledTimes(name, n) -> bool =====
+//
+// #2396: bool form of `verify(name) == n`. Validates the function exists and
+// has been mocked or spied (matches verifyCalledWith's compile-time gate).
+// For overloaded functions, bare-name accepts aggregate count semantics —
+// __ry_mock_get_call_count's bare-name index path sums calls across all
+// overloads, so no sig-form requirement is enforced (unlike verifyCalledWith
+// which requires arity disambiguation). The expected count is any int
+// expression (literal or variable).
+llvm::Value *CodeGen::emitCalledTimesCall(const CallExpr &e) {
+    const std::string iname = "calledTimes";
+    if (!test_mode_)
+        codegenError("'" + iname + "' is only allowed in test mode (use 'ry test')");
+    if (!testing_intrinsics_imported_.count(iname))
+        codegenError("'" + iname + "' requires 'from ry.testing import " + iname + "'");
+
+    if (e.args.size() != 2)
+        codegenError(iname + "() requires exactly 2 arguments: function name and expected count");
+
+    auto *strExpr = std::get_if<StringExpr>(&e.args[0]->data);
+    if (!strExpr)
+        codegenError(iname + "() first argument must be a function name string literal");
+    const std::string &fnNameInput = strExpr->value;
+
+    // Parse sig form if present. Bare name is allowed on overloaded fns and
+    // aggregates the count at runtime.
+    std::string bareName;
+    std::vector<std::string> sigParamTypes;
+    const bool isSigForm = parseSigString(fnNameInput, bareName, sigParamTypes);
+    if (!isSigForm) bareName = fnNameInput;
+
+    auto *overloads = findFunction(bareName);
+    auto nativeSigs = collectNativeSigsByBareName(bareName);
+    const bool isNative = (!overloads || overloads->empty()) && !nativeSigs.empty();
+    if ((!overloads || overloads->empty()) && nativeSigs.empty())
+        codegenError(iname + ": unknown function '" + fnNameInput + "'");
+
+    auto sigParamNames = [](const NativeFnSignature *sig) {
+        std::vector<std::string> out;
+        out.reserve(sig->params.size());
+        for (const auto &p : sig->params) out.push_back(p.typeName);
+        return out;
+    };
+
+    // Resolve to canonical sig (or use the bare name for aggregate runtime path).
+    std::string runtimeName = bareName;
+    if (isSigForm) {
+        std::vector<std::string> wantNorm;
+        wantNorm.reserve(sigParamTypes.size());
+        for (const auto &p : sigParamTypes)
+            wantNorm.push_back(resolveTypeAlias(ry::util::trimTypeNameSpaces(p)));
+        bool found = false;
+        if (overloads) {
+            for (auto &ov : *overloads) {
+                if (ov.paramTypeNames.size() != wantNorm.size()) continue;
+                bool eq = true;
+                for (size_t i = 0; i < wantNorm.size(); ++i) {
+                    if (resolveTypeAlias(ry::util::trimTypeNameSpaces(ov.paramTypeNames[i]))
+                            != wantNorm[i]) {
+                        eq = false; break;
+                    }
+                }
+                if (eq) {
+                    runtimeName = buildCanonicalSig(bareName, ov.paramTypeNames);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found && isNative) {
+            // For @native overloads, accept any sig form whose normalized
+            // param types match a registered native sig.
+            for (const auto *nsig : nativeSigs) {
+                auto paramNames = sigParamNames(nsig);
+                if (paramNames.size() != wantNorm.size()) continue;
+                bool eq = true;
+                for (size_t i = 0; i < wantNorm.size(); ++i) {
+                    if (resolveTypeAlias(ry::util::trimTypeNameSpaces(paramNames[i]))
+                            != wantNorm[i]) {
+                        eq = false; break;
+                    }
+                }
+                if (eq) {
+                    runtimeName = buildCanonicalSig(bareName, paramNames);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found)
+            codegenError(iname + ": no overload of '" + bareName +
+                         "' matches signature '" + fnNameInput + "'");
+    } else if (overloads && overloads->size() == 1) {
+        // Single overload — use canonical sig so the runtime checks the exact
+        // entry without falling back to bare-name aggregation. Behaviourally
+        // identical for the single-overload case but mirrors verifyCalledWith's
+        // canonicalization.
+        runtimeName = buildCanonicalSig(bareName, (*overloads)[0].paramTypeNames);
+    } else if (isNative && nativeSigs.size() == 1) {
+        runtimeName = buildCanonicalSig(bareName, sigParamNames(nativeSigs[0]));
+    }
+    // For bare-name on multi-overload, runtimeName stays as the bare name and
+    // __ry_mock_get_call_count aggregates via the bare-name index.
+
+    // Compile-time mocked/spied gate. For bare-name multi-overload, require
+    // that ANY overload is mocked or spied (matches verify(bareName) parity
+    // — if none are mocked, the user has a typo or stale name).
+    bool anyMockedOrSpied = false;
+    if (isSigForm ||
+        (overloads && overloads->size() == 1) ||
+        (isNative && nativeSigs.size() == 1)) {
+        anyMockedOrSpied = mocked_functions_.count(runtimeName) > 0 ||
+                            spied_functions_.count(runtimeName) > 0;
+    } else if (overloads) {
+        for (auto &ov : *overloads) {
+            std::string sig = buildCanonicalSig(bareName, ov.paramTypeNames);
+            if (mocked_functions_.count(sig) > 0 || spied_functions_.count(sig) > 0) {
+                anyMockedOrSpied = true;
+                break;
+            }
+        }
+    } else if (isNative) {
+        for (const auto *nsig : nativeSigs) {
+            std::string sig = buildCanonicalSig(bareName, sigParamNames(nsig));
+            if (mocked_functions_.count(sig) > 0 || spied_functions_.count(sig) > 0) {
+                anyMockedOrSpied = true;
+                break;
+            }
+        }
+    }
+    if (!anyMockedOrSpied)
+        codegenError(iname + ": '" + bareName + "' is not mocked or spied");
+
+    // Evaluate the expected-count expression and require int.
+    llvm::Value *expectedVal = emitExpr(*e.args[1]);
+    if (expectedVal->getType() != i64Ty_)
+        codegenError(iname + "() second argument must be int");
+
+    // Cache the global string for the runtime name.
+    auto &nameStr = mock_name_strings_[runtimeName];
+    if (!nameStr) nameStr = cachedGlobalString(runtimeName, ".mock." + runtimeName);
+
+    llvm::FunctionCallee getCountFn =
+        getRuntimeFn("__ry_mock_get_call_count", i64Ty_, {ptrTy_});
+    llvm::Value *actual = builder_.CreateCall(getCountFn, {nameStr}, "ct_count");
+    return builder_.CreateICmpEQ(actual, expectedVal, "ct_eq");
 }
 
 // ===== Test: ExpectStmt =====

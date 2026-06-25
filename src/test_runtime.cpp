@@ -1348,6 +1348,74 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     return matched;
 }
 
+// #2396: returns 1 iff the last recorded call to `name` matches
+// (kinds, values). The codegen path always pins `name` to the canonical
+// signature of the resolved overload (emitCalledMatcherImpl in
+// codegen_test.cpp dispatches bare-name on overloaded fns by arity at
+// compile time — compile error on ambiguity), so the exact-name lookup
+// below always hits a single entry in practice; the bare-name index
+// fallback is structurally unreachable from `lastCalledWith` and kept only
+// for shape-symmetry with __ry_mock_count_matching_calls. If a future
+// caller invokes this helper with an unresolved bare name across multiple
+// overload entries, the current "any entry's calls.back() matches" branch
+// would not be a true global-last across overloads — adding a global
+// sequence counter on MockCallRecord would be the correct generalization,
+// but is deferred until such a caller actually exists. Snapshot ownership
+// for kinds 6-11 is transferred identically to
+// __ry_mock_count_matching_calls so the path is leak-free regardless.
+int64_t __ry_mock_last_call_matches(const char *name, int64_t numArgs,
+                                     const int64_t *kinds,
+                                     const int64_t *values) {
+    std::vector<MockEntry *> entries;
+    auto exactIt = g_mock_registry.find(name);
+    if (exactIt != g_mock_registry.end()) {
+        entries.push_back(&exactIt->second);
+    } else {
+        auto idxIt = g_mock_name_index.find(name);
+        if (idxIt != g_mock_name_index.end()) {
+            for (const auto &sig : idxIt->second) {
+                auto sigIt = g_mock_registry.find(sig);
+                if (sigIt != g_mock_registry.end())
+                    entries.push_back(&sigIt->second);
+            }
+        }
+    }
+    int64_t result = 0;
+    for (MockEntry *entry : entries) {
+        if (entry->calls.empty()) continue;
+        const auto &last = entry->calls.back();
+        if (static_cast<int64_t>(last.args.size()) != numArgs) continue;
+        bool ok = true;
+        for (int64_t i = 0; i < numArgs; ++i) {
+            if (!mockArgEqual(last.args[static_cast<size_t>(i)],
+                              kinds[i], values[i])) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) { result = 1; break; }
+    }
+    for (int64_t i = 0; i < numArgs; ++i) {
+        if (kinds[i] == 6 || kinds[i] == 7) {
+            freeMockListSnapshot(
+                reinterpret_cast<MockListSnapshot *>(values[i]));
+        } else if (kinds[i] == 8) {
+            freeMockMapSnapshot(
+                reinterpret_cast<MockMapSnapshot *>(values[i]));
+        } else if (kinds[i] == 9) {
+            freeMockRecordSnapshot(
+                reinterpret_cast<MockRecordSnapshot *>(values[i]));
+        } else if (kinds[i] == 10) {
+            freeMockTupleSnapshot(
+                reinterpret_cast<MockTupleSnapshot *>(values[i]));
+        } else if (kinds[i] == 11) {
+            freeMockFnSnapshot(
+                reinterpret_cast<MockFnSnapshot *>(values[i]));
+        }
+    }
+    return result;
+}
+
 void __ry_mock_clear_all() {
     for (auto &kv : g_mock_registry) {
         auto &entry = kv.second;
