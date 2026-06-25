@@ -221,6 +221,8 @@ fn matcherInteropTests():
     expect(calledTimes("greet", 0)).toBeTrue()
     expect(calledWith("compute", 1)).toBeFalse()
     expect(calledWith("greet", "alice")).toBeFalse()
+    expect(lastCalledWith("compute", 1)).toBeFalse()
+    expect(lastCalledWith("greet", "alice")).toBeFalse()
 
 # Overloaded function for overload-form tests.
 fn addNum(a: int, b: int) -> int:

@@ -1348,16 +1348,21 @@ int64_t __ry_mock_count_matching_calls(const char *name, int64_t numArgs,
     return matched;
 }
 
-// #2396: returns 1 iff the most-recently-recorded call across all entries
-// resolved for `name` matches (kinds, values). Aggregation across overloads
-// mirrors __ry_mock_count_matching_calls — when a bare name maps to multiple
-// canonical-sig entries (bare-name index), the entry's last call is compared
-// against the expected args. If multiple entries are present and at least one
-// has a last call that matches, we return 1; we do NOT track a global
-// timestamp across entries because individual entry ordering is sufficient
-// for the verifyCalledWith-style use case (the user supplies a name and
-// expects "the last invocation of THAT thing"). Snapshot ownership is
-// transferred identically to __ry_mock_count_matching_calls.
+// #2396: returns 1 iff the last recorded call to `name` matches
+// (kinds, values). The codegen path always pins `name` to the canonical
+// signature of the resolved overload (emitCalledMatcherImpl in
+// codegen_test.cpp dispatches bare-name on overloaded fns by arity at
+// compile time — compile error on ambiguity), so the exact-name lookup
+// below always hits a single entry in practice; the bare-name index
+// fallback is structurally unreachable from `lastCalledWith` and kept only
+// for shape-symmetry with __ry_mock_count_matching_calls. If a future
+// caller invokes this helper with an unresolved bare name across multiple
+// overload entries, the current "any entry's calls.back() matches" branch
+// would not be a true global-last across overloads — adding a global
+// sequence counter on MockCallRecord would be the correct generalization,
+// but is deferred until such a caller actually exists. Snapshot ownership
+// for kinds 6-11 is transferred identically to
+// __ry_mock_count_matching_calls so the path is leak-free regardless.
 int64_t __ry_mock_last_call_matches(const char *name, int64_t numArgs,
                                      const int64_t *kinds,
                                      const int64_t *values) {

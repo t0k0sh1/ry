@@ -680,7 +680,7 @@ fn calledWithTests():
         expect(calledWith("compute", 99)).toBeFalse()
 ```
 
-- Requires `from testing import calledWith` (since v0.0.30, #2396)
+- Requires `from ry.testing import calledWith` (since v0.0.30, #2396)
 - Same compile-time validation rules as `verifyCalledWith`: function must exist, must be mocked or spied, and supplied `args...` must match the original function's parameter list by arity and type
 - Supported argument types are identical to `verifyCalledWith` (`int`, `float`, `bool`, `str`, `List<T>`, `Set<T>`, `Map<K, V>`, record / tuple, `fn(...) -> R`)
 - Returns `false` when no recorded call matches (including the "never called" case)
@@ -712,7 +712,7 @@ fn calledTimesTests():
         expect(calledTimes("compute", 0)).toBeTrue()
 ```
 
-- Requires `from testing import calledTimes` (since v0.0.30, #2396)
+- Requires `from ry.testing import calledTimes` (since v0.0.30, #2396)
 - The first argument must be a **string literal** function name (same convention as `calledWith` / `verifyCalledWith`)
 - The function must exist and must be mocked or spied (compile error otherwise — catches stale or misspelled names that `verify(name)` silently treats as zero)
 - The second argument may be any `int` expression (literal, variable, or computed)
@@ -742,7 +742,7 @@ fn lastCalledWithTests():
         expect(lastCalledWith("compute", 2)).toBeFalse()
 ```
 
-- Requires `from testing import lastCalledWith` (since v0.0.30, #2396)
+- Requires `from ry.testing import lastCalledWith` (since v0.0.30, #2396)
 - Same compile-time validation rules and supported argument types as `verifyCalledWith` / `calledWith`
 - Returns `false` when there are no recorded calls
 - Overload semantics are identical to `verifyCalledWith`: bare-name on an overloaded function dispatches to the arity-matching overload (compile error on ambiguity); signature form selects a specific overload. "Last" always refers to the last call recorded against the resolved overload — there is no cross-overload aggregation
