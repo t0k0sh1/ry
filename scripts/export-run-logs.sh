@@ -31,6 +31,9 @@ if root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
 fi
 cd "$REPO_ROOT"
 
+# shellcheck source=scripts/lib/run-nonce.sh
+source "$REPO_ROOT/scripts/lib/run-nonce.sh"
+
 # Paths recorded in JSONL must be repo-relative. Reject absolute and
 # parent-escaping paths up-front so a misconfigured RY_BUILD_DIR /
 # RY_LOG_DIR / positional target cannot leak into the metadata.
@@ -167,7 +170,7 @@ if ! is_repo_relative_path "$LOG_DIR_BASE"; then
   echo "error: RY_LOG_DIR must be a repo-relative path (got: $LOG_DIR_BASE)" >&2
   exit 1
 fi
-RUN_NONCE="$(jq -nr 'now * 1000000 | floor')"
+RUN_NONCE="$(gen_run_nonce)"
 RUN_ID="$(date -u +%Y%m%d-%H%M%S)-$GIT_SHORT-$RUN_NONCE"
 RUN_DIR="$LOG_DIR_BASE/$RUN_ID"
 ARTIFACTS_DIR="$RUN_DIR/artifacts"
