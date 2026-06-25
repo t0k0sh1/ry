@@ -226,9 +226,14 @@ if [[ "$TARGET_MODE" == "files" ]]; then
       continue
     fi
     if [[ -d "$target" ]]; then
+      # `-L` follows symlinks so a symlinked .test.ry under $target is matched
+      # by `-type f` (which inspects the resolved target's stat, not the
+      # symlink's). Without `-L`, symlinked test files are silently skipped
+      # (#2403). The literal-file branch below already follows symlinks via
+      # `[[ -f ... ]]`, so this restores the same behavior for directory walks.
       while IFS= read -r -d '' f; do
         EXPANDED+=("${f#./}")
-      done < <(find "$target" -type f -name '*.test.ry' -print0 | sort -z)
+      done < <(find -L "$target" -type f -name '*.test.ry' -print0 | sort -z)
     elif [[ -f "$target" ]]; then
       EXPANDED+=("$target")
     else
