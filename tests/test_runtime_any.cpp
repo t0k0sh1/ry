@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — constructs RyAny by hand and calls
+// __ry_any_* runtime entry points directly.
+
 #include "ry/runtime/core/any.hpp"
 #include "ry/runtime/core/string.hpp"
 #include <gtest/gtest.h>
@@ -15,7 +21,7 @@ protected:
     }
 };
 
-// ===== Helpers =====
+// ===== [internal] Helpers =====
 
 static RyAny mkInt(int64_t v) {
     RyAny a;
@@ -79,7 +85,7 @@ static const char *getStr(const RyAny *a) {
     return v;
 }
 
-// ===== Type error (#224) =====
+// ===== [internal] Type error (#224) =====
 
 TEST_F(RuntimeAnyDeathTest, TypeErrorPrintsMessageAndExits) {
     EXPECT_EXIT(
@@ -97,7 +103,7 @@ TEST_F(RuntimeAnyDeathTest, TypeErrorDifferentOps) {
     );
 }
 
-// ===== Arithmetic: add (#221) =====
+// ===== [internal] Arithmetic: add (#221) =====
 
 TEST(RuntimeAnyArith, AddVariants) {
     // IntPlusInt
@@ -139,7 +145,7 @@ TEST(RuntimeAnyArith, AddVariants) {
     }
 }
 
-// ===== Arithmetic: sub =====
+// ===== [internal] Arithmetic: sub =====
 
 TEST(RuntimeAnyArith, SubVariants) {
     // IntMinusInt
@@ -158,7 +164,7 @@ TEST(RuntimeAnyArith, SubVariants) {
     }
 }
 
-// ===== Arithmetic: mul =====
+// ===== [internal] Arithmetic: mul =====
 
 TEST(RuntimeAnyArith, MulVariants) {
     // IntTimesInt
@@ -206,7 +212,7 @@ TEST(RuntimeAnyArith, MulVariants) {
     }
 }
 
-// ===== Arithmetic: div =====
+// ===== [internal] Arithmetic: div =====
 
 TEST(RuntimeAnyArith, DivVariants) {
     // IntDivInt
@@ -248,7 +254,7 @@ TEST(RuntimeAnyArith, DivVariants) {
     }
 }
 
-// ===== Arithmetic: mod =====
+// ===== [internal] Arithmetic: mod =====
 
 TEST(RuntimeAnyArith, ModVariants) {
     // IntModInt
@@ -267,7 +273,7 @@ TEST(RuntimeAnyArith, ModVariants) {
     }
 }
 
-// ===== Arithmetic: floordiv =====
+// ===== [internal] Arithmetic: floordiv =====
 
 TEST(RuntimeAnyArith, FloordivVariants) {
     // IntFloorDivInt
@@ -300,7 +306,7 @@ TEST(RuntimeAnyArith, FloordivVariants) {
     }
 }
 
-// ===== Arithmetic: pow =====
+// ===== [internal] Arithmetic: pow =====
 
 TEST(RuntimeAnyArith, PowVariants) {
     // IntPowInt
@@ -333,7 +339,7 @@ TEST(RuntimeAnyArith, PowVariants) {
     }
 }
 
-// ===== Arithmetic: neg =====
+// ===== [internal] Arithmetic: neg =====
 
 TEST(RuntimeAnyArith, NegVariants) {
     // NegInt
@@ -352,7 +358,7 @@ TEST(RuntimeAnyArith, NegVariants) {
     }
 }
 
-// ===== Comparison: eq/ne (#222) =====
+// ===== [internal] Comparison: eq/ne (#222) =====
 
 TEST(RuntimeAnyCmp, EqNeVariants) {
     // IntEqInt
@@ -404,7 +410,7 @@ TEST(RuntimeAnyCmp, EqNeVariants) {
     }
 }
 
-// ===== Comparison: ordering (#222) =====
+// ===== [internal] Comparison: ordering (#222) =====
 
 TEST(RuntimeAnyCmp, OrdVariants) {
     // IntLtInt
@@ -442,7 +448,7 @@ TEST(RuntimeAnyCmp, OrdVariants) {
     }
 }
 
-// ===== NaN comparisons =====
+// ===== [internal] NaN comparisons =====
 
 TEST(RuntimeAnyCmp, NaNComparisons) {
     RyAny nan = mkFloat(NAN), one = mkFloat(1.0), iVal = mkInt(42);
@@ -486,9 +492,9 @@ TEST(RuntimeAnyCmp, NaNComparisons) {
     EXPECT_EQ(__ry_any_ge(&nan, &iVal), 0);
 }
 
-// ===== Death tests: arithmetic errors =====
+// ===== [internal] Death tests: arithmetic errors =====
 
-// ===== String auto-concatenation (#393) =====
+// ===== [internal] String auto-concatenation (#393) =====
 
 TEST(RuntimeAnyArith, AddIntPlusStr) {
     RyAny a = mkInt(1), b = mkStr("x"), r;
@@ -556,7 +562,7 @@ TEST_F(RuntimeAnyDeathTest, NegStrError) {
     );
 }
 
-// ===== Death tests: ordering type errors =====
+// ===== [internal] Death tests: ordering type errors =====
 
 TEST_F(RuntimeAnyDeathTest, OrdDifferentTypesError) {
     RyAny a = mkInt(1), b = mkStr("x");
@@ -576,7 +582,7 @@ TEST_F(RuntimeAnyDeathTest, OrdGtReportsCorrectOp) {
     );
 }
 
-// ===== Death tests: NaN ordering with incompatible types =====
+// ===== [internal] Death tests: NaN ordering with incompatible types =====
 
 TEST_F(RuntimeAnyDeathTest, NaNOrderingWithBool) {
     RyAny nan = mkFloat(NAN);
@@ -608,7 +614,7 @@ TEST_F(RuntimeAnyDeathTest, NaNOrderingWithString) {
     EXPECT_EXIT(__ry_any_ge(&str, &nan), ::testing::ExitedWithCode(1), ".*");
 }
 
-// ===== __ry_any_to_string =====
+// ===== [internal] __ry_any_to_string =====
 
 TEST(RuntimeAnyToString, IntToString) {
     RyAny a = mkInt(42);
@@ -658,7 +664,7 @@ TEST(RuntimeAnyToString, UnitToString) {
     freeStringSlot(const_cast<char*>(s));
 }
 
-// ===== __ry_any_to_string_in_collection =====
+// ===== [internal] __ry_any_to_string_in_collection =====
 
 TEST(RuntimeAnyToStringInCollection, StrQuoted) {
     RyAny a = mkStr("hello");

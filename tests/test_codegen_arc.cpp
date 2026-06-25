@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include "ry/ry_layout.hpp"
 #include <cstdlib>
@@ -11,10 +15,7 @@ extern "C" int64_t *__ry_arc_counter_address();
 extern "C" int64_t  __ry_runtime_internal_arc_live_count();
 extern "C" void    *__ry_arc_alloc_counted(int64_t total_size);
 extern "C" void     __ry_arc_free_counted(void *header_ptr);
-// ============================================================
-//  ARC Header layout tests (pure C++ — validates the memory
-//  layout contract that codegen_arc.cpp relies on)
-// ============================================================
+// ===== [internal] ARC Header layout (pure C++ — validates the memory layout contract that codegen_arc.cpp relies on) =====
 
 namespace {
 
@@ -63,7 +64,7 @@ bool arcRelease(void *header) {
 
 } // anonymous namespace
 
-// ===== Layout & allocation =====
+// ===== [internal] Layout & allocation =====
 
 TEST(ArcInfraTest, HeaderSize) {
     EXPECT_EQ(sizeof(ArcHeader), 16u);
@@ -121,7 +122,7 @@ TEST(ArcInfraTest, SingleOwnerRelease) {
     EXPECT_TRUE(arcRelease(p));
 }
 
-// ===== Codegen structural tests =====
+// ===== [internal] Codegen structural tests =====
 // Verify that the ArcHeader LLVM type is created correctly
 // by compiling a trivial program and inspecting the CodeGen state.
 
@@ -134,7 +135,7 @@ TEST_F(CodeGenTest, ArcHeaderTypeExists) {
     });
 }
 
-// ===== Data integrity through ARC header =====
+// ===== [internal] Data integrity through ARC header =====
 
 TEST(ArcInfraTest, DataIntegrityThroughHeader) {
     // Allocate, write structured data after header, verify it survives retain/release
@@ -157,7 +158,7 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
     EXPECT_TRUE(arcRelease(p)); // strong = 0 → freed
 }
 
-// ===== Immortal sentinel tests =====
+// ===== [internal] Immortal sentinel tests =====
 
 TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
     void *p = arcAlloc(16);
@@ -207,7 +208,7 @@ TEST(ArcInfraTest, ArcCounterAddressMatchesRuntimeCount) {
     EXPECT_EQ(__ry_runtime_internal_arc_live_count(), before);
 }
 
-// ===== Integration: collection literals under ARC (functional) =====
+// ===== [contract] Integration: collection literals under ARC (functional) =====
 
 TEST_F(CodeGenTest, ListLiteralProducesCorrectLength) {
     EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(len(x))"), "3\n");

@@ -1,3 +1,10 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — calls makeString / freeStringSlot /
+// stringByteLen / stringHeaderPtr / __ry_str_split directly to assert layout
+// invariants.
+
 #include "ry/runtime/core/string.hpp"
 #include "ry/runtime/core/list.hpp"
 #include "ry/ry_layout.hpp"
@@ -9,7 +16,7 @@ extern "C" void *__ry_str_split(const char *s, int64_t sLen,
 
 using namespace ry;
 
-// ===== Layout constants =====
+// ===== [internal] Layout constants =====
 
 TEST(StringHeader, LayoutConstants) {
     EXPECT_EQ(STRING_HEADER_EXTRA, 8u);
@@ -19,7 +26,7 @@ TEST(StringHeader, LayoutConstants) {
     EXPECT_EQ(STRING_HEADER_SIZE, ARC_HEADER_SIZE + 8u);
 }
 
-// ===== makeString =====
+// ===== [internal] makeString =====
 
 TEST(StringHeader, MakeStringEmpty) {
     char *s = makeString("", 0);
@@ -68,7 +75,7 @@ TEST(StringHeader, MakeStringSingleNulByte) {
     freeStringSlot(s);
 }
 
-// ===== makeStringUninit =====
+// ===== [internal] makeStringUninit =====
 
 TEST(StringHeader, MakeStringUninitSetsLenAndTerminator) {
     char *s = makeStringUninit(7);
@@ -86,7 +93,7 @@ TEST(StringHeader, MakeStringUninitZeroLength) {
     freeStringSlot(s);
 }
 
-// ===== stringByteLen =====
+// ===== [internal] stringByteLen =====
 
 TEST(StringHeader, ByteLenReflectsActualLength) {
     char *s = makeString("xyz", 3);
@@ -117,7 +124,7 @@ TEST(StringHeader, ByteLenIsIndependentOfStrcmp) {
     freeStringSlot(b);
 }
 
-// ===== stringHeaderPtr =====
+// ===== [internal] stringHeaderPtr =====
 
 TEST(StringHeader, HeaderPtrIsOffsetBeforeData) {
     char *s = makeString("test", 4);
@@ -131,14 +138,14 @@ TEST(StringHeader, HeaderPtrIsOffsetBeforeData) {
     freeStringSlot(s);
 }
 
-// ===== freeStringSlot =====
+// ===== [internal] freeStringSlot =====
 
 TEST(StringHeader, FreeStringSlotNullIsNoop) {
     // Should not crash
     freeStringSlot(nullptr);
 }
 
-// ===== NUL-safe operations =====
+// ===== [internal] NUL-safe operations =====
 
 TEST(StringHeader, MemcmpCanDistinguishNulEmbeddedStrings) {
     const char a_src[] = {'a', '\0', 'b'};
@@ -169,7 +176,7 @@ TEST(StringHeader, ConcatViaMemcpy) {
     freeStringSlot(buf);
 }
 
-// ===== __ry_str_split =====
+// ===== [internal] __ry_str_split =====
 
 // Helper: cast __ry_str_split result to ListHeader*.
 static ry::ListHeader *doSplit(const char *s, int64_t sLen,

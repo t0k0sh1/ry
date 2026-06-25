@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include "ry/module/module_loader.hpp"
 #include <algorithm>
@@ -8,7 +12,7 @@
 
 
 using namespace ry;
-// ===== when expression =====
+// ===== [contract] when expression =====
 
 TEST_F(CodeGenTest, WhenExprBasics) {
     EXPECT_EQ(runSource("x = case:\n    true : 1\n    _ : 2\nprint(x)"), "1\n");
@@ -30,7 +34,7 @@ TEST_F(CodeGenTest, WhenExprListSameType) {
     EXPECT_EQ(runSource(src), "[1, 2]\n");
 }
 
-// ===== if / when codegen =====
+// ===== [contract] if / when codegen =====
 
 TEST_F(CodeGenTest, IfAndWhenBasics) {
     EXPECT_EQ(runSource("if true:\n    print(1)"), "1\n");
@@ -70,7 +74,7 @@ TEST_F(CodeGenTest, IfEdgeCases) {
         "        print(1)"), "1\n");
 }
 
-// ===== while codegen =====
+// ===== [contract] while codegen =====
 
 TEST_F(CodeGenTest, WhileLoopVariants) {
     // WhileFalseDoesNotExecute
@@ -107,7 +111,7 @@ TEST_F(CodeGenTest, WhileLoopVariants) {
         "    i = i + 1"), "2\n4\n");
 }
 
-// ===== function =====
+// ===== [contract] function =====
 
 TEST_F(CodeGenTest, FnBasicDefinitions) {
     // FnBasicAddCall
@@ -174,7 +178,7 @@ TEST_F(CodeGenTest, FnErrors) {
         "    return \"hello\""), std::runtime_error);
 }
 
-// ===== Block scope =====
+// ===== [contract] Block scope =====
 
 TEST_F(CodeGenTest, BlockScopeNotVisible) {
     // BlockScopeIfVarNotVisible
@@ -220,7 +224,7 @@ TEST_F(CodeGenTest, BlockScopeAccessible) {
         "print(c)"), "20\n");
 }
 
-// ===== Record =====
+// ===== [contract] Record =====
 
 TEST_F(CodeGenTest, RecordBasics) {
     // RecordBasicFieldAccess
@@ -321,7 +325,7 @@ TEST_F(CodeGenTest, RecordErrors) {
         "print(p)"), "Point(x: 1, y: 2)\n");
 }
 
-// ===== Record str =====
+// ===== [contract] Record str =====
 
 TEST_F(CodeGenTest, RecordToStr) {
     EXPECT_EQ(runSource(
@@ -388,7 +392,7 @@ TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
     EXPECT_THROW(runSource("x: foo = 42"), std::runtime_error);
 }
 
-// ===== Unit type =====
+// ===== [contract] Unit type =====
 
 TEST_F(CodeGenTest, UnitTypeBasics) {
     // UnitFnNoReturnType
@@ -425,7 +429,7 @@ TEST_F(CodeGenTest, UnitFnReturnValueThrows) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Option<T> =====
+// ===== [contract] Option<T> =====
 
 TEST_F(CodeGenTest, OptionPrintVariants) {
     // OptionIntSomePrint
@@ -501,7 +505,7 @@ TEST_F(CodeGenTest, OptionReassignment) {
     EXPECT_EQ(runSource("x: float? = 3.14\nprint(x)"), "Some(3.14)\n");
 }
 
-// ===== Null coalesce =====
+// ===== [contract] Null coalesce =====
 
 TEST_F(CodeGenTest, NullCoalesceVariants) {
     // NullCoalesceSome
@@ -520,7 +524,7 @@ TEST_F(CodeGenTest, NullCoalesceVariants) {
         "print(x)"), "None\n");
 }
 
-// ===== Tuple =====
+// ===== [contract] Tuple =====
 
 TEST_F(CodeGenTest, TupleBasics) {
     // TupleCreateAndAccess
@@ -671,7 +675,7 @@ TEST_F(CodeGenTest, ListDestructuringErrors) {
     EXPECT_THROW(runSource("a, a = [1, 2]"), std::runtime_error);
 }
 
-// ===== import =====
+// ===== [contract] import =====
 
 class ImportTest : public CodeGenTest {
 protected:
@@ -1244,7 +1248,7 @@ TEST_F(ImportTest, SearchPathRYPATH) {
     std::filesystem::remove_all(lib_dir);
 }
 
-// ===== directory module tests =====
+// ===== [contract] directory module tests =====
 
 TEST_F(ImportTest, DirectoryModuleImportAll) {
     writeFile("mypack/math.ry",
@@ -1290,7 +1294,7 @@ TEST_F(ImportTest, DirectoryModuleFallbackToFile) {
         "7\n");
 }
 
-// ===== Cross-package visibility tests (#1544) =====
+// ===== [contract] Cross-package visibility tests (#1544) =====
 
 // Same-package callers see exportable definitions even without `@public`.
 TEST_F(ImportTest, SamePackageImportSeesNonPublicSymbols) {
@@ -1385,7 +1389,7 @@ TEST_F(ImportTest, UnrootedCallerCannotSeeNonPublicFromRootedPackage) {
     std::filesystem::remove_all(unrooted_caller);
 }
 
-// ===== Directive definition (@directive) export tests (#709) =====
+// ===== [contract] Directive definition (@directive) export tests (#709) =====
 
 TEST_F(ImportTest, DirectiveDefSelectiveImport) {
     writeFile("dirmod1/mod.ry",
@@ -1441,7 +1445,7 @@ TEST_F(ImportTest, DirectiveDefCrossPackageWildcardIncludesAllForCodegen) {
     EXPECT_EQ(directive_names.count("nonPubDir"), 1u);
 }
 
-// ===== enum / type-alias cross-package visibility (#1544) =====
+// ===== [contract] enum / type-alias cross-package visibility (#1544) =====
 
 // Cross-package wildcard import includes both `@public` and non-`@public`
 // enums in the importer's program for codegen (#1560 REQ-B3). Named import
@@ -1556,7 +1560,7 @@ TEST_F(ImportTest, SamePackageEnumAndTypeAliasVisibleWithoutPublic) {
     EXPECT_TRUE(saw_alias);
 }
 
-// ===== REQ-B3 wrapper pattern (#1560) =====
+// ===== [regression #1560] REQ-B3 wrapper pattern =====
 //
 // A `@public` facade in a public-facing module is allowed to call a
 // non-`@public` helper from the same package. The importer can `from foo
@@ -1706,7 +1710,7 @@ TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
         "7\n");
 }
 
-// ===== testing module intrinsic import allow-list (#712) =====
+// ===== [contract] testing module intrinsic import allow-list (#712) =====
 //
 // `from testing import expect / mock / fail` references compiler intrinsics
 // that have no AST declaration in `share/std/testing/testing.ry`. The loader
@@ -2187,7 +2191,7 @@ TEST_F(ImportTest, QualifiedImportUserDefinedRecordConstructor) {
         "print(p.y)\n"), "3\n4\n");
 }
 
-// ===== #1888: import of C++-registered resource kinds and builtin records =====
+// ===== [regression #1888] import of C++-registered resource kinds and builtin records =====
 //
 // Resource kinds (File / TcpListener / Thread / ...) and the builtin record
 // Match (regex) are registered programmatically in C++ rather than declared
@@ -2360,7 +2364,7 @@ TEST_F(ImportTest, ImportAliasBuiltinRecordWorksCacheHit) {
     });
 }
 
-// ===== #2351: legacy stdlib import forms rejected as hard errors =====
+// ===== [contract] legacy stdlib import forms rejected as hard errors (#2351) =====
 //
 // Promoted from #2350 deprecation warnings. Each rejection site lives in
 // ModuleLoader::resolveImports() under the `rp.from_stdlib` guard, so a
@@ -2520,7 +2524,7 @@ TEST_F(CodeGenTest, TypeAliasLiteralUnionMetaDoesNotCrashOnReassignment) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== for k, v in map / range =====
+// ===== [contract] for k, v in map / range =====
 
 TEST_F(CodeGenTest, ForKVInMap) {
     std::string src =
@@ -2545,7 +2549,7 @@ TEST_F(CodeGenTest, RangeExprVariants) {
         "print(total)"), "6\n");
 }
 
-// ===== Concurrency: async/await =====
+// ===== [contract] Concurrency: async/await =====
 
 TEST_F(CodeGenTest, AsyncAwaitBasics) {
     // blockOn awaits direct async call
@@ -2600,7 +2604,7 @@ TEST_F(CodeGenTest, AvailableParallelismBuiltin) {
     EXPECT_EQ(runSource("print(availableParallelism() > 0)"), "true\n");
 }
 
-// ===== Parallel for =====
+// ===== [contract] Parallel for =====
 
 // TODO: print output interleaves across threads (#473)
 // TEST_F(CodeGenTest, ParallelForBasics) {
@@ -2645,7 +2649,7 @@ TEST_F(CodeGenTest, ParallelForErrors) {
         "    print(helper())\n")), std::runtime_error);
 }
 
-// ===== Int literal type =====
+// ===== [contract] Int literal type =====
 
 TEST_F(CodeGenTest, IntLiteralType) {
     // IntLiteralTypeSingle
@@ -2669,7 +2673,7 @@ TEST_F(CodeGenTest, IntLiteralTypeVarReassignDynamicFail) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Range type =====
+// ===== [contract] Range type =====
 
 TEST_F(CodeGenTest, RangeType) {
     // RangeTypeSuccess
@@ -2699,7 +2703,7 @@ TEST_F(CodeGenTest, RangeTypeVarReassignDynamicFail) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Str literal type =====
+// ===== [contract] Str literal type =====
 
 TEST_F(CodeGenTest, StrLiteralType) {
     // StrLiteralTypeSuccess
@@ -2719,7 +2723,7 @@ TEST_F(CodeGenTest, StrLiteralTypeVarReassignDynamicFail) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Type alias with refined types =====
+// ===== [contract] Type alias with refined types =====
 
 TEST_F(CodeGenTest, TypeAliasRefinedTypes) {
     // TypeAliasRangeType
@@ -2743,7 +2747,7 @@ TEST_F(CodeGenTest, TypeAliasRefinedTypes) {
         "print(d)"), "5\n");
 }
 
-// ===== Type constraint integer overflow (#2307) =====
+// ===== [regression #2307] Type constraint integer overflow =====
 
 TEST_F(CodeGenTest, TypeConstraintIntOverflow) {
     // Single int literal — large positive overflow
@@ -2779,7 +2783,7 @@ TEST_F(CodeGenTest, TypeConstraintIntOverflow) {
               "9223372036854775807\n");
 }
 
-// ===== Tuple field index integer overflow (#2308) =====
+// ===== [regression #2308] Tuple field index integer overflow =====
 
 TEST_F(CodeGenTest, TupleIndexOverflow) {
     // Oversized decimal index (42 nines) used to abort via uncaught
@@ -2801,7 +2805,7 @@ TEST_F(CodeGenTest, TupleIndexOverflow) {
               "10\n20\n");
 }
 
-// ===== Function type alias =====
+// ===== [contract] Function type alias =====
 
 TEST_F(CodeGenTest, TypeAliasFnType) {
     // TypeAliasFnType
@@ -2831,7 +2835,7 @@ TEST_F(CodeGenTest, TypeAliasFnType) {
         "print(apply(add, 5, 6))"), "11\n");
 }
 
-// ===== Function parameter constraints =====
+// ===== [contract] Function parameter constraints =====
 
 TEST_F(CodeGenTest, FnParamConstraints) {
     // FnParamRangeTypeSuccess
@@ -2856,7 +2860,7 @@ TEST_F(CodeGenTest, FnParamConstraints) {
         "f(2)"), std::runtime_error);
 }
 
-// ===== Ellipsis =====
+// ===== [contract] Ellipsis =====
 
 TEST_F(CodeGenTest, EllipsisVariants) {
     // EllipsisNoOp
@@ -2888,7 +2892,7 @@ TEST_F(CodeGenTest, EllipsisVariants) {
         "print(\"done\")"), "done\n");
 }
 
-// ===== Short-circuit evaluation =====
+// ===== [contract] Short-circuit evaluation =====
 
 TEST_F(CodeGenTest, ShortCircuitEvaluation) {
     // AndShortCircuitFalse
@@ -2921,7 +2925,7 @@ TEST_F(CodeGenTest, ShortCircuitEvaluation) {
         "print(res)"), "side\ntrue\n");
 }
 
-// ===== Default arguments =====
+// ===== [contract] Default arguments =====
 
 TEST_F(CodeGenTest, DefaultArgBasic) {
     EXPECT_EQ(runSource(
@@ -2963,7 +2967,7 @@ TEST_F(CodeGenTest, DefaultArgGenericError) {
         "print(identity(42))"), std::runtime_error);
 }
 
-// ===== unimported stdlib module diagnostic (#1746) =====
+// ===== [regression #1746] unimported stdlib module diagnostic =====
 //
 // `<mod>.fn(...)` / `<mod>.field` where `<mod>` names a registered
 // stdlib package but the user forgot to `import <mod>` must produce an

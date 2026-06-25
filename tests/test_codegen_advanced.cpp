@@ -1,8 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ===== Break / Continue =====
+// ===== [contract] Break / Continue =====
 
 TEST_F(CodeGenTest, BreakInWhile) {
     std::string src =
@@ -74,7 +78,7 @@ TEST_F(CodeGenTest, ParallelForContinueRejected) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Struct field assignment =====
+// ===== [contract] Struct field assignment =====
 
 TEST_F(CodeGenTest, RecordFieldAssign) {
     std::string src =
@@ -112,7 +116,7 @@ TEST_F(CodeGenTest, RecordFieldAssignConstError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Escape sequences =====
+// ===== [contract] Escape sequences =====
 
 TEST_F(CodeGenTest, EscapeNewline) {
     std::string src = "print(\"hello\\nworld\")";
@@ -134,7 +138,7 @@ TEST_F(CodeGenTest, EscapeQuote) {
     EXPECT_EQ(runSource(src), "say \"hi\"\n");
 }
 
-// ===== range() as expression =====
+// ===== [contract] range() as expression =====
 
 TEST_F(CodeGenTest, RangeEmptyList) {
     std::string src =
@@ -153,7 +157,7 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
     EXPECT_EQ(runSource(src), "0\n1\n2\n3\n");
 }
 
-// ===== Lambda (arrow function) tests =====
+// ===== [contract] Lambda (arrow function) tests =====
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
@@ -253,7 +257,7 @@ TEST_F(CodeGenTest, LambdaArgTypeError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Effectively final capture tests =====
+// ===== [contract] Effectively final capture tests =====
 
 TEST_F(CodeGenTest, CapturedVarReassignError) {
     std::string src =
@@ -338,7 +342,7 @@ TEST_F(CodeGenTest, CapturedConstFieldAssignError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Set テスト =====
+// ===== [contract] Set テスト =====
 
 TEST_F(CodeGenTest, SetCreateAndIn) {
     std::string src =
@@ -429,7 +433,7 @@ TEST_F(CodeGenTest, SetForIn) {
     EXPECT_EQ(runSource(src), "60\n");
 }
 
-// ===== Enum テスト =====
+// ===== [contract] Enum テスト =====
 
 TEST_F(CodeGenTest, EnumBasic) {
     std::string src =
@@ -509,7 +513,7 @@ TEST_F(CodeGenTest, EnumMultiple) {
     EXPECT_EQ(runSource(src), "Green\nLarge\n");
 }
 
-// ===== Match statement tests =====
+// ===== [contract] Match statement tests =====
 
 TEST_F(CodeGenTest, MatchEnumAllVariants) {
     std::string src =
@@ -601,7 +605,7 @@ TEST_F(CodeGenTest, MatchNegativeLiteral) {
     EXPECT_EQ(runSource(src), "neg one\n");
 }
 
-// ===== Union 型テスト =====
+// ===== [contract] Union 型テスト =====
 
 TEST_F(CodeGenTest, UnionLetInt) {
     std::string src =
@@ -673,7 +677,7 @@ TEST_F(CodeGenTest, UnionThreeTypes) {
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
-// ===== not in テスト =====
+// ===== [contract] not in テスト =====
 
 TEST_F(CodeGenTest, NotInSetTrue) {
     std::string src =
@@ -709,7 +713,7 @@ TEST_F(CodeGenTest, NotExprRegression) {
     EXPECT_EQ(runSource("x = not true\nprint(x)"), "false\n");
 }
 
-// ===== f-string tests =====
+// ===== [contract] f-string tests =====
 
 TEST_F(CodeGenTest, FStringBasic) {
     EXPECT_EQ(runSource("name = \"world\"\nprint(f\"Hello {name}\")"), "Hello world\n");
@@ -739,7 +743,7 @@ TEST_F(CodeGenTest, FStringBoolValue) {
     EXPECT_EQ(runSource("print(f\"flag = {true}\")"), "flag = true\n");
 }
 
-// ===== as cast tests =====
+// ===== [contract] as cast tests =====
 
 TEST_F(CodeGenTest, AsCastIntToFloat) {
     EXPECT_EQ(runSource("x = 42 as float\nprint(x)"), "42.0\n");
@@ -778,7 +782,7 @@ TEST_F(CodeGenTest, AsCastU8ToInt) {
     EXPECT_EQ(runSource("b: u8 = 200\nx = b as int\nprint(x)"), "200\n");
 }
 
-// ===== Error type tests =====
+// ===== [contract] Error type tests =====
 
 TEST_F(CodeGenTest, ErrorConstructor1Arg) {
     std::string src = R"(
@@ -814,7 +818,7 @@ print(e)
     EXPECT_EQ(runSource(src), "Error: test error (code: 42)\n");
 }
 
-// ===== Result type tests =====
+// ===== [contract] Result type tests =====
 
 TEST_F(CodeGenTest, ResultOkMatch) {
     std::string src = R"(
@@ -882,7 +886,7 @@ case divide(10, 0):
     EXPECT_EQ(runSource(src), "division by zero\n");
 }
 
-// ===== when OR pattern =====
+// ===== [contract] when OR pattern =====
 
 TEST_F(CodeGenTest, MatchOrPatternInt) {
     std::string src =
@@ -914,7 +918,7 @@ TEST_F(CodeGenTest, MatchOrPatternVariableError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Tuple patterns in case (#834) =====
+// ===== [contract] Tuple patterns in case (#834) =====
 
 TEST_F(CodeGenTest, TuplePatternArityMismatch) {
     // (int, int) subject matched with a 3-element pattern -> codegen error
@@ -940,7 +944,7 @@ TEST_F(CodeGenTest, TuplePatternNonTupleSubject) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Record Pattern =====
+// ===== [contract] Record Pattern =====
 
 TEST_F(CodeGenTest, RecordPatternArityMismatch) {
     // Point has 2 fields; pattern uses 3 -> codegen error
@@ -1036,7 +1040,7 @@ TEST_F(CodeGenTest, RecordPatternSubjectTypeMismatch) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== enum ADT (associated data) =====
+// ===== [contract] enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {
     std::string src =
@@ -1073,7 +1077,7 @@ TEST_F(CodeGenTest, EnumADTSingleField) {
     EXPECT_EQ(runSource(src), "42\n");
 }
 
-// ===== ADT enum equality (payload-aware) =====
+// ===== [contract] ADT enum equality (payload-aware) =====
 
 static const char *kShapeEnum =
     "enum Shape:\n"
@@ -1176,7 +1180,7 @@ TEST_F(CodeGenTest, EnumADTEqNestedPayload) {
         "true\nfalse\nfalse\ntrue\n");
 }
 
-// ===== Generic enum =====
+// ===== [contract] Generic enum =====
 
 TEST_F(CodeGenTest, GenericEnumBasic) {
     std::string src =
@@ -1196,7 +1200,7 @@ TEST_F(CodeGenTest, GenericEnumFloat) {
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
-// ===== Explicit enum values =====
+// ===== [contract] Explicit enum values =====
 
 TEST_F(CodeGenTest, EnumExplicitValuePrint) {
     std::string src =
@@ -1246,7 +1250,7 @@ TEST_F(CodeGenTest, EnumExplicitValueNegative) {
     EXPECT_EQ(runSource(src), "Cold\n");
 }
 
-// ===== r-string =====
+// ===== [contract] r-string =====
 
 TEST_F(CodeGenTest, RawStringPrint) {
     EXPECT_EQ(runSource(R"(print(r"\n"))"), "\\n\n");
@@ -1256,7 +1260,7 @@ TEST_F(CodeGenTest, RawStringConcat) {
     EXPECT_EQ(runSource(R"(print(r"\t" + "hello"))"), "\\thello\n");
 }
 
-// ===== test matcher: toNotEq =====
+// ===== [contract] test matcher: toNotEq =====
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src = withStdlibDirectiveDecls(
@@ -1269,7 +1273,7 @@ TEST_F(CodeGenTest, ExpectToNotEq) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== test matcher: toBeSome =====
+// ===== [contract] test matcher: toBeSome =====
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src = withStdlibDirectiveDecls(
@@ -1283,7 +1287,7 @@ TEST_F(CodeGenTest, ExpectToBeSome) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== test matcher: toContain =====
+// ===== [contract] test matcher: toContain =====
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src = withStdlibDirectiveDecls(
@@ -1309,7 +1313,7 @@ TEST_F(CodeGenTest, ExpectToContainString) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== test matcher: toMatch =====
+// ===== [contract] test matcher: toMatch =====
 
 TEST_F(CodeGenTest, ExpectToMatchLiteral) {
     std::string src = withStdlibDirectiveDecls(
@@ -1355,7 +1359,7 @@ TEST_F(CodeGenTest, ExpectToBeCloseToCustomDecimals) {
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== toBeBetween / toBeOneOf (#1689) =====
+// ===== [contract] toBeBetween / toBeOneOf (#1689) =====
 
 TEST_F(CodeGenTest, ExpectToBeBetweenIntInside) {
     std::string src = withStdlibDirectiveDecls(
@@ -1539,7 +1543,7 @@ TEST_F(CodeGenTest, ExpectToNotContainRejectsListOfLists) {
     EXPECT_THROW(runTestSource(src), std::runtime_error);
 }
 
-// ===== Field assignment subtype coercion (#359) =====
+// ===== [contract] Field assignment subtype coercion (#359) =====
 
 TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
     std::string src =
@@ -1557,7 +1561,7 @@ TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
     EXPECT_EQ(runSource(src), "Rex\n4\n");
 }
 
-// ===== ? operator subtype coercion (#360) =====
+// ===== [contract] ? operator subtype coercion (#360) =====
 
 TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     std::string src =
@@ -1565,7 +1569,7 @@ TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     EXPECT_EQ(runSource(src), "fail\n");
 }
 
-// ===== Generic record bounds (#297) =====
+// ===== [contract] Generic record bounds (#297) =====
 
 TEST_F(CodeGenTest, GenericRecordBound) {
     std::string src =
@@ -1670,7 +1674,7 @@ TEST_F(CodeGenTest, GenericRecordBoundAliasRejectsNonSubtype) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== Tail Call Optimization (#214) =====
+// ===== [contract] Tail Call Optimization (#214) =====
 
 TEST_F(CodeGenTest, TailCallOptimization) {
     // Deep self-recursive tail call should not stack overflow
@@ -1702,7 +1706,7 @@ TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
         "print(factorial(10))"), "3628800\n");
 }
 
-// ===== Mutual Recursion (Forward Function References) =====
+// ===== [contract] Mutual Recursion (Forward Function References) =====
 
 TEST_F(CodeGenTest, MutualRecursion) {
     EXPECT_EQ(runSource(
@@ -1754,9 +1758,7 @@ TEST_F(CodeGenTest, ForwardFunctionReference) {
         "print(caller(5))"), "11\n");
 }
 
-// ============================================================
-// #1157: Result coerce — PHI-static disc via if-expr both-branches Ok
-// ============================================================
+// ===== [regression #1157] Result coerce — PHI-static disc via if-expr both-branches Ok =====
 
 TEST_F(CodeGenTest, ResultCoerceIfBothBranchesOk) {
     // Both branches of the if-expr emit Ok (disc=1 statically through PHI).

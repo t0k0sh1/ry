@@ -1,3 +1,10 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file tag: [regression #1811] — guards against the typed-non-any
+// collection OOB by driving __ry_any_register_typed_coll / __ry_json_stringify_any
+// directly.
+
 #include "ry/runtime/core/alloc.hpp"
 #include "ry/runtime/core/any.hpp"
 #include "ry/runtime/core/any_typed_coll.hpp"
@@ -29,9 +36,7 @@ protected:
     }
 };
 
-// =========================================================================
-// Rejection branch: typed-non-any collection wrapped in any → panic
-// =========================================================================
+// ===== [regression #1811] Rejection branch: typed-non-any collection wrapped in any → panic =====
 
 TEST_F(JsonAnyTypedCollPanicTest, StringifyListIntPanics) {
     EXPECT_EXIT({
@@ -88,13 +93,10 @@ TEST_F(JsonAnyTypedCollPanicTest, StringifyMapStrIntPanics) {
        "any holds typed collection 'Map<str, int>'");
 }
 
-// =========================================================================
-// Positive siblings: List<any> / Map<str, any> still stringify normally.
-// (No side-table entry — the wrap arm's gate `meta->*_elem != anyTy_`
-//  excludes these.) Required by `.claude/skills/test-checklist/SKILL.md`:
-// "New rejections that narrow a form need a positive test for the
-//  preserved sibling".
-// =========================================================================
+// ===== [regression #1811] Positive siblings: List<any> / Map<str, any> still stringify normally =====
+// No side-table entry — the wrap arm's gate `meta->*_elem != anyTy_` excludes
+// these. Required by `.claude/skills/test-checklist/SKILL.md`: "New rejections
+// that narrow a form need a positive test for the preserved sibling".
 
 TEST_F(JsonAnyTypedCollPanicTest, StringifyListAnyIsOk) {
     // List<any> = [1, "x", true]

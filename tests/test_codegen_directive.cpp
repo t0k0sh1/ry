@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include "ry/runtime/native/io.hpp"
 #include <cstring>
@@ -57,7 +61,7 @@ static std::string withCoreAndTestingDirectiveDecls(const char *src) {
 
 class DirectiveTest : public CodeGenTest {};
 
-// --- ry::util::deriveRuntimeFnName tests ---
+// ===== [internal] ry::util::deriveRuntimeFnName tests =====
 
 TEST(NativeFnNaming, PackageFunction) {
     EXPECT_EQ(ry::util::deriveRuntimeFnName("base64", "encode"), "__ry_base64_encode");
@@ -86,7 +90,7 @@ TEST(NativeFnNaming, ErrorGetter) {
     EXPECT_EQ(ry::util::deriveRuntimeFnName("io", "get_last_error"), "__ry_io_get_last_error");
 }
 
-// --- NativeFnSignature registry tests ---
+// ===== [internal] NativeFnSignature registry tests =====
 
 TEST(NativeFnSigs, RegistryPopulatedAndKeyed) {
     // Compile source with @native declarations and verify the registry
@@ -571,7 +575,7 @@ TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     }, std::runtime_error);
 }
 
-// ===== @native fn tests =====
+// ===== [contract] @native fn tests =====
 
 // 12. @native fn declaration - builtin function still works
 TEST_F(DirectiveTest, NativeFnDeclaration) {
@@ -623,7 +627,7 @@ TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
     EXPECT_EQ(output, "true\nWORLD\n");
 }
 
-// ===== @native fn type signature validation =====
+// ===== [contract] @native fn type signature validation =====
 
 TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
     std::string output = runSource(
@@ -680,7 +684,7 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
     EXPECT_EQ(output, "HELLO\ntrue\ntrue\n");
 }
 
-// ===== @native("libname") directive syntax tests =====
+// ===== [contract] @native("libname") directive syntax tests =====
 
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchForStdlibName) {
     // A user-declared @native("base64") fn encode(str) → str (not imported
@@ -730,7 +734,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
     EXPECT_EQ(output, "int:42\n");
 }
 
-// ===== @native("libname") generic dispatch tests =====
+// ===== [contract] @native("libname") generic dispatch tests =====
 
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchEndToEnd) {
     // This test exercises the FULL generic dispatch path with a symbol
@@ -833,7 +837,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
     EXPECT_EQ(output, "true\n");
 }
 
-// ===== @inline tests =====
+// ===== [contract] @inline tests =====
 
 TEST_F(DirectiveTest, InlineDefault) {
     std::string output = runSource(withCoreAndTestingDirectiveDecls(
@@ -918,7 +922,7 @@ TEST_F(DirectiveTest, InlineRecursive) {
     EXPECT_EQ(output, "120\n");
 }
 
-// ===== Generalized directive invocation syntax (#663) =====
+// ===== [contract] Generalized directive invocation syntax (#663) =====
 
 // @it("description") is parseable on a function declaration (AST check)
 TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
@@ -1038,7 +1042,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
     EXPECT_EQ(numExpr->value, 50);
 }
 
-// ===== @it / @describe directive codegen tests (#634) =====
+// ===== [contract] @it / @describe directive codegen tests (#634) =====
 
 // Basic @it on a named function compiles and runs as a test case
 TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
@@ -1432,7 +1436,7 @@ TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
     ASSERT_EQ((*fn)->directives[0].name, "unknown_directive");
 }
 
-// ===== @directive definition syntax (#708) — codegen smoke tests =====
+// ===== [contract] @directive definition syntax (#708) — codegen smoke tests =====
 
 // Codegen accepts a bare @directive definition (no IR is emitted; the stmt is a no-op).
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeBareDefinition) {
@@ -1469,7 +1473,7 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
     EXPECT_EQ(output, "ok\n");
 }
 
-// ===== @directive registry & validation tests =====
+// ===== [contract] @directive registry & validation tests =====
 
 // A `@directive` definition registers itself in the per-program user registry
 // and a subsequent application of `@<name>(...)` passes validation.
@@ -1756,7 +1760,7 @@ TEST_F(DirectiveTest, BareDescribeRejectedWithoutTestingImport) {
     );
 }
 
-// ===== #1425: silent no-op when user-defined directive applied outside target=[...] =====
+// ===== [contract] silent no-op when user-defined directive applied outside target=[...] (#1425) =====
 //
 // Issue #1425 resolves user-defined directive target-mismatch behavior to
 // silent no-op: the directive's effect (future metadata/hooks) is suppressed,
@@ -1947,7 +1951,7 @@ TEST_F(DirectiveTest, TargetMatchStillValidatesArgs) {
     );
 }
 
-// ===== @public directive tests (#1545) =====
+// ===== [contract] @public directive tests (#1545) =====
 // Parser/registry-level acceptance only — visibility semantics are deferred
 // to #1544. The annotation is inert: codegen passes through with no effect.
 
@@ -1995,7 +1999,7 @@ TEST_F(DirectiveTest, PublicDirectiveRejectsArgs) {
     }, std::runtime_error);
 }
 
-// ===== #1687: @skip / @only / @todo test-selection directives =====
+// ===== [contract] @skip / @only / @todo test-selection directives (#1687) =====
 
 // Positive cases that must continue to parse and compile cleanly.
 TEST_F(DirectiveTest, SkipOnItCompiles) {
@@ -2133,9 +2137,7 @@ TEST_F(DirectiveTest, ImplicitSkipValidatesBody) {
     )), std::runtime_error);
 }
 
-// ============================================================
-// #1688: @timeout(ms) directive rejection branches
-// ============================================================
+// ===== [contract] @timeout(ms) directive rejection branches (#1688) =====
 
 TEST_F(DirectiveTest, TimeoutZeroIsRejected) {
     try {
@@ -2299,12 +2301,9 @@ TEST_F(DirectiveTest, TimeoutLargeValueAccepted) {
     )));
 }
 
-// ============================================================
-// #1686: lifecycle hook directives
-//   @beforeEach / @afterEach / @beforeAll / @afterAll
-// ============================================================
+// ===== [contract] lifecycle hook directives @beforeEach / @afterEach / @beforeAll / @afterAll (#1686) =====
 
-// --- Acceptance: declared at file top level (#1780) ---
+// ===== [contract] Acceptance: declared at file top level (#1780) =====
 //
 // Before #1780 these were rejection tests for "must be declared inside an
 // @describe block". File-top-level hooks now wrap every test in the file,
@@ -2344,7 +2343,7 @@ TEST_F(DirectiveTest, AfterAllAcceptedAtFileTop) {
     )));
 }
 
-// --- Rejection: duplicate hook of the same kind at file level (#1780) ---
+// ===== [contract] Rejection: duplicate hook of the same kind at file level (#1780) =====
 
 TEST_F(DirectiveTest, DuplicateBeforeAllAtFileTopRejected) {
     try {
@@ -2383,7 +2382,7 @@ TEST_F(DirectiveTest, DuplicateBeforeEachAtFileTopRejected) {
     }
 }
 
-// --- Rejection: file-level @beforeEach + @each @it (#1780 + #1686 reuse) ---
+// ===== [contract] Rejection: file-level @beforeEach + @each @it (#1780 + #1686 reuse) =====
 
 TEST_F(DirectiveTest, FileBeforeEachWithEachItRejected) {
     try {
@@ -2423,7 +2422,7 @@ TEST_F(DirectiveTest, FileBeforeEachWithPropertyItRejected) {
     }
 }
 
-// --- Rejection: parameters ---
+// ===== [contract] Rejection: parameters =====
 
 TEST_F(DirectiveTest, BeforeEachWithParameterRejected) {
     try {
@@ -2459,7 +2458,7 @@ TEST_F(DirectiveTest, AfterAllWithParameterRejected) {
     }
 }
 
-// --- Rejection: return type annotation ---
+// ===== [contract] Rejection: return type annotation =====
 
 TEST_F(DirectiveTest, BeforeAllWithReturnTypeRejected) {
     try {
@@ -2495,7 +2494,7 @@ TEST_F(DirectiveTest, AfterEachWithReturnTypeRejected) {
     }
 }
 
-// --- Rejection: async ---
+// ===== [contract] Rejection: async =====
 
 TEST_F(DirectiveTest, BeforeEachAsyncRejected) {
     try {
@@ -2514,7 +2513,7 @@ TEST_F(DirectiveTest, BeforeEachAsyncRejected) {
     }
 }
 
-// --- Rejection: generic ---
+// ===== [contract] Rejection: generic =====
 
 TEST_F(DirectiveTest, AfterAllGenericRejected) {
     try {
@@ -2533,7 +2532,7 @@ TEST_F(DirectiveTest, AfterAllGenericRejected) {
     }
 }
 
-// --- Rejection: duplicate hook in same @describe ---
+// ===== [contract] Rejection: duplicate hook in same @describe =====
 
 TEST_F(DirectiveTest, DuplicateBeforeEachInDescribeRejected) {
     try {
@@ -2575,7 +2574,7 @@ TEST_F(DirectiveTest, DuplicateBeforeAllInDescribeRejected) {
     }
 }
 
-// --- Rejection: combinations with other test directives ---
+// ===== [contract] Rejection: combinations with other test directives =====
 
 TEST_F(DirectiveTest, BeforeEachWithItRejected) {
     try {
@@ -2649,7 +2648,7 @@ TEST_F(DirectiveTest, BeforeEachWithAfterEachOnSameFnRejected) {
     }
 }
 
-// --- Rejection: hooks + @each / @property on the wrapped @it ---
+// ===== [contract] Rejection: hooks + @each / @property on the wrapped @it =====
 
 TEST_F(DirectiveTest, BeforeEachActiveBlocksEachIt) {
     // @beforeEach is active when an @each @it is encountered → reject.
@@ -2673,7 +2672,7 @@ TEST_F(DirectiveTest, BeforeEachActiveBlocksEachIt) {
     }
 }
 
-// --- Rejection: hook body containing declaration-like statements ---
+// ===== [contract] Rejection: hook body containing declaration-like statements =====
 
 TEST_F(DirectiveTest, BeforeEachBodyWithFnDeclarationRejected) {
     try {
@@ -2783,7 +2782,7 @@ TEST_F(DirectiveTest, AfterAllBodyWithReturnInCaseRejected) {
     }
 }
 
-// --- Acceptance: single hook inside @describe compiles ---
+// ===== [contract] Acceptance: single hook inside @describe compiles =====
 
 TEST_F(DirectiveTest, BeforeEachAcceptedInDescribe) {
     ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
@@ -2841,7 +2840,7 @@ TEST_F(DirectiveTest, AfterAllAcceptedInDescribe) {
     )));
 }
 
-// --- Acceptance: all 4 hooks together compile ---
+// ===== [contract] Acceptance: all 4 hooks together compile =====
 
 TEST_F(DirectiveTest, AllFourHooksAcceptedInDescribe) {
     ASSERT_NO_THROW(runTestSource(withStdlibDirectiveDecls(
@@ -2866,7 +2865,7 @@ TEST_F(DirectiveTest, AllFourHooksAcceptedInDescribe) {
     )));
 }
 
-// --- Acceptance: @beforeAll position independent of source position ---
+// ===== [contract] Acceptance: @beforeAll position independent of source position =====
 
 TEST_F(DirectiveTest, BeforeAllAfterItStillAccepted) {
     // @beforeAll declared AFTER the @it should still compile — the
@@ -2884,7 +2883,7 @@ TEST_F(DirectiveTest, BeforeAllAfterItStillAccepted) {
     )));
 }
 
-// --- Execution: file @afterAll body actually runs after the last @it (#1780) ---
+// ===== [contract] Execution: file @afterAll body actually runs after the last @it (#1780) =====
 //
 // Ry assertions inside an @it cannot observe @afterAll because it fires AFTER
 // the last test body completes. Instead capture stdout and assert the
@@ -2919,7 +2918,7 @@ TEST_F(DirectiveTest, FileAfterAllBodyActuallyRunsAfterLastIt) {
         << "file @afterAll must run BEFORE the test summary: " << output;
 }
 
-// --- Execution: full 9-step ordering across file + describe hooks (#1780) ---
+// ===== [contract] Execution: full 9-step ordering across file + describe hooks (#1780) =====
 //
 // Issue #1780 specifies a 9-step execution order combining file-level and
 // describe-level hooks. Steps 1-7 are observable from inside an @it body
@@ -2978,8 +2977,7 @@ TEST_F(DirectiveTest, FullNineStepCascadeOrdering) {
     }
 }
 
-// --- Regression guards for #2235 (refactor: emit @it as ordinary fns
-// + synthesize sequential driver main) ---
+// ===== [regression #2235] Regression guards for refactor: emit @it as ordinary fns + synthesize sequential driver main =====
 //
 // The refactor splits emitItDirective / emitDescribeDirective into "fn
 // emission" and "driver fragment synthesis" phases, and extracts the
@@ -3036,7 +3034,7 @@ TEST_F(DirectiveTest, DescribeBeforeEachRunsBeforeItBody) {
         << output;
 }
 
-// ===== @doc directive tests (#1844) =====
+// ===== [contract] @doc directive tests (#1844) =====
 
 // @doc on a function — accepts a single string positional argument and the
 // declaration compiles without effect on emitted IR (metadata-only).

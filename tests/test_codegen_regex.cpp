@@ -1,10 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ============================================================
-// regexMatch
-// ============================================================
+// ===== [contract] regexMatch =====
 
 TEST_F(CodeGenTest, RegexMatchTrue) {
     EXPECT_EQ(runSource(R"(
@@ -29,9 +31,7 @@ else:
 )"), "yes\n");
 }
 
-// ============================================================
-// regexSearch
-// ============================================================
+// ===== [contract] regexSearch =====
 
 TEST_F(CodeGenTest, RegexSearchFound) {
     EXPECT_EQ(runSource(R"(
@@ -47,9 +47,7 @@ print(pos)
 )"), "-1\n");
 }
 
-// ============================================================
-// regexReplace
-// ============================================================
+// ===== [contract] regexReplace =====
 
 TEST_F(CodeGenTest, RegexReplaceBasic) {
     EXPECT_EQ(runSource(R"(
@@ -65,9 +63,7 @@ print(s)
 )"), "hello\n");
 }
 
-// ============================================================
-// regexSplit
-// ============================================================
+// ===== [contract] regexSplit =====
 
 TEST_F(CodeGenTest, RegexSplitBasic) {
     EXPECT_EQ(runSource(R"(
@@ -88,9 +84,7 @@ print(parts[1])
 )"), "2\nhello\nworld\n");
 }
 
-// ============================================================
-// regexFindAll
-// ============================================================
+// ===== [contract] regexFindAll =====
 
 TEST_F(CodeGenTest, RegexFindAllBasic) {
     EXPECT_EQ(runSource(R"(
@@ -135,9 +129,7 @@ print(len(parts))
                 "error: regex error: unmatched '\\[' in pattern '\\['");
 }
 
-// ============================================================
-// UFCS: text.regexMatch(pattern)
-// ============================================================
+// ===== [contract] UFCS: text.regexMatch(pattern) =====
 
 TEST_F(CodeGenTest, RegexMatchUFCS) {
     EXPECT_EQ(runSource(R"(
@@ -160,9 +152,7 @@ print(s)
 )"), "aXbXcX\n");
 }
 
-// ============================================================
-// Range quantifiers
-// ============================================================
+// ===== [contract] Range quantifiers =====
 
 TEST_F(CodeGenTest, RegexQuantifierExact) {
     EXPECT_EQ(runSource(R"(
@@ -172,9 +162,7 @@ print(regexMatch("1234", "\\d{3}"))
 )"), "true\nfalse\nfalse\n");
 }
 
-// ============================================================
-// Non-greedy when
-// ============================================================
+// ===== [contract] Non-greedy when =====
 
 TEST_F(CodeGenTest, RegexLazyReplace) {
     EXPECT_EQ(runSource(R"(
@@ -192,9 +180,7 @@ print(tags[1].full)
 )"), "2\n<x>\n<yy>\n");
 }
 
-// ============================================================
-// Regex literal syntax /.../
-// ============================================================
+// ===== [contract] Regex literal syntax /.../ =====
 
 TEST_F(CodeGenTest, RegexLiteralMatch) {
     EXPECT_EQ(runSource(R"(

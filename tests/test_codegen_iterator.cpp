@@ -1,8 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ===== Iterator tests =====
+// ===== [contract] Iterator tests =====
 
 TEST_F(CodeGenTest, IteratorBasicToList) {
     std::string src =

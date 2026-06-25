@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — exercises __ry_rwlock_acquire / release
+// dispatch directly under contention. Section header tag: [regression #871].
+
 #include "ry/runtime/native/thread.hpp"
 #include "ry/runtime/core/arc.hpp"
 #include "ry/runtime/native/io.hpp"

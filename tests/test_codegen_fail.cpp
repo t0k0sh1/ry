@@ -1,10 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ============================================================
-// fail(msg) marks current test as failed with message
-// ============================================================
+// ===== [contract] fail(msg) marks current test as failed with message =====
 
 TEST_F(CodeGenTest, FailWithMessage) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -16,9 +18,7 @@ TEST_F(CodeGenTest, FailWithMessage) {
     )), "fail helper\n    \033[31mline 37: intentional failure\033[0m\n  \033[31m- marks test as failed\033[0m\n\n0 passed, 1 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// fail() with no argument uses generic message
-// ============================================================
+// ===== [contract] fail() with no argument uses generic message =====
 
 TEST_F(CodeGenTest, FailWithoutMessage) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -30,9 +30,7 @@ TEST_F(CodeGenTest, FailWithoutMessage) {
     )), "fail bare\n    \033[31mline 37: test failed\033[0m\n  \033[31m- fails generically\033[0m\n\n0 passed, 1 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// fail() outside test mode is rejected at compile time
-// ============================================================
+// ===== [contract] fail() outside test mode is rejected at compile time =====
 
 TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
     EXPECT_THROW(runSource(
@@ -40,15 +38,12 @@ TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Diagnostic precedence: when a call is made outside test mode
-// AND without `from testing import ...`, the "only allowed in
-// test mode" error must win over the missing-import error
-// (#715). This pins the order of the two checks at every site:
-// the `!test_mode_` guard fires first, the import guard second.
-// Use `runSource` (test_mode = false, no import injection) so
-// both conditions are simultaneously violated.
-// ============================================================
+// ===== [contract] Diagnostic precedence: only-allowed-in-test-mode wins over missing-import (#715) =====
+// When a call is made outside test mode AND without `from testing import ...`,
+// the "only allowed in test mode" error must win over the missing-import error.
+// This pins the order of the two checks at every site: the `!test_mode_` guard
+// fires first, the import guard second. Use `runSource` (test_mode = false, no
+// import injection) so both conditions are simultaneously violated.
 
 TEST_F(CodeGenTest, ExpectOutsideTestModeWinsOverImportCheck) {
     try {
@@ -63,20 +58,16 @@ TEST_F(CodeGenTest, ExpectOutsideTestModeWinsOverImportCheck) {
     }
 }
 
-// ============================================================
-// Testing intrinsics (expect / mock / fail) require the matching
-// `from testing import <name>`. Without it codegen must reject the
-// use even when running in test mode (#715).
-// `runTestSourceNoTestingImports` is the only fixture that does
-// not auto-inject the imports.
+// ===== [contract] Testing intrinsics (expect / mock / fail) require matching `from testing import` (#715) =====
+// Without the import, codegen must reject the use even when running in test mode.
+// `runTestSourceNoTestingImports` is the only fixture that does not auto-inject
+// the imports.
 //
-// Note: as of #722, `verify` is no longer a compiler-recognized
-// intrinsic — it lives as an ordinary `@public fn verify` in
-// `share/std/testing/testing.ry`. Calling `verify` without the
-// import now fails with the generic `undefined function: verify`
-// path rather than the import-enforcement diagnostic, so it is
-// not covered here.
-// ============================================================
+// Note: as of #722, `verify` is no longer a compiler-recognized intrinsic — it
+// lives as an ordinary `@public fn verify` in `share/std/testing/testing.ry`.
+// Calling `verify` without the import now fails with the generic
+// `undefined function: verify` path rather than the import-enforcement
+// diagnostic, so it is not covered here.
 
 TEST_F(CodeGenTest, ExpectRequiresTestingImport) {
     try {
@@ -146,16 +137,14 @@ TEST_F(CodeGenTest, FailRejectsListMessage) {
     }
 }
 
-// ============================================================
-// `@it` / `@describe` directives are declared in
-// `share/std/testing/testing.ry`. Without `from testing import it,
-// describe`, the directive declarations never enter
-// `user_directive_registry_`, so codegen rejects them via the general
-// `@directive` mechanism with `unknown directive '@<name>'` (#721).
-// `withStdlibDirectiveDecls` is intentionally NOT applied so the
-// rejection path mirrors what real user code sees (the only legal way
-// to use `@it` / `@describe` is via the testing import).
-// ============================================================
+// ===== [contract] @it / @describe rejected as unknown directive without testing import (#721) =====
+// `@it` / `@describe` directives are declared in `share/std/testing/testing.ry`.
+// Without `from testing import it, describe`, the directive declarations never
+// enter `user_directive_registry_`, so codegen rejects them via the general
+// `@directive` mechanism with `unknown directive '@<name>'`.
+// `withStdlibDirectiveDecls` is intentionally NOT applied so the rejection path
+// mirrors what real user code sees (the only legal way to use `@it` /
+// `@describe` is via the testing import).
 
 TEST_F(CodeGenTest, ItRejectedAsUnknownDirectiveWithoutTestingImport) {
     try {
@@ -189,9 +178,7 @@ TEST_F(CodeGenTest, DescribeRejectedAsUnknownDirectiveWithoutTestingImport) {
     }
 }
 
-// ============================================================
-// Null coalescing (`??`) rejects non-Option/non-Result operands
-// ============================================================
+// ===== [contract] Null coalescing (`??`) rejects non-Option/non-Result operands =====
 
 TEST_F(CodeGenTest, NullCoalesceRequiresOptionOrResult) {
     // Plain int on the LHS is not allowed.
@@ -226,9 +213,7 @@ TEST_F(CodeGenTest, NullCoalesceRejectsPtrBackedTypeMismatch) {
         "'" "??" "' on Result");
 }
 
-// ============================================================
-// `?` operator rejects non-Result/non-Option operands
-// ============================================================
+// ===== [contract] `?` operator rejects non-Result/non-Option operands =====
 
 TEST_F(CodeGenTest, QuestionRequiresResultOrOption) {
     expectCompileError(
@@ -238,9 +223,7 @@ TEST_F(CodeGenTest, QuestionRequiresResultOrOption) {
         "Result or Option");
 }
 
-// ============================================================
-// `?` on Option requires an Option-returning enclosing function
-// ============================================================
+// ===== [contract] `?` on Option requires an Option-returning enclosing function =====
 
 TEST_F(CodeGenTest, QuestionOnOptionRequiresOptionReturn) {
     expectCompileError(
@@ -260,9 +243,7 @@ TEST_F(CodeGenTest, QuestionOnOptionInResultFnRejected) {
         "fn that returns Option");
 }
 
-// ============================================================
-// `?` on Result requires a Result-returning enclosing function
-// ============================================================
+// ===== [contract] `?` on Result requires a Result-returning enclosing function =====
 
 TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
     expectCompileError(
@@ -274,9 +255,7 @@ TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
         "fn that returns Result");
 }
 
-// ============================================================
-// Option.map() requires a callable second argument
-// ============================================================
+// ===== [contract] Option.map() requires a callable second argument =====
 
 TEST_F(CodeGenTest, OptionMapRejectsNonCallableSecondArg) {
     expectCompileError(
@@ -285,9 +264,7 @@ TEST_F(CodeGenTest, OptionMapRejectsNonCallableSecondArg) {
         "map() on Option requires a function as second argument");
 }
 
-// ============================================================
-// Top-level `?` on `Result<_, E>` requires E == Error
-// ============================================================
+// ===== [contract] Top-level `?` on `Result<_, E>` requires E == Error =====
 
 TEST_F(CodeGenTest, TopLevelQuestionRejectsNonErrorResult) {
     expectCompileError(
@@ -297,9 +274,7 @@ TEST_F(CodeGenTest, TopLevelQuestionRejectsNonErrorResult) {
         "err type must be Error");
 }
 
-// ============================================================
-// Nested function is not visible outside its enclosing scope
-// ============================================================
+// ===== [contract] Nested function is not visible outside its enclosing scope =====
 
 TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
     EXPECT_THROW(runSource(
@@ -311,9 +286,7 @@ TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Captured variable cannot be modified inside nested named function
-// ============================================================
+// ===== [contract] Captured variable cannot be modified inside nested named function =====
 
 TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
     EXPECT_THROW(runSource(
@@ -327,17 +300,13 @@ TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// math.pow(int, int) with a negative exponent aborts at runtime.
-//
-// Declares the @native("math") signatures inline so emitBuiltinMath
-// (#2340 carve-out) sees `math::pow` / `math::digits` registered and
-// intercepts the call. CodeGenTest::runSource goes Parser → CodeGen
-// directly without invoking ModuleLoader, so `from math import ...`
-// would fail with "unresolved import"; the explicit `("math")` tag
-// registers the sig under the right package key without loading the
-// stdlib `.ry` file.
-// ============================================================
+// ===== [contract] math.pow(int, int) with a negative exponent aborts at runtime =====
+// Declares the @native("math") signatures inline so emitBuiltinMath (#2340
+// carve-out) sees `math::pow` / `math::digits` registered and intercepts the
+// call. CodeGenTest::runSource goes Parser → CodeGen directly without invoking
+// ModuleLoader, so `from math import ...` would fail with "unresolved import";
+// the explicit `("math")` tag registers the sig under the right package key
+// without loading the stdlib `.ry` file.
 
 TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
     EXPECT_EXIT(
@@ -417,13 +386,10 @@ TEST_F(CodeGenTest, ThreadSpawnRejectsNamedFnReturningStrAsVariableReferenceWork
         "threadSpawn() MVP (#828) supports only");
 }
 
-// ============================================================
-// Generic inference for container parameters (#823).
-// An empty container literal yields no information for the
-// type variable, so inference must emit a clear error naming
-// the parameter and the function, not a vague codegen error or
-// an "undefined variable" message.
-// ============================================================
+// ===== [regression #823] Generic inference for container parameters — empty container clear error =====
+// An empty container literal yields no information for the type variable, so
+// inference must emit a clear error naming the parameter and the function, not
+// a vague codegen error or an "undefined variable" message.
 
 TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
     expectCompileError(
@@ -433,11 +399,10 @@ TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
         "could not infer type parameter 'T' in call to generic function 'firstOf'");
 }
 
-// ============================================================
-// When the same type parameter appears in two argument slots
-// and the concrete arguments disagree, inference must report a
-// clear conflict naming the parameter.
-// ============================================================
+// ===== [contract] Conflicting type inference for shared type parameter =====
+// When the same type parameter appears in two argument slots and the concrete
+// arguments disagree, inference must report a clear conflict naming the
+// parameter.
 
 TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
     expectCompileError(
@@ -447,9 +412,7 @@ TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
         "conflicting type inference for 'T'");
 }
 
-// ============================================================
-// print() named argument error cases
-// ============================================================
+// ===== [contract] print() named argument error cases =====
 
 TEST_F(CodeGenTest, PrintUnknownNamedArgError) {
     expectCompileError(
@@ -465,12 +428,10 @@ TEST_F(CodeGenTest, NamedArgsOnNonBuiltinError) {
         "named arguments are only supported for builtin functions");
 }
 
-// ============================================================
-// `+` on Map / Set collection operands: type-aware diagnostics.
-// Before #863 these fell through to the str-vs-non-str reject path.
-// After #866 Map + Map (merge) and Set + Set (union) are supported,
-// but mismatched types must still produce a clear diagnostic.
-// ============================================================
+// ===== [contract] `+` on Map / Set collection operands: type-aware diagnostics (#863, #866) =====
+// Before #863 these fell through to the str-vs-non-str reject path. After #866
+// Map + Map (merge) and Set + Set (union) are supported, but mismatched types
+// must still produce a clear diagnostic.
 
 TEST_F(CodeGenTest, ArithPlusRejectsMapPlusMapKeyMismatch) {
     // Different key types → error
@@ -517,17 +478,15 @@ TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
         "list concatenation requires matching element types");
 }
 
-// ============================================================
-// Map<K, any> / Set<any> / List<any>: #1697 lifts the old wrapInAny
-// rejection so List / Map / Set values can be assigned through an
-// `any` slot in any collection-mutating builtin. Flipped from
-// EXPECT_THROW to EXPECT_NO_THROW per "Relaxing a rejection branch
+// ===== [contract] Map<K, any> / Set<any> / List<any> accept collection inputs (#1697) =====
+// #1697 lifts the old wrapInAny rejection so List / Map / Set values can be
+// assigned through an `any` slot in any collection-mutating builtin. Flipped
+// from EXPECT_THROW to EXPECT_NO_THROW per "Relaxing a rejection branch
 // requires flipping (not deleting) existing EXPECT_THROW tests"
-// (.claude/skills/test-checklist/SKILL.md). The old "'any' can only
-// hold int/float/bool/str" error path is gone for collection inputs;
-// fn-ptr / resource still hit it (covered by
-// AnyTypeRejectionForFunctionPointer in test_codegen.cpp).
-// ============================================================
+// (.claude/skills/test-checklist/SKILL.md). The old "'any' can only hold
+// int/float/bool/str" error path is gone for collection inputs; fn-ptr /
+// resource still hit it (covered by AnyTypeRejectionForFunctionPointer in
+// test_codegen.cpp).
 
 TEST_F(CodeGenTest, MapAnyValueAcceptsCollectionType) {
     // Verify wrap → store → load → to_string round-trip (#1697): printing
@@ -693,9 +652,7 @@ TEST_F(CodeGenTest, AnyUnwrapToSetIntInGenericRejected) {
 // collection is parameterised by `any`. Users must drive the cast
 // explicitly via `case asType[List<any>](a):` and friends.
 
-// ============================================================
-// fold(): seed/return-type mismatch must still fire for typed lambda
-// ============================================================
+// ===== [contract] fold(): seed/return-type mismatch must still fire for typed lambda =====
 
 TEST_F(CodeGenTest, FoldTypedLambdaSeedTypeMismatch) {
     expectCompileError(
@@ -704,9 +661,7 @@ TEST_F(CodeGenTest, FoldTypedLambdaSeedTypeMismatch) {
         "fold() initial value type must match function return type");
 }
 
-// ============================================================
-// #1209: reduce(xs, init, fn) (3-arg, Python/JS style) suggests fold
-// ============================================================
+// ===== [contract] reduce(xs, init, fn) (3-arg, Python/JS style) suggests fold (#1209) =====
 
 TEST_F(CodeGenTest, ReduceThreeArgsSuggestsFold) {
     expectCompileError(
@@ -722,9 +677,7 @@ TEST_F(CodeGenTest, ReduceFourArgsUsesGenericError) {
         "takes exactly 2 arguments");
 }
 
-// ============================================================
-// #1570: sequence() rejects non-Result/Option element type
-// ============================================================
+// ===== [contract] sequence() rejects non-Result/Option element type (#1570) =====
 
 TEST_F(CodeGenTest, SequenceRejectsPlainIntList) {
     expectCompileError(
@@ -739,9 +692,7 @@ TEST_F(CodeGenTest, SequenceRejectsNonListArg) {
         "sequence() requires a list of Result or Option");
 }
 
-// ============================================================
-// #1027: octal literals must produce a targeted diagnostic
-// ============================================================
+// ===== [contract] octal literals produce a targeted diagnostic (#1027) =====
 
 TEST_F(CodeGenTest, OctalLiteralRejectedWithTargetedDiagnostic) {
     expectCompileError("x = 0o17\n",
@@ -752,22 +703,18 @@ TEST_F(CodeGenTest, OctalLiteralRejectedWithTargetedDiagnostic) {
                        "octal literals (0o...) are not supported");
 }
 
-// ============================================================
-// None() rejects non-zero arguments (#1043)
-// ============================================================
+// ===== [contract] None() rejects non-zero arguments (#1043) =====
 
 TEST_F(CodeGenTest, NoneWithArgsIsRejected) {
     expectCompileError("x: int? = None(1)\n",
                        "None() takes no arguments");
 }
 
-// ============================================================
-// base64.encodeBytes / encodeBytesUrlSafe reject non-u8 list
-// at compile time via requireListU8Arg gate (#1130). Post-#2285
-// the @native declaration is the source of truth, so the
-// declaration must spell the actual ABI (List<u8>); the gate
-// fires when a caller passes a non-u8 list against that declaration.
-// ============================================================
+// ===== [contract] base64.encodeBytes / encodeBytesUrlSafe reject non-u8 list at compile time (#1130) =====
+// requireListU8Arg gate enforces this. Post-#2285 the @native declaration is
+// the source of truth, so the declaration must spell the actual ABI
+// (List<u8>); the gate fires when a caller passes a non-u8 list against that
+// declaration.
 
 TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
     expectCompileError(
@@ -787,11 +734,9 @@ TEST_F(CodeGenTest, Base64EncodeBytesUrlSafeRejectsNonU8List) {
         "requires List<u8>");
 }
 
-// ============================================================
-// #1157: coerceResultType must reject function-returned Result
-// when the discriminator is a runtime value, not a provably
-// literal Ok/Err. Without the fix, these silently miscompile.
-// ============================================================
+// ===== [regression #1157] coerceResultType must reject function-returned Result with runtime disc =====
+// When the discriminator is a runtime value, not a provably literal Ok/Err.
+// Without the fix, these silently miscompile.
 
 TEST_F(CodeGenTest, ResultCoerceFnReturnDifferentErrType) {
     // f() returns Result<bool, MyErr1>; binding to Result<bool, MyErr2> is
@@ -833,9 +778,7 @@ TEST_F(CodeGenTest, ResultCoerceFnReturnWideOkType) {
         "type error: annotation");
 }
 
-// ============================================================
-// #1156: tuple pattern on Option / Result must be rejected
-// ============================================================
+// ===== [regression #1156] tuple pattern on Option / Result must be rejected =====
 
 // Option<T> is represented as {i1, T} — a 2-element struct.  Before #1156
 // the structural guard only fired when subjectEnumType was non-empty, so an
@@ -1008,19 +951,15 @@ TEST_F(CodeGenTest, NestedGenericEnumFieldCompiles) {
         "  return Outer<int>::Wrap(Inner<int>::In(1))\n"));
 }
 
-// ============================================================
-// #1569: Referencing a multi-overload @native function as a
-// first-class value must produce a clear "ambiguous" diagnostic,
-// mirroring the user-fn behavior in emitExprVariant(VariableExpr).
-// Single-overload @native references succeed (covered by
-// tests/spec/native_first_class.test.ry); multi-overload
-// references must reject because the materialized thunk would
+// ===== [contract] Multi-overload @native first-class reference produces "ambiguous" diagnostic (#1569) =====
+// Mirrors the user-fn behavior in emitExprVariant(VariableExpr). Single-overload
+// @native references succeed (covered by tests/spec/native_first_class.test.ry);
+// multi-overload references must reject because the materialized thunk would
 // have no unambiguous signature.
 //
 // Inline @native declarations match what convert.ry exposes.
 // CodeGenTest::runSource bypasses ModuleLoader so we cannot
 // `from convert import str`.
-// ============================================================
 
 TEST_F(CodeGenTest, MultiOverloadNativeReferenceRejected) {
     expectCompileError(
@@ -1066,13 +1005,10 @@ TEST_F(CodeGenTest, UserFnMultiOverloadShadowsNativeFirstClass) {
         "undefined variable");
 }
 
-// ============================================================
-// #1577: type-check overloaded calls before codegen
-//
-// Calling `range`/`len`/`enumerate` with arg types that don't match any
-// overload must produce the canonical "no matching overload" diagnostic
-// with a candidate list, NOT a low-level LLVM IR verify error.
-// ============================================================
+// ===== [contract] type-check overloaded calls before codegen (#1577) =====
+// Calling `range`/`len`/`enumerate` with arg types that don't match any overload
+// must produce the canonical "no matching overload" diagnostic with a candidate
+// list, NOT a low-level LLVM IR verify error.
 
 // Note: `range` is a builtin whose @native signatures are normally provided
 // by `share/std/builtins.ry`, but the C++ test harness (`runSource` /
@@ -1147,14 +1083,11 @@ TEST_F(CodeGenTest, UserFnOverloadAmbiguousCallEmitsCandidateList) {
          "but called with: foo(int)"});
 }
 
-// ============================================================
-// `toMatch` matcher requires str operands on both sides
-// (#1676). The rejection branch lives in `emitStmt(ExpectStmt&)`
-// so it is only reachable in test_mode; use `runTestSource` plus
-// a manual try/catch (the `expectCompileError` helper compiles
-// outside test mode and would fail earlier on the `expect()`
-// guard). See `.claude/skills/test-checklist/SKILL.md`.
-// ============================================================
+// ===== [contract] `toMatch` matcher requires str operands on both sides (#1676) =====
+// The rejection branch lives in `emitStmt(ExpectStmt&)` so it is only reachable
+// in test_mode; use `runTestSource` plus a manual try/catch (the
+// `expectCompileError` helper compiles outside test mode and would fail earlier
+// on the `expect()` guard). See `.claude/skills/test-checklist/SKILL.md`.
 
 TEST_F(CodeGenTest, ExpectToMatchRejectsNonStrActual) {
     try {
@@ -1180,12 +1113,10 @@ TEST_F(CodeGenTest, ExpectToMatchRejectsNonStrPattern) {
     }
 }
 
-// ============================================================
-// `toBeCloseTo` matcher rejection branches (#1675).
-// Same harness pattern as the `toMatch` rejection tests above —
-// the checks live inside `emitStmt(ExpectStmt&)` so they only
-// fire under test_mode (`runTestSource`).
-// ============================================================
+// ===== [contract] `toBeCloseTo` matcher rejection branches (#1675) =====
+// Same harness pattern as the `toMatch` rejection tests above — the checks live
+// inside `emitStmt(ExpectStmt&)` so they only fire under test_mode
+// (`runTestSource`).
 
 TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNonNumericActual) {
     try {
@@ -1253,12 +1184,9 @@ TEST_F(CodeGenTest, ExpectToBeCloseToRejectsNegativeDecimals) {
     }
 }
 
-// ============================================================
-// `using` statement (#1817): init expression must produce an
-// `io.File` value.  Codegen rejects int, str, List, and any
-// other non-File type at the `detectResourceKind` / `isFile`
-// gate in `emitStmt(UsingStmt)`.
-// ============================================================
+// ===== [contract] `using` statement init expression must produce an `io.File` value (#1817) =====
+// Codegen rejects int, str, List, and any other non-File type at the
+// `detectResourceKind` / `isFile` gate in `emitStmt(UsingStmt)`.
 
 TEST_F(CodeGenTest, UsingRejectsIntInit) {
     expectCompileError(
@@ -1281,16 +1209,12 @@ TEST_F(CodeGenTest, UsingRejectsListInit) {
         "using requires an io.File value");
 }
 
-// ============================================================
-// #1889: stdlib built-in function names cannot be shadowed by
-// user-defined top-level `fn`. Without this guard, the hardcoded
-// dispatch chain (`emitBuiltin*`) silently overrides the user fn,
-// most dangerously when the signature matches exactly
-// (`fn sum(v: List<int>) -> int: return 999` — body ignored,
-// stdlib executes instead). The guard fires for the user fn
-// declaration, not at the call site, so the error is surfaced
-// before any silent shadow has a chance to occur.
-// ============================================================
+// ===== [regression #1889] stdlib built-in function names cannot be shadowed by user-defined top-level `fn` =====
+// Without this guard, the hardcoded dispatch chain (`emitBuiltin*`) silently
+// overrides the user fn, most dangerously when the signature matches exactly
+// (`fn sum(v: List<int>) -> int: return 999` — body ignored, stdlib executes
+// instead). The guard fires for the user fn declaration, not at the call site,
+// so the error is surfaced before any silent shadow has a chance to occur.
 
 // Issue reproduction: 4 signature variants of `fn sum` — every one
 // must be rejected, including the exact-signature shadow that was
@@ -1443,11 +1367,9 @@ TEST_F(CodeGenTest, ReservedBuiltinGenericFilter) {
         "is reserved for a built-in");
 }
 
-// ============================================================
-// #1889 positive cases: the guard MUST NOT over-fire. False
-// positives would block legitimate code, so each accept-path is
-// pinned by a positive test that proves the input compiles.
-// ============================================================
+// ===== [regression #1889] positive cases — the guard MUST NOT over-fire =====
+// False positives would block legitimate code, so each accept-path is pinned by
+// a positive test that proves the input compiles.
 
 // Non-collision names compile cleanly even when they share a prefix
 // or suffix with a reserved name.
@@ -1552,23 +1474,18 @@ TEST_F(CodeGenTest, ReservedBuiltinAllowsNativeGenericDeclaration) {
     ));
 }
 
-// ============================================================
-// #2301: getPath / setPath rejection coverage
-//
+// ===== [contract] getPath / setPath rejection coverage (#2301) =====
 // Issue #1701 / PR #2287 added `getPath(map, path)` and
-// `setPath(map, path, value)` for nested Map<str, any> access.
-// `splitDotPath` (src/codegen_call_collection.cpp:17-34) and the
-// per-function receiver/literal checks (lines 1421/1427 for getPath,
-// 1523/1525/1529 for setPath) reject malformed calls at compile time,
-// and the setPath intermediate-walk loop (lines 1571-1616) aborts at
-// runtime when an intermediate segment is missing or not a Map.
-// None of these branches were exercised before #2301.
+// `setPath(map, path, value)` for nested Map<str, any> access. `splitDotPath`
+// and the per-function receiver/literal checks reject malformed calls at
+// compile time, and the setPath intermediate-walk loop aborts at runtime when
+// an intermediate segment is missing or not a Map. None of these branches were
+// exercised before #2301.
 //
-// `Map<str, any>` annotation and `m.getPath(...)` / `m.setPath(...)`
-// dispatch flow through `emitCollOp_getPath` / `emitCollOp_setPath`
-// in src/codegen_call_collection.cpp — no `from map import` is needed,
-// so these tests work in the ModuleLoader-less compileSource harness.
-// ============================================================
+// `Map<str, any>` annotation and `m.getPath(...)` / `m.setPath(...)` dispatch
+// flow through `emitCollOp_getPath` / `emitCollOp_setPath` in
+// `src/codegen_call_collection.cpp` — no `from map import` is needed, so these
+// tests work in the ModuleLoader-less compileSource harness.
 
 TEST_F(CodeGenTest, GetPathEmptyPathRejected) {
     expectCompileError(

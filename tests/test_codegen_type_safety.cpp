@@ -1,10 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ============================================================
-// Struct type rejected by arithmetic operators
-// ============================================================
+// ===== [contract] Struct type rejected by arithmetic operators =====
 
 TEST_F(CodeGenTest, RecordAddRejected) {
     EXPECT_THROW(runSource(
@@ -76,9 +78,7 @@ TEST_F(CodeGenTest, RecordPowerRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Struct type rejected by unary operators
-// ============================================================
+// ===== [contract] Struct type rejected by unary operators =====
 
 TEST_F(CodeGenTest, RecordNegationRejected) {
     EXPECT_THROW(runSource(
@@ -100,9 +100,7 @@ TEST_F(CodeGenTest, RecordBitwiseNotRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Pointer/str type rejected by unary operators
-// ============================================================
+// ===== [contract] Pointer/str type rejected by unary operators =====
 
 TEST_F(CodeGenTest, StringNegationRejected) {
     EXPECT_THROW(runSource(
@@ -116,9 +114,7 @@ TEST_F(CodeGenTest, StringBitwiseNotRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Struct type rejected by bitwise operators
-// ============================================================
+// ===== [contract] Struct type rejected by bitwise operators =====
 
 TEST_F(CodeGenTest, RecordBitwiseAndRejected) {
     EXPECT_THROW(runSource(
@@ -150,9 +146,7 @@ TEST_F(CodeGenTest, RecordBitwiseXorRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Struct type rejected by comparison operators (< <= > >=)
-// ============================================================
+// ===== [contract] Struct type rejected by comparison operators (< <= > >=) =====
 
 TEST_F(CodeGenTest, RecordLessThanRejected) {
     EXPECT_THROW(runSource(
@@ -176,9 +170,7 @@ TEST_F(CodeGenTest, RecordGreaterThanRejected) {
     ), std::runtime_error);
 }
 
-// ============================================================
-// Regression: Struct == and != must still work
-// ============================================================
+// ===== [contract] Regression: Struct == and != must still work =====
 
 TEST_F(CodeGenTest, RecordEqualityStillWorks) {
     EXPECT_EQ(runSource(
@@ -202,17 +194,14 @@ TEST_F(CodeGenTest, RecordInequalityStillWorks) {
     ), "true\n");
 }
 
-// ============================================================
-// IR verify error sweep — #805, #818, #821
-//
+// ===== [regression #805 #818 #821] IR verify error sweep =====
 // These used to reach LLVM IR verification and crash with cryptic
 // "icmp ne ptr, i0 0" or "Terminator found in the middle of a basic
 // block" messages. After the sweep, each case is either handled
 // frontend-side with a clear diagnostic or silently accepted with a
 // trailing dead block that LLVM DCE removes.
-// ============================================================
 
-// ---- #818: pointer-backed collection/str types cannot be conditions ----
+// ===== [regression #818] pointer-backed collection/str types cannot be conditions =====
 
 TEST_F(CodeGenTest, ListInIfConditionRejected) {
     EXPECT_THROW(runSource(
@@ -298,7 +287,7 @@ TEST_F(CodeGenTest, LengthGreaterZeroIdiomWorks) {
     ), "non-empty\n");
 }
 
-// ---- #821: code after exit() must not trigger IR verify error ----
+// ===== [regression #821] code after exit() must not trigger IR verify error =====
 //
 // Using compileSource() here instead of runSource(): calling exit(0) from a
 // JIT-loaded module would terminate the test process itself. We only need to
@@ -347,9 +336,7 @@ TEST_F(CodeGenTest, GenericResultToStrStillWorks) {
     ), "Ok(42)\n");
 }
 
-// ============================================================
-// findMatchingCloseParen — depth-tracking paren matcher (#768)
-// ============================================================
+// ===== [regression #768] findMatchingCloseParen — depth-tracking paren matcher =====
 
 TEST(FindMatchingCloseParen, Simple) {
     // fn(int) -> int
@@ -386,9 +373,7 @@ TEST(FindMatchingCloseParen, NoMatch) {
     ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), std::string::npos);
 }
 
-// ============================================================
-// Cross-category type duplicate rejection (#815)
-// ============================================================
+// ===== [regression #815] Cross-category type duplicate rejection =====
 
 TEST_F(CodeGenTest, RecordThenEnumWithSameNameRejected) {
     expectCompileError(
@@ -458,9 +443,7 @@ TEST_F(CodeGenTest, DuplicateGenericEnumRejected) {
         "generic enum 'Foo' is already defined");
 }
 
-// ============================================================
-// Type alias cross-category duplicate rejection (#850)
-// ============================================================
+// ===== [regression #850] Type alias cross-category duplicate rejection =====
 
 TEST_F(CodeGenTest, TypeAliasThenRecordWithSameNameRejected) {
     expectCompileError(
@@ -544,9 +527,7 @@ TEST_F(CodeGenTest, DuplicateUnionTypeAliasRejected) {
         "type alias 'Foo' is already defined");
 }
 
-// ============================================================
-// bool rejected in arithmetic operators (#1030)
-// ============================================================
+// ===== [contract] bool rejected in arithmetic operators (#1030) =====
 
 TEST_F(CodeGenTest, BoolLhsAddRejected) {
     expectCompileError("x = true + 1\n",
@@ -630,9 +611,7 @@ TEST_F(CodeGenTest, BoolCompoundAddAssignRejected) {
         "bool cannot be used with arithmetic operator");
 }
 
-// ============================================================
-// bool rejected in bitwise operators (#1030)
-// ============================================================
+// ===== [contract] bool rejected in bitwise operators (#1030) =====
 
 TEST_F(CodeGenTest, BoolBitwiseAndRejected) {
     expectCompileError("x = true & 1\n",
@@ -676,9 +655,7 @@ TEST_F(CodeGenTest, BoolCompoundAndAssignRejected) {
         "bool cannot be used with bitwise operator");
 }
 
-// ============================================================
-// str does not support index access (#1026)
-// ============================================================
+// ===== [contract] str does not support index access (#1026) =====
 
 TEST_F(CodeGenTest, StrIndexAccessRejected) {
     expectCompileError(
@@ -717,9 +694,7 @@ TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
         {"str", "immutable"});
 }
 
-// ============================================================
-// bytesToStr / writeBytes require List<u8> (#1055)
-// ============================================================
+// ===== [regression #1055] bytesToStr / writeBytes require List<u8> =====
 
 static const std::string IO_DECLS_1055 = R"(
 @native("io")
@@ -752,9 +727,7 @@ case bytesToStr([97u16, 0u16, 98u16]):
 )", {"bytesToStr", "List<u8>"});
 }
 
-// ============================================================
-// List<T> annotation propagates element suffix (#1079)
-// ============================================================
+// ===== [contract] List<T> annotation propagates element suffix (#1079) =====
 
 TEST_F(CodeGenTest, ListU8AnnotationAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
@@ -793,9 +766,7 @@ print(len(xs))
 )"));
 }
 
-// ============================================================
-// List<T> reassignment propagates element suffix (#1085)
-// ============================================================
+// ===== [contract] List<T> reassignment propagates element suffix (#1085) =====
 
 TEST_F(CodeGenTest, ListU8ReassignmentAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
@@ -844,9 +815,7 @@ case bytesToStr(bs):
 )"));
 }
 
-// ============================================================
-// List<T> compound assignment propagates element suffix (#1102)
-// ============================================================
+// ===== [contract] List<T> compound assignment propagates element suffix (#1102) =====
 
 TEST_F(CodeGenTest, ListU8CompoundAssignmentAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
@@ -893,9 +862,7 @@ print(len(bs))
 )", {"u8 literal out of range"});
 }
 
-// ============================================================
-// reverse!() on a string is rejected with a clear diagnostic (#1124)
-// ============================================================
+// ===== [regression #1124] reverse!() on a string is rejected with a clear diagnostic =====
 
 TEST_F(CodeGenTest, ReverseMutOnStringRejected) {
     expectCompileError(
@@ -904,9 +871,7 @@ TEST_F(CodeGenTest, ReverseMutOnStringRejected) {
         {"reverse!", "list", "immutable"});
 }
 
-// ============================================================
-// range-index (..) on non-list receivers is rejected (#1184)
-// ============================================================
+// ===== [regression #1184] range-index (..) on non-list receivers is rejected =====
 
 TEST_F(CodeGenTest, StrRangeIndexRejected) {
     expectCompileError(

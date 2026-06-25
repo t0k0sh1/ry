@@ -1,10 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ============================================================
-// Basic mock: function return value is replaced
-// ============================================================
+// ===== [contract] Basic mock: function return value is replaced =====
 
 TEST_F(CodeGenTest, MockBasicReplace) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -20,9 +22,7 @@ TEST_F(CodeGenTest, MockBasicReplace) {
     )), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// Mock with arguments
-// ============================================================
+// ===== [contract] Mock with arguments =====
 
 TEST_F(CodeGenTest, MockWithArgs) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -38,9 +38,7 @@ TEST_F(CodeGenTest, MockWithArgs) {
     )), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// Auto-restore between it blocks
-// ============================================================
+// ===== [contract] Auto-restore between it blocks =====
 
 TEST_F(CodeGenTest, MockAutoRestore) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -60,9 +58,7 @@ TEST_F(CodeGenTest, MockAutoRestore) {
     )), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// verify() returns call count
-// ============================================================
+// ===== [contract] verify() returns call count =====
 
 TEST_F(CodeGenTest, MockVerifyCallCount) {
     EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
@@ -81,9 +77,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
     )), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// Mock function used as expression / return value
-// ============================================================
+// ===== [contract] Mock function used as expression / return value =====
 
 TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
     // verify() works when mock is called and function result is used
@@ -102,9 +96,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
     )), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// mock() outside test mode -> compile error
-// ============================================================
+// ===== [contract] mock() outside test mode -> compile error =====
 
 TEST_F(CodeGenTest, MockOutsideTestModeError) {
     EXPECT_THROW(runSource(
@@ -114,9 +106,7 @@ TEST_F(CodeGenTest, MockOutsideTestModeError) {
     ), std::exception);
 }
 
-// ============================================================
-// mock() on non-existent function -> compile error
-// ============================================================
+// ===== [contract] mock() on non-existent function -> compile error =====
 
 TEST_F(CodeGenTest, MockNonExistentFunctionError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
@@ -128,9 +118,7 @@ TEST_F(CodeGenTest, MockNonExistentFunctionError) {
     )), std::exception);
 }
 
-// ============================================================
-// mock() with type mismatch -> compile error
-// ============================================================
+// ===== [contract] mock() with type mismatch -> compile error =====
 
 TEST_F(CodeGenTest, MockTypeMismatchError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
@@ -183,9 +171,7 @@ TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
     EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ============================================================
-// verifyCalledWith() rejection tests (#1677)
-// ============================================================
+// ===== [contract] verifyCalledWith() rejection tests (#1677) =====
 
 TEST_F(CodeGenTest, VerifyCalledWithUnmockedFunctionError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
@@ -414,9 +400,7 @@ TEST_F(CodeGenTest, VerifyCalledWithListParamRejectedWithListOfDifferentElementT
     )), std::exception);
 }
 
-// ============================================================
-// verifyCalledWith(): Set<T> argument support (#1704)
-// ============================================================
+// ===== [contract] verifyCalledWith(): Set<T> argument support (#1704) =====
 
 TEST_F(CodeGenTest, VerifyCalledWithSetIntArgAccepted) {
     // Set<int> arg matches a recorded call with the same elements.
@@ -554,9 +538,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithListArg) {
     )), std::exception);
 }
 
-// ============================================================
-// verifyCalledWith(): Map<K, V> argument support (#1705)
-// ============================================================
+// ===== [contract] verifyCalledWith(): Map<K, V> argument support (#1705) =====
 
 TEST_F(CodeGenTest, VerifyCalledWithMapIntIntArgAccepted) {
     // Map<int, int>: integer key + integer value path (no ARC retain needed).
@@ -775,9 +757,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSetParamRejectedWithMapArg) {
     )), std::exception);
 }
 
-// =============================================================================
-// verifyCalledWith(): record argument support (#1706)
-// =============================================================================
+// ===== [contract] verifyCalledWith(): record argument support (#1706) =====
 
 TEST_F(CodeGenTest, VerifyCalledWithRecordArgAccepted) {
     // Record argument with primitive fields: kind=9 path with field-by-field compare.
@@ -869,9 +849,7 @@ TEST_F(CodeGenTest, VerifyCalledWithRecordParamRejectedWithTupleArg) {
     )), std::exception);
 }
 
-// =============================================================================
-// verifyCalledWith(): tuple argument support (#1706)
-// =============================================================================
+// ===== [contract] verifyCalledWith(): tuple argument support (#1706) =====
 
 TEST_F(CodeGenTest, VerifyCalledWithTupleArgAccepted) {
     // Tuple argument with primitive elements: kind=10 path with arity+kinds compare.
@@ -1002,9 +980,7 @@ TEST_F(CodeGenTest, VerifyCalledWithOutsideTestModeError) {
     ), std::exception);
 }
 
-// ============================================================
-// spy() rejection tests (#1683)
-// ============================================================
+// ===== [contract] spy() rejection tests (#1683) =====
 
 // spy() outside test mode -> compile error
 TEST_F(CodeGenTest, SpyOutsideTestModeError) {
@@ -1126,9 +1102,7 @@ TEST_F(CodeGenTest, VerifyCalledWithSpiedFunction) {
     )), "vcw spy\n  \033[32m+ matches spied call\033[0m\n\n1 passed, 0 failed, 0 skipped, 0 todo\n");
 }
 
-// ============================================================
-// mockReturnValueOnce() rejection tests (#1681)
-// ============================================================
+// ===== [contract] mockReturnValueOnce() rejection tests (#1681) =====
 
 // First argument must be a string literal (parser converts `mockReturnValueOnce(name, ...)`
 // to a CallStmt where args[0] is StringExpr; non-literal must be rejected).
@@ -1275,12 +1249,10 @@ TEST_F(CodeGenTest, MockReturnValueOnceNoneOnNonOptionError) {
     )), std::exception);
 }
 
-// ============================================================
-// Signature-string syntax error tests (#1682)
-// `parseSigString` should emit a clear error for malformed sig
-// inputs instead of silently falling through to bare-name lookup
-// (which would yield a misleading "unknown function 'add(int'" message).
-// ============================================================
+// ===== [contract] Signature-string syntax error tests (#1682) =====
+// `parseSigString` should emit a clear error for malformed sig inputs instead
+// of silently falling through to bare-name lookup (which would yield a
+// misleading "unknown function 'add(int'" message).
 
 TEST_F(CodeGenTest, MockSigStringMissingCloseParenError) {
     EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(

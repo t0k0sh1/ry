@@ -1,18 +1,22 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — calls inferLibraryName, knownNativeLibs,
+// CodeGen::getNativeCallDescriptors, ResourceKindRegistry directly to assert
+// internal descriptor state.
+
 #include "test_codegen_common.hpp"
 #include "ry/native_call_descriptor.hpp"
 #include "ry/stdlib_registry.hpp"
 
 using namespace ry;
 
-// =============================================================================
-// Pure-function inference rule tests
-//
+// ===== [internal] Pure-function inference rule tests =====
 // inferLibraryName is a pure function over (directiveTag, declaringModule),
 // so rule (a) / rule (b) / both-empty cases can be exercised directly without
 // driving a full compile. This avoids the runSource harness's inability to
 // forge `SourceLocation::file_id` to look like `share/std/<M>/<M>.ry` (which
 // is what `deriveNativePackage` reads to produce `sig.package`).
-// =============================================================================
 
 TEST(NativeCallDescriptor, InferLibrary_ExplicitTagWins) {
     // rule (a): non-empty tag returns as-is regardless of declaring module.
@@ -54,15 +58,12 @@ TEST(NativeCallDescriptor, KnownNativeLibsLocalLiteral) {
     EXPECT_EQ(knownNativeLibs(), expected);
 }
 
-// =============================================================================
-// End-to-end descriptor storage test (rule (a) only)
-//
+// ===== [internal] End-to-end descriptor storage test (rule (a) only) =====
 // runSource bypasses ModuleLoader, so embedded source's `s->loc` cannot be
 // forged to look like `share/std/io/io.ry`; rule (b) end-to-end is therefore
 // out of reach until a consumer (e.g. dispatchIO descriptor migration) drives
 // a real share/std/ source through the build pipeline. Rule (a) works via
 // the @native("<lib>") directive tag without any file-path dependency.
-// =============================================================================
 
 TEST(NativeCallDescriptor, DescriptorStorage_PopulatedForLibTaggedNative) {
     std::string src =
@@ -95,11 +96,10 @@ TEST(NativeCallDescriptor, DescriptorStorage_PopulatedForLibTaggedNative) {
     EXPECT_EQ(desc.require_list_u8_arg, -1);
 }
 
-// =============================================================================
-// Pilot field population tests (#2337) — exercise each populate path so a
-// regression in codegen_fn.cpp's descriptor-build site (or in
-// inferReturnWrapping) is caught directly, not only via the IR-diff gate.
-// =============================================================================
+// ===== [internal] Pilot field population tests (#2337) =====
+// Exercise each populate path so a regression in codegen_fn.cpp's
+// descriptor-build site (or in inferReturnWrapping) is caught directly, not
+// only via the IR-diff gate.
 
 TEST(NativeCallDescriptor, DescriptorStorage_RequireListU8ArgPopulated) {
     // encodeBytes(input: List<u8>) -> str: descriptor captures arg index 0
@@ -213,15 +213,12 @@ TEST(NativeCallDescriptor, DescriptorStorage_ResultOutParamWithType) {
     EXPECT_EQ(desc.error_channel, "__ry_filesystem_get_last_error");
 }
 
-// =============================================================================
-// Installment 2-a (#2338): resource_kind population
-//
+// ===== [internal] Installment 2-a (#2338): resource_kind population =====
 // inferResourceKind looks up the inner type of a Result<T, Error> against
 // ResourceKindRegistry. For io::open's `Result<File, Error>` return type
 // the registered "File" kind (rk_file, registered at static init in
 // src/codegen_call_io.cpp) is captured on the descriptor. Non-resource
 // returners (str, int, List<u8>, Unit) get NONE.
-// =============================================================================
 
 TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindForOpenReturnsFile) {
     // io::open(path: str, mode: str) -> Result<File, Error>: the descriptor
@@ -302,16 +299,12 @@ TEST(NativeCallDescriptor, DescriptorStorage_ResourceKindNoneForFilesystemFileSi
     EXPECT_EQ(it->second[0].resource_kind, ResourceKindRegistry::NONE);
 }
 
-// =============================================================================
-// Installment 2-b (#2339): per-entry error_channel override via
-// ResourceKindRegistry::Info::errorChannelLibrary
-//
+// ===== [internal] Installment 2-b (#2339): per-entry error_channel override via ResourceKindRegistry::Info::errorChannelLibrary =====
 // TlsStream is the only resource today whose error channel module differs
 // from its owning library: it lives in the http library (linkage) but
 // reports errors through __ry_tls_get_last_error. The descriptor populator
 // reads `errorChannelLibrary` and overrides `error_channel` accordingly,
 // independent of the @native package tag.
-// =============================================================================
 
 TEST(NativeCallDescriptor, ErrorChannelOverride_TlsStreamGoesToTlsChannel) {
     // @native("net") tlsConnect(...) -> Result<TlsStream, Error>:

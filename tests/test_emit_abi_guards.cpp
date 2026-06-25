@@ -1,3 +1,11 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives the extern "C" emit ABI
+// (`ry_emit_*`) directly to lock NULL / out-of-range guard branches that are
+// unreachable from the supported CodeGen caller. Inline `// --- ... ---`
+// markers within a section retain the [internal] tag of the enclosing section.
+
 // Direct-call regression tests for the emit ABI input-validation
 // guards (#2028 review hardening). These exercise the NULL / None reject
 // branches that are unreachable from the normal CodeGen caller (which always
@@ -249,8 +257,7 @@ TEST_F(EmitAbiGuardTest, ArcCounterDeltaNullCtxDoesNotCrash) {
     SUCCEED();
 }
 
-// =============================================================================
-// #2080 — uniform input-validation guards across the remaining entry points
+// ===== [internal] #2080 — uniform input-validation guards across the remaining entry points =====
 // (control_flow / collection / bounds / option / lifecycle), mirroring the
 // validated runtime_call / result / any / cow contract via the shared
 // `checked_cx` / `resolve_value` / `ffi_slice` helpers.
@@ -266,7 +273,6 @@ TEST_F(EmitAbiGuardTest, ArcCounterDeltaNullCtxDoesNotCrash) {
 // pointer / out-param and crashed the process, so a clean "red" is impossible —
 // the tests are authored against the fixed guards (same convention as the
 // ResultBranch* cases above).
-// =============================================================================
 
 // --- ctx == NULL → sentinel (value-returning entries) ---
 
@@ -454,8 +460,7 @@ TEST_F(EmitAbiGuardTest, OptionWrapSomeNullResolvedInnerReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
-// =============================================================================
-// #2072 — scalar / memory IR primitive guards ([C] = (ii) boundary move).
+// ===== [internal] #2072 — scalar / memory IR primitive guards ([C] = (ii) boundary move) =====
 // The eleven new `ry_emit_*` primitives (alloca / load / store / gep / icmp /
 // and / or / add / sub / select / const_int) share the same `checked_cx` /
 // `resolve_value` contract, so a representative sample of each guard SHAPE
@@ -464,7 +469,6 @@ TEST_F(EmitAbiGuardTest, OptionWrapSomeNullResolvedInnerReturnsZero) {
 // (`icmp_pred_from → None`) with no precedent above, so it gets its own case.
 // Same test-vs-document split: the inner corrupted-ctx guards stay documented in
 // .claude/rules/tests-cpp-conventions.md.
-// =============================================================================
 
 // --- ctx == NULL → sentinel / no-op ---
 
@@ -525,14 +529,13 @@ TEST_F(EmitAbiGuardTest, SelectNullResolvedOperandReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
-// =============================================================================
-// #2096 — `mul` / `sdiv` share the binary primitive shape with #2072's
-// `add` / `sub`, so the resolve_value and name guards are covered by
+// ===== [internal] #2096 — mul / sdiv binary primitive smoke tests =====
+// `mul` / `sdiv` share the binary primitive shape with #2072's `add` / `sub`,
+// so the resolve_value and name guards are covered by
 // `AddNullResolvedOperandReturnsZero` above (the representative-sample
 // principle in the #2072 comment). Each new entry gets a `nullptr ctx` smoke
 // test so a future regression that removes `checked_cx` from one extern but
 // not the other still trips.
-// =============================================================================
 
 TEST_F(EmitAbiGuardTest, MulNullCtxReturnsZero) {
     EXPECT_EQ(ry_emit_mul(nullptr, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
@@ -542,13 +545,12 @@ TEST_F(EmitAbiGuardTest, SDivNullCtxReturnsZero) {
     EXPECT_EQ(ry_emit_sdiv(nullptr, /*lhs_id=*/0, /*rhs_id=*/0, "x"), 0u);
 }
 
-// =============================================================================
-// #2092 — numeric reduce builtins (sum / min / max). Four value-returning
-// entries; each gets the same three-guard contract: ctx == NULL, an operand id
-// that resolves to None, and a NULL element-type handle. All return the sentinel
-// 0. (No FFI-array params — the variadic forms are per-step ops, not array
-// folds — so there is no ffi_slice guard to exercise here.)
-// =============================================================================
+// ===== [internal] #2092 — numeric reduce builtins (sum / min / max) =====
+// Four value-returning entries; each gets the same three-guard contract:
+// ctx == NULL, an operand id that resolves to None, and a NULL element-type
+// handle. All return the sentinel 0. (No FFI-array params — the variadic forms
+// are per-step ops, not array folds — so there is no ffi_slice guard to
+// exercise here.)
 
 // --- ctx == NULL → sentinel 0 ---
 
@@ -662,8 +664,7 @@ TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullElemTyReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
-// =============================================================================
-// #2098 — function definition + indirect call primitive guards
+// ===== [internal] #2098 — function definition + indirect call primitive guards =====
 // ([C] = (ii) boundary move). The five new entries (create_function / get_param
 // / struct_gep / call_indirect / ret) share the same checked_cx / handle-NULL /
 // resolve_value / ffi_slice contract, so each guard SHAPE gets a representative
@@ -671,7 +672,6 @@ TEST_F(EmitAbiGuardTest, ReduceMinmaxStepNullElemTyReturnsZero) {
 // create_function unknown-linkage reject is genuinely new logic (`linkage_from →
 // None`) with no precedent above, so it gets its own case. The corrupted-ctx
 // inner guards stay documented in .claude/rules/tests-cpp-conventions.md.
-// =============================================================================
 
 // --- ctx == NULL → sentinel / no-op ---
 
@@ -828,13 +828,11 @@ TEST_F(EmitAbiGuardTest, CallIndirectNullArgArrayReturnsZero) {
     ry_emit_ctx_destroy(ctx);
 }
 
-// =============================================================================
-// #2093 — collection copy-generation ops (keys / values / take / appended /
-// concat). Three value-returning entries. ry_emit_list_copy_full also has a
+// ===== [internal] #2093 — collection copy-generation ops (keys / values / take / appended / concat) =====
+// Three value-returning entries. ry_emit_list_copy_full also has a
 // kind-selector guard (list_copy_kind_from → None) and ry_emit_list_concat a
 // NULL elem_ty guard; the others share the ctx == NULL + resolve_value → None
 // contract. All return the sentinel 0. (No FFI-array params.)
-// =============================================================================
 
 // --- ctx == NULL → sentinel 0 ---
 

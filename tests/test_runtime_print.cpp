@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — exercises __ry_sprint_* runtime entry
+// points directly to assert depth limit and buffer behavior.
+
 #include "ry/runtime/core/print.hpp"
 #include "ry/runtime/core/string.hpp"
 #include <gtest/gtest.h>

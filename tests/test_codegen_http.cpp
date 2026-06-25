@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include <cerrno>
 #include <cstdlib>
@@ -159,11 +163,9 @@ protected:
     AllowPrivateHTTPGuard allow_private_;
 };
 
-// ============================================================
-// Manual server: tests HTTP response parsing via raw TCP.
-// Uses dynamic port allocation. Server binds in main scope,
-// passes listener to async fn for accept.
-// ============================================================
+// ===== [contract] Manual server: tests HTTP response parsing via raw TCP =====
+// Uses dynamic port allocation. Server binds in main scope, passes listener to
+// async fn for accept.
 
 TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
@@ -222,9 +224,7 @@ case bind("127.0.0.1", 0):
 )"), "true\ntrue\n");
 }
 
-// ============================================================
-// Manual server echoing method:path via raw TCP.
-// ============================================================
+// ===== [contract] Manual server echoing method:path via raw TCP =====
 
 TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
@@ -280,9 +280,7 @@ case bind("127.0.0.1", 0):
 )"), "true\n");
 }
 
-// ============================================================
-// 404 response
-// ============================================================
+// ===== [contract] 404 response =====
 
 TEST_F(CodeGenTest, HttpResponse404) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
@@ -338,9 +336,7 @@ case bind("127.0.0.1", 0):
 )"), "true\n");
 }
 
-// ============================================================
-// HttpHeader: server echoes a custom request header value
-// ============================================================
+// ===== [contract] HttpHeader: server echoes a custom request header value =====
 
 TEST_F(CodeGenTest, ManualHttpServerHeader) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
@@ -460,10 +456,8 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
     EXPECT_NE(captured_request.find("X-Test: 1"), std::string::npos);
 }
 
-// ============================================================
-// listen with max_requests: server exits after N requests
+// ===== [contract] listen with max_requests: server exits after N requests =====
 // Uses async fn + port_callback + blockOn to verify server lifecycle.
-// ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
 @native("http")

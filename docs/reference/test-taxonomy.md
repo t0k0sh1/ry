@@ -47,6 +47,17 @@ C++ / Ry の test を「何を守っているか」で 3 カテゴリに分類�
 
 `tests/test_regression_<issue>_<desc>.cpp` を作る既存運用を継続する。
 
+### 単一スコープで section header が立たないファイルは whole-file tag
+
+ファイル全体が単一テーマで複数の section header に分かれない場合 (例: subprocess CLI で 1 つの bug を pin する `tests/test_codegen_call_json_reject.cpp`、`__ry_lock_acquire` / `__ry_lock_release` の contention 1 本だけを assert する `tests/test_runtime_lock_stress.cpp`)、ファイル冒頭の taxonomy index コメントに `Whole-file dominant tag: [contract] / [regression #NNNN] / [internal]` の 1 行を加える。section header の `// ===== [tag] Title =====` 行は追加しない (新たな見出し階層の捏造を避けるため)。
+
+```cpp
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file tag: [regression #1941] (subprocess-based emitJsonLoad type rejection).
+```
+
 ### Section 内で混在するときは inline tag
 
 Section の dominant category を採り、別カテゴリの個別テストの直上にコメントを 1 行追加する:
@@ -78,7 +89,25 @@ TEST(ParserTest, ParenTupleDestructRejectsSnakeCase) { ... }
 
 ## カテゴリ分布は層によって偏る
 
-3 カテゴリを抽象的に並べているが、テスト対象の層によって分布は自然に偏る。公開境界が単一の層 (例: parser の `parseProgram()`) では `[contract]` が支配的になり `[internal]` はほぼ立たない。ARC / IR / runtime layer のテストでは `[internal]` の比率が上がる。
+3 カテゴリを抽象的に並べているが、テスト対象の層によって分布は自然に偏る。
+`tests/test_parser.cpp` (#1831) / `tests/test_codegen*.cpp` / `tests/test_runtime*.cpp`
+への pilot 適用 (#2383) で観測した分布:
+
+| 層 | 主な観察手段 | section 数 (contract / regression / internal) |
+|---|---|---|
+| parser | `parseProgram()` → AST / 例外 (黒箱) | 47 / 4 / 0 |
+| codegen + ABI / native-descriptor | `runSource` / `runTestSource` → 標準出力 / 例外 (黒箱) が支配的。ARC ヘッダ・IR 形状・extern "C" emit ABI guard・native call descriptor 等の内部観察は局所的に発生 | 273 / 26 / 22 |
+| runtime | `__ry_*` runtime symbol を直接呼ぶ、layout struct を手で組み立てる (白箱) | 0 / 8 / 78 |
+
+`[internal]` が実際に立ったケース:
+
+- codegen 層: `tests/test_codegen_arc.cpp` (ARC ヘッダ layout / 構造的 IR 検証), `tests/test_codegen_directive.cpp` (`ry::util::deriveRuntimeFnName` / `NativeFnSignature` registry を直接呼ぶ helper test), `tests/test_codegen_net.cpp` (`__ry_tcp_send` / `__ry_send_all` / `__ry_tcp_receive` / `__ry_tcp_set_timeout` を直接呼ぶ unit test), `tests/test_codegen_gc_visit.cpp` (test-only flag で GC visitor IR 発行を強制し marker 形を assert)。
+- ABI / native-descriptor 層: `tests/test_header_layout.cpp` (C++ ↔ Rust collection / ARC header struct layout parity), `tests/test_emit_abi_guards.cpp` (extern "C" `ry_emit_*` ABI の NULL / range guard を直接呼ぶ), `tests/test_native_call_descriptor.cpp` (`inferLibraryName` / `CodeGen::getNativeCallDescriptors` の内部 descriptor 状態を assert)。
+- runtime 層: `tests/test_runtime_string.cpp` / `tests/test_runtime_any.cpp` / `tests/test_runtime_gc.cpp` / `tests/test_runtime_json.cpp` / `tests/test_runtime_json5.cpp` / `tests/test_runtime_http.cpp` / `tests/test_runtime_utf8.cpp` / `tests/test_regex_runtime.cpp` / `tests/test_abi_layout.cpp` ほぼ全件が `__ry_*` を直接呼ぶか layout struct を手で組み立てる。`tests/test_runtime_lock_stress.cpp` / `tests/test_runtime_rwlock_stress.cpp` / `tests/test_runtime_arc_contention_stress.cpp` / `tests/test_runtime_print.cpp` / `tests/test_runtime_io_file.cpp` / `tests/test_coverage_runtime.cpp` は section header が立たない単一スコープのファイルだが whole-file tag として `[internal]` を付している。
+
+scope 注: `tests/test_emit_llvm_ir.cpp` は CLI subprocess test (`ry emit-llvm-ir` の出力を assert する) で、codegen 内部状態ではなく CLI 観測の黒箱テストである。codegen 層の `tests/test_codegen_*.cpp` glob からも外れる位置付けのため、今回の taxonomy 適用範囲から外している。
+
+parser が `[contract]` 支配的、runtime が `[internal]` 支配的、codegen はその中間で `[contract]` を主軸に局所的に `[internal]` が立つ、という予測 (旧 doc) を観察で裏付けた形となった。
 
 ## "Contract" の語義衝突
 
@@ -88,4 +117,4 @@ TEST(ParserTest, ParenTupleDestructRejectsSnakeCase) { ... }
 
 - `.claude/skills/test-checklist/SKILL.md` — テスト作成時の perspective チェック
 - `.claude/rules/tests-cpp-conventions.md` — C++ テストの実装規約
-- 適用 pilot: `tests/test_parser.cpp` (#1831)
+- 適用済み: `tests/test_parser.cpp` (#1831), `tests/test_codegen*.cpp` + `tests/test_runtime*.cpp` + `tests/test_abi_layout.cpp` + `tests/test_coverage_runtime.cpp` + `tests/test_regex_runtime.cpp` + `tests/test_header_layout.cpp` + `tests/test_emit_abi_guards.cpp` + `tests/test_native_call_descriptor.cpp` (#2383)

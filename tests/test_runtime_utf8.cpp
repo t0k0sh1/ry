@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_utf8_* runtime entry points
+// directly to assert byte-level behavior.
+
 #include <gtest/gtest.h>
 #include "ry/runtime/core/string.hpp"
 #include <cstdlib>
@@ -124,7 +130,7 @@ TEST(RuntimeUtf8, CharIndexMixed) {
     EXPECT_EQ(__ry_utf8_char_index("caf\xC3\xA9", 3), 3);
 }
 
-// --- __ry_utf8_char_at_checked tests ---
+// ===== [internal] __ry_utf8_char_at_checked tests =====
 
 TEST(RuntimeUtf8, CharAtCheckedAscii) {
     expectStr(__ry_utf8_char_at_checked("hello", 5, 0), "h");
@@ -158,7 +164,7 @@ TEST(RuntimeUtf8, CharAtCheckedNegativeUtf8) {
 // death tests: StringCharAtOutOfRange, StringCharAtNegativeOOB,
 // StringCharAtEmptyString, StringCharAtUTF8OutOfRange.
 
-// --- NUL-safe tests (#1049) ---
+// ===== [regression #1049] NUL-safe tests =====
 
 TEST(RuntimeUtf8, SubstringNulEmbedded) {
     // "a\0b" (byteLen=3): substr(0,3) must return all 3 bytes

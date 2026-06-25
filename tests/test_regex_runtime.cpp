@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_regex_* runtime entry
+// points directly via byte-length-aware C API.
+
 #include <gtest/gtest.h>
 #include "ry/runtime/core/arc.hpp"
 #include "ry/runtime/core/regex.hpp"
@@ -11,9 +17,7 @@
 
 using namespace ry;
 
-// ============================================================
-// Local helpers matching the runtime list layout
-// ============================================================
+// ===== [internal] Local helpers matching the runtime list layout =====
 
 struct ListHeader {
     int64_t len;
@@ -78,9 +82,7 @@ static std::string regexLastError() {
     return msg;
 }
 
-// ============================================================
-// regexMatch tests
-// ============================================================
+// ===== [internal] regexMatch tests =====
 
 TEST(RegexRuntime, MatchLiteral) {
     EXPECT_EQ(rm("hello", "hello"), 1);
@@ -186,9 +188,7 @@ TEST(RegexRuntime, MatchShorthandClasses) {
     EXPECT_EQ(rm("\\D+", "123"), 0);
 }
 
-// ============================================================
-// regexSearch tests
-// ============================================================
+// ===== [internal] regexSearch tests =====
 
 TEST(RegexRuntime, SearchBasic) {
     EXPECT_EQ(rs("world", "hello world"), 6);
@@ -218,9 +218,7 @@ TEST(RegexRuntime, InvalidPatternReturnsRecoverableErrorForSearch) {
     EXPECT_EQ(regexLastError(), "regex error: unmatched '(' in pattern '('");
 }
 
-// ============================================================
-// regexReplace tests
-// ============================================================
+// ===== [internal] regexReplace tests =====
 
 TEST(RegexRuntime, ReplaceBasic) {
     const char *result = rr("world", "hello world", "universe");
@@ -251,9 +249,7 @@ TEST(RegexRuntime, InvalidPatternReturnsNullForReplace) {
     EXPECT_EQ(regexLastError(), "regex error: unmatched '(' in pattern '('");
 }
 
-// ============================================================
-// Capture group backreference tests (#829)
-// ============================================================
+// ===== [internal] Capture group backreference tests (#829) =====
 
 TEST(RegexRuntime, ReplaceCaptureFastPath) {
     // No backreferences → existing fast path, groups have no effect
@@ -355,9 +351,7 @@ TEST(RegexRuntime, ReplaceMalformedBrace) {
     freeStringSlot(const_cast<char *>(r2));
 }
 
-// ============================================================
-// regexSplit tests
-// ============================================================
+// ===== [internal] regexSplit tests =====
 
 TEST(RegexRuntime, SplitBasic) {
     auto *list = rsp(",", "a,b,c");
@@ -384,9 +378,7 @@ TEST(RegexRuntime, SplitNoMatch) {
     freeStringList(list);
 }
 
-// ============================================================
-// regexFindAll tests
-// ============================================================
+// ===== [internal] regexFindAll tests =====
 
 TEST(RegexRuntime, FindAllBasic) {
     auto *list = rfa("[0-9]+", "a1b23c456");
@@ -445,9 +437,7 @@ TEST(RegexRuntime, FindAllUnmatchedOptionalGroup) {
     freeMatchList(list);
 }
 
-// ============================================================
-// Range quantifier tests {n}, {n,m}, {n,}
-// ============================================================
+// ===== [internal] Range quantifier tests {n}, {n,m}, {n,} =====
 
 TEST(RegexRuntime, QuantifierExact) {
     EXPECT_EQ(rm("a{3}", "aaa"), 1);
@@ -510,9 +500,7 @@ TEST(RegexRuntime, QuantifierFindAll) {
     freeMatchList(list);
 }
 
-// ============================================================
-// Non-greedy (lazy) when tests
-// ============================================================
+// ===== [internal] Non-greedy (lazy) when tests =====
 
 TEST(RegexRuntime, LazyStarReplace) {
     // Greedy: ".*" matches the longest string between first and last quote
@@ -575,9 +563,7 @@ TEST(RegexRuntime, LazyFindAll) {
     freeMatchList(list);
 }
 
-// ============================================================
-// Word boundary \b / \B tests
-// ============================================================
+// ===== [internal] Word boundary \b / \B tests =====
 
 TEST(RegexRuntime, WordBoundarySearch) {
     // \bworld\b matches "world" in "hello world"
@@ -622,9 +608,7 @@ TEST(RegexRuntime, WordBoundaryFindAll) {
     freeMatchList(list);
 }
 
-// ============================================================
-// Case-insensitive (?i) tests
-// ============================================================
+// ===== [internal] Case-insensitive (?i) tests =====
 
 TEST(RegexRuntime, CaseInsensitiveMatch) {
     EXPECT_EQ(rm("(?i)hello", "HELLO"), 1);
@@ -667,9 +651,7 @@ TEST(RegexRuntime, CaseInsensitiveFindAll) {
     freeMatchList(list);
 }
 
-// ============================================================
-// Performance regression tests (issue #107)
-// ============================================================
+// ===== [regression #107] Performance regression tests =====
 
 TEST(RegexRuntime, PerfSearchLongNonMatch) {
     // Pattern "a" on 10000 'b's: previously O(n^2), now O(n*s)
@@ -727,7 +709,7 @@ TEST(RegexRuntime, LazyFindAllLeftmostStart) {
     freeMatchList(list);
 }
 
-// --- ReDoS protection tests ---
+// ===== [internal] ReDoS protection tests =====
 
 TEST(RegexSecurity, ModerateGroupNestingSucceeds) {
     // 10 nested groups should work fine
@@ -740,9 +722,7 @@ TEST(RegexSecurity, NormalPatternWithStepLimit) {
     EXPECT_TRUE(rm("(a+)(b+)(c+)", "aaabbbccc"));
 }
 
-// ============================================================
-// NUL byte safety tests (#1052)
-// ============================================================
+// ===== [regression #1052] NUL byte safety tests =====
 
 TEST(RegexNul, MatchWithNulSubject) {
     // "a.b" should match "a\0b" because '.' matches any byte including NUL
@@ -823,9 +803,7 @@ TEST(RegexNul, PatternWithNul) {
     EXPECT_EQ(__ry_regex_match(pat, 3, bad,  3), 0);
 }
 
-// ============================================================
-// Multibyte char-index tests (#2265)
-// ============================================================
+// ===== [regression #2265] Multibyte char-index tests =====
 
 TEST(RegexMultibyte, SearchAfterThreeByteCodepoint) {
     // "あx": 'あ' = 3 bytes, 'x' at char index 1
@@ -852,9 +830,7 @@ TEST(RegexMultibyte, SearchWithNulAndMultibyte) {
     EXPECT_EQ(__ry_regex_search("x", 1, text, 5), 2);
 }
 
-// ============================================================
-// __ry_regex_is_match tests — partial (unanchored) match semantics (#1197)
-// ============================================================
+// ===== [regression #1197] __ry_regex_is_match tests — partial (unanchored) match semantics =====
 
 TEST(RegexRuntime, IsMatchPartial_FoundAnywhere) {
     EXPECT_EQ(rim("[0-9]+", "Hello 123 World"), 1);

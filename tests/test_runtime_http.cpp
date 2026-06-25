@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — exercises __ry_http_* runtime entry
+// points directly with socketpair / mock TCP harness.
+
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -74,7 +80,7 @@ struct TcpStreamHandle {
     int fd;
 };
 
-// --- Merged unit test for __ry_http_reason_phrase ---
+// ===== [internal] Merged unit test for __ry_http_reason_phrase =====
 
 TEST(RuntimeHttp, ReasonPhraseAll) {
     // 1xx
@@ -145,7 +151,7 @@ TEST(RuntimeHttp, ReasonPhraseAll) {
     EXPECT_STREQ(__ry_http_reason_phrase(299), "Unknown");
 }
 
-// --- Merged unit test for __ry_http_parse_content_length ---
+// ===== [internal] Merged unit test for __ry_http_parse_content_length =====
 
 TEST(RuntimeHttp, ParseContentLength) {
     // Valid
@@ -175,7 +181,7 @@ TEST(RuntimeHttp, ParseContentLength) {
     EXPECT_EQ(__ry_http_parse_content_length("  100  "), 100);
 }
 
-// --- socketpair integration tests for __ry_http_read_request ---
+// ===== [internal] socketpair integration tests for __ry_http_read_request =====
 
 // Helper: write data to fd and close the write end
 static void send_and_close(int fd, const std::string &data) {
@@ -327,7 +333,7 @@ TEST(RuntimeHttp, ReadRequestPostBodySplitAcrossRecv) {
     free(handle);
 }
 
-// --- Query parameter tests ---
+// ===== [internal] Query parameter tests =====
 
 TEST(RuntimeHttp, QueryParamsBasic) {
     int fds[2];
@@ -554,7 +560,7 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     free(handle);
 }
 
-// --- Merged URL parsing tests ---
+// ===== [internal] Merged URL parsing tests =====
 
 TEST(RuntimeHttpClient, ParseUrlValid) {
     // Basic
@@ -656,7 +662,7 @@ TEST(RuntimeHttpClient, ParseUrlInvalid) {
     EXPECT_EQ(__ry_http_parse_url("http://example.com:abc/path"), nullptr);
 }
 
-// --- HTTP client integration tests ---
+// ===== [internal] HTTP client integration tests =====
 
 static void mock_http_server(int fd, const std::string &response) {
     char buf[4096];
@@ -935,7 +941,7 @@ TEST_F(RuntimeHttpClientTest, HopByHopHeadersFiltered) {
     free(map);
 }
 
-// --- Cookie tests ---
+// ===== [internal] Cookie tests =====
 
 TEST(RuntimeHttp, CookieBasic) {
     int fds[2];
@@ -1104,7 +1110,7 @@ TEST(RuntimeHttp, CookiesAllDuplicateFirstWins) {
     free(handle);
 }
 
-// --- Chunked transfer encoding tests ---
+// ===== [internal] Chunked transfer encoding tests =====
 
 TEST(RuntimeHttp, ChunkedRequestBasic) {
     int fds[2];
@@ -1362,7 +1368,7 @@ TEST_F(RuntimeHttpClientTest, ChunkedClientResponseMultipleChunks) {
     ::close(srv);
 }
 
-// --- SSRF protection tests ---
+// ===== [internal] SSRF protection tests =====
 
 TEST(HttpSSRF, PrivateHostLoopback) {
     EXPECT_TRUE(__ry_is_private_host("127.0.0.1", 80));
@@ -1388,7 +1394,7 @@ TEST(HttpSSRF, PublicHostAllowed) {
     EXPECT_FALSE(__ry_is_private_host("8.8.8.8", 80));
 }
 
-// --- IPv4-mapped IPv6 SSRF tests ---
+// ===== [internal] IPv4-mapped IPv6 SSRF tests =====
 
 TEST(HttpSSRF, PrivateHostIPv4MappedLoopback) {
     EXPECT_TRUE(__ry_is_private_host("::ffff:127.0.0.1", 80));
@@ -1402,7 +1408,7 @@ TEST(HttpSSRF, PublicHostIPv4MappedPublic) {
     EXPECT_FALSE(__ry_is_private_host("::ffff:8.8.8.8", 80));
 }
 
-// --- DNS resolve and private addrinfo tests ---
+// ===== [internal] DNS resolve and private addrinfo tests =====
 
 TEST(HttpSSRF, ResolveLocalhost) {
     struct addrinfo *result = nullptr;
@@ -1450,7 +1456,7 @@ TEST(HttpSSRF, PublicAddrInfoSynthetic) {
     EXPECT_FALSE(__ry_is_private_addrinfo(&ai));
 }
 
-// --- Additional SSRF range tests (IPv4) ---
+// ===== [internal] Additional SSRF range tests (IPv4) =====
 
 TEST(HttpSSRF, PrivateHostCarrierGradeNAT) {
     EXPECT_TRUE(__ry_is_private_host("100.64.0.1", 80));
@@ -1522,7 +1528,7 @@ TEST(HttpSSRF, PublicHostBelowMulticast) {
     EXPECT_FALSE(__ry_is_private_host("223.255.255.255", 80));
 }
 
-// --- Additional SSRF range tests (IPv6 synthetic) ---
+// ===== [internal] Additional SSRF range tests (IPv6 synthetic) =====
 
 TEST(HttpSSRF, PrivateAddrIPv6Unspecified) {
     struct sockaddr_in6 sin6{};
@@ -1543,7 +1549,7 @@ TEST(HttpSSRF, PrivateAddrNullSockaddr) {
     EXPECT_FALSE(__ry_is_private_addr(nullptr));
 }
 
-// --- Multipart form-data tests ---
+// ===== [internal] Multipart form-data tests =====
 
 TEST(RuntimeHttp, FormFieldBasic) {
     int fds[2];
@@ -1825,7 +1831,7 @@ TEST(RuntimeHttp, FormFieldNoBody) {
     free(handle);
 }
 
-// --- NUL byte regression tests (#281) ---
+// ===== [regression #281] NUL byte regression tests =====
 
 // Helper: write raw bytes (including NUL) to fd and close
 static void send_raw_and_close(int fd, const char *data, size_t len) {
@@ -2114,7 +2120,7 @@ TEST(RuntimeHttp, FormFileDefaultContentType) {
     free(handle);
 }
 
-// --- Response header CRLF injection tests ---
+// ===== [internal] Response header CRLF injection tests =====
 
 // Helper to build a MapHeader for response CRLF tests
 static MapHeader *build_response_headers(

@@ -1,10 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ============================================================
-// @each: basic parameterized test
-// ============================================================
+// ===== [contract] @each: basic parameterized test =====
 
 TEST_F(CodeGenTest, EachBasicInt) {
     auto output = runTestSource(withStdlibDirectiveDecls(
@@ -20,9 +22,7 @@ TEST_F(CodeGenTest, EachBasicInt) {
     EXPECT_NE(output.find("2 passed, 0 failed"), std::string::npos);
 }
 
-// ============================================================
-// @each: string parameters
-// ============================================================
+// ===== [contract] @each: string parameters =====
 
 TEST_F(CodeGenTest, EachStringParam) {
     auto output = runTestSource(withStdlibDirectiveDecls(
@@ -36,9 +36,7 @@ TEST_F(CodeGenTest, EachStringParam) {
     EXPECT_NE(output.find("2 passed, 0 failed"), std::string::npos);
 }
 
-// ============================================================
-// @each: failing test
-// ============================================================
+// ===== [contract] @each: failing test =====
 
 TEST_F(CodeGenTest, EachFailingTest) {
     auto output = runTestSource(withStdlibDirectiveDecls(
@@ -52,9 +50,7 @@ TEST_F(CodeGenTest, EachFailingTest) {
     EXPECT_NE(output.find("0 passed, 1 failed"), std::string::npos);
 }
 
-// ============================================================
-// @property: basic commutative test
-// ============================================================
+// ===== [contract] @property: basic commutative test =====
 
 TEST_F(CodeGenTest, PropertyCommutative) {
     auto output = runTestSource(withStdlibDirectiveDecls(
@@ -68,9 +64,7 @@ TEST_F(CodeGenTest, PropertyCommutative) {
     EXPECT_NE(output.find("1 passed, 0 failed"), std::string::npos);
 }
 
-// ============================================================
-// @property: bool parameter
-// ============================================================
+// ===== [contract] @property: bool parameter =====
 
 TEST_F(CodeGenTest, PropertyBoolParam) {
     auto output = runTestSource(withStdlibDirectiveDecls(
