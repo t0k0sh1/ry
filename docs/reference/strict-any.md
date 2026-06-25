@@ -80,17 +80,54 @@ The nested narrow-each-operand fix for `any-arithmetic` and the per-site fix for
 
 For JSON / JSON5 readers and other dynamic-data boundaries, prefer `load[Map<str, any>](...)` / `load[List<any>](...)` and narrow each leaf with `asType[T]` (or use `Map.getPath` / dot-sugar to descend before narrowing).
 
-### Recovery shapes that lack a canonical migration on v0.0.30
+### Roundtrip recovery from a native-typed `any` source
 
-`asType[T]` does not yet cover every shape that the implicit unwrap previously handled. The following patterns have no canonical replacement and must keep their values statically typed end-to-end (or be reshaped to descend through `Map<str, any>` / `List<any>` and narrow each leaf):
+In addition to JSON-shape sources, `asType[T]` recovers values that were wrapped from a native-typed source via `v: any = ...`. The runtime descriptor stored on the boxed value (for `Result` / enum) or the typed-collection side table (for `List<T>` / `Map<str, V>` / `Set<T>`) gates the unwrap, so a mismatched source returns `Err` rather than mis-reading the payload.
 
-- **Native-source typed collection roundtrip** — `xs: List<int> = anyVal` where `anyVal` was wrapped from a previously-typed `List<int>` source. `asType[List<int>](anyVal)` accepts only JSON-shape (`List<any>` / `Map<str, any>` / `Set<any>`) sources today.
-- **`Result<T, E>` recovery** — `r: Result<int, str> = anyVal` and `asType[Result<int, str>](anyVal)` both fail (`asType` returns Err with "Result/enum target not yet supported"). Case-based pattern matching directly on the runtime value isn't reachable either because the implicit unwrap site is the only way to introduce the typed `r` binding.
-- **Enum recovery (simple or ADT)** — `c: Color = anyVal` and `asType[Color](anyVal)` both fail with the same "target not yet supported" message.
+```ry
+# Typed collections — works for both JSON-shape and native-typed sources.
+xs: List<int> = [1, 2, 3]
+v: any = xs
+case asType[List<int>](v):
+    Ok(out): use(out[0])
+    Err(_): ...
 
-`asType[Option<T>]` already works on v0.0.30 and is the canonical recovery for `Option<T>` payloads.
+# Result<T, E> — descriptor-gated; mismatched Result types return Err.
+r: Result<int, str> = Ok(42)
+v: any = r
+case asType[Result<int, str>](v):
+    Ok(out):
+        case out:
+            Ok(n): use(n)
+            Err(_): ...
+    Err(_): ...
 
-Extending `asType[T]` to cover the cases above is tracked as a follow-up.
+# Simple or ADT enum.
+v: any = Color::Red
+case asType[Color](v):
+    Ok(c): use(c)
+    Err(_): ...
+
+v: any = Shape::Rect(3, 4)
+case asType[Shape](v):
+    Ok(s):
+        case s:
+            Shape::Rect(w, h): use(w, h)
+            ...
+    Err(_): ...
+```
+
+Coverage matrix:
+
+| Target shape | JSON-shape source (`List<any>` etc) | Native-typed source |
+|---|---|---|
+| `List<T>` / `Map<str, V>` (T/V ≠ any) | iterates and narrows each element | passthrough with ARC retain when the registered name matches |
+| `Set<T>` (T ≠ any) | not supported (Err) | passthrough when registered name matches |
+| `Result<T, E>` | not applicable | descriptor-gated unwrap |
+| `Option<T>` | `Unit`→`None`, scalar→`Some` | descriptor-gated unwrap |
+| Simple / ADT enum | not applicable | descriptor-gated unwrap |
+
+A mismatched source returns `Err` with a prefixed `asType[T]: ...` message.
 
 ## v0.0.30 issue ladder
 
@@ -107,3 +144,4 @@ The migration to default strict-any landed across a sequence of issues; the tabl
 | #2321 | Adds the `any-implicit-unwrap` rule covering Path 9a–9d. |
 | #2323 | Adds Pattern 3 lint warning for unannotated lambda parameters. |
 | #2322 | Promotes strict-any to the compiler default; removes the `--strict-any` / `RY_STRICT_ANY` opt-in. |
+| #2378 | Extends `asType[T]` to recover native-typed collections, `Result<T, E>`, and simple / ADT enums so every shape rejected by `any-implicit-unwrap` has a canonical `case asType[T](v)` recovery. |

@@ -474,23 +474,32 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                           " target not yet supported";
         return buildErrValue(buildInlineError(msg), resTy);
     };
-    // Source-shape guard (#2315): every helper that walks `any`-held
-    // collection storage (tryUnwrapListFromAny / tryUnwrapMapFromAny /
-    // tryUnwrapRecordFromAny) assumes the source any holds JSON-shape
-    // List<any> / Map<str, any> with 16-byte RyAny stride. Native typed
-    // collections wrapped via `wrapInAny` register themselves in the
-    // `__ry_any_register_typed_coll` side table; iterating them as
-    // RyAny[] reads garbage at 16-byte stride out of an 8-byte buffer.
-    // `asType[List<T>]` / `asType[Map<str, V>]` (T/V ≠ any) on such a
-    // source would silently misread or OOB-read; guard with a runtime
-    // side-table lookup that returns Err on registered typed sources
-    // and delegates to `untypedPath()` otherwise. `load[T]` from json /
-    // json5 sources never registers a typed collection (the parser
-    // always emits `List<any>` / `Map<str, any>`), so this is a no-op
-    // for the load path in practice but defense-in-depth in principle.
+    // Source-shape guard (#2315, #2378): every helper that walks `any`-held
+    // collection storage as 16-byte RyAny stride (tryUnwrapListFromAny /
+    // tryUnwrapMapFromAny / tryUnwrapRecordFromAny) assumes the source any
+    // holds JSON-shape List<any> / Map<str, any> with 16-byte stride.
+    // Native typed collections wrapped via `wrapInAny` register themselves
+    // in the `__ry_any_register_typed_coll` side table; iterating them as
+    // RyAny[] reads garbage at 16-byte stride out of a narrower buffer.
+    //
+    // Two-arm dispatch on the runtime side-table lookup:
+    //   - source is registered (typed): if `expectedTypedName` matches the
+    //     registered name, the data layout is already exactly what the
+    //     target expects → passthrough with ARC retain on the box header
+    //     (#2378 enables `asType[List<int>]` to recover a native `List<int>`
+    //     roundtrip). If the names mismatch, return Err. If
+    //     `expectedTypedName` is empty (record / Set<any>-only targets),
+    //     no passthrough is possible and any typed source is Err.
+    //   - source is unregistered (untyped, JSON-shape): delegate to
+    //     `untypedPath()` which walks the 16-byte RyAny[].
+    //
+    // `load[T]` from json/json5 sources never registers a typed collection
+    // (the parser always emits `List<any>` / `Map<str, any>`), so the typed
+    // arm is dead code on the load path in practice — defense-in-depth.
     auto emitTypedCollGuard =
         [&](const llvm::Twine &nameStem,
             const std::string &kindLabel,
+            const std::string &expectedTypedName,
             llvm::function_ref<llvm::Value *()> untypedPath) -> llvm::Value * {
         llvm::Function *fn = builder_.GetInsertBlock()->getParent();
         auto lookupFn = getRuntimeFn(
@@ -511,17 +520,63 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         emitBranchCond(isTyped, typedBB, untypedBB);
 
         builder_.SetInsertPoint(typedBB);
-        std::string label =
+        const std::string label =
             targetTypeName.empty() ? "?" : targetTypeName;
-        std::string msg =
-            callerLabel + "[" + label + "]: cannot reconstruct " +
-            kindLabel + " from a native typed collection source "
-            "(only List<any> / Map<str, any> / Set<any> JSON-shape "
-            "sources are supported)";
-        llvm::Value *typedErr =
-            buildErrValue(buildInlineError(msg), resTy);
-        llvm::BasicBlock *typedEndBB = builder_.GetInsertBlock();
-        emitBranchUncond(guardDoneBB);
+
+        llvm::Value *typedOkResult = nullptr;
+        llvm::BasicBlock *typedOkEndBB = nullptr;
+        llvm::Value *typedErrResult;
+        llvm::BasicBlock *typedErrEndBB;
+
+        if (!expectedTypedName.empty()) {
+            // Name-match check: the registered name string is compared
+            // byte-for-byte against the canonical wrap-time name format
+            // (matching `buildTypeNameFromMeta`'s output: `List<int>`,
+            // `Map<str, int>` with a space after the comma, `Set<int>`).
+            // Mismatch → Err; match → passthrough with ARC retain on the
+            // collection header (the unwrapped value is a new alias to
+            // the boxed collection, so the strong count must bump once).
+            llvm::Value *expectedNameStr = cachedGlobalString(
+                expectedTypedName, ".any.typed_coll.expected");
+            auto strcmpFn = getStdlibStrcmp();
+            llvm::Value *cmpResult = builder_.CreateCall(
+                strcmpFn, {typedName, expectedNameStr},
+                (nameStem + ".typed.cmp").str());
+            llvm::Value *isMatch = builder_.CreateICmpEQ(
+                cmpResult, llvm::ConstantInt::get(i32Ty_, 0),
+                (nameStem + ".typed.match").str());
+
+            auto *matchBB = createBBInFn("typedchk.typed.match", fn);
+            auto *mismatchBB = createBBInFn("typedchk.typed.mismatch", fn);
+            emitBranchCond(isMatch, matchBB, mismatchBB);
+
+            builder_.SetInsertPoint(matchBB);
+            auto *hdr = emitArcGetHeaderFromData(dataPtr);
+            emitArcRetain(hdr);
+            typedOkResult = buildOkValue(dataPtr, resTy);
+            typedOkEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(guardDoneBB);
+
+            builder_.SetInsertPoint(mismatchBB);
+            std::string msg =
+                callerLabel + "[" + label + "]: expected " +
+                expectedTypedName +
+                " but source is a different native typed collection";
+            typedErrResult =
+                buildErrValue(buildInlineError(msg), resTy);
+            typedErrEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(guardDoneBB);
+        } else {
+            std::string msg =
+                callerLabel + "[" + label + "]: cannot reconstruct " +
+                kindLabel + " from a native typed collection source "
+                "(only List<any> / Map<str, any> / Set<any> JSON-shape "
+                "sources are supported)";
+            typedErrResult =
+                buildErrValue(buildInlineError(msg), resTy);
+            typedErrEndBB = builder_.GetInsertBlock();
+            emitBranchUncond(guardDoneBB);
+        }
 
         builder_.SetInsertPoint(untypedBB);
         llvm::Value *untypedResult = untypedPath();
@@ -529,11 +584,96 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         emitBranchUncond(guardDoneBB);
 
         builder_.SetInsertPoint(guardDoneBB);
-        llvm::PHINode *phi =
-            builder_.CreatePHI(resTy, 2, nameStem + ".result");
-        phi->addIncoming(typedErr, typedEndBB);
+        unsigned numIncoming = typedOkResult ? 3u : 2u;
+        llvm::PHINode *phi = builder_.CreatePHI(
+            resTy, numIncoming, (nameStem + ".result").str());
+        if (typedOkResult)
+            phi->addIncoming(typedOkResult, typedOkEndBB);
+        phi->addIncoming(typedErrResult, typedErrEndBB);
         phi->addIncoming(untypedResult, untypedEndBB);
         return phi;
+    };
+
+    // Descriptor-gated enum-like recovery (#2378). Used by Result, ADT enum,
+    // and simple enum targets. Branches on the source `any` tag being Enum
+    // and on the box's descriptor pointer equalling the expected descriptor
+    // (which is looked up by the canonical wrap-time name). On both
+    // matches, reuses `unwrapEnumFromAny` — its internal mismatch traps
+    // are dead code on the proven-match path. Non-enum sources and
+    // descriptor-mismatch sources return a prefixed Err.
+    auto emitEnumLikeUnwrap =
+        [&](llvm::Type *unwrapTargetTy,
+            const std::string &canonicalName,
+            const std::string &kindLabel) -> llvm::Value * {
+        llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+        llvm::Value *entryTag = builder_.CreateExtractValue(
+            anyVal, {0}, "tryenum.entry.tag");
+        llvm::Value *isEnum = builder_.CreateICmpEQ(
+            entryTag,
+            llvm::ConstantInt::get(i64Ty_,
+                                    static_cast<uint64_t>(RyAnyTag::Enum)),
+            "tryenum.entry.is_enum");
+
+        auto *enumPathBB = createBBInFn("tryenum.entry.enum_path", fn);
+        auto *tagMismatchBB = createBBInFn("tryenum.entry.tag_err", fn);
+        auto *enumDoneBB = createBBInFn("tryenum.entry.done", fn);
+        emitBranchCond(isEnum, enumPathBB, tagMismatchBB);
+
+        // Non-enum source: prefixed Err.
+        builder_.SetInsertPoint(tagMismatchBB);
+        const std::string label =
+            targetTypeName.empty() ? "?" : targetTypeName;
+        std::string tagMsg = callerLabel + "[" + label + "]: expected " +
+                             kindLabel + " " + label +
+                             ", got a non-enum source";
+        llvm::Value *tagErrVal =
+            buildErrValue(buildInlineError(tagMsg), resTy);
+        llvm::BasicBlock *tagErrEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(enumDoneBB);
+
+        // Enum tag: descriptor walk against the canonical name's global.
+        builder_.SetInsertPoint(enumPathBB);
+        auto *expectedDesc =
+            getOrCreateEnumDescriptor(canonicalName, unwrapTargetTy);
+        llvm::Value *enumDataPtr =
+            loadAnyDataPtr(anyVal, "tryenum.entry");
+        llvm::Value *actualDesc = builder_.CreateLoad(
+            ptrTy_, enumDataPtr, "tryenum.entry.actual_desc");
+        llvm::Value *descEq = builder_.CreateICmpEQ(
+            actualDesc, expectedDesc, "tryenum.entry.desc_eq");
+
+        auto *enumOkBB = createBBInFn("tryenum.entry.enum_ok", fn);
+        auto *descMismatchBB =
+            createBBInFn("tryenum.entry.desc_err", fn);
+        emitBranchCond(descEq, enumOkBB, descMismatchBB);
+
+        // Descriptor matches: reuse the panic-version unwrap. Its
+        // tag-mismatch / descriptor-mismatch traps are unreachable
+        // because we just proved both predicates.
+        builder_.SetInsertPoint(enumOkBB);
+        llvm::Value *payloadVal =
+            unwrapEnumFromAny(anyVal, unwrapTargetTy, canonicalName);
+        llvm::Value *okVal = buildOkValue(payloadVal, resTy);
+        llvm::BasicBlock *enumOkEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(enumDoneBB);
+
+        // Descriptor mismatch: prefixed Err.
+        builder_.SetInsertPoint(descMismatchBB);
+        std::string descMsg = callerLabel + "[" + label + "]: expected " +
+                              label + ", got a different " + kindLabel +
+                              " type";
+        llvm::Value *descErrVal =
+            buildErrValue(buildInlineError(descMsg), resTy);
+        llvm::BasicBlock *descErrEndBB = builder_.GetInsertBlock();
+        emitBranchUncond(enumDoneBB);
+
+        builder_.SetInsertPoint(enumDoneBB);
+        llvm::PHINode *enumPhi =
+            builder_.CreatePHI(resTy, 3, "tryenum.entry.result");
+        enumPhi->addIncoming(tagErrVal, tagErrEndBB);
+        enumPhi->addIncoming(okVal, enumOkEndBB);
+        enumPhi->addIncoming(descErrVal, descErrEndBB);
+        return enumPhi;
     };
 
     // Sub-helper dispatch stays CodeGen-private per [[lowered_any]] Path 1
@@ -541,9 +681,52 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     // per-record / per-Map<str, V> reconstruction that depends on CodeGen
     // state not exposed across the boundary surface.
     if (auto *st = llvm::dyn_cast<llvm::StructType>(targetTy)) {
-        bool isEnumOrResult = !findAdtEnumName(st).empty() || isResultType(st);
-        if (isEnumOrResult) {
-            return emitUnsupportedErr("Result/enum");
+        // ADT enum: descriptor name is the bare enum type name (matches
+        // the wrap-time name via `findEnumLikeTypeNameForBoxing`'s
+        // `findAdtEnumName` branch).
+        if (std::string adtName = findAdtEnumName(st); !adtName.empty()) {
+            return emitEnumLikeUnwrap(st, adtName, "enum");
+        }
+        // Result<V, E>: build the canonical descriptor name with a
+        // space after the comma so it matches the wrap-time name from
+        // `findEnumLikeTypeNameForBoxing`'s Result arm. The parser-
+        // emitted `targetTypeName` for `asType[Result<int, str>]` is
+        // `Result<int,str>` (no space), so we must extract V and E and
+        // reassemble. Fallback to `reverse_result_types_` if the parse
+        // fails (e.g. type alias resolving to a Result struct).
+        if (isResultType(st)) {
+            std::string resolved = resolveTypeAlias(targetTypeName);
+            std::string okName, errName;
+            constexpr const char *kResPrefix = "Result<";
+            constexpr size_t kResPrefixLen = 7;
+            if (resolved.size() > kResPrefixLen + 1 &&
+                resolved.compare(0, kResPrefixLen, kResPrefix) == 0 &&
+                resolved.back() == '>') {
+                std::string inside = resolved.substr(
+                    kResPrefixLen,
+                    resolved.size() - kResPrefixLen - 1);
+                auto parts = splitTypeArgs(inside);
+                if (parts.size() == 2) {
+                    okName = ry::util::trimTypeNameSpaces(parts[0]);
+                    errName = ry::util::trimTypeNameSpaces(parts[1]);
+                }
+            }
+            if (okName.empty() || errName.empty()) {
+                auto resIt = reverse_result_types_.find(st);
+                if (resIt != reverse_result_types_.end()) {
+                    if (okName.empty())
+                        okName = reverseResolveTypeName(resIt->second.first);
+                    if (errName.empty())
+                        errName =
+                            reverseResolveTypeName(resIt->second.second);
+                }
+            }
+            if (okName.empty() || errName.empty()) {
+                return emitUnsupportedErr("Result");
+            }
+            std::string canonicalResultName =
+                "Result<" + okName + ", " + errName + ">";
+            return emitEnumLikeUnwrap(st, canonicalResultName, "Result");
         }
         if (isOptionType(st)) {
             auto it = reverse_option_types_.find(st);
@@ -689,9 +872,11 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
         // and produces the "expected JSON object" Err on other tags.
         // Wrap in typed-coll guard so a native typed Map<str, X> source
         // (X ≠ any) returns Err instead of mis-iterating the value buffer.
+        // No `expectedTypedName` — a record target never accepts a typed
+        // collection source as a passthrough.
         builder_.SetInsertPoint(mapPathBB);
         llvm::Value *mapResult =
-            emitTypedCollGuard("tryrec.entry.map", "record", [&] {
+            emitTypedCollGuard("tryrec.entry.map", "record", "", [&] {
                 return tryUnwrapRecordFromAny(anyVal, st, *info,
                                                 targetTypeName, resTy,
                                                 callerLabel);
@@ -756,12 +941,20 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
     }
     if (targetTy == i64Ty_ && !targetTypeName.empty() &&
         isSimpleEnumTypeName(targetTypeName)) {
-        return emitUnsupportedErr("simple enum");
+        // Descriptor name for a simple enum is the bare enum type name
+        // (matches `findEnumLikeTypeNameForBoxing`'s `enum_value_type`
+        // branch). Reuse `emitEnumLikeUnwrap` for the descriptor-gated
+        // recovery (#2378).
+        std::string canonicalName = resolveTypeAlias(targetTypeName);
+        return emitEnumLikeUnwrap(i64Ty_, canonicalName, "enum");
     }
 
-    // Typed `List<T>` / `Map<str, V>` dispatch (#1852): per-element recursive
-    // unwrap that walks the 16-byte RyAny stride. `Set<T>` and
-    // `Map<non-str, _>` are still rejected (out of scope for #1852).
+    // Typed `List<T>` / `Map<str, V>` / `Set<T>` dispatch (#1852, #2378):
+    // per-element recursive unwrap that walks the 16-byte RyAny stride
+    // (`List<any>` / `Map<str, any>` JSON-shape sources), and native
+    // typed-collection roundtrip via the typed-coll side table + ARC
+    // passthrough (#2378). `Map<non-str, _>` is still rejected — there is
+    // no wrap-side registration for non-str keys.
     if (targetTy == ptrTy_ && !targetTypeName.empty()) {
         std::string resolved = resolveTypeAlias(targetTypeName);
         if (ry::util::isListTypeName(resolved)) {
@@ -775,8 +968,11 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                 llvm::Type *elemTy = resolveType(inner);
                 if (!elemTy)
                     return emitUnsupportedErr("typed List<" + inner + ">");
+                // Canonical wrap-time name: `List<inner>` (no spaces).
+                std::string expectedTypedName = "List<" + inner + ">";
                 return emitTypedCollGuard(
-                    "trylst.entry", "typed List<" + inner + ">", [&] {
+                    "trylst.entry", "typed List<" + inner + ">",
+                    expectedTypedName, [&] {
                         return tryUnwrapListFromAny(
                             anyVal, elemTy, inner, targetTypeName, resTy,
                             callerLabel);
@@ -786,7 +982,23 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
             std::string inner = ry::util::trimTypeNameSpaces(
                 resolved.substr(4, resolved.size() - 5));
             if (inner != "any") {
-                return emitUnsupportedErr("typed Set<" + inner + ">");
+                // No JSON-shape Set<any> → typed Set<T> conversion path
+                // (out of scope for #1852); typed-coll passthrough is the
+                // only supported route. Untyped sources here are Err.
+                std::string expectedTypedName = "Set<" + inner + ">";
+                return emitTypedCollGuard(
+                    "tryset.entry", "typed Set<" + inner + ">",
+                    expectedTypedName, [&]() -> llvm::Value * {
+                        std::string label = targetTypeName.empty()
+                                                ? "?"
+                                                : targetTypeName;
+                        std::string msg = callerLabel + "[" + label +
+                                          "]: typed Set<" + inner +
+                                          "> source must be a native typed "
+                                          "Set; no JSON-shape Set<any> "
+                                          "conversion is supported";
+                        return buildErrValue(buildInlineError(msg), resTy);
+                    });
             }
         } else if (ry::util::isMapTypeName(resolved)) {
             std::string innerArgs = resolved.substr(4, resolved.size() - 5);
@@ -805,8 +1017,13 @@ llvm::Value *CodeGen::tryUnwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy
                     if (!valTy)
                         return emitUnsupportedErr(
                             "typed Map<str, " + v + ">");
+                    // Canonical wrap-time name: `Map<str, v>` with a space
+                    // after the comma — matches `buildTypeNameFromMeta`.
+                    std::string expectedTypedName =
+                        "Map<str, " + v + ">";
                     return emitTypedCollGuard(
-                        "trymap.entry", "typed Map<str, " + v + ">", [&] {
+                        "trymap.entry", "typed Map<str, " + v + ">",
+                        expectedTypedName, [&] {
                             return tryUnwrapMapFromAny(
                                 anyVal, valTy, v, targetTypeName, resTy,
                                 callerLabel);
