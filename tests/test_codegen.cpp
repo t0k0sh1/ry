@@ -1216,6 +1216,60 @@ TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
         "buf[0] = 256"), std::runtime_error);
 }
 
+// ===== [regression #2422] codegen_type.cpp T[N] size parser exception safety =====
+//
+// `src/codegen_type.cpp:139` parses the `N` of `T[N]` inside `resolveType`.
+// Surface syntax is already guarded by the parser (#1259,
+// `src/parser/parser_decl.cpp:951-955`) so a Ry source like
+// `buf: u8[999...] = ...` is rejected before codegen, but `resolveType` is
+// also reached from alias expansion, generic instantiation, and other
+// internal callers that may pass a synthesized `T[<bad>]` typeName string.
+// The pre-fix `std::stoull` would have aborted the whole compiler via
+// uncaught `std::out_of_range` / `std::invalid_argument`; the post-fix path
+// returns the same structured diagnostic as the parser. Direct
+// `resolveType` calls are the only way to lock the branch in.
+
+TEST_F(CodeGenTest, ArraySizeOverflowDirect) {
+    CodeGen cg;
+    try {
+        cg.resolveType(
+            "u8[999999999999999999999999999999999999999999999999999999999999999999999999999999999999]");
+        FAIL() << "expected diagnostic for overflowing array size";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("array size"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(CodeGenTest, ArraySizeHexLiteralDirect) {
+    CodeGen cg;
+    EXPECT_THROW(cg.resolveType("u8[0xFF]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ArraySizeTrailingGarbageDirect) {
+    CodeGen cg;
+    EXPECT_THROW(cg.resolveType("u8[10abc]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ArraySizeUnderscoreDirect) {
+    CodeGen cg;
+    EXPECT_THROW(cg.resolveType("u8[1_000]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ArraySizeEmptyDirect) {
+    CodeGen cg;
+    EXPECT_THROW(cg.resolveType("u8[]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ArraySizeValidDirect) {
+    CodeGen cg;
+    llvm::Type *ty = cg.resolveType("u8[10]");
+    ASSERT_NE(ty, nullptr);
+    auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ty);
+    ASSERT_NE(arrTy, nullptr);
+    EXPECT_EQ(arrTy->getNumElements(), 10u);
+}
+
 // ===== [contract] Checked/Saturating/Wrapping Arithmetic =====
 
 TEST_F(CodeGenTest, CheckedAddOk) {

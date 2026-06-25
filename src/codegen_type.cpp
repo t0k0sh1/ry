@@ -136,7 +136,19 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
             if (!ry::util::isLowLevelTypeName(elemStr))
                 codegenError("array element type must be a low-level type: " + elemStr);
             llvm::Type *elemTy = resolveType(elemStr);
-            uint64_t size = std::stoull(sizeStr);
+            // std::stoull throws std::out_of_range / std::invalid_argument on
+            // overflow or non-decimal input, which propagates uncaught and
+            // aborts the process. Match the parser's strtoull + errno + end-
+            // pointer pattern (src/parser/parser_decl.cpp:951-955) and reuse
+            // its user-facing wording so any future internal caller that
+            // hands resolveType a malformed `T[<bad>]` surface gets the same
+            // diagnostic as the parser path. (#1259 / #2422)
+            char *sizeEnd = nullptr;
+            errno = 0;
+            uint64_t size = std::strtoull(sizeStr.c_str(), &sizeEnd, 10);
+            if (sizeStr.empty() || errno == ERANGE ||
+                sizeEnd != sizeStr.c_str() + sizeStr.size())
+                codegenError("invalid or out-of-range array size in array type T[N]: " + sizeStr);
             if (size == 0) codegenError("array size must be > 0");
             return llvm::ArrayType::get(elemTy, size);
         }
