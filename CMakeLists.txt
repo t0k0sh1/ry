@@ -137,7 +137,6 @@ add_library(ry_lib STATIC
     src/sema/sema_return.cpp
     src/module/module_loader.cpp
     src/jit/jit.cpp
-    src/test_runtime.cpp
     src/runtime/core/string.cpp
     src/runtime/core/hash.cpp
     src/runtime/core/regex.cpp
@@ -249,16 +248,22 @@ function(add_ry_fuzz_target TARGET_NAME)
     add_executable(${TARGET_NAME} ${SOURCES})
     # emit (#1949) is linked because ry_lib's shim layer references
     # its symbols even from translation units the fuzzers compile directly.
+    # ry_testing (#2395) is linked because ry_lib's jit_runner.cpp SIGALRM
+    # handler references its test-runtime state (g_per_test_timeout_*,
+    # __ry_test_current_it_name); whole-archive ry_lib drags jit_runner.o
+    # in so these refs must be resolvable at link time even when the fuzz
+    # harness itself never exercises the test runtime.
     if(APPLE)
         target_link_libraries(${TARGET_NAME} PRIVATE
             -Wl,-force_load,$<TARGET_FILE:ry_lib>
             ry_lib
-            emit)
+            emit
+            ry_testing)
     else()
         target_link_libraries(${TARGET_NAME} PRIVATE
             -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
             emit
-            -Wl,--no-as-needed atomic -Wl,--as-needed)
+            -Wl,--no-as-needed ry_testing atomic -Wl,--as-needed)
         target_link_options(${TARGET_NAME} PRIVATE -rdynamic)
     endif()
     # -fsanitize=fuzzer links libFuzzer's main() into this executable only
@@ -273,7 +278,16 @@ add_ry_native_lib(path       src/runtime/native/path.cpp)
 add_ry_native_lib(convert    src/runtime/native/convert.cpp)
 add_ry_native_lib(filesystem src/runtime/native/filesystem.cpp)
 add_ry_native_lib(gc         src/runtime/native/gc.cpp)
-add_ry_native_lib(testing    src/runtime/native/testing.cpp)
+# ry_testing also packages src/test_runtime.cpp — the __ry_test_* / __ry_mock_*
+# runtime that JIT-emitted test code calls into. Previously these symbols lived
+# in ry_lib and were registered via absoluteSymbols in jit_runner.cpp (G4
+# anomaly, #2395); colocating them with the testing native lib unifies the
+# loader path with every other stdlib module. ry_lib (specifically
+# jit_runner.cpp's SIGALRM handler) reaches back into libry_testing for the
+# per-test timeout state (g_per_test_timeout_*) and __ry_test_current_it_name,
+# so libry_testing must be process-linked into `ry` / `ry_tests` / fuzz
+# targets (see RY_NATIVE_LIBS_LINK + per-executable target_link_libraries).
+add_ry_native_lib(testing    src/runtime/native/testing.cpp src/test_runtime.cpp)
 
 # All native libs are independent — no inter-library link dependencies.
 # __ry_set_last_error / __ry_get_last_error live in ry_lib (the main executable)
@@ -291,12 +305,14 @@ else()
     target_link_libraries(ry_thread PRIVATE Threads::Threads atomic)
 endif()
 
-# runtime/core/hash.cpp is compiled here (not in a separate shared lib) because ry_http
-# needs hash symbols at link time for HTTP header map construction.
 # Shared TCP utilities are compiled directly into ry_http via runtime/native/net_utils.hpp.
+# __ry_hash_* / __ry_ht_* symbols live in ry_lib (whole-archive-linked into
+# `ry` / `ry_tests`); libry_http resolves them at load via -undefined
+# dynamic_lookup (macOS) / -rdynamic (Linux), the same mechanism that resolves
+# __ry_set_last_error.
 add_ry_native_lib(http       src/runtime/native/http/http.cpp src/runtime/native/http/http_client.cpp
                              src/runtime/native/http/http_multipart.cpp src/runtime/native/http/http_error.cpp
-                             src/runtime/native/http/tls.cpp src/runtime/core/hash.cpp)
+                             src/runtime/native/http/tls.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 # ===== LLVM IR emission shared library (emit) =====
@@ -417,25 +433,32 @@ set(RY_NATIVE_LIBS_LINK
     ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
-# Native shared libraries are NOT linked here — the JIT loads them on-demand
-# via find_native_library() + DynamicLibrarySearchGenerator::Load() (see main.cpp).
+# Native shared libraries (except ry_testing) are NOT linked here — the JIT
+# loads them on-demand via find_native_library() + DynamicLibrarySearchGenerator::Load()
+# (see main.cpp). ry_testing is process-linked because ry_lib's
+# jit_runner.cpp SIGALRM handler holds static references to its
+# g_per_test_timeout_* state and __ry_test_current_it_name (#2395).
 add_executable(ry src/app/main.cpp)
 add_dependencies(ry ${RY_NATIVE_LIBS})
 # emit is referenced at compile time by ry_lib's shim layer (#1949), so
-# it must be linked explicitly into the executable (unlike RY_NATIVE_LIBS
+# it must be linked explicitly into the executable (unlike most RY_NATIVE_LIBS
 # which the JIT loads on demand). ry_xid follows the same process-link
 # model for the reasons in the xid corrosion block above (#2314); its
 # absolute artifact path is required because corrosion's IMPORTED target
 # rejects -Wl,--no-as-needed and the $<TARGET_FILE:> generator expression.
+# ry_testing is process-linked because ry_lib references its test-runtime
+# symbols at C++ link time (#2395).
 set(RY_XID_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}")
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit ${RY_XID_LINK})
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib emit ${RY_XID_LINK} ry_testing)
 else()
     # --no-as-needed keeps both atomic (LLVM atomicrmw lowering reaches
     # __atomic_load at JIT time) and ry_xid (no static caller in ry_lib —
     # libry_json5 references __ry_xid_* but is dlopen'd later) from being
-    # dropped despite no link-time references.
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit -Wl,--no-as-needed ${RY_XID_LINK} atomic -Wl,--as-needed)
+    # dropped despite no link-time references. ry_testing has static
+    # callers in ry_lib (jit_runner.cpp's signal handler) so DT_NEEDED is
+    # established naturally.
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive emit -Wl,--no-as-needed ${RY_XID_LINK} ry_testing atomic -Wl,--as-needed)
     # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
