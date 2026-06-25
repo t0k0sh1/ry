@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include "ry/runtime/native/net.hpp"
 #include "ry/runtime/native/io.hpp"
@@ -41,9 +45,7 @@ fn setSendTimeout(stream: TcpStream, ms: int) -> Unit
 fn sleep(ms: int) -> Unit
 )";
 
-// ============================================================
-// bind returns Result<TcpListener, Error>
-// ============================================================
+// ===== [contract] bind returns Result<TcpListener, Error> =====
 
 TEST_F(CodeGenTest, NetBindReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -56,9 +58,7 @@ case bind("127.0.0.1", 0):
 )"), "ok\n");
 }
 
-// ============================================================
-// connect to invalid address returns Err
-// ============================================================
+// ===== [contract] connect to invalid address returns Err =====
 
 TEST_F(CodeGenTest, NetConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -80,9 +80,7 @@ case bind("127.0.0.1", 0):
 )"), "err\n");
 }
 
-// ============================================================
-// listen returns Result<Unit, Error>
-// ============================================================
+// ===== [contract] listen returns Result<Unit, Error> =====
 
 TEST_F(CodeGenTest, NetListenReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -99,10 +97,8 @@ case bind("127.0.0.1", 0):
 )"), "ok\n");
 }
 
-// ============================================================
-// Echo round-trip: server and client via async fn
+// ===== [contract] Echo round-trip: server and client via async fn =====
 // Binds in main scope, passes listener to async fn for accept.
-// ============================================================
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -170,9 +166,7 @@ case bind("127.0.0.1", 0):
 )"), "echo:hello\n");
 }
 
-// ============================================================
-// __ry_tcp_send: closed fd returns -1 (no exit)
-// ============================================================
+// ===== [internal] __ry_tcp_send: closed fd returns -1 (no exit) =====
 
 TEST(TcpSend, ClosedFdReturnsNegative) {
     int fds[2];
@@ -191,9 +185,7 @@ TEST(TcpSend, ClosedFdReturnsNegative) {
     EXPECT_EQ(result, -1);
 }
 
-// ============================================================
-// __ry_send_all: basic full-send via socketpair
-// ============================================================
+// ===== [internal] __ry_send_all: basic full-send via socketpair =====
 
 TEST(SendAll, SmallPayload) {
     int fds[2];
@@ -269,9 +261,7 @@ TEST(SendAll, ZeroLengthSucceeds) {
     ::close(fds[1]);
 }
 
-// ============================================================
-// __ry_tcp_receive: peer close returns empty IOListHeader
-// ============================================================
+// ===== [internal] __ry_tcp_receive: peer close returns empty IOListHeader =====
 
 TEST(TcpRecv, PeerCloseReturnsEmptyList) {
     int fds[2];
@@ -303,9 +293,7 @@ TEST(TcpRecv, ErrorReturnsNull) {
     EXPECT_EQ(result, nullptr);
 }
 
-// ============================================================
-// setTimeout / setReceiveTimeout / setSendTimeout
-// ============================================================
+// ===== [contract] setTimeout / setReceiveTimeout / setSendTimeout =====
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -411,9 +399,7 @@ case bind("127.0.0.1", 0):
 )"), "timeout\n");
 }
 
-// ============================================================
-// __ry_tcp_set_timeout: runtime-level test
-// ============================================================
+// ===== [internal] __ry_tcp_set_timeout: runtime-level test =====
 
 TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
     int fds[2];
@@ -437,9 +423,7 @@ TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
     ::close(fds[1]);
 }
 
-// ============================================================
-// tlsConnect to invalid host returns Err
-// ============================================================
+// ===== [contract] tlsConnect to invalid host returns Err =====
 
 TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
@@ -461,9 +445,7 @@ case bind("127.0.0.1", 0):
 )"), "tls err\n");
 }
 
-// ============================================================
-// TLS send/receive/close overloads compile for TlsStream
-// ============================================================
+// ===== [contract] TLS send/receive/close overloads compile for TlsStream =====
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(

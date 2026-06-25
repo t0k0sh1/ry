@@ -1,8 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ===== Print literals =====
+// ===== [contract] Print literals =====
 
 TEST_F(CodeGenTest, PrintLiterals) {
     EXPECT_EQ(runSource("print(42)"), "42\n");
@@ -16,7 +20,7 @@ TEST_F(CodeGenTest, PrintLiterals) {
     EXPECT_EQ(runSource("print(\"\")"), "\n");
 }
 
-// ===== Print variadic =====
+// ===== [contract] Print variadic =====
 
 TEST_F(CodeGenTest, PrintVariadic) {
     // Multiple arguments (space-separated)
@@ -31,7 +35,7 @@ TEST_F(CodeGenTest, PrintVariadic) {
     EXPECT_EQ(runSource("print([1, 2], \"x\")"), "[1, 2] x\n");
 }
 
-// ===== Arithmetic (int) =====
+// ===== [contract] Arithmetic (int) =====
 
 TEST_F(CodeGenTest, ArithmeticInt) {
     EXPECT_EQ(runSource("x = 3 + 4\nprint(x)"), "7\n");
@@ -46,7 +50,7 @@ TEST_F(CodeGenTest, ArithmeticInt) {
     EXPECT_EQ(runSource("x = 2 ** 3 ** 2\nprint(x)"), "512.0\n");
 }
 
-// ===== Arithmetic (float) =====
+// ===== [contract] Arithmetic (float) =====
 
 TEST_F(CodeGenTest, ArithmeticFloat) {
     EXPECT_EQ(runSource("x = 7 / 2\nprint(x)"), "3.5\n");
@@ -55,7 +59,7 @@ TEST_F(CodeGenTest, ArithmeticFloat) {
     EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }
 
-// ===== Float shortest round-trip (#1031) =====
+// ===== [contract] Float shortest round-trip (#1031) =====
 
 TEST_F(CodeGenTest, FloatShortestRoundTrip) {
     // Imprecise arithmetic must show the actual stored value (#1031)
@@ -68,7 +72,7 @@ TEST_F(CodeGenTest, FloatShortestRoundTrip) {
     EXPECT_EQ(runSource("print(-2.0)"), "-2.0\n");
 }
 
-// ===== Comparison operators =====
+// ===== [contract] Comparison operators =====
 
 TEST_F(CodeGenTest, ComparisonOperators) {
     EXPECT_EQ(runSource("x = 1 == 1\nprint(x)"), "true\n");
@@ -84,7 +88,7 @@ TEST_F(CodeGenTest, ComparisonOperators) {
     EXPECT_EQ(runSource("x = 4 >= 5\nprint(x)"), "false\n");
 }
 
-// ===== Logical operators =====
+// ===== [contract] Logical operators =====
 
 TEST_F(CodeGenTest, LogicalOperators) {
     EXPECT_EQ(runSource("x = true and true\nprint(x)"), "true\n");
@@ -96,7 +100,7 @@ TEST_F(CodeGenTest, LogicalOperators) {
     EXPECT_EQ(runSource("x = not not true\nprint(x)"), "true\n");
 }
 
-// ===== Variables =====
+// ===== [contract] Variables =====
 
 TEST_F(CodeGenTest, VariableBasics) {
     EXPECT_EQ(runSource("print(1)\nprint(2)\nprint(3)"), "1\n2\n3\n");
@@ -110,7 +114,7 @@ TEST_F(CodeGenTest, VariableBindingBasics) {
     EXPECT_EQ(runSource("x: int = 42\nprint(x)"), "42\n");
 }
 
-// ===== Error handling (individual) =====
+// ===== [contract] Error handling (individual) =====
 
 TEST_F(CodeGenTest, UndefinedVariableThrows) {
     EXPECT_THROW(runSource("print(z)"), std::runtime_error);
@@ -120,7 +124,7 @@ TEST_F(CodeGenTest, UnknownFunctionThrows) {
     EXPECT_THROW(runSource("foo(42)"), std::runtime_error);
 }
 
-// ===== Operator return type constraint =====
+// ===== [contract] Operator return type constraint =====
 
 TEST_F(CodeGenTest, OperatorEqInferredNonBoolThrows) {
     EXPECT_THROW(runSource(
@@ -146,7 +150,7 @@ TEST_F(CodeGenTest, OperatorOrExplicitNonBoolThrows) {
         "    return 1\n"), std::runtime_error);
 }
 
-// ===== Bitwise operators =====
+// ===== [contract] Bitwise operators =====
 
 TEST_F(CodeGenTest, BitwiseOperators) {
     // 1100 & 1010 = 1000 = 8
@@ -180,7 +184,7 @@ TEST_F(CodeGenTest, BitwiseFloatThrows) {
     EXPECT_THROW(runSource("x = 1.0 & 2"), std::runtime_error);
 }
 
-// ===== String variables =====
+// ===== [contract] String variables =====
 
 TEST_F(CodeGenTest, StringVariables) {
     EXPECT_EQ(runSource("s = \"world\"\nprint(s)"), "world\n");
@@ -217,7 +221,7 @@ TEST_F(CodeGenTest, StringBinaryOpTypeMismatch) {
     EXPECT_EQ(runSource("print(\"ab\" < \"cd\")"), "true\n");
 }
 
-// ===== String auto-concatenation (#393) =====
+// ===== [contract] String auto-concatenation (#393) =====
 
 TEST_F(CodeGenTest, StringAutoConcat) {
     EXPECT_EQ(runSource("print(\"abc\" + 2)"), "abc2\n");
@@ -228,7 +232,7 @@ TEST_F(CodeGenTest, StringAutoConcat) {
     EXPECT_EQ(runSource("print(false + \" is false\")"), "false is false\n");
 }
 
-// ===== Non-string pointer types must not hit string paths (#397) =====
+// ===== [regression #397] Non-string pointer types must not hit string paths =====
 
 TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
     // Collections share LLVM ptrTy_ with str but must not activate str-specific operator paths
@@ -239,7 +243,7 @@ TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
     EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m + \"abc\")"), std::runtime_error);
 }
 
-// ===== Type change =====
+// ===== [contract] Type change =====
 
 TEST_F(CodeGenTest, TypeChangeThrows) {
     EXPECT_THROW(runSource("x = 1\nx = true\nprint(x)"), std::runtime_error);
@@ -253,7 +257,7 @@ TEST_F(CodeGenTest, IntFloatReassignCoerces) {
     EXPECT_EQ(runSource("x = 1.5\nx = 2\nprint(x)"), "2.0\n");
 }
 
-// ===== Type annotation =====
+// ===== [contract] Type annotation =====
 
 TEST_F(CodeGenTest, TypeAnnotationMatch) {
     EXPECT_EQ(runSource("a: int = 10\nprint(a)"), "10\n");
@@ -350,7 +354,7 @@ TEST_F(CodeGenTest, IntFloatCoercionReturnLowLevelStillRejected) {
         std::runtime_error);
 }
 
-// ===== u8 basics =====
+// ===== [contract] u8 basics =====
 
 TEST_F(CodeGenTest, U8Basics) {
     EXPECT_EQ(runSource("b: u8 = 42\nprint(b)"), "42\n");
@@ -383,7 +387,7 @@ TEST_F(CodeGenTest, U8OutOfRange) {
     EXPECT_THROW(runSource("b: u8 = 10\nb = 256"), std::runtime_error);
 }
 
-// ===== Hex / Binary literal tests =====
+// ===== [contract] Hex / Binary literal tests =====
 
 TEST_F(CodeGenTest, HexBinaryLiterals) {
     EXPECT_EQ(runSource("print(0xFF)"), "255\n");
@@ -395,7 +399,7 @@ TEST_F(CodeGenTest, HexBinaryLiterals) {
     EXPECT_EQ(runSource("print(-0xFF)"), "-255\n");
 }
 
-// ===== 論理右シフト >>> =====
+// ===== [contract] 論理右シフト >>> =====
 
 TEST_F(CodeGenTest, LogicalRightShift) {
     // 8 >>> 2 = 2
@@ -404,7 +408,7 @@ TEST_F(CodeGenTest, LogicalRightShift) {
     EXPECT_EQ(runSource("x = -1 >>> 1\nprint(x)"), "9223372036854775807\n");
 }
 
-// ===== 文字列繰り返し * =====
+// ===== [contract] 文字列繰り返し * =====
 
 TEST_F(CodeGenTest, StringRepeatOperator) {
     EXPECT_EQ(runSource("x = \"ab\" * 3\nprint(x)"), "ababab\n");
@@ -415,7 +419,7 @@ TEST_F(CodeGenTest, StringRepeatOperator) {
     EXPECT_EQ(runSource("x = \"a\" * 1\nprint(x)"), "a\n");
 }
 
-// ===== exit() tests (death tests - individual) =====
+// ===== [contract] exit() tests (death tests - individual) =====
 
 TEST_F(CodeGenTest, ExitZero) {
     EXPECT_EXIT(runSource("exit(0)"), ::testing::ExitedWithCode(0), "");
@@ -439,7 +443,7 @@ TEST_F(CodeGenTest, ExitArgumentErrors) {
     EXPECT_THROW(runSource("exit(1, 2)"), std::runtime_error);
 }
 
-// ===== Top-level `?` operator tests (#745) =====
+// ===== [contract] Top-level `?` operator tests (#745) =====
 // `?` at the top level desugars to "print error to stderr + exit(1)"
 // when the operand is Err/None; otherwise it unwraps the happy value.
 
@@ -485,7 +489,7 @@ TEST_F(CodeGenTest, TopLevelQuestionOnOptionNoneExits) {
         "unexpected None");
 }
 
-// ===== args() tests =====
+// ===== [contract] args() tests =====
 
 TEST_F(CodeGenTest, ArgumentsTests) {
     EXPECT_EQ(runSourceWithArgs("a = args()\nprint(len(a))", {}), "0\n");
@@ -497,7 +501,7 @@ TEST_F(CodeGenTest, ArgumentsTests) {
         {"foo", "bar"}), "foo\nbar\n");
 }
 
-// ===== @native fn missing dispatcher detection =====
+// ===== [contract] @native fn missing dispatcher detection =====
 
 TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     try {
@@ -515,7 +519,7 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     }
 }
 
-// ===== Zero division guard tests (death tests - individual) =====
+// ===== [contract] Zero division guard tests (death tests - individual) =====
 
 TEST_F(CodeGenTest, DivByZeroReturnsInf) {
     EXPECT_EQ(runSource("print(1 / 0)"),   "inf\n");
@@ -552,7 +556,7 @@ TEST_F(CodeGenTest, ModByZeroExits) {
                 "runtime error: modulo by zero");
 }
 
-// ===== Low-level integer zero division guard tests =====
+// ===== [contract] Low-level integer zero division guard tests =====
 
 TEST_F(CodeGenTest, LowLevelDivByZeroExits) {
     EXPECT_EXIT(runSource("a: i32 = 10\nb: i32 = 0\nc = a / b\nprint(c as int)"),
@@ -598,7 +602,7 @@ TEST_F(CodeGenTest, FloorDivModWorks) {
     EXPECT_EQ(runSource("print((7 // -3) * -3 + (7 % -3))"), "7\n");
 }
 
-// ===== Integer overflow guard tests (death tests) =====
+// ===== [contract] Integer overflow guard tests (death tests) =====
 
 TEST_F(CodeGenTest, IntAddOverflowExits) {
     EXPECT_EXIT(runSource("x = 9223372036854775807\nprint(x + 1)"),
@@ -675,7 +679,7 @@ TEST_F(CodeGenTest, LowLevelI64StillWraps) {
               "-9223372036854775808\n");
 }
 
-// ===== float → int conversion runtime check (#1232) =====
+// ===== [regression #1232] float → int conversion runtime check =====
 
 TEST_F(CodeGenTest, CastFloatInfToIntExits) {
     EXPECT_EXIT(runSource("print((1.0 / 0.0) as int)"),
@@ -757,7 +761,7 @@ TEST_F(CodeGenTest, CastFiniteFloatToIntStillWorks) {
     EXPECT_EQ(runSource("print(1e10 as int)"), "10000000000\n");
 }
 
-// ===== any type acceptance / rejection =====
+// ===== [contract] any type acceptance / rejection =====
 
 TEST_F(CodeGenTest, AnyTypeAcceptsCollections) {
     // #1697: `any` now holds List / Map / Set collections. Verify wrap and
@@ -869,7 +873,7 @@ TEST_F(CodeGenTest, CoerceResultOkNestedResultMismatchTrapsArcPayload) {
         "any enum type mismatch \\(expected Result<str, int>");
 }
 
-// ===== Low-level numeric types (i16, i32, f32) =====
+// ===== [contract] Low-level numeric types (i16, i32, f32) =====
 
 TEST_F(CodeGenTest, LowLevelI32Basics) {
     EXPECT_EQ(runSource("x: i32 = 42\nprint(x)"), "42\n");
@@ -991,7 +995,7 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("c = 1 + -1i64"), std::runtime_error);
 }
 
-// ===== Numeric literal suffix =====
+// ===== [contract] Numeric literal suffix =====
 
 TEST_F(CodeGenTest, NumericLiteralSuffix_i32) {
     EXPECT_EQ(runSource("x = 42i32\nprint(x)"), "42\n");
@@ -1030,7 +1034,7 @@ TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange) {
     EXPECT_THROW(runSource("x = -1u32"), std::runtime_error);
 }
 
-// ===== Unsigned variable negation error (#312) =====
+// ===== [contract] Unsigned variable negation error (#312) =====
 
 TEST_F(CodeGenTest, UnsignedVariableNegation_u8) {
     EXPECT_THROW(runSource("x: u8 = 5\ny = -x"), std::runtime_error);
@@ -1055,7 +1059,7 @@ TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
         "y = -getU32()"), std::runtime_error);
 }
 
-// ===== Return type inference for named functions =====
+// ===== [contract] Return type inference for named functions =====
 
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
     // Omitted return type with return int → inferred as int
@@ -1125,9 +1129,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
         "print(x)"), "42\n");
 }
 
-// ============================================================
-// Fixed-length array T[N]
-// ============================================================
+// ===== [contract] Fixed-length array T[N] =====
 
 TEST_F(CodeGenTest, ArrayBasicDecl) {
     EXPECT_EQ(runSource(
@@ -1214,7 +1216,7 @@ TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
         "buf[0] = 256"), std::runtime_error);
 }
 
-// ===== Checked/Saturating/Wrapping Arithmetic =====
+// ===== [contract] Checked/Saturating/Wrapping Arithmetic =====
 
 TEST_F(CodeGenTest, CheckedAddOk) {
     EXPECT_EQ(runSource(
@@ -1325,7 +1327,7 @@ TEST_F(CodeGenTest, CheckedFloat) {
     EXPECT_THROW(runSource("checkedAdd(1.0f32, 2.0f32)"), std::runtime_error);
 }
 
-// ===== Top-level bindings accessible from top-level functions (#817) =====
+// ===== [regression #817] Top-level bindings accessible from top-level functions =====
 
 TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
@@ -1709,7 +1711,7 @@ TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
         "print(atTwo())"), "10\n30\n");
 }
 
-// ===== #807 u64 max literals =====
+// ===== [regression #807] u64 max literals =====
 
 TEST_F(CodeGenTest, U64MaxViaAnnotation) {
     EXPECT_EQ(runSource("h: u64 = 18446744073709551615\nprint(h)"),
@@ -1774,7 +1776,7 @@ TEST_F(CodeGenTest, U32OverflowRejected) {
                  std::runtime_error);
 }
 
-// ===== #819 scientific notation =====
+// ===== [regression #819] scientific notation =====
 
 TEST_F(CodeGenTest, ScientificBasic) {
     EXPECT_EQ(runSource("print(1e10)"), "1e+10\n");
@@ -1830,7 +1832,7 @@ TEST_F(CodeGenTest, U64AnnotationFormatterRoundtrip) {
         "18446744073709551615\n");
 }
 
-// ===== Option-returning index `m[k]?` / `xs[i]?` rejections (#1699) =====
+// ===== [contract] Option-returning index `m[k]?` / `xs[i]?` rejections (#1699) =====
 
 TEST_F(CodeGenTest, OptionIndexRejectsMapAssignmentTarget) {
     // Write-form `m[k]? = v` must be a compile error — `?` returns Option, not a slot.

@@ -1,3 +1,10 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — pins C++ <-> Rust collection / ARC
+// header layout parity by inspecting listHeaderTy_ / mapHeaderTy_ / setHeaderTy_
+// / arcHeaderTy_ and the Rust mirror via `ry_emit_test_header_layout`.
+//
 // Cross-language parity guard for the internal collection / ARC header layout
 // (#2071). The Rust emit crate rebuilds the list/map/set/arc header structs from
 // a single field-kind table (crates/emit/src/core.rs `header_fields`), used both

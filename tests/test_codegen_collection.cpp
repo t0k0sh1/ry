@@ -1,8 +1,12 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ===== リスト型テスト =====
+// ===== [contract] リスト型テスト =====
 
 TEST_F(CodeGenTest, ListBasics) {
     // ListCreateAndAccess
@@ -77,7 +81,7 @@ TEST_F(CodeGenTest, ListNegativeIndexOutOfBounds) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== UFCS コード生成テスト =====
+// ===== [contract] UFCS コード生成テスト =====
 
 TEST_F(CodeGenTest, UFCSIntLiteral) {
     std::string src =
@@ -119,7 +123,7 @@ TEST_F(CodeGenTest, UFCSWithStruct) {
     EXPECT_EQ(runSource(src), "42\n");
 }
 
-// ===== Map型テスト =====
+// ===== [contract] Map型テスト =====
 
 TEST_F(CodeGenTest, MapBasicOperations) {
     // MapCreateAndAccess
@@ -203,7 +207,7 @@ TEST_F(CodeGenTest, MapTypeMismatch) {
     EXPECT_THROW(runSource("m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
 }
 
-// ===== 文字列メソッドテスト =====
+// ===== [contract] 文字列メソッドテスト =====
 
 TEST_F(CodeGenTest, StringLength) {
     // StringLen
@@ -501,7 +505,7 @@ TEST_F(CodeGenTest, StringReplace) {
     EXPECT_EQ(runSource("s = \"foo bar foo\"\nprint(s.replace(\"foo\", \"baz\"))"), "baz bar baz\n");
 }
 
-// ===== Phase 2: テキスト変換テスト =====
+// ===== [contract] Phase 2: テキスト変換テスト =====
 
 TEST_F(CodeGenTest, StringToUpper) {
     // ToUpperBasic
@@ -587,7 +591,7 @@ TEST_F(CodeGenTest, StringReverse) {
     EXPECT_EQ(runSource("s = \"abc\"\nprint(s.reverse())"), "cba\n");
 }
 
-// ===== Phase 3: List<str> 連携テスト =====
+// ===== [contract] Phase 3: List<str> 連携テスト =====
 
 TEST_F(CodeGenTest, SplitVariants) {
     // SplitBasic
@@ -693,7 +697,7 @@ TEST_F(CodeGenTest, JoinVariants) {
     }
 }
 
-// ===== 関数オーバーロードテスト =====
+// ===== [contract] 関数オーバーロードテスト =====
 
 TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadByArgCount
@@ -871,7 +875,7 @@ TEST_F(CodeGenTest, OverloadSpecialArgs) {
     }
 }
 
-// ===== Operator overloading =====
+// ===== [contract] Operator overloading =====
 
 TEST_F(CodeGenTest, OperatorOverloadStruct) {
     // OperatorOverloadStructPlus
@@ -952,7 +956,7 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
     }
 }
 
-// ===== Compound assignment operator overloading =====
+// ===== [contract] Compound assignment operator overloading =====
 
 TEST_F(CodeGenTest, CompoundAssignWithOperatorPlusEq) {
     // operator+= defined → called directly
@@ -1041,7 +1045,7 @@ TEST_F(CodeGenTest, IncrementDecrementStillWorks) {
     EXPECT_EQ(runSource(src), "6\n");
 }
 
-// ===== List element assignment =====
+// ===== [contract] List element assignment =====
 
 TEST_F(CodeGenTest, ListIndexAssignTypes) {
     // ListIndexAssignInt
@@ -1105,7 +1109,7 @@ TEST_F(CodeGenTest, ListIndexAssignNegativeOOB) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== For loop =====
+// ===== [contract] For loop =====
 
 TEST_F(CodeGenTest, ForLoopVariants) {
     // ForLoopBasic
@@ -1158,7 +1162,7 @@ TEST_F(CodeGenTest, ForLoopVariants) {
     }
 }
 
-// ===== Compound assignment =====
+// ===== [contract] Compound assignment =====
 
 TEST_F(CodeGenTest, CompoundAssignBasic) {
     // CompoundAssignPlus
@@ -1199,7 +1203,7 @@ TEST_F(CodeGenTest, CompoundAssignExtended) {
     EXPECT_EQ(runSource("x = 16\nx >>= 2\nprint(x)"), "4\n");
 }
 
-// ===== in / not in: List・Map対応 =====
+// ===== [contract] in / not in: List・Map対応 =====
 
 TEST_F(CodeGenTest, InNotInOperators) {
     // InListInt
@@ -1281,7 +1285,7 @@ TEST_F(CodeGenTest, InRejectsPointerElements) {
         notInErr);
 }
 
-// ===== List append / pop / reverse / slice =====
+// ===== [contract] List append / pop / reverse / slice =====
 
 TEST_F(CodeGenTest, ListAppendVariants) {
     // ListAppend
@@ -1356,7 +1360,7 @@ TEST_F(CodeGenTest, ListSliceNegativeIndex) {
     EXPECT_EQ(runSource("print(slice([1, 2, 3], -2, -3))"), "[]\n");
 }
 
-// ===== filter テスト =====
+// ===== [contract] filter テスト =====
 
 TEST_F(CodeGenTest, FilterBasics) {
     // FilterIntBasic
@@ -1432,7 +1436,7 @@ TEST_F(CodeGenTest, FilterUFCSAndErrors) {
     ), std::runtime_error);
 }
 
-// ===== map テスト =====
+// ===== [contract] map テスト =====
 
 TEST_F(CodeGenTest, MapBasics) {
     // MapIntToInt
@@ -1498,7 +1502,7 @@ TEST_F(CodeGenTest, MapClosureAndUntyped) {
     }
 }
 
-// ===== filter + map チェーンテスト =====
+// ===== [contract] filter + map チェーンテスト =====
 
 TEST_F(CodeGenTest, FilterMapChains) {
     // FilterThenMap
@@ -1527,7 +1531,7 @@ TEST_F(CodeGenTest, FilterMapChains) {
     }
 }
 
-// ===== sort テスト =====
+// ===== [contract] sort テスト =====
 
 TEST_F(CodeGenTest, SortBasics) {
     // SortIntAsc
@@ -1616,7 +1620,7 @@ TEST_F(CodeGenTest, SortUFCSAndComparator) {
     }
 }
 
-// ===== filter + map + sort 全チェーンテスト =====
+// ===== [contract] filter + map + sort 全チェーンテスト =====
 
 TEST_F(CodeGenTest, SortChains) {
     // FilterMapSort
@@ -1645,7 +1649,7 @@ TEST_F(CodeGenTest, SortChains) {
     }
 }
 
-// ===== TimSort / Hybrid Sort テスト =====
+// ===== [contract] TimSort / Hybrid Sort テスト =====
 
 TEST_F(CodeGenTest, SortLargeAndTimSort) {
     // SortLargerList
@@ -1717,7 +1721,7 @@ TEST_F(CodeGenTest, SortStability) {
     }
 }
 
-// ===== range() ステップ対応 =====
+// ===== [contract] range() ステップ対応 =====
 
 TEST_F(CodeGenTest, RangeStepVariants) {
     // RangeStep
@@ -1757,7 +1761,7 @@ TEST_F(CodeGenTest, RangeStepVariants) {
     }
 }
 
-// ===== reduce / fold =====
+// ===== [contract] reduce / fold =====
 
 TEST_F(CodeGenTest, ReduceVariants) {
     // ReduceBasic
@@ -1824,7 +1828,7 @@ TEST_F(CodeGenTest, FoldVariants) {
     }
 }
 
-// ===== keys / values / items =====
+// ===== [contract] keys / values / items =====
 
 TEST_F(CodeGenTest, MapKeys) {
     std::string src =
@@ -1842,7 +1846,7 @@ TEST_F(CodeGenTest, MapValues) {
     EXPECT_EQ(runSource(src), "2\n");
 }
 
-// ===== any / all =====
+// ===== [contract] any / all =====
 
 TEST_F(CodeGenTest, AnyAllPredicates) {
     // AnyTrue
@@ -1875,7 +1879,7 @@ TEST_F(CodeGenTest, AnyAllPredicates) {
     }
 }
 
-// ===== sum / min / max =====
+// ===== [contract] sum / min / max =====
 
 TEST_F(CodeGenTest, SumMinMax) {
     // SumInt
@@ -1913,7 +1917,7 @@ TEST_F(CodeGenTest, MaxEmptyListError) {
                 "runtime error: max\\(\\) on empty list");
 }
 
-// ----- #1886: variadic scalar form (in addition to the list form above) -----
+// ===== [contract] #1886 variadic scalar form (in addition to the list form above) =====
 
 TEST_F(CodeGenTest, SumVariadicInts) {
     EXPECT_EQ(runSource("print(sum(3, 5))"), "8\n");
@@ -1974,7 +1978,7 @@ TEST_F(CodeGenTest, MinMaxRejectU8Variadic) {
     expectCompileError("print(max(1u8, 2u8))", "int or float");
 }
 
-// ===== enumerate / zip =====
+// ===== [contract] enumerate / zip =====
 
 TEST_F(CodeGenTest, EnumerateBasic) {
     std::string src =
@@ -1993,7 +1997,7 @@ TEST_F(CodeGenTest, ZipBasic) {
     EXPECT_EQ(runSource(src), "3\n");
 }
 
-// ===== first / last / isEmpty =====
+// ===== [contract] first / last / isEmpty =====
 
 TEST_F(CodeGenTest, FirstLastIsEmpty) {
     // FirstBasic
@@ -2012,7 +2016,7 @@ TEST_F(CodeGenTest, FirstLastIsEmpty) {
     }
 }
 
-// ===== insert(list, i, val) =====
+// ===== [contract] insert(list, i, val) =====
 
 TEST_F(CodeGenTest, ListInsert) {
     std::string src =
@@ -2025,7 +2029,7 @@ TEST_F(CodeGenTest, ListInsert) {
     EXPECT_EQ(runSource(src), "1\n2\n3\n4\n");
 }
 
-// ===== removeAt(list, i) =====
+// ===== [contract] removeAt(list, i) =====
 
 TEST_F(CodeGenTest, ListRemoveAt) {
     std::string src =
@@ -2038,7 +2042,7 @@ TEST_F(CodeGenTest, ListRemoveAt) {
     EXPECT_EQ(runSource(src), "20\n2\n10\n30\n");
 }
 
-// ===== items(map) =====
+// ===== [contract] items(map) =====
 
 TEST_F(CodeGenTest, MapItems) {
     std::string src =
@@ -2048,7 +2052,7 @@ TEST_F(CodeGenTest, MapItems) {
     EXPECT_EQ(runSource(src), "1\n");
 }
 
-// ===== get(map, key, default) =====
+// ===== [contract] get(map, key, default) =====
 
 TEST_F(CodeGenTest, MapGetWithDefault) {
     std::string src =
@@ -2066,7 +2070,7 @@ TEST_F(CodeGenTest, MapGetTwoArgOption) {
     EXPECT_EQ(runSource(src), "Some(10)\nNone\n");
 }
 
-// ===== remove(map, key) =====
+// ===== [contract] remove(map, key) =====
 
 TEST_F(CodeGenTest, MapRemove) {
     std::string src =
@@ -2076,7 +2080,7 @@ TEST_F(CodeGenTest, MapRemove) {
     EXPECT_EQ(runSource(src), "1\n");
 }
 
-// ===== Set operations =====
+// ===== [contract] Set operations =====
 
 TEST_F(CodeGenTest, SetOperations) {
     // SetUnion
@@ -2135,7 +2139,7 @@ TEST_F(CodeGenTest, SetOperations) {
     }
 }
 
-// ===== remove(list, val) テスト =====
+// ===== [contract] remove(list, val) テスト =====
 
 TEST_F(CodeGenTest, ListRemoveByType) {
     // ListRemoveInt
@@ -2231,7 +2235,7 @@ TEST_F(CodeGenTest, RemoveRejectsPointerElements) {
         err);
 }
 
-// ===== distinct(list) テスト =====
+// ===== [contract] distinct(list) テスト =====
 
 TEST_F(CodeGenTest, DistinctVariants) {
     // DistinctInt
@@ -2281,7 +2285,7 @@ TEST_F(CodeGenTest, DistinctRejectsPointerElements) {
         err);
 }
 
-// ===== merge(map1, map2) テスト =====
+// ===== [contract] merge(map1, map2) テスト =====
 
 TEST_F(CodeGenTest, MapMergeVariants) {
     // MergeNoOverlap
@@ -2334,7 +2338,7 @@ TEST_F(CodeGenTest, MapMergeVariants) {
     }
 }
 
-// ===== flat(list) テスト =====
+// ===== [contract] flat(list) テスト =====
 
 TEST_F(CodeGenTest, FlattenVariants) {
     // FlattenIntLists
@@ -2362,7 +2366,7 @@ TEST_F(CodeGenTest, FlattenVariants) {
     }
 }
 
-// ===== for tuple destructuring =====
+// ===== [contract] for tuple destructuring =====
 
 TEST_F(CodeGenTest, ForTupleDestructuring) {
     // ForEnumerateDestructure
@@ -2466,7 +2470,7 @@ TEST_F(CodeGenTest, ForThreeVarCountMismatch) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-// ===== operator[] / operator[]= / operator in =====
+// ===== [contract] operator[] / operator[]= / operator in =====
 
 TEST_F(CodeGenTest, OperatorSubscriptReadSingleIndex) {
     std::string src =
@@ -2658,7 +2662,7 @@ TEST_F(CodeGenTest, OperatorAsGenericOptionTarget) {
     EXPECT_EQ(runSource(src), "42\n");
 }
 
-// ===== Bounds checking tests =====
+// ===== [contract] Bounds checking tests =====
 
 TEST_F(CodeGenTest, ListNegativeIndexWrapAll) {
     // -1 → last, -2 → second to last, -3 → first
@@ -2766,7 +2770,7 @@ TEST_F(CodeGenTest, RemoveAtNegativeIndexOOB) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Discarded collection operation results (ExprStmt) =====
+// ===== [contract] Discarded collection operation results (ExprStmt) =====
 
 TEST_F(CodeGenTest, DiscardedCollectionResults) {
     // Collection operation results used as bare expression statements
@@ -2789,7 +2793,7 @@ TEST_F(CodeGenTest, DiscardedCollectionResults) {
         "print(len(xs))"), "3\n");
 }
 
-// ===== Collection equality: compile-time rejection of unsupported element types =====
+// ===== [contract] Collection equality: compile-time rejection of unsupported element types =====
 
 // List<function> == List<function> must be rejected at compile time.
 // Regression for the list_elem_fn_type_info guard added in #736.

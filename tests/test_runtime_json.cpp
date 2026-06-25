@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_json_parse_to_any /
+// __ry_json_release_any with hand-built RyAny.
+
 #include "ry/runtime/native/json.hpp"
 #include "ry/runtime/core/any.hpp"
 #include "ry/runtime/core/arc.hpp"
@@ -39,7 +45,7 @@ static const ::testing::Environment *const kMsCleanup =
 // nested list/map elements so list/map smoke tests stay ASan/LSan clean.
 static void releaseAny(RyAny &v) { __ry_json_release_any(&v); }
 
-// ---- Primitives ----
+// ===== [internal] Primitives =====
 
 TEST(JsonParseToAny, ParsesNullToUnitTag) {
     RyAny out{};
@@ -95,7 +101,7 @@ TEST(JsonParseToAny, ParsesStringToStrTag) {
     releaseAny(out);
 }
 
-// ---- Arrays ----
+// ===== [internal] Arrays =====
 
 TEST(JsonParseToAny, ParsesArrayToListTag) {
     RyAny out{};
@@ -118,7 +124,7 @@ TEST(JsonParseToAny, ParsesEmptyArrayToListTag) {
     releaseAny(out);
 }
 
-// ---- Objects ----
+// ===== [internal] Objects =====
 
 TEST(JsonParseToAny, ParsesObjectToMapTag) {
     RyAny out{};
@@ -141,7 +147,7 @@ TEST(JsonParseToAny, ParsesEmptyObjectToMapTag) {
     releaseAny(out);
 }
 
-// ---- Errors ----
+// ===== [internal] Errors =====
 
 TEST(JsonParseToAny, RejectsInvalidInput) {
     RyAny out{};
@@ -161,7 +167,7 @@ TEST(JsonParseToAny, RejectsEmptyInput) {
     EXPECT_NE(status, 0);
 }
 
-// ---- Depth limit ----
+// ===== [internal] Depth limit =====
 
 TEST(JsonParseToAny, AcceptsMaxNestingDepth) {
     std::string deep;
@@ -182,7 +188,7 @@ TEST(JsonParseToAny, RejectsTooDeepNesting) {
     EXPECT_NE(status, 0);
 }
 
-// ---- Stringify primitives ----
+// ===== [internal] Stringify primitives =====
 
 TEST(JsonStringifyAny, EncodesUnitAsNull) {
     RyAny v = anyFromUnit();
@@ -228,7 +234,7 @@ TEST(JsonStringifyAny, EncodesNulInsideString) {
     freeStringSlot(const_cast<char *>(s));
 }
 
-// ---- Unified stringify ABI (#1890) ----
+// ===== [internal] Unified stringify ABI (#1890) =====
 //
 // __ry_json_stringify_any_ex / _safe_ex are the codegen-facing entry
 // points after #1890. The four name-encoded variants (`_sorted`, `_safe`,

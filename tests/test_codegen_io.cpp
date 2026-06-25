@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -42,9 +46,7 @@ fn toBytes(s: str) -> List<u8>
 fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 )";
 
-// ============================================================
-// writeText / readText round-trip
-// ============================================================
+// ===== [contract] writeText / readText round-trip =====
 
 TEST_F(CodeGenTest, IOWriteReadText) {
     std::string path = tmpPath("write_read");
@@ -63,9 +65,7 @@ case writeText(")" + path + R"(", "hello world"):
     removeIfExists(path);
 }
 
-// ============================================================
-// appendText
-// ============================================================
+// ===== [contract] appendText =====
 
 TEST_F(CodeGenTest, IOAppendText) {
     std::string path = tmpPath("append");
@@ -88,9 +88,7 @@ case writeText(")" + path + R"(", "hello"):
     removeIfExists(path);
 }
 
-// ============================================================
-// exists
-// ============================================================
+// ===== [contract] exists =====
 
 TEST_F(CodeGenTest, IOFileExistsTrue) {
     std::string path = tmpPath("exists");
@@ -113,9 +111,7 @@ print(exists(")" + path + R"("))
 )"), "false\n");
 }
 
-// ============================================================
-// deleteFile
-// ============================================================
+// ===== [contract] deleteFile =====
 
 TEST_F(CodeGenTest, IODeleteFile) {
     std::string path = tmpPath("delete");
@@ -133,9 +129,7 @@ case writeText(")" + path + R"(", "temp"):
 )"), "false\n");
 }
 
-// ============================================================
-// toBytes / bytesToStr
-// ============================================================
+// ===== [contract] toBytes / bytesToStr =====
 
 TEST_F(CodeGenTest, IOStrToBytes) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
@@ -158,9 +152,7 @@ case bytesToStr(bs):
 )"), "hello\n");
 }
 
-// ============================================================
-// readBytes / writeBytes round-trip
-// ============================================================
+// ===== [contract] readBytes / writeBytes round-trip =====
 
 TEST_F(CodeGenTest, IOWriteReadBytes) {
     std::string path = tmpPath("bytes");
@@ -185,9 +177,7 @@ case writeBytes(")" + path + R"(", bs):
     removeIfExists(path);
 }
 
-// ============================================================
-// Error case: readText on non-existent file returns Err
-// ============================================================
+// ===== [contract] Error case: readText on non-existent file returns Err =====
 
 TEST_F(CodeGenTest, IOReadTextNotFound) {
     EXPECT_EQ(runSource(IO_DECLS + R"(

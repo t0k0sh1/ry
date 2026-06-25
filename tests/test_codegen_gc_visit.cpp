@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file tag: [internal] (forces GC visitor thunk emission via test-only flag
+// and asserts emitted IR marker shape).
+//
 // Pilot G (#2196): verify that the GC visitor thunk emission generates
 // byte-equivalent IR after migrating from inline `builder_.Create*` to
 // crates/emit primitives. The thunk codegen path is currently unreachable from

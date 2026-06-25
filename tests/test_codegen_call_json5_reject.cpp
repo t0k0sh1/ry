@@ -1,3 +1,8 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file tag: [regression #1941] (subprocess-based emitJson5Load type rejection).
+
 #include <gtest/gtest.h>
 #include <array>
 #include <cerrno>

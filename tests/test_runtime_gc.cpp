@@ -1,3 +1,7 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+
 #include "test_codegen_common.hpp"
 #include "ry/runtime/native/gc.hpp"
 #include "ry/ry_layout.hpp"
@@ -7,10 +11,7 @@
 
 
 using namespace ry;
-// ============================================================
-//  Cycle Collector tests (pure C++ — validates the runtime
-//  trial deletion algorithm)
-// ============================================================
+// ===== [internal] Cycle Collector tests (pure C++ — validates the runtime trial deletion algorithm) =====
 
 namespace {
 
@@ -99,7 +100,7 @@ void dtorContainer(void *data) {
 
 } // anonymous namespace
 
-// ===== Basic API tests =====
+// ===== [internal] Basic API tests =====
 
 TEST(GcTest, CollectEmptyReturnsZero) {
     // Ensure initial state is clean.
@@ -128,7 +129,7 @@ TEST(GcTest, SetThreshold) {
     __ry_gc_setThreshold(700);
 }
 
-// ===== Cycle detection and collection =====
+// ===== [internal] Cycle detection and collection =====
 
 TEST(GcTest, SimpleCycleCollected) {
     __ry_gc_enable();
@@ -328,7 +329,7 @@ TEST(GcTest, ImmortalObjectSkipped) {
     std::free(hdrA);
 }
 
-// ===== Record visit function tests =====
+// ===== [internal] Record visit function tests =====
 
 TEST(GcTest, RecordCycleCollected) {
     // Simulates a cycle through record types embedded in ARC objects:

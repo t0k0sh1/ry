@@ -1,3 +1,10 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — replicates the atomic retain/release
+// ops emitted by emitArcRetain / emitArcRelease. Section header tag:
+// [regression #872].
+
 #include "ry/ry_layout.hpp"
 #include "ry/runtime/core/alloc.hpp"
 

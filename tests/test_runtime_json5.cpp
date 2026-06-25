@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_json5_parse_to_any /
+// __ry_json5_release_any with hand-built RyAny.
+
 #include "ry/runtime/native/json5.hpp"
 #include "ry/runtime/core/any.hpp"
 #include "ry/runtime/core/arc.hpp"
@@ -36,7 +42,7 @@ static const ::testing::Environment *const kMsCleanupJson5 =
 
 static void releaseAny(RyAny &v) { __ry_json5_release_any(&v); }
 
-// ---- Strict-JSON parity: every json input still parses ----
+// ===== [internal] Strict-JSON parity: every json input still parses =====
 
 TEST(Json5ParseToAny, ParsesNullToUnitTag) {
     RyAny out{};
@@ -118,7 +124,7 @@ TEST(Json5ParseToAny, ParsesObjectToMapTag) {
     releaseAny(out);
 }
 
-// ---- Errors ----
+// ===== [internal] Errors =====
 
 TEST(Json5ParseToAny, RejectsEmptyInput) {
     RyAny out{};
@@ -132,7 +138,7 @@ TEST(Json5ParseToAny, RejectsTrailingContent) {
     EXPECT_NE(status, 0);
 }
 
-// ---- JSON5-specific extensions ----
+// ===== [internal] JSON5-specific extensions =====
 
 TEST(Json5ParseToAny, AcceptsLineComment) {
     RyAny out{};
@@ -297,7 +303,7 @@ TEST(Json5ParseToAny, AcceptsLineContinuationInString) {
     releaseAny(out);
 }
 
-// ---- Stringify primitives (JSON5 difference for non-finite floats) ----
+// ===== [internal] Stringify primitives (JSON5 difference for non-finite floats) =====
 
 TEST(Json5StringifyAnyEx, EncodesIntegerAsDigits) {
     RyAny v = anyFromInt(7);
@@ -357,7 +363,7 @@ TEST(Json5StringifyAnyEx, SortKeysSortsMapKeys) {
     releaseAny(m);
 }
 
-// ---- Round-trip ----
+// ===== [internal] Round-trip =====
 
 TEST(Json5RoundTrip, NaNRoundTrips) {
     // load("NaN") → stringify → "NaN" → load → NaN

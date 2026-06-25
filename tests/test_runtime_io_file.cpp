@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_io_file_* runtime entry
+// points directly.
+
 #include "ry/runtime/native/io.hpp"
 #include "ry/runtime/core/string.hpp"
 #include "ry/runtime/core/arc.hpp"

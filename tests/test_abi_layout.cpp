@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — pure compile-time static_assert on
+// C++ struct sizeof/alignof/offset to pin the ABI contract with crates/emit.
+//
 // ABI struct-layout verification — C++ side (#1995).
 //
 // This translation unit is the C++ half of the C++ <-> Rust ABI layout
@@ -24,7 +30,7 @@
 
 #include <gtest/gtest.h>
 
-// === Descriptor structs: sizeof + alignof + every field offset ===
+// ===== [internal] Descriptor structs: sizeof + alignof + every field offset =====
 
 // RyCowEnsureUniqueDesc (12 fields) — api.h L429-465.
 static_assert(sizeof(RyCowEnsureUniqueDesc) == 64,
@@ -90,7 +96,7 @@ static_assert(offsetof(RyAnyTryUnwrapDesc, do_collection_retain) == 48, "RyAnyTr
 static_assert(offsetof(RyAnyTryUnwrapDesc, do_str_retain) == 52, "RyAnyTryUnwrapDesc.do_str_retain @ 52");
 static_assert(offsetof(RyAnyTryUnwrapDesc, err_msg_str_id) == 56, "RyAnyTryUnwrapDesc.err_msg_str_id @ 56");
 
-// === Opaque handle typedefs: sizeof + alignof only (no fields) ===
+// ===== [internal] Opaque handle typedefs: sizeof + alignof only (no fields) =====
 // All are pointers to incomplete structs -> 8 bytes / 8-byte aligned on
 // the 64-bit ABI. Per-field offset is N/A — handles carry no fields.
 static_assert(sizeof(RyModuleRef) == 8 && alignof(RyModuleRef) == 8, "RyModuleRef is an 8-byte pointer");
@@ -103,10 +109,10 @@ static_assert(sizeof(RyValueRef) == 8 && alignof(RyValueRef) == 8, "RyValueRef i
 static_assert(sizeof(RyBasicBlockRef) == 8 && alignof(RyBasicBlockRef) == 8, "RyBasicBlockRef is an 8-byte pointer");
 static_assert(sizeof(RySwitchRef) == 8 && alignof(RySwitchRef) == 8, "RySwitchRef is an 8-byte pointer");
 
-// === Scalar intern-handle typedefs (uint32_t) ===
+// ===== [internal] Scalar intern-handle typedefs (uint32_t) =====
 static_assert(sizeof(RyValueId) == 4 && alignof(RyValueId) == 4, "RyValueId is a 4-byte uint32_t");
 
-// === Enum selectors: underlying type is `int` (4 bytes) ===
+// ===== [internal] Enum selectors: underlying type is `int` (4 bytes) =====
 // The descriptor structs store these as plain `int` fields; locking the
 // enum width here documents that the function-argument enums match the
 // Rust side's `c_int` representation. (No descriptor field is enum-typed.)
@@ -114,7 +120,7 @@ static_assert(sizeof(RyBoundsKind) == sizeof(int), "RyBoundsKind underlying type
 static_assert(sizeof(RyArcAtomic) == sizeof(int), "RyArcAtomic underlying type is int");
 static_assert(sizeof(RyCowKind) == sizeof(int), "RyCowKind underlying type is int");
 
-// === RyICmpPred cross-language parity (#2143) ===
+// ===== [internal] RyICmpPred cross-language parity (#2143) =====
 // The C++ enumerator literals (api.h L985-996) and the Rust `RY_ICMP_*`
 // constants (crates/emit/src/abi.rs) were previously protected only by a
 // prose "MUST match" comment. Two layered guards now pin them mechanically:
@@ -159,7 +165,7 @@ TEST(AbiLayout, RyICmpPredRustMirrorMatchesCanonical) {
     EXPECT_EQ(rust.uge, static_cast<int>(RY_ICMP_UGE));
 }
 
-// === RyAtomicBinOp / RyAtomicOrdering / RyLinkage / RyListCopyKind cross-language parity (#2250) ===
+// ===== [internal] RyAtomicBinOp / RyAtomicOrdering / RyLinkage / RyListCopyKind cross-language parity (#2250) =====
 // Four enums whose `api.h` definitions and Rust-side `RY_*` constants in
 // `crates/emit/src/abi.rs` were previously protected only by a prose
 // "MUST match" comment. Two paired compile-time guards pin them mechanically:
@@ -182,7 +188,7 @@ static_assert(RY_LINKAGE_EXTERNAL == 0 && RY_LINKAGE_INTERNAL == 1 && RY_LINKAGE
 static_assert(RY_LISTCOPY_KEYS == 0 && RY_LISTCOPY_VALUES == 1 && RY_LISTCOPY_TAKE == 2,
               "RyListCopyKind literal mismatch (api.h reorder?)");
 
-// === IOListHeader / StringHeader prefix cross-language parity (#2282) ===
+// ===== [internal] IOListHeader / StringHeader prefix cross-language parity (#2282) =====
 // The Rust `native_base64` cdylib (crates/native_base64/src/ffi.rs) reads
 // `IOListHeader::{len,cap,data}` through a `#[repr(C)]` mirror and computes
 // `byte_len` for a Ry str handle by reading `handle - STRING_BYTELEN_OFFSET`.

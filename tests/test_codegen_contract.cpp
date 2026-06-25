@@ -1,8 +1,14 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Note: "Design by Contract" 言語機能 (require / ensure / invariant) を対象とするため
+// section title 内の "contract" は DbC を指す。taxonomy tag の [contract] とは別概念。
+
 #include "test_codegen_common.hpp"
 
 
 using namespace ry;
-// ===== require (precondition) tests =====
+// ===== [contract] Design by Contract: require (precondition) tests =====
 
 TEST_F(CodeGenTest, RequireSatisfied) {
     std::string src =
@@ -46,7 +52,7 @@ TEST_F(CodeGenTest, RequireMultipleConditionsSecondFails) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== ensure (postcondition) with variable binding =====
+// ===== [contract] Design by Contract: ensure (postcondition) with variable binding =====
 
 TEST_F(CodeGenTest, EnsureSatisfied) {
     // `abs` was carved out to emitBuiltinMath (#2340) so it is now reserved.
@@ -107,7 +113,7 @@ TEST_F(CodeGenTest, RequireAndEnsureCombined) {
     EXPECT_EQ(runSource(src), "600\n");
 }
 
-// ===== invariant tests =====
+// ===== [contract] Design by Contract: invariant tests =====
 
 TEST_F(CodeGenTest, InvariantSatisfiedOnConstruction) {
     std::string src =
@@ -174,7 +180,7 @@ TEST_F(CodeGenTest, InvariantViolationMessageIncludesRecordName) {
                 "Contract violation: invariant failed for Account");
 }
 
-// ===== Inherited invariant tests =====
+// ===== [contract] Design by Contract: Inherited invariant tests =====
 
 TEST_F(CodeGenTest, InheritedInvariantSatisfied) {
     std::string src =
@@ -231,7 +237,7 @@ TEST_F(CodeGenTest, DeepInheritedInvariantViolated) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Nested function with contract: FnScope protects contract state =====
+// ===== [contract] Design by Contract: Nested function — FnScope protects contract state =====
 
 TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
     std::string src =
@@ -261,7 +267,7 @@ TEST_F(CodeGenTest, NestedFnWithEnsureViolation) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== Tuple destructuring in ensure =====
+// ===== [contract] Design by Contract: Tuple destructuring in ensure =====
 
 TEST_F(CodeGenTest, EnsureTupleDestructuring) {
     std::string src =
@@ -276,7 +282,7 @@ TEST_F(CodeGenTest, EnsureTupleDestructuring) {
     EXPECT_EQ(runSource(src), "3\n1\n");
 }
 
-// ===== ensure on Unit function is rejected =====
+// ===== [contract] Design by Contract: ensure on Unit function is rejected =====
 
 TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
     std::string src =
@@ -287,7 +293,7 @@ TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
     EXPECT_THROW(runSource(src), std::exception);
 }
 
-// ===== result and old as normal identifiers =====
+// ===== [contract] Design by Contract: result and old as normal identifiers =====
 
 TEST_F(CodeGenTest, ResultAsIdentifier) {
     std::string src =

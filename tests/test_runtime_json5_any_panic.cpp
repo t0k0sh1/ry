@@ -1,3 +1,10 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file tag: [regression #1811] mirror (json5) — guards typed-non-any
+// collection OOB on json5.stringify(any) by driving runtime entry points
+// directly.
+
 #include "ry/runtime/core/alloc.hpp"
 #include "ry/runtime/core/any.hpp"
 #include "ry/runtime/core/any_typed_coll.hpp"

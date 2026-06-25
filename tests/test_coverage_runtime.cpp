@@ -1,3 +1,9 @@
+// Test taxonomy: docs/reference/test-taxonomy.md
+// Section header tags: [contract] / [regression #NNNN] / [internal].
+// Per-test exceptions use an inline `// [regression: #NNNN]` comment.
+// Whole-file dominant tag: [internal] — drives __ry_coverage_* runtime entry
+// points directly with hand-built file/line pairs.
+
 #include "ry/coverage/coverage_runtime.hpp"
 #include <gtest/gtest.h>
 #include <cstdio>
