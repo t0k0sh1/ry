@@ -14,14 +14,6 @@
 #   - Nested f-strings: e.g. `f"a={f"b={42}"}"`。tests/spec/ には該当する spec が
 #     存在しないため file path 登録は無し。spec が追加されたら追記する。
 
-# === Lambda body with nested block-body lambdas (DEDENT/NEWLINE) ===
-# `mid = () -> int: <indent> leaf = () -> int: <indent> stmt <dedent> stmt
-# <dedent>` の二重ネストで、内側 lambda の DEDENT 後に外側 `_simple_statement`
-# 用 NEWLINE が emit されない問題 (#2394 で部分解析 — block-form if-expr /
-# turbofish / `<T: Bound>` 等は本 PR で解消、本ケースは scanner.c で
-# NEWLINE-then-DEDENT 列に揃える別問題として継続)。
-tests/spec/nested_fn_return_fn.test.ry
-
 # === Async / decorator / operator-overload / untyped-param declarations ===
 tests/spec/arc_iolist.test.ry
 tests/spec/concurrency.test.ry
