@@ -245,12 +245,17 @@ void Formatter::formatEnum(const EnumStmt &s) {
         emit(variant.name);
         if (!variant.field_types.empty()) {
             emit("(");
+            const bool named = !variant.field_names.empty();
             for (size_t i = 0; i < variant.field_types.size(); ++i) {
                 if (i > 0) emit(", ");
+                if (named)
+                    emit(variant.field_names[i] + ": ");
                 emit(variant.field_types[i]->toString());
             }
             emit(")");
         }
+        if (variant.explicit_value.has_value())
+            emit(" = " + std::to_string(*variant.explicit_value));
         emitNewline();
     }
     dedent();

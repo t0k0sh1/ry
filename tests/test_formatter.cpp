@@ -321,6 +321,46 @@ TEST(Formatter, RecordEnumDef) {
         auto expected = "enum Shape:\n  Circle(float)\n  Rect(float, float)\n  Point\n";
         EXPECT_EQ(fmt(src), expected);
     }
+    // Enum with named associated-data fields (#2424 side fix)
+    {
+        auto src = "enum Shape:\n    Circle(radius: float)\n    Rect(width: float, height: float)\n";
+        auto expected = "enum Shape:\n  Circle(radius: float)\n  Rect(width: float, height: float)\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+}
+
+// ===== Enum explicit discriminant value preservation (#2424) =====
+//
+// `ry fmt` previously stripped explicit integer discriminants from enum
+// variants (e.g. `Ok = 200` became `Ok`), corrupting any code that relied on
+// the value for ABI, wire format, or debug output purposes.
+
+TEST(Formatter, EnumExplicitDiscriminantValues) {
+    // Positive integer discriminants
+    {
+        auto src = "enum Status:\n    Ok = 200\n    NotFound = 404\n    ServerError = 500\n";
+        auto expected = "enum Status:\n  Ok = 200\n  NotFound = 404\n  ServerError = 500\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Negative and zero discriminants
+    {
+        auto src = "enum Signed:\n    A = -10\n    B = 0\n    C = 40\n";
+        auto expected = "enum Signed:\n  A = -10\n  B = 0\n  C = 40\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // i64 boundary values round-trip without overflow truncation
+    {
+        auto src = "enum Bounds:\n    Lo = -9223372036854775808\n    Hi = 9223372036854775807\n";
+        auto expected = "enum Bounds:\n  Lo = -9223372036854775808\n  Hi = 9223372036854775807\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Format output is idempotent: formatting twice yields the same source.
+    {
+        auto src = "enum Status:\n    Ok = 200\n    NotFound = 404\n";
+        auto once = fmt(src);
+        auto twice = fmt(once);
+        EXPECT_EQ(once, twice);
+    }
 }
 
 // ===== Control Flow Tests =====
