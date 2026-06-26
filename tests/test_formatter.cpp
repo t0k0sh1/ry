@@ -1,3 +1,4 @@
+#include "ry/diagnostic/diagnostic.hpp"
 #include "ry/formatter.hpp"
 #include "ry/lexer/lexer.hpp"
 #include "ry/parser/parser.hpp"
@@ -1231,4 +1232,16 @@ TEST(FormatterTest, BareIdentGenericCallRoundTrip) {
     EXPECT_EQ(fmt(formatted), formatted);
     std::string reason;
     EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}
+
+TEST(FormatterTest, ChainedCallRejectedByFormatter) {
+    // [regression: #2426] — the original bug surfaced through `ry fmt`, so
+    // pin that fmt itself now propagates the parser rejection instead of
+    // silently round-tripping the input into two split statements. Without
+    // this guard a future formatter refactor that bypasses parsing (e.g. a
+    // textual pass) could re-introduce the silent-split shape.
+    auto src = "fn make<T>(x: T) -> T:\n"
+               "    return x\n"
+               "r = make(42)[int](\"inner\")\n";
+    EXPECT_THROW(fmt(src), DiagnosticError);
 }
