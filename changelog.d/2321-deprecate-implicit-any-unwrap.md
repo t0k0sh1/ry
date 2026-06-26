@@ -1,3 +1,0 @@
-### Deprecated
-
-- `any` から具体型への暗黙的 unwrap を deprecated とし、新しい strict-any ルール `any-implicit-unwrap` で段階的に廃止する。対象は `docs/architecture/implicit-any-paths.md` の Path 9 の 4 サブケース: 変数宣言 (`n: int = v`)、名前付き関数呼び出し引数 (`f(v)` の暗黙引数およびデフォルト値引数)、ラムダ呼び出し引数、`Ok(v)` / `Err(v)` / `Some(v)` の typed Result / Option スロットへの値。compat mode では Pattern 4 と同形式の警告を発し (`shouldEmitAnyLintAt` ゲートで stdlib / cross-package import は抑止)、`--strict-any` / `RY_STRICT_ANY=1` 下では `[strict-any/any-implicit-unwrap]` ハードエラーとして reject する。修復には #2315 で追加した `asType[T](v: any) -> Result<T, Error>` を `case` narrowing と組み合わせて使う。既存の round-trip 動作は compat mode で維持されており、`tests/spec/any.test.ry` の Path 9 関連 describe ブロック (`:207-272`) は引き続き exit code 0 で pass する。strict mode の既定化は #2322 予定。 (#2321)

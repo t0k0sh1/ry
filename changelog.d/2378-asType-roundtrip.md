@@ -1,3 +1,0 @@
-### Added
-
-- `asType[T]` now recovers values that were wrapped from a native-typed source — `List<T>` / `Map<str, V>` / `Set<T>` (T/V ≠ any), `Result<T, E>`, simple enums, and ADT enums (including payload-carrying variants). Combined with the existing scalar, record, `Option<T>`, and JSON-shape coverage, every shape that the legacy implicit `any → T` unwrap previously handled now has a canonical `case asType[T](v)` recovery. Source / target mismatches (different `Result` parameters, unrelated enum types, a `List<int>` source requested as `List<str>`) return `Err` rather than mis-reading the payload. (#2378)

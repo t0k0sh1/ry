@@ -1,3 +1,0 @@
-### Changed
-
-- legacy な stdlib import 形式 (`from math import …` / `from std.math import …` / `from std import …` / `import math` 等) を import 解決時に検出し、stderr へ one-time deprecation warning を発するようにした。canonical な `ry.*` 形式 (`from ry.math import …` / `import ry.math` / `from ry.lang import …` 等) を提示する。動作は変わらず legacy 形式は引き続き解決可能 (将来のリリースで reject 予定)。dedup は元の spelling 単位で 1 回のみ。`ry.lang` 自動 prelude (`print` / `len` / `range` 等) と明示 `from ry.lang import …` は canonical の一形態として warn 対象外。`tests/spec/` 配下の既存テストは引き続き exit code 0 で pass する (出力に warning が混ざるのは deprecation 期間中の意図された動作)。`import std.math` 形式は parser 段階で hard error のため本検出経路は通らない。 (#2350)

@@ -1,3 +1,0 @@
-### Fixed
-
-- `ry fmt` が `import ry.<mod>` 形式の qualified import を `import <mod>` (bare 形式) に書き換える破壊書換を行い、#2351 で hard error 化された legacy syntax を生成する不具合を修正。`Formatter::formatQualifiedImport` が `module_name` (dotted path の最終セグメント、例: `math`) のみを emit して `ry.` namespace prefix を脱落させていたのが原因。AST 側には dotted path の生の slash 表記 (`ry/math`) が `import_path` として保持されているため、これが非空の場合は slash を dot に変換して `ry.math` を再構成し、空のときのみ `module_name` への従来 fallback を行うよう修正。`tests/test_formatter.cpp` に `import ry.math` / `import ry.math as m` / `import ry.json5` / `from ry.net import open as net_open` の 4 ケースを round-trip 退行テストとして追加した。(#2423)
