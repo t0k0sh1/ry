@@ -143,6 +143,18 @@ darwin)
         codesign --force --sign - "$LIB/liblower.dylib"
     fi
 
+    # Every bundled libry_*.dylib (process-linked cdylib like libry_xid #2314,
+    # or stdlib dlopen libs like libry_io / libry_base64) gets a relocatable
+    # @rpath self-id. Cargo emits an absolute build-tree id for cdylibs, and
+    # dlopen tolerates the mismatch on macOS today, but matching the @rpath
+    # refs the loader uses is the convention and avoids future surprises.
+    for f in "$LIB"/libry_*.dylib; do
+        [[ -f "$f" ]] || continue
+        base="$(basename "$f")"
+        install_name_tool -id "@rpath/$base" "$f"
+        codesign --force --sign - "$f"
+    done
+
     # ry: point libLLVM / libemit / liblower at @rpath, drop build-tree rpaths,
     # add the two. liblower may not be present in legacy build trees (#2397 is the
     # crate's introducing PR), so the awk match guards against an empty ref.
@@ -150,6 +162,17 @@ darwin)
     install_name_tool -change "$emit_ref" '@rpath/libemit.dylib' "$RY"
     lower_ref="$(otool -L "$RY" | awk '/liblower\.dylib/{print $1; exit}')"
     [[ -n "$lower_ref" ]] && install_name_tool -change "$lower_ref" '@rpath/liblower.dylib' "$RY"
+
+    # Process-linked libry_* cdylibs (libry_xid today; any future ones with the
+    # same model are picked up automatically). Cargo records absolute build-tree
+    # paths in `ry`'s LC_LOAD_DYLIB for these, which verify-bundle.sh's
+    # forbidden-token check rejects. dlopen-loaded stdlib libry_* never appear
+    # in `otool -L`, so they are untouched by this loop.
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] || continue
+        base="$(basename "$ref")"
+        install_name_tool -change "$ref" "@rpath/$base" "$RY"
+    done < <(otool -L "$RY" | awk '/libry_[A-Za-z0-9_]+\.dylib/{print $1}' | grep -v '^@rpath/')
     while IFS= read -r r; do
         [[ -n "$r" ]] && install_name_tool -delete_rpath "$r" "$RY" 2>/dev/null || true
     done < <(otool -l "$RY" | awk '/LC_RPATH/{getline; getline; print $2}')
