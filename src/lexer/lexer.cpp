@@ -34,12 +34,14 @@ static void consumeDigitsWithSeparators(const std::string &src, size_t &pos,
 }
 
 // Decode the UTF-8 character at `src[pos]` and return {sequence, byte_length}.
-// For a valid leading byte with all expected continuation bytes present in
-// range, returns the raw byte string of the sequence and its length. For an
-// invalid leading byte (>= 0xC0 with no class match, or 0x80-0xBF used as a
-// lead) or a truncated/malformed continuation, returns the printable hex
-// escape "\xHH" of the leading byte and length 1 so the caller advances
-// deterministically without invoking decoder UB on the truncated tail.
+// Accepts ONLY well-formed UTF-8 per RFC 3629: lead-byte ranges exclude the
+// overlong 2-byte leads `0xC0`/`0xC1` and out-of-range 4-byte leads
+// `0xF5..0xFF`, and continuation-byte ranges further reject overlong 3-byte
+// (`E0 80..9F`) / 4-byte (`F0 80..8F`) encodings, surrogate pairs
+// (`ED A0..BF`), and code points above `U+10FFFF` (`F4 90..BF`). Any
+// non-well-formed byte falls back to the printable hex escape "\xHH" of
+// the leading byte with length 1 so the caller advances deterministically
+// without invoking decoder UB on the truncated/invalid tail.
 // #2442: used by the "unexpected token" fallback and the trailing-ident
 // check after a numeric literal so the diagnostic names the actual code
 // point instead of the leading byte alone (which rendered as U+FFFD).
@@ -47,9 +49,9 @@ static std::pair<std::string, size_t> decodeUtf8Char(const std::string &src, siz
     unsigned char c = static_cast<unsigned char>(src[pos]);
     int len = 0;
     if (c < 0x80u) len = 1;
-    else if ((c & 0xE0u) == 0xC0u) len = 2;
-    else if ((c & 0xF0u) == 0xE0u) len = 3;
-    else if ((c & 0xF8u) == 0xF0u) len = 4;
+    else if (c >= 0xC2u && c <= 0xDFu) len = 2;
+    else if (c >= 0xE0u && c <= 0xEFu) len = 3;
+    else if (c >= 0xF0u && c <= 0xF4u) len = 4;
     auto hexEscape = [c]() -> std::string {
         static const char hex[] = "0123456789ABCDEF";
         std::string s = "\\x";
@@ -62,6 +64,15 @@ static std::pair<std::string, size_t> decodeUtf8Char(const std::string &src, siz
     for (size_t i = 1; i < static_cast<size_t>(len); ++i) {
         unsigned char cc = static_cast<unsigned char>(src[pos + i]);
         if ((cc & 0xC0u) != 0x80u) return {hexEscape(), 1};
+    }
+    if (len == 3) {
+        unsigned char c1 = static_cast<unsigned char>(src[pos + 1]);
+        if ((c == 0xE0u && c1 < 0xA0u) || (c == 0xEDu && c1 > 0x9Fu))
+            return {hexEscape(), 1};
+    } else if (len == 4) {
+        unsigned char c1 = static_cast<unsigned char>(src[pos + 1]);
+        if ((c == 0xF0u && c1 < 0x90u) || (c == 0xF4u && c1 > 0x8Fu))
+            return {hexEscape(), 1};
     }
     return {src.substr(pos, static_cast<size_t>(len)), static_cast<size_t>(len)};
 }

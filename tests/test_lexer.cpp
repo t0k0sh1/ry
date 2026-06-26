@@ -1518,6 +1518,69 @@ TEST(LexerTest, NonAsciiFourByteEmitsFullCodePointAsErrorValue) {
     EXPECT_EQ(toks[1].kind, TokenKind::Eof);
 }
 
+TEST(LexerTest, OverlongTwoByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — overlong 2-byte encodings of ASCII (`C0 80`,
+    // `C1 BF`) are forbidden by RFC 3629; the lead byte must fall back to
+    // a "\xHH" escape, not be returned as a 2-byte "valid" sequence.
+    {
+        auto toks = tokenize("\xC0\x80");
+        ASSERT_GE(toks.size(), 1u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+        EXPECT_EQ(toks[0].value, "\\xC0");
+    }
+    {
+        auto toks = tokenize("\xC1\xBF");
+        ASSERT_GE(toks.size(), 1u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+        EXPECT_EQ(toks[0].value, "\\xC1");
+    }
+}
+
+TEST(LexerTest, OverlongThreeByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — `E0 80..9F ..` is an overlong encoding of a
+    // <2-byte code point and must be rejected.
+    auto toks = tokenize("\xE0\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xE0");
+}
+
+TEST(LexerTest, SurrogateUtf8EmitsHexEscape) {
+    // [regression: #2442] — `ED A0..BF ..` encodes UTF-16 surrogates
+    // (`U+D800..U+DFFF`), which are not valid Unicode scalars.
+    auto toks = tokenize("\xED\xA0\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xED");
+}
+
+TEST(LexerTest, OverlongFourByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — `F0 80..8F ..` is an overlong encoding of a
+    // <3-byte code point.
+    auto toks = tokenize("\xF0\x80\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF0");
+}
+
+TEST(LexerTest, OutOfRangeFourByteLeadEmitsHexEscape) {
+    // [regression: #2442] — lead bytes `F5..F7` would encode code points
+    // above `U+10FFFF` and must be rejected at the lead-byte stage.
+    auto toks = tokenize("\xF5\x80\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF5");
+}
+
+TEST(LexerTest, AboveMaxCodePointUtf8EmitsHexEscape) {
+    // [regression: #2442] — `F4 90..BF ..` would encode code points above
+    // `U+10FFFF` even though the lead byte itself is in range.
+    auto toks = tokenize("\xF4\x90\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF4");
+}
+
 TEST(LexerTest, InvalidUtf8LeadByteEmitsHexEscape) {
     // [regression: #2442] — 0xFF is not a valid UTF-8 leading byte. The
     // lexer must still produce a deterministic Error token (no decoder UB).
