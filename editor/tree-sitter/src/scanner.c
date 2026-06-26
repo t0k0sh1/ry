@@ -149,10 +149,12 @@ void tree_sitter_ry_external_scanner_deserialize(void *payload,
   if (off >= length) return;
   s->emitted_eof_newline = (buffer[off++] != 0);
 
-  if (off >= length) return;
+  /* pending_newline (1 byte) + pending_newline_col (2 bytes) must be
+   * read atomically — leaving the flag true without its column would
+   * let Step 0 inject a synthetic NEWLINE at column 0 on the next scan
+   * for a stale or truncated buffer. */
+  if (off + 3 > length) return;
   s->pending_newline = (buffer[off++] != 0);
-
-  if (off + 2 > length) return;
   {
     uint16_t lo = (uint8_t)buffer[off++];
     uint16_t hi = (uint8_t)buffer[off++];
