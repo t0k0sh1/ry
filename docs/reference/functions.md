@@ -663,6 +663,27 @@ empty container literal), use the explicit `name[Type](args)` syntax:
 firstOf[int]([])   # empty list: tell the compiler T = int explicitly
 ```
 
+The `name[Type](args)` form requires `name` to be a bare identifier.
+Chained shapes such as `f(args)[T](args)` (apply `[T](args)` to the
+result of `f(args)`) and `f(args)(args)` are rejected at parse time
+with a diagnostic referencing the chained-call feature request, which
+is tracked as not_planned. Bind the intermediate result to a variable
+and call it directly:
+
+```ry
+fn makeMultiplier(a: int) -> fn(int) -> int:
+    fn step(b: int) -> int:
+        return a * b
+    return step
+
+# Not supported: chained call on an expression result
+# r = makeMultiplier(2)(3)
+
+# Workaround: introduce a temporary
+m = makeMultiplier(2)
+print(m(3))   # 6
+```
+
 Conflicting inferences across arguments produce a clear compile error
 naming the type parameter and function rather than an opaque type
 mismatch:

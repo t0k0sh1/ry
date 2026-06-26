@@ -1204,6 +1204,25 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
     // parseProgram / block body loops to accommodate (#2136).
     while (true) {
         TokenKind cur = lex_.peek().kind;
+        // #2426: chained call `<expr>(args)` is not supported (#809 is
+        // not_planned). parsePrimary owns every direct-call form (bare
+        // `f(args)`, `Ident[T](args)`, `Error(...)`, `Enum::Variant(...)`,
+        // generic enum constructor) up front, so the postfix loop only sees
+        // `(` when the user is trying to apply `(args)` to an already-parsed
+        // postfix expression. Pre-fix, that `(` was dropped, so
+        // `r = f(args)[T]("x")` silently split into `r = f(args)[T]` plus a
+        // stray `("x")` expression statement and users reported it as a fmt
+        // bug. Reject the pattern explicitly here so the error surfaces at
+        // the call site instead of through corrupted formatter output.
+        if (cur == TokenKind::LParen) {
+            Token paren = lex_.peek();
+            parseError(paren.line,
+                "chained call '<expr>(args)' is not supported (see #809); "
+                "the parser does not apply '(...)' to the result of a "
+                "preceding postfix expression such as 'f(args)[T](...)' or "
+                "'f(args)(...)'. Bind the intermediate result to a variable "
+                "first, e.g. 'tmp = f(args)[T]' then 'tmp(args)'");
+        }
         if (cur != TokenKind::Dot && cur != TokenKind::LBracket &&
             cur != TokenKind::Question) {
             // Multiline UFCS chain continuation (#2115): speculatively
