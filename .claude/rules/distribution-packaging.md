@@ -16,4 +16,5 @@ paths:
 - Shell helpers that mutate parent-scope flags must not be invoked through a pipe; pass haystack data as an argument or here-string.
 - Bundled cdylibs that do not match `libry_*` must be listed explicitly everywhere native libs are selected. Current explicit libs: `libemit.*`, `liblower.*`.
 - Keep the explicit-lib list in sync across `scripts/bundle-dist.sh`, `install.sh`, `src/cli/self_update.cpp`, and `scripts/verify-bundle.sh`.
+- Process-linked `libry_*` cdylibs (e.g. `libry_xid` from #2314) also need install-name rewriting on macOS — `bundle-dist.sh` rewrites every absolute `libry_*.dylib` `LC_LOAD_DYLIB` in `ry` to `@rpath/<basename>` and sets a matching `@rpath` self-id on every bundled `libry_*.dylib`. dlopen-loaded stdlib `libry_*` never appear in `otool -L "$RY"`, so the generic loop only touches the load-time ones.
 - If a stale `libry_*` cdylib links libLLVM, treat it as an orphan emission cdylib and exclude/fail by that discriminator.
