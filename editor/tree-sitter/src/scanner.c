@@ -63,6 +63,26 @@ typedef struct {
    * a DEDENT is emitted (a new NEWLINE may be needed after the DEDENT to
    * terminate an enclosing statement). */
   bool emitted_eof_newline;
+
+  /* True after a DEDENT was just emitted. The next scan call should emit
+   * a synthetic NEWLINE when `valid_symbols[NEWLINE]` — this terminates
+   * outer `_simple_statement` wrappers whose block-form RHS (lambda /
+   * if_statement / case_statement) closed with the DEDENT and produced
+   * no explicit NEWLINE token (#2428). The `valid_symbols[NEWLINE]`
+   * gate keeps the synthetic NEWLINE off in `_declaration` contexts
+   * where the next position legitimately admits no terminator. */
+  bool pending_newline;
+
+  /* Column at which the DEDENT triggering `pending_newline` fired. The
+   * synthetic NEWLINE only fires when the next scan call is still at
+   * the same column — after the internal lexer consumes any content
+   * (e.g. `return` keyword), the column advances and Step 0 declines.
+   * This is required because tree-sitter does not persist scanner
+   * state mutations across scans that return false: the flag clear we
+   * intended at the immediate next call is rolled back, so a column
+   * guard is the only discriminator that survives the serialize /
+   * deserialize cycle. */
+  uint16_t pending_newline_col;
 } Scanner;
 
 /* --------------------------------------------------------------------
@@ -89,6 +109,13 @@ unsigned tree_sitter_ry_external_scanner_serialize(void *payload, char *buffer) 
   /* emitted_eof_newline (1 byte). */
   buffer[size++] = (char)(s->emitted_eof_newline ? 1 : 0);
 
+  /* pending_newline (1 byte). */
+  buffer[size++] = (char)(s->pending_newline ? 1 : 0);
+
+  /* pending_newline_col (2 bytes, little-endian). */
+  buffer[size++] = (char)(s->pending_newline_col & 0xFF);
+  buffer[size++] = (char)((s->pending_newline_col >> 8) & 0xFF);
+
   /* indent_count (2 bytes, little-endian). */
   buffer[size++] = (char)(s->indent_count & 0xFF);
   buffer[size++] = (char)((s->indent_count >> 8) & 0xFF);
@@ -111,6 +138,8 @@ void tree_sitter_ry_external_scanner_deserialize(void *payload,
   s->indent_count = 0;
   s->pending_dedents = 0;
   s->emitted_eof_newline = false;
+  s->pending_newline = false;
+  s->pending_newline_col = 0;
 
   if (length == 0) return;
 
@@ -119,6 +148,16 @@ void tree_sitter_ry_external_scanner_deserialize(void *payload,
 
   if (off >= length) return;
   s->emitted_eof_newline = (buffer[off++] != 0);
+
+  if (off >= length) return;
+  s->pending_newline = (buffer[off++] != 0);
+
+  if (off + 2 > length) return;
+  {
+    uint16_t lo = (uint8_t)buffer[off++];
+    uint16_t hi = (uint8_t)buffer[off++];
+    s->pending_newline_col = (uint16_t)(lo | (hi << 8));
+  }
 
   if (off + 2 > length) return;
   uint16_t lo = (uint8_t)buffer[off++];
@@ -258,15 +297,106 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
                                           const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
 
+  /* 0. Synthetic NEWLINE after a prior DEDENT. The block-form RHS of an
+   *    outer `_simple_statement` (lambda body / if-as-value alternative /
+   *    case-as-value arms) closes with the DEDENT and emits no real
+   *    NEWLINE, so the outer `_statement: seq(_simple_statement,
+   *    _newline)` wrapper is left unsatisfied. Mirror the missing
+   *    NEWLINE here (#2428).
+   *
+   *    Must run BEFORE the pending_dedents drain so that multi-level
+   *    drops interleave `DEDENT NEWLINE DEDENT NEWLINE …` instead of
+   *    emitting consecutive DEDENTs back-to-back. Each drained DEDENT
+   *    re-arms `pending_newline`; the `valid_symbols[NEWLINE]` gate
+   *    suppresses the synthetic NEWLINE in `_declaration` contexts
+   *    where the next position legitimately admits no terminator
+   *    (e.g. function_declaration nested in an outer function_body).
+   *
+   *    Three guards filter the inject to the genuine block-ending
+   *    _simple_statement case:
+   *
+   *    1. `valid_symbols[NEWLINE]` — the parser is actively asking for a
+   *       NEWLINE here (lambda outer; absent for nested function decls).
+   *    2. `!valid_symbols[DEDENT]` — also gating on no-pending-DEDENT
+   *       drops the ambiguity that lets `case_match_statement` /
+   *       `case_match_expression` both fit a `case x: <arms>` body. With
+   *       DEDENT also valid the parser hasn't yet committed; injecting
+   *       NEWLINE would force the `case_match_expression`
+   *       (_simple_statement wrap) path and discard the `prec.dynamic`
+   *       bias toward statement form.
+   *    3. Column guard — fire only when the scan call is still at the
+   *       same column as the prior DEDENT. Tree-sitter does not persist
+   *       scanner state mutations across scans that return false, so a
+   *       one-shot flag clear gets rolled back; Step 0 would otherwise
+   *       re-fire much later in an unrelated rule that happens to accept
+   *       NEWLINE (e.g. a value-less `return` mid-statement in a
+   *       function body). The saved `pending_newline_col` survives the
+   *       serialize / deserialize cycle and discriminates the two
+   *       positions.
+   *
+   *    A further peek catches `else` lookahead after an if_statement
+   *    consequence DEDENT: `valid_symbols[NEWLINE]` is set (the parser
+   *    speculatively explores the end-of-if reduce that flows up to
+   *    `_simple_statement . _newline`), but the intended path is to
+   *    shift `else`. The `else` token is internal and absent from
+   *    `valid_symbols`, so the four-char peek is the only signal. */
+  if (s->pending_newline && valid_symbols[NEWLINE] &&
+      !valid_symbols[DEDENT] &&
+      (uint32_t)s->pending_newline_col == lexer->get_column(lexer)) {
+    /* Suppress when the source still has an `else` continuation for an
+     * open if_statement. After the consequence (or alt_consequence)
+     * block's DEDENT, `valid_symbols[NEWLINE]` is also set (the parser
+     * speculatively explores the end-of-if reduce path that flows up
+     * to the wrapping `_simple_statement . _newline`), but the source
+     * `else` shift path is the intended one. Internal `else` is not
+     * exposed via `valid_symbols`, so peek the lookahead chars
+     * directly. The peek consumes characters from this scan only;
+     * tree-sitter discards them on `false` return. */
+    bool looks_like_else = false;
+    if (lexer->lookahead == 'e') {
+      lexer->mark_end(lexer);
+      advance(lexer);
+      if (lexer->lookahead == 'l') {
+        advance(lexer);
+        if (lexer->lookahead == 's') {
+          advance(lexer);
+          if (lexer->lookahead == 'e') {
+            advance(lexer);
+            int32_t c = lexer->lookahead;
+            /* `else` is the keyword only if not part of an identifier;
+             * otherwise it's `else_x` etc. */
+            bool id_continue = (c >= 'a' && c <= 'z') ||
+                               (c >= 'A' && c <= 'Z') ||
+                               (c >= '0' && c <= '9') || c == '_';
+            looks_like_else = !id_continue;
+          }
+        }
+      }
+    }
+    if (!looks_like_else) {
+      s->pending_newline = false;
+      s->pending_newline_col = 0;
+      lexer->result_symbol = NEWLINE;
+      return true;
+    }
+    /* Fall through: scanner returns false, parser continues with the
+     * internal lexer which sees `else` and shifts to extend the if. */
+    return false;
+  }
+
   /* 1. Drain any DEDENTs queued by a prior scan call. These are zero-width
    *    and consume no characters. The indent stack was already popped in
    *    full when the queue was created (see Case B); drain only emits the
    *    queued tokens, it does NOT pop indents again. Emitting a DEDENT
    *    re-arms eof-NEWLINE (any statement enclosing the just-closed block
-   *    may now need its terminating NEWLINE). */
+   *    may now need its terminating NEWLINE) and re-arms pending_newline
+   *    so the next call can supply the outer _simple_statement's missing
+   *    NEWLINE terminator. */
   if (s->pending_dedents > 0 && valid_symbols[DEDENT]) {
     s->pending_dedents--;
     s->emitted_eof_newline = false;
+    s->pending_newline = true;
+    s->pending_newline_col = (uint16_t)lexer->get_column(lexer);
     lexer->result_symbol = DEDENT;
     return true;
   }
@@ -361,6 +491,8 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
     if (s->indent_count < MAX_INDENT_DEPTH) {
       s->indents[s->indent_count++] = (uint16_t)current_col;
     }
+    /* New block — any stale post-DEDENT NEWLINE intent is obsolete. */
+    s->pending_newline = false;
     lexer->result_symbol = INDENT;
     return true;
   }
@@ -379,6 +511,12 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
     if (popped > 0) {
       s->pending_dedents = (uint16_t)(popped - 1);
       s->emitted_eof_newline = false;
+      /* The block just closed wrapped an inner `_simple_statement`; the
+       * outer `_statement` rule may now need a synthetic NEWLINE. The
+       * `valid_symbols[NEWLINE]` gate on the next call decides whether
+       * to actually emit one (see step 0 / #2428). */
+      s->pending_newline = true;
+      s->pending_newline_col = (uint16_t)current_col;
       lexer->result_symbol = DEDENT;
       return true;
     }
@@ -389,6 +527,7 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
    * priority for actual indent changes. */
   if (seen_newline && valid_symbols[NEWLINE]) {
     s->emitted_eof_newline = false;  /* real newline resets the eof guard */
+    s->pending_newline = false;
     lexer->result_symbol = NEWLINE;
     return true;
   }
@@ -404,6 +543,7 @@ bool tree_sitter_ry_external_scanner_scan(void *payload, TSLexer *lexer,
    * indefinitely. */
   if (at_eof && valid_symbols[NEWLINE] && !s->emitted_eof_newline) {
     s->emitted_eof_newline = true;
+    s->pending_newline = false;
     lexer->result_symbol = NEWLINE;
     return true;
   }

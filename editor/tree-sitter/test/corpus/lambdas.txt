@@ -173,3 +173,37 @@ else:
             (call_expression
               function: (qualified_identifier
                 (identifier)))))))))
+
+==================
+lambda with block-body containing a nested block-body lambda (#2428)
+==================
+
+make = () -> fn() -> int:
+  leaf = () -> int:
+    return 42
+  return leaf
+
+---
+
+(source_file
+  (assignment_statement
+    left: (identifier)
+    right: (lambda_expression
+      parameters: (lambda_params)
+      return_type: (union_type
+        (function_type
+          (union_type
+            (primitive_type))))
+      body: (block
+        (assignment_statement
+          left: (identifier)
+          right: (lambda_expression
+            parameters: (lambda_params)
+            return_type: (union_type
+              (primitive_type))
+            body: (block
+              (return_statement
+                value: (integer_literal)))))
+        (return_statement
+          value: (qualified_identifier
+            (identifier)))))))
