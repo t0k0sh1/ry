@@ -765,6 +765,150 @@ TEST(LexerTest, UnicodeEscapeRawStringPassthrough) {
     EXPECT_EQ(toks[0].value, "\\u{1F600}");
 }
 
+// ===== Hex escape \xNN (#2440) =====
+//
+// `\xNN` decodes exactly two hex digits into a single raw byte (0x00 - 0xFF),
+// distinct from `\u{HHHH}` which encodes a Unicode code point as UTF-8.
+// Verified across regular strings, block strings, and f-strings since the
+// three lexer sites share `decodeHexEscape` but each has its own surrounding
+// loop; a regression in one would not surface in the others.
+
+TEST(LexerTest, HexEscapeRegularString) {
+    // ASCII (the repro from the issue)
+    {
+        auto toks = tokenize("\"\\x41\"");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::String);
+        EXPECT_EQ(toks[0].value, "A");
+    }
+    // 0x00: \x00 produces a single NUL byte
+    {
+        auto toks = tokenize("\"\\x00\"");
+        EXPECT_EQ(toks[0].value, std::string(1, '\0'));
+    }
+    // 0x7F (ASCII boundary)
+    {
+        auto toks = tokenize("\"\\x7F\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0x7F)));
+    }
+    // 0x80 (non-UTF-8 single byte)
+    {
+        auto toks = tokenize("\"\\x80\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0x80)));
+    }
+    // 0xFF (max single byte)
+    {
+        auto toks = tokenize("\"\\xFF\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0xFF)));
+    }
+    // Lowercase hex
+    {
+        auto toks = tokenize("\"\\xab\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0xAB)));
+    }
+    // Uppercase hex
+    {
+        auto toks = tokenize("\"\\xAB\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0xAB)));
+    }
+    // Mixed case
+    {
+        auto toks = tokenize("\"\\xaB\"");
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0xAB)));
+    }
+    // Mixed with neighbouring content
+    {
+        auto toks = tokenize("\"a\\x41b\"");
+        EXPECT_EQ(toks[0].value, "aAb");
+    }
+    // Mixed with other single-char escapes
+    {
+        auto toks = tokenize("\"\\n\\x41\\t\"");
+        EXPECT_EQ(toks[0].value, "\nA\t");
+    }
+    // Adjacent hex escapes
+    {
+        auto toks = tokenize("\"\\x41\\x42\\x43\"");
+        EXPECT_EQ(toks[0].value, "ABC");
+    }
+    // Mixed with `\u{...}`
+    {
+        auto toks = tokenize("\"\\x41\\u{42}\"");
+        EXPECT_EQ(toks[0].value, "AB");
+    }
+}
+
+TEST(LexerTest, HexEscapeErrors) {
+    // Abrupt EOF after '\x' (no hex digits, string unterminated)
+    EXPECT_THROW(tokenize("\"\\x"), std::runtime_error);
+    // Closing quote where the first hex digit was expected
+    EXPECT_THROW(tokenize("\"\\x\""), std::runtime_error);
+    // Only one hex digit before the closing quote
+    EXPECT_THROW(tokenize("\"\\x4\""), std::runtime_error);
+    // Non-hex first digit
+    EXPECT_THROW(tokenize("\"\\xZZ\""), std::runtime_error);
+    // Non-hex second digit
+    EXPECT_THROW(tokenize("\"\\x4Z\""), std::runtime_error);
+    // Abrupt EOF in the middle of the escape
+    EXPECT_THROW(tokenize("\"\\x4"), std::runtime_error);
+}
+
+TEST(LexerTest, HexEscapeBlockString) {
+    {
+        auto toks = tokenize("\"\"\"\\x41\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "A");
+    }
+    {
+        auto toks = tokenize("\"\"\"a\\x41b\"\"\"");
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "aAb");
+    }
+    // Non-UTF-8 byte still produced in block string form
+    {
+        auto toks = tokenize("\"\"\"\\xFF\"\"\"");
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, std::string(1, static_cast<char>(0xFF)));
+    }
+    // Block-string error path uses the same helper
+    EXPECT_THROW(tokenize("\"\"\"\\xZZ\"\"\""), std::runtime_error);
+}
+
+TEST(LexerTest, HexEscapeFString) {
+    {
+        auto toks = tokenize("f\"\\x41\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+        EXPECT_EQ(toks[0].value, "A");
+    }
+    {
+        auto toks = tokenize("f\"hello\\x41\"");
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+        EXPECT_EQ(toks[0].value, "helloA");
+    }
+    // `\xNN` must not collide with f-string `{expr}` interpolation
+    {
+        auto toks = tokenize("f\"\\x41{x}\"");
+        ASSERT_GE(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+        EXPECT_EQ(toks[0].value, "A");
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "x");
+        EXPECT_EQ(toks[2].kind, TokenKind::FStringEnd);
+    }
+    // f-string error path (message includes "in f-string" suffix)
+    EXPECT_THROW(tokenize("f\"\\xZZ\""), std::runtime_error);
+}
+
+// Raw strings pass `\xNN` through verbatim, same as `\u{...}`.
+TEST(LexerTest, HexEscapeRawStringPassthrough) {
+    auto toks = tokenize(R"(r"\x41")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\x41");
+}
+
 // ===== F-string tokens =====
 
 TEST(LexerTest, FStringTokens) {

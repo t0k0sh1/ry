@@ -117,6 +117,52 @@ static void decodeUnicodeEscape(const std::string &src, size_t &pos,
     // (after the surrounding escape switch) consumes the '}'.
 }
 
+// Decode a `\xNN` escape. On entry, `pos` is positioned at the first hex
+// digit (the caller has already consumed the leading `\` and `x`). Exactly
+// two hex digits are required, producing a single raw byte (0x00 - 0xFF)
+// appended to `dst`. On normal return, `pos`/`col` are advanced to the
+// SECOND hex digit so that the caller's trailing `++pos; ++col` (which
+// always follows the escape switch) consumes it — matching the single-
+// character escape contract used by the surrounding code.
+//
+// Unlike `\u{...}`, the result is NOT UTF-8 encoded; `\xFF` produces a
+// single 0xFF byte even though that byte is not valid UTF-8 standalone.
+//
+// Rejects: EOF mid-escape, non-hex digit at either position.
+static void decodeHexEscape(const std::string &src, size_t &pos,
+                            int &col, int line, std::string &dst) {
+    auto hexValue = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9') return ch - '0';
+        if (ch >= 'a' && ch <= 'f') return (ch - 'a') + 10;
+        if (ch >= 'A' && ch <= 'F') return (ch - 'A') + 10;
+        return -1;
+    };
+    if (pos >= src.size()) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": incomplete '\\x' escape: expected 2 hex digits");
+    }
+    int hi = hexValue(src[pos]);
+    if (hi < 0) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": invalid hex digit '" +
+                                 std::string(1, src[pos]) + "' in '\\x' escape");
+    }
+    ++pos; ++col;
+    if (pos >= src.size()) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": incomplete '\\x' escape: expected 2 hex digits");
+    }
+    int lo = hexValue(src[pos]);
+    if (lo < 0) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": invalid hex digit '" +
+                                 std::string(1, src[pos]) + "' in '\\x' escape");
+    }
+    dst.push_back(static_cast<char>((hi << 4) | lo));
+    // Leave `pos` AT the second hex digit. The caller's trailing
+    // `++pos; ++col` (after the surrounding escape switch) consumes it.
+}
+
 static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"and",       TokenKind::And},
     {"or",        TokenKind::Or},
@@ -675,6 +721,10 @@ Token Lexer::readToken() {
                         ++pos_; ++col_;  // past 'u'; helper expects '{'
                         decodeUnicodeEscape(src_, pos_, col_, line_, raw);
                         break;
+                    case 'x':
+                        ++pos_; ++col_;  // past 'x'; helper expects 1st hex digit
+                        decodeHexEscape(src_, pos_, col_, line_, raw);
+                        break;
                     default:
                         throw std::runtime_error("line " + std::to_string(line_) +
                                                  ": unknown escape sequence '\\" +
@@ -768,6 +818,10 @@ Token Lexer::readToken() {
                     case 'u':
                         ++pos_; ++col_;  // past 'u'; helper expects '{'
                         decodeUnicodeEscape(src_, pos_, col_, line_, str);
+                        break;
+                    case 'x':
+                        ++pos_; ++col_;  // past 'x'; helper expects 1st hex digit
+                        decodeHexEscape(src_, pos_, col_, line_, str);
                         break;
                     default:
                         throw std::runtime_error("line " + std::to_string(line_) +
@@ -929,6 +983,10 @@ Token Lexer::readFStringSegment(bool isStart) {
                 case 'u':
                     ++pos_; ++col_;  // past 'u'; helper expects '{'
                     decodeUnicodeEscape(src_, pos_, col_, line_, str);
+                    break;
+                case 'x':
+                    ++pos_; ++col_;  // past 'x'; helper expects 1st hex digit
+                    decodeHexEscape(src_, pos_, col_, line_, str);
                     break;
                 default:
                     throw std::runtime_error("line " + std::to_string(line_) +

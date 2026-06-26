@@ -395,6 +395,45 @@ fn unicodeEscapeTests():
     name = "world"
     expect(f"\u{48}\u{69}, {name}").toEq("Hi, world")
 
+@describe("hex escape \\xNN (#2440)")
+fn hexEscapeTests():
+  @it("should decode ASCII hex escape")
+  fn shouldDecodeAsciiHexEscape():
+    expect("\x41").toEq("A")
+    expect("\x61").toEq("a")
+    expect("\x20").toEq(" ")
+  @it("should produce a single raw byte")
+  fn shouldProduceSingleRawByte():
+    # `\xNN` is a single byte, distinct from `\u{NN}` which is UTF-8 encoded.
+    expect(byteLen("\x41")).toEq(1)
+    expect(byteLen("\x7F")).toEq(1)
+    # `\xFF` is one raw byte, while `\u{FF}` is two UTF-8 bytes (U+00FF).
+    expect(byteLen("\xFF")).toEq(1)
+    expect(byteLen("\u{FF}")).toEq(2)
+  @it("should accept lowercase / uppercase / mixed hex digits")
+  fn shouldAcceptHexDigitCases():
+    expect("\xab" == "\xAB").toEq(true)
+    expect("\xaB" == "\xAB").toEq(true)
+  @it("should accept \\x00 as a NUL byte")
+  fn shouldAcceptHexEscapeZeroAsNul():
+    expect("\x00" == "\0").toEq(true)
+    expect(byteLen("\x00")).toEq(1)
+  @it("should mix with other escape sequences and literal text")
+  fn shouldMixWithOtherEscapesAndLiteralText():
+    expect("a\x41b\nc").toEq("aAb\nc")
+    expect("\x41\u{42}").toEq("AB")
+  @it("should decode chained \\xNN escapes")
+  fn shouldDecodeChainedHexEscapes():
+    expect("\x41\x42\x43").toEq("ABC")
+  @it("should decode inside triple-quoted block strings")
+  fn shouldDecodeInsideBlockStrings():
+    s = """\x41"""
+    expect(s).toEq("A")
+  @it("should decode inside f-strings")
+  fn shouldDecodeInsideFStrings():
+    name = "world"
+    expect(f"\x48\x69, {name}").toEq("Hi, world")
+
 @describe("type conversion")
 fn typeConversionTests():
   @it("should return Ok for valid int input")
