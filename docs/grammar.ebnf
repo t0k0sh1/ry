@@ -381,7 +381,12 @@ unary_expr       ::= ( '-' | '+' | '~' | 'not' | 'await' | 'weak' ) unary_expr
    `?`). */
 postfix_expression ::= primary_expression { postfix_op }
 
-postfix_op       ::= '(' [ argument_list ] ')'                       // call
+postfix_op       ::= '(' [ argument_list ] ')'                       // call; the C++ parser only accepts '(...)' when the
+                                                                       // callee is a bare IDENT (handled in parsePrimary, not the
+                                                                       // postfix loop). `<expr>(args)` chained calls such as
+                                                                       // `f(args)(args)` or `f(args)[T](args)` are rejected at
+                                                                       // parse time with a clear diagnostic referencing #809
+                                                                       // (the chained-call feature request, not_planned). #2426.
                    | '[' type_expr { ',' type_expr } ']' '(' [ argument_list ] ')'
                                                                        // generic call: f[T](args); the C++ parser only accepts this form
                                                                        // when the callee is a bare IDENT (#1906, see #1885 / #1887)

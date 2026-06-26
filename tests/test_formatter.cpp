@@ -1185,3 +1185,50 @@ TEST(Formatter, MultilineInlineLambdaNonTrailingPreservesInlineComment) {
     EXPECT_EQ(out, src);
     EXPECT_EQ(fmt(out), out);
 }
+
+// ===== Chained-call adjacent shapes round-trip (#2426) =====
+// Companion to the ParserTest.ChainedCall* coverage: the patterns that
+// look superficially like the rejected `f(...)[T](...)` (i.e. ones that
+// also build an IndexExpr or ErrorPropagateExpr off a CallExpr base)
+// must continue to round-trip cleanly.
+
+TEST(FormatterTest, ErrorPropagateThenIndexRoundTrip) {
+    // [regression: #2426] — `f(...)?[T]` ends on `]`; the rejection gate
+    // only fires when the next token is `(`, so this must format & verify.
+    auto src = "fn make() -> Option<List<int>>:\n"
+               "    return Some([1, 2, 3])\n"
+               "r = make()?[0]\n";
+    auto formatted = fmt(src);
+    EXPECT_NE(formatted.find("make()?[0]"), std::string::npos) << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}
+
+TEST(FormatterTest, ErrorPropagateThenMethodCallRoundTrip) {
+    // [regression: #2426] — `f(...)?.method()` collapses to UFCS prefix
+    // `method(f(...)?)`. Pin the canonical form so a later parser change
+    // does not regress the verify path.
+    auto src = "fn make() -> Option<int>:\n"
+               "    return Some(42)\n"
+               "r = make()?.toStr()\n";
+    auto formatted = fmt(src);
+    EXPECT_NE(formatted.find("toStr(make()?)"), std::string::npos) << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}
+
+TEST(FormatterTest, BareIdentGenericCallRoundTrip) {
+    // [regression: #2426] — `identity[int](42)` is parsed atomically in
+    // parsePrimary; ensure fmt keeps the bracket form intact (the
+    // CallExpr.callee carries the internal `identity<int>` representation).
+    auto src = "fn identity<T>(x: T) -> T:\n"
+               "    return x\n"
+               "r = identity[int](42)\n";
+    auto formatted = fmt(src);
+    EXPECT_NE(formatted.find("identity[int](42)"), std::string::npos) << formatted;
+    EXPECT_EQ(fmt(formatted), formatted);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
+}

@@ -5266,3 +5266,79 @@ TEST(ParserTest, DocDirectiveSingleLineStringArg) {
     EXPECT_EQ(se.value, "single line");
     EXPECT_FALSE(se.is_block);
 }
+
+// ===== Chained call rejection (#2426) =====
+// Ry only accepts the generic-call form `Ident[T](args)` in parsePrimary
+// (#1906); `<expr>(args)` for an arbitrary postfix expression is not
+// supported and is tracked as #809 (not_planned). Before #2426 the parser
+// silently dropped the trailing `(args)`, producing two unrelated
+// statements and misleading users into reporting fmt as the culprit.
+// These tests pin the explicit `parseError` path.
+
+TEST(ParserTest, ChainedCallAfterGenericIndexRejected) {
+    // [regression: #2426] — the canonical bug shape from the issue title.
+    EXPECT_THROW(parseStr("r = make(42)[int](\"inner\")\n"), DiagnosticError);
+}
+
+TEST(ParserTest, ChainedCallAfterGenericIndexEmptyArgsRejected) {
+    // [regression: #2426]
+    EXPECT_THROW(parseStr("r = make(42)[int]()\n"), DiagnosticError);
+}
+
+TEST(ParserTest, ChainedCallAfterGenericIndexNamedArgRejected) {
+    // [regression: #2426]
+    EXPECT_THROW(parseStr("r = make(42)[int](key=1)\n"), DiagnosticError);
+}
+
+TEST(ParserTest, ChainedCallAfterGenericIndexMultiArgRejected) {
+    // [regression: #2426] — the silent-split flavour pre-fix; the tuple
+    // (1, 2) used to be re-parsed as an independent ExprStmt.
+    EXPECT_THROW(parseStr("r = make(42)[int](1, 2)\n"), DiagnosticError);
+}
+
+TEST(ParserTest, ChainedCallAfterCallRejected) {
+    // [regression: #2426] — covers the `f(a)(b)` shape from #809.
+    EXPECT_THROW(parseStr("r = make()(7)\n"), DiagnosticError);
+}
+
+TEST(ParserTest, ChainedCallRejectionMentionsIssue809) {
+    // [regression: #2426] — message must give users a path forward.
+    try {
+        parseStr("r = make(42)[int](\"inner\")\n");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("#809"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("chained call"), std::string::npos) << msg;
+    }
+}
+
+TEST(ParserTest, GenericCallOnBareIdentStillAccepted) {
+    // [regression: #2426] — guard against over-rejecting; `identity[int](42)`
+    // is parsed inside parsePrimary (parsePostfixContinuation never sees the
+    // '(' for this shape), so the new gate must not affect it.
+    Program prog = parseStr("r = identity[int](42)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+}
+
+TEST(ParserTest, ErrorPropagateThenIndexStillAccepted) {
+    // [regression: #2426] — `f(...)?[T]` parses as `Index(?Wrap(Call), T)`
+    // and the next token after `]` is Newline, not `(`, so the gate stays
+    // silent. Pin the shape so a later refactor cannot reintroduce the
+    // silent-split path here.
+    Program prog = parseStr("r = make(42)?[int]\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IndexExpr>>(s.value->data));
+}
+
+TEST(ParserTest, ErrorPropagateThenMethodCallStillAccepted) {
+    // [regression: #2426] — `f(...)?.method()` becomes a UFCS CallExpr;
+    // ensures the rejection gate does not bleed into the dot-call path.
+    Program prog = parseStr("r = make()?.toStr()\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+}
