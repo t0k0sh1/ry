@@ -1082,3 +1082,33 @@ TEST(Formatter, MultilineInlineLambdaInBareCallStmtRoundTrip) {
     EXPECT_EQ(out, src);
     EXPECT_EQ(fmt(out), out);
 }
+
+// Multi-line lambda passed as a *named* argument value (e.g. `spawn(task=():..)`)
+// must also trigger block-form. The trailing-block detector previously only
+// considered positional args, so this case fell through to `formatExpr` and
+// corrupted output. (#2425 PR #2435 CodeRabbit review)
+TEST(Formatter, MultilineInlineLambdaInNamedArgRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  t = spawn(task=():\n"
+        "    work()\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+// Inline comment on the `(): # ...` opening line of a *non-trailing* block
+// lambda must survive a round trip. The trailing branch already called
+// `emitInlineComment(line)`; the non-trailing branch was missing the call.
+// (#2425 PR #2435 CodeRabbit review)
+TEST(Formatter, MultilineInlineLambdaNonTrailingPreservesInlineComment) {
+    std::string src =
+        "fn main():\n"
+        "  callTwo(():  # keep me\n"
+        "    work(1)\n"
+        "  , 3)\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
