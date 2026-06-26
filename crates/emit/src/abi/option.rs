@@ -2,8 +2,6 @@
 //! value id / translate the opaque type handle, call the `core` `EmitCtx`
 //! method, and intern the produced aggregate (intern / resolve are abi-side).
 
-use crate::context::TypeRef;
-
 use super::*;
 
 /// Wrap the interned `inner_id` into a `Some` of Option type `opt_ty`; return the
@@ -19,13 +17,13 @@ pub unsafe extern "C" fn ry_emit_option_wrap_some(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if opt_ty.is_null() {
+    let Some(opt) = req_type(opt_ty) else {
         return 0;
-    }
+    };
     let Some(inner) = resolve_value(c, inner_id) else {
         return 0;
     };
-    let val = c.option_wrap_some(inner, TypeRef(as_type(opt_ty)));
+    let val = c.option_wrap_some(inner, opt);
     intern(c, to_ry_value(val.0))
 }
 
@@ -40,9 +38,9 @@ pub unsafe extern "C" fn ry_emit_option_wrap_none(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if opt_ty.is_null() {
+    let Some(opt) = req_type(opt_ty) else {
         return 0;
-    }
-    let val = c.option_wrap_none(TypeRef(as_type(opt_ty)));
+    };
+    let val = c.option_wrap_none(opt);
     intern(c, to_ry_value(val.0))
 }

@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use crate::context::{AtomicBinOp, AtomicOrdering, IcmpPred, TypeRef};
+use crate::context::{AtomicBinOp, AtomicOrdering, IcmpPred};
 
 use super::*;
 
@@ -43,16 +43,6 @@ fn icmp_pred_from(p: c_int) -> Option<IcmpPred> {
         Some(IcmpPred::Uge)
     } else {
         None
-    }
-}
-
-// NUL name pointer → empty-string default (mirrors abi/control_flow.rs).
-#[inline]
-unsafe fn name_or_empty(name: *const c_char) -> *const c_char {
-    if name.is_null() {
-        c"".as_ptr()
-    } else {
-        name
     }
 }
 
@@ -101,10 +91,10 @@ pub unsafe extern "C" fn ry_emit_alloca(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
-    let v = c.build_alloca(TypeRef(as_type(ty)), name_or_empty(name));
+    };
+    let v = c.build_alloca(t, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -119,13 +109,13 @@ pub unsafe extern "C" fn ry_emit_load(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
+    };
     let Some(ptr) = resolve_value(c, ptr_id) else {
         return 0;
     };
-    let v = c.build_load(TypeRef(as_type(ty)), ptr, name_or_empty(name));
+    let v = c.build_load(t, ptr, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -185,14 +175,14 @@ pub unsafe extern "C" fn ry_emit_atomic_load(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
+    };
     let Some(ptr) = resolve_value(c, ptr_id) else {
         return 0;
     };
     let v = c.build_atomic_load(
-        TypeRef(as_type(ty)),
+        t,
         ptr,
         atomic_ordering_from(ordering),
         alignment,
@@ -248,13 +238,13 @@ pub unsafe extern "C" fn ry_emit_gep(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if base_ty.is_null() {
+    let Some(base) = req_type(base_ty) else {
         return 0;
-    }
+    };
     let (Some(ptr), Some(idx)) = (resolve_value(c, ptr_id), resolve_value(c, idx_id)) else {
         return 0;
     };
-    let v = c.build_gep(TypeRef(as_type(base_ty)), ptr, idx, name_or_empty(name));
+    let v = c.build_gep(base, ptr, idx, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -272,18 +262,13 @@ pub unsafe extern "C" fn ry_emit_struct_gep(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if struct_ty.is_null() {
+    let Some(st) = req_type(struct_ty) else {
         return 0;
-    }
+    };
     let Some(ptr) = resolve_value(c, ptr_id) else {
         return 0;
     };
-    let v = c.build_struct_gep(
-        TypeRef(as_type(struct_ty)),
-        ptr,
-        field_idx,
-        name_or_empty(name),
-    );
+    let v = c.build_struct_gep(st, ptr, field_idx, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -302,13 +287,13 @@ pub unsafe extern "C" fn ry_emit_array_gep(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if array_ty.is_null() {
+    let Some(arr) = req_type(array_ty) else {
         return 0;
-    }
+    };
     let (Some(base), Some(idx)) = (resolve_value(c, base_id), resolve_value(c, idx_id)) else {
         return 0;
     };
-    let v = c.build_array_gep(TypeRef(as_type(array_ty)), base, idx, name_or_empty(name));
+    let v = c.build_array_gep(arr, base, idx, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -371,13 +356,13 @@ pub unsafe extern "C" fn ry_emit_zext(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if dest_ty.is_null() {
+    let Some(dest) = req_type(dest_ty) else {
         return 0;
-    }
+    };
     let Some(val) = resolve_value(c, val_id) else {
         return 0;
     };
-    let v = c.build_zext(val, TypeRef(as_type(dest_ty)), name_or_empty(name));
+    let v = c.build_zext(val, dest, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -397,13 +382,13 @@ pub unsafe extern "C" fn ry_emit_trunc(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if dest_ty.is_null() {
+    let Some(dest) = req_type(dest_ty) else {
         return 0;
-    }
+    };
     let Some(val) = resolve_value(c, val_id) else {
         return 0;
     };
-    let v = c.build_trunc(val, TypeRef(as_type(dest_ty)), name_or_empty(name));
+    let v = c.build_trunc(val, dest, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -423,13 +408,13 @@ pub unsafe extern "C" fn ry_emit_sext(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if dest_ty.is_null() {
+    let Some(dest) = req_type(dest_ty) else {
         return 0;
-    }
+    };
     let Some(val) = resolve_value(c, val_id) else {
         return 0;
     };
-    let v = c.build_sext(val, TypeRef(as_type(dest_ty)), name_or_empty(name));
+    let v = c.build_sext(val, dest, name_or_empty(name));
     intern(c, to_ry_value(v.0))
 }
 
@@ -619,10 +604,10 @@ pub unsafe extern "C" fn ry_emit_const_int(
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
-    let v = c.const_int(TypeRef(as_type(ty)), value, sign_extend != 0);
+    };
+    let v = c.const_int(t, value, sign_extend != 0);
     intern(c, to_ry_value(v.0))
 }
 
@@ -634,10 +619,10 @@ pub unsafe extern "C" fn ry_emit_const_null(ctx: *mut RyEmitCtx, ty: RyTypeRef) 
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
-    let v = c.const_null(TypeRef(as_type(ty)));
+    };
+    let v = c.const_null(t);
     intern(c, to_ry_value(v.0))
 }
 
@@ -650,9 +635,9 @@ pub unsafe extern "C" fn ry_emit_undef(ctx: *mut RyEmitCtx, ty: RyTypeRef) -> Ry
     let Some(c) = checked_cx(ctx) else {
         return 0;
     };
-    if ty.is_null() {
+    let Some(t) = req_type(ty) else {
         return 0;
-    }
-    let v = c.build_undef(TypeRef(as_type(ty)));
+    };
+    let v = c.build_undef(t);
     intern(c, to_ry_value(v.0))
 }
