@@ -344,6 +344,57 @@ fn utf8SupportTests():
   fn shouldReverseUtf8String():
     expect(reverse("あいう")).toEq("ういあ")
 
+@describe("unicode escape \\u{HHHH} (#2427)")
+fn unicodeEscapeTests():
+  @it("should decode ASCII unicode escape")
+  fn shouldDecodeAsciiUnicodeEscape():
+    expect("\u{41}").toEq("A")
+    expect("\u{61}").toEq("a")
+    expect("\u{20}").toEq(" ")
+  @it("should decode BMP unicode escape to multi-byte UTF-8")
+  fn shouldDecodeBmpUnicodeEscape():
+    # U+3042 HIRAGANA LETTER A → 3-byte UTF-8
+    expect("\u{3042}").toEq("あ")
+    expect(byteLen("\u{3042}")).toEq(3)
+    expect("\u{3042}").toHaveLen(1)
+  @it("should decode supplementary plane unicode escape to 4-byte UTF-8")
+  fn shouldDecodeSupplementaryPlaneUnicodeEscape():
+    # U+1F600 GRINNING FACE → 4-byte UTF-8
+    expect("\u{1F600}").toEq("😀")
+    expect(byteLen("\u{1F600}")).toEq(4)
+    expect("\u{1F600}").toHaveLen(1)
+  @it("should accept lowercase hex digits")
+  fn shouldAcceptLowercaseHexDigits():
+    expect("\u{1f600}").toEq("😀")
+    expect("\u{abcd}").toEq("\u{ABCD}")
+  @it("should support max code point U+10FFFF")
+  fn shouldSupportMaxCodePoint():
+    expect(byteLen("\u{10FFFF}")).toEq(4)
+  @it("should accept 1 to 6 hex digit forms")
+  fn shouldAccept1To6HexDigitForms():
+    # 1, 2, 3, 4, and 6 hex digits each map to a distinct code point.
+    expect("\u{a}").toEq("\n")
+    expect("\u{ff}").toEq("\u{FF}")
+    expect("\u{abc}").toEq("\u{ABC}")
+    expect("\u{abcd}").toEq("\u{ABCD}")
+    expect(byteLen("\u{10ffff}")).toEq(4)
+  @it("should accept \\u{0} as a NUL byte")
+  fn shouldAcceptUEscapeZeroAsNul():
+    # NUL-containing strings: use `==` per #1051 / spec conventions.
+    expect("\u{0}" == "\0").toEq(true)
+    expect(byteLen("\u{0}")).toEq(1)
+  @it("should mix with other escape sequences and literal text")
+  fn shouldMixWithOtherEscapesAndLiteralText():
+    expect("a\u{41}b\nc\u{1F600}").toEq("aAb\nc😀")
+  @it("should decode inside triple-quoted block strings")
+  fn shouldDecodeInsideBlockStrings():
+    s = """\u{1F600}"""
+    expect(s).toEq("😀")
+  @it("should decode inside f-strings independently of {expr}")
+  fn shouldDecodeInsideFStrings():
+    name = "world"
+    expect(f"\u{48}\u{69}, {name}").toEq("Hi, world")
+
 @describe("type conversion")
 fn typeConversionTests():
   @it("should return Ok for valid int input")

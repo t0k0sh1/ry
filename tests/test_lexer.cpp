@@ -601,6 +601,170 @@ TEST(LexerTest, StringLiteralTokens) {
     }
 }
 
+// ===== Unicode escape \u{HHHH} (#2427) =====
+//
+// Verified across regular strings, block strings, and f-strings since the
+// three lexer sites share `decodeUnicodeEscape` but each has its own
+// surrounding loop; a regression in one would not surface in the others.
+
+TEST(LexerTest, UnicodeEscapeRegularString) {
+    // ASCII
+    {
+        auto toks = tokenize("\"\\u{41}\"");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::String);
+        EXPECT_EQ(toks[0].value, "A");
+    }
+    // 1-byte boundary
+    {
+        auto toks = tokenize("\"\\u{7F}\"");
+        EXPECT_EQ(toks[0].value, std::string("\x7F"));
+    }
+    // 2-byte UTF-8 boundary (cp = 0x80)
+    {
+        auto toks = tokenize("\"\\u{80}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xC2\x80"));
+    }
+    // 2-byte UTF-8 upper bound (cp = 0x7FF)
+    {
+        auto toks = tokenize("\"\\u{7FF}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xDF\xBF"));
+    }
+    // 3-byte UTF-8 boundary (cp = 0x800)
+    {
+        auto toks = tokenize("\"\\u{800}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xE0\xA0\x80"));
+    }
+    // 3-byte UTF-8 upper bound (cp = 0xFFFF)
+    {
+        auto toks = tokenize("\"\\u{FFFF}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xEF\xBF\xBF"));
+    }
+    // 4-byte UTF-8 boundary (cp = 0x10000)
+    {
+        auto toks = tokenize("\"\\u{10000}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xF0\x90\x80\x80"));
+    }
+    // U+1F600 GRINNING FACE
+    {
+        auto toks = tokenize("\"\\u{1F600}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xF0\x9F\x98\x80"));
+    }
+    // Max valid code point (cp = 0x10FFFF)
+    {
+        auto toks = tokenize("\"\\u{10FFFF}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xF4\x8F\xBF\xBF"));
+    }
+    // Lowercase hex
+    {
+        auto toks = tokenize("\"\\u{1f600}\"");
+        EXPECT_EQ(toks[0].value, std::string("\xF0\x9F\x98\x80"));
+    }
+    // NUL: \u{0} produces a single NUL byte
+    {
+        auto toks = tokenize("\"\\u{0}\"");
+        // Avoid embedded `\0` in C-string ctor.
+        EXPECT_EQ(toks[0].value, std::string(1, '\0'));
+    }
+    // Mixed with neighbouring content
+    {
+        auto toks = tokenize("\"a\\u{41}b\"");
+        EXPECT_EQ(toks[0].value, "aAb");
+    }
+    // Mixed with other single-char escapes
+    {
+        auto toks = tokenize("\"\\n\\u{41}\\t\"");
+        EXPECT_EQ(toks[0].value, "\nA\t");
+    }
+    // Adjacent unicode escapes
+    {
+        auto toks = tokenize("\"\\u{41}\\u{42}\\u{43}\"");
+        EXPECT_EQ(toks[0].value, "ABC");
+    }
+}
+
+TEST(LexerTest, UnicodeEscapeErrors) {
+    // Missing '{' (e.g. user typed `\u41` instead of `\u{41}`)
+    EXPECT_THROW(tokenize("\"\\u41\""), std::runtime_error);
+    // Missing '}' inside a single-line string: greedy parse hits the
+    // closing quote as a non-hex char.
+    EXPECT_THROW(tokenize("\"\\u{41\""), std::runtime_error);
+    // Empty: `\u{}`
+    EXPECT_THROW(tokenize("\"\\u{}\""), std::runtime_error);
+    // Non-hex digit
+    EXPECT_THROW(tokenize("\"\\u{ZZZ}\""), std::runtime_error);
+    // Above 0x10FFFF
+    EXPECT_THROW(tokenize("\"\\u{110000}\""), std::runtime_error);
+    // Surrogate range
+    EXPECT_THROW(tokenize("\"\\u{D800}\""), std::runtime_error);
+    EXPECT_THROW(tokenize("\"\\u{DBFF}\""), std::runtime_error);
+    EXPECT_THROW(tokenize("\"\\u{DC00}\""), std::runtime_error);
+    EXPECT_THROW(tokenize("\"\\u{DFFF}\""), std::runtime_error);
+    // More than 6 hex digits — caught before value validation so we don't
+    // silently accept 7-digit values that happen to land in range.
+    EXPECT_THROW(tokenize("\"\\u{1234567}\""), std::runtime_error);
+    // Abrupt EOF after '\u' (no '{')
+    EXPECT_THROW(tokenize("\"\\u"), std::runtime_error);
+    // Abrupt EOF inside `\u{...` (no '}')
+    EXPECT_THROW(tokenize("\"\\u{1F"), std::runtime_error);
+}
+
+TEST(LexerTest, UnicodeEscapeBlockString) {
+    {
+        auto toks = tokenize("\"\"\"\\u{1F600}\"\"\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, std::string("\xF0\x9F\x98\x80"));
+    }
+    {
+        auto toks = tokenize("\"\"\"a\\u{41}b\"\"\"");
+        EXPECT_EQ(toks[0].kind, TokenKind::BlockString);
+        EXPECT_EQ(toks[0].value, "aAb");
+    }
+    // Block-string error path uses the same helper, so a malformed escape
+    // still throws.
+    EXPECT_THROW(tokenize("\"\"\"\\u{}\"\"\""), std::runtime_error);
+}
+
+TEST(LexerTest, UnicodeEscapeFString) {
+    {
+        auto toks = tokenize("f\"\\u{1F600}\"");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+        EXPECT_EQ(toks[0].value, std::string("\xF0\x9F\x98\x80"));
+    }
+    {
+        auto toks = tokenize("f\"hello\\u{41}\"");
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+        EXPECT_EQ(toks[0].value, "helloA");
+    }
+    // `\u{...}` must not collide with f-string `{expr}` interpolation —
+    // the backslash routes through the escape switch before the `{`-as-
+    // interpolation-open branch is considered.
+    {
+        auto toks = tokenize("f\"\\u{41}{x}\"");
+        ASSERT_GE(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+        EXPECT_EQ(toks[0].value, "A");
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "x");
+        EXPECT_EQ(toks[2].kind, TokenKind::FStringEnd);
+    }
+    // f-string error path mentions "in f-string" suffix
+    EXPECT_THROW(tokenize("f\"\\u{ZZZ}\""), std::runtime_error);
+}
+
+// Raw strings (`r"..."`) intentionally pass through escapes verbatim
+// (lexer.cpp:534), so `\u{...}` remains the literal byte sequence rather
+// than being decoded. The lexer must not invoke the unicode decoder on
+// this path.
+TEST(LexerTest, UnicodeEscapeRawStringPassthrough) {
+    auto toks = tokenize(R"(r"\u{1F600}")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\u{1F600}");
+}
+
 // ===== F-string tokens =====
 
 TEST(LexerTest, FStringTokens) {

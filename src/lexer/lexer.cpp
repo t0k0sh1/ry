@@ -1,5 +1,6 @@
 #include "ry/lexer/lexer.hpp"
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
@@ -30,6 +31,90 @@ static void consumeDigitsWithSeparators(const std::string &src, size_t &pos,
             break;
         }
     }
+}
+
+// Append a Unicode scalar value as UTF-8 bytes to `dst`. The caller is
+// responsible for ensuring `cp <= 0x10FFFF` and `cp` is not a surrogate
+// (see decodeUnicodeEscape, which validates before calling).
+static void appendUtf8(std::string &dst, uint32_t cp) {
+    if (cp < 0x80u) {
+        dst.push_back(static_cast<char>(cp));
+    } else if (cp < 0x800u) {
+        dst.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+        dst.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp < 0x10000u) {
+        dst.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+        dst.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        dst.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else {
+        dst.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+        dst.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+        dst.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        dst.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    }
+}
+
+// Decode a `\u{HHHH}` escape. On entry, `pos` is positioned at the `{`
+// (the caller has already consumed the leading `\` and `u`). On normal
+// return, the parsed UTF-8 bytes are appended to `dst` and `pos`/`col`
+// are advanced past the last hex digit so that `pos` points AT the
+// closing `}` — the caller's trailing `++pos; ++col` (which always
+// follows the escape switch) then consumes the `}`. This matches the
+// single-character escape contract used by the surrounding code.
+//
+// Rejects: missing `{`, missing `}`, empty `\u{}`, non-hex characters,
+// more than 6 hex digits, surrogate range `0xD800..0xDFFF`, and values
+// above `0x10FFFF`.
+static void decodeUnicodeEscape(const std::string &src, size_t &pos,
+                                int &col, int line, std::string &dst) {
+    if (pos >= src.size() || src[pos] != '{') {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": expected '{' after '\\u' in unicode escape");
+    }
+    ++pos; ++col;  // consume '{'
+    size_t start = pos;
+    uint32_t cp = 0;
+    while (pos < src.size() && src[pos] != '}') {
+        char ch = src[pos];
+        if (pos - start >= 6) {
+            throw std::runtime_error("line " + std::to_string(line) +
+                                     ": unicode escape has too many digits (max 6)");
+        }
+        uint32_t digit;
+        if (ch >= '0' && ch <= '9') {
+            digit = static_cast<uint32_t>(ch - '0');
+        } else if (ch >= 'a' && ch <= 'f') {
+            digit = static_cast<uint32_t>(ch - 'a') + 10u;
+        } else if (ch >= 'A' && ch <= 'F') {
+            digit = static_cast<uint32_t>(ch - 'A') + 10u;
+        } else {
+            throw std::runtime_error("line " + std::to_string(line) +
+                                     ": invalid hex digit '" +
+                                     std::string(1, ch) +
+                                     "' in unicode escape");
+        }
+        cp = (cp << 4) | digit;
+        ++pos; ++col;
+    }
+    if (pos >= src.size()) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": unterminated unicode escape (missing '}')");
+    }
+    if (pos == start) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": empty unicode escape '\\u{}'");
+    }
+    if (cp > 0x10FFFFu) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": unicode code point out of range (max 0x10FFFF)");
+    }
+    if (cp >= 0xD800u && cp <= 0xDFFFu) {
+        throw std::runtime_error("line " + std::to_string(line) +
+                                 ": unicode code point in surrogate range");
+    }
+    appendUtf8(dst, cp);
+    // Leave `pos` AT the closing '}'. The caller's trailing `++pos; ++col`
+    // (after the surrounding escape switch) consumes the '}'.
 }
 
 static const std::unordered_map<std::string, TokenKind> keyword_map = {
@@ -586,6 +671,10 @@ Token Lexer::readToken() {
                     case '\\': raw += '\\'; break;
                     case '"':  raw += '"';  break;
                     case '0':  raw += '\0'; break;
+                    case 'u':
+                        ++pos_; ++col_;  // past 'u'; helper expects '{'
+                        decodeUnicodeEscape(src_, pos_, col_, line_, raw);
+                        break;
                     default:
                         throw std::runtime_error("line " + std::to_string(line_) +
                                                  ": unknown escape sequence '\\" +
@@ -676,6 +765,10 @@ Token Lexer::readToken() {
                     case '\\': str += '\\'; break;
                     case '"':  str += '"';  break;
                     case '0':  str += '\0'; break;
+                    case 'u':
+                        ++pos_; ++col_;  // past 'u'; helper expects '{'
+                        decodeUnicodeEscape(src_, pos_, col_, line_, str);
+                        break;
                     default:
                         throw std::runtime_error("line " + std::to_string(line_) +
                                                  ": unknown escape sequence '\\" +
@@ -833,6 +926,10 @@ Token Lexer::readFStringSegment(bool isStart) {
                 case '\\': str += '\\'; break;
                 case '"':  str += '"';  break;
                 case '0':  str += '\0'; break;
+                case 'u':
+                    ++pos_; ++col_;  // past 'u'; helper expects '{'
+                    decodeUnicodeEscape(src_, pos_, col_, line_, str);
+                    break;
                 default:
                     throw std::runtime_error("line " + std::to_string(line_) +
                                              ": unknown escape sequence '\\" +

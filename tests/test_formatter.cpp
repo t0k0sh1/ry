@@ -28,6 +28,79 @@ TEST(Formatter, LiteralFormatting) {
     EXPECT_EQ(fmt("x = none\n"), "x = none\n");
 }
 
+// ===== All-Escape Round-Trip (#2427 scope item 3) =====
+//
+// Issue #2427 close criterion 3 requires every lexer-accepted escape to
+// round-trip through `ry fmt`. The lexer accepts six single-character
+// escapes (`\n`, `\r`, `\t`, `\\`, `\"`, `\0`) plus the new `\u{HHHH}`;
+// each one's output spelling is fixed by `Formatter::escapeString`.
+// Anchoring all six in one place catches a future drift where, e.g.,
+// `\0` gets removed from the encoder but stays in the decoder.
+TEST(Formatter, AllEscapeSequenceRoundTrip) {
+    EXPECT_EQ(fmt("x = \"\\n\"\n"), "x = \"\\n\"\n");
+    EXPECT_EQ(fmt("x = \"\\r\"\n"), "x = \"\\r\"\n");
+    EXPECT_EQ(fmt("x = \"\\t\"\n"), "x = \"\\t\"\n");
+    EXPECT_EQ(fmt("x = \"\\\\\"\n"), "x = \"\\\\\"\n");
+    EXPECT_EQ(fmt("x = \"\\\"\"\n"), "x = \"\\\"\"\n");
+    EXPECT_EQ(fmt("x = \"\\0\"\n"), "x = \"\\0\"\n");
+    // All six in one literal, in different positions
+    EXPECT_EQ(fmt("x = \"\\n\\r\\t\\\\\\\"\\0\"\n"),
+              "x = \"\\n\\r\\t\\\\\\\"\\0\"\n");
+}
+
+// Regex literals (lexer.cpp:534) intentionally pass `\u` through verbatim
+// to the regex engine. The lexer fix added a `case 'u':` ONLY to the
+// string-literal escape switches, not to the regex tokenizer's escape
+// pass-through; this regression guard pins that boundary.
+TEST(Formatter, RegexLiteralUnicodeEscapePassthrough) {
+    EXPECT_EQ(fmt("x = /\\u{1F600}/\n"), "x = /\\u{1F600}/\n");
+}
+
+// ===== Unicode Escape Round-Trip (#2427) =====
+//
+// The lexer decodes `\u{HHHH}` to UTF-8 bytes; the formatter has no
+// dedicated `\u` re-encoding and routes the decoded bytes through
+// `escapeString`'s default arm, which passes any non-special byte through
+// verbatim. The user-visible effect is that `\u{...}` is normalized to a
+// literal UTF-8 character on first format and is then a fixed point.
+TEST(Formatter, UnicodeEscapeRoundTrip) {
+    // ASCII collapses to its character
+    EXPECT_EQ(fmt("x = \"\\u{41}\"\n"), "x = \"A\"\n");
+    // Non-BMP decodes to a 4-byte UTF-8 sequence (U+1F600 GRINNING FACE)
+    EXPECT_EQ(fmt("x = \"\\u{1F600}\"\n"),
+              "x = \"\xF0\x9F\x98\x80\"\n");
+    // Mixed with surrounding content and other escapes
+    EXPECT_EQ(fmt("x = \"a\\u{41}b\\nc\\u{1F600}\"\n"),
+              "x = \"aAb\\nc\xF0\x9F\x98\x80\"\n");
+
+    // Idempotency: a second format pass leaves the output untouched.
+    {
+        const std::string out1 = fmt("x = \"\\u{1F600}\"\n");
+        const std::string out2 = fmt(out1);
+        EXPECT_EQ(out1, out2);
+    }
+
+    // verifyFormatting re-parses the formatted output and re-formats; the
+    // round-trip must converge (close criterion #2 in #2427).
+    {
+        const std::string out = fmt("x = \"\\u{1F600}\"\n");
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
+    }
+
+    // f-string path: lexer decodes inside the FString segments, formatter
+    // re-emits via escapeString on the segment value. The f-string is
+    // kept with an interpolation segment so the `f` prefix is preserved
+    // (a pre-existing fmt pass strips `f` from no-interpolation literals).
+    EXPECT_EQ(fmt("y = 1\nx = f\"\\u{1F600} {y}\"\n"),
+              "y = 1\nx = f\"\xF0\x9F\x98\x80 {y}\"\n");
+
+    // Block string path: lexer decodes inside `"""..."""`, formatter
+    // re-emits the decoded bytes via escapeBlockString.
+    EXPECT_EQ(fmt("x = \"\"\"\\u{1F600}\"\"\"\n"),
+              "x = \"\"\"\xF0\x9F\x98\x80\"\"\"\n");
+}
+
 // ===== Block String Literal Formatting (#1843) =====
 
 TEST(Formatter, BlockStringLiteralFormatting) {
