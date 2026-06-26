@@ -26,12 +26,16 @@ enum class CodeGenReturnWrapping : uint8_t {
     IteratorFromHandle,   // synthesize Iterator<T> with next-fn calling exported_symbol(handle, &out)
 
     // #2393: thread sync-primitive *Free entries (lockFree / rwlockFree /
-    // semaphoreFree / barrierFree / atomicIntFree / atomicBoolFree). No
-    // runtime fn is called; the destructor lives in ResourceKindRegistry
-    // and emitResourceFree emits the null-check + ARC-release sequence.
-    // The handle arg is at `desc.handle_param_index` (must be 0 — the
-    // *Free customEmitters all take the resource as the sole arg) with
-    // `desc.handle_resource_kind` selecting the destructor.
+    // semaphoreFree / barrierFree). No runtime fn is called; the destructor
+    // lives in ResourceKindRegistry and emitResourceFree emits the
+    // null-check + ARC-release sequence. The handle arg lives at
+    // `desc.handle_param_index` (must be 0 — the *Free entries all take the
+    // resource as the sole arg) with `desc.handle_resource_kind` selecting
+    // the destructor. atomicIntFree / atomicBoolFree are NOT routed through
+    // this wrapping; they remain Pattern B carve-outs (see
+    // codegen_call_thread.cpp's emitThreadAtomicFree) so they can share the
+    // AtomicInt / AtomicBool resource-kind type check with the rest of the
+    // atomic family.
     ResourceFree,
 };
 

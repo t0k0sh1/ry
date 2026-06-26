@@ -631,39 +631,15 @@ static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
 //     i1↔i64 zext/trunc, CAS i64→i1 trunc, or a non-callee SSA name like
 //     "atomic_int") that the declarative descriptor cannot express
 //     byte-exactly. Mirrors the #2340 precedent that carved
-//     `threadSpawn`/`threadJoin` out of thread_table.
-//
-// `thread_table` is intentionally empty: `dispatchThread` returns nullptr,
-// letting the descriptor-driven path (`emitGenericNativeCall`) handle every
-// sync-primitive callee. Atomics short-circuit earlier in
-// `emitExprVariant`'s Pattern B chain (`emitBuiltinThread`) before the
-// stdlib dispatcher loop runs.
-static const CodeGen::NativeDispatchEntry thread_table[] = {};
-
-// Gate the dispatcher: only proceed if any thread sig is actually registered.
-// Probe two representative anchors covering the carved-out (threadSpawn) and
-// table-driven (lockNew) sides of the module; a single sig from either side
-// is enough to confirm the user imported `thread`. Mirrors the O(1)
-// `sigs.count(...)` shape used by `isJsonImported` / `isJson5Imported`.
-//
-// `libry_thread` registration: emitTableDrivenNativeCall registers the
-// library from the sig's library field on entry (#2340), and the auto-link
-// in `getRuntimeFn` / `emitRuntimeCallDirect` covers downstream paths whose
-// runtime symbols carry a `__ry_thread_*` / `__ry_lock_*` / etc. prefix
-// (#2393). The previous explicit `_.insert("thread")` was redundant with
-// both layers.
-static bool isThreadImported(CodeGen &cg) {
-    const auto &sigs = cg.getNativeFnSigs();
-    return sigs.count("thread::threadSpawn") || sigs.count("thread::lockNew");
-}
+//     `threadSpawn`/`threadJoin` out of the package's dispatch table.
 
 RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
 static llvm::Value *dispatchThread(CodeGen &, const CallExpr &) {
-    // #2393: thread_table is empty (see above). Returning nullptr lets the
-    // dispatch chain proceed to `emitGenericNativeCall`, which consumes the
-    // per-overload kOverrides entries for lock / rwlock / semaphore /
-    // barrier. Atomics are handled by `emitBuiltinThread` earlier in
-    // `emitExprVariant`'s Pattern B chain.
+    // #2393: thread sync primitives are consumed by the descriptor-driven
+    // path (`emitGenericNativeCall` with the `kOverrides` entries for lock /
+    // rwlock / semaphore / barrier). Atomics remain Pattern B carve-outs
+    // and are handled by `emitBuiltinThread` earlier in `emitExprVariant`'s
+    // chain. Returning nullptr here lets the dispatch chain fall through.
     return nullptr;
 }
 
