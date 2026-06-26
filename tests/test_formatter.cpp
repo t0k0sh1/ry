@@ -927,3 +927,158 @@ TEST(FormatterTest, OptionPropagateAfterPropagateAdjacency) {
     std::string reason;
     EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason)) << reason;
 }
+
+// ===== Multi-line inline lambda in call-expression contexts (#2425) =====
+//
+// Regression guard: fmt must round-trip and stay idempotent when a multi-line
+// block-form lambda appears as an argument inside a CallExpr value
+// (AssignStmt / ReturnStmt / IndexAssignStmt / FieldAssignStmt) -- and when
+// the call is nested inside another call. Previously, formatExpr for the
+// LambdaExpr branch emitted the body directly to out_ and returned an empty
+// string, so the surrounding assignment was reassembled with the body spliced
+// before the callee. The formatted file failed to re-parse, so `ry fmt`
+// silently skipped any file using this pattern (tests/spec/thread.test.ry).
+TEST(Formatter, MultilineInlineLambdaInAssignRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  t = threadSpawn(():\n"
+        "    atomicIntAdd(counter, 1)\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
+}
+
+TEST(Formatter, MultilineInlineLambdaInReturnRoundTrip) {
+    std::string src =
+        "fn main() -> Thread:\n"
+        "  return threadSpawn(():\n"
+        "    atomicIntAdd(counter, 1)\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaInIndexAssignRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  arr[0] = threadSpawn(():\n"
+        "    work()\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaInFieldAssignRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  obj.f = threadSpawn(():\n"
+        "    work()\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaNestedCallRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  x = outer(inner(():\n"
+        "    work()\n"
+        "  ))\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaWithLeadingArgs) {
+    std::string src =
+        "fn main():\n"
+        "  t = call(1, 2, ():\n"
+        "    work()\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaWithParamsAndReturnType) {
+    std::string src =
+        "fn main():\n"
+        "  t = run((x: int) -> int:\n"
+        "    return x * 2\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaInNestedBlock) {
+    std::string src =
+        "fn main():\n"
+        "  if cond:\n"
+        "    t = threadSpawn(():\n"
+        "      work()\n"
+        "    )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+// Non-trailing multi-line lambda: lambda at args[0] with positional arg after.
+// The output must put the continuation `, 3)` on a line indented to the call's
+// indent so the parser still accepts it. Pre-fix this was emitted at column 0
+// and `ry fmt` skipped the file. (#2425)
+TEST(Formatter, MultilineInlineLambdaNonTrailingPositionAsStmt) {
+    std::string src =
+        "fn main():\n"
+        "  callTwo(():\n"
+        "    work(1)\n"
+        "  , 3)\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(out, reason)) << reason;
+}
+
+TEST(Formatter, MultilineInlineLambdaNonTrailingPositionInAssign) {
+    std::string src =
+        "fn main():\n"
+        "  t = callTwo(():\n"
+        "    work(1)\n"
+        "  , 3)\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+TEST(Formatter, MultilineInlineLambdaInTupleDestructRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  (a, b) = callTwo(():\n"
+        "    work()\n"
+        "  , 3)\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}
+
+// Bare CallStmt (no enclosing assignment / return / destructure) with a
+// trailing multi-line lambda. This path used to be served by the old
+// `formatCall` trailing branch; the refactor reroutes it through the shared
+// `emitCallTrailingLambda` helper, so guard the equivalence explicitly.
+TEST(Formatter, MultilineInlineLambdaInBareCallStmtRoundTrip) {
+    std::string src =
+        "fn main():\n"
+        "  threadSpawn(():\n"
+        "    work()\n"
+        "  )\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out, src);
+    EXPECT_EQ(fmt(out), out);
+}

@@ -51,6 +51,29 @@ void Formatter::formatAssign(const AssignStmt &s) {
         }
     }
 
+    // Block-form when value is a CallExpr with any arg that is (or trails-to)
+    // a multi-line lambda (#2425). Otherwise formatExpr would emit the lambda
+    // body to out_ mid-line and return "", splicing the body before the
+    // callee in the surrounding assignment.
+    if (auto *call_ptr = std::get_if<std::unique_ptr<CallExpr>>(&s.value->data)) {
+        const auto &call = **call_ptr;
+        if (callExprNeedsBlockForm(call)) {
+            std::string callee = call.callee;
+            auto lt = callee.find('<');
+            if (lt != std::string::npos && callee.back() == '>'
+                && callee.find("::") == std::string::npos) {
+                callee[lt] = '[';
+                callee.back() = ']';
+            }
+            std::string prefix;
+            if (call.qualified_module.has_value())
+                prefix = *call.qualified_module + ".";
+            emitCallTrailingLambda(prefix + callee, call.args, call.named_args,
+                                   s.loc.line, "");
+            return;
+        }
+    }
+
     std::string val = formatExpr(*s.value);
     emit(val);
     emitInlineComment(s.loc.line);
@@ -62,50 +85,28 @@ void Formatter::formatCall(const CallStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();
 
-    emit(s.callee + "(");
-
-    // Check for trailing lambda pattern
-    bool has_trailing_lambda = false;
-    size_t lambda_idx = 0;
-    if (!s.args.empty()) {
-        auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
-        if (lambda_ptr && !(*lambda_ptr)->expr_body && !(*lambda_ptr)->body.empty()) {
-            has_trailing_lambda = true;
-            lambda_idx = s.args.size() - 1;
+    // Block-form when any arg is (or trails-to) a multi-line lambda. Covers
+    // trailing lambdas, nested `outer(inner(():..))` calls, and non-trailing
+    // block lambdas with regular args after them (#2425).
+    {
+        // Build a transient CallExpr-shaped view to reuse callExprNeedsBlockForm.
+        bool needs_block = false;
+        for (const auto &arg : s.args) {
+            if (findTrailingMultiLineLambda(*arg) != nullptr) {
+                needs_block = true;
+                break;
+            }
+        }
+        if (needs_block) {
+            emitCallTrailingLambda(s.callee, s.args, s.named_args, s.loc.line, "");
+            return;
         }
     }
 
+    emit(s.callee + "(");
     for (size_t i = 0; i < s.args.size(); ++i) {
         if (i > 0) emit(", ");
-
-        if (has_trailing_lambda && i == lambda_idx) {
-            const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.args[i]->data);
-            emit(formatLambdaSig(lambda));
-            emit(":");
-            emitInlineComment(s.loc.line);
-            emitNewline();
-            last_emitted_line_ = s.loc.line;
-            formatBlock(lambda.body);
-            emitIndent();
-            emit(formatNamedArgs(s.named_args, true));
-            emit(")");
-            emitNewline();
-            return;
-        } else {
-            // Check for inline lambda with multi-line body as non-last arg
-            auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[i]->data);
-            if (lp && !(*lp)->expr_body && !(*lp)->body.empty()) {
-                const auto &lambda = **lp;
-                emit(formatLambdaSig(lambda));
-                emit(":");
-                emitNewline();
-                last_emitted_line_ = s.loc.line;
-                formatBlock(lambda.body);
-                // Continue with next args on same indentation
-                continue;
-            }
-            emit(formatExpr(*s.args[i]));
-        }
+        emit(formatExpr(*s.args[i]));
     }
 
     emit(formatNamedArgs(s.named_args, !s.args.empty()));
@@ -125,6 +126,39 @@ void Formatter::formatExprStmt(const ExprStmt &s) {
 void Formatter::formatReturn(const ReturnStmt &s) {
     emit("return");
     if (s.value) {
+        // Block-form for `return CallExpr(...): lambda` or a direct multi-line
+        // lambda; otherwise formatExpr would corrupt the line (#2425).
+        if (auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.value->data)) {
+            const auto &lambda = **lambda_ptr;
+            if (!lambda.expr_body && !lambda.body.empty()) {
+                emit(" " + formatLambdaSig(lambda));
+                emit(":");
+                emitInlineComment(s.loc.line);
+                emitNewline();
+                last_emitted_line_ = s.loc.line;
+                formatBlock(lambda.body);
+                return;
+            }
+        }
+        if (auto *call_ptr = std::get_if<std::unique_ptr<CallExpr>>(&s.value->data)) {
+            const auto &call = **call_ptr;
+            if (callExprNeedsBlockForm(call)) {
+                std::string callee = call.callee;
+                auto lt = callee.find('<');
+                if (lt != std::string::npos && callee.back() == '>'
+                    && callee.find("::") == std::string::npos) {
+                    callee[lt] = '[';
+                    callee.back() = ']';
+                }
+                std::string prefix;
+                if (call.qualified_module.has_value())
+                    prefix = *call.qualified_module + ".";
+                emit(" ");
+                emitCallTrailingLambda(prefix + callee, call.args, call.named_args,
+                                       s.loc.line, "");
+                return;
+            }
+        }
         emit(" " + formatExpr(*s.value));
     }
     emitInlineComment(s.loc.line);
@@ -441,7 +475,26 @@ void Formatter::formatIndexAssign(const IndexAssignStmt &s) {
         idxStr += formatExpr(*s.indices[i]);
     }
     std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
-    emit(formatExpr(*s.object) + "[" + idxStr + "]" + op + formatExpr(*s.value));
+    emit(formatExpr(*s.object) + "[" + idxStr + "]" + op);
+    if (auto *call_ptr = std::get_if<std::unique_ptr<CallExpr>>(&s.value->data)) {
+        const auto &call = **call_ptr;
+        if (callExprNeedsBlockForm(call)) {
+            std::string callee = call.callee;
+            auto lt = callee.find('<');
+            if (lt != std::string::npos && callee.back() == '>'
+                && callee.find("::") == std::string::npos) {
+                callee[lt] = '[';
+                callee.back() = ']';
+            }
+            std::string prefix;
+            if (call.qualified_module.has_value())
+                prefix = *call.qualified_module + ".";
+            emitCallTrailingLambda(prefix + callee, call.args, call.named_args,
+                                   s.loc.line, "");
+            return;
+        }
+    }
+    emit(formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
@@ -449,7 +502,26 @@ void Formatter::formatIndexAssign(const IndexAssignStmt &s) {
 
 void Formatter::formatFieldAssign(const FieldAssignStmt &s) {
     std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
-    emit(formatExpr(*s.object) + "." + s.field + op + formatExpr(*s.value));
+    emit(formatExpr(*s.object) + "." + s.field + op);
+    if (auto *call_ptr = std::get_if<std::unique_ptr<CallExpr>>(&s.value->data)) {
+        const auto &call = **call_ptr;
+        if (callExprNeedsBlockForm(call)) {
+            std::string callee = call.callee;
+            auto lt = callee.find('<');
+            if (lt != std::string::npos && callee.back() == '>'
+                && callee.find("::") == std::string::npos) {
+                callee[lt] = '[';
+                callee.back() = ']';
+            }
+            std::string prefix;
+            if (call.qualified_module.has_value())
+                prefix = *call.qualified_module + ".";
+            emitCallTrailingLambda(prefix + callee, call.args, call.named_args,
+                                   s.loc.line, "");
+            return;
+        }
+    }
+    emit(formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
@@ -512,7 +584,26 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
         emit(s.names[i]);
     }
     emit(")");
-    emit(" = " + formatExpr(*s.value));
+    emit(" = ");
+    if (auto *call_ptr = std::get_if<std::unique_ptr<CallExpr>>(&s.value->data)) {
+        const auto &call = **call_ptr;
+        if (callExprNeedsBlockForm(call)) {
+            std::string callee = call.callee;
+            auto lt = callee.find('<');
+            if (lt != std::string::npos && callee.back() == '>'
+                && callee.find("::") == std::string::npos) {
+                callee[lt] = '[';
+                callee.back() = ']';
+            }
+            std::string prefix;
+            if (call.qualified_module.has_value())
+                prefix = *call.qualified_module + ".";
+            emitCallTrailingLambda(prefix + callee, call.args, call.named_args,
+                                   s.loc.line, "");
+            return;
+        }
+    }
+    emit(formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;

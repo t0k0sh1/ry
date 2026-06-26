@@ -724,6 +724,122 @@ void Formatter::formatBlock(const std::vector<StmtNode> &body) {
     dedent();
 }
 
+const LambdaExpr* Formatter::findTrailingMultiLineLambda(const ExprNode &expr) const {
+    if (auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&expr.data)) {
+        const auto &lambda = **lp;
+        if (!lambda.expr_body && !lambda.body.empty()) return &lambda;
+        return nullptr;
+    }
+    if (auto *cp = std::get_if<std::unique_ptr<CallExpr>>(&expr.data)) {
+        const auto &call = **cp;
+        if (call.args.empty()) return nullptr;
+        return findTrailingMultiLineLambda(*call.args.back());
+    }
+    return nullptr;
+}
+
+bool Formatter::callExprNeedsBlockForm(const CallExpr &call) const {
+    // Block-form required when any positional arg is a multi-line lambda
+    // directly, or any arg's trailing chain leads to one. Non-trailing
+    // nested calls (e.g. `f(g(():..), other)`) are not covered here -- those
+    // would fall back to the (still broken) formatExpr path. No real code
+    // exercises that shape today; if it appears, the round-trip verifier
+    // will skip the file with a clear reason instead of silently corrupting.
+    for (const auto &arg : call.args) {
+        if (findTrailingMultiLineLambda(*arg) != nullptr) return true;
+    }
+    return false;
+}
+
+void Formatter::emitCallTrailingLambda(const std::string &callee_with_prefix,
+                                       const std::vector<ExprPtr> &args,
+                                       const std::vector<NamedArg> &named_args,
+                                       int line,
+                                       const std::string &trailing_close) {
+    emit(callee_with_prefix + "(");
+
+    std::string my_close = ")" + trailing_close;
+    bool after_block = false;
+    bool first = true;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        const bool is_last = (i + 1 == args.size());
+        const auto &arg = *args[i];
+        const LambdaExpr *chain_lambda = findTrailingMultiLineLambda(arg);
+
+        // Emit the separator before this arg.
+        if (after_block) {
+            emitIndent();
+            emit(", ");
+            after_block = false;
+        } else if (!first) {
+            emit(", ");
+        }
+        first = false;
+
+        if (chain_lambda != nullptr) {
+            if (auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&arg.data)) {
+                const auto &lambda = **lp;
+                emit(formatLambdaSig(lambda));
+                emit(":");
+                if (is_last && named_args.empty()) {
+                    // Trailing block-form close: ")" goes on indented line after body.
+                    emitInlineComment(line);
+                    emitNewline();
+                    last_emitted_line_ = line;
+                    formatBlock(lambda.body);
+                    emitIndent();
+                    emit(my_close);
+                    emitNewline();
+                    return;
+                }
+                // Non-trailing block-form: body emitted, switch to continuation mode.
+                emitNewline();
+                last_emitted_line_ = line;
+                formatBlock(lambda.body);
+                after_block = true;
+                continue;
+            }
+            if (auto *cp = std::get_if<std::unique_ptr<CallExpr>>(&arg.data)) {
+                if (is_last && named_args.empty()) {
+                    // Nested trailing call: recurse and stack close parens.
+                    const auto &nested = **cp;
+                    std::string nested_callee = nested.callee;
+                    auto lt = nested_callee.find('<');
+                    if (lt != std::string::npos && nested_callee.back() == '>'
+                        && nested_callee.find("::") == std::string::npos) {
+                        nested_callee[lt] = '[';
+                        nested_callee.back() = ']';
+                    }
+                    std::string nested_prefix;
+                    if (nested.qualified_module.has_value())
+                        nested_prefix = *nested.qualified_module + ".";
+                    emitCallTrailingLambda(nested_prefix + nested_callee,
+                                           nested.args,
+                                           nested.named_args,
+                                           line,
+                                           my_close);
+                    return;
+                }
+                // Non-trailing nested call leading to multi-line lambda: no
+                // round-trippable form, fall through to formatExpr (will fail
+                // round-trip and be skipped by the verifier with a clear reason).
+                emit(formatExpr(arg));
+                continue;
+            }
+        }
+        emit(formatExpr(arg));
+    }
+
+    // Reached end without a trailing block-form arg. Emit close-line bits.
+    if (after_block) {
+        emitIndent();
+    }
+    emit(formatNamedArgs(named_args, !args.empty()));
+    emit(my_close);
+    emitNewline();
+}
+
 // --- Statement helpers ---
 
 bool Formatter::isDefinition(const StmtNode &stmt) const {
