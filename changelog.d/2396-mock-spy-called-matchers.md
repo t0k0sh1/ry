@@ -1,0 +1,5 @@
+### Added
+
+- `testing` モジュールに 3 つの bool-returning matcher intrinsic を追加: `calledWith(name, args...)` (記録された呼び出しのうち少なくとも 1 件が一致すれば `true`)、`calledTimes(name, n)` (呼び出し回数が `n` と等しければ `true`)、`lastCalledWith(name, args...)` (最後の呼び出しが一致すれば `true`)。既存の `verifyCalledWith` (int 返却) と同じコンパイル時バリデーション (関数が存在する / mock or spy 済みである / 引数の arity と型が一致する) と lifecycle (it-end auto-clear、`mockClear` / `mockReset` / `mockResetAll` で reset) を共有する。`lastCalledWith` のバックエンドとして `__ry_mock_last_call_matches` runtime helper を新規追加。引数記録 IR は `emitCalledMatcherImpl` ヘルパに共通化し、runtime call と結果変換のみが mode 別に分岐する。
+- 新規 spec test `tests/spec/called_with.test.ry` を追加 (30 ケース、int / float / bool / str / List / Set / Map / record / tuple / fn / zero-arg + overload sig 形式 + `mockReset` / `mockResetAll` の相互作用をカバー)。`tests/spec/spy.test.ry` / `tests/spec/mock.test.ry` の既存挙動は behavior-preserving refactor のため退行なし。
+- スコープ外として明示的にドロップした項目: `spy.calls` / `mock.calls` プロパティアクセサ。Ry には function value へのプロパティアクセス機構がなく、内部記録バッファは opaque な kind-tagged int でできているため、`List<tuple<paramTypes>>` として export するには overload ごとの typed deserializer が必要になる。引数レベルのアサーションは本 PR の 3 matcher で完全にカバーできるため、現時点では露出しない。(#2396)
