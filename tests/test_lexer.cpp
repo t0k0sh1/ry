@@ -707,6 +707,16 @@ TEST(LexerTest, UnicodeEscapeErrors) {
     EXPECT_THROW(tokenize("\"\\u"), std::runtime_error);
     // Abrupt EOF inside `\u{...` (no '}')
     EXPECT_THROW(tokenize("\"\\u{1F"), std::runtime_error);
+    // [regression: #2442] — a non-ASCII char like α inside `\u{...}` must
+    // be rendered as itself in the message, not as the leading byte alone
+    // (which the terminal would show as U+FFFD).
+    try {
+        tokenize("\"\\u{\xCE\xB1}\"");
+        FAIL() << "expected std::runtime_error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("\xCE\xB1"), std::string::npos) << msg;
+    }
 }
 
 TEST(LexerTest, UnicodeEscapeBlockString) {
@@ -851,6 +861,23 @@ TEST(LexerTest, HexEscapeErrors) {
     EXPECT_THROW(tokenize("\"\\x4Z\""), std::runtime_error);
     // Abrupt EOF in the middle of the escape
     EXPECT_THROW(tokenize("\"\\x4"), std::runtime_error);
+    // [regression: #2442] — α as the first hex digit must render as α, not
+    // a stray leading byte.
+    try {
+        tokenize("\"\\x\xCE\xB1\"");
+        FAIL() << "expected std::runtime_error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("\xCE\xB1"), std::string::npos) << msg;
+    }
+    // [regression: #2442] — same for the second hex digit position.
+    try {
+        tokenize("\"\\x4\xCE\xB1\"");
+        FAIL() << "expected std::runtime_error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("\xCE\xB1"), std::string::npos) << msg;
+    }
 }
 
 TEST(LexerTest, HexEscapeBlockString) {
@@ -1452,6 +1479,157 @@ TEST(LexerTest, UnknownCharIsError) {
     auto toks = tokenize("$");
     EXPECT_EQ(toks[0].kind, TokenKind::Error);
     EXPECT_EQ(toks[0].value, "$");
+}
+
+// ===== UTF-8 unexpected-token diagnostic (#2442) =====
+// Pre-fix the lexer advanced one byte at a time on UTF-8 multi-byte
+// sequences, emitting the leading byte alone as the Error token value.
+// The byte was invalid UTF-8 on its own and the terminal rendered it as
+// U+FFFD (`�`), so the diagnostic was illegible. The fix decodes the
+// sequence, stores the full code point on the token, and advances `pos_`
+// by the full byte length so trailing bytes don't cascade as separate
+// errors.
+
+TEST(LexerTest, NonAsciiTwoByteEmitsFullCodePointAsErrorValue) {
+    // [regression: #2442] — α (U+03B1, UTF-8 CE B1).
+    auto toks = tokenize("\xCE\xB1");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, std::string("\xCE\xB1"));
+    EXPECT_EQ(toks[1].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, NonAsciiThreeByteEmitsFullCodePointAsErrorValue) {
+    // [regression: #2442] — ℕ (U+2115, UTF-8 E2 84 95) used to produce three
+    // separate Error tokens (one per byte). Now it produces one.
+    auto toks = tokenize("\xE2\x84\x95");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, std::string("\xE2\x84\x95"));
+    EXPECT_EQ(toks[1].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, NonAsciiFourByteEmitsFullCodePointAsErrorValue) {
+    // [regression: #2442] — 😀 (U+1F600, UTF-8 F0 9F 98 80).
+    auto toks = tokenize("\xF0\x9F\x98\x80");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, std::string("\xF0\x9F\x98\x80"));
+    EXPECT_EQ(toks[1].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, OverlongTwoByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — overlong 2-byte encodings of ASCII (`C0 80`,
+    // `C1 BF`) are forbidden by RFC 3629; the lead byte must fall back to
+    // a "\xHH" escape, not be returned as a 2-byte "valid" sequence.
+    {
+        auto toks = tokenize("\xC0\x80");
+        ASSERT_GE(toks.size(), 1u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+        EXPECT_EQ(toks[0].value, "\\xC0");
+    }
+    {
+        auto toks = tokenize("\xC1\xBF");
+        ASSERT_GE(toks.size(), 1u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+        EXPECT_EQ(toks[0].value, "\\xC1");
+    }
+}
+
+TEST(LexerTest, OverlongThreeByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — `E0 80..9F ..` is an overlong encoding of a
+    // <2-byte code point and must be rejected.
+    auto toks = tokenize("\xE0\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xE0");
+}
+
+TEST(LexerTest, SurrogateUtf8EmitsHexEscape) {
+    // [regression: #2442] — `ED A0..BF ..` encodes UTF-16 surrogates
+    // (`U+D800..U+DFFF`), which are not valid Unicode scalars.
+    auto toks = tokenize("\xED\xA0\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xED");
+}
+
+TEST(LexerTest, OverlongFourByteUtf8EmitsHexEscape) {
+    // [regression: #2442] — `F0 80..8F ..` is an overlong encoding of a
+    // <3-byte code point.
+    auto toks = tokenize("\xF0\x80\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF0");
+}
+
+TEST(LexerTest, OutOfRangeFourByteLeadEmitsHexEscape) {
+    // [regression: #2442] — lead bytes `F5..F7` would encode code points
+    // above `U+10FFFF` and must be rejected at the lead-byte stage.
+    auto toks = tokenize("\xF5\x80\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF5");
+}
+
+TEST(LexerTest, AboveMaxCodePointUtf8EmitsHexEscape) {
+    // [regression: #2442] — `F4 90..BF ..` would encode code points above
+    // `U+10FFFF` even though the lead byte itself is in range.
+    auto toks = tokenize("\xF4\x90\x80\x80");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xF4");
+}
+
+TEST(LexerTest, InvalidUtf8LeadByteEmitsHexEscape) {
+    // [regression: #2442] — 0xFF is not a valid UTF-8 leading byte. The
+    // lexer must still produce a deterministic Error token (no decoder UB).
+    auto toks = tokenize("\xFF");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xFF");
+    EXPECT_EQ(toks[1].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, TruncatedUtf8SequenceEmitsHexEscape) {
+    // [regression: #2442] — a 2-byte UTF-8 lead with no continuation byte
+    // must not be silently consumed as if the trailing nothing were valid.
+    auto toks = tokenize("\xCE");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "\\xCE");
+    EXPECT_EQ(toks[1].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, NonAsciiAfterNumericLiteralProducesNumberThenError) {
+    // [regression: #2442] — `123ℕ` used to cascade as Number + three
+    // byte-level Error tokens (one per UTF-8 byte). `checkNoTrailingIdentStart`
+    // intentionally stays ASCII-only so the non-ASCII follow-on falls through
+    // to the default fallback; the parser then surfaces it as a proper
+    // DiagnosticError with a source snippet + caret rather than the
+    // SourceManager-less std::runtime_error path here. The lexer now emits
+    // exactly Number + one Error whose value is the full 3-byte sequence.
+    auto toks = tokenize("123\xE2\x84\x95");
+    ASSERT_EQ(toks.size(), 3u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "123");
+    EXPECT_EQ(toks[1].kind, TokenKind::Error);
+    EXPECT_EQ(toks[1].value, std::string("\xE2\x84\x95"));
+    EXPECT_EQ(toks[2].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, AsciiAlphaAfterNumericLiteralIncludesCharInMessage) {
+    // [regression: #2442] — the pre-fix message was the bare phrase
+    // "invalid character after numeric literal" with no character. The new
+    // formatter quotes the offending character.
+    try {
+        tokenize("123abc");
+        FAIL() << "expected std::runtime_error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("invalid character"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'a'"), std::string::npos) << msg;
+    }
 }
 
 TEST(LexerTest, AtToken) {

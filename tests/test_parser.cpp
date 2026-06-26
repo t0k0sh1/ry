@@ -5342,3 +5342,38 @@ TEST(ParserTest, ErrorPropagateThenMethodCallStillAccepted) {
     const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
 }
+
+// ===== UTF-8 unexpected-token diagnostic (#2442) =====
+// The lexer used to emit the leading UTF-8 byte of a non-ASCII code point
+// as a 1-byte Error token; the parser-level "unexpected token '<X>'"
+// message then embedded that byte and the terminal rendered it as U+FFFD.
+// The lexer now consumes the full sequence, so the parser message names
+// the actual code point.
+
+TEST(ParserTest, UnexpectedTokenIncludesUtf8CodePoint) {
+    // [regression: #2442] — `α = 1` at the start of an expression. The
+    // error message must contain the bytes for α (CE B1), not a stray
+    // single byte (which the terminal would render as U+FFFD).
+    try {
+        parseStr("\xCE\xB1 = 1\n");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("\xCE\xB1"), std::string::npos) << msg;
+    }
+}
+
+TEST(ParserTest, UnexpectedTokenAfterNumericIncludesUtf8CodePoint) {
+    // [regression: #2442] — `123ℕ` reaches the parser as Number + Error("ℕ").
+    // `checkNoTrailingIdentStart` stays ASCII-only on purpose so this path
+    // surfaces via DiagnosticError (which carries SourceManager info and
+    // renders a source snippet + caret) rather than the std::runtime_error
+    // path inside the lexer.
+    try {
+        parseStr("x = 123\xE2\x84\x95\n");
+        FAIL() << "expected DiagnosticError";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("\xE2\x84\x95"), std::string::npos) << msg;
+    }
+}

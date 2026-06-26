@@ -33,6 +33,50 @@ static void consumeDigitsWithSeparators(const std::string &src, size_t &pos,
     }
 }
 
+// Decode the UTF-8 character at `src[pos]` and return {sequence, byte_length}.
+// Accepts ONLY well-formed UTF-8 per RFC 3629: lead-byte ranges exclude the
+// overlong 2-byte leads `0xC0`/`0xC1` and out-of-range 4-byte leads
+// `0xF5..0xFF`, and continuation-byte ranges further reject overlong 3-byte
+// (`E0 80..9F`) / 4-byte (`F0 80..8F`) encodings, surrogate pairs
+// (`ED A0..BF`), and code points above `U+10FFFF` (`F4 90..BF`). Any
+// non-well-formed byte falls back to the printable hex escape "\xHH" of
+// the leading byte with length 1 so the caller advances deterministically
+// without invoking decoder UB on the truncated/invalid tail.
+// #2442: used by the "unexpected token" fallback and the trailing-ident
+// check after a numeric literal so the diagnostic names the actual code
+// point instead of the leading byte alone (which rendered as U+FFFD).
+static std::pair<std::string, size_t> decodeUtf8Char(const std::string &src, size_t pos) {
+    unsigned char c = static_cast<unsigned char>(src[pos]);
+    int len = 0;
+    if (c < 0x80u) len = 1;
+    else if (c >= 0xC2u && c <= 0xDFu) len = 2;
+    else if (c >= 0xE0u && c <= 0xEFu) len = 3;
+    else if (c >= 0xF0u && c <= 0xF4u) len = 4;
+    auto hexEscape = [c]() -> std::string {
+        static const char hex[] = "0123456789ABCDEF";
+        std::string s = "\\x";
+        s += hex[(c >> 4) & 0xFu];
+        s += hex[c & 0xFu];
+        return s;
+    };
+    if (len == 0 || pos + static_cast<size_t>(len) > src.size())
+        return {hexEscape(), 1};
+    for (size_t i = 1; i < static_cast<size_t>(len); ++i) {
+        unsigned char cc = static_cast<unsigned char>(src[pos + i]);
+        if ((cc & 0xC0u) != 0x80u) return {hexEscape(), 1};
+    }
+    if (len == 3) {
+        unsigned char c1 = static_cast<unsigned char>(src[pos + 1]);
+        if ((c == 0xE0u && c1 < 0xA0u) || (c == 0xEDu && c1 > 0x9Fu))
+            return {hexEscape(), 1};
+    } else if (len == 4) {
+        unsigned char c1 = static_cast<unsigned char>(src[pos + 1]);
+        if ((c == 0xF0u && c1 < 0x90u) || (c == 0xF4u && c1 > 0x8Fu))
+            return {hexEscape(), 1};
+    }
+    return {src.substr(pos, static_cast<size_t>(len)), static_cast<size_t>(len)};
+}
+
 // Append a Unicode scalar value as UTF-8 bytes to `dst`. The caller is
 // responsible for ensuring `cp <= 0x10FFFF` and `cp` is not a surrogate
 // (see decodeUnicodeEscape, which validates before calling).
@@ -88,9 +132,13 @@ static void decodeUnicodeEscape(const std::string &src, size_t &pos,
         } else if (ch >= 'A' && ch <= 'F') {
             digit = static_cast<uint32_t>(ch - 'A') + 10u;
         } else {
+            // #2442: decode the offending code point (or fall back to the
+            // "\xHH" hex escape for invalid bytes) so a non-ASCII char like
+            // `α` inside `\u{...}` renders as itself instead of U+FFFD.
+            auto [s, len] = decodeUtf8Char(src, pos);
+            (void)len;
             throw std::runtime_error("line " + std::to_string(line) +
-                                     ": invalid hex digit '" +
-                                     std::string(1, ch) +
+                                     ": invalid hex digit '" + s +
                                      "' in unicode escape");
         }
         cp = (cp << 4) | digit;
@@ -143,9 +191,12 @@ static void decodeHexEscape(const std::string &src, size_t &pos,
     }
     int hi = hexValue(src[pos]);
     if (hi < 0) {
+        // #2442: same UTF-8-aware rendering as decodeUnicodeEscape.
+        auto [s, len] = decodeUtf8Char(src, pos);
+        (void)len;
         throw std::runtime_error("line " + std::to_string(line) +
-                                 ": invalid hex digit '" +
-                                 std::string(1, src[pos]) + "' in '\\x' escape");
+                                 ": invalid hex digit '" + s +
+                                 "' in '\\x' escape");
     }
     ++pos; ++col;
     if (pos >= src.size()) {
@@ -154,9 +205,11 @@ static void decodeHexEscape(const std::string &src, size_t &pos,
     }
     int lo = hexValue(src[pos]);
     if (lo < 0) {
+        auto [s, len] = decodeUtf8Char(src, pos);
+        (void)len;
         throw std::runtime_error("line " + std::to_string(line) +
-                                 ": invalid hex digit '" +
-                                 std::string(1, src[pos]) + "' in '\\x' escape");
+                                 ": invalid hex digit '" + s +
+                                 "' in '\\x' escape");
     }
     dst.push_back(static_cast<char>((hi << 4) | lo));
     // Leave `pos` AT the second hex digit. The caller's trailing
@@ -265,11 +318,20 @@ void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
 
 void Lexer::checkNoTrailingIdentStart() const {
     if (pos_ < src_.size()) {
-        char ch = src_[pos_];
-        if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_')
+        unsigned char ch = static_cast<unsigned char>(src_[pos_]);
+        // #2442: include the offending character in the message. The
+        // predicate stays ASCII-only on purpose — non-ASCII follow-ons
+        // (`123ℕ` / `123α`) intentionally fall through to the default
+        // fallback so the parser surfaces them as a proper DiagnosticError
+        // with a source snippet + caret, not a SourceManager-less
+        // std::runtime_error here.
+        if (std::isalpha(ch) || ch == '_') {
+            auto [s, len] = decodeUtf8Char(src_, pos_);
+            (void)len;
             throw std::runtime_error(
                 "line " + std::to_string(line_) +
-                ": invalid character after numeric literal");
+                ": invalid character '" + s + "' after numeric literal");
+        }
     }
 }
 
@@ -928,8 +990,14 @@ Token Lexer::readToken() {
         return {TokenKind::Ident, std::move(id), line_, startCol};
     }
 
-    ++pos_; ++col_;
-    return {TokenKind::Error, std::string(1, c), line_, startCol};
+    // #2442: a non-ASCII byte at this point is a UTF-8 lead byte. Consume
+    // the full sequence so the Error token carries the actual code point
+    // (not a single byte that the terminal renders as U+FFFD), and so the
+    // trailing continuation bytes don't cascade as per-byte Error tokens.
+    auto [val, len] = decodeUtf8Char(src_, pos_);
+    pos_ += len;
+    ++col_;
+    return {TokenKind::Error, std::move(val), line_, startCol};
     }  // close `for (;;)` opened in Step 1 (#2137)
 }
 
