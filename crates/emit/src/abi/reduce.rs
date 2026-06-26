@@ -17,8 +17,6 @@
 
 use std::ffi::c_int;
 
-use crate::context::TypeRef;
-
 use super::*;
 
 /// `sum([..])`: emit the list-sum loop over the List at `list_ptr_id`; return the
@@ -37,14 +35,10 @@ pub unsafe extern "C" fn ry_emit_reduce_sum_list(
     let Some(list_ptr) = resolve_value(c, list_ptr_id) else {
         return 0;
     };
-    if elem_ty.is_null() || list_header_ty.is_null() {
+    let (Some(elem), Some(header)) = (req_type(elem_ty), req_type(list_header_ty)) else {
         return 0;
-    }
-    let result = c.reduce_sum_list(
-        list_ptr,
-        TypeRef(as_type(elem_ty)),
-        TypeRef(as_type(list_header_ty)),
-    );
+    };
+    let result = c.reduce_sum_list(list_ptr, elem, header);
     intern(c, to_ry_value(result.0))
 }
 
@@ -63,10 +57,10 @@ pub unsafe extern "C" fn ry_emit_reduce_sum_step(
     let (Some(acc), Some(v)) = (resolve_value(c, acc_id), resolve_value(c, val_id)) else {
         return 0;
     };
-    if elem_ty.is_null() {
+    let Some(elem) = req_type(elem_ty) else {
         return 0;
-    }
-    let result = c.reduce_sum_step(acc, v, TypeRef(as_type(elem_ty)));
+    };
+    let result = c.reduce_sum_step(acc, v, elem);
     intern(c, to_ry_value(result.0))
 }
 
@@ -88,10 +82,10 @@ pub unsafe extern "C" fn ry_emit_reduce_minmax_list_loop(
     let (Some(data), Some(len)) = (resolve_value(c, data_id), resolve_value(c, len_id)) else {
         return 0;
     };
-    if elem_ty.is_null() {
+    let Some(elem) = req_type(elem_ty) else {
         return 0;
-    }
-    let result = c.reduce_minmax_list_loop(data, len, TypeRef(as_type(elem_ty)), is_max != 0);
+    };
+    let result = c.reduce_minmax_list_loop(data, len, elem, is_max != 0);
     intern(c, to_ry_value(result.0))
 }
 
@@ -112,9 +106,9 @@ pub unsafe extern "C" fn ry_emit_reduce_minmax_step(
     let (Some(best), Some(v)) = (resolve_value(c, best_id), resolve_value(c, val_id)) else {
         return 0;
     };
-    if elem_ty.is_null() {
+    let Some(elem) = req_type(elem_ty) else {
         return 0;
-    }
-    let result = c.reduce_minmax_step(best, v, TypeRef(as_type(elem_ty)), is_max != 0);
+    };
+    let result = c.reduce_minmax_step(best, v, elem, is_max != 0);
     intern(c, to_ry_value(result.0))
 }

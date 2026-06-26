@@ -15,7 +15,7 @@ use std::ffi::{c_char, c_int, c_void};
 
 use llvm_sys::prelude::*;
 
-use crate::context::{EmitCtx, ValueRef};
+use crate::context::{EmitCtx, TypeRef, ValueRef};
 
 // Per-op C boundary entry points live in child modules (one per migrated op),
 // each calling the matching `core` engine method on `EmitCtx`. The cdylib
@@ -604,14 +604,19 @@ pub(crate) unsafe fn resolve(c: &EmitCtx, id: RyValueId) -> RyValueRef {
 }
 
 // =============================================================
-// Shared boundary input-validation helpers (#2080). Every IR-emitting entry
-// point converts malformed input to its sentinel rather than passing an unvetted
-// handle to the `core` engine (which forwards it straight to the LLVM C API). The
-// ctx + handle validation lives in `ctx_access::checked_cx` above (co-located
-// with the confined reify it builds on, #2081); the two helpers below fold the
-// remaining per-op inline guard sequences that runtime_call / result / any / cow
-// each spelled out — required-id resolution and FFI-array borrow — into one
-// shared contract so the guard policy is uniform across the boundary.
+// Shared boundary input-validation helpers (#2080, #2445). Every IR-emitting
+// entry point converts malformed input to its sentinel rather than passing an
+// unvetted handle to the `core` engine (which forwards it straight to the LLVM
+// C API). The ctx + handle validation lives in `ctx_access::checked_cx` above
+// (co-located with the confined reify it builds on, #2081); the helpers below
+// fold the remaining per-op inline guard sequences — required value-id
+// resolution (runtime_call / result), required type-handle conversion (option
+// / reduce / primitive, the pilot of #2445), the NULL `name` → empty-CString
+// fallback (primitive's previously-local `name_or_empty`), and FFI-array
+// borrow (runtime_call / control_flow) — into one shared contract so the
+// guard policy is uniform across the boundary. Per-module `opt_*` /
+// `*_kind_from` selectors (any / cow / bounds) stay local until a follow-up
+// pass extends the helper set.
 // =============================================================
 
 // Resolve a value id to `Some(ValueRef)`, or `None` when it resolves to NULL
@@ -627,6 +632,35 @@ pub(crate) unsafe fn resolve_value(c: &EmitCtx, id: RyValueId) -> Option<ValueRe
         None
     } else {
         Some(ValueRef(v))
+    }
+}
+
+// Convert a boundary `RyTypeRef` to `Some(TypeRef)`, or `None` on NULL. Mirrors
+// `resolve_value`'s required-vs-optional split: a *required* type handle maps
+// `None` to the entry point's sentinel (`let Some(ty) = req_type(p) else {
+// return 0 }`), while an *optional* one (e.g. the branch-specific `target_ty`
+// in `RyAnyUnwrapDesc`) stores the `Option` directly. Subsumes the per-entry
+// `if ty.is_null() { return 0 } … TypeRef(as_type(ty))` pair the primitive /
+// option / reduce shells repeated for every type field.
+#[inline]
+pub(crate) fn req_type(p: RyTypeRef) -> Option<TypeRef> {
+    if p.is_null() {
+        None
+    } else {
+        Some(TypeRef(as_type(p)))
+    }
+}
+
+// NULL `name` → empty CString pointer. Several `LLVMBuild*` entries treat their
+// SSA-name argument as optional at the C boundary (api.h spells it `NULL → ""`);
+// the engine forwards the pointer verbatim to LLVM, so the abi shell substitutes
+// the empty CString once here instead of every op re-spelling the ternary.
+#[inline]
+pub(crate) fn name_or_empty(name: *const c_char) -> *const c_char {
+    if name.is_null() {
+        c"".as_ptr()
+    } else {
+        name
     }
 }
 
