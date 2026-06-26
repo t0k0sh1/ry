@@ -83,6 +83,24 @@ private:
     // Helpers
     void formatDirectives(const std::vector<Directive> &directives);
     void formatBlock(const std::vector<StmtNode> &body);
+    // Returns the multi-line LambdaExpr if `expr` is one directly, or if `expr`
+    // is a CallExpr whose trailing arg chain ends in one (#2425). Returns
+    // nullptr otherwise. Used to route value-context calls to the block-form
+    // emitter instead of the string-returning formatExpr path (which cannot
+    // emit a multi-line lambda body without corrupting the surrounding line).
+    const LambdaExpr* findTrailingMultiLineLambda(const ExprNode &expr) const;
+    // True iff any positional arg is (or trails-to) a multi-line lambda; in
+    // that case the call must be emitted via `emitCallTrailingLambda` (#2425).
+    bool callExprNeedsBlockForm(const CallExpr &call) const;
+    // Emit a call in block form (one or more args is or trails-to a multi-line
+    // lambda). After return, the cursor is at the start of a new line.
+    // `trailing_close` is appended after this call's `)` on the close line so
+    // nested calls can stack their close parens (#2425).
+    void emitCallTrailingLambda(const std::string &callee_with_prefix,
+                                const std::vector<ExprPtr> &args,
+                                const std::vector<NamedArg> &named_args,
+                                int line,
+                                const std::string &trailing_close);
     // Formats a case-EXPRESSION arm body: inline ` : <expr>` when `stmts` is
     // empty, else a `:`-block with the intermediate statements and the tail
     // expression indented one level deeper (#1891).
