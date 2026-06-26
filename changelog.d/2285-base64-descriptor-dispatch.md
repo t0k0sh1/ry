@@ -1,3 +1,0 @@
-### Changed
-
-- `@native("base64")` calls now route through descriptor-driven generic dispatch instead of the hand-written `base64_table`. Behavior change for misdeclared natives: the `@native` declaration is the source of truth for argument types — declaring `@native("base64") fn encodeBytes(input: List<int>) -> str` no longer routes through the hidden `requireListU8Arg` table override and would silently mis-call the runtime; declare `List<u8>` to match the actual ABI. Stdlib registration adds an optional `snake_case_symbols=true` flag (via `RY_REGISTER_STDLIB_PACKAGE_NAMING`) for modules whose C symbols predate Ry's camelCase convention. (#2285)

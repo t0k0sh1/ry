@@ -45,7 +45,7 @@ jobs:
     # across re-runs. Bump during Release prep — see
     # `.claude/skills/preparing-for-release/SKILL.md` and
     # `.claude/skills/ci-image-workflow/SKILL.md`.
-    container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21-rev12', github.repository_owner) || null }}
+    container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21-rev14', github.repository_owner) || null }}
     steps:
       - uses: actions/checkout@v4
 

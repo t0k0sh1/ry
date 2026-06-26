@@ -1,8 +1,0 @@
-### Added
-
-- New `json5` stdlib module with the same 8-function surface as `json` (`load[T]` / `dump` / `stringify` / `stringifySafe`, each with two arities) that accepts the [JSON5 spec](https://json5.org) extensions on input: line and block comments, trailing commas, single-quoted strings, multi-line strings via `\<LF>` line continuation, unquoted ASCII identifier object keys, hex integer literals (`0xFF`), leading and trailing decimal points (`.5`, `5.`), `Infinity` / `-Infinity` / `NaN` literals, and explicit positive sign (`+5`). `json5.stringify` emits strict-JSON-compatible output (lossless round-trip with `json.load`) except for non-finite floats, which emit JSON5 bare tokens (`"NaN"`, `"Infinity"`, `"-Infinity"`). `json5.stringifySafe(NaN)` returns `Ok("NaN")` instead of `Err`. `json` (RFC 8259 strict) is unchanged. (#1855)
-- `fuzz_json5` libFuzzer harness (`tests/fuzz/fuzz_json5.cpp`, seed corpus under `tests/fuzz/corpus/json5/`) mirroring `fuzz_json`. The target compiles under the `fuzz` preset but the docker entrypoint allowlist update (`docker/entrypoint.sh`, `docker/run.sh`) only takes effect after the next `/ci-image-workflow` rebuild; until then `run-fuzz.sh` still runs the existing 4 targets and pre-commit-checklist treats `fuzz_json5` as a deferred check. (#1855)
-
-### Fixed
-
-- `dispatchJson` (`src/codegen_call_json.cpp`) now gates on whether any `json::*` symbol is registered before claiming `load<T>(...)` calls. The dispatcher chain (`src/codegen_call_dispatch.cpp:197`) iterates every registered stdlib dispatcher, and the previous unconditional `load<T>` interceptor would have routed `from json5 import load; load[T](...)` calls to the strict `json` parser. (#1855)

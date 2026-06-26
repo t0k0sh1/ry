@@ -1,3 +1,0 @@
-### Deprecated
-
-- `any` 値への直接算術演算子 (`+`, `-`, `*`, `/`, `//`, `%`, `**`, 単項 `-`) と順序比較演算子 (`<`, `<=`, `>`, `>=`) を deprecated とし、コンパイル時に stderr へ one-time 警告を発するようにした。`==` / `!=` と `print` / `str` / f-string 補間は retained-and-documented として警告対象外 (`__ry_any_eq` は型不一致で `false` を返すのみで trap しないため安全、文字列化は migration boundary として保持)。移行は #2315 で追加した `asType[T](v: any) -> Result<T, Error>` を使い narrow してから操作する。dedup は演算子単位で 1 回 (`+` を 5 回使っても警告は 1 行のみ)。動作は変わらず、警告のみで rejection は行わない (`tests/spec/any.test.ry` の既存テストは引き続き exit code 0 で pass する; 出力に warning が混ざるのは deprecation 期間中の意図された動作)。strict mode への昇格 (toggle 導入 + 既定の reject 化) は #2322 予定。compound assignment (`x += 5` where `x: any`) は `emitBinaryOp` 経由で同じ gate を通るためカバー済み。 (#2316)

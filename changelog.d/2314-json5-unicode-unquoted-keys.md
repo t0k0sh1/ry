@@ -1,5 +1,0 @@
-### Added
-
-- `json5` の unquoted object key を ASCII subset から ECMAScript `IdentifierName` 全体に拡張した (`share/std/json5/json5.cpp`)。`unicode-ident` ベースの `XID_Start` / `XID_Continue` に加えて `$` / `_` / ZWNJ (`U+200C`) / ZWJ (`U+200D`) と `\uHHHH` escape (BMP / surrogate pair) を受理する。これにより JavaScript の `JSON5.parse`、Python の `pyjson5`、Rust `json5` crate との cross-language 相互運用ギャップが解消され、日本語 / 中国語 / 韓国語 / ギリシャ語 / アラビア・インド数字 / combining mark を含むキーがそのまま渡せるようになる。RFC 3629 strict UTF-8 codepoint decoder / encoder を json5.cpp 内に追加し、ASCII 連続部は escape を含まない区間として bulk copy するため ASCII-only キーの FFI 越境は発生しない。
-- `crates/xid/` を新規 Rust cdylib として追加 (`unicode-ident` の薄いラッパ)。`__ry_xid_start(u32)` / `__ry_xid_continue(u32)` の 2 シンボルを export し、`emit` クレートと同じパターンで `ry` / `ry_tests` にリンクして dlopen 済み `libry_json5` からプロセス内で resolve させる (inter-library link dependency なし)。
-- 拒否ケース (Unicode digit start / punctuation start / 不正な escape / `true` 等の予約語キーワードに Unicode サフィックスを連結したもの) は明示的なパースエラーとして返る。`parse_bool` / `parse_null` / `parse_number` の hex literal trailing guard も ECMAScript IdentifierContinue を意識した境界判定に揃えた。(#2314)
