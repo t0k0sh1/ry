@@ -288,10 +288,16 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     }
 
     llvm::Value *portCallback = nullptr;
+    std::optional<CodeGen::FnTypeInfo> portCallbackInfo;
     if (e.args.size() == 5) {
         portCallback = cg.emitExpr(*e.args[4]);
         if (portCallback->getType() != cg.ptrTy_)
             cg.codegenError("listen() portCallback must be fn(int) -> Unit");
+        auto *cbInfo = cg.lookupFnTypeInfo(portCallback);
+        if (!cbInfo || cbInfo->paramTypes.size() != 1 ||
+            cbInfo->paramTypes[0] != cg.i64Ty_ || !cbInfo->returnType->isVoidTy())
+            cg.codegenError("listen() portCallback must be fn(int) -> Unit");
+        portCallbackInfo = *cbInfo;
     }
 
     // Return type: Result<Unit, Error>
@@ -346,9 +352,10 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (portCallback) {
         auto portFn = cg.getRuntimeFn("__ry_listener_port", cg.i64Ty_, {cg.ptrTy_});
         llvm::Value *actualPort = cg.builder_.CreateCall(portFn, {listener}, "actual_port");
-        auto callbackFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*cg.ctx_), {cg.i64Ty_}, false);
-        cg.builder_.CreateCall(callbackFnTy, portCallback, {actualPort});
+        // Invoke through emitLambdaCall so every closure calling convention
+        // (uniform closure / plain fn ptr / captured closure) is handled; a raw
+        // void(i64) CreateCall mis-invokes a capturing closure struct.
+        cg.emitLambdaCall(portCallback, *portCallbackInfo, {actualPort}, "");
     }
 
     bool hasMaxRequests = (e.args.size() >= 4);

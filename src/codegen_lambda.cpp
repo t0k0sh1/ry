@@ -412,7 +412,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         // Emit body
         if (e->expr_body) {
             llvm::Value *val = emitExpr(*e->expr_body);
-            if (isAnyType(retTy) && !isAnyType(val->getType()))
+            if (retTy->isVoidTy()) {
+                // #2421: single-expression lambda with a Unit (void) return
+                // type. The body was emitted above for its side effects; its
+                // value is null for a Unit-returning call (see emitUserFnCall)
+                // and must not be coerced or dereferenced. Skip the value-
+                // coercion chain; the tail below emits `ret void` instead.
+            } else if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
             else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy)) {
                 // Path 9-return (#2379): rejected by [strict-any/any-implicit-unwrap].
@@ -474,15 +480,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     }
                 }
             }
-            if (val->getType() != retTy)
-                codegenError("lambda expression return type mismatch: expected '" +
-                    reverseResolveTypeName(retTy) + "', found '" +
-                    reverseResolveTypeName(val->getType()) + "'");
-            // Retain return value before scope cleanup to prevent dangling pointer
-            // when returning a value loaded from an ARC-managed captured variable
-            tryRetainArcSource(val);
-            emitScopeCleanupToDepth(0);
-            builder_.CreateRet(val);
+            if (!retTy->isVoidTy()) {
+                if (val->getType() != retTy)
+                    codegenError("lambda expression return type mismatch: expected '" +
+                        reverseResolveTypeName(retTy) + "', found '" +
+                        reverseResolveTypeName(val->getType()) + "'");
+                // Retain return value before scope cleanup to prevent dangling pointer
+                // when returning a value loaded from an ARC-managed captured variable
+                tryRetainArcSource(val);
+                emitScopeCleanupToDepth(0);
+                builder_.CreateRet(val);
+            } else {
+                // #2421: Unit-returning single-expression lambda. A Unit-typed
+                // body (e.g. a Unit-returning call, which yields a null Value —
+                // see emitUserFnCall) was emitted above for its side effects;
+                // clean up the scope and emit `ret void`, mirroring the
+                // block-body path. A body that produces a real (non-Unit) value
+                // cannot be returned from a Unit lambda, so reject it — matching
+                // `return <expr>` in a Unit function and the parser's rejection
+                // of a bare value-expression statement.
+                if (val != nullptr && !val->getType()->isVoidTy())
+                    codegenError("lambda expression return type mismatch: expected "
+                        "'Unit', found '" + reverseResolveTypeName(val->getType()) +
+                        "'");
+                emitScopeCleanupToDepth(0);
+                builder_.CreateRetVoid();
+            }
         } else {
             for (auto &stmt : e->body)
                 std::visit([this](auto &st) { emitStmt(st); }, stmt);

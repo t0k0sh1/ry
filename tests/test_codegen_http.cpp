@@ -472,19 +472,32 @@ fn method(req: HttpRequest) -> str
 fn path(req: HttpRequest) -> str
 @native("http")
 fn response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
+@native("thread")
+fn atomicIntNew(value: int) -> AtomicInt
+@native("thread")
+fn atomicIntLoad(atomic: AtomicInt) -> int
+@native("thread")
+fn atomicIntStore(atomic: AtomicInt, value: int) -> Unit
+@native("thread")
+fn atomicIntFree(atomic: AtomicInt) -> Unit
 )";
 
 TEST_F(CodeGenTest, HttpListenMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    listen("127.0.0.1", 18932, (req: HttpRequest) -> Result<HttpResponse, Error>:
+async fn server(portHolder: AtomicInt) -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
-    , 1)
+    , 1, (p: int) -> Unit:
+        atomicIntStore(portHolder, p)
+    )
     return "done"
 
-t = server()
-sleep(200)
-case connect("127.0.0.1", 18932):
+portHolder = atomicIntNew(0)
+t = server(portHolder)
+port = 0
+while port == 0:
+    port = atomicIntLoad(portHolder)
+case connect("127.0.0.1", port):
     Ok(conn):
         case send(conn, toBytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
@@ -508,24 +521,30 @@ case connect("127.0.0.1", 18932):
         print("false")
         print("false")
 result = blockOn(t)
+atomicIntFree(portHolder)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
 
 TEST_F(CodeGenTest, HttpListenMaxRequestsMultiple) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    listen("127.0.0.1", 18933, (req: HttpRequest) -> Result<HttpResponse, Error>:
+async fn server(portHolder: AtomicInt) -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
-    , 2)
+    , 2, (p: int) -> Unit:
+        atomicIntStore(portHolder, p)
+    )
     return "done"
 
-t = server()
-sleep(200)
+portHolder = atomicIntNew(0)
+t = server(portHolder)
+port = 0
+while port == 0:
+    port = atomicIntLoad(portHolder)
 
 # First request
-case connect("127.0.0.1", 18933):
+case connect("127.0.0.1", port):
     Ok(conn):
         case send(conn, toBytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
@@ -546,7 +565,7 @@ case connect("127.0.0.1", 18933):
         print("false")
 
 # Second request
-case connect("127.0.0.1", 18933):
+case connect("127.0.0.1", port):
     Ok(conn):
         case send(conn, toBytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
@@ -567,24 +586,30 @@ case connect("127.0.0.1", 18933):
         print("false")
 
 result = blockOn(t)
+atomicIntFree(portHolder)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
 
 TEST_F(CodeGenTest, HttpKeepAlive) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    listen("127.0.0.1", 18934, (req: HttpRequest) -> Result<HttpResponse, Error>:
+async fn server(portHolder: AtomicInt) -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
-    , 2)
+    , 2, (p: int) -> Unit:
+        atomicIntStore(portHolder, p)
+    )
     return "done"
 
-t = server()
-sleep(200)
+portHolder = atomicIntNew(0)
+t = server(portHolder)
+port = 0
+while port == 0:
+    port = atomicIntLoad(portHolder)
 
 # Send two requests on the same connection (keep-alive)
-case connect("127.0.0.1", 18934):
+case connect("127.0.0.1", port):
     Ok(conn):
         # First request
         case send(conn, toBytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
@@ -631,23 +656,34 @@ case connect("127.0.0.1", 18934):
         print("false")
 
 result = blockOn(t)
+atomicIntFree(portHolder)
 print(result)
 )"), "true\ntrue\ntrue\ntrue\ndone\n");
 }
 
 TEST_F(CodeGenTest, HttpConnectionClose) {
+    // The portCallback is a single-expression `-> Unit` lambda
+    // (`=> atomicIntStore(...)`) bound to a local and passed to `listen` to pin
+    // the #2421 fix end-to-end: prior to #2421 this lambda form crashed codegen
+    // (single-expr Unit lambda path) AND the 5-arg `http.listen` mis-invoked
+    // any capturing callback (raw void(i64) call vs. closure struct). Hits both
+    // fixes in one execution path.
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    listen("127.0.0.1", 18935, (req: HttpRequest) -> Result<HttpResponse, Error>:
+async fn server(portHolder: AtomicInt) -> str:
+    pcb = (p: int) -> Unit => atomicIntStore(portHolder, p)
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
-    , 2)
+    , 2, pcb)
     return "done"
 
-t = server()
-sleep(200)
+portHolder = atomicIntNew(0)
+t = server(portHolder)
+port = 0
+while port == 0:
+    port = atomicIntLoad(portHolder)
 
 # Send request with Connection: close
-case connect("127.0.0.1", 18935):
+case connect("127.0.0.1", port):
     Ok(conn):
         case send(conn, toBytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             Ok(_):
@@ -672,7 +708,7 @@ case connect("127.0.0.1", 18935):
         print("false")
 
 # Second request on new connection to reach maxRequests
-case connect("127.0.0.1", 18935):
+case connect("127.0.0.1", port):
     Ok(conn):
         case send(conn, toBytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
@@ -693,24 +729,30 @@ case connect("127.0.0.1", 18935):
         print("false")
 
 result = blockOn(t)
+atomicIntFree(portHolder)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }
 
 TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    listen("127.0.0.1", 18936, (req: HttpRequest) -> Result<HttpResponse, Error>:
+async fn server(portHolder: AtomicInt) -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
-    , 3)
+    , 3, (p: int) -> Unit:
+        atomicIntStore(portHolder, p)
+    )
     return "done"
 
-t = server()
-sleep(200)
+portHolder = atomicIntNew(0)
+t = server(portHolder)
+port = 0
+while port == 0:
+    port = atomicIntLoad(portHolder)
 
 # Send 3 requests on the same keep-alive connection
-case connect("127.0.0.1", 18936):
+case connect("127.0.0.1", port):
     Ok(conn):
         # Request 1
         case send(conn, toBytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
@@ -766,6 +808,7 @@ case connect("127.0.0.1", 18936):
         print("false")
 
 result = blockOn(t)
+atomicIntFree(portHolder)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }
