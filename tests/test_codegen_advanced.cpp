@@ -234,6 +234,44 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
     EXPECT_EQ(runSource(src), "7\n3\n");
 }
 
+TEST_F(CodeGenTest, LambdaUnitReturnSingleExpr) {
+    // #2421: a single-expression lambda with an explicit `-> Unit` return type
+    // (`=> expr` where expr is Unit-typed) must compile and run. The body is
+    // evaluated for its side effects and Unit is returned; a void-returning
+    // body yields a null Value that previously crashed codegen (the single-expr
+    // path dereferenced it / fed it to CreateRet, unlike the block-body path).
+    std::string src =
+        "fn emit(x: int) -> Unit:\n"
+        "    print(x)\n"
+        "run = (n: int) -> Unit => emit(n)\n"
+        "run(7)";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, LambdaUnitReturnSingleExprAsArgument) {
+    // #2421: the same single-expression `-> Unit` lambda passed as an argument
+    // and invoked through the closure-call path (the http.listen portCallback
+    // shape: `(p: int) -> Unit => store(p)`).
+    std::string src =
+        "fn emit(x: int) -> Unit:\n"
+        "    print(x)\n"
+        "fn apply(f: fn(int) -> Unit, v: int) -> Unit:\n"
+        "    f(v)\n"
+        "apply((n: int) -> Unit => emit(n), 9)";
+    EXPECT_EQ(runSource(src), "9\n");
+}
+
+TEST_F(CodeGenTest, LambdaUnitReturnSingleExprNonUnitBodyRejected) {
+    // #2421: a single-expression `-> Unit` lambda whose body produces a real
+    // (non-Unit) value is a type error — the value cannot be returned from a
+    // Unit lambda, mirroring `return <expr>` in a Unit function. Only Unit-
+    // typed bodies (side-effecting calls) are accepted on this path.
+    std::string src =
+        "f = (x: int) -> Unit => x + 1\n"
+        "f(5)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "offset = 10\n"
