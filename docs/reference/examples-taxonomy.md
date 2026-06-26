@@ -43,7 +43,7 @@ canonical カテゴリのファイルは以下をすべて満たす:
 
 詳細な classification は `docs/architecture/implicit-any-paths.md`、mode semantics は `docs/reference/strict-any.md` を source of truth とする。canonical examples の範囲では以下のみ判断材料となる:
 
-**許可される (dynamic boundary)**: JSON / JSON5 parse 結果、`@native` heterogeneous-return プレースホルダ (`.claude/rules/docs-reference-conventions.md` の規約)、FFI / `@extern` 戻り値、plugin / diagnostics 境界。
+**許可される (dynamic boundary)**: JSON / JSON5 parse 結果、`@native` heterogeneous-return プレースホルダ、FFI / `@extern` 戻り値、plugin / diagnostics 境界。
 
 **避けるべき**: `fn` 引数の implicit any (型注釈省略)、`v: any = …` から具体型への implicit unwrap、`any` 値への直接演算。同等比較 `==` / `!=` は許容。`Map<str, any>` の値を具体型として扱う場面では `case asType[T](v)` 等のチェック付き narrowing を使う。
 

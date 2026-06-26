@@ -115,6 +115,5 @@ parser が `[contract]` 支配的、runtime が `[internal]` 支配的、codegen
 
 ## 関連
 
-- `.claude/skills/test-checklist/SKILL.md` — テスト作成時の perspective チェック
-- `.claude/rules/tests-cpp-conventions.md` — C++ テストの実装規約
+- `AGENTS.md` — TDD と agent workflow の基本方針
 - 適用済み: `tests/test_parser.cpp` (#1831), `tests/test_codegen*.cpp` + `tests/test_runtime*.cpp` + `tests/test_abi_layout.cpp` + `tests/test_coverage_runtime.cpp` + `tests/test_regex_runtime.cpp` + `tests/test_header_layout.cpp` + `tests/test_emit_abi_guards.cpp` + `tests/test_native_call_descriptor.cpp` (#2383)

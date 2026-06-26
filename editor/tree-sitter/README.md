@@ -312,11 +312,7 @@ eyeball the syntax highlighting and confirm no regressions.
 > #1633 and completed in #1618 with the coverage matrix and
 > `./check.sh` integration).
 
-The pre-commit version of this loop lives in
-[`/pre-commit-checklist`](../../.claude/skills/pre-commit-checklist/SKILL.md).
-
-Scanner and query invariants not covered here live in the path-scoped
-[`.claude/rules/tree-sitter-grammar-editing.md`](../../.claude/rules/tree-sitter-grammar-editing.md).
+Repo-level agent guidance lives in [`AGENTS.md`](../../AGENTS.md).
 
 Other editors are not yet supported in-tree; integrations may be added under
 `editor/<tool>/` as they appear.

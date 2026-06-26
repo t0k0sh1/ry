@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Reference-integrity lint for prompt / instruction definition files.
 #
-# Scans .claude/**/*.md + AGENTS.md + CLAUDE.md and fails (exit 1) on:
+# Scans AGENTS.md and fails (exit 1) on:
 #   (a) inline-code paths that do not exist on disk (#1827-class path
 #       drift, e.g. `src/parser.cpp` after the move to
 #       `src/parser/parser.cpp`),
-#   (b) `/skill` slash-command references with no matching
-#       .claude/skills/<name>/SKILL.md (dead skill links, e.g. a deleted
-#       skill still referenced in prose).
+#   (b) unknown slash-command references.
 #
 # DETECTION IS INLINE-CODE-SPAN ONLY. Only tokens wrapped in single
 # backticks are inspected; triple-backtick fenced blocks (``` / ~~~) are
@@ -37,8 +35,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || {
 
 TAB="$(printf '\t')"
 
-# Slash-commands that are valid even without a .claude/skills/<name>/ dir
-# (Claude Code built-ins / plugin skills). Extend if a built-in is cited.
+# Slash-commands that are valid in instruction prose. Extend if a built-in is cited.
 BUILTIN_CMDS="clear help config model fast loop run init review verify simplify schedule security-review code-review compact cost memory resume status doctor login logout ide vim terminal-setup bug pr-comments release-notes add-dir mcp agents hooks export permissions fewer-permission-prompts deep-research skill-creator rule-creator update-config keybindings-help claude-api"
 # Backtick `/word` tokens that are filesystem paths, not slash-commands.
 NON_SKILL_SLASH="tmp workspace"
@@ -47,7 +44,7 @@ NON_SKILL_SLASH="tmp workspace"
 if [ "$#" -gt 0 ]; then
   FILES="$(printf '%s\n' "$@")"
 else
-  FILES="$( { find .claude -name '*.md'; [ -f AGENTS.md ] && echo AGENTS.md; [ -f CLAUDE.md ] && echo CLAUDE.md; } )"
+  FILES="$( [ -f AGENTS.md ] && echo AGENTS.md )"
 fi
 
 # Strip fenced code blocks (``` / ~~~); keep all other lines verbatim.
@@ -74,7 +71,7 @@ scan_paths() {
       tok="${tok%%:*}"        # drop :line / ::symbol suffix
       tok="${tok%[]).,;]}"    # drop one trailing ) ] . , ;
       case "$tok" in
-        src/*|include/*|tests/*|share/*|scripts/*|crates/*|editor/*|docker/*|cmake/*|.github/*|.claude/*|docs/*) ;;
+        src/*|include/*|tests/*|share/*|scripts/*|crates/*|editor/*|docker/*|cmake/*|.github/*|docs/*) ;;
         *) continue ;;
       esac
       case "$tok" in
@@ -92,7 +89,6 @@ scan_skills() {
     readable "$f" || continue
     strip_fences "$f" | grep -oE '`/[a-z][a-z0-9-]+`' | tr -d '`' | while IFS= read -r cmd; do
       name="${cmd#/}"
-      [ -f ".claude/skills/$name/SKILL.md" ] && continue
       case " $NON_SKILL_SLASH " in *" $name "*) continue ;; esac
       case " $BUILTIN_CMDS " in *" $name "*) continue ;; esac
       ln="$(line_of "$f" "$cmd")"
@@ -117,7 +113,7 @@ fi
 viol_b="$(scan_skills)"
 if [ -n "$viol_b" ]; then
   bad=1
-  echo "::error::check-prompt-refs (b): /skill reference(s) with no matching .claude/skills/<name>/SKILL.md." >&2
+  echo "::error::check-prompt-refs (b): unknown slash-command reference(s)." >&2
   echo "  Fix: point to an existing skill; or if it is a built-in command / filesystem path, add it to BUILTIN_CMDS / NON_SKILL_SLASH in this script." >&2
   printf '%s\n' "$viol_b" | while IFS="$TAB" read -r f ln cmd; do
     echo "  ${f}:${ln}: ${cmd}" >&2
