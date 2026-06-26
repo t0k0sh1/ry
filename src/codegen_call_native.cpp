@@ -1103,6 +1103,8 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
         case ReturnWrapping::IteratorFromHandle:
             llvm_unreachable("IteratorFromHandle handled above (early return)");
+        case ReturnWrapping::ResourceFree:
+            llvm_unreachable("ResourceFree handled above (early return)");
         }
         return res;
     };
