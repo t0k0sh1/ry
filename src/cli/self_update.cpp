@@ -1,9 +1,12 @@
 #include "ry/cli/self_update.hpp"
 #include "ry/project/paths.hpp"
+#include <cerrno>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -784,6 +787,21 @@ bool install_rescue_script(const std::string &tmp_dir, const std::string &binary
     return true;
 }
 
+// Selects bundled native libs to install (and, since #2456, to snapshot for
+// rollback): Rust cdylibs `libemit` (#2040, renamed from libry_codegen) and
+// `liblower` (#2397, upper-codegen Rust kickoff), the stdlib native libs
+// `libry_*`, and — post-#1999 cutover — the bundled shared libLLVM (plus
+// its macOS chain dep libzstd) so the relocated runtime stays self-contained
+// (#2005). Keep in sync across scripts/bundle-dist.sh, install.sh, this
+// file, and scripts/verify-bundle.sh (see distribution-packaging.md).
+static bool is_bundled_native_lib(const std::string &filename) {
+    return filename.find("libemit") == 0 ||
+           filename.find("liblower") == 0 ||
+           filename.find("libry_") == 0 ||
+           filename.find("libLLVM") == 0 ||
+           filename.find("libzstd") == 0;
+}
+
 bool install_native_libs(const std::string &tmp_dir) {
     namespace fs = std::filesystem;
     fs::path src_lib = fs::path(tmp_dir) / "lib";
@@ -802,19 +820,7 @@ bool install_native_libs(const std::string &tmp_dir) {
     for (const auto &entry : fs::directory_iterator(src_lib)) {
         if (!entry.is_regular_file()) continue;
         auto filename = entry.path().filename().string();
-        // Install the Rust cdylibs (libemit, liblower) + stdlib native libs
-        // (libry_*), and — post-#1999 cutover — the bundled shared libLLVM
-        // (plus its macOS chain dep libzstd), so the relocated runtime stays
-        // self-contained (#2005). libemit was renamed from libry_codegen
-        // (#2040) and liblower is the upper-codegen Rust kickoff (#2397), so
-        // neither matches the libry_ prefix and each needs its own check.
-        // Ignore anything else.
-        bool is_bundled_lib = filename.find("libemit") == 0 ||
-                              filename.find("liblower") == 0 ||
-                              filename.find("libry_") == 0 ||
-                              filename.find("libLLVM") == 0 ||
-                              filename.find("libzstd") == 0;
-        if (!is_bundled_lib) continue;
+        if (!is_bundled_native_lib(filename)) continue;
         auto dest_path = dest_lib / filename;
         fs::copy_file(entry.path(), dest_path,
                       fs::copy_options::overwrite_existing, ec);
@@ -827,12 +833,424 @@ bool install_native_libs(const std::string &tmp_dir) {
     return any_installed;
 }
 
+// --- Backup / smoke-test / rollback (#2456) ---
+
+static bool copy_tree_recursive(const std::filesystem::path &src,
+                                const std::filesystem::path &dst) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(dst, ec);
+    if (ec) return false;
+
+    for (const auto &entry : fs::recursive_directory_iterator(src, ec)) {
+        if (ec) return false;
+        auto rel = fs::relative(entry.path(), src, ec);
+        if (ec) return false;
+        auto target = dst / rel;
+        if (entry.is_directory()) {
+            fs::create_directories(target, ec);
+            if (ec) return false;
+        } else if (entry.is_regular_file()) {
+            fs::create_directories(target.parent_path(), ec);
+            fs::copy_file(entry.path(), target,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) return false;
+        }
+        // Symlinks, devices, etc. are intentionally skipped — the install
+        // pipeline only writes regular files, so a stray non-regular entry
+        // in RY_HOME cannot have come from us and is not ours to preserve.
+    }
+    return true;
+}
+
+bool create_backup(const std::filesystem::path &backup_root,
+                   const std::string &binary_path,
+                   const std::filesystem::path &ry_home) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // Always start from a clean slate so a leftover backup from a previous
+    // crashed run cannot contaminate this one.
+    fs::remove_all(backup_root, ec);
+    fs::create_directories(backup_root, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to create backup directory: "
+                  << ec.message() << "\n";
+        return false;
+    }
+
+    // 1. Binary — non-negotiable. Without it, rollback is impossible.
+    fs::path backup_binary = backup_root / "binary";
+    fs::copy_file(binary_path, backup_binary,
+                  fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to back up binary: "
+                  << ec.message() << "\n";
+        fs::remove_all(backup_root, ec);
+        return false;
+    }
+    chmod(backup_binary.c_str(), 0755);
+
+    // 2. Stdlib tree. Detect new-layout (share/std) vs old-layout (lib/std).
+    fs::path stdlib_src = ry_home / "share" / "std";
+    fs::path stdlib_dst = backup_root / "share" / "std";
+    if (!fs::is_directory(stdlib_src)) {
+        stdlib_src = ry_home / "lib" / "std";
+        stdlib_dst = backup_root / "lib" / "std";
+    }
+    if (fs::is_directory(stdlib_src)) {
+        if (!copy_tree_recursive(stdlib_src, stdlib_dst)) {
+            std::cerr << "Warning: Failed to back up stdlib tree.\n";
+            fs::remove_all(backup_root, ec);
+            return false;
+        }
+    }
+
+    // 3. Native libs (libemit*, liblower*, libry_*, libLLVM*, libzstd*).
+    fs::path lib_src = ry_home / "lib";
+    fs::path lib_dst = backup_root / "lib";
+    if (fs::is_directory(lib_src)) {
+        fs::create_directories(lib_dst, ec);
+        for (const auto &entry : fs::directory_iterator(lib_src, ec)) {
+            if (ec) break;
+            if (!entry.is_regular_file()) continue;
+            auto filename = entry.path().filename().string();
+            if (!is_bundled_native_lib(filename)) continue;
+            fs::copy_file(entry.path(), lib_dst / filename,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cerr << "Warning: Failed to back up lib " << filename
+                          << ": " << ec.message() << "\n";
+                fs::remove_all(backup_root, ec);
+                return false;
+            }
+        }
+    }
+
+    // 4. Rescue script (next to the running binary, not under RY_HOME).
+    fs::path rescue_src = fs::path(binary_path).parent_path() / "ry-rescue";
+    auto rescue_status = fs::symlink_status(rescue_src, ec);
+    if (!ec && rescue_status.type() == fs::file_type::regular) {
+        fs::path rescue_dst = backup_root / "ry-rescue";
+        fs::copy_file(rescue_src, rescue_dst,
+                      fs::copy_options::overwrite_existing, ec);
+        if (!ec) chmod(rescue_dst.c_str(), 0755);
+    }
+
+    return true;
+}
+
+bool restore_backup(const std::filesystem::path &backup_root,
+                    const std::string &binary_path,
+                    const std::filesystem::path &ry_home) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    bool all_ok = true;
+
+    // 1. Binary. Copy (not rename) so the backup stays complete on failure
+    // paths — callers preserve `backup_root` when rollback can't finish and
+    // a missing binary would defeat the inspection trail.
+    fs::path backup_binary = backup_root / "binary";
+    if (fs::is_regular_file(backup_binary)) {
+        fs::copy_file(backup_binary, binary_path,
+                      fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            std::cerr << "Error: Failed to restore binary: "
+                      << ec.message() << "\n";
+            all_ok = false;
+        } else {
+            // copy_file with overwrite_existing may not reassert the +x bit,
+            // so explicitly restore it.
+            chmod(binary_path.c_str(), 0755);
+#ifdef __APPLE__
+            // macOS amfi caches the code signature by path. Replacing the
+            // binary in-place during the failed update updated the kernel's
+            // cache to the new binary's signature; restoring the backup
+            // (different signature again) would then be SIGKILL'd by the
+            // kernel on the next launch. Re-ad-hoc-sign the restored binary
+            // to refresh the cache. `codesign --force --sign -` ships with
+            // every macOS install (/usr/bin/codesign) so there is no extra
+            // toolchain dependency. Linux has no equivalent gate.
+            std::vector<std::string> codesign_argv = {
+                "/usr/bin/codesign", "--force", "--sign", "-", binary_path};
+            int rc = run_command(codesign_argv);
+            if (rc != 0) {
+                std::cerr << "Warning: codesign --force after restore failed "
+                          << "(exit " << rc << "). The restored binary may "
+                          << "be killed by amfi on next launch — use "
+                          << "`ry-rescue` if that happens.\n";
+            }
+#endif
+        }
+    } else {
+        std::cerr << "Error: Backup is missing binary — cannot restore.\n";
+        all_ok = false;
+    }
+
+    // 2. Stdlib — wipe the destination tree first so files added by the
+    // failed update are purged, then drop the backed-up tree back in.
+    fs::path backup_share_std = backup_root / "share" / "std";
+    fs::path backup_lib_std = backup_root / "lib" / "std";
+    fs::path target_std;
+    fs::path backup_std;
+    if (fs::is_directory(backup_share_std)) {
+        target_std = ry_home / "share" / "std";
+        backup_std = backup_share_std;
+    } else if (fs::is_directory(backup_lib_std)) {
+        target_std = ry_home / "lib" / "std";
+        backup_std = backup_lib_std;
+    }
+    if (!backup_std.empty()) {
+        // Wipe both possible locations — the failed update may have switched
+        // layouts (lib/std -> share/std) and we need to roll BOTH back.
+        fs::remove_all(ry_home / "share" / "std", ec);
+        fs::remove_all(ry_home / "lib" / "std", ec);
+        fs::create_directories(target_std, ec);
+        if (ec || !copy_tree_recursive(backup_std, target_std)) {
+            std::cerr << "Error: Failed to restore stdlib tree.\n";
+            all_ok = false;
+        }
+    }
+
+    // 3. Native libs
+    fs::path backup_lib = backup_root / "lib";
+    if (fs::is_directory(backup_lib)) {
+        fs::path target_lib = ry_home / "lib";
+        fs::create_directories(target_lib, ec);
+        for (const auto &entry : fs::directory_iterator(backup_lib, ec)) {
+            if (ec) break;
+            if (!entry.is_regular_file()) continue;
+            fs::copy_file(entry.path(),
+                          target_lib / entry.path().filename(),
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cerr << "Error: Failed to restore lib "
+                          << entry.path().filename().string() << ": "
+                          << ec.message() << "\n";
+                all_ok = false;
+            }
+        }
+    }
+
+    // 4. Rescue script
+    fs::path backup_rescue = backup_root / "ry-rescue";
+    if (fs::is_regular_file(backup_rescue)) {
+        fs::path target_rescue = fs::path(binary_path).parent_path() / "ry-rescue";
+        fs::copy_file(backup_rescue, target_rescue,
+                      fs::copy_options::overwrite_existing, ec);
+        if (!ec) {
+            chmod(target_rescue.c_str(), 0755);
+        } else {
+            // Rescue is best-effort during restore: a failure here does not
+            // gate rollback success, but log it so a tail trail exists.
+            std::cerr << "Warning: Failed to restore ry-rescue: "
+                      << ec.message() << "\n";
+        }
+    }
+
+    return all_ok;
+}
+
+void cleanup_backup(const std::filesystem::path &backup_root) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::remove_all(backup_root, ec);
+}
+
+SmokeTestResult smoke_test_binary(const std::string &binary_path,
+                                  int timeout_secs) {
+    if (timeout_secs <= 0) timeout_secs = 1;
+
+    int pipefd[2] = {-1, -1};
+    if (pipe(pipefd) == -1) return SmokeTestResult::FailLaunch;
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return SmokeTestResult::FailLaunch;
+    }
+
+    if (pid == 0) {
+        // Child: send stdout into the pipe, silence stderr so dyld errors
+        // from a broken update don't bleed into the parent's terminal.
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execl(binary_path.c_str(), binary_path.c_str(),
+              "--version", static_cast<char *>(nullptr));
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+
+    // Make the read end non-blocking so we can interleave a draining read
+    // with the waitpid poll without risking a hang on a hung child.
+    int flags = fcntl(pipefd[0], F_GETFL, 0);
+    if (flags != -1) fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
+
+    std::string output;
+    auto drain = [&]() {
+        char buf[1024];
+        for (;;) {
+            ssize_t n = read(pipefd[0], buf, sizeof(buf));
+            if (n > 0) {
+                output.append(buf, static_cast<size_t>(n));
+            } else {
+                break;
+            }
+        }
+    };
+
+    int status = 0;
+    bool exited = false;
+    const int chunk_ms = 50;
+    int waited_ms = 0;
+    const int budget_ms = timeout_secs * 1000;
+    while (waited_ms < budget_ms) {
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (r == pid) {
+            exited = true;
+            break;
+        }
+        if (r == -1 && errno != EINTR) break;
+        drain();
+        usleep(chunk_ms * 1000);
+        waited_ms += chunk_ms;
+    }
+
+    if (!exited) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        drain();
+        close(pipefd[0]);
+        return SmokeTestResult::FailTimeout;
+    }
+
+    drain();
+    close(pipefd[0]);
+
+    if (WIFSIGNALED(status)) return SmokeTestResult::FailSignal;
+    if (WIFEXITED(status)) {
+        int code = WEXITSTATUS(status);
+        if (code != 0) return SmokeTestResult::FailExit;
+        // Match the `ry --version` banner format (see cmd_version): the
+        // first stdout token is literally "ry " followed by the version
+        // string. Anything else means the binary is alive but answering
+        // some unrelated prompt — treat as failure.
+        if (output.find("ry ") != std::string::npos)
+            return SmokeTestResult::Pass;
+        return SmokeTestResult::FailNoVersion;
+    }
+    return SmokeTestResult::FailExit;
+}
+
+UpdateLockHandle acquire_update_lock(const std::filesystem::path &lock_path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(lock_path.parent_path(), ec);
+
+    auto write_pid = [&](int fd) {
+        std::string pid_line = std::to_string(getpid()) + "\n";
+        (void)write(fd, pid_line.data(), pid_line.size());
+    };
+
+    int fd = open(lock_path.c_str(),
+                  O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0644);
+    if (fd >= 0) {
+        write_pid(fd);
+        return {fd, UpdateLockResult::Acquired};
+    }
+
+    if (errno != EEXIST) {
+        return {-1, UpdateLockResult::Error};
+    }
+
+    // Lock file already exists — inspect the recorded PID. If that process
+    // is no longer alive, the previous run crashed without cleanup and we
+    // are entitled to reclaim it.
+    std::ifstream ifs(lock_path);
+    std::string content;
+    std::getline(ifs, content);
+    ifs.close();
+
+    // Trim trailing whitespace
+    while (!content.empty() &&
+           (content.back() == '\n' || content.back() == '\r' ||
+            content.back() == ' '  || content.back() == '\t')) {
+        content.pop_back();
+    }
+
+    pid_t holder = 0;
+    if (!content.empty()) {
+        errno = 0;
+        char *end = nullptr;
+        // std::stol would throw on garbage; the project bans it in compiler
+        // C++ but the convention applies here too — use the strto guard.
+        long v = std::strtol(content.c_str(), &end, 10);
+        bool ok = (errno == 0 && end != content.c_str() &&
+                   v > 0 && v <= 0x7fffffff);
+        if (ok) holder = static_cast<pid_t>(v);
+    }
+
+    if (holder > 0 && kill(holder, 0) == 0) {
+        return {-1, UpdateLockResult::BusyOtherProcess};
+    }
+
+    // Stale or unparseable lockfile — reclaim it.
+    fs::remove(lock_path, ec);
+    fd = open(lock_path.c_str(),
+              O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0644);
+    if (fd < 0) return {-1, UpdateLockResult::Error};
+    write_pid(fd);
+    return {fd, UpdateLockResult::Acquired};
+}
+
+void release_update_lock(int fd, const std::filesystem::path &lock_path) {
+    if (fd >= 0) close(fd);
+    std::error_code ec;
+    std::filesystem::remove(lock_path, ec);
+}
+
 } // namespace detail
 } // namespace ry::self_update
+
+namespace {
+
+struct UpdateLockGuard {
+    int fd = -1;
+    std::filesystem::path path;
+    ~UpdateLockGuard() {
+        if (fd >= 0)
+            ry::self_update::detail::release_update_lock(fd, path);
+    }
+};
+
+const char *smoke_failure_label(ry::self_update::detail::SmokeTestResult r) {
+    using R = ry::self_update::detail::SmokeTestResult;
+    switch (r) {
+    case R::FailExit:      return "exited non-zero";
+    case R::FailSignal:    return "killed by signal";
+    case R::FailTimeout:   return "timed out";
+    case R::FailNoVersion: return "did not report a version banner";
+    case R::FailLaunch:    return "failed to launch";
+    case R::Pass:          return "passed";
+    }
+    return "failed";
+}
+
+} // namespace
 
 int cmd_self_update(int argc, char *argv[]) {
     using namespace ry::self_update;
     using namespace ry::self_update::detail;
+    namespace fs = std::filesystem;
 
     std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
@@ -887,12 +1305,51 @@ int cmd_self_update(int argc, char *argv[]) {
         return 1;
     }
 
+    // Concurrent-execution guard (#2456): a second `ry self-update` racing
+    // against the first can interleave file replacements and leave a half-
+    // written set on disk. The lock lives under RY_HOME so it survives
+    // crashes — stale holders are reclaimed by acquire_update_lock.
+    const fs::path ry_home = ry::get_ry_home();
+    const fs::path lock_path = ry_home / ".update.lock";
+    UpdateLockGuard lock_guard;
+    {
+        auto handle = detail::acquire_update_lock(lock_path);
+        switch (handle.result) {
+        case detail::UpdateLockResult::Acquired:
+            lock_guard.fd = handle.fd;
+            lock_guard.path = lock_path;
+            break;
+        case detail::UpdateLockResult::BusyOtherProcess:
+            std::cerr << "Error: Another `ry self-update` is already running.\n"
+                      << "       If you are sure no other update is running, "
+                      << "remove " << lock_path.string() << " and retry.\n";
+            return 1;
+        case detail::UpdateLockResult::Error:
+            std::cerr << "Error: Could not acquire update lock at "
+                      << lock_path.string() << ".\n";
+            return 1;
+        }
+    }
+
     std::string tmp_dir = detail::download_and_extract(target.download_url, target.tag);
     if (tmp_dir.empty()) {
         return 1;
     }
 
+    // Snapshot the pre-update state (#2456). The backup is the rollback
+    // target if smoke test fails; if backup itself fails we MUST abort
+    // before any mutation — running install_* without a usable backup
+    // reintroduces the silent-half-broken state we are trying to prevent.
+    const fs::path backup_root = ry_home / ".backup";
+    if (!detail::create_backup(backup_root, binary_path, ry_home)) {
+        std::cerr << "Error: Failed to create rollback snapshot. "
+                  << "Aborting update to keep the current install intact.\n";
+        detail::run_command({RM_PATH, "-rf", tmp_dir});
+        return 1;
+    }
+
     if (!detail::replace_binary(tmp_dir, binary_path)) {
+        detail::cleanup_backup(backup_root);
         detail::run_command({RM_PATH, "-rf", tmp_dir});
         return 1;
     }
@@ -916,6 +1373,46 @@ int cmd_self_update(int argc, char *argv[]) {
 
     detail::run_command({RM_PATH, "-rf", tmp_dir});
 
-    std::cerr << "Successfully updated to " << target.tag << ".\n";
-    return 0;
+    // Smoke test (#2456): exercise the new binary's dyld load path. If
+    // libLLVM / libemit / liblower / libzstd are missing or ABI-mismatched
+    // the process aborts before main() runs and we catch it here instead of
+    // shipping the user a binary that won't start. 30s budget is well over
+    // the few-ms `--version` actually needs even on cold caches.
+    std::cerr << "Smoke testing new binary..." << std::flush;
+    auto smoke = detail::smoke_test_binary(binary_path, 30);
+    if (smoke == detail::SmokeTestResult::Pass) {
+        std::cerr << " ok.\n";
+        detail::cleanup_backup(backup_root);
+        std::cerr << "Successfully updated to " << target.tag << ".\n";
+        return 0;
+    }
+
+    std::cerr << " " << smoke_failure_label(smoke) << ".\n";
+    std::cerr << "Error: New binary failed smoke test. Rolling back...\n";
+
+    if (!detail::restore_backup(backup_root, binary_path, ry_home)) {
+        std::cerr << "Error: Rollback also failed. The install is in an\n"
+                  << "       inconsistent state. Run `ry-rescue` to recover\n"
+                  << "       a known-good release (see #2455). Backup at:\n"
+                  << "       " << backup_root.string() << "\n";
+        return 1;
+    }
+
+    // Re-verify the restored binary; if THAT one also fails, the old
+    // install was already broken before we touched it. Either way the
+    // user needs to escape via ry-rescue, but spell out the distinction
+    // so the failure report points at the right tool.
+    auto re_smoke = detail::smoke_test_binary(binary_path, 30);
+    if (re_smoke != detail::SmokeTestResult::Pass) {
+        std::cerr << "Error: Restored binary also fails smoke test ("
+                  << smoke_failure_label(re_smoke) << ").\n"
+                  << "       The pre-update install was already broken. "
+                  << "Run `ry-rescue` to recover.\n";
+        return 1;
+    }
+
+    detail::cleanup_backup(backup_root);
+    std::cerr << "Rolled back to the previous version.\n";
+    std::cerr << "Error: Update to " << target.tag << " failed smoke test.\n";
+    return 1;
 }
