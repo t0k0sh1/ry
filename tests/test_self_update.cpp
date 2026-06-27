@@ -437,6 +437,60 @@ TEST_F(InstallRescueScriptTest, IgnoresNonRegularFileEntry) {
     EXPECT_FALSE(fs::exists(binary_path.parent_path() / "ry-rescue"));
 }
 
+class InstallSelfUpdateBinaryTest : public RyInstallTestBase {
+protected:
+    fs::path binary_path;
+
+    void SetUp() override {
+        SetUpDirs("ry_test_install_self_update_binary");
+        binary_path = tmp_root / "bin" / "ry";
+        fs::create_directories(binary_path.parent_path());
+        write_file(binary_path, "fake ry");
+    }
+};
+
+TEST_F(InstallSelfUpdateBinaryTest, CopiesUpdaterNextToBinary) {
+    write_file(src_dir / "ry-self-update", "#!/bin/sh\necho updater\n");
+
+    bool ok = install_self_update_binary(src_dir.string(), binary_path.string());
+    ASSERT_TRUE(ok);
+
+    auto dest = binary_path.parent_path() / "ry-self-update";
+    EXPECT_TRUE(fs::exists(dest));
+
+    std::ifstream ifs(dest);
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "#!/bin/sh\necho updater\n");
+}
+
+TEST_F(InstallSelfUpdateBinaryTest, MarksUpdaterExecutable) {
+    write_file(src_dir / "ry-self-update", "#!/bin/sh\n");
+
+    bool ok = install_self_update_binary(src_dir.string(), binary_path.string());
+    ASSERT_TRUE(ok);
+
+    auto dest = binary_path.parent_path() / "ry-self-update";
+    auto perms = fs::status(dest).permissions();
+    EXPECT_NE(perms & fs::perms::owner_exec, fs::perms::none);
+    EXPECT_NE(perms & fs::perms::group_exec, fs::perms::none);
+    EXPECT_NE(perms & fs::perms::others_exec, fs::perms::none);
+}
+
+TEST_F(InstallSelfUpdateBinaryTest, ReturnsFalseWhenNoUpdaterInArchive) {
+    bool ok = install_self_update_binary(src_dir.string(), binary_path.string());
+    EXPECT_FALSE(ok);
+    EXPECT_FALSE(fs::exists(binary_path.parent_path() / "ry-self-update"));
+}
+
+TEST_F(InstallSelfUpdateBinaryTest, IgnoresNonRegularFileEntry) {
+    fs::create_symlink("/etc/passwd", src_dir / "ry-self-update");
+
+    bool ok = install_self_update_binary(src_dir.string(), binary_path.string());
+    EXPECT_FALSE(ok);
+    EXPECT_FALSE(fs::exists(binary_path.parent_path() / "ry-self-update"));
+}
+
 // --- Checksum verification tests ---
 
 TEST(SelfUpdate, BuildChecksumsUrl) {

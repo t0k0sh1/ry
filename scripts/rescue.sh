@@ -301,6 +301,14 @@ if [ -f "$TMPDIR_RESCUE/ry-rescue" ]; then
         || warn "failed to refresh ry-rescue at $INSTALL_DIR/ry-rescue"
 fi
 
+# Refresh the standalone updater if the archive ships it (post-#2459
+# tarballs do). Without this, a rescue from a v0.0.31-era install can land on
+# a `ry` binary whose `self-update` subcommand forwards to a missing sibling.
+if [ -f "$TMPDIR_RESCUE/ry-self-update" ]; then
+    install -m 755 "$TMPDIR_RESCUE/ry-self-update" "$INSTALL_DIR/ry-self-update" \
+        || warn "failed to refresh ry-self-update at $INSTALL_DIR/ry-self-update"
+fi
+
 log "recovery complete — $TAG installed"
 case ":$PATH:" in
     *":${INSTALL_DIR}:"*) ;;
