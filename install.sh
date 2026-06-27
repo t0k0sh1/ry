@@ -16,7 +16,7 @@ case "$ARCH" in arm64|aarch64) ARCH="arm64" ;; x86_64|amd64) ARCH="amd64" ;; esa
 # the binary unable to start. Mirrors the ry self-update guard in
 # src/cli/self_update.cpp (#2457). The check is skipped for forks
 # (REPO != t0k0sh1/ry) and via RY_ALLOW_LEGACY_DOWNGRADE=1.
-if [ "$VERSION" != "latest" ] && [ "$REPO" = "t0k0sh1/ry" ] && [ -z "${RY_ALLOW_LEGACY_DOWNGRADE:-}" ]; then
+if [ "$VERSION" != "latest" ] && [ "$REPO" = "t0k0sh1/ry" ] && [ "${RY_ALLOW_LEGACY_DOWNGRADE:-}" != "1" ]; then
     case "$VERSION" in
         v0.0.[1-9]|v0.0.[1-9]-*|v0.0.1[0-9]|v0.0.1[0-9]-*|v0.0.2[0-9]|v0.0.2[0-9]-*)
             echo "ERROR: ry $VERSION is no longer installable." >&2
