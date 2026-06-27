@@ -926,3 +926,272 @@ TEST_F(ResolveUpdateTargetLegacyGuardTest, ReturnsEmptyTargetForFourPartLegacyTa
     EXPECT_TRUE(target.tag.empty());
     EXPECT_NE(err.find("not supported as a downgrade target"), std::string::npos);
 }
+
+// --- Atomic update: backup / smoke-test / rollback (#2456) ---
+//
+// The shared fixture below populates a fake "installed" tree under RY_HOME and
+// `bin/` (binary location). It plays the role both of the pre-update state
+// captured by create_backup and the destination that restore_backup writes
+// back to. RyInstallTestBase already handles RY_HOME save/restore.
+
+class AtomicUpdateTest : public RyInstallTestBase {
+protected:
+    fs::path binary_path;
+    fs::path backup_root;
+
+    void SetUp() override {
+        SetUpDirs("ry_test_atomic_update");
+        binary_path = tmp_root / "bin" / "ry";
+        backup_root = dest_home / ".backup";
+        fs::create_directories(binary_path.parent_path());
+    }
+
+    void install_old_state() {
+        write_file(binary_path, "#!/bin/sh\necho ry 0.0.old\n");
+        chmod(binary_path.c_str(), 0755);
+        write_file(dest_home / "share" / "std" / "builtins.ry", "# old builtins");
+        write_file(dest_home / "share" / "std" / "http" / "http.ry", "# old http");
+        write_file(dest_home / "lib" / "libemit.dylib", "old emit");
+        write_file(dest_home / "lib" / "libry_parser.dylib", "old parser");
+        write_file(dest_home / "lib" / "libLLVM.dylib", "old llvm");
+        write_file(binary_path.parent_path() / "ry-rescue", "#!/bin/sh\necho old rescue\n");
+        ry::write_manifest(dest_home / "share" / "std",
+                           {"builtins.ry", "http/http.ry"});
+    }
+
+    std::string read_file(const fs::path &p) {
+        std::ifstream ifs(p);
+        return std::string((std::istreambuf_iterator<char>(ifs)),
+                           std::istreambuf_iterator<char>());
+    }
+};
+
+TEST_F(AtomicUpdateTest, CreateBackupCapturesBinaryStdlibLibsAndRescue) {
+    install_old_state();
+
+    bool ok = create_backup(backup_root, binary_path.string(), dest_home);
+    ASSERT_TRUE(ok);
+
+    // Binary backed up verbatim
+    EXPECT_EQ(read_file(backup_root / "binary"), "#!/bin/sh\necho ry 0.0.old\n");
+    // Stdlib tree backed up
+    EXPECT_EQ(read_file(backup_root / "share" / "std" / "builtins.ry"), "# old builtins");
+    EXPECT_EQ(read_file(backup_root / "share" / "std" / "http" / "http.ry"), "# old http");
+    // Selected native libs backed up
+    EXPECT_EQ(read_file(backup_root / "lib" / "libemit.dylib"), "old emit");
+    EXPECT_EQ(read_file(backup_root / "lib" / "libry_parser.dylib"), "old parser");
+    EXPECT_EQ(read_file(backup_root / "lib" / "libLLVM.dylib"), "old llvm");
+    // Rescue script next to binary backed up
+    EXPECT_EQ(read_file(backup_root / "ry-rescue"), "#!/bin/sh\necho old rescue\n");
+}
+
+TEST_F(AtomicUpdateTest, CreateBackupWipesStaleDirectory) {
+    install_old_state();
+    // Pre-populate a stale backup that must NOT survive the next snapshot.
+    write_file(backup_root / "share" / "std" / "stale.ry", "stale");
+    write_file(backup_root / "lib" / "libstale.dylib", "stale lib");
+
+    bool ok = create_backup(backup_root, binary_path.string(), dest_home);
+    ASSERT_TRUE(ok);
+
+    EXPECT_FALSE(fs::exists(backup_root / "share" / "std" / "stale.ry"));
+    EXPECT_FALSE(fs::exists(backup_root / "lib" / "libstale.dylib"));
+}
+
+TEST_F(AtomicUpdateTest, CreateBackupHandlesOldLayoutStdlib) {
+    write_file(binary_path, "#!/bin/sh\n");
+    chmod(binary_path.c_str(), 0755);
+    write_file(dest_home / "lib" / "std" / "builtins.ry", "# old layout builtins");
+    write_file(dest_home / "lib" / "libry_parser.dylib", "parser");
+
+    bool ok = create_backup(backup_root, binary_path.string(), dest_home);
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(backup_root / "lib" / "std" / "builtins.ry"));
+    EXPECT_FALSE(fs::is_directory(backup_root / "share" / "std"));
+}
+
+TEST_F(AtomicUpdateTest, CreateBackupSucceedsWhenNoRescueScript) {
+    install_old_state();
+    fs::remove(binary_path.parent_path() / "ry-rescue");
+
+    bool ok = create_backup(backup_root, binary_path.string(), dest_home);
+    EXPECT_TRUE(ok);
+    EXPECT_FALSE(fs::exists(backup_root / "ry-rescue"));
+}
+
+TEST_F(AtomicUpdateTest, RestoreBackupRestoresBinaryStdlibLibsAndRescue) {
+    install_old_state();
+    ASSERT_TRUE(create_backup(backup_root, binary_path.string(), dest_home));
+
+    // Simulate a failed update having corrupted everything.
+    write_file(binary_path, "broken new binary");
+    fs::remove_all(dest_home / "share" / "std");
+    fs::remove(dest_home / "lib" / "libemit.dylib");
+    write_file(dest_home / "lib" / "libLLVM.dylib", "new llvm (missing chain dep)");
+    write_file(binary_path.parent_path() / "ry-rescue", "#!/bin/sh\necho NEW\n");
+
+    bool ok = restore_backup(backup_root, binary_path.string(), dest_home);
+    ASSERT_TRUE(ok);
+
+    EXPECT_EQ(read_file(binary_path), "#!/bin/sh\necho ry 0.0.old\n");
+    EXPECT_EQ(read_file(dest_home / "share" / "std" / "builtins.ry"), "# old builtins");
+    EXPECT_EQ(read_file(dest_home / "share" / "std" / "http" / "http.ry"), "# old http");
+    EXPECT_EQ(read_file(dest_home / "lib" / "libemit.dylib"), "old emit");
+    EXPECT_EQ(read_file(dest_home / "lib" / "libLLVM.dylib"), "old llvm");
+    EXPECT_EQ(read_file(binary_path.parent_path() / "ry-rescue"),
+              "#!/bin/sh\necho old rescue\n");
+}
+
+TEST_F(AtomicUpdateTest, RestoreBackupPurgesFilesAddedByFailedUpdate) {
+    install_old_state();
+    ASSERT_TRUE(create_backup(backup_root, binary_path.string(), dest_home));
+
+    // The failed update added a new stdlib file that wasn't in the backup.
+    // After restore the stdlib tree must match the backup exactly.
+    write_file(dest_home / "share" / "std" / "experimental.ry", "# new file");
+
+    ASSERT_TRUE(restore_backup(backup_root, binary_path.string(), dest_home));
+
+    EXPECT_FALSE(fs::exists(dest_home / "share" / "std" / "experimental.ry"));
+    EXPECT_TRUE(fs::exists(dest_home / "share" / "std" / "builtins.ry"));
+}
+
+TEST_F(AtomicUpdateTest, RestoreBackupPreservesBinaryExecutableBit) {
+    install_old_state();
+    ASSERT_TRUE(create_backup(backup_root, binary_path.string(), dest_home));
+
+    write_file(binary_path, "broken");
+    chmod(binary_path.c_str(), 0644);  // strip +x to simulate damage
+
+    ASSERT_TRUE(restore_backup(backup_root, binary_path.string(), dest_home));
+
+    auto perms = fs::status(binary_path).permissions();
+    EXPECT_NE(perms & fs::perms::owner_exec, fs::perms::none);
+}
+
+TEST_F(AtomicUpdateTest, CleanupBackupRemovesBackupRoot) {
+    install_old_state();
+    ASSERT_TRUE(create_backup(backup_root, binary_path.string(), dest_home));
+    ASSERT_TRUE(fs::exists(backup_root));
+
+    cleanup_backup(backup_root);
+    EXPECT_FALSE(fs::exists(backup_root));
+}
+
+TEST_F(AtomicUpdateTest, CleanupBackupTolerantWhenAbsent) {
+    EXPECT_FALSE(fs::exists(backup_root));
+    cleanup_backup(backup_root);  // must not throw
+    EXPECT_FALSE(fs::exists(backup_root));
+}
+
+// --- Smoke test (#2456) ---
+
+class SmokeTestBinaryTest : public ::testing::Test {
+protected:
+    fs::path tmp_root;
+    fs::path binary;
+
+    void SetUp() override {
+        tmp_root = fs::temp_directory_path() / "ry_test_smoke";
+        fs::remove_all(tmp_root);
+        fs::create_directories(tmp_root);
+        binary = tmp_root / "fake_ry";
+    }
+    void TearDown() override { fs::remove_all(tmp_root); }
+
+    void write_script(const std::string &body) {
+        std::ofstream(binary) << body;
+        chmod(binary.c_str(), 0755);
+    }
+};
+
+TEST_F(SmokeTestBinaryTest, PassWhenExitZeroAndVersionInStdout) {
+    write_script("#!/bin/sh\necho 'ry 0.0.42'\nexit 0\n");
+    EXPECT_EQ(smoke_test_binary(binary.string(), 5), SmokeTestResult::Pass);
+}
+
+TEST_F(SmokeTestBinaryTest, FailExitOnNonZeroStatus) {
+    write_script("#!/bin/sh\nexit 1\n");
+    EXPECT_EQ(smoke_test_binary(binary.string(), 5), SmokeTestResult::FailExit);
+}
+
+TEST_F(SmokeTestBinaryTest, FailSignalWhenKilled) {
+    // SIGSEGV mimics dyld load failure killing the process before main().
+    write_script("#!/bin/sh\nkill -SEGV $$\n");
+    EXPECT_EQ(smoke_test_binary(binary.string(), 5), SmokeTestResult::FailSignal);
+}
+
+TEST_F(SmokeTestBinaryTest, FailTimeoutWhenChildHangs) {
+    write_script("#!/bin/sh\nsleep 30\n");
+    auto r = smoke_test_binary(binary.string(), 1);
+    EXPECT_EQ(r, SmokeTestResult::FailTimeout);
+}
+
+TEST_F(SmokeTestBinaryTest, FailNoVersionWhenStdoutLacksBanner) {
+    write_script("#!/bin/sh\necho 'hello world'\nexit 0\n");
+    EXPECT_EQ(smoke_test_binary(binary.string(), 5), SmokeTestResult::FailNoVersion);
+}
+
+TEST_F(SmokeTestBinaryTest, FailLaunchWhenBinaryDoesNotExist) {
+    auto missing = tmp_root / "does_not_exist";
+    auto r = smoke_test_binary(missing.string(), 5);
+    EXPECT_TRUE(r == SmokeTestResult::FailLaunch || r == SmokeTestResult::FailExit);
+}
+
+// --- Update lock (#2456) ---
+
+class UpdateLockTest : public ::testing::Test {
+protected:
+    fs::path tmp_root;
+    fs::path lock_path;
+
+    void SetUp() override {
+        tmp_root = fs::temp_directory_path() / "ry_test_update_lock";
+        fs::remove_all(tmp_root);
+        fs::create_directories(tmp_root);
+        lock_path = tmp_root / ".update.lock";
+    }
+    void TearDown() override { fs::remove_all(tmp_root); }
+};
+
+TEST_F(UpdateLockTest, AcquireOnFreshPath) {
+    auto h = acquire_update_lock(lock_path);
+    ASSERT_EQ(h.result, UpdateLockResult::Acquired);
+    EXPECT_GE(h.fd, 0);
+    EXPECT_TRUE(fs::exists(lock_path));
+    release_update_lock(h.fd, lock_path);
+    EXPECT_FALSE(fs::exists(lock_path));
+}
+
+TEST_F(UpdateLockTest, RejectsWhenLiveHolderPresent) {
+    auto h1 = acquire_update_lock(lock_path);
+    ASSERT_EQ(h1.result, UpdateLockResult::Acquired);
+
+    auto h2 = acquire_update_lock(lock_path);
+    EXPECT_EQ(h2.result, UpdateLockResult::BusyOtherProcess);
+
+    release_update_lock(h1.fd, lock_path);
+}
+
+TEST_F(UpdateLockTest, TakesOverStaleLock) {
+    // Write a lockfile whose PID will never be alive. PID 1 is init and
+    // is always alive, so pick something high enough to be safely dead
+    // in any sane test environment. Use 0x7fffffff (INT32_MAX) — kill(2)
+    // returns ESRCH for it on every POSIX OS we ship on.
+    {
+        std::ofstream(lock_path) << "2147483645\n";
+    }
+
+    auto h = acquire_update_lock(lock_path);
+    EXPECT_EQ(h.result, UpdateLockResult::Acquired);
+    release_update_lock(h.fd, lock_path);
+}
+
+TEST_F(UpdateLockTest, ReleaseIsIdempotentOnMissingFile) {
+    auto h = acquire_update_lock(lock_path);
+    ASSERT_EQ(h.result, UpdateLockResult::Acquired);
+    fs::remove(lock_path);  // simulate a tidy admin
+    release_update_lock(h.fd, lock_path);  // must not throw / abort
+    SUCCEED();
+}

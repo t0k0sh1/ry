@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -89,6 +90,61 @@ bool replace_binary(const std::string &tmp_dir, const std::string &binary_path);
 bool install_stdlib(const std::string &tmp_dir);
 bool install_native_libs(const std::string &tmp_dir);
 bool install_rescue_script(const std::string &tmp_dir, const std::string &binary_path);
+
+// --- Backup / smoke-test / rollback (#2456) ---
+
+// Snapshot the pre-update state (binary, stdlib tree, native libs, rescue
+// script) into `backup_root`. Returns true iff every existing component
+// was copied successfully; on failure, the partial backup is removed so
+// the caller can abort cleanly. `backup_root` is wiped before snapshot.
+bool create_backup(const std::filesystem::path &backup_root,
+                   const std::string &binary_path,
+                   const std::filesystem::path &ry_home);
+
+// Restore every component captured by create_backup to its original
+// location. The current stdlib tree is removed before the backed-up
+// tree is copied back so files added by the failed update are purged.
+// Returns true iff every component restores successfully.
+bool restore_backup(const std::filesystem::path &backup_root,
+                    const std::string &binary_path,
+                    const std::filesystem::path &ry_home);
+
+// Best-effort removal of `backup_root`. Failures are logged but ignored —
+// a stale backup directory is harmless and will be wiped on the next run.
+void cleanup_backup(const std::filesystem::path &backup_root);
+
+enum class SmokeTestResult {
+    Pass,           // exit 0 + stdout contains the version banner ("ry ")
+    FailExit,       // process exited with a non-zero status
+    FailSignal,     // process was killed by a signal (e.g. dyld load failure)
+    FailTimeout,    // process did not exit within the allotted seconds
+    FailNoVersion,  // exit 0 but stdout did not look like a version banner
+    FailLaunch,     // fork/exec/pipe machinery itself failed
+};
+
+// Run `<binary_path> --version` in a child process, kill it after
+// `timeout_secs` if it has not exited. Pure with respect to the
+// filesystem (no temp files written).
+SmokeTestResult smoke_test_binary(const std::string &binary_path,
+                                  int timeout_secs);
+
+enum class UpdateLockResult {
+    Acquired,           // Lock obtained (callers own the fd)
+    BusyOtherProcess,   // Another live ry process holds the lock
+    Error,              // I/O failure unrelated to contention
+};
+
+struct UpdateLockHandle {
+    int fd;
+    UpdateLockResult result;
+};
+
+// Atomically create the PID lock at `lock_path` via O_CREAT|O_EXCL. If a
+// stale file is found (PID is no longer alive), it is reclaimed. Callers
+// release with release_update_lock(handle.fd, lock_path) on every exit
+// path — RAII guard recommended.
+UpdateLockHandle acquire_update_lock(const std::filesystem::path &lock_path);
+void release_update_lock(int fd, const std::filesystem::path &lock_path);
 
 } // namespace detail
 } // namespace ry::self_update

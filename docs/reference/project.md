@@ -219,7 +219,15 @@ ry self-update v0.0.1       # Update to a specified version
    - No arguments: Latest stable release from GitHub (`/releases/latest`)
    - Version specified: Release with the specified tag
 3. If the current version is the same, exits with `"Already up to date."`
-4. Downloads the binary and replaces the current executable
+4. Acquires a PID lock at `~/.ry/.update.lock` to refuse concurrent updates
+5. Snapshots the pre-update state (binary, stdlib tree, bundled native libs, `ry-rescue`) to `~/.ry/.backup/`
+6. Downloads the binary and replaces the current executable, stdlib, native libs, and `ry-rescue`
+7. Runs `<new-binary> --version` as a smoke test (30 s timeout). On failure (non-zero exit, signal, timeout, or missing version banner) the backup is restored and the rollback is verified by re-running the smoke test
+8. On smoke-test success the backup is removed and `"Successfully updated"` is reported
+
+### Atomic Update and Rollback
+
+`ry self-update` is atomic at the install boundary: every component (binary, stdlib, native libs, rescue script) is snapshotted before any file on disk is modified. If the new binary cannot start — e.g. a missing `~/.ry/lib/libLLVM.dylib` causes a dyld failure before `main()` — the smoke test catches the failure and the backup is restored automatically. The previous version's `ry --version` works again immediately. If the backup itself cannot be restored, or the rollback target also fails its smoke test (the install was already broken before the update), `ry-rescue` is recommended as the next escape hatch and the backup directory is preserved at `~/.ry/.backup/` for inspection.
 
 ### Downgrade Limits
 
@@ -244,7 +252,7 @@ To bypass the failure caused by a missing signature file (not recommended), set 
 
 - Requires `curl` and `tar` commands
 - If replacing the binary fails due to insufficient permissions, a message suggesting `sudo` is displayed (sudo is not invoked automatically)
-- Downloads are performed to a temporary directory first; however, if the cross-filesystem `cp` fallback is interrupted, the destination binary may be left in a partial state
+- Downloads are performed to a temporary directory first. Within a single `ry self-update` run, the smoke test / automatic rollback covers a partial overwrite from an interrupted cross-filesystem `cp` fallback. If the process itself is killed mid-write (e.g. SIGKILL during the `cp`), the next invocation cannot recover automatically because the surviving backup may already reflect the partial state — run `ry-rescue` to reinstall a known-good release
 
 ---
 
