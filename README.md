@@ -148,6 +148,18 @@ ry self-update                        # Update ry itself
 
 The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
 
+### Emergency recovery (`ry-rescue`)
+
+If `ry` itself fails to start — typically after a partial install left `~/.ry/lib/libLLVM.{dylib,so.*}` missing or stale — `ry self-update` cannot recover from inside the broken binary. Run the bundled emergency recovery script instead:
+
+```bash
+ry-rescue
+```
+
+`ry-rescue` is installed next to `ry` (default: `~/.local/bin/ry-rescue`) by both `install.sh` and `ry self-update`. It is a self-contained POSIX shell script that does not link `libLLVM`. It downloads the latest stable release, verifies the SHA-256 checksum (mandatory), verifies the Ed25519 signature when a capable OpenSSL 3.x is available (optional, with a clear warning otherwise), cleans up stale native libraries in `~/.ry/lib/`, and reinstalls `ry` plus the shared libraries and standard library. After it finishes, `ry --version` should work again.
+
+The script honors `RY_INSTALL_DIR` and `RY_HOME` the same way `install.sh` does. Its only required dependencies are `curl`, `tar`, and `shasum`.
+
 Stdin also supports here-documents:
 
 ```bash

@@ -89,6 +89,12 @@ fi
 cp -r "$REPO_ROOT/share/std" "$DIST_DIR/share/std"
 cp "$REPO_ROOT/LICENSE-LLVM.txt" "$DIST_DIR/LICENSE-LLVM.txt"
 
+# ry-rescue: emergency recovery script (#2455). Ships at the tarball top
+# level so install.sh / self_update.cpp / install.sh-style consumers can
+# drop it next to `ry`. Standalone POSIX shell — does NOT link libLLVM,
+# so it survives the failure mode that ry-rescue exists to fix.
+install -m 755 "$REPO_ROOT/scripts/rescue.sh" "$DIST_DIR/ry-rescue"
+
 case "$PLATFORM" in
 darwin)
     RY="$DIST_DIR/ry"

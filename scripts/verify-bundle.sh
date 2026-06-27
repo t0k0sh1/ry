@@ -67,6 +67,28 @@ else
     fail=1
 fi
 
+# --- common: ry-rescue emergency recovery script (#2455) ---
+# Must be present at the tarball top level, executable, and POSIX-shell
+# parseable (so it stays runnable in the libLLVM-broken state it exists
+# to recover from — `sh -n` only checks syntax, no LLVM linkage).
+if [[ -f "$DIST_DIR/ry-rescue" ]]; then
+    if [[ -x "$DIST_DIR/ry-rescue" ]]; then
+        echo "  ok: ry-rescue bundled (executable)"
+    else
+        echo "  FAIL: ry-rescue is not executable" >&2
+        fail=1
+    fi
+    if sh -n "$DIST_DIR/ry-rescue" 2>/dev/null; then
+        echo "  ok: ry-rescue parses as POSIX shell"
+    else
+        echo "  FAIL: ry-rescue fails POSIX shell parse (sh -n)" >&2
+        fail=1
+    fi
+else
+    echo "  FAIL: ry-rescue missing from $DIST_DIR (#2455)" >&2
+    fail=1
+fi
+
 case "$PLATFORM" in
 darwin)
     RY="$DIST_DIR/ry"

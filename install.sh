@@ -50,6 +50,14 @@ fi
 # Archive validated — safe to mutate installed artifacts.
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
+# ry-rescue: emergency recovery script (#2455). Older tarballs (pre-#2455)
+# do not carry it — skip silently in that case so installing an older
+# version stays a no-op for rescue.
+if [ -f "$TMPDIR/ry-rescue" ]; then
+    install -m 755 "$TMPDIR/ry-rescue" "$INSTALL_DIR/ry-rescue"
+    echo "ry-rescue installed to $INSTALL_DIR/ry-rescue"
+fi
+
 # Install native shared libraries
 if [ -d "$TMPDIR/lib" ]; then
     NATIVE_LIBS_INSTALLED=0
