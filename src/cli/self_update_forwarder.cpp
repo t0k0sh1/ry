@@ -3,6 +3,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -53,9 +54,10 @@ int cmd_self_update(int argc, char *argv[], const char *ry_argv0) {
 
     fs::path companion = find_companion_binary(ry_argv0);
     if (companion.empty()) {
-        std::cerr << "Error: ry-self-update was not found next to ry.\n"
-                  << "       Reinstall ry or run `ry-rescue` to recover a complete install.\n";
-        return 1;
+        std::cerr << "Warning: ry-self-update was not found next to ry.\n"
+                  << "         Falling back to the built-in repair updater.\n";
+        setenv("RY_REPAIR_MISSING_COMPANION", "1", 1);
+        return cmd_ry_self_update(argc, argv);
     }
 
     std::vector<std::string> owned_args;

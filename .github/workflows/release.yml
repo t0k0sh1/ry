@@ -135,7 +135,7 @@ jobs:
           bash scripts/verify-bundle.sh dist "$platform"
           tarball="ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz"
           cd dist
-          tar czf "$tarball" ry lib/ share/ LICENSE-LLVM.txt
+          tar czf "$tarball" ry ry-self-update ry-rescue lib/ share/ LICENSE-LLVM.txt
           size=$(stat -f%z "$tarball" 2>/dev/null || stat -c%s "$tarball")
           echo "::notice::Tarball $tarball size: $((size / 1024 / 1024)) MB ($size bytes)"
 

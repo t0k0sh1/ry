@@ -221,11 +221,16 @@ target_compile_options(ry_lib PRIVATE ${RY_WARNING_FLAGS})
 # emit/lower, or stdlib native-library load-time dependencies.
 add_library(ry_self_update_core STATIC
     src/cli/self_update.cpp
-    src/util/executable_path.cpp
 )
 target_include_directories(ry_self_update_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(ry_self_update_core PUBLIC Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
 target_compile_options(ry_self_update_core PRIVATE ${RY_WARNING_FLAGS})
+
+add_library(ry_executable_path_core STATIC
+    src/util/executable_path.cpp
+)
+target_include_directories(ry_executable_path_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(ry_executable_path_core PRIVATE ${RY_WARNING_FLAGS})
 
 add_library(ry_install_paths_core STATIC
     src/project/paths_manifest.cpp
@@ -234,7 +239,11 @@ target_include_directories(ry_install_paths_core PUBLIC ${CMAKE_CURRENT_SOURCE_D
 target_compile_options(ry_install_paths_core PRIVATE ${RY_WARNING_FLAGS})
 
 add_executable(ry-self-update src/self-update/main.cpp)
-target_link_libraries(ry-self-update PRIVATE ry_self_update_core ry_install_paths_core)
+target_link_libraries(ry-self-update PRIVATE
+    ry_self_update_core
+    ry_install_paths_core
+    ry_executable_path_core
+)
 target_compile_options(ry-self-update PRIVATE ${RY_WARNING_FLAGS})
 
 # ===== Native shared libraries for @native("libname") =====
@@ -512,6 +521,7 @@ else()
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
 endif()
+target_link_libraries(ry PRIVATE ry_self_update_core ry_install_paths_core)
 add_dependencies(ry lower)
 target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
 

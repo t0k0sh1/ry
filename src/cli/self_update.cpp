@@ -1368,12 +1368,22 @@ int cmd_ry_self_update(int argc, char *argv[]) {
     }
 
     std::string current_tag = std::string("v") + RY_VERSION;
-    if (target.tag == current_tag) {
+    const char *repair_env = std::getenv("RY_REPAIR_MISSING_COMPANION");
+    bool repair_missing_companion = (repair_env && strcmp(repair_env, "1") == 0);
+    if (target.tag == current_tag && !repair_missing_companion) {
         std::cerr << "Already up to date.\n";
         return 0;
     }
+    if (target.tag == current_tag && repair_missing_companion) {
+        if (target.download_url.empty()) {
+            target.download_url = detail::build_download_url(current_tag, platform);
+        }
+        std::cerr << "Repairing install from " << current_tag << " release assets...\n";
+    }
 
-    std::cerr << "Updating to " << target.tag << "...\n";
+    if (target.tag != current_tag) {
+        std::cerr << "Updating to " << target.tag << "...\n";
+    }
 
     std::string running_path = get_executable_path();
     if (running_path.empty()) {
