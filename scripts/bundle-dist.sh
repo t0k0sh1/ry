@@ -11,6 +11,7 @@
 #
 # Layout produced (consumed by scripts/verify-bundle.sh and install.sh):
 #   DIST_DIR/ry
+#   DIST_DIR/ry-self-update
 #   DIST_DIR/lib/{libLLVM.*,libzstd.1.dylib(macOS),libemit.*,liblower.*,libry_*.*}
 #   DIST_DIR/share/std/
 #   DIST_DIR/LICENSE-LLVM.txt
@@ -45,7 +46,10 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR/lib" "$DIST_DIR/share"
 
 [[ -f "$BUILD_DIR/ry" ]] || { echo "bundle-dist: $BUILD_DIR/ry not found — build first" >&2; exit 1; }
+[[ -f "$BUILD_DIR/ry-self-update" ]] || { echo "bundle-dist: $BUILD_DIR/ry-self-update not found — build first" >&2; exit 1; }
 cp "$BUILD_DIR/ry" "$DIST_DIR/ry"
+cp "$BUILD_DIR/ry-self-update" "$DIST_DIR/ry-self-update"
+chmod 755 "$DIST_DIR/ry-self-update"
 
 # The Rust cdylibs (libemit, liblower) + stdlib native libs (libry_*) ship as-is
 # from the build tree. The cdylibs are matched separately from the libry_* glob
@@ -98,6 +102,7 @@ install -m 755 "$REPO_ROOT/scripts/rescue.sh" "$DIST_DIR/ry-rescue"
 case "$PLATFORM" in
 darwin)
     RY="$DIST_DIR/ry"
+    RY_SELF_UPDATE="$DIST_DIR/ry-self-update"
     LIB="$DIST_DIR/lib"
 
     # Resolve the absolute install names `ry` currently records, so we rewrite the
@@ -185,10 +190,12 @@ darwin)
     install_name_tool -add_rpath "$RPATH_TARBALL_MAC" "$RY"
     install_name_tool -add_rpath "$RPATH_INSTALL_MAC" "$RY"
     codesign --force --sign - "$RY"
+    codesign --force --sign - "$RY_SELF_UPDATE"
     ;;
 
 linux)
     RY="$DIST_DIR/ry"
+    RY_SELF_UPDATE="$DIST_DIR/ry-self-update"
     LIB="$DIST_DIR/lib"
 
     # Copy libLLVM under the exact soname `ry` records as NEEDED (e.g. libLLVM.so.21).

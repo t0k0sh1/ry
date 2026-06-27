@@ -1,5 +1,5 @@
 #include "ry/jit/test_runner.hpp"
-#include "ry/cli/self_update.hpp"
+#include "ry/util/executable_path.hpp"
 #ifdef __APPLE__
 #include <crt_externs.h>
 #define RY_ENVIRON (*_NSGetEnviron())
@@ -264,7 +264,7 @@ int computeParallelism(int requested_workers, std::size_t test_file_count) {
 int runTestFiles(const std::vector<std::string> &test_files,
                  int parallel_workers,
                  bool outline) {
-    std::string exe_path = ry::self_update::detail::get_executable_path();
+    std::string exe_path = ry::get_executable_path();
     if (exe_path.empty()) {
         llvm::errs()
             << "Error: cannot resolve executable path for subprocess test runner\n";

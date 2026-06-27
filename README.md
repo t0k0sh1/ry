@@ -144,19 +144,26 @@ ry run [<name>|<file.ry>|-- [args]]   # Run a project script, Ry file, or entry 
 ry fmt [options] [path]               # Format source files
 ry docs [options]                     # Generate static HTML API documentation
 ry self-update                        # Update ry itself
+ry-self-update                        # Standalone updater/recovery entrypoint
 ```
 
-The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
+`ry self-update` forwards to the companion `ry-self-update` binary in healthy installs. The standalone updater verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
 
-### Emergency recovery (`ry-rescue`)
+### Emergency recovery (`ry-self-update`, `ry-rescue`)
 
-If `ry` itself fails to start — typically after a partial install left `~/.ry/lib/libLLVM.{dylib,so.*}` missing or stale — `ry self-update` cannot recover from inside the broken binary. Run the bundled emergency recovery script instead:
+If `ry` itself fails to start — typically after a partial install left `~/.ry/lib/libLLVM.{dylib,so.*}` missing or stale — `ry self-update` cannot reach its forwarder. Run the bundled standalone updater directly:
+
+```bash
+ry-self-update
+```
+
+If `ry-self-update` is missing too, run the emergency recovery script:
 
 ```bash
 ry-rescue
 ```
 
-`ry-rescue` is installed next to `ry` (default: `~/.local/bin/ry-rescue`) by both `install.sh` and `ry self-update`. It is a self-contained POSIX shell script that does not link `libLLVM`. It downloads the latest stable release, verifies the SHA-256 checksum (mandatory), verifies the Ed25519 signature when a capable OpenSSL 3.x is available (optional, with a clear warning otherwise), cleans up stale native libraries in `~/.ry/lib/`, and reinstalls `ry` plus the shared libraries and standard library. After it finishes, `ry --version` should work again.
+`ry-self-update` and `ry-rescue` are installed next to `ry` (default: `~/.local/bin/`). `ry-self-update` is a small native updater that does not link `libLLVM`, `libemit`, `liblower`, or `libry_*`. `ry-rescue` is a self-contained POSIX shell script fallback. After either recovery path finishes, `ry --version` should work again.
 
 The script honors `RY_INSTALL_DIR` and `RY_HOME` the same way `install.sh` does. Its only required dependencies are `curl`, `tar`, and `shasum`.
 

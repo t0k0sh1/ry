@@ -8,7 +8,7 @@
 #include "ry/jit/jit.hpp"
 #include "ry/test_runtime.hpp"
 #include "ry/project/project_config.hpp"
-#include "ry/cli/self_update.hpp"
+#include "ry/util/executable_path.hpp"
 #include "ry/project/paths.hpp"
 #include "ry/coverage/coverage_runtime.hpp"
 #include "ry/trace/trace.hpp"
@@ -282,7 +282,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     {
         // Resolve the executable path for reliable exe-relative library search.
         // argv0 may be a bare name (e.g. "ry" from PATH), so resolve it first.
-        std::string resolvedExe = ry::self_update::detail::get_executable_path();
+        std::string resolvedExe = ry::get_executable_path();
         if (resolvedExe.empty()) resolvedExe = argv0;
         auto requiredLibs = cg->getRequiredLibraries();
         for (const auto &libName : requiredLibs) {
