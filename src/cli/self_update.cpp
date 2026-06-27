@@ -674,6 +674,34 @@ bool install_stdlib(const std::string &tmp_dir_str) {
     return true;
 }
 
+bool install_rescue_script(const std::string &tmp_dir, const std::string &binary_path) {
+    namespace fs = std::filesystem;
+    fs::path src = fs::path(tmp_dir) / "ry-rescue";
+    // Pre-#2455 tarballs do not ship ry-rescue. Reject silently so a stable
+    // self-update against an older release can still succeed. Use symlink_status
+    // so we never follow a malicious symlink in the extracted tree.
+    std::error_code ec;
+    auto status = fs::symlink_status(src, ec);
+    if (ec || status.type() != fs::file_type::regular)
+        return false;
+
+    fs::path dest = fs::path(binary_path).parent_path() / "ry-rescue";
+    fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to install ry-rescue: " << ec.message() << "\n";
+        return false;
+    }
+    // Force +x for all roles. copy_file copies the source mode, but the
+    // recovery story collapses if execute bits get stripped on a tarball
+    // unpacked through a tool that masks them (e.g. via a noexec mount in
+    // the middle of the path; or a CI runner with a tight umask).
+    if (chmod(dest.c_str(), 0755) != 0) {
+        std::cerr << "Warning: Failed to mark ry-rescue executable.\n";
+        return false;
+    }
+    return true;
+}
+
 bool install_native_libs(const std::string &tmp_dir) {
     namespace fs = std::filesystem;
     fs::path src_lib = fs::path(tmp_dir) / "lib";
@@ -737,6 +765,11 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
             std::cerr << "\nEnvironment:\n";
             std::cerr << "  RY_SKIP_SIGNATURE=1  Skip signature verification (unsafe)\n";
+            std::cerr << "\nEmergency recovery:\n";
+            std::cerr << "  If ry fails to start (e.g. missing ~/.ry/lib/libLLVM),\n";
+            std::cerr << "  run 'ry-rescue' instead — it is a standalone POSIX shell\n";
+            std::cerr << "  script that does not link libLLVM and can reinstall a\n";
+            std::cerr << "  working release.\n";
             return 0;
         } else if (arg == "--nightly") {
             std::cerr << "Error: --nightly is no longer supported. self-update always targets the latest stable release.\n";
@@ -789,6 +822,13 @@ int cmd_self_update(int argc, char *argv[]) {
     // Install/update native shared libraries
     if (detail::install_native_libs(tmp_dir)) {
         std::cerr << "Native libraries updated.\n";
+    }
+
+    // Refresh the bundled ry-rescue emergency recovery script (#2455). Older
+    // releases (pre-#2455) do not ship it — install_rescue_script returns
+    // false in that case and we stay silent.
+    if (detail::install_rescue_script(tmp_dir, binary_path)) {
+        std::cerr << "ry-rescue recovery script updated.\n";
     }
 
     detail::run_command({RM_PATH, "-rf", tmp_dir});

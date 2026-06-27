@@ -351,6 +351,92 @@ TEST_F(InstallNativeLibsTest, ReturnsFalseWhenCopyFails) {
     EXPECT_NE(err.find("Warning: Failed to copy"), std::string::npos);
 }
 
+// --- ry-rescue install tests (#2455) ---
+//
+// install_rescue_script copies a bundled `ry-rescue` shell script from the
+// extracted tarball next to the running ry binary (same directory as
+// `binary_path`). This keeps the recovery tool reachable via the same PATH
+// the user already has for `ry`. Older tarballs (pre-#2455) do not carry
+// ry-rescue — the function must report false in that case so the self-update
+// success message can stay accurate.
+
+class InstallRescueScriptTest : public RyInstallTestBase {
+protected:
+    fs::path binary_path;
+
+    void SetUp() override {
+        SetUpDirs("ry_test_install_rescue_script");
+        binary_path = tmp_root / "bin" / "ry";
+        fs::create_directories(binary_path.parent_path());
+        write_file(binary_path, "fake ry");
+    }
+};
+
+TEST_F(InstallRescueScriptTest, CopiesRescueScriptNextToBinary) {
+    write_file(src_dir / "ry-rescue", "#!/bin/sh\necho rescue\n");
+
+    bool ok = install_rescue_script(src_dir.string(), binary_path.string());
+    ASSERT_TRUE(ok);
+
+    auto dest = binary_path.parent_path() / "ry-rescue";
+    EXPECT_TRUE(fs::exists(dest));
+
+    std::ifstream ifs(dest);
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "#!/bin/sh\necho rescue\n");
+}
+
+TEST_F(InstallRescueScriptTest, MarksRescueScriptExecutable) {
+    // The shipped tarball already sets mode 0755, but copy_file on some
+    // filesystems may strip execute bits — assert the install path forces
+    // them back on so users can run ry-rescue directly.
+    write_file(src_dir / "ry-rescue", "#!/bin/sh\n");
+
+    bool ok = install_rescue_script(src_dir.string(), binary_path.string());
+    ASSERT_TRUE(ok);
+
+    auto dest = binary_path.parent_path() / "ry-rescue";
+    auto perms = fs::status(dest).permissions();
+    EXPECT_NE(perms & fs::perms::owner_exec, fs::perms::none);
+    EXPECT_NE(perms & fs::perms::group_exec, fs::perms::none);
+    EXPECT_NE(perms & fs::perms::others_exec, fs::perms::none);
+}
+
+TEST_F(InstallRescueScriptTest, ReturnsFalseWhenNoRescueInArchive) {
+    // Pre-#2455 tarballs do not ship ry-rescue. The function must report
+    // false instead of warning/failing — self-update should succeed
+    // against older releases that legitimately have no rescue script.
+    bool ok = install_rescue_script(src_dir.string(), binary_path.string());
+    EXPECT_FALSE(ok);
+    EXPECT_FALSE(fs::exists(binary_path.parent_path() / "ry-rescue"));
+}
+
+TEST_F(InstallRescueScriptTest, OverwritesExistingRescue) {
+    write_file(binary_path.parent_path() / "ry-rescue", "#!/bin/sh\necho OLD\n");
+    write_file(src_dir / "ry-rescue", "#!/bin/sh\necho NEW\n");
+
+    bool ok = install_rescue_script(src_dir.string(), binary_path.string());
+    ASSERT_TRUE(ok);
+
+    std::ifstream ifs(binary_path.parent_path() / "ry-rescue");
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "#!/bin/sh\necho NEW\n");
+}
+
+TEST_F(InstallRescueScriptTest, IgnoresNonRegularFileEntry) {
+    // A symlink at tmp_dir/ry-rescue would otherwise resolve through the
+    // copy. install_rescue_script must reject anything that isn't a
+    // regular file (matches the validate-before-install posture used
+    // elsewhere in self_update).
+    fs::create_symlink("/etc/passwd", src_dir / "ry-rescue");
+
+    bool ok = install_rescue_script(src_dir.string(), binary_path.string());
+    EXPECT_FALSE(ok);
+    EXPECT_FALSE(fs::exists(binary_path.parent_path() / "ry-rescue"));
+}
+
 // --- Checksum verification tests ---
 
 TEST(SelfUpdate, BuildChecksumsUrl) {
