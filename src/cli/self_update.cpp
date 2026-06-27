@@ -66,6 +66,58 @@ bool is_valid_tag(const std::string &tag) {
 
 namespace detail {
 
+std::optional<Semver> parse_semver(const std::string &tag) {
+    const char *p = tag.c_str();
+    const char *end = p + tag.size();
+
+    if (p < end && (*p == 'v' || *p == 'V')) ++p;
+
+    auto parse_uint = [&](uint64_t &out) -> bool {
+        // Require a leading decimal digit. strtoull would otherwise silently
+        // accept '+' / '-' / whitespace and yield garbage for tags like
+        // "v-1.0.0" (which is_valid_tag's [0-9A-Za-z._-]+ permits).
+        if (p >= end || *p < '0' || *p > '9') return false;
+        char *eptr = nullptr;
+        errno = 0;
+        out = std::strtoull(p, &eptr, 10);
+        if (errno == ERANGE) return false;
+        if (eptr == p) return false;
+        p = eptr;
+        return true;
+    };
+
+    Semver v{};
+    if (!parse_uint(v.major)) return std::nullopt;
+    if (p >= end || *p != '.') return std::nullopt;
+    ++p;
+    if (!parse_uint(v.minor)) return std::nullopt;
+    if (p >= end || *p != '.') return std::nullopt;
+    ++p;
+    if (!parse_uint(v.patch)) return std::nullopt;
+    // Anything after patch (pre-release, build metadata, 4-part suffix) is
+    // tolerated — only major.minor.patch matters for the legacy guard.
+    return v;
+}
+
+bool is_legacy_downgrade_target(const std::string &tag) {
+    auto v = parse_semver(tag);
+    if (!v) return false;
+    static constexpr Semver LEGACY_CUTOFF{0, 0, 29};
+    return *v <= LEGACY_CUTOFF;
+}
+
+DowngradeGuardResult check_downgrade_guard(
+    const std::string &tag,
+    const std::string &repo,
+    bool allow_legacy_env_set) {
+    // Forks (custom RY_UPDATE_REPO) don't share the upstream install-filter
+    // history, so skip the guard entirely for them (CI test convenience).
+    if (repo != "t0k0sh1/ry") return DowngradeGuardResult::Allowed;
+    if (!is_legacy_downgrade_target(tag)) return DowngradeGuardResult::Allowed;
+    if (allow_legacy_env_set) return DowngradeGuardResult::AllowedWithWarning;
+    return DowngradeGuardResult::Blocked;
+}
+
 PlatformInfo detect_platform() {
     PlatformInfo info;
 #ifdef __APPLE__
@@ -218,6 +270,36 @@ UpdateTarget resolve_update_target(const std::optional<std::string> &tag, const 
         // Caller guarantees the tag is already validated (is_valid_tag) and
         // normalized with the leading "v" prefix.
         const std::string &requested = *tag;
+
+        // Refuse downgrades to releases whose install_native_libs filter
+        // predates libemit / liblower / libLLVM / libzstd (#2457). Without
+        // this guard, the user's next forward `ry self-update` would skip
+        // installing libs the new binary depends on, leaving it unable to
+        // start — same failure mode as the original libLLVM-missing report.
+        const char *allow_env = std::getenv("RY_ALLOW_LEGACY_DOWNGRADE");
+        bool allow_legacy = (allow_env && strcmp(allow_env, "1") == 0);
+        switch (check_downgrade_guard(requested, get_repo(), allow_legacy)) {
+        case DowngradeGuardResult::Blocked:
+            std::cerr << "Error: Version " << requested
+                      << " is not supported as a downgrade target.\n"
+                      << "  v0.0.29 and earlier are forward-incompatible with the current self-update\n"
+                      << "  install logic (libemit / liblower / libLLVM / libzstd are not installed by\n"
+                      << "  those versions' install_native_libs filter).\n"
+                      << "  Supported downgrade range: v0.0.30 or later.\n"
+                      << "  For emergency recovery, use `ry-rescue` (see #2455).\n";
+            return target;
+        case DowngradeGuardResult::AllowedWithWarning:
+            std::cerr << "Warning: RY_ALLOW_LEGACY_DOWNGRADE=1 — proceeding with downgrade to "
+                      << requested << ".\n"
+                      << "  After this, re-running `ry self-update` to come forward may leave the\n"
+                      << "  binary unable to start because the older install_native_libs filter\n"
+                      << "  does not install libemit / liblower / libLLVM / libzstd. Use\n"
+                      << "  `ry-rescue` to recover if that happens.\n";
+            break;
+        case DowngradeGuardResult::Allowed:
+            break;
+        }
+
         std::string url = build_download_url(requested, platform);
         std::string status;
         run_command({CURL_PATH, "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
@@ -764,7 +846,8 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "  (no args)    Update to latest stable release\n";
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
             std::cerr << "\nEnvironment:\n";
-            std::cerr << "  RY_SKIP_SIGNATURE=1  Skip signature verification (unsafe)\n";
+            std::cerr << "  RY_SKIP_SIGNATURE=1         Skip signature verification (unsafe)\n";
+            std::cerr << "  RY_ALLOW_LEGACY_DOWNGRADE=1 Allow downgrade to v0.0.29 or earlier (unsafe)\n";
             std::cerr << "\nEmergency recovery:\n";
             std::cerr << "  If ry fails to start (e.g. missing ~/.ry/lib/libLLVM),\n";
             std::cerr << "  run 'ry-rescue' instead — it is a standalone POSIX shell\n";
