@@ -67,6 +67,19 @@ else
     fail=1
 fi
 
+# --- common: standalone updater (#2459) ---
+if [[ -f "$DIST_DIR/ry-self-update" ]]; then
+    if [[ -x "$DIST_DIR/ry-self-update" ]]; then
+        echo "  ok: ry-self-update bundled (executable)"
+    else
+        echo "  FAIL: ry-self-update is not executable" >&2
+        fail=1
+    fi
+else
+    echo "  FAIL: ry-self-update missing from $DIST_DIR (#2459)" >&2
+    fail=1
+fi
+
 # --- common: ry-rescue emergency recovery script (#2455) ---
 # Must be present at the tarball top level, executable, and POSIX-shell
 # parseable (so it stays runnable in the libLLVM-broken state it exists
@@ -92,6 +105,7 @@ fi
 case "$PLATFORM" in
 darwin)
     RY="$DIST_DIR/ry"
+    RY_SELF_UPDATE="$DIST_DIR/ry-self-update"
     LIB="$DIST_DIR/lib"
 
     for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libzstd.1.dylib" "$LIB/libemit.dylib" "$LIB/liblower.dylib"; do
@@ -100,6 +114,7 @@ darwin)
 
     ry_deps="$(otool -L "$RY" 2>/dev/null || true)"
     ry_load="$(otool -l "$RY" 2>/dev/null || true)"
+    self_update_deps="$(otool -L "$RY_SELF_UPDATE" 2>/dev/null || true)"
     want       "ry -> @rpath/libLLVM.dylib"         '@rpath/libLLVM\.dylib'          "$ry_deps"
     want       "ry -> @rpath/libemit.dylib"  '@rpath/libemit\.dylib'  "$ry_deps"
     # tarball-direct (./ry) rpath and installed (~/.local/bin -> ~/.ry/lib) rpath
@@ -107,6 +122,7 @@ darwin)
     want_fixed "ry rpath @loader_path/../../.ry/lib"  '@loader_path/../../.ry/lib'     "$ry_load"
     # no build-machine-absolute LLVM/zstd/build-tree refs survive (openssl allowed)
     absent     "ry has no absolute LLVM/zstd/build-tree refs" 'llvm@21|/zstd/|build-rust|cargo/build|Cellar/llvm' "$ry_deps"
+    absent     "ry-self-update has no runtime/libLLVM dependency" 'libLLVM|libemit|liblower|libry_|libzstd' "$self_update_deps"
 
     llvm_id="$(otool -D "$LIB/libLLVM.dylib" 2>/dev/null || true)"
     llvm_deps="$(otool -L "$LIB/libLLVM.dylib" 2>/dev/null || true)"
@@ -146,7 +162,7 @@ darwin)
     want "libzstd id = @rpath/libzstd.1.dylib" '@rpath/libzstd\.1\.dylib' "$(otool -D "$LIB/libzstd.1.dylib" 2>/dev/null || true)"
 
     # ad-hoc signatures must be valid after install_name_tool rewrites
-    for f in "$RY" "$LIB/libLLVM.dylib" "$LIB/libemit.dylib" "$LIB/libzstd.1.dylib" "$LIB/liblower.dylib"; do
+    for f in "$RY" "$RY_SELF_UPDATE" "$LIB/libLLVM.dylib" "$LIB/libemit.dylib" "$LIB/libzstd.1.dylib" "$LIB/liblower.dylib"; do
         if codesign --verify "$f" 2>/dev/null; then
             echo "  ok: codesign $(basename "$f")"
         else
@@ -158,6 +174,7 @@ darwin)
 
 linux)
     RY="$DIST_DIR/ry"
+    RY_SELF_UPDATE="$DIST_DIR/ry-self-update"
     LIB="$DIST_DIR/lib"
 
     # the bundled soname must match what `ry` records as NEEDED
@@ -193,12 +210,14 @@ linux)
     fi
 
     ry_dyn="$(readelf -d "$RY" 2>/dev/null || true)"
+    self_update_dyn="$(readelf -d "$RY_SELF_UPDATE" 2>/dev/null || true)"
     # CMake emits DT_RUNPATH (new dtags); accept either RUNPATH or RPATH.
     want_fixed "ry runpath \$ORIGIN/lib"            '$ORIGIN/lib'            "$ry_dyn"
     want_fixed "ry runpath \$ORIGIN/../../.ry/lib"  '$ORIGIN/../../.ry/lib'  "$ry_dyn"
     # BUILD_WITH_INSTALL_RPATH strips CMake's auto link-path rpath, so no
     # build-machine-absolute LLVM path should survive in the shipped binary.
     absent     "ry runpath has no absolute LLVM path" '/usr/local/llvm|/opt/[^:]*llvm' "$ry_dyn"
+    absent     "ry-self-update has no runtime/libLLVM dependency" 'libLLVM|libemit|liblower|libry_|libzstd' "$self_update_dyn"
     ;;
 
 *)

@@ -144,10 +144,10 @@ add_library(ry_lib STATIC
     src/runtime/core/utf8.cpp
     src/runtime/core/sort.cpp
     src/project/project_config.cpp
-    src/cli/self_update.cpp
     src/cli/docs.cpp
     src/args_runtime.cpp
     src/project/paths.cpp
+    src/project/paths_manifest.cpp
     src/runtime/core/parallel.cpp
     src/runtime/core/print.cpp
     src/codegen_call_json.cpp
@@ -177,8 +177,10 @@ add_library(ry_lib STATIC
     src/runtime/core/error.cpp
     src/runtime/core/host_shims.cpp
     src/cli/cli.cpp
+    src/cli/self_update_forwarder.cpp
     src/jit/jit_runner.cpp
     src/jit/test_runner.cpp
+    src/util/executable_path.cpp
     src/util/type_name.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
@@ -213,6 +215,27 @@ target_include_directories(ry_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(ry_lib SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
 target_compile_options(ry_lib PRIVATE ${RY_WARNING_FLAGS})
+
+# ===== Standalone self-update implementation =====
+# Keep the updater out of ry_lib so `ry-self-update` does not inherit LLVM,
+# emit/lower, or stdlib native-library load-time dependencies.
+add_library(ry_self_update_core STATIC
+    src/cli/self_update.cpp
+    src/util/executable_path.cpp
+)
+target_include_directories(ry_self_update_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(ry_self_update_core PUBLIC Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
+target_compile_options(ry_self_update_core PRIVATE ${RY_WARNING_FLAGS})
+
+add_library(ry_install_paths_core STATIC
+    src/project/paths_manifest.cpp
+)
+target_include_directories(ry_install_paths_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(ry_install_paths_core PRIVATE ${RY_WARNING_FLAGS})
+
+add_executable(ry-self-update src/self-update/main.cpp)
+target_link_libraries(ry-self-update PRIVATE ry_self_update_core ry_install_paths_core)
+target_compile_options(ry-self-update PRIVATE ${RY_WARNING_FLAGS})
 
 # ===== Native shared libraries for @native("libname") =====
 # Stdlib runtime implementations live exclusively in shared libraries.
@@ -592,6 +615,7 @@ if(APPLE)
     target_link_libraries(ry_tests PRIVATE
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
+        ry_self_update_core
         emit
         ${RY_LOWER_LINK}
         ${RY_NATIVE_LIBS_LINK}
@@ -601,6 +625,7 @@ if(APPLE)
 else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
+        ry_self_update_core
         emit
         ${RY_LOWER_LINK}
         -Wl,--no-as-needed ${RY_NATIVE_LIBS_LINK} atomic -Wl,--as-needed
@@ -613,6 +638,7 @@ endif()
 add_dependencies(ry_tests lower)
 
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
+target_compile_definitions(ry_tests PRIVATE RY_SELF_UPDATE_BINARY_PATH="$<TARGET_FILE:ry-self-update>")
 target_compile_definitions(ry_tests PRIVATE RY_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_DIR="${CMAKE_BINARY_DIR}")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)

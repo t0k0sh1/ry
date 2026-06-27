@@ -1,5 +1,6 @@
 #include "ry/cli/self_update.hpp"
 #include "ry/project/paths.hpp"
+#include "ry/util/executable_path.hpp"
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -18,10 +19,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <openssl/evp.h>
-
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 
 namespace ry::self_update {
 
@@ -137,24 +134,7 @@ PlatformInfo detect_platform() {
 }
 
 std::string get_executable_path() {
-#ifdef __APPLE__
-    char path[4096];
-    uint32_t size = sizeof(path);
-    if (_NSGetExecutablePath(path, &size) != 0) {
-        return "";
-    }
-    char *real = realpath(path, nullptr);
-    if (!real) return std::string(path);
-    std::string result(real);
-    free(real);
-    return result;
-#else
-    char path[4096];
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len == -1) return "";
-    path[len] = '\0';
-    return std::string(path);
-#endif
+    return ry::get_executable_path();
 }
 
 int run_command(const std::vector<std::string> &args, std::string *output) {
@@ -787,6 +767,49 @@ bool install_rescue_script(const std::string &tmp_dir, const std::string &binary
     return true;
 }
 
+static bool copy_executable_via_sibling_rename(const std::filesystem::path &src,
+                                               const std::filesystem::path &dest,
+                                               const char *label) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path tmp_dest = dest;
+    tmp_dest += ".new";
+    fs::remove(tmp_dest, ec);
+    ec.clear();
+
+    fs::copy_file(src, tmp_dest, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to stage " << label << ": "
+                  << ec.message() << "\n";
+        return false;
+    }
+    if (chmod(tmp_dest.c_str(), 0755) != 0) {
+        std::cerr << "Warning: Failed to mark staged " << label
+                  << " executable.\n";
+        fs::remove(tmp_dest, ec);
+        return false;
+    }
+    if (rename(tmp_dest.c_str(), dest.c_str()) != 0) {
+        std::cerr << "Warning: Failed to replace " << label << ": "
+                  << std::strerror(errno) << "\n";
+        fs::remove(tmp_dest, ec);
+        return false;
+    }
+    return true;
+}
+
+bool install_self_update_binary(const std::string &tmp_dir, const std::string &binary_path) {
+    namespace fs = std::filesystem;
+    fs::path src = fs::path(tmp_dir) / "ry-self-update";
+    std::error_code ec;
+    auto status = fs::symlink_status(src, ec);
+    if (ec || status.type() != fs::file_type::regular)
+        return false;
+
+    fs::path dest = fs::path(binary_path).parent_path() / "ry-self-update";
+    return copy_executable_via_sibling_rename(src, dest, "ry-self-update");
+}
+
 // Selects bundled native libs to install (and, since #2456, to snapshot for
 // rollback): Rust cdylibs `libemit` (#2040, renamed from libry_codegen) and
 // `liblower` (#2397, upper-codegen Rust kickoff), the stdlib native libs
@@ -961,6 +984,17 @@ bool create_backup(const std::filesystem::path &backup_root,
         if (!ec) chmod(rescue_dst.c_str(), 0755);
     }
 
+    // 5. Companion updater (post-#2459). Older installs may not have it yet;
+    // absence is not fatal because the downloaded archive can add it.
+    fs::path updater_src = fs::path(binary_path).parent_path() / "ry-self-update";
+    auto updater_status = fs::symlink_status(updater_src, ec);
+    if (!ec && updater_status.type() == fs::file_type::regular) {
+        fs::path updater_dst = backup_root / "ry-self-update";
+        fs::copy_file(updater_src, updater_dst,
+                      fs::copy_options::overwrite_existing, ec);
+        if (!ec) chmod(updater_dst.c_str(), 0755);
+    }
+
     return true;
 }
 
@@ -1073,6 +1107,14 @@ bool restore_backup(const std::filesystem::path &backup_root,
         }
     }
 
+    // 5. Companion updater
+    fs::path backup_updater = backup_root / "ry-self-update";
+    if (fs::is_regular_file(backup_updater)) {
+        fs::path target_updater = fs::path(binary_path).parent_path() / "ry-self-update";
+        (void)copy_executable_via_sibling_rename(
+            backup_updater, target_updater, "ry-self-update");
+    }
+
     return all_ok;
 }
 
@@ -1164,11 +1206,8 @@ SmokeTestResult smoke_test_binary(const std::string &binary_path,
     if (WIFEXITED(status)) {
         int code = WEXITSTATUS(status);
         if (code != 0) return SmokeTestResult::FailExit;
-        // Match the `ry --version` banner format (see cmd_version): the
-        // first stdout token is literally "ry " followed by the version
-        // string. Anything else means the binary is alive but answering
-        // some unrelated prompt — treat as failure.
-        if (output.find("ry ") != std::string::npos)
+        if (output.find("ry ") != std::string::npos ||
+            output.find("ry-self-update ") != std::string::npos)
             return SmokeTestResult::Pass;
         return SmokeTestResult::FailNoVersion;
     }
@@ -1281,18 +1320,20 @@ const char *smoke_failure_label(ry::self_update::detail::SmokeTestResult r) {
 
 } // namespace
 
-int cmd_self_update(int argc, char *argv[]) {
+int cmd_ry_self_update(int argc, char *argv[]) {
     using namespace ry::self_update;
     using namespace ry::self_update::detail;
     namespace fs = std::filesystem;
 
-    std::cerr << "Current version: ry " << RY_VERSION << "\n";
-
     std::optional<std::string> requested_tag;
     if (argc >= 1) {
         std::string arg = argv[0];
-        if (arg == "--help" || arg == "-h") {
-            std::cerr << "Usage: ry self-update [<version>]\n";
+        if (arg == "--version" || arg == "-v" || arg == "version") {
+            std::cout << "ry-self-update " << RY_VERSION << "\n";
+            return 0;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cerr << "Usage: ry-self-update [<version>]\n";
+            std::cerr << "       ry self-update [<version>]\n";
             std::cerr << "\n";
             std::cerr << "Options:\n";
             std::cerr << "  (no args)    Update to latest stable release\n";
@@ -1302,9 +1343,8 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "  RY_ALLOW_LEGACY_DOWNGRADE=1 Allow downgrade to v0.0.29 or earlier (unsafe)\n";
             std::cerr << "\nEmergency recovery:\n";
             std::cerr << "  If ry fails to start (e.g. missing ~/.ry/lib/libLLVM),\n";
-            std::cerr << "  run 'ry-rescue' instead — it is a standalone POSIX shell\n";
-            std::cerr << "  script that does not link libLLVM and can reinstall a\n";
-            std::cerr << "  working release.\n";
+            std::cerr << "  run 'ry-self-update' directly. If that is missing too,\n";
+            std::cerr << "  run 'ry-rescue' to reinstall a working release.\n";
             return 0;
         } else if (arg == "--nightly") {
             std::cerr << "Error: --nightly is no longer supported. self-update always targets the latest stable release.\n";
@@ -1318,6 +1358,8 @@ int cmd_self_update(int argc, char *argv[]) {
             requested_tag = (arg.empty() || arg[0] == 'v') ? arg : "v" + arg;
         }
     }
+
+    std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
     auto platform = detect_platform();
     auto target = resolve_update_target(requested_tag, platform);
@@ -1333,11 +1375,16 @@ int cmd_self_update(int argc, char *argv[]) {
 
     std::cerr << "Updating to " << target.tag << "...\n";
 
-    std::string binary_path = get_executable_path();
-    if (binary_path.empty()) {
+    std::string running_path = get_executable_path();
+    if (running_path.empty()) {
         std::cerr << "Error: Could not determine executable path.\n";
         return 1;
     }
+    fs::path running = fs::path(running_path);
+    fs::path binary = running.filename() == "ry-self-update"
+        ? running.parent_path() / "ry"
+        : running;
+    std::string binary_path = binary.string();
 
     // Concurrent-execution guard (#2456): a second `ry self-update` racing
     // against the first can interleave file replacements and leave a half-
@@ -1424,6 +1471,11 @@ int cmd_self_update(int argc, char *argv[]) {
         std::cerr << "ry-rescue recovery script updated.\n";
     }
 
+    bool updated_self_update = detail::install_self_update_binary(tmp_dir, binary_path);
+    if (updated_self_update) {
+        std::cerr << "ry-self-update updater updated.\n";
+    }
+
     detail::run_command({RM_PATH, "-rf", tmp_dir});
 
     // Smoke test (#2456): exercise the new binary's dyld load path. If
@@ -1433,6 +1485,10 @@ int cmd_self_update(int argc, char *argv[]) {
     // the few-ms `--version` actually needs even on cold caches.
     std::cerr << "Smoke testing new binary..." << std::flush;
     auto smoke = detail::smoke_test_binary(binary_path, 30);
+    fs::path updater_path = fs::path(binary_path).parent_path() / "ry-self-update";
+    if (smoke == detail::SmokeTestResult::Pass && updated_self_update) {
+        smoke = detail::smoke_test_binary(updater_path.string(), 30);
+    }
     if (smoke == detail::SmokeTestResult::Pass) {
         std::cerr << " ok.\n";
         detail::cleanup_backup(backup_root);

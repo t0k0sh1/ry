@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
 
     // Handle subcommands that don't need LLVM initialization
     if (argc >= 2 && std::strcmp(argv[1], "self-update") == 0) {
-        return cmd_self_update(argc - 2, argv + 2);
+        return cmd_self_update(argc - 2, argv + 2, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
         return cmd_init();

@@ -193,15 +193,15 @@ void printRunHelp() {
 
 void printSelfUpdateHelp() {
     llvm::outs() << "Usage: ry self-update [<version>]\n\n";
-    llvm::outs() << "Update ry to a newer version.\n\n";
+    llvm::outs() << "Forward to the companion ry-self-update updater.\n\n";
     llvm::outs() << "Options:\n";
     llvm::outs() << "  (no args)    Update to latest stable release\n";
     llvm::outs() << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
     llvm::outs() << "  -h, --help   Show this help\n\n";
     llvm::outs() << "Emergency recovery:\n";
     llvm::outs() << "  If ry fails to start (e.g. missing ~/.ry/lib/libLLVM),\n";
-    llvm::outs() << "  run 'ry-rescue' — a standalone POSIX shell script that\n";
-    llvm::outs() << "  does not link libLLVM and can reinstall a working release.\n";
+    llvm::outs() << "  run 'ry-self-update' directly. If that is missing too,\n";
+    llvm::outs() << "  run 'ry-rescue' to reinstall a working release.\n";
 }
 
 void printDocsHelp() {

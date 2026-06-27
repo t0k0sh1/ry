@@ -2,6 +2,7 @@
 #include <array>
 #include <string>
 #include <utility>
+#include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -14,7 +15,8 @@ struct RunResult {
     int exit_code;
 };
 
-static RunResult runRy(std::initializer_list<const char *> args) {
+static RunResult runBinary(const char *binary_path,
+                           std::initializer_list<const char *> args) {
     int pipeOut[2];  // child stdout → parent
     int pipeErr[2];  // child stderr → parent
     if (pipe(pipeOut) != 0 || pipe(pipeErr) != 0) return {"", "", -1};
@@ -33,16 +35,16 @@ static RunResult runRy(std::initializer_list<const char *> args) {
         close(STDIN_FILENO);
         setenv("RY_ENV", "internal", 1);
 
-        // Build argv: RY_BINARY_PATH (path AND argv[0]) + args + nullptr.
+        // Build argv: binary_path (path AND argv[0]) + args + nullptr.
         // argv[0] uses the full RY_BINARY_PATH (not bare "ry") so Linux glibc's
         // fs::canonical(parent_path(argv[0])) resolves the exe-adjacent stdlib
         // correctly (.claude/rules/tests-cpp-conventions.md).
         std::vector<const char *> argv;
-        argv.push_back(RY_BINARY_PATH);
+        argv.push_back(binary_path);
         for (auto a : args) argv.push_back(a);
         argv.push_back(nullptr);
 
-        execv(RY_BINARY_PATH, const_cast<char *const *>(argv.data()));
+        execv(binary_path, const_cast<char *const *>(argv.data()));
         _exit(127);
     }
 
@@ -67,6 +69,14 @@ static RunResult runRy(std::initializer_list<const char *> args) {
     int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 
     return {out, err, exit_code};
+}
+
+static RunResult runRy(std::initializer_list<const char *> args) {
+    return runBinary(RY_BINARY_PATH, args);
+}
+
+static RunResult runSelfUpdate(std::initializer_list<const char *> args) {
+    return runBinary(RY_SELF_UPDATE_BINARY_PATH, args);
 }
 
 // --- Main help ---
@@ -138,6 +148,20 @@ TEST(HelpOption, SelfUpdateSubcommandHelp) {
     auto r = runRy({"self-update", "--help"});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.out.find("ry self-update"), std::string::npos);
+    EXPECT_NE(r.out.find("ry-self-update"), std::string::npos);
+}
+
+TEST(HelpOption, SelfUpdateStandaloneVersion) {
+    auto r = runSelfUpdate({"--version"});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.out.find("ry-self-update "), std::string::npos);
+    EXPECT_TRUE(r.err.empty());
+}
+
+TEST(HelpOption, SelfUpdateForwardedVersion) {
+    auto r = runRy({"self-update", "--version"});
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_NE(r.out.find("ry-self-update "), std::string::npos);
 }
 
 TEST(HelpOption, SelfUpdateNightlyRejected) {

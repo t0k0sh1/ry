@@ -69,6 +69,10 @@ fi
 
 # Archive validated — safe to mutate installed artifacts.
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
+if [ -f "$TMPDIR/ry-self-update" ]; then
+    install -m 755 "$TMPDIR/ry-self-update" "$INSTALL_DIR/ry-self-update"
+    echo "ry-self-update installed to $INSTALL_DIR/ry-self-update"
+fi
 
 # ry-rescue: emergency recovery script (#2455). Older tarballs (pre-#2455)
 # do not carry it — skip silently in that case so installing an older

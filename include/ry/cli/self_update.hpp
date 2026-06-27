@@ -90,6 +90,7 @@ bool replace_binary(const std::string &tmp_dir, const std::string &binary_path);
 bool install_stdlib(const std::string &tmp_dir);
 bool install_native_libs(const std::string &tmp_dir);
 bool install_rescue_script(const std::string &tmp_dir, const std::string &binary_path);
+bool install_self_update_binary(const std::string &tmp_dir, const std::string &binary_path);
 
 // --- Backup / smoke-test / rollback (#2456) ---
 
@@ -149,4 +150,5 @@ void release_update_lock(int fd, const std::filesystem::path &lock_path);
 } // namespace detail
 } // namespace ry::self_update
 
-int cmd_self_update(int argc, char *argv[]);
+int cmd_ry_self_update(int argc, char *argv[]);
+int cmd_self_update(int argc, char *argv[], const char *ry_argv0);
