@@ -219,6 +219,31 @@ tar xzf "$TMPDIR_RESCUE/ry.tar.gz" -C "$TMPDIR_RESCUE" \
     || die "release archive does not contain share/std (old-layout archive not supported by rescue)"
 [ -d "$TMPDIR_RESCUE/lib" ] || die "release archive does not contain lib/ (native libraries missing)"
 
+# A `lib/` that exists but is empty (or missing libLLVM specifically) would
+# pass the directory check, then the orphan-cleanup step a few lines below
+# would delete the user's currently installed native libs and replace them
+# with nothing — leaving ry in a strictly more broken state than before
+# rescue ran. Assert the load-time-required globs are populated before any
+# mutation. libzstd is macOS-only (Linux resolves zstd via system libs) and
+# stdlib libry_*.dylib files are dlopen-loaded with softer failures, so the
+# gating set is the process-linked trio: libLLVM, libemit, liblower.
+have_any() {
+    # Return 0 if at least one of "$@" is a regular file. Used to assert
+    # that an unquoted glob actually matched at least one entry (under
+    # `set -u` an unmatched glob expands to the literal pattern, which
+    # this test then rejects via `[ -f ]`).
+    for f do
+        [ -f "$f" ] && return 0
+    done
+    return 1
+}
+have_any "$TMPDIR_RESCUE"/lib/libLLVM.* \
+    || die "release archive missing libLLVM in lib/ — rescue would brick the install"
+have_any "$TMPDIR_RESCUE"/lib/libemit.* \
+    || die "release archive missing libemit in lib/ — rescue would brick the install"
+have_any "$TMPDIR_RESCUE"/lib/liblower.* \
+    || die "release archive missing liblower in lib/ — rescue would brick the install"
+
 # Archive validated — now safe to mutate. Order matches install.sh: native
 # libs first (rpath target), then ry binary, then stdlib via atomic swap.
 
