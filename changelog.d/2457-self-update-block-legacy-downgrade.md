@@ -1,0 +1,3 @@
+### Changed
+
+- `ry self-update v0.0.29` (および v0.0.29 以下のすべてのバージョン) を refuse するようガードを追加。これらのバージョンの `install_native_libs` filter は `libemit` / `liblower` / `libLLVM` / `libzstd` を install しないため、ダウングレード後の forward `ry self-update` で新 binary が必要とする lib が install されず、binary が起動不能になる (libLLVM 不在による dyld error 報告と同型の症状)。`resolve_update_target` で `requested_tag` の major/minor/patch を semver parser (先頭 `v` / leading zero / pre-release suffix / 4-segment suffix を許容、`-` / `+` を先頭 digit guard で reject) に通し、`<= v0.0.29` ならエラー終了する。緊急回避用に `RY_ALLOW_LEGACY_DOWNGRADE=1` (sticker-shock warning 付きで通る) と `RY_UPDATE_REPO != t0k0sh1/ry` (fork CI 用に guard skip) の escape hatch を用意。`v0.0.30` 以降は従来通り、`ry self-update` 引数なしも常に最新 stable を引くので影響なし。 (#2457)

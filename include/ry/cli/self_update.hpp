@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,6 +19,43 @@ struct UpdateTarget {
 bool is_valid_tag(const std::string &tag);
 
 namespace detail {
+
+struct Semver {
+    uint64_t major;
+    uint64_t minor;
+    uint64_t patch;
+
+    bool operator<=(const Semver &other) const {
+        if (major != other.major) return major < other.major;
+        if (minor != other.minor) return minor < other.minor;
+        return patch <= other.patch;
+    }
+};
+
+// Parse major.minor.patch from a tag string. Tolerates an optional leading
+// 'v', leading zeros, and any trailing pre-release / build / extra-segment
+// suffix (e.g. "v0.0.29-rc.1", "v0.0.29.1"); only the first three numeric
+// components are inspected. Returns nullopt for malformed input.
+std::optional<Semver> parse_semver(const std::string &tag);
+
+// True iff `tag` parses to a version <= v0.0.29. Those releases predate
+// the libemit / liblower / libLLVM / libzstd entries in install_native_libs,
+// so a later forward jump after downgrading to them leaves the binary
+// unable to resolve its bundled libs.
+bool is_legacy_downgrade_target(const std::string &tag);
+
+enum class DowngradeGuardResult {
+    Allowed,             // Tag is not legacy, or repo is a fork
+    AllowedWithWarning,  // Legacy tag, but RY_ALLOW_LEGACY_DOWNGRADE=1 opted in
+    Blocked,             // Legacy tag, no escape hatch — refuse update
+};
+
+// Pure policy used by resolve_update_target. Kept side-effect-free so the
+// full branch matrix can be tested without env mutation or network.
+DowngradeGuardResult check_downgrade_guard(
+    const std::string &tag,
+    const std::string &repo,
+    bool allow_legacy_env_set);
 
 PlatformInfo detect_platform();
 std::string get_executable_path();

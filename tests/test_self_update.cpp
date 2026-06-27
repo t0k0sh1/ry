@@ -735,3 +735,194 @@ TEST(SelfUpdate, SignaturePolicyMissingSignatureSkipAllowed) {
     auto action = evaluate_signature_policy(false, false, true);
     EXPECT_EQ(action, SignatureAction::SkipAllowed);
 }
+
+// --- Semver parsing tests (#2457) ---
+
+TEST(SelfUpdate, ParseSemverBasic) {
+    auto v = parse_semver("v0.0.29");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->major, 0u);
+    EXPECT_EQ(v->minor, 0u);
+    EXPECT_EQ(v->patch, 29u);
+}
+
+TEST(SelfUpdate, ParseSemverWithoutVPrefix) {
+    auto v = parse_semver("0.0.30");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->major, 0u);
+    EXPECT_EQ(v->minor, 0u);
+    EXPECT_EQ(v->patch, 30u);
+}
+
+TEST(SelfUpdate, ParseSemverWithPreRelease) {
+    auto v = parse_semver("v0.0.30-rc.1");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->patch, 30u);
+}
+
+TEST(SelfUpdate, ParseSemverWithBuildMetadata) {
+    auto v = parse_semver("v1.2.3+build.42");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->major, 1u);
+    EXPECT_EQ(v->minor, 2u);
+    EXPECT_EQ(v->patch, 3u);
+}
+
+TEST(SelfUpdate, ParseSemverFourPartTreatedAsThreePart) {
+    // Hypothetical 4-segment hotfix tag: the legacy guard inspects only the
+    // first three numeric components, so an extra ".1" must not be confused
+    // for the patch.
+    auto v = parse_semver("v0.0.29.1");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->patch, 29u);
+}
+
+TEST(SelfUpdate, ParseSemverLeadingZeros) {
+    auto v = parse_semver("v00.00.29");
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(v->major, 0u);
+    EXPECT_EQ(v->minor, 0u);
+    EXPECT_EQ(v->patch, 29u);
+}
+
+TEST(SelfUpdate, ParseSemverRejectsEmpty) {
+    EXPECT_FALSE(parse_semver("").has_value());
+    EXPECT_FALSE(parse_semver("v").has_value());
+}
+
+TEST(SelfUpdate, ParseSemverRejectsMissingSegments) {
+    EXPECT_FALSE(parse_semver("v0").has_value());
+    EXPECT_FALSE(parse_semver("v0.1").has_value());
+}
+
+TEST(SelfUpdate, ParseSemverRejectsNonDigit) {
+    // is_valid_tag's regex permits "-" inside the tag, so verify the
+    // semver parser refuses to swallow a leading sign that strtoull
+    // would otherwise silently accept.
+    EXPECT_FALSE(parse_semver("v-1.0.0").has_value());
+    EXPECT_FALSE(parse_semver("v0.-1.0").has_value());
+    EXPECT_FALSE(parse_semver("not-a-version").has_value());
+}
+
+// --- Legacy downgrade guard policy tests (#2457) ---
+
+TEST(SelfUpdate, IsLegacyDowngradeTargetBlocksThroughV0029) {
+    EXPECT_TRUE(is_legacy_downgrade_target("v0.0.0"));
+    EXPECT_TRUE(is_legacy_downgrade_target("v0.0.1"));
+    EXPECT_TRUE(is_legacy_downgrade_target("v0.0.29"));
+    EXPECT_TRUE(is_legacy_downgrade_target("0.0.29"));
+}
+
+TEST(SelfUpdate, IsLegacyDowngradeTargetAllowsV0030AndLater) {
+    EXPECT_FALSE(is_legacy_downgrade_target("v0.0.30"));
+    EXPECT_FALSE(is_legacy_downgrade_target("v0.0.31"));
+    EXPECT_FALSE(is_legacy_downgrade_target("v0.1.0"));
+    EXPECT_FALSE(is_legacy_downgrade_target("v1.0.0"));
+}
+
+TEST(SelfUpdate, IsLegacyDowngradeTargetTreatsFourPartByFirstThree) {
+    // v0.0.29.1 → major.minor.patch = 0.0.29 → blocked.
+    EXPECT_TRUE(is_legacy_downgrade_target("v0.0.29.1"));
+    // v0.0.0.99 → major.minor.patch = 0.0.0 → blocked.
+    EXPECT_TRUE(is_legacy_downgrade_target("v0.0.0.99"));
+}
+
+TEST(SelfUpdate, IsLegacyDowngradeTargetAcceptsPreReleaseOnAllowedPatch) {
+    EXPECT_FALSE(is_legacy_downgrade_target("v0.0.30-rc.1"));
+}
+
+TEST(SelfUpdate, IsLegacyDowngradeTargetIgnoresUnparseable) {
+    // Unparseable tags fall through — let the URL existence check report
+    // them as "not found" rather than mislabel them as a downgrade attempt.
+    EXPECT_FALSE(is_legacy_downgrade_target("not-a-version"));
+    EXPECT_FALSE(is_legacy_downgrade_target("v"));
+}
+
+TEST(SelfUpdate, CheckDowngradeGuardBlocksLegacyOnCanonicalRepo) {
+    EXPECT_EQ(check_downgrade_guard("v0.0.29", "t0k0sh1/ry", false),
+              DowngradeGuardResult::Blocked);
+    EXPECT_EQ(check_downgrade_guard("v0.0.1", "t0k0sh1/ry", false),
+              DowngradeGuardResult::Blocked);
+}
+
+TEST(SelfUpdate, CheckDowngradeGuardAllowsLegacyWithOptIn) {
+    EXPECT_EQ(check_downgrade_guard("v0.0.29", "t0k0sh1/ry", true),
+              DowngradeGuardResult::AllowedWithWarning);
+}
+
+TEST(SelfUpdate, CheckDowngradeGuardSkipsForForkRepo) {
+    // A fork's tags don't share the upstream install-filter history, so the
+    // guard must not interfere with self-update against a forked release.
+    EXPECT_EQ(check_downgrade_guard("v0.0.29", "fork/ry", false),
+              DowngradeGuardResult::Allowed);
+    EXPECT_EQ(check_downgrade_guard("v0.0.1", "other/fork", false),
+              DowngradeGuardResult::Allowed);
+}
+
+TEST(SelfUpdate, CheckDowngradeGuardAllowsCurrentAndForward) {
+    EXPECT_EQ(check_downgrade_guard("v0.0.30", "t0k0sh1/ry", false),
+              DowngradeGuardResult::Allowed);
+    EXPECT_EQ(check_downgrade_guard("v0.0.31", "t0k0sh1/ry", false),
+              DowngradeGuardResult::Allowed);
+    EXPECT_EQ(check_downgrade_guard("v0.1.0", "t0k0sh1/ry", false),
+              DowngradeGuardResult::Allowed);
+}
+
+// --- resolve_update_target legacy-downgrade integration (#2457) ---
+//
+// The guard must short-circuit before any network call. We isolate RY_UPDATE_REPO
+// and RY_ALLOW_LEGACY_DOWNGRADE so the test result is independent of the
+// developer's shell environment.
+
+class ResolveUpdateTargetLegacyGuardTest : public ::testing::Test {
+protected:
+    std::optional<std::string> saved_repo;
+    std::optional<std::string> saved_allow;
+
+    void SetUp() override {
+        if (const char *env = std::getenv("RY_UPDATE_REPO")) saved_repo = env;
+        if (const char *env = std::getenv("RY_ALLOW_LEGACY_DOWNGRADE")) saved_allow = env;
+        unsetenv("RY_UPDATE_REPO");
+        unsetenv("RY_ALLOW_LEGACY_DOWNGRADE");
+    }
+
+    void TearDown() override {
+        if (saved_repo) setenv("RY_UPDATE_REPO", saved_repo->c_str(), 1);
+        else unsetenv("RY_UPDATE_REPO");
+        if (saved_allow) setenv("RY_ALLOW_LEGACY_DOWNGRADE", saved_allow->c_str(), 1);
+        else unsetenv("RY_ALLOW_LEGACY_DOWNGRADE");
+    }
+};
+
+TEST_F(ResolveUpdateTargetLegacyGuardTest, ReturnsEmptyTargetForV0029) {
+    PlatformInfo p{"linux", "amd64"};
+    testing::internal::CaptureStderr();
+    auto target = resolve_update_target(std::optional<std::string>{"v0.0.29"}, p);
+    std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_TRUE(target.tag.empty());
+    EXPECT_TRUE(target.download_url.empty());
+    EXPECT_NE(err.find("not supported as a downgrade target"), std::string::npos);
+    EXPECT_NE(err.find("v0.0.30 or later"), std::string::npos);
+    EXPECT_NE(err.find("ry-rescue"), std::string::npos);
+}
+
+TEST_F(ResolveUpdateTargetLegacyGuardTest, ReturnsEmptyTargetForV001) {
+    PlatformInfo p{"linux", "amd64"};
+    testing::internal::CaptureStderr();
+    auto target = resolve_update_target(std::optional<std::string>{"v0.0.1"}, p);
+    std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_TRUE(target.tag.empty());
+    EXPECT_NE(err.find("not supported as a downgrade target"), std::string::npos);
+}
+
+TEST_F(ResolveUpdateTargetLegacyGuardTest, ReturnsEmptyTargetForFourPartLegacyTag) {
+    PlatformInfo p{"linux", "amd64"};
+    testing::internal::CaptureStderr();
+    auto target = resolve_update_target(std::optional<std::string>{"v0.0.29.1"}, p);
+    std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_TRUE(target.tag.empty());
+    EXPECT_NE(err.find("not supported as a downgrade target"), std::string::npos);
+}

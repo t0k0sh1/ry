@@ -221,6 +221,14 @@ ry self-update v0.0.1       # Update to a specified version
 3. If the current version is the same, exits with `"Already up to date."`
 4. Downloads the binary and replaces the current executable
 
+### Downgrade Limits
+
+`v0.0.29` and earlier shipped an `install_native_libs` filter that does not install `libemit` / `liblower` / `libLLVM` / `libzstd`. After downgrading to those versions, a subsequent forward `ry self-update` would not lay down the libs the new binary needs and the binary would fail to start. To prevent that lock-out:
+
+- `ry self-update v0.0.29` (or any earlier version) exits with an error and leaves the existing binary untouched.
+- `ry self-update v0.0.30` and later proceed normally.
+- If a downgrade to a pre-v0.0.30 release is unavoidable, set `RY_ALLOW_LEGACY_DOWNGRADE=1` to opt in. A warning is printed and the update proceeds; use `ry-rescue` to recover if the binary stops starting after a later forward update.
+
 ### Security
 
 Release archives are verified in two steps:
