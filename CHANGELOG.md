@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.31] - 2026-06-27
+
+### Added
+
+- `ry-rescue` standalone POSIX shell 復旧スクリプトを release tarball / `install.sh` / `ry self-update` で配布。`#2005` の cutover 以降 `ry` は shared libLLVM をリンクしているが、pre-`#2005` 版の `install_native_libs` filter は `libLLVM` / `libemit` / `liblower` / `libzstd` を install しないため、ダウングレード後の forward update では `~/.ry/lib/libLLVM.{dylib,so.*}` 不在で `ry` 自体が dyld error で起動不能になり `ry self-update` 経由の自己復旧ができなかった。`scripts/rescue.sh` は libLLVM をリンクせず curl / tar / shasum + POSIX shell built-ins のみで完結し、latest stable release を fetch して再 install する。SHA-256 checksum verification は mandatory、Ed25519 signature verification は capability-probed OpenSSL 3.x (macOS LibreSSL 3.3.x は明示的に skip + warning) が見つかった時のみ有効化する。Orphan cleanup として既存 `~/.ry/lib/` の `libLLVM*` / `libemit*` / `liblower*` / `libry_*` / `libzstd*` glob のみを除去し `lib/std` や non-glob のユーザーファイルには触れない。`scripts/bundle-dist.sh` が `dist/ry-rescue` (mode 0755) を生成、`scripts/verify-bundle.sh` が存在 + executable + `sh -n` を検証、`install.sh` は `$INSTALL_DIR/ry-rescue` に install、`ry self-update` の `install_rescue_script` が新バイナリ隣接の `ry-rescue` を更新する。`rescue.sh` の `RY_RELEASE_PUBKEY_HEX` と `src/cli/self_update.cpp` の `SIGNING_PUBLIC_KEY` は同一鍵を持つ運用が `.claude/rules/distribution-packaging.md` で固定済み。 (#2455)
+- `ry self-update` に backup / smoke-test / 自動 rollback の atomic update を追加。アップデート前に `~/.ry/.backup/` へ旧 binary + stdlib tree + bundled native libs (libemit / liblower / libry_* / libLLVM / libzstd) + 隣接 `ry-rescue` を snapshot し、全 install 完了後に新 binary を `--version` で smoke test する。child を timeout 30s で WNOHANG + drain pipe で wait し、exit ≠ 0 / signal / timeout / stdout に `ry ` banner 不在のいずれかなら rollback path に入って backup から復元、復元後の binary を再 smoke test して通れば旧バージョンに戻ったことを報告して exit 1、再 smoke test も失敗するなら半壊状態を明示して `ry-rescue` (#2455) を案内して exit 1。並行実行ガードとして `~/.ry/.update.lock` を `O_CREAT|O_EXCL` で取得し、live holder には `BusyOtherProcess` で refuse、stale PID (`kill(pid,0) == ESRCH`) は reclaim する。lock は早期 return すべてを覆う RAII guard で解放。smoke test 通過時と rollback 自体が成功して再 smoke test も通った時のみ backup を cleanup し、restore が失敗するか rollback 後の再 smoke test も失敗した場合は backup を `~/.ry/.backup/` に残して inspection に利用できるようにする。 (#2456)
+
+### Changed
+
+- `ry self-update v0.0.29` (および v0.0.29 以下のすべてのバージョン) を refuse するようガードを追加。これらのバージョンの `install_native_libs` filter は `libemit` / `liblower` / `libLLVM` / `libzstd` を install しないため、ダウングレード後の forward `ry self-update` で新 binary が必要とする lib が install されず、binary が起動不能になる (libLLVM 不在による dyld error 報告と同型の症状)。`resolve_update_target` で `requested_tag` の major/minor/patch を semver parser (先頭 `v` / leading zero / pre-release suffix / 4-segment suffix を許容、`-` / `+` を先頭 digit guard で reject) に通し、`<= v0.0.29` ならエラー終了する。緊急回避用に `RY_ALLOW_LEGACY_DOWNGRADE=1` (sticker-shock warning 付きで通る) と `RY_UPDATE_REPO != t0k0sh1/ry` (fork CI 用に guard skip) の escape hatch を用意。`v0.0.30` 以降は従来通り、`ry self-update` 引数なしも常に最新 stable を引くので影響なし。 (#2457)
+
 ## [0.0.30] - 2026-06-26
 
 ### Added
@@ -35,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - スコープ外として明示的にドロップした項目: `spy.calls` / `mock.calls` プロパティアクセサ。Ry には function value へのプロパティアクセス機構がなく、内部記録バッファは opaque な kind-tagged int でできているため、`List<tuple<paramTypes>>` として export するには overload ごとの typed deserializer が必要になる。引数レベルのアサーションは本 PR の 3 matcher で完全にカバーできるため、現時点では露出しない。(#2396)
 - `Map.getPath` / `Map.setPath` now accept negative-index path segments on `List<any>` arms: `-1` resolves to the last element, `-2` to the next-last, down to `-len` (the first). Out-of-range negatives return `None` for `getPath` and raise a runtime error for `setPath`. Dotted-key escape is also supported via backslash: `"a\.b"` reaches the literal Map key `"a.b"`, and `"a\\b"` reaches `"a"`. `setPath` additionally walks through `List<any>` intermediates (with the same negative-wrap rules), enabling shapes such as `setPath(m, "users.-1.name", "Alice")`. Trailing backslashes and unrecognised escape sequences in the path are compile-time errors. Leaf writes into a List index remain out of scope: the final segment of the `setPath` path is still always a Map-key write. (#2398)
 - Ry 文字列リテラルに `\u{HHHH}` Unicode escape を実装 (`src/lexer/lexer.cpp`)。1 〜 6 桁の hex を `{...}` で囲み、対応する Unicode scalar value を UTF-8 として decode する (例: `"\u{1F600}"` → 😀 = `😀`)。regular string (~672)、block string (~582)、f-string (~829) の 3 つの escape switch 全てから共通の `decodeUnicodeEscape` + `appendUtf8` ヘルパを呼ぶ実装で乖離を防止。バリデーションは `0x10FFFF` を上限、surrogate range `0xD800..0xDFFF`、`\u{}` 空、`\u41` (`{`欠落)、`\u{41` (`}`欠落)、`\u{ZZZ}` (非 hex)、`\u{1234567}` (7 桁以上) を全て構造化エラーに変換する。raw string (`r"..."`) は escape 非処理の既存契約を維持し `\u{...}` を literal の 10 byte として保持する。
-- Ry 文字列リテラルに `\xNN` hex escape を実装 (`src/lexer/lexer.cpp`)。`\xNN` は厳密に 2 桁の hex digit を要求し、対応する単一バイト (0x00 〜 0xFF) を文字列に追加する (例: `"A"` → `"A"`, `"�"` → 単一バイト `0xFF`)。`\u{HHHH}` が UTF-8 encode 済みの Unicode code point を生成するのと異なり、`\xNN` は生のバイト 1 つを生成するため、`�` 〜 `�` 単独では valid UTF-8 にならない点も既存の ` ` と同じ扱い。regular string、block string、f-string の 3 つの escape switch 全てから共通の `decodeHexEscape` ヘルパを呼ぶ実装で乖離を防止。バリデーションは EOF mid-escape、hex digit 不足 (例: `""`)、非 hex digit (例: `"\xZZ"`, `"Z"`) を構造化エラーに変換する。raw string (`r"..."`) は escape 非処理の既存契約を維持し `A` を literal の 4 byte として保持する。
+- Ry 文字列リテラルに `\xNN` hex escape を実装 (`src/lexer/lexer.cpp`)。`\xNN` は厳密に 2 桁の hex digit を要求し、対応する単一バイト (0x00 〜 0xFF) を文字列に追加する (例: `"A"` → `"A"`, `"�"` → 単一バイト `0xFF`)。`\u{HHHH}` が UTF-8 encode 済みの Unicode code point を生成するのと異なり、`\xNN` は生のバイト 1 つを生成するため、`�` 〜 `�` 単独では valid UTF-8 にならない点も既存の `
 
 ### Changed
 
@@ -3453,7 +3464,8 @@ fn name(...)` 形が ERROR ノードを発生させていた問題を修正。`@
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.30...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.31...HEAD
+[0.0.31]: https://github.com/t0k0sh1/ry/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/t0k0sh1/ry/compare/v0.0.29...v0.0.30
 [0.0.29]: https://github.com/t0k0sh1/ry/compare/v0.0.28...v0.0.29
 [0.0.28]: https://github.com/t0k0sh1/ry/compare/v0.0.27...v0.0.28
