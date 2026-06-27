@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.32] - 2026-06-27
+
+### Added
+
+- `ry-self-update` standalone native updater binary. `ry self-update` now acts as a healthy-install forwarder that `execv`s the sibling updater with inherited stdin / stdout / stderr, while broken main-binary installs can run `ry-self-update` directly without loading `libLLVM`, `libemit`, `liblower`, `libry_*`, or `libzstd`. Release packaging, `install.sh`, `scripts/verify-bundle.sh`, rollback snapshots, smoke tests, and docs now install and verify `ry-self-update` next to `ry` and `ry-rescue`; `ry-self-update` also refreshes itself during updates using a sibling temp file plus `rename()` so Linux does not hit `ETXTBSY` when replacing the running updater. (#2459)
+
+
 ## [0.0.31] - 2026-06-27
 
 ### Added
@@ -3464,7 +3471,8 @@ fn name(...)` 形が ERROR ノードを発生させていた問題を修正。`@
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.31...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.32...HEAD
+[0.0.32]: https://github.com/t0k0sh1/ry/compare/v0.0.31...v0.0.32
 [0.0.31]: https://github.com/t0k0sh1/ry/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/t0k0sh1/ry/compare/v0.0.29...v0.0.30
 [0.0.29]: https://github.com/t0k0sh1/ry/compare/v0.0.28...v0.0.29
