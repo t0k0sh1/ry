@@ -209,7 +209,7 @@ Updates ry itself to the latest version. Downloads a binary from GitHub Releases
 
 ```bash
 ry self-update              # Update to the latest stable version
-ry self-update v0.0.1       # Update to a specified version
+ry self-update v0.0.30      # Update to a specified version (v0.0.30 or later)
 ```
 
 ### Behavior

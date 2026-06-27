@@ -105,7 +105,7 @@ print(ry.math.PI)          # 3.141592653589793
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-To specify a particular version (replace `<X.Y.Z>` with a version listed on the [Releases](https://github.com/t0k0sh1/ry/releases) page):
+To specify a particular version (replace `<X.Y.Z>` with a version listed on the [Releases](https://github.com/t0k0sh1/ry/releases) page; **v0.0.30 or later** — earlier release assets were retired in #2458):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v<X.Y.Z>

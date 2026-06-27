@@ -10,6 +10,26 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 case "$ARCH" in arm64|aarch64) ARCH="arm64" ;; x86_64|amd64) ARCH="amd64" ;; esac
 
+# Block install of v0.0.29 and earlier (#2458). Those release assets were
+# retired and the pre-#2005 install_native_libs filter is incompatible with
+# the current shared-libLLVM layout; a successful install would still leave
+# the binary unable to start. Mirrors the ry self-update guard in
+# src/cli/self_update.cpp (#2457). The check is skipped for forks
+# (REPO != t0k0sh1/ry) and via RY_ALLOW_LEGACY_DOWNGRADE=1.
+if [ "$VERSION" != "latest" ] && [ "$REPO" = "t0k0sh1/ry" ] && [ -z "${RY_ALLOW_LEGACY_DOWNGRADE:-}" ]; then
+    case "$VERSION" in
+        v0.0.[1-9]|v0.0.[1-9]-*|v0.0.1[0-9]|v0.0.1[0-9]-*|v0.0.2[0-9]|v0.0.2[0-9]-*)
+            echo "ERROR: ry $VERSION is no longer installable." >&2
+            echo "  v0.0.29 and earlier release assets were retired (#2458)" >&2
+            echo "  and the install layout is incompatible with the current runtime (#2457)." >&2
+            echo "  Use v0.0.30 or later, or omit the version to install the latest stable release:" >&2
+            echo "    curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh" >&2
+            echo "  Override (not recommended; assets are unavailable): RY_ALLOW_LEGACY_DOWNGRADE=1" >&2
+            exit 1
+            ;;
+    esac
+fi
+
 if [ "$VERSION" = "latest" ]; then
   DOWNLOAD_URL="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep "browser_download_url.*${OS}-${ARCH}.tar.gz\"" \
