@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.33] - 2026-06-27
+
+### Fixed
+
+- Repair installs that upgraded from a pre-companion updater without installing `ry-self-update`, and refresh `ry-self-update` from `ry-rescue` (#2459).
+
 ## [0.0.32] - 2026-06-27
 
 ### Added
@@ -3471,7 +3477,8 @@ fn name(...)` 形が ERROR ノードを発生させていた問題を修正。`@
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.32...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.33...HEAD
+[0.0.33]: https://github.com/t0k0sh1/ry/compare/v0.0.32...v0.0.33
 [0.0.32]: https://github.com/t0k0sh1/ry/compare/v0.0.31...v0.0.32
 [0.0.31]: https://github.com/t0k0sh1/ry/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/t0k0sh1/ry/compare/v0.0.29...v0.0.30
