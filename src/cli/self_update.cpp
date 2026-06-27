@@ -907,12 +907,36 @@ bool create_backup(const std::filesystem::path &backup_root,
     }
 
     // 3. Native libs (libemit*, liblower*, libry_*, libLLVM*, libzstd*).
+    // Use the manual non-throwing iteration form so that an enumeration
+    // error (lib dir disappears mid-walk, EACCES on a file, etc.) is also
+    // a fatal backup failure — silently breaking out of the range-for
+    // would leave the rollback set incomplete while still returning true.
     fs::path lib_src = ry_home / "lib";
     fs::path lib_dst = backup_root / "lib";
     if (fs::is_directory(lib_src)) {
         fs::create_directories(lib_dst, ec);
-        for (const auto &entry : fs::directory_iterator(lib_src, ec)) {
-            if (ec) break;
+        if (ec) {
+            std::cerr << "Warning: Failed to create backup lib dir: "
+                      << ec.message() << "\n";
+            fs::remove_all(backup_root, ec);
+            return false;
+        }
+        fs::directory_iterator it(lib_src, ec);
+        if (ec) {
+            std::cerr << "Warning: Failed to enumerate "
+                      << lib_src.string() << ": " << ec.message() << "\n";
+            fs::remove_all(backup_root, ec);
+            return false;
+        }
+        const fs::directory_iterator end;
+        for (; it != end; it.increment(ec)) {
+            if (ec) {
+                std::cerr << "Warning: Failed to enumerate "
+                          << lib_src.string() << ": " << ec.message() << "\n";
+                fs::remove_all(backup_root, ec);
+                return false;
+            }
+            const auto &entry = *it;
             if (!entry.is_regular_file()) continue;
             auto filename = entry.path().filename().string();
             if (!is_bundled_native_lib(filename)) continue;
@@ -1199,8 +1223,18 @@ UpdateLockHandle acquire_update_lock(const std::filesystem::path &lock_path) {
         if (ok) holder = static_cast<pid_t>(v);
     }
 
-    if (holder > 0 && kill(holder, 0) == 0) {
-        return {-1, UpdateLockResult::BusyOtherProcess};
+    if (holder > 0) {
+        if (kill(holder, 0) == 0) {
+            return {-1, UpdateLockResult::BusyOtherProcess};
+        }
+        // EPERM means the process exists but we lack permission to signal
+        // it (different UID). Treat that as a live holder — reclaiming
+        // the lock would let a user-owned `ry self-update` interleave
+        // writes with a root-owned one (or vice versa). Only ESRCH ("no
+        // such process") proves the holder is gone.
+        if (errno != ESRCH) {
+            return {-1, UpdateLockResult::BusyOtherProcess};
+        }
     }
 
     // Stale or unparseable lockfile — reclaim it.
@@ -1349,7 +1383,26 @@ int cmd_self_update(int argc, char *argv[]) {
     }
 
     if (!detail::replace_binary(tmp_dir, binary_path)) {
-        detail::cleanup_backup(backup_root);
+        // The cross-filesystem `cp` fallback can leave binary_path partially
+        // overwritten before returning non-zero — try the rollback path now
+        // so the user is not left with a half-written binary. Either way,
+        // KEEP the backup: it is the only known-good copy after a destructive
+        // failure, and a manual `cp ~/.ry/.backup/binary <binary_path>` is
+        // the recovery hatch if our restore is also blocked (e.g. EACCES on
+        // the binary's directory).
+        std::cerr << "Error: Could not install the new binary. "
+                  << "Attempting rollback...\n";
+        if (detail::restore_backup(backup_root, binary_path, ry_home)) {
+            std::cerr << "Rolled back to the previous version. "
+                      << "Backup preserved at "
+                      << backup_root.string() << ".\n";
+        } else {
+            std::cerr << "Error: Rollback also failed. The install is in an\n"
+                      << "       inconsistent state. Backup preserved at "
+                      << backup_root.string() << ".\n"
+                      << "       Run `ry-rescue` to recover a known-good\n"
+                      << "       release (see #2455).\n";
+        }
         detail::run_command({RM_PATH, "-rf", tmp_dir});
         return 1;
     }

@@ -252,7 +252,7 @@ To bypass the failure caused by a missing signature file (not recommended), set 
 
 - Requires `curl` and `tar` commands
 - If replacing the binary fails due to insufficient permissions, a message suggesting `sudo` is displayed (sudo is not invoked automatically)
-- Downloads are performed to a temporary directory first; if the cross-filesystem `cp` fallback is interrupted mid-write, the smoke test / automatic rollback covers the resulting partial state on the next run
+- Downloads are performed to a temporary directory first. Within a single `ry self-update` run, the smoke test / automatic rollback covers a partial overwrite from an interrupted cross-filesystem `cp` fallback. If the process itself is killed mid-write (e.g. SIGKILL during the `cp`), the next invocation cannot recover automatically because the surviving backup may already reflect the partial state — run `ry-rescue` to reinstall a known-good release
 
 ---
 
