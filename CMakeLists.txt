@@ -691,6 +691,7 @@ add_executable(ry_tests
     tests/test_header_layout.cpp
     tests/test_emit_abi_guards.cpp
     tests/test_codegen_gc_visit.cpp
+    tests/test_codegen_string_const_stage2.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

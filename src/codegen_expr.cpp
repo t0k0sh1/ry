@@ -111,14 +111,29 @@ llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
+    // Upper-codegen Stage 2 (#2484): the body is unchanged at this seam, but
+    // `cachedGlobalString` now routes through `ry_lower_string_const`
+    // internally. Same `.str` name hint preserves the LLVM global naming.
     return cachedGlobalString(e.value, ".str");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
-    // Separate cache prevents collision with string literals of the same
-    // content — otherwise marking the pointer as RK_Regex would poison a
-    // later string literal, causing isStrLike() to return false.
-    auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
+    // Upper-codegen Stage 2 (#2484): regex literal lowering moved to
+    // `crates/lower/src/expr.rs::lower_regex_const`. A SEPARATE Rust-side
+    // cache (`REGEX_CACHE` thread_local) keeps regex literals in their own
+    // global namespace so the `addResourceKind(rk_regex)` stamp below cannot
+    // poison a same-bytes string literal reached elsewhere (#306). The
+    // metadata operation stays C++-side until Stage 5 migrates
+    // `value_metadata_`.
+    RyValueId id = ry_lower_regex_const(
+        emit_ctx_,
+        reinterpret_cast<const uint8_t *>(e.pattern.data()),
+        e.pattern.size());
+    if (id == 0) {
+        const char *msg = ry_lower_get_last_error();
+        codegenError(msg ? std::string(msg) : "lower: regex const failed");
+    }
+    auto *gs = ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
     addResourceKind(gs, rk_regex);
     return gs;
 }

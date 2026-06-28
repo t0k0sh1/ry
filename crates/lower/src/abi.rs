@@ -8,8 +8,27 @@
 
 use crate::emit_extern::ry_emit_const_int;
 use crate::error::clear_last_error;
-use crate::expr::{lower_float_const, lower_int_const};
+use crate::expr::{lower_float_const, lower_int_const, lower_regex_const, lower_string_const};
 use crate::handles::{RyEmitCtx, RyTypeRef, RyValueId};
+use crate::intern;
+
+/// Borrow `(ptr, len)` as `&[u8]` under the C `(pointer, count)` contract.
+/// Returns `Some(&[])` for a zero-count slice (NULL pointer permitted) and
+/// `None` for a non-zero count with a NULL pointer (the entry's invalid
+/// sentinel — `slice::from_raw_parts` requires a non-NULL base even for
+/// length-0). Mirrors `crates/emit/src/abi::ffi_slice` (which takes a
+/// `u32` count); the lower crate keeps its own copy because it has no
+/// emit-crate dependency.
+#[inline]
+unsafe fn opt_byte_slice<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
+    if len == 0 {
+        Some(&[])
+    } else if ptr.is_null() {
+        None
+    } else {
+        Some(core::slice::from_raw_parts(ptr, len))
+    }
+}
 
 /// Materialize an `i1` constant for a Ry `BoolExpr`.
 ///
@@ -100,4 +119,101 @@ pub unsafe extern "C" fn ry_lower_float_const(
 ) -> RyValueId {
     clear_last_error();
     lower_float_const(ctx, llvm_ty, value, suffix_kind)
+}
+
+/// Materialize an ARC-immortal global for a Ry `StringExpr` (Stage 2 of
+/// the upper-codegen migration, #2484).
+///
+/// `bytes[0..len)` is the raw literal content (binary-safe — embedded
+/// NULs preserved). `name_hint_bytes[0..name_hint_len)` is the LLVM
+/// global name prefix (the C++ `cachedGlobalString` callers pass
+/// `.str`, `.fmt`, `.err_msg`, …) — passed by length, NOT as a
+/// NUL-terminated C string, because `llvm::Twine::toStringRef` does not
+/// guarantee a NUL terminator for multi-node Twines.
+///
+/// Cache hit returns the previously-interned `RyValueId`; cache miss
+/// calls `ry_emit_build_arc_global` and caches the result keyed on the
+/// byte content. Two distinct caches (string vs regex) preserve the
+/// regex separation invariant from #306.
+///
+/// Calls `clear_last_error()` at entry for boundary uniformity with the
+/// other `ry_lower_*` entries, though no failure path is currently
+/// exercised. Returns `0` only when `bytes` is NULL with non-zero `len`,
+/// when `name_hint_bytes` is NULL with non-zero `name_hint_len`, or
+/// when the underlying `ry_emit_build_arc_global` fails on a NULL ctx.
+///
+/// # Safety
+///
+/// `ctx` must be a valid `RyEmitCtx *` (or NULL); `bytes` must point to
+/// at least `len` bytes (or be NULL when `len == 0`); `name_hint_bytes`
+/// must point to at least `name_hint_len` bytes (or be NULL when
+/// `name_hint_len == 0`).
+#[no_mangle]
+pub unsafe extern "C" fn ry_lower_string_const(
+    ctx: *mut RyEmitCtx,
+    bytes: *const u8,
+    len: usize,
+    name_hint_bytes: *const u8,
+    name_hint_len: usize,
+) -> RyValueId {
+    // Clear any stale diagnostic from a prior `ry_lower_*` call on this
+    // thread before we run — this entry does not itself populate
+    // `set_last_error`, but the cross-stage contract requires that a
+    // post-call `ry_lower_get_last_error` reflect THIS call's outcome
+    // (`NULL` on success) rather than a prior failed entry's message.
+    clear_last_error();
+    let (Some(slice), Some(name)) = (
+        opt_byte_slice(bytes, len),
+        opt_byte_slice(name_hint_bytes, name_hint_len),
+    ) else {
+        return 0;
+    };
+    lower_string_const(ctx, slice, name)
+}
+
+/// Materialize an ARC-immortal global for a Ry `RegexExpr` (Stage 2 of
+/// the upper-codegen migration, #2484).
+///
+/// Separate cache from `ry_lower_string_const` so a string `"hello"`
+/// and a regex `/hello/` produce DIFFERENT globals — the C++ shim then
+/// stamps `addResourceKind(rk_regex)` on the regex global without
+/// poisoning the string-side counterpart (#306). The LLVM global name
+/// prefix is hardcoded to `.regex`.
+///
+/// # Safety
+///
+/// `ctx` must be a valid `RyEmitCtx *` (or NULL); `bytes` must point to
+/// at least `len` bytes (or be NULL when `len == 0`).
+#[no_mangle]
+pub unsafe extern "C" fn ry_lower_regex_const(
+    ctx: *mut RyEmitCtx,
+    bytes: *const u8,
+    len: usize,
+) -> RyValueId {
+    // See `ry_lower_string_const` for the clear-stale-error rationale.
+    clear_last_error();
+    let Some(slice) = opt_byte_slice(bytes, len) else {
+        return 0;
+    };
+    lower_regex_const(ctx, slice)
+}
+
+/// Clear the per-module thread-local string / regex interning caches.
+/// MUST be called from the C++ `CodeGen` constructor immediately after
+/// `ry_emit_ctx_create`. Sequential `CodeGen` instances on the same
+/// thread would otherwise resolve cached ids against the previous (now
+/// freed) `EmitCtx`, producing miscompiles or LLVM null-pointer
+/// dereferences.
+///
+/// The `_ctx` parameter is unused today; it's accepted to signal that
+/// this hook is conceptually per-`EmitCtx` (a future migration to
+/// per-ctx state can change the implementation without changing the
+/// ABI shape).
+///
+/// # Safety
+///
+/// `_ctx` is currently unused; it may be NULL or a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn ry_lower_reset_module_state(_ctx: *mut RyEmitCtx) {
+    intern::reset_all();
 }

@@ -87,6 +87,7 @@
 #ifndef RY_LLVM_EMIT_API_H
 #define RY_LLVM_EMIT_API_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -369,6 +370,31 @@ void ry_emit_arc_release(RyEmitCtx *ctx, RyValueId header_ptr_id,
 // `__ry_arc_counter` global selection and the ASLR-baked-address inttoptr
 // shape — both Ry ARC accounting concepts. Creates no basic blocks.
 void ry_emit_arc_counter_delta(RyEmitCtx *ctx, int64_t delta);
+
+// Build a StringHeader-prefixed ARC-immortal global for `bytes[0..len)` and
+// return the interned RyValueId of the in-bounds-GEP `ptr` to its first
+// payload byte (the shape `fprintf` / runtime str-handle ABI consumes
+// directly). `name_hint_bytes[0..name_hint_len)` becomes the LLVM global
+// name prefix; the helper appends `.arc` to it. Stage 2 (#2484) entry —
+// reached by the lower crate's string / regex literal lowering
+// (`ry_lower_string_const` / `ry_lower_regex_const`); the lower crate owns
+// the per-cache dedup that preserves the regex separation invariant
+// (#306). Every call here allocates a fresh global — NO cache lookup at
+// this layer. (The legacy runtime error-message path keeps its own
+// `arc_msg_cache`-backed wrapper internal to the emit crate.)
+//
+// The name hint is passed by length (not a NUL-terminated C string)
+// because the C++ `cachedGlobalString` wrapper receives a `llvm::Twine`
+// whose `toStringRef` does NOT guarantee a NUL terminator for multi-node
+// twines; relying on `strlen` here would over-read.
+//
+// NULL ctx → 0. NULL `bytes` with non-zero `len` → 0. NULL
+// `name_hint_bytes` with non-zero `name_hint_len` → 0. Zero-length
+// `name_hint_len` is permitted (equivalent to an empty hint).
+RyValueId ry_emit_build_arc_global(RyEmitCtx *ctx, const uint8_t *bytes,
+                                   size_t len,
+                                   const uint8_t *name_hint_bytes,
+                                   size_t name_hint_len);
 
 // Stage 2-C entry — RuntimeCall (#1969).
 // Resolve `name` against `mod_->getOrInsertFunction(name, fnTy)` where fnTy
