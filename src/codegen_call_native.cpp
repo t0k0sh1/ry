@@ -641,7 +641,6 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // re-hashing native_call_descriptors_ for the same entry.
     const NativeCallDescriptor *matchedDesc = nullptr;
     std::string matchedPackage;
-    size_t matchedIdx = 0;  // overload index within native_fn_sigs_[matchedSigKey]
     std::vector<llvm::Type *> paramTypes;
     std::vector<bool> needsWidening(e.args.size(), false);
     std::vector<llvm::Type *> candidateTypes;
@@ -706,7 +705,6 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 }
                 matchedSig = &sig;
                 matchedPackage = lib;
-                matchedIdx = sigIdx;
                 matchedDesc = (descIt != native_call_descriptors_.end()
                                && sigIdx < descIt->second.size())
                     ? &descIt->second[sigIdx]
@@ -794,7 +792,6 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                     }
                     matchedSig = &sig;
                     matchedPackage = lib;
-                    matchedIdx = sigIdx;
                     matchedDesc = candidateDesc;
                     paramTypes = std::move(candidateTypes);
                     needsWidening = std::move(candidateNeedsWidening);
@@ -815,6 +812,15 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // wrapping, error channel, and List<u8>-arg metadata so we don't
     // re-infer at every call (#2337).
     const std::string matchedSigKey = ry::util::nativeSigKey(matchedPackage, e.callee);
+    // Descriptors are populated lock-step with sigs in codegen_fn.cpp at
+    // @native declaration time, so a missing descriptor for a matched sig
+    // means the populator missed a path. Surface that as a structured
+    // diagnostic rather than dereferencing nullptr. (CodeRabbit PR #2488)
+    if (!matchedDesc) {
+        codegenError("internal error: missing NativeCallDescriptor for "
+                     "@native(\"" + matchedPackage + "\") "
+                     + e.callee);
+    }
     const NativeCallDescriptor &desc = *matchedDesc;
 
     // Reject list arguments whose declared param type is `List<u8>` but

@@ -143,16 +143,27 @@ static llvm::Value *emitJsonLoad(CodeGen &cg, const CallExpr &e,
 // `ResultStatus` wrapping — together reproducing the former custom emitter's
 // IR byte-exactly.
 
-// Gate the dispatcher: only proceed if any json symbol is actually
-// registered in `native_fn_sigs_`. Without this, json would race with
-// the json5 dispatcher (#1855) over the `load<T>` interceptor — both
-// claim every `load<T>` call regardless of which package the user imported
-// from, and alphabetical ordering would put json first, routing
+// Gate the dispatcher: only proceed if some json symbol is registered
+// in `native_fn_sigs_`. After #2481, `dispatchJson` owns only the
+// `load<T>` parametric interceptor and the bare-`load` friendly error
+// (`dump` / `stringify` / `stringifySafe` route through the descriptor
+// or Pattern-B paths), so the gate's purpose is to claim `load<T>` only
+// when the json module is loaded — without it, json would race with the
+// json5 dispatcher (#1855) over `load<T>`: both claim every `load<T>`
+// call regardless of which package the user imported from, and
+// alphabetical ordering would put json first, routing
 // `from json5 import load; load[T](...)` to `__ry_json_parse_to_any`.
-// The check is a per-package sig-presence gate; after #2481 `dump` is
-// handled by `emitGenericNativeCall` whose own sig lookup gates on the
-// same set, so the only path through `dispatchJson` that still needs an
-// explicit gate is the `load<T>` interceptor above.
+//
+// Why check four symbols rather than just `json::load`: the `load<T>`
+// declaration is a generic template (`fn load<T>(...)` in json.ry), and
+// generic templates short-circuit in codegen_fn.cpp (~line 637) before
+// the native-sig registration at line 698. So `"json::load"` is never
+// in `native_fn_sigs_`, and a narrow `count("json::load")` check would
+// always return false and break `load[T](...)` dispatch even when the
+// user imported `load` from json. The non-generic siblings (`dump`,
+// `stringify`, `stringifySafe`) act as module-presence proxies because
+// importing any symbol from `ry.json` processes the whole module and
+// registers those non-generic declarations.
 static bool isJsonImported(CodeGen &cg) {
     const auto &sigs = cg.getNativeFnSigs();
     return sigs.count("json::load") || sigs.count("json::stringify")
