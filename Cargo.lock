@@ -76,6 +76,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "native_io"
+version = "0.0.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "native_path"
 version = "0.0.0"
 dependencies = [

@@ -205,6 +205,26 @@ static_assert(offsetof(ry::IOListHeader, data) == 16, "IOListHeader.data @ 16");
 static_assert(ry::STRING_BYTELEN_OFFSET == 8,
               "STRING_BYTELEN_OFFSET must be 8 (Rust mirror reads handle - 8)");
 
+// ===== [internal] IoFileHandle cross-language parity (#2480) =====
+// The Rust `native_io` cdylib (crates/native_io/src/ffi.rs) mirrors the
+// `IoFileHandle` resource struct as `#[repr(C)]` and reaches the inner
+// `FILE *` via the `fp` field offset. The C++ counterpart was historically
+// TU-local to `src/runtime/native/io.cpp` (intentionally NOT exposed in
+// `io.hpp` to avoid ODR collisions per
+// `.claude/rules/runtime-memory-safety.md`); after the #2480 port the C++
+// definition lives only here as a local re-declaration that pins the
+// layout the Rust mirror depends on. A reorder on either side breaks the
+// build, no "keep in sync" comment alone.
+namespace {
+struct IoFileHandle {
+    FILE *fp;
+};
+}  // namespace
+static_assert(sizeof(IoFileHandle) == 8,
+              "IoFileHandle must be 8 bytes (mirror crates/native_io/src/ffi.rs)");
+static_assert(alignof(IoFileHandle) == 8, "IoFileHandle must be 8-byte aligned");
+static_assert(offsetof(IoFileHandle, fp) == 0, "IoFileHandle.fp @ 0");
+
 // A no-op runtime test so CTest shows a named green signal confirming this
 // TU (and therefore every static_assert above) compiled successfully.
 TEST(AbiLayout, LayoutContractCompiled) { SUCCEED(); }
