@@ -34,9 +34,8 @@ use std::ffi::c_char;
 use std::ffi::c_void;
 
 use crate::core::{
-    self, alloc_file_handle, cstr, open_nofollow, read_all_growing,
-    read_line_via_getline, read_seek_or_chunk, ry_str_bytes, IoErr, Mode, ReadLineOutcome,
-    MAX_READ_SIZE,
+    self, alloc_file_handle, cstr, open_nofollow, read_all_growing, read_line_via_getline,
+    read_seek_or_chunk, ry_str_bytes, IoErr, Mode, ReadLineOutcome, MAX_READ_SIZE,
 };
 use crate::ffi::{self, IOListHeader, IoFileHandle};
 use crate::{catch_or_exit, get_last_error_handle, set_last_error};
@@ -279,7 +278,10 @@ unsafe fn write_text_inner(
         return 1;
     }
     if has_embedded_nul(path) {
-        set_last_error(&format!("{}: argument contains an embedded NUL byte", label));
+        set_last_error(&format!(
+            "{}: argument contains an embedded NUL byte",
+            label
+        ));
         return 1;
     }
     let mode_cstr = match mode {

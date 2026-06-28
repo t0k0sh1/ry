@@ -22,8 +22,8 @@
 //! `Result<_, IoErr>` so the caller can format context-rich messages
 //! that match the C++ wording byte-for-byte.
 
-use std::ffi::CStr;
 use std::ffi::c_char;
+use std::ffi::CStr;
 
 use crate::ffi::{self, IoFileHandle, ARC_HEADER_SIZE};
 
@@ -257,8 +257,7 @@ pub unsafe fn read_seek_or_chunk(stream: *mut libc::FILE) -> Result<Vec<u8>, IoE
 /// either `file_close` / `file_cleanup` closes it explicitly or the
 /// ARC machinery's cleanup hook runs.
 pub unsafe fn alloc_file_handle(fp: *mut libc::FILE) -> *mut IoFileHandle {
-    let total =
-        (ARC_HEADER_SIZE + std::mem::size_of::<IoFileHandle>()) as i64;
+    let total = (ARC_HEADER_SIZE + std::mem::size_of::<IoFileHandle>()) as i64;
     let block = ffi::__ry_arc_alloc_counted(total);
     if block.is_null() {
         // The host shim aborts the process via `checked_malloc` on
@@ -268,12 +267,15 @@ pub unsafe fn alloc_file_handle(fp: *mut libc::FILE) -> *mut IoFileHandle {
         // relaxes.
         return std::ptr::null_mut();
     }
-    // Stamp the ARC header (mirrors arc.hpp:27-29).
+    // Stamp the ARC header (mirrors arc.hpp:27-29), then bump past
+    // the header to land on the data slot for the IoFileHandle.
     let header = block.cast::<i64>();
-    header.write(1); // strong_count
-    header.offset(1).write(0); // weak_count
-    // Data area starts past the header.
-    let handle = block.cast::<u8>().add(ARC_HEADER_SIZE).cast::<IoFileHandle>();
+    header.write(1);
+    header.offset(1).write(0);
+    let handle = block
+        .cast::<u8>()
+        .add(ARC_HEADER_SIZE)
+        .cast::<IoFileHandle>();
     std::ptr::write(handle, IoFileHandle { fp });
     handle
 }
