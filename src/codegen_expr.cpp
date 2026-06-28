@@ -46,11 +46,12 @@ static uint8_t suffixKindFromString(const std::string &suffix) {
     if (suffix == "u64")   return RY_LOWER_SUFFIX_U64;
     if (suffix == "f32")   return RY_LOWER_SUFFIX_F32;
     if (suffix == "f64")   return RY_LOWER_SUFFIX_F64;
-    // Unknown suffix — the lower layer rejects this and surfaces the
-    // diagnostic. Reaching here from a typed AST node is a bug; mapping
-    // to NONE lets the lower side produce a structured diagnostic
-    // instead of crashing.
-    return RY_LOWER_SUFFIX_NONE;
+    // Unknown suffix — return a value outside the enum so the lower side
+    // `SuffixKind::from_u8` rejects it via the `unknown suffix_kind`
+    // diagnostic. Mapping to `NONE` would silently treat the literal as
+    // a bare int and bypass the new error-channel contract; using an
+    // out-of-band byte (0xFF) trips the structured diagnostic instead.
+    return 0xFF;
 }
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {

@@ -175,6 +175,18 @@ pub(crate) unsafe fn lower_int_const(
         return 0;
     };
 
+    // Mirror the defensive check in `lower_float_const`: a float suffix on
+    // the int path would call `ry_emit_const_int` with a float-resolved
+    // `llvm_ty` (LLVM undefined behavior). The C++ shim should never send
+    // F32/F64 to this entry; reject defensively if it does.
+    if matches!(kind, SuffixKind::F32 | SuffixKind::F64) {
+        set_last_error(&format!(
+            "lower: non-integer suffix '{}' on int literal",
+            kind.as_str()
+        ));
+        return 0;
+    }
+
     if kind == SuffixKind::None {
         // Bare `int` is i64. With the strtoull-based parser a negative bit
         // pattern means the literal exceeds INT64_MAX (negative literals
