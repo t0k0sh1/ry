@@ -329,6 +329,23 @@ static const OverrideEntry kOverrides[] = {
      /*any_by_ptr_alloca_hint=*/"json_dump_in",
      /*synthetic_trailing_i64=*/std::nullopt,
      /*call_name_hint=*/"json_dump_status"},
+
+    // -------- json5: descriptor-driven dump (#2482) --------
+    // Mirrors json::dump above (identical ABI); symbol is __ry_json5_dump_file.
+    {"json5", "dump", {"File", "any"},
+     "__ry_json5_dump_file", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true,
+     /*any_by_ptr_param_index=*/1,
+     /*any_by_ptr_alloca_hint=*/"json5_dump_in",
+     /*synthetic_trailing_i64=*/std::optional<int64_t>{-1},
+     /*call_name_hint=*/"json5_dump_status"},
+    {"json5", "dump", {"File", "any", "int"},
+     "__ry_json5_dump_file", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true,
+     /*any_by_ptr_param_index=*/1,
+     /*any_by_ptr_alloca_hint=*/"json5_dump_in",
+     /*synthetic_trailing_i64=*/std::nullopt,
+     /*call_name_hint=*/"json5_dump_status"},
 };
 
 bool paramListMatches(std::initializer_list<const char *> expected,

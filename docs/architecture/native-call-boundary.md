@@ -62,7 +62,7 @@ The following stay outside the descriptor:
 - hand-written emitters that synthesize control flow, such as 3+-arg HTTP `listen`
 - parametric callees such as `json::load[T]` whose runtime symbol depends on a type argument parsed from the callee string
 
-Functions that previously sat in the "hand-written emitter" group have been migrated to the descriptor path as the needed capabilities were added; `json::dump` joined in #2481 via `any_by_ptr_*` and `synthetic_trailing_i64`. `json5::dump` is tracked in #2482 and reuses the same fields.
+Functions that previously sat in the "hand-written emitter" group have been migrated to the descriptor path as the needed capabilities were added; `json::dump` joined in #2481 via `any_by_ptr_*` and `synthetic_trailing_i64`, and `json5::dump` followed in #2482 reusing the same fields.
 
 These exceptions are compiler builtins or custom lowering paths, not runtime ABI exceptions.
 

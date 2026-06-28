@@ -114,58 +114,18 @@ static llvm::Value *emitJson5Load(CodeGen &cg, const CallExpr &e,
     return result;
 }
 
-// dump(f: File, value: any) -> Result<Unit, Error>
-// dump(f: File, value: any, indent: int) -> Result<Unit, Error>
-static llvm::Value *emitJson5DumpFile(CodeGen &cg, const CallExpr &e) {
-    if (e.args.size() != 2 && e.args.size() != 3)
-        cg.codegenError("dump() takes 2 or 3 arguments");
-
-    llvm::Value *fileHandle = cg.emitExpr(*e.args[0]);
-    if (!cg.isFile(fileHandle))
-        cg.codegenError("dump(f, value): first argument must be a File handle");
-
-    llvm::Value *val = cg.emitExpr(*e.args[1]);
-    if (val->getType() != cg.anyTy_)
-        val = cg.wrapInAny(val);
-
-    llvm::Value *slot = cg.emitAlloca(cg.anyTy_, "json5_dump_in");
-    cg.emitStore(val, slot);
-
-    llvm::Value *indent;
-    if (e.args.size() == 2) {
-        indent = llvm::ConstantInt::getSigned(cg.i64Ty_, -1);
-    } else {
-        indent = cg.emitExpr(*e.args[2]);
-        if (indent->getType() != cg.i64Ty_)
-            cg.codegenError("dump() indent must be an int");
-    }
-
-    auto fn = cg.getRuntimeFn("__ry_json5_dump_file", cg.i64Ty_,
-                              {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
-    llvm::Value *status = cg.builder_.CreateCall(
-        fn, {fileHandle, slot, indent}, "json5_dump_status");
-    return cg.wrapStatusAsResult(status);
-}
-
-
-// ===== JSON5 dispatch table =====
-//
-// stringify / stringifySafe were carved out to emitBuiltinJson5 (Pattern B)
-// per #2340 — see emitBuiltinJson5 below for the rationale shared with json.
-static const CodeGen::NativeDispatchEntry json5_table[] = {
-    {"dump", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitJson5DumpFile},
-};
-
 // Gate the dispatcher: only proceed if any json5 symbol is actually
 // registered in `native_fn_sigs_`. Without this, json5 would race with
 // json over the `load<T>` interceptor (both register dispatchers and
 // alphabetical ordering picks json first, routing every `load[T]` call
 // to `__ry_json_parse_to_any` — even when the user wrote
-// `from json5 import load`). The check mirrors the package-level gate
-// `emitTableDrivenNativeCall` performs at L17. `load` is in the gate
-// list even though it's not in `json5_table` (it's intercepted before
-// the table) — without it, `from json5 import load` programs that don't
-// also import another json5 symbol would silently fall through.
+// `from json5 import load`). `load` is in the gate list even though it
+// has no descriptor entry (it's intercepted below as a parametric
+// callee) — without it, `from json5 import load` programs that don't
+// also import another json5 symbol would silently fall through. The
+// other three siblings (`dump`, `stringify`, `stringifySafe`) act as
+// module-presence proxies because importing any symbol from `ry.json5`
+// processes the whole module and registers those non-generic declarations.
 static bool isJson5Imported(CodeGen &cg) {
     const auto &sigs = cg.getNativeFnSigs();
     return sigs.count("json5::load") || sigs.count("json5::stringify")
@@ -203,7 +163,11 @@ static llvm::Value *dispatchJson5(CodeGen &cg, const CallExpr &e) {
             "or load[int]. load[any] is intentionally not supported.");
     }
 
-    return cg.emitTableDrivenNativeCall(e, "json5", json5_table, std::size(json5_table));
+    // #2482: `dump` is now descriptor-driven (see kOverrides). The remaining
+    // chain (descriptor → emitGenericNativeCall) is reached by returning
+    // nullptr here, mirroring dispatchIO / dispatchNet / dispatchPath /
+    // dispatchThread / dispatchJson after their respective migrations.
+    return nullptr;
 }
 
 // ===== Builtin Json5 (Pattern B carve-out, #2340) =====

@@ -237,8 +237,8 @@ static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
 //
 // Library registration: the carved emitters register `<package>` directly so
 // the JIT loads `libry_<package>` before the runtime symbol is referenced.
-// dispatchJson covers load[T] only (`dump` migrated to the descriptor-driven
-// path in #2481); dispatchJson5 still covers load[T] and `dump` until #2482.
+// dispatchJson and dispatchJson5 both cover load[T] only; `dump` migrated to
+// the descriptor-driven path in #2481 (json) and #2482 (json5).
 llvm::Value *CodeGen::emitBuiltinJsonModuleStringify(
     const CallExpr &e,
     const char *package,

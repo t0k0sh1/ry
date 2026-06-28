@@ -1,0 +1,27 @@
+# FileCheck golden for #2482 — json5::dump descriptor-driven migration.
+#
+# Mirror of tests/filecheck/json_dump_descriptor_2481.ry with `json` → `json5`
+# substitutions; see that file for the full descriptor-mechanism rationale.
+# json5-specific: alloca hint `json5_dump_in`, call hint `json5_dump_status`,
+# symbol `__ry_json5_dump_file`, pre-migration emitter `emitJson5DumpFile`.
+
+from ry.io import File, open, close
+from ry.json5 import dump
+
+fn dumpProbe():
+    case open("/tmp/2482-filecheck.json5", "w"):
+        Ok(f):
+            n: int = 42
+            # CHECK: %json5_dump_in = alloca %Any
+            # CHECK: store %Any %{{[a-zA-Z_.0-9]+}}, ptr %json5_dump_in
+            # CHECK: %json5_dump_status = call i64 @__ry_json5_dump_file(ptr %{{[a-zA-Z_.0-9]+}}, ptr %json5_dump_in, i64 -1)
+            dump(f, n)
+            # CHECK: %json5_dump_in{{[0-9]+}} = alloca %Any
+            # CHECK: %json5_dump_status{{[0-9]+}} = call i64 @__ry_json5_dump_file(ptr %{{[a-zA-Z_.0-9]+}}, ptr %json5_dump_in{{[0-9]+}}, i64 2)
+            dump(f, n, 2)
+            close(f)
+            0
+        Err(_): 0
+
+fn main():
+    dumpProbe()
