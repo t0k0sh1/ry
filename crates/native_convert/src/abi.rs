@@ -14,6 +14,7 @@
 //! never contain interior NULs, so the base64 `string_byte_len`
 //! mechanism is intentionally not used.
 
+use std::borrow::Cow;
 use std::ffi::{c_char, CStr};
 
 use crate::core::{parse_float, parse_int};
@@ -22,20 +23,31 @@ use crate::{catch_or_exit, get_last_error_handle, set_last_error};
 /// Run `parser` on the str behind `str_handle` and route the result
 /// into the C-ABI shape: write the value through `out` and return 0 on
 /// Ok, stash the message in the per-thread error buffer and return 1
-/// on Err. Null / non-UTF-8 inputs surface as the empty string, which
-/// the parsers route to `"int: empty string"` / `"float: empty string"`
-/// — matching the C++ `if (!str || *str == '\0')` guard.
+/// on Err.
+///
+/// Input handling matches the C++ `if (!str || *str == '\0')` guard
+/// for null and empty input (routed to "int/float: empty string"). Ry
+/// `str` handles can carry arbitrary byte buffers (built via
+/// `makeString` / `makeStringUninit`), so a non-null but non-UTF-8
+/// input is passed through `from_utf8_lossy` and routed to the parser,
+/// which produces "int/float: invalid character in '...'" — same error
+/// class as the C++ `strtoll`/`strtod` non-digit path, rather than
+/// silently collapsing to empty.
 unsafe fn parse_to_out<T>(
     str_handle: *const c_char,
     out: *mut T,
     parser: impl FnOnce(&str) -> Result<T, String>,
 ) -> i64 {
-    let s = if str_handle.is_null() {
-        ""
+    let cow: Cow<str> = if str_handle.is_null() {
+        Cow::Borrowed("")
     } else {
-        CStr::from_ptr(str_handle).to_str().unwrap_or("")
+        let bytes = CStr::from_ptr(str_handle).to_bytes();
+        match std::str::from_utf8(bytes) {
+            Ok(s) => Cow::Borrowed(s),
+            Err(_) => String::from_utf8_lossy(bytes),
+        }
     };
-    match parser(s) {
+    match parser(&cow) {
         Ok(v) => {
             *out = v;
             0

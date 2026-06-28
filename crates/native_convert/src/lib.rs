@@ -70,10 +70,24 @@ pub(crate) fn set_last_error(msg: &str) {
 /// Caller is the `__ry_convert_get_last_error` abi entry; codegen in
 /// `src/codegen_call.cpp` (`emitBuiltinConversion`) resolves the
 /// symbol when building the Err arm of `int(s)` / `float(s)`.
+///
+/// `LAST_ERROR` starts empty (`Vec::new()` is unallocated), so
+/// `buf.as_ptr()` would be a dangling alignment sentinel before any
+/// error is recorded — handing that across the FFI boundary is
+/// technically UB even though the host shim's `memcpy` would no-op
+/// with len 0. Route through a static `EMPTY` byte when the buffer
+/// is empty so the pointer passed to `__ry_host_make_string` is
+/// always valid (matches the C++ `last_error_buf[512]` initial state).
 pub(crate) unsafe fn get_last_error_handle() -> *const c_char {
+    static EMPTY: [u8; 1] = [0];
     LAST_ERROR.with(|cell| {
         let buf = cell.borrow();
-        ffi::__ry_host_make_string(buf.as_ptr().cast::<c_char>(), buf.len() as i64)
+        let src = if buf.is_empty() {
+            EMPTY.as_ptr()
+        } else {
+            buf.as_ptr()
+        };
+        ffi::__ry_host_make_string(src.cast::<c_char>(), buf.len() as i64)
     })
 }
 
