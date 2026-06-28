@@ -455,8 +455,13 @@ pub unsafe extern "C" fn __ry_io_write_bytes(path: *const c_char, list: *mut c_v
         } else {
             0
         };
-        libc::fclose(fp);
-        if written as i64 != header.len {
+        // Capture the close return value: buffered writes can still
+        // fail at `fclose` time even when `fwrite` reports success
+        // (the C++ `write_text` path at io.cpp:171-172 already checks
+        // this; the C++ `write_bytes` path inconsistently dropped it
+        // — flagged by CodeRabbit on #2487 and tightened here).
+        let close_rc = libc::fclose(fp);
+        if written as i64 != header.len || close_rc != 0 {
             set_last_error(&format!(
                 "failed to write all bytes to '{}'",
                 core::path_lossy(ry_str_bytes(path))

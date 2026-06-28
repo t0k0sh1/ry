@@ -202,10 +202,14 @@ TEST(RuntimeIoFileTest, OpenErrorPopulatesBothErrorBuffers) {
     // Both channels must hold a non-empty message after the failed open.
     EXPECT_GT(std::strlen(io_err), 0u);
     EXPECT_GT(std::strlen(shared_err), 0u);
-    // Both messages must mention "open" (matches the C++ wording at
-    // io.cpp:315 and the Rust port abi::__ry_io_file_open's err arm).
-    EXPECT_NE(std::strstr(io_err, "open"), nullptr);
-    EXPECT_NE(std::strstr(shared_err, "open"), nullptr);
+    // Both messages must mention the failing path/mode tuple this call
+    // formatted (matches `__ry_io_file_open`'s err-arm wording: "open:
+    // cannot open '<path>' in mode '<mode>'"). Asserting on the unique
+    // file basename rather than just the word "open" rules out a
+    // false-pass when an earlier test left an "open" error in either
+    // thread-local buffer.
+    EXPECT_NE(std::strstr(io_err, "ry_rt_io_dualwrite_xyzzy.txt"), nullptr);
+    EXPECT_NE(std::strstr(shared_err, "ry_rt_io_dualwrite_xyzzy.txt"), nullptr);
 
     freeRyStr(io_err);
     freeRyStr(shared_err);

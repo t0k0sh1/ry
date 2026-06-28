@@ -120,10 +120,15 @@ pub(crate) fn set_last_error(msg: &str) {
 
     // Build a NUL-terminated scratch for the shared mirror. Truncate
     // at the first interior NUL (if any) so the C-string-shaped
-    // `__ry_set_last_error` reads only what fits.
-    let mut scratch = Vec::with_capacity(LAST_ERROR_CAP);
+    // `__ry_set_last_error` reads only what fits. Reserve the full
+    // `LAST_ERROR_CAP` message budget + one trailing NUL so the shared
+    // mirror carries the same payload length as the module-local
+    // buffer (511 bytes); the host's `snprintf(buf, 512, "%s", msg)`
+    // in `src/runtime/core/error.cpp:19` then writes 511 chars + NUL,
+    // matching C++ `last_error_buf[512]` semantics byte-for-byte.
+    let mut scratch = Vec::with_capacity(LAST_ERROR_CAP + 1);
     for &b in payload {
-        if b == 0 || scratch.len() >= LAST_ERROR_CAP - 1 {
+        if b == 0 || scratch.len() >= LAST_ERROR_CAP {
             break;
         }
         scratch.push(b);
