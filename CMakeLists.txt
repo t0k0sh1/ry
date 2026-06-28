@@ -304,10 +304,10 @@ function(add_ry_fuzz_target TARGET_NAME)
 endfunction()
 
 # Self-contained packages (no cross-runtime dependencies).
-# base64 was ported to Rust in #2282 — see the corrosion block below for the
-# native_base64 crate (output: libry_base64.{dylib,so}).
+# base64 was ported to Rust in #2282 and convert in #2478 — see the
+# corrosion blocks below for the native_base64 / native_convert crates
+# (outputs: libry_base64.{dylib,so} / libry_convert.{dylib,so}).
 add_ry_native_lib(path       src/runtime/native/path.cpp)
-add_ry_native_lib(convert    src/runtime/native/convert.cpp)
 add_ry_native_lib(filesystem src/runtime/native/filesystem.cpp)
 add_ry_native_lib(gc         src/runtime/native/gc.cpp)
 # ry_testing also packages src/test_runtime.cpp — the __ry_test_* / __ry_mock_*
@@ -443,6 +443,21 @@ corrosion_import_crate(
 set_target_properties(ry_base64 PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+# ===== native_convert: Rust port of @native("convert") (#2478) =====
+# Second migration after the base64 pilot — same scaffold (package =
+# `native_convert`; cdylib output = `libry_convert.{dylib,so}` via
+# `[lib].name = "ry_convert"` so `find_native_library("ry_convert")` is
+# unchanged). Symbols __ry_str_to_int / __ry_str_to_float keep their
+# legacy bare names (no `__ry_convert_` prefix), so
+# kRuntimeSymbolLibraries in src/codegen.cpp and the codegen call sites
+# in src/codegen_call.cpp are unchanged. No LLVM dependency.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/native_convert/Cargo.toml"
+    CRATES native_convert
+)
+set_target_properties(ry_convert PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 # ===== xid: ECMAScript IdentifierName predicates for json5 (#2314) =====
 # Tiny Rust cdylib (`unicode-ident` wrapper) exposing
 # `__ry_xid_start(u32)` / `__ry_xid_continue(u32)`. Unlike ry_base64 this
@@ -482,7 +497,8 @@ set(RY_NATIVE_LIBS ry_base64 ry_xid ry_path ry_convert ry_filesystem ry_gc ry_te
 set(RY_NATIVE_LIBS_LINK
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_base64${CMAKE_SHARED_LIBRARY_SUFFIX}"
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}"
-    ry_path ry_convert ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
+    "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_convert${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    ry_path ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 # Native shared libraries (except ry_testing) are NOT linked here — the JIT

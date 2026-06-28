@@ -1,0 +1,23 @@
+# Rust implementation of the @native("convert") stdlib runtime module —
+# second port after the base64 pilot (#2282), driven by #2478.
+#
+# Package label ("native_convert") and runtime artifact name ("ry_convert"
+# → libry_convert.{dylib,so}) are split: the JIT's find_native_library()
+# resolves the latter, while the former groups sibling cdylib crates
+# (native_base64, future native_path / native_io / ...).
+
+[package]
+name = "native_convert"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ry_convert"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

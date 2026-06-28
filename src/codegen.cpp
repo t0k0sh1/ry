@@ -170,7 +170,8 @@ constexpr RuntimeSymbolLibraryEntry kRuntimeSymbolLibraries[] = {
     {"__ry_semaphore_",      true,  "thread"},
     {"__ry_barrier_",        true,  "thread"},
     {"__ry_atomic_",         true,  "thread"},
-    // -- convert (convert.cpp uses bare `__ry_str_to_*`) --
+    // -- convert (native_convert crate uses legacy bare names
+    //    `__ry_str_to_*`; #2478 Rust port of convert.cpp)             --
     {"__ry_convert_",        true,  "convert"},
     {"__ry_str_to_int",      false, "convert"},
     {"__ry_str_to_float",    false, "convert"},
