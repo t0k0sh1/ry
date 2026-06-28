@@ -1034,6 +1034,40 @@ TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange) {
     EXPECT_THROW(runSource("x = -1u32"), std::runtime_error);
 }
 
+// Stage 1 (#2483): after `validateIntRange` moved to `crates/lower/`, the
+// diagnostic message crosses the C++ → Rust → C++ boundary via the
+// thread-local `ry_lower_get_last_error` channel. `EXPECT_THROW` above
+// catches the throw but not message regression. Lock the exact strings so a
+// future migration step can't silently rewrite them.
+//
+// Rust error path: `NumberExpr` literals with a positional suffix go through
+// `ry_lower_int_const` → `validate_int_range` → `set_last_error`.
+TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange_Messages_RustPath) {
+    expectCompileError("x = 256u8",  "u8 literal out of range: 256");
+    expectCompileError("x = 129i8",  "i8 literal out of range: 129");
+    expectCompileError("x = 65536u16", "u16 literal out of range: 65536");
+    expectCompileError("x = 9223372036854775808i64",
+                       "i64 literal out of range: -9223372036854775808");
+    // Bare-int (`None` arm) message: distinct from the suffixed arms above.
+    // Reaches the Rust path when no u-type annotation can be inferred — a
+    // function-`return` position is one such site (no LHS-driven suffix
+    // injection from `emitVarDecl`).
+    expectCompileError(
+        "fn f() -> int:\n    return 9223372036854775808\nfn main():\n    _ = f()\n",
+        "integer literal out of range for int: 9223372036854775808");
+}
+
+// UnaryExpr fast-path coverage: `-129i8` etc. flow through the C++ fast-path
+// at `src/codegen_expr.cpp:282-308`, NOT through `ry_lower_int_const`. They
+// are kept here so a future refactor that accidentally collapses the
+// fast-path doesn't regress these diagnostics.
+TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange_Messages_UnaryFastPath) {
+    expectCompileError("x = -129i8", "i8 literal out of range: -129");
+    // Legal edges that the UnaryExpr fast-path must still accept.
+    EXPECT_NO_THROW(runSource("x = -128i8\nprint(x)"));
+    EXPECT_NO_THROW(runSource("x = -9223372036854775808\nprint(x)"));
+}
+
 // ===== [contract] Unsigned variable negation error (#312) =====
 
 TEST_F(CodeGenTest, UnsignedVariableNegation_u8) {

@@ -20,4 +20,6 @@
 
 mod abi;
 mod emit_extern;
+mod error;
+mod expr;
 mod handles;

@@ -38,6 +38,81 @@ extern "C" {
 // `CodeGen::emitExprVariant(const BoolExpr &)`.
 RyValueId ry_lower_bool_const(RyEmitCtx *ctx, RyTypeRef i1_ty, int value);
 
+// =========================================================================
+// Stage 1 (#2483) — primitive literal lowering.
+//
+// `NumberExpr` / `FloatExpr` lowering moves from C++
+// (`src/codegen_expr.cpp:88-121`) to the lower crate. Suffix-based type
+// selection is still resolved on the C++ side (the LLVM type registry
+// moves to Rust at Stage 5); the suffix kind is passed as an enum so the
+// Rust side can apply the correct range-check arm and frame diagnostics.
+// =========================================================================
+
+// Suffix kind discriminator for the int / float const entries. Numeric
+// values are a stable boundary contract; do NOT reorder without updating
+// the mirroring `SuffixKind` enum in `crates/lower/src/expr.rs`.
+typedef enum RyLowerSuffixKind {
+    RY_LOWER_SUFFIX_NONE = 0,
+    RY_LOWER_SUFFIX_I8   = 1,
+    RY_LOWER_SUFFIX_I16  = 2,
+    RY_LOWER_SUFFIX_I32  = 3,
+    RY_LOWER_SUFFIX_I64  = 4,
+    RY_LOWER_SUFFIX_U8   = 5,
+    RY_LOWER_SUFFIX_U16  = 6,
+    RY_LOWER_SUFFIX_U32  = 7,
+    RY_LOWER_SUFFIX_U64  = 8,
+    RY_LOWER_SUFFIX_F32  = 9,
+    RY_LOWER_SUFFIX_F64  = 10,
+} RyLowerSuffixKind;
+
+// Lower a Ry `NumberExpr` to an LLVM integer constant. `llvm_ty` is the
+// LLVM type the caller resolved from the suffix (`resolveType(e.suffix)`,
+// or `i64Ty_` when `e.suffix` is empty); `magnitude` is the parser's
+// unsigned bit pattern (negative literals arrive as `UnaryExpr` and are
+// handled by a C++ fast-path before reaching this entry). `suffix_kind`
+// is one of `RY_LOWER_SUFFIX_*`; `signed_bit` is non-zero in signed
+// contexts (matches the original `ConstantInt::get(.., isSigned)` flag).
+//
+// On range overflow or bare-int negative bit-pattern, returns 0 and
+// populates a thread-local diagnostic string retrievable via
+// `ry_lower_get_last_error`. The caller MUST check the return value:
+//
+//     RyValueId id = ry_lower_int_const(...);
+//     if (id == 0) {
+//         const char *msg = ry_lower_get_last_error();
+//         codegenError(msg ? std::string(msg) : "lower: unspecified error");
+//     }
+RyValueId ry_lower_int_const(RyEmitCtx *ctx, RyTypeRef llvm_ty,
+                             uint64_t magnitude, uint8_t suffix_kind,
+                             uint8_t signed_bit);
+
+// Lower a Ry `FloatExpr` to an LLVM floating-point constant. `llvm_ty`
+// is the LLVM type the caller selected (`f64Ty_` for empty / `f64`
+// suffix, `f32Ty_` for `f32`); `value` is the parser's double.
+// `suffix_kind` must be `RY_LOWER_SUFFIX_NONE`, `RY_LOWER_SUFFIX_F32`,
+// or `RY_LOWER_SUFFIX_F64`.
+//
+// No range check (IEEE 754 overflow to infinity is accepted, matching
+// the C++ side). Has no error path under normal operation; the
+// `ry_lower_get_last_error` channel is consulted only if the caller
+// passes a non-float `suffix_kind` (protocol break).
+RyValueId ry_lower_float_const(RyEmitCtx *ctx, RyTypeRef llvm_ty,
+                               double value, uint8_t suffix_kind);
+
+// Retrieve the most recently set error message for this thread, or NULL
+// if none was set since the last `ry_lower_*` entry was called. The
+// returned pointer is valid ONLY until the next `ry_lower_*` call on
+// the same thread (which clears the slot at entry — see the Stage 1
+// boundary contract in `docs/architecture/upper-codegen-migration.md`).
+// The caller MUST copy the string before issuing any other boundary
+// call.
+//
+// Cross-stage contract: `RyValueId = 0` from any `ry_lower_*` entry that
+// supports error reporting means "this call failed". The paired
+// `ry_lower_get_last_error()` return value is always fresh (set inside
+// the failing call), never stale.
+const char *ry_lower_get_last_error(void);
+
 #ifdef __cplusplus
 }
 #endif

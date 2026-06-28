@@ -442,6 +442,14 @@ impl EmitCtx {
         ValueRef(LLVMConstInt(ty.0, value, sign_extend as i32))
     }
 
+    // Materialize a floating-point constant `LLVMConstReal(ty, value)`. `ty`
+    // selects f32 vs f64 semantics; the `f64` argument is narrowed by
+    // `LLVMConstReal` to the target type's float layout (byte-identical to
+    // `llvm::ConstantFP::get(fNTy, double)` on the C++ side).
+    pub(crate) unsafe fn const_real(&mut self, ty: TypeRef, value: f64) -> ValueRef {
+        ValueRef(LLVMConstReal(ty.0, value))
+    }
+
     // Materialize a null constant of any type via `LLVMConstNull(ty)`. For
     // pointer types this is `ConstantPointerNull::get(ty)` — the typed null
     // pointer used in null-guard `icmp eq` comparisons. Added for pilot G

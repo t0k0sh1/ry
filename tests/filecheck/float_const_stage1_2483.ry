@@ -1,0 +1,27 @@
+# FileCheck golden for #2483 — upper-codegen Stage 1, FloatExpr migration.
+#
+# `emitExprVariant(FloatExpr)` is the Stage 1 lowering: the suffix → type
+# selection (`f64` for empty / `f64`; `f32` for `f32`) and the
+# `ConstantFP::get` construction move from C++ (`src/codegen_expr.cpp:
+# 114-121`) to `crates/lower/`'s `ry_lower_float_const`, which calls
+# `ry_emit_const_fp(ctx, ty, value)`. Both paths must produce
+# byte-identical float constants — this golden locks that invariant for
+# both suffix cases:
+#
+#   - `1.5f32`   → `float 1.500000e+00`   (single-precision)
+#   - `2.0`      → `double 2.000000e+00`  (default double)
+#
+# The probe stores each literal into a named local so the constants
+# outlive sema-folding.
+#
+# CHECK-LABEL: define double @floatPilotProbe()
+# CHECK: store float 1.500000e+00, ptr %a
+# CHECK: store double 2.000000e+00, ptr %b
+
+fn floatPilotProbe() -> float:
+    a = 1.5f32
+    b = 2.0
+    return b
+
+fn main():
+    _ = floatPilotProbe()
