@@ -181,6 +181,7 @@ constexpr RuntimeSymbolLibraryEntry kRuntimeSymbolLibraries[] = {
     {"__ry_json5_",          true,  "json5"},   // before __ry_json_
     {"__ry_json_",           true,  "json"},
     {"__ry_base64_",         true,  "base64"},
+    // -- path (native_path crate; #2479 Rust port of path.cpp) --
     {"__ry_path_",           true,  "path"},
     {"__ry_filesystem_",     true,  "filesystem"},
     {"__ry_testing_",        true,  "testing"},

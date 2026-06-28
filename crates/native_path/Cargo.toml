@@ -1,0 +1,25 @@
+# Rust implementation of the @native("path") stdlib runtime module —
+# third port after the base64 pilot (#2282) and convert (#2478), driven
+# by #2479. Validates the abi/ffi/core scaffold for arity-suffix
+# overloads (__ry_path_join2/3/4) and FFI to libc (realpath).
+#
+# Package label ("native_path") and runtime artifact name ("ry_path"
+# → libry_path.{dylib,so}) are split: the JIT's find_native_library()
+# resolves the latter, while the former groups sibling cdylib crates
+# (native_base64, native_convert, future native_io / ...).
+
+[package]
+name = "native_path"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ry_path"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

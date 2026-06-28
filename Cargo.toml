@@ -11,7 +11,7 @@
 
 [workspace]
 resolver = "2"
-members = ["crates/emit", "crates/lower", "crates/native_base64", "crates/native_convert", "crates/xid"]
+members = ["crates/emit", "crates/lower", "crates/native_base64", "crates/native_convert", "crates/native_path", "crates/xid"]
 
 # Profiles live at the workspace root (cargo ignores package-level
 # profiles in workspace members). See:
