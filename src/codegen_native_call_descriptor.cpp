@@ -37,6 +37,25 @@ struct OverrideEntry {
     const char *iterator_elem_type_name;  // empty = no iterator wrapping
     CodeGenReturnWrapping wrapping_override;
     bool wrapping_overridden;
+
+    // #2481: any-by-ptr param wrapping. -1 = none. When set, the
+    // descriptor consumer treats the indexed `any`-typed param slot as
+    // `(wrapInAny? + alloca + store -> ptr)` to match the C ABI's
+    // `const RyAny*` expectation. `any_by_ptr_alloca_hint` is the SSA
+    // name hint for the alloca; nullptr/"" -> derive `<callee>_any_in`.
+    // In-class defaults so existing kOverrides entries need no edits.
+    int any_by_ptr_param_index = -1;
+    const char *any_by_ptr_alloca_hint = nullptr;
+
+    // #2481: synthetic trailing `i64` constant injection. When engaged,
+    // the descriptor consumer appends the value as an `i64` arg after
+    // the Ry args. Used by json::dump's 2-arg overload to inject
+    // indent=-1.
+    std::optional<int64_t> synthetic_trailing_i64;
+
+    // #2481: SSA name hint for the runtime-call result (see
+    // NativeCallDescriptor::call_name_hint). nullptr/"" -> use `e.callee`.
+    const char *call_name_hint = nullptr;
 };
 
 // Hand-maintained table. Order matters only for readability — lookup is
@@ -225,31 +244,41 @@ static const OverrideEntry kOverrides[] = {
     // wrapStatusAsResult. The default `__ry_get_last_error` channel (set
     // via codegen_fn.cpp's kHasModuleLastError exclusion + the
     // emitGenericNativeCall fallback) matches the pre-migration call to
-    // `wrapStatusAsResult(status)` with no explicit errFn arg.
+    // `wrapStatusAsResult(status)` with no explicit errFn arg. The
+    // `call_name_hint` field reproduces the pre-migration `<callee>_status`
+    // SSA name byte-exactly (#2481 hint mechanism).
     {"thread", "lockAcquire",      {"Lock"},
      "__ry_lock_acquire", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "lockAcquire_status"},
     {"thread", "lockRelease",      {"Lock"},
      "__ry_lock_release", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "lockRelease_status"},
     {"thread", "rwlockReadLock",   {"RWLock"},
      "__ry_rwlock_read_lock", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "rwlockReadLock_status"},
     {"thread", "rwlockWriteLock",  {"RWLock"},
      "__ry_rwlock_write_lock", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "rwlockWriteLock_status"},
     {"thread", "rwlockUnlock",     {"RWLock"},
      "__ry_rwlock_unlock", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "rwlockUnlock_status"},
     {"thread", "semaphoreAcquire", {"Semaphore"},
      "__ry_semaphore_acquire", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "semaphoreAcquire_status"},
     {"thread", "semaphoreRelease", {"Semaphore"},
      "__ry_semaphore_release", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "semaphoreRelease_status"},
     {"thread", "barrierWait",      {"Barrier"},
      "__ry_barrier_wait", {}, "",
-     CodeGenReturnWrapping::ResultStatus, true},
+     CodeGenReturnWrapping::ResultStatus, true,
+     -1, nullptr, std::nullopt, "barrierWait_status"},
 
     // -------- thread: sync-primitive *Free (ResourceFree wrapping) ----
     // The *Free entries don't dial a runtime fn — they emit emitResourceFree's
@@ -268,6 +297,38 @@ static const OverrideEntry kOverrides[] = {
     {"thread", "barrierFree",     {"Barrier"},
      "", {}, "",
      CodeGenReturnWrapping::ResourceFree, true},
+
+    // -------- json: descriptor-driven dump (#2481) --------
+    // The 2-arg and 3-arg overloads both route to a single C symbol
+    // `__ry_json_dump_file(ptr file, ptr any_value, i64 indent_or_neg1)`.
+    // The 2-arg form synthesizes `indent = -1`; the 3-arg form passes
+    // the user's indent. The `any`-typed value slot (index 1) is
+    // wrapped via the descriptor's `any_by_ptr_param_index` mechanism
+    // (`wrapInAny` if not already `any`, then alloca+store, pass as
+    // ptr) to match the C ABI's `const RyAny*` expectation. The File
+    // handle (index 0) is auto-detected as `rk_file` via
+    // `inferHandleParamIndex`, which causes `emitGenericNativeCall` to
+    // also link `libry_io` (required: `__ry_json_dump_file` internally
+    // calls `__ry_io_file_write_text`). `ResultStatus` + the default
+    // `__ry_get_last_error` channel reproduces the pre-migration
+    // `wrapStatusAsResult(status)` call exactly. `any_by_ptr_alloca_hint`
+    // and the per-package callNameHint extension in
+    // `emitGenericNativeCall` preserve the SSA names `json_dump_in` /
+    // `json_dump_status` for byte-exact IR regression.
+    {"json", "dump", {"File", "any"},
+     "__ry_json_dump_file", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true,
+     /*any_by_ptr_param_index=*/1,
+     /*any_by_ptr_alloca_hint=*/"json_dump_in",
+     /*synthetic_trailing_i64=*/std::optional<int64_t>{-1},
+     /*call_name_hint=*/"json_dump_status"},
+    {"json", "dump", {"File", "any", "int"},
+     "__ry_json_dump_file", {}, "",
+     CodeGenReturnWrapping::ResultStatus, true,
+     /*any_by_ptr_param_index=*/1,
+     /*any_by_ptr_alloca_hint=*/"json_dump_in",
+     /*synthetic_trailing_i64=*/std::nullopt,
+     /*call_name_hint=*/"json_dump_status"},
 };
 
 bool paramListMatches(std::initializer_list<const char *> expected,
@@ -416,6 +477,12 @@ std::optional<NativeOverloadOverride> lookupNativeOverloadOverride(
             ? entry.iterator_elem_type_name : "";
         out.wrapping_override = entry.wrapping_override;
         out.wrapping_overridden = entry.wrapping_overridden;
+        out.any_by_ptr_param_index = entry.any_by_ptr_param_index;
+        out.any_by_ptr_alloca_hint = entry.any_by_ptr_alloca_hint
+            ? entry.any_by_ptr_alloca_hint : "";
+        out.synthetic_trailing_i64 = entry.synthetic_trailing_i64;
+        out.call_name_hint = entry.call_name_hint
+            ? entry.call_name_hint : "";
         return out;
     }
     return std::nullopt;

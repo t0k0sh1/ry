@@ -81,6 +81,31 @@ struct NativeCallDescriptor {
     std::string exported_symbol;
     std::vector<NativeNulCheckSpec> nul_checks;
     std::string iterator_elem_type_name;
+
+    // #2481: per-overload "wrap an `any`-typed param slot as
+    // (wrapInAny? + alloca + store -> ptr)" — required by json::dump
+    // (and json5::dump, #2482) whose C ABI takes `const RyAny *`.
+    // `any_by_ptr_param_index` is the 0-based arg index (-1 = none).
+    // `any_by_ptr_alloca_hint` is the SSA name hint for the alloca
+    // (empty -> derive `<callee>_any_in`); set explicitly for byte-
+    // exact IR preservation under migration.
+    int any_by_ptr_param_index = -1;
+    std::string any_by_ptr_alloca_hint;
+
+    // #2481: append a synthetic trailing `i64` constant to the C call
+    // when the C ABI takes more args than the Ry declaration. Used by
+    // json::dump's 2-arg overload to inject `indent = -1` so both
+    // overloads route to a single `__ry_json_dump_file(ptr, ptr, i64)`
+    // symbol. Empty `optional` = no injection.
+    std::optional<int64_t> synthetic_trailing_i64;
+
+    // #2481: SSA name hint for the runtime-call result. The pre-migration
+    // emitters (thread sync ops, json::dump) named their `i64 status` call
+    // with package- or overload-specific forms (e.g. `lockAcquire_status`,
+    // `json_dump_status`); the descriptor-driven path uses this hint
+    // verbatim so byte-exact IR is preserved under migration. Empty -> use
+    // `e.callee` (the existing default for all other entries).
+    std::string call_name_hint;
 };
 
 // inferLibraryName: derives the descriptor's library_name from the
@@ -157,6 +182,12 @@ struct NativeOverloadOverride {
     std::string iterator_elem_type_name;
     CodeGenReturnWrapping wrapping_override = CodeGenReturnWrapping::Direct;
     bool wrapping_overridden = false;
+
+    // #2481: see NativeCallDescriptor for semantics.
+    int any_by_ptr_param_index = -1;
+    std::string any_by_ptr_alloca_hint;
+    std::optional<int64_t> synthetic_trailing_i64;
+    std::string call_name_hint;
 };
 
 // lookupNativeOverloadOverride: returns the override entry matching
