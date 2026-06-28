@@ -27,56 +27,30 @@ std::string anyArithRejectionMsg(const std::string &op_desc) {
 }
 }
 
-// Range check for suffixed integer literals.
-//
-// NumberExpr.value holds the unsigned bit pattern of a non-negative magnitude
-// (see ast.hpp: negation is expressed as UnaryExpr). Signed suffixes accept
-// magnitudes up to 2^(N-1) — `-INT{N}_MIN` for `-INT{N}_MIN` itself via
-// UnaryExpr. Unsigned suffixes compare the bit pattern as uint64_t because
-// `u64` max is stored as `int64_t(-1)`.
-template<typename ErrorFn>
-static void validateIntRange(int64_t value, const std::string &suffix,
-                             ErrorFn error) {
-    uint64_t uval = static_cast<uint64_t>(value);
-    auto fmtValue = [&]() {
-        // Unsigned suffixes: show the bit pattern as unsigned so large u64
-        // literals don't render as negative numbers.
-        if (!suffix.empty() && suffix[0] == 'u')
-            return std::to_string(uval);
-        return std::to_string(value);
-    };
-    // Signed suffixes: positive literals must fit in INT{N}_MAX. The extra
-    // value `abs(INT{N}_MIN)` is only legal via a unary-minus wrapper, which
-    // is handled by a constant-fold fast-path in emitExprVariant(UnaryExpr)
-    // before this check runs.
-    if (suffix == "i8") {
-        if (uval > static_cast<uint64_t>(INT8_MAX))
-            error("i8 literal out of range: " + fmtValue());
-    } else if (suffix == "i16") {
-        if (uval > static_cast<uint64_t>(INT16_MAX))
-            error("i16 literal out of range: " + fmtValue());
-    } else if (suffix == "i32") {
-        if (uval > static_cast<uint64_t>(INT32_MAX))
-            error("i32 literal out of range: " + fmtValue());
-    } else if (suffix == "i64") {
-        // Magnitude > INT64_MAX cannot fit in a signed i64 even via unary
-        // minus (except the INT64_MIN edge case, which is caught by the
-        // same UnaryExpr fast-path).
-        if (value < 0)
-            error("i64 literal out of range: " + fmtValue());
-    } else if (suffix == "u8") {
-        if (uval > UINT8_MAX)
-            error("u8 literal out of range: " + fmtValue());
-    } else if (suffix == "u16") {
-        if (uval > UINT16_MAX)
-            error("u16 literal out of range: " + fmtValue());
-    } else if (suffix == "u32") {
-        if (uval > UINT32_MAX)
-            error("u32 literal out of range: " + fmtValue());
-    }
-    // suffix == "u64": any 64-bit bit pattern is valid; unary minus on a
-    // u64 is rejected earlier by isUnsignedLowLevelName in the UnaryExpr
-    // path, so no negative magnitude can reach this site.
+// Map a Ry numeric suffix string to its `RyLowerSuffixKind` enum value.
+// Empty suffix → `RY_LOWER_SUFFIX_NONE` (the bare-int case). Stage 1
+// (#2483) moves the actual range-check / constant-construction to
+// `crates/lower/`; this helper only translates the suffix for the
+// boundary call. The enum values are a stable boundary contract — keep
+// in sync with `RyLowerSuffixKind` in `include/ry/lower/api.h` and
+// `SuffixKind` in `crates/lower/src/expr.rs`.
+static uint8_t suffixKindFromString(const std::string &suffix) {
+    if (suffix.empty())    return RY_LOWER_SUFFIX_NONE;
+    if (suffix == "i8")    return RY_LOWER_SUFFIX_I8;
+    if (suffix == "i16")   return RY_LOWER_SUFFIX_I16;
+    if (suffix == "i32")   return RY_LOWER_SUFFIX_I32;
+    if (suffix == "i64")   return RY_LOWER_SUFFIX_I64;
+    if (suffix == "u8")    return RY_LOWER_SUFFIX_U8;
+    if (suffix == "u16")   return RY_LOWER_SUFFIX_U16;
+    if (suffix == "u32")   return RY_LOWER_SUFFIX_U32;
+    if (suffix == "u64")   return RY_LOWER_SUFFIX_U64;
+    if (suffix == "f32")   return RY_LOWER_SUFFIX_F32;
+    if (suffix == "f64")   return RY_LOWER_SUFFIX_F64;
+    // Unknown suffix — the lower layer rejects this and surfaces the
+    // diagnostic. Reaching here from a typed AST node is a bug; mapping
+    // to NONE lets the lower side produce a structured diagnostic
+    // instead of crashing.
+    return RY_LOWER_SUFFIX_NONE;
 }
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
@@ -86,38 +60,42 @@ llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const NumberExpr &e) {
-    if (e.suffix.empty()) {
-        // Bare `int` is i64. With the strtoull-based parser a negative bit
-        // pattern means the literal exceeds INT64_MAX (negative literals
-        // arrive as UnaryExpr, so NumberExpr.value is always a non-negative
-        // magnitude). Reject so users must either add a `u64` suffix or a
-        // u-type annotation (handled by emitVarDecl suffix injection).
-        if (e.value < 0)
-            codegenError("integer literal out of range for int: " +
-                         std::to_string(static_cast<uint64_t>(e.value)));
-        return llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(e.value), true);
+    // Upper-codegen Stage 1 (#2483): the Ry-semantic decisions (suffix →
+    // type selection, range validation, `ConstantInt::get` construction)
+    // moved to `crates/lower/`. The shim resolves the LLVM type and
+    // signedness from the suffix string (the type registry moves to Rust
+    // at Stage 5) and forwards the rest of the work via
+    // `ry_lower_int_const`. The do-NOT-stamp-metadata discipline (#311
+    // LLVM constant uniquing trap) is preserved on the Rust side — no
+    // metadata writes happen on the returned constant.
+    llvm::Type *ty = e.suffix.empty() ? i64Ty_ : resolveType(e.suffix);
+    bool isSigned = e.suffix.empty() ? true : !isUnsignedLowLevelName(e.suffix);
+    RyValueId id = ry_lower_int_const(
+        emit_ctx_, ry::llvm_emit::asRyType(ty),
+        static_cast<uint64_t>(e.value),
+        suffixKindFromString(e.suffix),
+        isSigned ? 1 : 0);
+    if (id == 0) {
+        const char *msg = ry_lower_get_last_error();
+        codegenError(msg ? std::string(msg) : "lower: unspecified error");
     }
-
-    validateIntRange(e.value, e.suffix,
-        [this](const std::string &msg) { codegenError(msg); });
-
-    llvm::Type *ty = resolveType(e.suffix);
-    bool isSigned = !isUnsignedLowLevelName(e.suffix);
-    auto *result = llvm::ConstantInt::get(ty, static_cast<uint64_t>(e.value), isSigned);
-    // Do NOT set low_level_type_names_ on ConstantInt: LLVM's constant uniquing
-    // shares the same pointer for identical (type, value) pairs, causing metadata
-    // corruption when different suffixes map to the same constant (#311).
-    // Suffix info is propagated via AST (getExprLowLevelSuffix) instead.
-    return result;
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
 llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
-    if (e.suffix.empty() || e.suffix == "f64")
-        return llvm::ConstantFP::get(f64Ty_, e.value);
-    // suffix == "f32"
-    auto *result = llvm::ConstantFP::get(f32Ty_, e.value);
-    // Do NOT set low_level_type_names_ on ConstantFP (same reason as NumberExpr, #311).
-    return result;
+    // Upper-codegen Stage 1 (#2483): same shim pattern as NumberExpr.
+    // Type selection is special-cased because `resolveType("")` does not
+    // yield `f64Ty_` — the empty / `f64` / `f32` choice happens here.
+    llvm::Type *ty = (e.suffix.empty() || e.suffix == "f64") ? f64Ty_ : f32Ty_;
+    RyValueId id = ry_lower_float_const(
+        emit_ctx_, ry::llvm_emit::asRyType(ty),
+        e.value,
+        suffixKindFromString(e.suffix));
+    if (id == 0) {
+        const char *msg = ry_lower_get_last_error();
+        codegenError(msg ? std::string(msg) : "lower: unspecified error");
+    }
+    return ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id));
 }
 
 llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
@@ -275,10 +253,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     SourceLocation outer_loc = current_loc_;
     // Constant-fold `-<int literal>` before recursing into emitExpr, so that
     // magnitudes up to `|INT{N}_MIN|` are accepted (e.g. `-128i8`,
-    // `-9223372036854775808i64`, `-9223372036854775808`). validateIntRange
-    // limits a bare NumberExpr to INT{N}_MAX; the unary-minus wrapper is the
-    // only way to reach the signed MIN edge. Bare int (empty suffix) is
-    // treated as i64 (#1025).
+    // `-9223372036854775808i64`, `-9223372036854775808`). The lower-layer
+    // `validate_int_range` (since Stage 1 #2483) limits a bare NumberExpr to
+    // INT{N}_MAX; the unary-minus wrapper is the only way to reach the
+    // signed MIN edge. Bare int (empty suffix) is treated as i64 (#1025).
     if (e->op == "-") {
         if (auto *ne = std::get_if<NumberExpr>(&e->operand->data)) {
             const bool isBareInt = ne->suffix.empty();

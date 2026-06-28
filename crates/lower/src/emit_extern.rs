@@ -20,4 +20,12 @@ extern "C" {
         value: u64,
         sign_extend: c_int,
     ) -> RyValueId;
+
+    /// `LLVMConstReal(ty, value)` — materialize a floating-point constant
+    /// and return the interned handle. `ty` selects f32 vs f64; the f64
+    /// argument is narrowed to the target type's float layout. NULL ctx /
+    /// type → 0. Added for upper-codegen Stage 1 (#2483).
+    ///
+    /// See `include/ry/llvm_emit/api.h` `ry_emit_const_fp`.
+    pub(crate) fn ry_emit_const_fp(ctx: *mut RyEmitCtx, ty: RyTypeRef, value: f64) -> RyValueId;
 }

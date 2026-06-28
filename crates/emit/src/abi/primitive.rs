@@ -611,6 +611,25 @@ pub unsafe extern "C" fn ry_emit_const_int(
     intern(c, to_ry_value(v.0))
 }
 
+/// Materialize `LLVMConstReal(ty, value)` and return the interned constant.
+/// `ty` selects the float layout (f32 vs f64); the f64 value is narrowed to
+/// the target type's representation. NULL ctx / type → 0.
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_const_fp(
+    ctx: *mut RyEmitCtx,
+    ty: RyTypeRef,
+    value: f64,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    let Some(t) = req_type(ty) else {
+        return 0;
+    };
+    let v = c.const_real(t, value);
+    intern(c, to_ry_value(v.0))
+}
+
 /// Materialize `LLVMConstNull(ty)` and return the interned constant. For
 /// pointer types this is the typed null pointer used in null-guard `icmp eq`
 /// comparisons (pilot G #2196). NULL ctx / type → 0.

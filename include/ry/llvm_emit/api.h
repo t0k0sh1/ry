@@ -1188,6 +1188,13 @@ RyValueId ry_emit_select(RyEmitCtx *ctx, RyValueId cond_id, RyValueId then_id,
 RyValueId ry_emit_const_int(RyEmitCtx *ctx, RyTypeRef ty, uint64_t value,
                             int sign_extend);
 
+// Materialize a floating-point constant (ConstantFP::get equivalent); return
+// the interned constant handle. `ty` selects f32 vs f64 (the value is
+// narrowed to the target type's representation by LLVMConstReal). Emits no
+// instruction. Added for upper-codegen Stage 1 (#2483) so the Rust lower
+// layer can lower FloatExpr to LLVM constants.
+RyValueId ry_emit_const_fp(RyEmitCtx *ctx, RyTypeRef ty, double value);
+
 // Materialize a null constant (LLVMConstNull). For pointer types this is the
 // typed null pointer (`ConstantPointerNull::get` equivalent) used in null-guard
 // `icmp eq` comparisons; works for any type. Added for pilot G (#2196): the GC

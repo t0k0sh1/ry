@@ -1,0 +1,31 @@
+# FileCheck golden for #2483 — upper-codegen Stage 1, NumberExpr migration.
+#
+# `emitExprVariant(NumberExpr)` is the Stage 1 lowering: the suffix → type
+# selection, range validation, and the `ConstantInt::get` construction
+# move from C++ (`src/codegen_expr.cpp:88-112`) to `crates/lower/`'s
+# `ry_lower_int_const`, which calls `ry_emit_const_int(ctx, ty, value,
+# sign_extend)`. Both paths must produce byte-identical integer constants
+# — this golden locks that invariant for three representative suffixes:
+#
+#   - bare `int`  → `i64 42`            (signed i64, signed_bit=1)
+#   - `42i8`      → `i8 42`              (signed i8, signed_bit=1)
+#   - `0xFFu32`   → `i32 255`            (unsigned i32 hex, signed_bit=0)
+#
+# The probe stores each literal into a named local so the constants
+# outlive sema (a bare `if 42 > 0 { ... }` would be sema-folded and never
+# reach the migrated path — the vacuous-diff trap called out in
+# docs/architecture/upper-codegen-migration.md §"Verification").
+#
+# CHECK-LABEL: define i64 @intPilotProbe()
+# CHECK: store i64 42, ptr %a
+# CHECK: store i8 42, ptr %b
+# CHECK: store i32 255, ptr %c
+
+fn intPilotProbe() -> int:
+    a = 42
+    b = 42i8
+    c = 0xFFu32
+    return a
+
+fn main():
+    _ = intPilotProbe()
