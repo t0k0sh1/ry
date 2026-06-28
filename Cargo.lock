@@ -76,6 +76,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "native_path"
+version = "0.0.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "regex-lite"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
