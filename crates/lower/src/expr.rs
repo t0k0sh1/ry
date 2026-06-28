@@ -287,6 +287,13 @@ pub(crate) unsafe fn lower_string_const(
     bytes: &[u8],
     name_hint: &[u8],
 ) -> RyValueId {
+    // NULL ctx → 0 (boundary contract: a non-zero `RyValueId` MUST be
+    // resolvable via `ry_emit_resolve(ctx, id)`). Without this guard, a
+    // cache hit would return a non-zero id bound to a prior `EmitCtx`,
+    // breaking the contract when the caller's `ctx` is NULL.
+    if ctx.is_null() {
+        return 0;
+    }
     if let Some(id) = intern::lookup_string(bytes) {
         return id;
     }
@@ -317,6 +324,10 @@ pub(crate) unsafe fn lower_string_const(
 ///
 /// `ctx` must be a valid `RyEmitCtx *` (or NULL).
 pub(crate) unsafe fn lower_regex_const(ctx: *mut RyEmitCtx, bytes: &[u8]) -> RyValueId {
+    // See `lower_string_const` for the NULL-ctx rationale.
+    if ctx.is_null() {
+        return 0;
+    }
     if let Some(id) = intern::lookup_regex(bytes) {
         return id;
     }
