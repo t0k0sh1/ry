@@ -641,10 +641,12 @@ public:
                                    const ExprNode &argExpr);
 
     // ======== Scope & Variable Management ========
-    std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
-    std::unordered_map<std::string, llvm::Constant*> regex_global_cache_;
-    llvm::Constant *buildArcGlobal(const std::string &str, const llvm::Twine &name,
-                                    std::unordered_map<std::string, llvm::Constant*> &cache);
+    // Stage 2 (#2484): `global_string_cache_` / `regex_global_cache_` and
+    // the `buildArcGlobal` helper moved to the Rust lower crate
+    // (`crates/lower/src/intern.rs` + `crates/lower/src/expr.rs`). The
+    // thin wrapper below survives because ~145 in-tree call sites use
+    // `cachedGlobalString` for format strings, error messages, type
+    // names, etc.; the wrapper routes through `ry_lower_string_const`.
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;

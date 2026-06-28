@@ -42,18 +42,18 @@ extern "C" {
 // Distinct from `primitive::global::get_or_create_msg_global`, which builds a
 // plain `[N+1 x i8]` global used by `ry_emit_bounds_error`.
 //
-// Dedup is keyed on message bytes — repeated calls with the same content
-// share one global, mirroring the C++ `global_string_cache_`. `name` is the
-// caller-supplied global-name hint; this helper appends `.arc` to it (matching
-// `buildArcGlobal`'s `name + ".arc"`).
-pub(crate) unsafe fn get_or_create_arc_msg_global(
+// No dedup at this layer — callers that need byte-keyed interning use the
+// `get_or_create_arc_msg_global` wrapper (runtime error msg path, #2097). The
+// Stage 2 (#2484) `ry_emit_build_arc_global` boundary calls this raw function
+// directly so the lower crate can own the string/regex separation invariant
+// with its own per-cache dedup. `name_bytes` is the caller-supplied global-
+// name hint as a byte slice (no NUL terminator required); this helper
+// appends `.arc` to it (matching `buildArcGlobal`'s `name + ".arc"`).
+pub(crate) unsafe fn build_arc_global_raw(
     c: &mut EmitCtx,
     msg: &[u8],
-    name: *const c_char,
+    name_bytes: &[u8],
 ) -> LLVMValueRef {
-    if let Some(&gv) = c.arc_msg_cache.get(msg) {
-        return gv;
-    }
     let context = c.context;
     let i64_ty = i64_type(context);
     let i32_ty = i32_type(context);
@@ -69,8 +69,8 @@ pub(crate) unsafe fn get_or_create_arc_msg_global(
     let mut elements = [arc_immortal, zero_i64, byte_len, str_data];
     let init_val = LLVMConstNamedStruct(wrap_ty, elements.as_mut_ptr(), 4);
     // Append ".arc" to the global name (matches buildArcGlobal's `name +
-    // ".arc"`).
-    let name_bytes = cstr_bytes(name);
+    // ".arc"`). `cname_pfx` is byte-slice-based — works with non-NUL-
+    // terminated `name_bytes`.
     let arc_name = cname_pfx(name_bytes, b".arc");
     let gv = LLVMAddGlobal(c.module, wrap_ty, arc_name.as_ptr());
     LLVMSetLinkage(gv, LLVMLinkage::LLVMPrivateLinkage);
@@ -85,7 +85,25 @@ pub(crate) unsafe fn get_or_create_arc_msg_global(
         LLVMConstInt(i32_ty, 3, 0),
         LLVMConstInt(i64_ty, 0, 0),
     ];
-    let gs = LLVMConstInBoundsGEP2(wrap_ty, gv, indices.as_mut_ptr(), 3);
+    LLVMConstInBoundsGEP2(wrap_ty, gv, indices.as_mut_ptr(), 3)
+}
+
+// Cached variant — dedups by message bytes via `EmitCtx::arc_msg_cache`, the
+// runtime-error-message path used by cast-helpers (#2097). Repeated calls
+// with the same content share one global, mirroring the C++ side's
+// `global_string_cache_`. Distinct from the Stage 2 `ry_emit_build_arc_global`
+// boundary which is intentionally uncached at this layer (the lower crate
+// manages two independent caches to preserve the regex separation invariant).
+pub(crate) unsafe fn get_or_create_arc_msg_global(
+    c: &mut EmitCtx,
+    msg: &[u8],
+    name: *const c_char,
+) -> LLVMValueRef {
+    if let Some(&gv) = c.arc_msg_cache.get(msg) {
+        return gv;
+    }
+    let name_bytes = cstr_bytes(name);
+    let gs = build_arc_global_raw(c, msg, name_bytes);
     c.arc_msg_cache.insert(msg.to_vec(), gs);
     gs
 }

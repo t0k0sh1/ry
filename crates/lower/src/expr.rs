@@ -16,9 +16,10 @@
 //! suffix metadata is propagated through the AST instead (via the C++
 //! side's `getExprLowLevelSuffix`).
 
-use crate::emit_extern::{ry_emit_const_fp, ry_emit_const_int};
+use crate::emit_extern::{ry_emit_build_arc_global, ry_emit_const_fp, ry_emit_const_int};
 use crate::error::set_last_error;
 use crate::handles::{RyEmitCtx, RyTypeRef, RyValueId};
+use crate::intern;
 
 /// Suffix discriminator passed from the C++ shim. The numeric values are
 /// part of the boundary contract — they MUST match the
@@ -257,4 +258,72 @@ pub(crate) unsafe fn lower_float_const(
     // No metadata stamping (#311 discipline) — same reasoning as
     // `lower_int_const`.
     ry_emit_const_fp(ctx, llvm_ty, value)
+}
+
+/// Port of `emitExprVariant(StringExpr)` from `src/codegen_expr.cpp:113-115`
+/// (Stage 2 of the upper-codegen migration, #2484).
+///
+/// Builds (or reuses, on cache hit) the StringHeader-prefixed ARC-immortal
+/// global for `bytes` and returns its interned `RyValueId`. `name_hint` is
+/// the caller-supplied LLVM global name prefix — `.str` for `StringExpr`,
+/// or whatever the `cachedGlobalString` caller passed (`.fmt`, `.err_msg`,
+/// etc.) — passed by length (not NUL-terminated). The thread-local
+/// `STRING_CACHE` mirrors the C++ `global_string_cache_`: same bytes → same
+/// id within a single `CodeGen` lifetime. The cache MUST be reset
+/// (`reset_module_state`) on `CodeGen` construction; otherwise a second
+/// instance on the same thread would resolve stale ids against the previous
+/// `EmitCtx`.
+///
+/// Binary-safe: `bytes` may contain embedded NULs; `Vec<u8>` keying preserves
+/// the full byte sequence, matching the C++ `std::string` keying.
+///
+/// # Safety
+///
+/// `ctx` must be a valid `RyEmitCtx *` (or NULL); `bytes` and `name_hint`
+/// must each be either valid for the supplied length, or empty (len 0,
+/// pointer ignored).
+pub(crate) unsafe fn lower_string_const(
+    ctx: *mut RyEmitCtx,
+    bytes: &[u8],
+    name_hint: &[u8],
+) -> RyValueId {
+    if let Some(id) = intern::lookup_string(bytes) {
+        return id;
+    }
+    let id = ry_emit_build_arc_global(
+        ctx,
+        bytes.as_ptr(),
+        bytes.len(),
+        name_hint.as_ptr(),
+        name_hint.len(),
+    );
+    if id != 0 {
+        intern::insert_string(bytes.to_vec(), id);
+    }
+    id
+}
+
+/// Port of `emitExprVariant(RegexExpr)` from `src/codegen_expr.cpp:117-124`
+/// (Stage 2 of the upper-codegen migration, #2484).
+///
+/// Independent cache from `lower_string_const` to preserve the regex
+/// separation invariant (#306): a string `"hello"` and a regex `/hello/`
+/// MUST produce distinct globals so that the C++ shim's
+/// `addResourceKind(rk_regex)` does not poison a same-bytes string literal
+/// reached elsewhere in the program. The hardcoded `.regex` name hint
+/// reproduces the C++ baseline.
+///
+/// # Safety
+///
+/// `ctx` must be a valid `RyEmitCtx *` (or NULL).
+pub(crate) unsafe fn lower_regex_const(ctx: *mut RyEmitCtx, bytes: &[u8]) -> RyValueId {
+    if let Some(id) = intern::lookup_regex(bytes) {
+        return id;
+    }
+    const NAME: &[u8] = b".regex";
+    let id = ry_emit_build_arc_global(ctx, bytes.as_ptr(), bytes.len(), NAME.as_ptr(), NAME.len());
+    if id != 0 {
+        intern::insert_regex(bytes.to_vec(), id);
+    }
+    id
 }

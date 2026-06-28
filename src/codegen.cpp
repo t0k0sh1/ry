@@ -3,6 +3,8 @@
 #include "ry/diagnostic/diagnostic.hpp"
 #include "ry/llvm_emit/api.h"
 #include "ry/llvm_emit/cast_helpers.hpp"
+#include "ry/lower/api.h"
+#include <llvm/ADT/SmallString.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <string_view>
@@ -104,6 +106,13 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         ry::llvm_emit::asRyModule(mod_.get()),
         ry::llvm_emit::asRyBuilder(&builder_),
         ry::llvm_emit::asRyContext(ctx_.get()));
+
+    // Stage 2 (#2484): clear the lower-side thread-local string / regex
+    // interning caches. Sequential CodeGen instances on the same thread
+    // would otherwise resolve cached RyValueIds against the previous
+    // (now-dead) RyEmitCtx, producing miscompiles or LLVM null-pointer
+    // crashes. See `crates/lower/src/intern.rs`.
+    ry_lower_reset_module_state(emit_ctx_);
 }
 
 CodeGen::~CodeGen() {
@@ -629,46 +638,37 @@ int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) 
     return it->second;
 }
 
-llvm::Constant *CodeGen::buildArcGlobal(
-        const std::string &str, const llvm::Twine &name,
-        std::unordered_map<std::string, llvm::Constant*> &cache) {
-    auto it = cache.find(str);
-    if (it != cache.end()) return it->second;
-
-    // Create global with StringHeader prefix:
-    //   { i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8] "...\0" }
-    // Layout matches the runtime StringHeader (see include/ry/runtime/core/string.hpp):
-    //   handle - 8  → byte_len
-    //   handle - 24 → strong_count (ARC_IMMORTAL → retain/release are no-ops)
-    // str.size() gives the correct byte count even when str contains NUL bytes
-    // (std::string is NUL-safe).  ConstantDataArray::getString appends one \0.
-    auto *strData = llvm::ConstantDataArray::getString(*ctx_, str);
-    auto *wrapTy = llvm::StructType::get(
-        *ctx_, {i64Ty_, i64Ty_, i64Ty_, strData->getType()});
-    auto *initVal = llvm::ConstantStruct::get(wrapTy,
-        {llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL),
-         llvm::ConstantInt::get(i64Ty_, 0),
-         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(str.size())),
-         strData});
-    auto *gv = new llvm::GlobalVariable(
-        *mod_, wrapTy, /*isConstant=*/true,
-        llvm::GlobalValue::PrivateLinkage, initVal,
-        name + ".arc");
-    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-    gv->setAlignment(llvm::Align(8));
-
-    // GEP to the string data part (index 3, then index 0 for first byte)
-    auto *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    auto *idx3 = llvm::ConstantInt::get(i32Ty_, 3);
-    auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx3, zero});
-
-    cache[str] = gs;
-    return gs;
-}
-
 llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
-    return buildArcGlobal(str, name, global_string_cache_);
+    // Upper-codegen Stage 2 (#2484): both the ARC-global LLVM construction
+    // and the byte-keyed dedup cache moved to the Rust side
+    // (`crates/lower/src/intern.rs` + `crates/lower/src/expr.rs::
+    // lower_string_const`). This thin wrapper preserves the historical
+    // `llvm::Constant*` return type so the ~145 in-tree callers (format
+    // strings, error messages, type names, etc.) need no rewrite. The
+    // ConstantExpr GEP returned by the Rust side is always a Constant —
+    // `llvm::cast<Constant>` hard-aborts on any future regression.
+    //
+    // The name hint is passed by length, not as a NUL-terminated C
+    // string: `llvm::Twine::toStringRef(buf)` materializes the Twine
+    // into `buf` for multi-node Twines and returns a StringRef with NO
+    // trailing NUL. Forwarding `.data()` as a `const char*` would
+    // therefore over-read in the Rust side's strlen. The Rust boundary
+    // takes `(name_hint_bytes, name_hint_len)` precisely so the caller
+    // can supply the StringRef length directly.
+    llvm::SmallString<64> nameBuf;
+    llvm::StringRef nameRef = name.toStringRef(nameBuf);
+    RyValueId id = ry_lower_string_const(
+        emit_ctx_,
+        reinterpret_cast<const uint8_t *>(str.data()),
+        str.size(),
+        reinterpret_cast<const uint8_t *>(nameRef.data()),
+        nameRef.size());
+    if (id == 0) {
+        const char *msg = ry_lower_get_last_error();
+        codegenError(msg ? std::string(msg) : "lower: string const failed");
+    }
+    return llvm::cast<llvm::Constant>(
+        ry::llvm_emit::asLlvmValue(ry_emit_resolve(emit_ctx_, id)));
 }
 
 // ===== B5: FnScope RAII =====

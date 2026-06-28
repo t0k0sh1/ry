@@ -3,9 +3,17 @@
 //! atomic flag / nullable callees into the Rust-native `Atomicity` /
 //! `Option<ValueRef>`, then calls the `core` engine method on `EmitCtx` (the
 //! convergence point shared with the Rust-direct path in `any.rs`).
+//!
+//! Stage 2 (#2484) added `ry_emit_build_arc_global`: the StringHeader-prefixed
+//! ARC-immortal global builder reached by the lower crate's string / regex
+//! literal lowering. Uncached at this layer — the lower crate manages two
+//! independent caches (string + regex) to preserve the regex separation
+//! invariant (#306) that `addResourceKind(rk_regex)` would otherwise violate
+//! by poisoning a string global of identical bytes.
 
 use std::ffi::c_int;
 
+use crate::composite::arc::build_arc_global_raw;
 use crate::context::{Atomicity, ValueRef};
 
 use super::*;
@@ -89,4 +97,58 @@ pub unsafe extern "C" fn ry_emit_arc_counter_delta(ctx: *mut RyEmitCtx, delta: i
         return;
     };
     c.arc_counter_delta(delta);
+}
+
+/// Build a StringHeader-prefixed ARC-immortal global for the byte range
+/// `bytes[0..len)` and return the interned `RyValueId` of the
+/// in-bounds-GEP `ptr` to its first payload byte. `name_hint_bytes[0..
+/// name_hint_len)` becomes the LLVM global name prefix (the helper appends
+/// `".arc"`). No cache lookup at this layer — the lower crate (Stage 2
+/// #2484) owns the per-cache dedup that preserves the regex separation
+/// invariant (`addResourceKind(rk_regex)` must not poison a string global
+/// of identical bytes, #306). Every call allocates a fresh global.
+///
+/// Length-passed name (not NUL-terminated) — `llvm::Twine::toStringRef`
+/// does NOT guarantee a NUL terminator for multi-node Twines, so the C++
+/// `cachedGlobalString` wrapper forwards the StringRef length explicitly
+/// rather than relying on a NUL contract.
+///
+/// NULL ctx → 0. NULL `bytes` with non-zero `len` → 0. NULL
+/// `name_hint_bytes` with non-zero `name_hint_len` → 0. Zero-length
+/// `name_hint_len` is permitted (equivalent to an empty hint).
+#[no_mangle]
+pub unsafe extern "C" fn ry_emit_build_arc_global(
+    ctx: *mut RyEmitCtx,
+    bytes: *const u8,
+    len: usize,
+    name_hint_bytes: *const u8,
+    name_hint_len: usize,
+) -> RyValueId {
+    let Some(c) = checked_cx(ctx) else {
+        return 0;
+    };
+    // Borrow both byte ranges as slices under the C `(ptr, count)`
+    // contract — empty (len=0) permits a NULL pointer, otherwise NULL
+    // is the entry's invalid sentinel. Mirrors `ffi_slice` in
+    // `crates/emit/src/abi.rs`, but with `usize` rather than `u32`
+    // because the Stage 2 boundary uses `size_t`-typed lengths
+    // (matching the C++ `std::string::size()` source).
+    #[inline]
+    unsafe fn opt_slice<'a>(p: *const u8, n: usize) -> Option<&'a [u8]> {
+        if n == 0 {
+            Some(&[])
+        } else if p.is_null() {
+            None
+        } else {
+            Some(std::slice::from_raw_parts(p, n))
+        }
+    }
+    let (Some(slice), Some(name)) = (
+        opt_slice(bytes, len),
+        opt_slice(name_hint_bytes, name_hint_len),
+    ) else {
+        return 0;
+    };
+    let v = build_arc_global_raw(c, slice, name);
+    intern(c, to_ry_value(v))
 }

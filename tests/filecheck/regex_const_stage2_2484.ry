@@ -1,0 +1,33 @@
+# FileCheck golden for #2484 — upper-codegen Stage 2, RegexExpr migration.
+#
+# `emitExprVariant(RegexExpr)` and the `regex_global_cache_` dedup move
+# from C++ (`src/codegen_expr.cpp:117-124`) to `crates/lower/` as
+# `ry_lower_regex_const` + a thread-local REGEX_CACHE separate from the
+# string cache. The C++ shim retains `addResourceKind(rk_regex)` on the
+# returned constant (the `value_metadata_` operation belongs to Stage 5).
+#
+# This golden locks the #306 regex separation invariant: a string `"hello"`
+# and a regex `/hello/` with identical byte content MUST emit TWO distinct
+# ARC-immortal globals (`@.str.arc` and `@.regex.arc`). Folding them into
+# one global would cause the regex's `rk_regex` metadata stamp to poison a
+# `cachedGlobalString` call of the same content reached elsewhere in the
+# program, breaking `isStrLike()` discrimination at runtime.
+#
+# Two distinct ARC-immortal globals with the same byte content "hello":
+# CHECK-DAG: @.regex.arc = private unnamed_addr constant { i64, i64, i64, [6 x i8] } { i64 9223372036854775807, i64 0, i64 5, [6 x i8] c"hello\00" }
+# CHECK-DAG: @.str.arc = private unnamed_addr constant { i64, i64, i64, [6 x i8] } { i64 9223372036854775807, i64 0, i64 5, [6 x i8] c"hello\00" }
+#
+# CHECK-LABEL: define i64 @regexConstProbe()
+# CHECK: store ptr getelementptr inbounds ({ i64, i64, i64, [6 x i8] }, ptr @.regex.arc, i64 0, i32 3, i64 0), ptr %pat
+# CHECK: store ptr getelementptr inbounds ({ i64, i64, i64, [6 x i8] }, ptr @.str.arc, i64 0, i32 3, i64 0), ptr %s
+
+from ry.regex import isMatch
+
+fn regexConstProbe() -> int:
+    pat = /hello/
+    s = "hello"
+    _ = isMatch(s, pat)
+    return len(s)
+
+fn main():
+    _ = regexConstProbe()

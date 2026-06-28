@@ -28,4 +28,22 @@ extern "C" {
     ///
     /// See `include/ry/llvm_emit/api.h` `ry_emit_const_fp`.
     pub(crate) fn ry_emit_const_fp(ctx: *mut RyEmitCtx, ty: RyTypeRef, value: f64) -> RyValueId;
+
+    /// Build a StringHeader-prefixed ARC-immortal global for `bytes[0..len)`
+    /// and intern the in-bounds-GEP `ptr` to its first payload byte. NULL
+    /// ctx → 0. Uncached at this layer — the lower crate manages two
+    /// independent caches (string + regex) so the regex separation
+    /// invariant (#306) holds even when both literal kinds share content.
+    /// The name hint is passed by length (not NUL-terminated) because
+    /// `llvm::Twine::toStringRef` does NOT guarantee a NUL on the C++
+    /// side. Added for upper-codegen Stage 2 (#2484).
+    ///
+    /// See `include/ry/llvm_emit/api.h` `ry_emit_build_arc_global`.
+    pub(crate) fn ry_emit_build_arc_global(
+        ctx: *mut RyEmitCtx,
+        bytes: *const u8,
+        len: usize,
+        name_hint_bytes: *const u8,
+        name_hint_len: usize,
+    ) -> RyValueId;
 }

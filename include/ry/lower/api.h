@@ -113,6 +113,66 @@ RyValueId ry_lower_float_const(RyEmitCtx *ctx, RyTypeRef llvm_ty,
 // the failing call), never stale.
 const char *ry_lower_get_last_error(void);
 
+// =========================================================================
+// Stage 2 (#2484) — string / regex literal lowering.
+//
+// `StringExpr` / `RegexExpr` lowering moves from C++
+// (`src/codegen_expr.cpp:113-124`) to the lower crate. The C++ side's
+// `global_string_cache_` / `regex_global_cache_` pair is replaced by a
+// thread-local cache pair owned by `crates/lower/src/intern.rs`, keyed on
+// the literal byte content (`Vec<u8>` — binary-safe, including embedded
+// NULs). Two SEPARATE caches preserve the regex separation invariant from
+// #306: a string `"hello"` and a regex `/hello/` MUST produce distinct
+// LLVM globals so the C++-side `addResourceKind(rk_regex)` (still applied
+// in the regex shim) cannot poison a same-bytes string literal reached
+// elsewhere in the program.
+//
+// The ARC global construction itself stays on the emit side
+// (`ry_emit_build_arc_global`) — only the cache-and-key-by-bytes layer
+// moved.
+// =========================================================================
+
+// Lower a Ry `StringExpr` to an LLVM ARC-immortal global and return the
+// interned `RyValueId` of the GEP-to-first-payload-byte pointer. `bytes`
+// is the literal content; `len` is the authoritative byte count
+// (binary-safe — embedded NULs preserved). `name_hint_bytes[0..
+// name_hint_len)` is the LLVM global name prefix (".str", ".fmt",
+// ".err_msg", …) passed by length, NOT as a NUL-terminated C string.
+// `llvm::Twine::toStringRef` does not guarantee a NUL terminator for
+// multi-node Twines, so the `cachedGlobalString` wrapper forwards the
+// StringRef length explicitly rather than relying on a NUL contract.
+//
+// Cache hit returns the cached id; cache miss calls
+// `ry_emit_build_arc_global` and stores the result.
+//
+// No error path under normal operation. Returns 0 only when `bytes` is
+// NULL with non-zero `len`, when `name_hint_bytes` is NULL with non-zero
+// `name_hint_len`, or when the underlying emit call fails on a NULL
+// ctx. `ry_lower_get_last_error` is not populated on this path.
+RyValueId ry_lower_string_const(RyEmitCtx *ctx, const uint8_t *bytes,
+                                size_t len,
+                                const uint8_t *name_hint_bytes,
+                                size_t name_hint_len);
+
+// Lower a Ry `RegexExpr`. Same shape as `ry_lower_string_const` but
+// uses an INDEPENDENT cache (`REGEX_CACHE`) and a hardcoded `.regex`
+// name hint. The C++ shim retains `addResourceKind(gs, rk_regex)` after
+// resolving the returned id — `value_metadata_` operations belong to
+// the C++ side until Stage 5.
+RyValueId ry_lower_regex_const(RyEmitCtx *ctx, const uint8_t *bytes,
+                                size_t len);
+
+// Clear the per-module thread-local string / regex caches. MUST be
+// called from `CodeGen::CodeGen()` immediately after `emit_ctx_create`.
+// Sequential `CodeGen` instances on the same thread would otherwise
+// resolve cached `RyValueId`s against the previous (now-dead)
+// `RyEmitCtx`, producing miscompiles or null-pointer crashes.
+//
+// The `ctx` parameter is currently unused (the caches are thread-local,
+// not per-ctx), but is part of the boundary so a future per-ctx
+// migration can change ownership without breaking the C++ caller.
+void ry_lower_reset_module_state(RyEmitCtx *ctx);
+
 #ifdef __cplusplus
 }
 #endif
