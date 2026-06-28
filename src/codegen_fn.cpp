@@ -813,6 +813,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 desc.iterator_elem_type_name = ov->iterator_elem_type_name;
                 if (ov->wrapping_overridden)
                     desc.return_wrapping = ov->wrapping_override;
+                desc.any_by_ptr_param_index  = ov->any_by_ptr_param_index;
+                desc.any_by_ptr_alloca_hint  = ov->any_by_ptr_alloca_hint;
+                desc.synthetic_trailing_i64  = ov->synthetic_trailing_i64;
+                desc.call_name_hint          = ov->call_name_hint;
             }
 
             native_call_descriptors_[sigKey].push_back(std::move(desc));

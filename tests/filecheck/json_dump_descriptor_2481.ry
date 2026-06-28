@@ -1,0 +1,42 @@
+# FileCheck golden for #2481 — json::dump descriptor-driven migration.
+#
+# Locks the IR shape produced by the `kOverrides` entries for json::dump:
+#   - alloca SSA name `json_dump_in` (via descriptor.any_by_ptr_alloca_hint)
+#   - call SSA name `json_dump_status` (via the per-package callNameHint
+#     extension in emitGenericNativeCall)
+#   - synthetic trailing `i64 -1` for the 2-arg overload (descriptor.
+#     synthetic_trailing_i64 = -1)
+#   - user-supplied `i64` for the 3-arg overload (no synthetic)
+#   - `__ry_json_dump_file(ptr, ptr, i64)` runtime symbol (via
+#     descriptor.exported_symbol)
+#
+# Without these the descriptor mechanism would emit a different alloca
+# name (`<callee>_any_in` = "dump_any_in") and call name (`<callee>` =
+# "dump"), and the byte-exact regression vs. the pre-migration
+# `emitJsonDumpFile` custom emitter would fail.
+#
+# The probe uses a typed `int` value so the wrapInAny widening path is
+# exercised (`Map<str, any>` would resolve to `ptrTy_` and also wrap —
+# but `int` makes the dependency on the Pass-2 + descriptor opt-in
+# clearer for future maintainers reading this golden).
+
+from ry.io import File, open, close
+from ry.json import dump
+
+fn dumpProbe():
+    case open("/tmp/2481-filecheck.json", "w"):
+        Ok(f):
+            n: int = 42
+            # CHECK: %json_dump_in = alloca %Any
+            # CHECK: store %Any %{{[a-zA-Z_.0-9]+}}, ptr %json_dump_in
+            # CHECK: %json_dump_status = call i64 @__ry_json_dump_file(ptr %{{[a-zA-Z_.0-9]+}}, ptr %json_dump_in, i64 -1)
+            dump(f, n)
+            # CHECK: %json_dump_in{{[0-9]+}} = alloca %Any
+            # CHECK: %json_dump_status{{[0-9]+}} = call i64 @__ry_json_dump_file(ptr %{{[a-zA-Z_.0-9]+}}, ptr %json_dump_in{{[0-9]+}}, i64 2)
+            dump(f, n, 2)
+            close(f)
+            0
+        Err(_): 0
+
+fn main():
+    dumpProbe()

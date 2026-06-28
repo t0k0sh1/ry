@@ -636,8 +636,11 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // libs = ambiguous). An exact match in one lib beats a widening match in
     // another — Pass 2 only runs on empty Pass 1.
     const NativeFnSignature *matchedSig = nullptr;
+    // Descriptor for the winning sig, captured at match time so the
+    // post-match block reuses the per-candidate lookup instead of
+    // re-hashing native_call_descriptors_ for the same entry.
+    const NativeCallDescriptor *matchedDesc = nullptr;
     std::string matchedPackage;
-    size_t matchedIdx = 0;  // overload index within native_fn_sigs_[matchedSigKey]
     std::vector<llvm::Type *> paramTypes;
     std::vector<bool> needsWidening(e.args.size(), false);
     std::vector<llvm::Type *> candidateTypes;
@@ -647,6 +650,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
         if (sigIt == native_fn_sigs_.end()) continue;
+        auto descIt = native_call_descriptors_.find(sigKey);
         for (size_t sigIdx = 0; sigIdx < sigIt->second.size(); ++sigIdx) {
             const auto &sig = sigIt->second[sigIdx];
             if (sig.params.size() != e.args.size()) continue;
@@ -701,7 +705,10 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 }
                 matchedSig = &sig;
                 matchedPackage = lib;
-                matchedIdx = sigIdx;
+                matchedDesc = (descIt != native_call_descriptors_.end()
+                               && sigIdx < descIt->second.size())
+                    ? &descIt->second[sigIdx]
+                    : nullptr;
                 paramTypes = std::move(candidateTypes);
             }
         }
@@ -713,9 +720,19 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             std::string sigKey = ry::util::nativeSigKey(lib, e.callee);
             auto sigIt = native_fn_sigs_.find(sigKey);
             if (sigIt == native_fn_sigs_.end()) continue;
+            // #2481: per-candidate descriptor lookup for any-by-ptr
+            // opt-in. Descriptors are pushed in lock-step with sigs
+            // under the same sigKey (codegen_fn.cpp:818), so sigIdx
+            // indexes both.
+            auto descIt = native_call_descriptors_.find(sigKey);
             for (size_t sigIdx = 0; sigIdx < sigIt->second.size(); ++sigIdx) {
                 const auto &sig = sigIt->second[sigIdx];
                 if (sig.params.size() != e.args.size()) continue;
+                const NativeCallDescriptor *candidateDesc =
+                    (descIt != native_call_descriptors_.end()
+                     && sigIdx < descIt->second.size())
+                    ? &descIt->second[sigIdx]
+                    : nullptr;
                 bool typesMatch = true;
                 candidateTypes.clear();
                 candidateNeedsWidening.assign(e.args.size(), false);
@@ -725,6 +742,18 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                         // exact
                     } else if (isWideningConversion(args[i], expectedTy,
                                                     sig.params[i].typeName)) {
+                        candidateNeedsWidening[i] = true;
+                    } else if (candidateDesc
+                               && sig.params[i].typeName == "any"
+                               && candidateDesc->any_by_ptr_param_index
+                                  == static_cast<int>(i)) {
+                        // #2481: any-by-ptr widening — wrapInAny lowers
+                        // any concrete value type into `any`, satisfying
+                        // an `any`-typed param slot whose descriptor
+                        // opts into the wrap+alloca+store→ptr lowering.
+                        // Scoped to the descriptor opt-in so future bare-
+                        // `any` natives that want value-typed `any`
+                        // params are not silently re-routed.
                         candidateNeedsWidening[i] = true;
                     } else {
                         typesMatch = false;
@@ -763,7 +792,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                     }
                     matchedSig = &sig;
                     matchedPackage = lib;
-                    matchedIdx = sigIdx;
+                    matchedDesc = candidateDesc;
                     paramTypes = std::move(candidateTypes);
                     needsWidening = std::move(candidateNeedsWidening);
                 }
@@ -776,14 +805,23 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     linkNativeLibrary(matchedPackage);
 
-    // Look up the descriptor populated alongside this sig in codegen_fn.cpp.
-    // Descriptors and sigs are pushed in lock-step under the same sigKey, so
-    // matchedIdx indexes both. The descriptor carries pre-computed return
+    // The matching loops above captured `matchedDesc` directly from the
+    // per-candidate descriptor pointer (lock-step with sigs under the same
+    // sigKey). Re-derive the sigKey only for the path::join arity-suffix
+    // overload lookup below. The descriptor carries pre-computed return
     // wrapping, error channel, and List<u8>-arg metadata so we don't
     // re-infer at every call (#2337).
     const std::string matchedSigKey = ry::util::nativeSigKey(matchedPackage, e.callee);
-    const NativeCallDescriptor &desc =
-        native_call_descriptors_.at(matchedSigKey)[matchedIdx];
+    // Descriptors are populated lock-step with sigs in codegen_fn.cpp at
+    // @native declaration time, so a missing descriptor for a matched sig
+    // means the populator missed a path. Surface that as a structured
+    // diagnostic rather than dereferencing nullptr. (CodeRabbit PR #2488)
+    if (!matchedDesc) {
+        codegenError("internal error: missing NativeCallDescriptor for "
+                     "@native(\"" + matchedPackage + "\") "
+                     + e.callee);
+    }
+    const NativeCallDescriptor &desc = *matchedDesc;
 
     // Reject list arguments whose declared param type is `List<u8>` but
     // whose actual element stride is not i8 (e.g. bare int literals
@@ -805,9 +843,37 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     }
 
     // Apply widening coercions to matched args (no-op when all false).
+    // #2481: an `any`-typed param slot with descriptor opt-in widens via
+    // `wrapInAny` (not the numeric `emitWideningConversion`) so a concrete
+    // value type is lifted into `anyTy_`. The post-resolve any-by-ptr
+    // block below then alloca's + stores it and substitutes a `ptr`.
     for (size_t i = 0; i < e.args.size(); i++) {
-        if (needsWidening[i])
-            args[i] = emitWideningConversion(args[i], paramTypes[i]);
+        if (needsWidening[i]) {
+            if (matchedSig->params[i].typeName == "any"
+                && desc.any_by_ptr_param_index == static_cast<int>(i)) {
+                args[i] = wrapInAny(args[i]);
+            } else {
+                args[i] = emitWideningConversion(args[i], paramTypes[i]);
+            }
+        }
+    }
+
+    // #2481: any-by-ptr lowering. For descriptor entries whose C ABI
+    // expects `const RyAny *` for an `any`-typed Ry param slot, materialize
+    // an alloca, store the `any`-valued arg into it, and substitute the
+    // pointer. Runs after both the regular widening and the wrapInAny path
+    // above, so args[idx] is guaranteed to have type `anyTy_` here when
+    // descriptor.any_by_ptr_param_index is set (Pass-1 exact match or
+    // Pass-2 wrapInAny widening — both produce anyTy_).
+    if (desc.any_by_ptr_param_index >= 0) {
+        size_t idx = static_cast<size_t>(desc.any_by_ptr_param_index);
+        const std::string hint = desc.any_by_ptr_alloca_hint.empty()
+            ? (e.callee + "_any_in")
+            : desc.any_by_ptr_alloca_hint;
+        llvm::Value *slot = emitAlloca(anyTy_, hint.c_str());
+        emitStore(args[idx], slot);
+        args[idx] = slot;
+        paramTypes[idx] = ptrTy_;
     }
 
     // Adjust bool params to match the C calling convention: native functions pass bools as i64.
@@ -817,6 +883,18 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             args[i] = builder_.CreateZExt(args[i], i64Ty_, "bool_zext");
             paramTypes[i] = i64Ty_;
         }
+    }
+
+    // #2481: synthetic trailing i64 constant injection. When the C ABI
+    // takes one more `i64` arg than the Ry declaration (e.g. json::dump's
+    // 2-arg overload synthesizing indent=-1 to share the 3-arg overload's
+    // `__ry_json_dump_file(ptr, ptr, i64)` symbol), append the configured
+    // constant to args + paramTypes here, before the wrapping switch
+    // below pushes any out-param ptr.
+    if (desc.synthetic_trailing_i64.has_value()) {
+        args.push_back(llvm::ConstantInt::getSigned(
+            i64Ty_, *desc.synthetic_trailing_i64));
+        paramTypes.push_back(i64Ty_);
     }
 
     // Derive runtime function name. Three sources, in precedence order:
@@ -980,18 +1058,15 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     auto emitCallAndWrap = [&]() -> llvm::Value * {
         auto *fnTy = llvm::FunctionType::get(cRetTy, paramTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
-        // #2393: the pre-migration thread customEmitters named the i64
-        // status call `<callee>_status` (see emitThreadSyncOp). Mirror that
-        // so the descriptor migration's IR byte-exact diff stays empty for
-        // the `lockAcquire` / `rwlockReadLock` / `semaphoreAcquire` /
-        // `barrierWait` / etc. chain. Other Pattern C consumers (io / net /
-        // http ResultStatus entries) use the bare callee name; the gate
-        // on (matchedPackage == "thread") preserves their existing IR.
-        std::string callNameHint = e.callee;
-        if (wrapping == ReturnWrapping::ResultStatus
-            && matchedPackage == "thread") {
-            callNameHint = e.callee + "_status";
-        }
+        // Use the descriptor's call-name hint when set, else default to the
+        // bare callee. Each migration that needs a non-default SSA name
+        // sets `call_name_hint` on its kOverrides entry (#2481): thread
+        // sync ops use `<callee>_status` (e.g. "lockAcquire_status"),
+        // json::dump uses "json_dump_status". The hint mechanism mirrors
+        // `any_by_ptr_alloca_hint` and avoids growing a per-package if-
+        // chain in the generic dispatcher.
+        const std::string &callNameHint =
+            desc.call_name_hint.empty() ? e.callee : desc.call_name_hint;
         llvm::Value *callResult;
         if (cRetTy->isVoidTy())
             callResult = builder_.CreateCall(fn, args);

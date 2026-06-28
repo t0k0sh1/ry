@@ -32,6 +32,9 @@ Current descriptor fields are conceptually:
 | `handle_param_index` / `handle_resource_kind` | resource parameter validation and dispatch disambiguation |
 | `nul_checks` | ordered NUL-safety checks before the call |
 | `iterator_elem_type_name` | element type for iterator-returning natives |
+| `any_by_ptr_param_index` / `any_by_ptr_alloca_hint` | `any`-typed param slots whose C ABI takes `const RyAny *`; descriptor consumer wraps to `any` (if needed), alloca + store, and substitutes the pointer. The hint preserves the pre-migration alloca SSA name byte-exactly. |
+| `synthetic_trailing_i64` | optional trailing `i64` constant injected after the Ry args; covers the "2-arg overload routes to the same C symbol as 3-arg with a default sentinel" pattern (e.g. `json::dump` injecting `indent = -1`) |
+| `call_name_hint` | SSA name hint for the runtime call result, used verbatim when set and `e.callee` otherwise; reproduces pre-migration call names such as `lockAcquire_status` or `json_dump_status` byte-exactly |
 | `mockable` | whether test mock/spy dispatch can intercept the call |
 | `overload_group_id` | grouping for multi-arity overload families |
 
@@ -54,9 +57,12 @@ A call is descriptor-driven when the runtime symbol and wrapping policy are mech
 The following stay outside the descriptor:
 
 - compiler builtins with name-keyed dispatch
-- type-driven dispatch such as numeric `math::abs`, polymorphic JSON stringify, or thread thunk synthesis
+- type-driven dispatch such as numeric `math::abs`, polymorphic JSON `stringify` / `stringifySafe`, or thread thunk synthesis
 - first-class native thunk metadata; thunks consume descriptors but are not descriptor fields
 - hand-written emitters that synthesize control flow, such as 3+-arg HTTP `listen`
+- parametric callees such as `json::load[T]` whose runtime symbol depends on a type argument parsed from the callee string
+
+Functions that previously sat in the "hand-written emitter" group have been migrated to the descriptor path as the needed capabilities were added; `json::dump` joined in #2481 via `any_by_ptr_*` and `synthetic_trailing_i64`. `json5::dump` is tracked in #2482 and reuses the same fields.
 
 These exceptions are compiler builtins or custom lowering paths, not runtime ABI exceptions.
 
