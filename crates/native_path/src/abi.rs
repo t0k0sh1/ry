@@ -46,10 +46,20 @@ unsafe fn handle_bytes<'a>(h: *const c_char) -> &'a [u8] {
 }
 
 /// Wrap a byte slice into a fresh Ry str handle via the host
-/// allocation shim.
+/// allocation shim. Empty slices route through a static `EMPTY` byte
+/// because `Vec::new().as_ptr()` is a dangling alignment sentinel
+/// (same FFI hazard `get_last_error_handle` guards against) — handing
+/// it across the C boundary is UB even when `byte_len == 0` and the
+/// host shim's `memcpy` no-ops.
 #[inline]
 unsafe fn make_handle(bytes: &[u8]) -> *const c_char {
-    ffi::__ry_host_make_string(bytes.as_ptr().cast::<c_char>(), bytes.len() as i64)
+    static EMPTY: [u8; 1] = [0];
+    let src = if bytes.is_empty() {
+        EMPTY.as_ptr()
+    } else {
+        bytes.as_ptr()
+    };
+    ffi::__ry_host_make_string(src.cast::<c_char>(), bytes.len() as i64)
 }
 
 // ===== join (arity-suffix overloads) =====
@@ -203,16 +213,17 @@ pub unsafe extern "C" fn __ry_path_ext(p: *const c_char) -> *const c_char {
 #[no_mangle]
 pub unsafe extern "C" fn __ry_path_resolve(p: *const c_char) -> *const c_char {
     catch_or_exit(|| {
-        // Empty-path check (matches C++ `!p || !*p`).
-        let byte_len = if p.is_null() {
-            0
-        } else {
-            ffi::string_byte_len(p)
-        };
-        if byte_len == 0 {
+        // Empty-path check (matches C++ `!p || !*p`). Checking the
+        // first data byte rather than `byte_len == 0` keeps parity
+        // with C++: a Ry str handle with `byte_len > 0` whose first
+        // byte is NUL reports "empty path" (not embedded NUL),
+        // mirroring how `*p == '\0'` short-circuits before
+        // `hasEmbeddedNul` in path.cpp.
+        if p.is_null() || p.cast::<u8>().read() == 0 {
             set_last_error(ERR_RESOLVE_EMPTY);
             return std::ptr::null();
         }
+        let byte_len = ffi::string_byte_len(p);
         let bytes = std::slice::from_raw_parts(p.cast::<u8>(), byte_len as usize);
         if bytes.contains(&0) {
             set_last_error(ERR_RESOLVE_NUL);
