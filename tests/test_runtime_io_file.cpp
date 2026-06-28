@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
 
 using namespace ry;
 
@@ -178,4 +179,81 @@ TEST(RuntimeIoFileTest, DoubleCleanupIsSafe) {
     freeRyStr(path);
     freeRyStr(mode);
     std::remove(p.c_str());
+}
+
+// [regression: #2480] Dual-write error channel — io owns BOTH a module-
+// local `io_last_error_buf` (read via __ry_io_get_last_error) AND mirrors
+// every error into the host-shared `__ry_set_last_error` buffer (read via
+// __ry_get_last_error) so cross-module callers like json::load_file /
+// json5::dump_file surface io failures through their own
+// __ry_get_last_error reads. After the #2480 Rust port the dual-write
+// happens in `crates/native_io/src/lib.rs::set_last_error` instead of the
+// deleted io.cpp's `setLastError` helper — this test pins the contract.
+TEST(RuntimeIoFileTest, OpenErrorPopulatesBothErrorBuffers) {
+    const char *path = ryStr("/tmp/ry_rt_io_dualwrite_xyzzy.txt");
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
+    EXPECT_EQ(h, nullptr);
+
+    const char *io_err = __ry_io_get_last_error();
+    const char *shared_err = __ry_get_last_error();
+    ASSERT_NE(io_err, nullptr);
+    ASSERT_NE(shared_err, nullptr);
+    // Both channels must hold a non-empty message after the failed open.
+    EXPECT_GT(std::strlen(io_err), 0u);
+    EXPECT_GT(std::strlen(shared_err), 0u);
+    // Both messages must mention the failing path/mode tuple this call
+    // formatted (matches `__ry_io_file_open`'s err-arm wording: "open:
+    // cannot open '<path>' in mode '<mode>'"). Asserting on the unique
+    // file basename rather than just the word "open" rules out a
+    // false-pass when an earlier test left an "open" error in either
+    // thread-local buffer.
+    EXPECT_NE(std::strstr(io_err, "ry_rt_io_dualwrite_xyzzy.txt"), nullptr);
+    EXPECT_NE(std::strstr(shared_err, "ry_rt_io_dualwrite_xyzzy.txt"), nullptr);
+
+    freeRyStr(io_err);
+    freeRyStr(shared_err);
+    freeRyStr(path);
+    freeRyStr(mode);
+}
+
+// [regression: #2480] O_NOFOLLOW posture — `open_nofollow` (io.cpp:41-54
+// in C++, `core::open_nofollow` in Rust) sets O_NOFOLLOW on every open
+// path so dangling symlinks and symlinks pointing at sensitive files
+// can't be followed by stdlib callers. The Rust port forwards the same
+// flag via `libc::O_NOFOLLOW`; this test confirms the behaviour
+// survives the abi layer.
+TEST(RuntimeIoFileTest, OpenRejectsSymlinkViaONoFollow) {
+    std::string target = tmpPath("nofollow_target.txt");
+    std::string link = tmpPath("nofollow_link.txt");
+    std::remove(target.c_str());
+    std::remove(link.c_str());
+
+    // Create the real file with known content.
+    FILE *f = fopen(target.c_str(), "w");
+    ASSERT_NE(f, nullptr);
+    fputs("real-content", f);
+    fclose(f);
+
+    // Create the symlink pointing at it; if symlink(2) fails (no
+    // permission on the temp dir, exotic FS), skip rather than fail —
+    // there is nothing useful to verify.
+    if (symlink(target.c_str(), link.c_str()) != 0) {
+        std::remove(target.c_str());
+        GTEST_SKIP() << "symlink(2) unavailable; cannot verify O_NOFOLLOW";
+    }
+
+    const char *path = ryStr(link.c_str());
+    const char *mode = ryStr("r");
+    void *h = __ry_io_file_open(path, mode);
+    EXPECT_EQ(h, nullptr);  // open must refuse to follow the symlink
+    if (h != nullptr) {
+        __ry_io_file_close(h);
+        arc_free(h);
+    }
+
+    freeRyStr(path);
+    freeRyStr(mode);
+    std::remove(link.c_str());
+    std::remove(target.c_str());
 }

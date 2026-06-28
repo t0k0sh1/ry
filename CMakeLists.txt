@@ -326,7 +326,10 @@ add_ry_native_lib(testing    src/runtime/native/testing.cpp src/test_runtime.cpp
 # __ry_set_last_error / __ry_get_last_error live in ry_lib (the main executable)
 # and are resolved from the process at runtime via -undefined dynamic_lookup
 # (macOS) or -rdynamic (Linux).
-add_ry_native_lib(io         src/runtime/native/io.cpp)
+# Note: `ry_io` is provided by the `native_io` Rust crate (#2480 port).
+# The `corrosion_import_crate(native_io ...)` block lives further down with
+# the other Rust ports (search for "native_io"); ry_io still appears in
+# RY_NATIVE_LIBS / RY_NATIVE_LIBS_LINK alongside the C++-backed targets.
 add_ry_native_lib(json       src/runtime/native/json.cpp)
 add_ry_native_lib(json5      src/runtime/native/json5.cpp)
 add_ry_native_lib(net        src/runtime/native/net.cpp)
@@ -475,6 +478,32 @@ corrosion_import_crate(
 set_target_properties(ry_path PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+# ===== native_io: Rust port of @native("io") (#2480) =====
+# Fourth migration after base64 (#2282), convert (#2478), and path
+# (#2479). Package = `native_io`; cdylib output = `libry_io.{dylib,so}`
+# via `[lib].name = "ry_io"`, so `find_native_library("ry_io")` +
+# dlopen and the __ry_io_* prefix routing in src/codegen.cpp are
+# unchanged. First port to exercise:
+#   - `IoFileHandle` resource lifecycle (open / close / cleanup) via
+#     `__ry_arc_alloc_counted` + ARC header stamping in pure Rust,
+#   - `IOListHeader`-returning shape outside base64 (read_bytes /
+#     to_bytes), routed through `__ry_host_make_byte_list` /
+#     `__ry_host_make_empty_io_list`,
+#   - tri-state read_line return (0 / 1 / -1) across stdin and file
+#     handle variants, and
+#   - dual-write error channel: per-thread Rust LAST_ERROR buffer +
+#     shared `__ry_set_last_error` mirror so json::load_file /
+#     json5::dump_file (json.cpp:702-773, json5.cpp:1102-1190) keep
+#     surfacing io failures through their own __ry_get_last_error
+#     reads.
+# No LLVM dependency.
+corrosion_import_crate(
+    MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/crates/native_io/Cargo.toml"
+    CRATES native_io
+)
+set_target_properties(ry_io PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 # ===== xid: ECMAScript IdentifierName predicates for json5 (#2314) =====
 # Tiny Rust cdylib (`unicode-ident` wrapper) exposing
 # `__ry_xid_start(u32)` / `__ry_xid_continue(u32)`. Unlike ry_base64 this
@@ -516,7 +545,8 @@ set(RY_NATIVE_LIBS_LINK
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}"
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_convert${CMAKE_SHARED_LIBRARY_SUFFIX}"
     "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_path${CMAKE_SHARED_LIBRARY_SUFFIX}"
-    ry_filesystem ry_gc ry_testing ry_io ry_json ry_json5 ry_net ry_thread ry_http)
+    "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_io${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    ry_filesystem ry_gc ry_testing ry_json ry_json5 ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 # Native shared libraries (except ry_testing) are NOT linked here — the JIT
@@ -535,6 +565,13 @@ add_dependencies(ry ${RY_NATIVE_LIBS})
 # ry_testing is process-linked because ry_lib references its test-runtime
 # symbols at C++ link time (#2395).
 set(RY_XID_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_xid${CMAKE_SHARED_LIBRARY_SUFFIX}")
+# ry_io cdylib: same rationale as RY_XID_LINK — the fuzz harnesses
+# (fuzz_io_open, fuzz_json, fuzz_json5) previously embedded
+# src/runtime/native/io.cpp directly; after the #2480 Rust port that
+# source is gone, so the harnesses link the cdylib artifact instead.
+# Use the absolute path because corrosion's IMPORTED target rejects
+# the `$<TARGET_FILE:ry_io>` generator expression.
+set(RY_IO_LINK "${CMAKE_BINARY_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}ry_io${CMAKE_SHARED_LIBRARY_SUFFIX}")
 # lower cdylib: process-linked alongside emit for the #2397 kickoff. Its
 # `ry_lower_*` symbols are referenced statically from ry_lib (the
 # emitExprVariant(BoolExpr) shim), so DT_NEEDED is established naturally
@@ -735,24 +772,30 @@ if(ENABLE_FUZZER)
     add_ry_fuzz_target(fuzz_parser tests/fuzz/fuzz_parser.cpp)
     # fuzz_json compiles runtime_json.cpp directly (it lives in ry_json SHARED lib,
     # not ry_lib) so the JSON parser symbols are available without dlopen.
-    # runtime_io.cpp is also embedded because __ry_json_load_file /
-    # __ry_json_dump_file (#1854) reference __ry_io_file_read_all /
-    # __ry_io_file_write_text from runtime_io.cpp.
-    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime/native/json.cpp src/runtime/native/io.cpp)
+    # __ry_json_load_file / __ry_json_dump_file (#1854) reference
+    # __ry_io_file_read_all / __ry_io_file_write_text — after the #2480
+    # Rust port those symbols live in libry_io (Rust cdylib), so link
+    # the artifact directly the same way fuzz_json5 already links ry_xid.
+    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime/native/json.cpp)
+    add_dependencies(fuzz_json ry_io)
+    target_link_libraries(fuzz_json PRIVATE ${RY_IO_LINK})
     # fuzz_json5 mirrors fuzz_json (#1855). json5's parser embeds io references
     # via __ry_json5_load_file / __ry_json5_dump_file just like json, so the
-    # same source-embedding pattern is required. Additionally, json5.cpp's
+    # same `${RY_IO_LINK}` post-#2480 setup applies. Additionally, json5.cpp's
     # identifier-name predicates reference __ry_xid_start / __ry_xid_continue
     # from libry_xid (#2314); since json5.cpp is compiled directly into the
     # harness those become real undefined references at link time (unlike `ry`
-    # where the reference lives only in the dlopen'd libry_json5). Link the
-    # xid cdylib explicitly — only this harness needs it, so the shared
-    # add_ry_fuzz_target helper is left untouched.
-    add_ry_fuzz_target(fuzz_json5 tests/fuzz/fuzz_json5.cpp src/runtime/native/json5.cpp src/runtime/native/io.cpp)
-    add_dependencies(fuzz_json5 ry_xid)
-    target_link_libraries(fuzz_json5 PRIVATE ${RY_XID_LINK})
+    # where the reference lives only in the dlopen'd libry_json5). Both the
+    # io and xid cdylibs are linked explicitly — only this harness needs the
+    # combination, so the shared add_ry_fuzz_target helper is left untouched.
+    add_ry_fuzz_target(fuzz_json5 tests/fuzz/fuzz_json5.cpp src/runtime/native/json5.cpp)
+    add_dependencies(fuzz_json5 ry_xid ry_io)
+    target_link_libraries(fuzz_json5 PRIVATE ${RY_XID_LINK} ${RY_IO_LINK})
     add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
-    # fuzz_io_open compiles runtime_io.cpp directly (it lives in ry_io SHARED lib,
-    # not ry_lib) so the File handle symbols are available without dlopen.
-    add_ry_fuzz_target(fuzz_io_open tests/fuzz/fuzz_io_open.cpp src/runtime/native/io.cpp)
+    # fuzz_io_open previously compiled src/runtime/native/io.cpp directly;
+    # after the #2480 Rust port the File handle symbols live in libry_io
+    # so the harness links the cdylib artifact instead.
+    add_ry_fuzz_target(fuzz_io_open tests/fuzz/fuzz_io_open.cpp)
+    add_dependencies(fuzz_io_open ry_io)
+    target_link_libraries(fuzz_io_open PRIVATE ${RY_IO_LINK})
 endif()

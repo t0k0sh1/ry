@@ -1,0 +1,30 @@
+# Rust implementation of the @native("io") stdlib runtime module —
+# fourth port after base64 (#2282), convert (#2478), and path (#2479),
+# driven by #2480. First port to exercise the IoFileHandle resource
+# lifecycle (open / read_all / read_line / write_text / close /
+# cleanup), the IOListHeader-returning shape outside base64
+# (read_bytes / to_bytes), the tri-state stdin / file read_line return
+# (0=ok / 1=EOF / -1=err), and the dual-write error channel (module-
+# local thread_local buffer + shared `__ry_set_last_error` mirror
+# consumed by json / json5 cross-module callers).
+#
+# Package label ("native_io") and runtime artifact name ("ry_io" →
+# libry_io.{dylib,so}) are split: the JIT's `find_native_library()`
+# resolves the latter, while the former groups sibling cdylib crates
+# (native_base64, native_convert, native_path).
+
+[package]
+name = "native_io"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ry_io"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true
